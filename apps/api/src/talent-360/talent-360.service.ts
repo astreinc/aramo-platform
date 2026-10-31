@@ -637,6 +637,7 @@ export class Talent360Service {
         meta: d.title,
         signed,
         signed_at: signed ? d.executed_at : null,
+        esign_copy: d.esign_copy ?? null,
       };
     });
     return { key_documents, total: key_documents.length };

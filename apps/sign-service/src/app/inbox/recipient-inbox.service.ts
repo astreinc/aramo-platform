@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { hashSigningToken, InboxSigningRefusedError, RecipientInboxRepository, type RecipientInboxRow, signBaseUrl } from '@aramo/sign';
+import { hashSigningToken, InboxSigningRefusedError, PURGE_ELIGIBLE_STATUSES, RecipientInboxRepository, type RecipientInboxRow, SignPurgeRepository, signBaseUrl } from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
 
 import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
+import { purgeViewOf } from '../retention/purge-view.js';
+import { SignPurgeService } from '../retention/sign-purge.service.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — "Waiting for
@@ -20,6 +22,15 @@ import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contract
 //   - a short-lived signed-copy link once the envelope is complete and they signed.
 // The binding grants NO membership in the sender's tenant; the emailed link stays
 // independently valid; the user can remove a binding at any time.
+//
+// Retention and Purge directive (ebd41d99) R-10 / LD-5 — two different actions:
+//   remove   (DELETE /:id)       revokes the binding: the envelope leaves the inbox for good
+//                                and this user is no longer a party for the purge rule.
+//   delete   (POST /:id/delete)  the DocuSign "Deleted" folder: the binding stays, the
+//                                envelope moves to ?folder=deleted and can be restored; once
+//                                every party has deleted it, the envelope is queued for purge.
+// delete / restore apply to terminal envelopes only and are refused (403
+// ESIGN_FEATURE_NOT_AVAILABLE) while purge is disabled (SIGN_PURGE_ENABLED unset).
 
 const SIGNABLE = new Set(['SENT', 'IN_PROGRESS']);
 const PENDING_SIGNER = new Set(['PENDING', 'VIEWED']);
@@ -35,6 +46,8 @@ export class RecipientInboxService {
   constructor(
     private readonly repo: RecipientInboxRepository,
     private readonly identity: IdentityRepository,
+    @Optional() private readonly purges?: SignPurgeRepository,
+    @Optional() private readonly purgeEngine?: SignPurgeService,
   ) {}
 
   private base(requestId: string): string {
@@ -86,6 +99,7 @@ export class RecipientInboxService {
   private async view(r: RecipientInboxRow) {
     const org = await this.identity.findTenantNameById(r.envelope_tenant_id).catch(() => null);
     const signable = SIGNABLE.has(r.envelope.status) && PENDING_SIGNER.has(r.signer.status) && (r.envelope.expires_at === null || r.envelope.expires_at.getTime() > Date.now());
+    const purge = purgeViewOf(r.envelope);
     return {
       id: r.id,
       subject: r.envelope.subject,
@@ -101,12 +115,16 @@ export class RecipientInboxService {
       completed_at: r.envelope.completed_at?.toISOString() ?? null,
       signed_at: r.signer.signed_at?.toISOString() ?? null,
       can_sign: signable,
-      can_download: r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED',
+      can_download: r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED',
+      // Present only once the envelope was queued for purge (the item shape is unchanged otherwise).
+      ...(purge !== null ? { purge } : {}),
     };
   }
 
-  async list(auth: AuthContextType) {
-    const rows = await this.repo.listForUser(auth.sub);
+  async list(auth: AuthContextType, folder?: string, requestId = '') {
+    if (folder !== undefined && folder !== 'deleted') throw new AramoError('VALIDATION_ERROR', 'unknown folder', 400, { requestId, details: { folder } });
+    const deleted = new Set(this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'RECIPIENT', key: auth.sub }) : []);
+    const rows = (await this.repo.listForUser(auth.sub)).filter((r) => (folder === 'deleted') === deleted.has(r.envelope_id));
     const items = await Promise.all(rows.map((r) => this.view(r)));
     return {
       waiting: items.filter((i) => i.can_sign),
@@ -150,5 +168,34 @@ export class RecipientInboxService {
   async remove(auth: AuthContextType, id: string, requestId: string) {
     if (!(await this.repo.revoke(auth.sub, id))) throw notFound(requestId);
     return { removed: true };
+  }
+
+  // R-10 — move a terminal envelope to this recipient's Deleted folder (binding kept).
+  async deleteForMe(auth: AuthContextType, id: string, requestId: string) {
+    const { purges, r } = await this.partyTarget(auth, id, requestId);
+    const out = await purges.partyDelete(r.envelope_tenant_id, r.envelope_id, { kind: 'RECIPIENT', key: auth.sub }, auth.sub);
+    if (out === 'not_eligible') {
+      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });
+    }
+    return { deleted: true };
+  }
+
+  async restoreForMe(auth: AuthContextType, id: string, requestId: string) {
+    const { purges, r } = await this.partyTarget(auth, id, requestId);
+    const out = await purges.partyRestore(r.envelope_tenant_id, r.envelope_id, { kind: 'RECIPIENT', key: auth.sub }, auth.sub);
+    if (out === 'purged') throw new AramoError('ENVELOPE_PURGED', 'This envelope was purged', 410, { requestId });
+    return { restored: out === 'restored' };
+  }
+
+  private async partyTarget(auth: AuthContextType, id: string, requestId: string): Promise<{ purges: SignPurgeRepository; r: RecipientInboxRow }> {
+    if (this.purges === undefined || this.purgeEngine?.enabled !== true) {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention and purge are not enabled', 403, { requestId, details: { reason: 'purge_not_enabled' } });
+    }
+    const r = await this.repo.getForUser(auth.sub, id);
+    if (r === null) throw notFound(requestId);
+    if (!PURGE_ELIGIBLE_STATUSES.includes(r.envelope.status) && r.envelope.status !== 'EXPIRED') {
+      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });
+    }
+    return { purges: this.purges, r };
   }
 }

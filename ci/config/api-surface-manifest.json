@@ -96,6 +96,7 @@
     "apps/sign-service/src/app/esign-http.controller.ts": "SS",
     "apps/sign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender.controller.ts": "AP",
+    "apps/sign-service/src/app/retention/sign-retention.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/integration-admin.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/sign-api.controller.ts": "XP",

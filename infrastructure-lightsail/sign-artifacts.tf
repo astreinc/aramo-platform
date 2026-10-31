@@ -2,6 +2,11 @@
 # SX-2 items 1, 2, 3, 5 (infrastructure part) and 6, under Lead Clarifications
 # LC-1 (retention) and LC-3 (evidence signing).
 #
+# Amended by the Retention and Purge directive (ebd41d99) W2: sign-service may delete
+# object versions of source, executed and certificate artifacts (DocuSign-parity
+# purge). It still can never bypass Governance retention, so objects written under
+# the earlier 2,557-day lock stay until their retain-until date (R-16).
+#
 # AUTHORED, NOT APPLIED. Terraform apply, the IAM change and the credential switch
 # are separate PO-authorized production checkpoints (directive, "Production
 # restrictions"). Apply runs from the Mac only (recon gate R-1).
@@ -10,9 +15,11 @@
 #   - aramo-prod-sign-artifacts-use1: the dedicated Sign artifact bucket. Object Lock
 #     enabled at creation (IRREVERSIBLE), versioned, SSE-KMS with its own key
 #     (rotation on), all four public-access-block flags, BucketOwnerEnforced, a
-#     TLS-only policy, an explicit Deny on version deletion, governance bypass and
-#     configuration changes for every principal except the break-glass principal,
-#     and NO lifecycle rules at all (no expiry of current or older versions).
+#     TLS-only policy, an explicit Deny on governance bypass and configuration
+#     changes for every principal except the break-glass principal, an explicit Deny
+#     on version deletion for every principal except the break-glass principal and
+#     aramo-sign-prod (purge, W2), and NO lifecycle rules at all (no expiry of
+#     current or older versions).
 #   - the key policy for the EXISTING DOC-4 evidence-signing key (doc4-sign.tf,
 #     aws_kms_key.sign_evidence, RSA_2048, alias/aramo-sign-evidence), which is
 #     reused for LC-3 / SX-1 item 4. No second evidence key is created.
@@ -33,6 +40,13 @@ locals {
   sign_objects_arn = "${local.sign_bucket_arn}/tenants/*"
   # Draft delete keeps working on source objects only (SX-2 items 5 and 6).
   sign_source_objects_arn = "${local.sign_bucket_arn}/tenants/*/envelopes/*/source/*"
+  # Purge (Retention and Purge W2) removes versions of these three artifact kinds.
+  # Evidence objects are never deleted (LD-3).
+  sign_purgeable_objects_arns = [
+    "${local.sign_bucket_arn}/tenants/*/envelopes/*/source/*",
+    "${local.sign_bucket_arn}/tenants/*/envelopes/*/executed/*",
+    "${local.sign_bucket_arn}/tenants/*/envelopes/*/certificate/*",
+  ]
 
   # Forms of "this key" a client may name in x-amz-server-side-encryption-aws-kms-key-id.
   sign_artifacts_kms_key_id_forms = [
@@ -92,7 +106,7 @@ data "aws_iam_policy_document" "sign_user" {
   }
 
   # Draft delete: source objects only. On a versioned bucket this writes a delete
-  # marker; the version itself can be removed only by the break-glass principal.
+  # marker.
   statement {
     sid       = "SignSourceObjectDelete"
     effect    = "Allow"
@@ -100,7 +114,17 @@ data "aws_iam_policy_document" "sign_user" {
     resources = [local.sign_source_objects_arn]
   }
 
-  # Reconcile (SX-2 item 7) lists the tenant prefix to find missing uploads.
+  # Purge (Retention and Purge directive W2): remove every version of a purged
+  # envelope's source, executed and certificate objects. Object Lock still refuses
+  # any locked version, because BypassGovernanceRetention stays denied below.
+  statement {
+    sid       = "SignPurgeArtifactVersions"
+    effect    = "Allow"
+    actions   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+    resources = local.sign_purgeable_objects_arns
+  }
+
+  # Reconcile (SX-2 item 7) and purge list the tenant prefix (versions included).
   statement {
     sid       = "SignArtifactListTenantPrefix"
     effect    = "Allow"
@@ -134,14 +158,18 @@ data "aws_iam_policy_document" "sign_user" {
     resources = [aws_kms_key.sign_evidence.arn]
   }
 
-  # Belt and braces next to the bucket policy: this principal can never remove a
-  # version or bypass Governance retention, whatever else is ever attached to it.
+  # Belt and braces next to the bucket policy: this principal can never bypass
+  # Governance retention or change the bucket's custody configuration, whatever
+  # else is ever attached to it.
   statement {
-    sid    = "SignNeverDeletesVersionsOrBypassesRetention"
+    sid    = "SignNeverBypassesRetentionOrChangesCustodyConfig"
     effect = "Deny"
     actions = [
-      "s3:DeleteObjectVersion",
       "s3:BypassGovernanceRetention",
+      "s3:PutBucketObjectLockConfiguration",
+      "s3:PutLifecycleConfiguration",
+      "s3:PutBucketVersioning",
+      "s3:PutBucketPolicy",
     ]
     resources = [local.sign_bucket_arn, "${local.sign_bucket_arn}/*"]
   }
@@ -344,10 +372,10 @@ data "aws_iam_policy_document" "sign_artifacts_bucket" {
     }
   }
 
-  # SX-2 item 2: nobody but the named break-glass principal may remove a version,
-  # bypass Governance retention, or change versioning, Object Lock, lifecycle or
-  # this policy. Note: this includes the Terraform operator unless the operator IS
-  # the break-glass principal.
+  # SX-2 item 2: nobody but the named break-glass principal may bypass Governance
+  # retention, or change versioning, Object Lock, lifecycle or this policy. Note:
+  # this includes the Terraform operator unless the operator IS the break-glass
+  # principal.
   statement {
     sid    = "DenyCustodyChangesExceptBreakGlass"
     effect = "Deny"
@@ -356,7 +384,6 @@ data "aws_iam_policy_document" "sign_artifacts_bucket" {
       identifiers = ["*"]
     }
     actions = [
-      "s3:DeleteObjectVersion",
       "s3:BypassGovernanceRetention",
       "s3:PutBucketVersioning",
       "s3:PutBucketObjectLockConfiguration",
@@ -368,6 +395,25 @@ data "aws_iam_policy_document" "sign_artifacts_bucket" {
       test     = "ArnNotEquals"
       variable = "aws:PrincipalArn"
       values   = [var.break_glass_principal_arn]
+    }
+  }
+
+  # Retention and Purge directive W2: version deletion is denied to every principal
+  # except the break-glass principal and aramo-sign-prod (purge). A locked version is
+  # still refused by Object Lock, since bypass stays denied above.
+  statement {
+    sid    = "DenyVersionDeleteExceptBreakGlassAndSignPurge"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:DeleteObjectVersion"]
+    resources = [local.sign_bucket_arn, "${local.sign_bucket_arn}/*"]
+    condition {
+      test     = "ArnNotEquals"
+      variable = "aws:PrincipalArn"
+      values   = [var.break_glass_principal_arn, aws_iam_user.sign.arn]
     }
   }
 

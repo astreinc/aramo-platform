@@ -384,6 +384,14 @@ export interface TalentDocumentView {
   // DISPLAYS the result and never stores signature state (directive §13).
   readonly signed: boolean;
   readonly signed_at: string | null;
+  // Retention and Purge directive W11 — whether Aramo Sign still holds its own copy of a
+  // document signed through it (null otherwise). Displayed only; the ATS copy is unaffected.
+  readonly esign_copy: EsignCopyView | null;
+}
+
+export interface EsignCopyView {
+  readonly status: 'held' | 'purge_scheduled' | 'purged';
+  readonly at: string | null;
 }
 
 export interface DocumentsView {

@@ -2055,10 +2055,224 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/retention-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tenant's document retention setting (keep forever unless set).
+         * @description Requires sign:envelope:read. can_edit is true only while purge is enabled and the caller holds sign:settings:manage.
+         */
+        get: operations["getSenderRetentionPolicy"];
+        /**
+         * Set the retention period (1..9999 days after completion, decline or void) or keep forever (null).
+         * @description Requires sign:settings:manage. Applies to existing terminal envelopes too; every change is recorded.
+         */
+        put: operations["setSenderRetentionPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a completed, declined, voided or expired envelope to this organization's Deleted folder.
+         * @description Hides it for the sending organization only; other parties keep theirs. Requires sign:envelope:read and visibility of the envelope.
+         */
+        post: operations["deleteSenderEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore an envelope from the Deleted folder (until a purge has executed).
+         * @description Requires sign:envelope:read and visibility of the envelope. 410 ENVELOPE_PURGED once a purge has executed.
+         */
+        post: operations["restoreSenderEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a completed, declined or voided envelope for purge (14-day purge queue).
+         * @description Requires sign:envelope:manage:all.
+         */
+        post: operations["queueSenderEnvelopePurge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/purge/dequeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued purge before it executes.
+         * @description Requires sign:envelope:manage:all.
+         */
+        post: operations["dequeueSenderEnvelopePurge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/purge/targeted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue every terminal envelope sent from, or signed by, one email address.
+         * @description Requires sign:settings:manage.
+         */
+        post: operations["queueTargetedPurge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a received, finished envelope to this user's Deleted folder (hidden for this user only).
+         * @description Session (esign consumer) only. Unlike DELETE /v1/sign/inbox/{id}, the binding is kept, can be restored, and counts toward "every party deleted".
+         */
+        post: operations["deleteFromInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a received envelope from this user's Deleted folder (until a purge has executed).
+         * @description Session (esign consumer) only; keyed by the signed-in user. 410 ENVELOPE_PURGED once a purge has executed.
+         */
+        post: operations["restoreFromInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/api/retention-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The installation tenant's document retention setting.
+         * @description Requires sign:envelope:read.
+         */
+        get: operations["getSignApiRetentionPolicy"];
+        /**
+         * Set the installation tenant's retention period or keep forever (null).
+         * @description Requires sign:settings:manage.
+         */
+        put: operations["setSignApiRetentionPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        SignPurgeLevel: "DOCUMENTS" | "DOCUMENTS_AND_METADATA" | "DOCUMENTS_AND_METADATA_AND_REDACT";
+        SignRetentionPolicy: {
+            /** @description null = keep forever (the default). */
+            retention_days: number | null;
+            purge_level: components["schemas"]["SignPurgeLevel"];
+            /** Format: date-time */
+            updated_at: string | null;
+            can_edit?: boolean;
+        };
+        SignRetentionPolicyInput: {
+            retention_days: number | null;
+            purge_level?: components["schemas"]["SignPurgeLevel"];
+        };
+        SignEnvelopePurge: {
+            /** @enum {string} */
+            state: "QUEUED" | "DEQUEUED" | "EXECUTED";
+            level: components["schemas"]["SignPurgeLevel"];
+            /** Format: date-time */
+            due_at: string | null;
+            /** Format: date-time */
+            executed_at: string | null;
+        };
+        SignEnvelopePurgeResult: {
+            purge: components["schemas"]["SignEnvelopePurge"] | null;
+        };
         SignTalentErasureScope: {
             /** Format: uuid */
             tenant_id: string;
@@ -2997,6 +3211,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description The envelope's documents were purged (ENVELOPE_PURGED). */
+        EnvelopePurged: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description 412 — details.reason revision_mismatch; details.current_revision is the envelope's revision now. Re-read and retry. */
         RevisionMismatch: {
             headers: {
@@ -6782,6 +7005,314 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getSenderRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignRetentionPolicy"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    setSenderRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignRetentionPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignRetentionPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteSenderEnvelope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    restoreSenderEnvelope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        restored: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["EnvelopePurged"];
+        };
+    };
+    queueSenderEnvelopePurge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    level?: components["schemas"]["SignPurgeLevel"];
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignEnvelopePurgeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["EnvelopePurged"];
+        };
+    };
+    dequeueSenderEnvelopePurge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignEnvelopePurgeResult"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    queueTargetedPurge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                    level?: components["schemas"]["SignPurgeLevel"];
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        queued: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteFromInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    restoreFromInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        restored: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["EnvelopePurged"];
+        };
+    };
+    getSignApiRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignRetentionPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    setSignApiRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignRetentionPolicyInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignRetentionPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["SenderForbidden"];
         };
     };
 }

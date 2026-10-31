@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its thirty-four tables', async () => {
+  it('creates the sign schema with its thirty-eight tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -109,6 +109,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         // Privacy Notice 1.1 remediation (E-1 to E-4) — verified deletion requests, sweep audit.
         'SignConvenienceDeletionRequest',
         'SignRetentionSweep',
+        // Retention and Purge directive (ebd41d99) — setting, setting history, ledger redaction, per-party delete.
+        'SignTenantRetentionPolicy',
+        'SignTenantRetentionPolicyEvent',
+        'SignatureEventRedaction',
+        'SignEnvelopePartyDeletion',
       ].sort(),
     );
   });

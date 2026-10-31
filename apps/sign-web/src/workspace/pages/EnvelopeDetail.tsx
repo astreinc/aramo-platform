@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { errorMessage, fetchSourcePdf, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent } from '../api';
-import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, StatusPill, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
 // Envelope detail (read-only). Actions by state + permission: Send reminder
@@ -12,6 +12,8 @@ import { useWorkspace } from '../workspace';
 // they exist only in each signer's email. A DRAFT routes back to the wizard.
 
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
+// Retention and Purge (DocuSign parity) — only completed, declined or voided envelopes are purged.
+const PURGEABLE = new Set(['COMPLETED', 'DECLINED', 'VOIDED']);
 
 export function EnvelopeDetail() {
   const { id = '' } = useParams();
@@ -24,6 +26,12 @@ export function EnvelopeDetail() {
   const [voidOpen, setVoidOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [voidError, setVoidError] = useState('');
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeLevel, setPurgeLevel] = useState<PurgeLevel>('DOCUMENTS');
+  const [purgeTyped, setPurgeTyped] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const load = useCallback(() => {
     senderApi
@@ -60,6 +68,13 @@ export function EnvelopeDetail() {
   if (env.status === 'DRAFT' && canAct) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
 
   const signed = env.recipients.filter((r) => r.status === 'SIGNED').length;
+  // Retention and Purge — the backend enforces who may delete, purge or cancel a purge.
+  const purge = env.purge ?? null;
+  const purged = purge?.state === 'EXECUTED';
+  const queued = purge?.state === 'QUEUED';
+  const admin = ctx.permissions.manage_all === true;
+  const canDelete = fromOtherApp === null && TERMINAL.has(env.status) && (canAct || admin);
+  const canPurge = admin && PURGEABLE.has(env.status) && (purge === null || purge.state === 'DEQUEUED');
   const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
@@ -121,6 +136,37 @@ export function EnvelopeDetail() {
       setBusy(false);
     }
   };
+  const runAction = async (fn: () => Promise<void>, done: string) => {
+    setBusy(true);
+    setActionError('');
+    try {
+      await fn();
+      toast(done);
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const doDelete = () =>
+    runAction(async () => {
+      await senderApi.deleteEnvelope(env.id);
+      setDeleteOpen(false);
+      refreshCounts();
+      navigate(`${base}/envelopes`);
+    }, 'Moved to Deleted');
+  const doPurge = () =>
+    runAction(async () => {
+      setEnv(await senderApi.queuePurge(env.id, purgeLevel));
+      setPurgeOpen(false);
+      setPurgeTyped('');
+      load();
+    }, 'Purge scheduled');
+  const cancelPurge = () =>
+    runAction(async () => {
+      setEnv(await senderApi.dequeuePurge(env.id));
+      load();
+    }, 'Purge cancelled');
   const preview = async (docId: string) => {
     try {
       const bytes = await fetchSourcePdf(env.id, docId);
@@ -148,7 +194,7 @@ export function EnvelopeDetail() {
         </h1>
         <StatusPill status={env.status} />
         <div className="sg-pagehead__end">
-          {env.status === 'COMPLETED' ? (
+          {env.status === 'COMPLETED' && !purged ? (
             <>
               <Btn variant="primary" onClick={() => void download()} disabled={busy} data-testid="download-executed">
                 Download documents
@@ -168,8 +214,38 @@ export function EnvelopeDetail() {
               Void envelope
             </Btn>
           ) : null}
+          {canPurge ? (
+            <Btn variant="danger" onClick={() => setPurgeOpen(true)} disabled={busy} data-testid="purge-envelope">
+              Purge…
+            </Btn>
+          ) : null}
+          {canDelete ? (
+            <Btn onClick={() => setDeleteOpen(true)} disabled={busy} data-testid="delete-envelope">
+              <Icon name="trash" size={14} /> Delete
+            </Btn>
+          ) : null}
         </div>
       </div>
+      {purge !== null && purge.state !== 'DEQUEUED' ? (
+        <div className={purged ? 'sg-note' : 'sg-note sg-note--warn'} style={{ marginBottom: 14 }} data-testid="purge-banner" role="status">
+          {purged ? (
+            <span>
+              This envelope’s documents were purged on {fmtDate(purge.executed_at, true)} ({purgeLevelLabel(purge.level).toLowerCase()}). They can’t be downloaded or
+              recovered. Its history remains.
+            </span>
+          ) : (
+            <span>
+              Purge scheduled: {purgeLevelLabel(purge.level).toLowerCase()} will be deleted permanently on {fmtDate(purge.due_at, true)}.
+            </span>
+          )}
+          {queued && admin ? (
+            <LinkBtn disabled={busy} onClick={() => void cancelPurge()} data-testid="cancel-purge" style={{ marginLeft: 'auto' }}>
+              Cancel purge
+            </LinkBtn>
+          ) : null}
+        </div>
+      ) : null}
+      {actionError !== '' && !deleteOpen && !purgeOpen ? <ErrorBox>{actionError}</ErrorBox> : null}
       <p className="sg-muted" style={{ marginTop: 0, marginBottom: 18 }}>
         <span className="sg-mono">{env.id.slice(0, 8)}</span> · sent by {env.sender.name ?? 'a sender'} · created {fmtDate(env.created_at)}
         {env.sent_at !== null ? ` · sent ${fmtDate(env.sent_at, true)}` : ''}
@@ -225,9 +301,15 @@ export function EnvelopeDetail() {
                     {d.field_count} field{d.field_count === 1 ? '' : 's'}
                   </div>
                 </div>
-                <Btn variant="ghost" size="sm" style={{ color: 'var(--accent)' }} onClick={() => void preview(d.id)}>
-                  Preview
-                </Btn>
+                {purged ? (
+                  <span className="sg-muted" data-testid="document-purged">
+                    Purged
+                  </span>
+                ) : (
+                  <Btn variant="ghost" size="sm" style={{ color: 'var(--accent)' }} onClick={() => void preview(d.id)}>
+                    Preview
+                  </Btn>
+                )}
               </div>
             ))}
           </section>
@@ -322,6 +404,63 @@ export function EnvelopeDetail() {
           <Area id="void-reason" rows={3} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
         </Field>
         {voidError !== '' ? <ErrorBox>{voidError}</ErrorBox> : null}
+      </Dialog>
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setActionError('');
+        }}
+        title="Delete this envelope?"
+        description="It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged."
+        size="sm"
+        footer={
+          <>
+            <Btn onClick={() => setDeleteOpen(false)}>Cancel</Btn>
+            <Btn variant="danger" onClick={() => void doDelete()} disabled={busy} data-testid="confirm-delete">
+              Delete
+            </Btn>
+          </>
+        }
+      >
+        {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}
+      </Dialog>
+      <Dialog
+        open={purgeOpen}
+        onOpenChange={(o) => {
+          setPurgeOpen(o);
+          if (!o) {
+            setActionError('');
+            setPurgeTyped('');
+          }
+        }}
+        title="Purge this envelope?"
+        description="The envelope waits 14 days in the purge queue, then the chosen data is deleted permanently for everyone. You can cancel during those 14 days."
+        size="sm"
+        footer={
+          <>
+            <Btn onClick={() => setPurgeOpen(false)}>Cancel</Btn>
+            <Btn variant="danger" onClick={() => void doPurge()} disabled={busy || purgeTyped !== 'PURGE'} data-testid="confirm-purge">
+              Queue purge
+            </Btn>
+          </>
+        }
+      >
+        <div className="sg-grid" style={{ gap: 12 }}>
+          <Field label="What is purged" htmlFor="purge-level" help={PURGE_LEVELS.find((l) => l.key === purgeLevel)?.help}>
+            <Sel id="purge-level" value={purgeLevel} onChange={(e) => setPurgeLevel(e.target.value as PurgeLevel)}>
+              {PURGE_LEVELS.map((l) => (
+                <option key={l.key} value={l.key}>
+                  {l.label}
+                </option>
+              ))}
+            </Sel>
+          </Field>
+          <Field label="Type PURGE to confirm" htmlFor="purge-confirm">
+            <TextIn id="purge-confirm" value={purgeTyped} autoComplete="off" onChange={(e) => setPurgeTyped(e.target.value)} />
+          </Field>
+          {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}
+        </div>
       </Dialog>
     </div>
   );

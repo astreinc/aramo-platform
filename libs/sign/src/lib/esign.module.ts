@@ -1,4 +1,4 @@
-import { DynamicModule, Module, ModuleMetadata, Provider } from '@nestjs/common';
+import { DynamicModule, Module, ModuleMetadata, Provider, type Type } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
@@ -34,8 +34,10 @@ export class EsignModule {
     // Tokens from extraProviders that must cross the module boundary so an
     // AppModule-level controller can inject them (e.g. DOCUMENT_SOURCE_PROVIDER_PORT
     // for the signer source route). Constrained to configured provider tokens —
-    // NOT a broad export escape hatch.
-    extraExports?: Array<string | symbol>;
+    // NOT a broad export escape hatch. A class token is allowed for a provider that
+    // itself depends on extraProviders (Retention and Purge: SignPurgeRepository and
+    // SignPurgeService need OutboxService and SignArtifactStore).
+    extraExports?: Array<string | symbol | Type<unknown>>;
     imports?: ModuleMetadata['imports'];
   }): DynamicModule {
     return {

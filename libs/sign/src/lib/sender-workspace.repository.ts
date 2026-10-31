@@ -47,6 +47,9 @@ export interface SenderEnvelopeListFilter {
   created_since?: Date;
   // Only envelopes created by this user (Personal workspace "my documents").
   created_by?: string;
+  // Retention and Purge directive W5 — the "Deleted" folder: only these ids, or never these ids.
+  only_ids?: readonly string[];
+  exclude_ids?: readonly string[];
   limit: number;
 }
 
@@ -149,6 +152,7 @@ export class EsignSenderRepository {
         ...(filter.statuses !== undefined && filter.statuses.length > 0 ? { status: { in: [...filter.statuses] } } : {}),
         ...(filter.created_since !== undefined ? { created_at: { gte: filter.created_since } } : {}),
         ...(filter.created_by !== undefined ? { created_by: filter.created_by } : {}),
+        ...(filter.only_ids !== undefined ? { id: { in: [...filter.only_ids] } } : filter.exclude_ids !== undefined && filter.exclude_ids.length > 0 ? { id: { notIn: [...filter.exclude_ids] } } : {}),
         ...(q !== undefined && q.length > 0
           ? {
               OR: [

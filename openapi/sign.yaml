@@ -4113,6 +4113,325 @@ paths:
           description: Client authentication failed.
         '403':
           description: The client is not the first-party ATS application.
+  # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
+  # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
+  # service runs with SIGN_PURGE_ENABLED=1.
+  /v1/sign/sender/retention-policy:
+    get:
+      operationId: getSenderRetentionPolicy
+      summary: The tenant's document retention setting (keep forever unless set).
+      description: Requires sign:envelope:read. can_edit is true only while purge is enabled and the caller holds sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRetentionPolicy'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: setSenderRetentionPolicy
+      summary: Set the retention period (1..9999 days after completion, decline or void) or keep forever (null).
+      description: Requires sign:settings:manage. Applies to existing terminal envelopes too; every change is recorded.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRetentionPolicyInput'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRetentionPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/envelopes/{id}/delete:
+    post:
+      operationId: deleteSenderEnvelope
+      summary: Move a completed, declined, voided or expired envelope to this organization's Deleted folder.
+      description: Hides it for the sending organization only; other parties keep theirs. Requires sign:envelope:read and visibility of the envelope.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/restore:
+    post:
+      operationId: restoreSenderEnvelope
+      summary: Restore an envelope from the Deleted folder (until a purge has executed).
+      description: Requires sign:envelope:read and visibility of the envelope. 410 ENVELOPE_PURGED once a purge has executed.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [restored]
+                properties:
+                  restored:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/EnvelopePurged'
+  /v1/sign/sender/envelopes/{id}/purge:
+    post:
+      operationId: queueSenderEnvelopePurge
+      summary: Queue a completed, declined or voided envelope for purge (14-day purge queue).
+      description: Requires sign:envelope:manage:all.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level:
+                  $ref: '#/components/schemas/SignPurgeLevel'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignEnvelopePurgeResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/EnvelopePurged'
+  /v1/sign/sender/envelopes/{id}/purge/dequeue:
+    post:
+      operationId: dequeueSenderEnvelopePurge
+      summary: Cancel a queued purge before it executes.
+      description: Requires sign:envelope:manage:all.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignEnvelopePurgeResult'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/purge/targeted:
+    post:
+      operationId: queueTargetedPurge
+      summary: Queue every terminal envelope sent from, or signed by, one email address.
+      description: Requires sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  maxLength: 320
+                level:
+                  $ref: '#/components/schemas/SignPurgeLevel'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queued]
+                properties:
+                  queued:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/inbox/{id}/delete:
+    post:
+      operationId: deleteFromInbox
+      summary: Move a received, finished envelope to this user's Deleted folder (hidden for this user only).
+      description: Session (esign consumer) only. Unlike DELETE /v1/sign/inbox/{id}, the binding is kept, can be restored, and counts toward "every party deleted".
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/inbox/{id}/restore:
+    post:
+      operationId: restoreFromInbox
+      summary: Restore a received envelope from this user's Deleted folder (until a purge has executed).
+      description: Session (esign consumer) only; keyed by the signed-in user. 410 ENVELOPE_PURGED once a purge has executed.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [restored]
+                properties:
+                  restored:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/EnvelopePurged'
+  /v1/sign/api/retention-policy:
+    get:
+      operationId: getSignApiRetentionPolicy
+      summary: The installation tenant's document retention setting.
+      description: Requires sign:envelope:read.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRetentionPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: setSignApiRetentionPolicy
+      summary: Set the installation tenant's retention period or keep forever (null).
+      description: Requires sign:settings:manage.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRetentionPolicyInput'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRetentionPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
 components:
   securitySchemes:
     senderSession:
@@ -4221,6 +4540,12 @@ components:
       schema:
         type: string
   responses:
+    EnvelopePurged:
+      description: The envelope's documents were purged (ENVELOPE_PURGED).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     # Sign Mobile M-A3 §6–§8 (W2b)
     RevisionMismatch:
       description: 412 — details.reason revision_mismatch; details.current_revision is the envelope's revision now. Re-read and retry.
@@ -4306,6 +4631,58 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    SignPurgeLevel:
+      type: string
+      enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
+    SignRetentionPolicy:
+      type: object
+      required: [retention_days, purge_level, updated_at]
+      properties:
+        retention_days:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999
+          description: null = keep forever (the default).
+        purge_level:
+          $ref: '#/components/schemas/SignPurgeLevel'
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+        can_edit:
+          type: boolean
+    SignRetentionPolicyInput:
+      type: object
+      required: [retention_days]
+      properties:
+        retention_days:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9999
+        purge_level:
+          $ref: '#/components/schemas/SignPurgeLevel'
+    SignEnvelopePurge:
+      type: object
+      required: [state, level, due_at, executed_at]
+      properties:
+        state:
+          type: string
+          enum: [QUEUED, DEQUEUED, EXECUTED]
+        level:
+          $ref: '#/components/schemas/SignPurgeLevel'
+        due_at:
+          type: [string, 'null']
+          format: date-time
+        executed_at:
+          type: [string, 'null']
+          format: date-time
+    SignEnvelopePurgeResult:
+      type: object
+      required: [purge]
+      properties:
+        purge:
+          oneOf:
+            - $ref: '#/components/schemas/SignEnvelopePurge'
+            - type: 'null'
     SignTalentErasureScope:
       type: object
       required: [tenant_id, record_ids]

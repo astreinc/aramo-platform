@@ -480,6 +480,7 @@ export class DocumentsRepository {
       executed_at: string | null;
       created_at: string;
       regarding_requisition_id: string | null;
+      esign_copy: EsignCopyStatus | null;
     }>
   > {
     const take = Math.min(input.limit ?? 100, 200);
@@ -509,6 +510,7 @@ export class DocumentsRepository {
       orderBy: { created_at: 'desc' },
       take,
     });
+    const copies = await this.esignCopyStatuses(input.tenant_id, docs.map((d) => d.id));
     return docs.map((d) => ({
       id: d.id,
       title: d.title,
@@ -518,7 +520,42 @@ export class DocumentsRepository {
       executed_at: d.executed_at === null ? null : d.executed_at.toISOString(),
       created_at: d.created_at.toISOString(),
       regarding_requisition_id: d.associations[0]?.resource_id ?? null,
+      esign_copy: copies.get(d.id) ?? null,
     }));
+  }
+
+  // Retention and Purge directive (ebd41d99) W11 — whether Aramo Sign still holds its own
+  // copy of a document signed through Aramo Sign. Read-only, derived from DocumentEvents:
+  //   held             a native Aramo Sign execution was written back (DOCUMENT_EXECUTED
+  //                    carrying certificate_sha256, no external provider) and no purge fact
+  //   purge_scheduled  Sign queued its copy for purge (ESIGN_SOURCE_COPY_PURGE_STATE *_queued);
+  //                    `at` = Sign's purge_due_at (the recorded time for facts without one)
+  //   purged           Sign purged its copy (ESIGN_SOURCE_COPY_PURGED); `at` = when recorded
+  // A dequeue returns the status to held. The ATS's own stored copy is never affected.
+  async esignCopyStatuses(tenant_id: string, document_ids: readonly string[]): Promise<Map<string, EsignCopyStatus>> {
+    const out = new Map<string, EsignCopyStatus>();
+    if (document_ids.length === 0) return out;
+    const events = await this.prisma.documentEvent.findMany({
+      where: { tenant_id, document_id: { in: [...document_ids] }, event_type: { in: ['DOCUMENT_EXECUTED', 'ESIGN_SOURCE_COPY_PURGE_STATE', 'ESIGN_SOURCE_COPY_PURGED'] } },
+      select: { document_id: true, event_type: true, payload: true, occurred_at: true },
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+    });
+    for (const e of events) {
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      const current = out.get(e.document_id);
+      if (current?.status === 'purged') continue;
+      if (e.event_type === 'ESIGN_SOURCE_COPY_PURGED') {
+        out.set(e.document_id, { status: 'purged', at: e.occurred_at.toISOString() });
+      } else if (e.event_type === 'ESIGN_SOURCE_COPY_PURGE_STATE') {
+        const state = typeof p['purge_state'] === 'string' ? p['purge_state'] : '';
+        const due = typeof p['purge_due_at'] === 'string' ? p['purge_due_at'] : null;
+        if (state.endsWith('_queued')) out.set(e.document_id, { status: 'purge_scheduled', at: due ?? e.occurred_at.toISOString() });
+        else if (state === 'documents_dequeued') out.set(e.document_id, { status: 'held', at: null });
+      } else if (typeof p['certificate_sha256'] === 'string' && p['provider'] === undefined && current === undefined) {
+        out.set(e.document_id, { status: 'held', at: null });
+      }
+    }
+    return out;
   }
 
   // Talent 360 document preview — the CONTENT artifact of a document that is
@@ -738,6 +775,56 @@ export class DocumentsRepository {
       return { changed: true, status: input.status };
     });
   }
+
+  // Aramo Sign Retention and Purge directive (ebd41d99) W11 — Aramo Sign reported a purge
+  // fact for the envelope this Document was routed to (sign.envelope.purge.v1, or a 410
+  // ENVELOPE_PURGED on the executed-artifact pull). Appends ONE DocumentEvent recording that
+  // Sign's own copy is queued / dequeued / gone. The ATS's stored copy (its artifacts,
+  // status and every other row) is never touched. Idempotent per (document, fact key): a
+  // redelivered event records nothing new.
+  async recordEsignCopyPurgeFact(input: {
+    tenant_id: string;
+    document_id: string;
+    fact_key: string; // the Sign event_id, or a stable key for a 410 pull
+    envelope_id: string;
+    purge_state: string;
+    reason: string | null;
+    purge_due_at?: string | null;
+    actor_id: string;
+    correlation_id?: string;
+    request_id?: string;
+  }): Promise<{ recorded: boolean }> {
+    const event_type = input.purge_state === 'executed' ? 'ESIGN_SOURCE_COPY_PURGED' : 'ESIGN_SOURCE_COPY_PURGE_STATE';
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.document.findFirst({ where: { tenant_id: input.tenant_id, id: input.document_id }, select: { id: true } });
+      if (doc === null) throw new DocumentNotFoundError(input.document_id);
+      const seen = await tx.documentEvent.findFirst({
+        where: { tenant_id: input.tenant_id, document_id: input.document_id, event_type, payload: { path: ['fact_key'], equals: input.fact_key } },
+        select: { id: true },
+      });
+      if (seen !== null) return { recorded: false };
+      await tx.documentEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          document_id: input.document_id,
+          event_type,
+          actor_type: 'SYSTEM',
+          actor_id: input.actor_id,
+          correlation_id: input.correlation_id ?? null,
+          request_id: input.request_id ?? null,
+          payload: { fact_key: input.fact_key, envelope_id: input.envelope_id, purge_state: input.purge_state, reason: input.reason, purge_due_at: input.purge_due_at ?? null },
+        },
+      });
+      return { recorded: true };
+    });
+  }
+}
+
+// Retention and Purge directive W11 — Aramo Sign's own copy of a signed document.
+export interface EsignCopyStatus {
+  status: 'held' | 'purge_scheduled' | 'purged';
+  at: string | null; // ISO: purge due date while scheduled, when purged once executed; null while held
 }
 
 // R2 (DEF-12) — the statuses in which a document is awaiting signature.

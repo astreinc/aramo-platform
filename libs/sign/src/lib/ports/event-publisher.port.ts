@@ -19,7 +19,27 @@ export interface EsignDomainEvent {
     executed_document_ids: string[];
     has_certificate: boolean;
   };
+  // Retention and Purge directive (ebd41d99) R-14/LD-8 — set on sign.envelope.purge.v1 only.
+  purge?: EsignPurgeEventFields;
 }
+
+// The DocuSign Connect envelope-purge fields (purgeState values), plus 'executed' (LD-6).
+export type EsignPurgeState =
+  | 'documents_queued'
+  | 'documents_and_metadata_queued'
+  | 'documents_and_metadata_and_redact_queued'
+  | 'documents_dequeued'
+  | 'executed';
+
+export type EsignPurgeReason = 'retention' | 'targeted' | 'all_parties_deleted' | 'account_closed' | 'manual';
+
+export interface EsignPurgeEventFields {
+  purge_state: EsignPurgeState;
+  purge_due_at: string | null; // ISO; null once executed
+  reason: EsignPurgeReason;
+}
+
+export const SIGN_ENVELOPE_PURGE_EVENT_TYPE = 'sign.envelope.purge.v1';
 
 export interface EventPublisherPort {
   publish(event: EsignDomainEvent): Promise<void>;

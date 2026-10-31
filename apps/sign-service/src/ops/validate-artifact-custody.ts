@@ -4,7 +4,8 @@
 // custody ledger events in a READ ONLY transaction, fetches every artifact (executed PDFs,
 // certificate, evidence snapshot) from the Sign bucket BY VERSION ID and verifies its
 // SHA-256 against the row and the ledger. It writes nothing to the database or S3.
-// Exit 0 = every artifact OK; 1 = any MISSING_CUSTODY / mismatch / fetch failure; 2 = fatal.
+// Exit 0 = every artifact OK, PURGED or PURGE_WAITING_LOCK; 1 = any MISSING_CUSTODY /
+// mismatch / fetch failure / PURGE_INCOMPLETE; 2 = fatal (Retention and Purge W8).
 //
 // The delete-version / retention-bypass refusal checks of SX-2 item 8 are NOT performed
 // here (they need write-shaped calls against the bucket policy; separate checkpoint).

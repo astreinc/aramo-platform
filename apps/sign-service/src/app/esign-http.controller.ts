@@ -29,7 +29,7 @@ import {
 } from '@aramo/sign';
 import { type CreateEnvelopeRequest } from '@aramo/documents-contracts';
 
-import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
+import { NativeAramoSignatureProvider, assertNotPurged } from './native-aramo-signature.provider.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -264,15 +264,16 @@ export class EsignSignerController {
       const titles = new Map(full.documents.map((d) => [d.id, d.title]));
       const docs = await this.repo.listExecutedDocuments(grant.tenant_id, grant.envelope_id);
       const cert = await this.repo.getExecutionCertificate(grant.tenant_id, grant.envelope_id);
+      const purged = assertNotPurged(docs, cert, grant.envelope_id);
       return {
         subject: full.subject,
         completed_at: full.completed_at ? full.completed_at.toISOString() : null,
         documents: docs.map((d) => ({
           title: titles.get(d.envelope_document_id) ?? 'Signed document',
           content_type: 'application/pdf',
-          executed_base64: Buffer.from(d.executed_bytes).toString('base64'),
+          executed_base64: Buffer.from(purged.executed(d)).toString('base64'),
         })),
-        certificate_base64: cert === null ? null : Buffer.from(cert.certificate_bytes).toString('base64'),
+        certificate_base64: cert === null ? null : Buffer.from(purged.certificate(cert)).toString('base64'),
       };
     } catch (e) {
       throw toHttp(e, requestId);

@@ -256,6 +256,13 @@ export interface TalentDocumentView {
   readonly meta: string | null;
   readonly signed: boolean;
   readonly signed_at: string | null;
+  /** Retention and Purge W11 — Aramo Sign's own copy; optional so an older payload still renders. */
+  readonly esign_copy?: EsignCopyView | null;
+}
+
+export interface EsignCopyView {
+  readonly status: 'held' | 'purge_scheduled' | 'purged';
+  readonly at: string | null;
 }
 
 // GET /v1/talent-360/:talentId/documents/:documentId/content — a document's file

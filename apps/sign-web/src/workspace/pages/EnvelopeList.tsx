@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Dialog } from '@aramo/fe-foundation';
 
-import { errorMessage, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeStatus } from '../api';
-import { Check, ErrorBox, Loading, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
+import { errorMessage, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
+import { Btn, Check, ErrorBox, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
+
+// Retention and Purge (DocuSign parity) — Delete moves a completed, declined, voided or
+// expired envelope to this organization's Deleted folder only (other parties keep theirs);
+// Restore brings it back until a purge has run. The backend decides; these mirror it.
+const DELETABLE: ReadonlySet<EnvelopeStatus> = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
 
 // Envelopes — tabs All / Drafts / Waiting for others / Completed / Declined /
 // Voided / Expired (prototype), with a subject/recipient filter, a date range and
@@ -19,10 +25,15 @@ const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] 
   { key: 'expired', label: 'Expired', statuses: ['EXPIRED'] },
 ];
 
-export function EnvelopeList() {
-  const { ctx, base } = useWorkspace();
+export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
+  const { ctx, base, toast, refreshCounts } = useWorkspace();
+  const deleted = folder === 'deleted';
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
+  const tab = !deleted && TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
+  const [pending, setPending] = useState<{ row: EnvelopeRow; action: 'delete' | 'restore' } | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
   const [q, setQ] = useState(params.get('q') ?? '');
   const [days, setDays] = useState<number | undefined>(undefined);
   const [sort, setSort] = useState<'recent' | 'subject' | 'status'>('recent');
@@ -38,7 +49,7 @@ export function EnvelopeList() {
     let live = true;
     const t = setTimeout(() => {
       senderApi
-        .list({ tab, q, ...(days !== undefined ? { days } : {}) })
+        .list({ tab, q, ...(days !== undefined ? { days } : {}), ...(deleted ? { folder: 'deleted' as const } : {}) })
         .then((d) => {
           if (live) {
             setData(d);
@@ -53,7 +64,25 @@ export function EnvelopeList() {
       live = false;
       clearTimeout(t);
     };
-  }, [tab, q, days]);
+  }, [tab, q, days, deleted, reload]);
+
+  const act = useCallback(async () => {
+    if (pending === null) return;
+    setBusy(true);
+    setActionError('');
+    try {
+      if (pending.action === 'delete') await senderApi.deleteEnvelope(pending.row.id);
+      else await senderApi.restoreEnvelope(pending.row.id);
+      toast(pending.action === 'delete' ? 'Moved to Deleted' : 'Envelope restored');
+      setPending(null);
+      setReload((n) => n + 1);
+      refreshCounts();
+    } catch (e) {
+      setActionError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [pending, toast, refreshCounts]);
 
   const rows = useMemo(() => {
     const items = [...(data?.items ?? [])];
@@ -72,8 +101,8 @@ export function EnvelopeList() {
   return (
     <div className="sg-page sg-page--wide">
       <div className="sg-pagehead">
-        <h1 className="sg-h1">Envelopes</h1>
-        {ctx.can_send ? (
+        <h1 className="sg-h1">{deleted ? 'Deleted' : 'Envelopes'}</h1>
+        {ctx.can_send && !deleted ? (
           <div className="sg-pagehead__end">
             <Link className="sg-btn sg-btn--primary" to={`${base}/envelopes/new`}>
               + New envelope
@@ -81,7 +110,12 @@ export function EnvelopeList() {
           </div>
         ) : null}
       </div>
-      <nav className="sg-tabs" aria-label="Envelope status">
+      {deleted ? (
+        <p className="sg-muted" style={{ marginTop: 0 }} data-testid="deleted-help">
+          Envelopes you deleted are hidden only for your organization. Recipients keep their copies. Restore an envelope to move it back.
+        </p>
+      ) : null}
+      <nav className="sg-tabs" aria-label="Envelope status" hidden={deleted}>
         {TABS.map((t) => (
           <Link
             key={t.key}
@@ -136,14 +170,15 @@ export function EnvelopeList() {
                   <th>Status</th>
                   <th>Last activity</th>
                   <th>Sent</th>
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="sg-empty">
-                        <div className="sg-empty__t">No envelopes here</div>
+                        <div className="sg-empty__t">{deleted ? 'Nothing in Deleted' : 'No envelopes here'}</div>
                         {q !== '' ? 'Try a different filter.' : null}
                       </div>
                     </td>
@@ -172,10 +207,22 @@ export function EnvelopeList() {
                     </td>
                     <td className="sg-muted">{e.recipients.map((r) => r.name).join(', ') || '—'}</td>
                     <td>
-                      <StatusPill status={e.status} />
+                      <StatusPill status={e.status} /> <PurgeTag purge={e.purge} />
                     </td>
                     <td className="sg-muted">{rel(e.last_activity_at)}</td>
                     <td className="sg-muted">{e.sent_at === null ? '—' : fmtDate(e.sent_at)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {deleted && e.purge?.state !== 'EXECUTED' ? (
+                        <LinkBtn onClick={() => setPending({ row: e, action: 'restore' })} data-testid={`restore-${e.id}`}>
+                          Restore
+                        </LinkBtn>
+                      ) : null}
+                      {!deleted && DELETABLE.has(e.status) ? (
+                        <LinkBtn bad onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
+                          Delete
+                        </LinkBtn>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -189,6 +236,33 @@ export function EnvelopeList() {
           </div>
         </section>
       ) : null}
+      <Dialog
+        open={pending !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPending(null);
+            setActionError('');
+          }
+        }}
+        title={pending?.action === 'restore' ? 'Restore this envelope?' : 'Delete this envelope?'}
+        description={
+          pending?.action === 'restore'
+            ? 'It moves back to your envelopes.'
+            : 'It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged.'
+        }
+        size="sm"
+        footer={
+          <>
+            <Btn onClick={() => setPending(null)}>Cancel</Btn>
+            <Btn variant={pending?.action === 'restore' ? 'primary' : 'danger'} disabled={busy} onClick={() => void act()} data-testid="confirm-envelope-action">
+              {pending?.action === 'restore' ? 'Restore' : 'Delete'}
+            </Btn>
+          </>
+        }
+      >
+        {pending !== null ? <strong>{pending.row.subject}</strong> : null}
+        {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}
+      </Dialog>
     </div>
   );
 }

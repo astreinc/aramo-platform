@@ -23,6 +23,7 @@ import {
 } from './esign-writeback.js';
 import { DocumentsEsignController } from './documents-esign.controller.js';
 import { EsignSigningEndedRecorder } from './esign-signing-ended.js';
+import { EsignPurgeRecorder } from './esign-purge.js';
 
 // DOC-4 (R-4-7) — the apps/api executed-artifact seam module. SELF-CONTAINED: it
 // builds its own documents Prisma + storage adapter via factories (mirroring the
@@ -68,6 +69,8 @@ const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
       inject: [DOCUMENTS_ESIGN_PRISMA],
     },
     EsignSigningEndedRecorder,
+    // Retention and Purge directive (ebd41d99) W11 — Sign's copy queued / dequeued / purged.
+    EsignPurgeRecorder,
     // ES-2 — authenticates sign-service requests on the source route.
     EsignServiceRequestGuard,
   ],

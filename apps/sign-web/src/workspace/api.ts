@@ -63,6 +63,31 @@ export interface Summary {
   signing_window_days: number;
 }
 
+// Retention and Purge directive (DocuSign parity) — what a purge removes, and an envelope's purge state.
+export type PurgeLevel = 'DOCUMENTS' | 'DOCUMENTS_AND_METADATA' | 'DOCUMENTS_AND_METADATA_AND_REDACT';
+export const PURGE_LEVELS: { key: PurgeLevel; label: string; help: string }[] = [
+  { key: 'DOCUMENTS', label: 'Documents', help: 'Signed documents and the certificate PDF are deleted. Envelope details and history stay.' },
+  { key: 'DOCUMENTS_AND_METADATA', label: 'Documents and details', help: 'Also clears the subject, message, document names and entered field values.' },
+  { key: 'DOCUMENTS_AND_METADATA_AND_REDACT', label: 'Documents, details and personal data', help: 'Also removes recipient names, email addresses and IP addresses from the envelope and its history.' },
+];
+export function purgeLevelLabel(level: PurgeLevel | null | undefined): string {
+  return PURGE_LEVELS.find((l) => l.key === level)?.label ?? 'Documents';
+}
+export interface PurgeInfo {
+  state: 'QUEUED' | 'DEQUEUED' | 'EXECUTED';
+  level: PurgeLevel;
+  due_at: string | null;
+  executed_at: string | null;
+}
+export interface RetentionPolicy {
+  // null = keep forever (the default).
+  retention_days: number | null;
+  purge_level: PurgeLevel;
+  updated_at: string | null;
+  can_edit: boolean;
+}
+export const RETENTION_MAX_DAYS = 9999;
+
 export interface EnvelopeRow {
   id: string;
   subject: string;
@@ -75,6 +100,8 @@ export interface EnvelopeRow {
   recipients: { id: string; name: string; email: string; status: RecipientStatus }[];
   // Sign Unified Product S-3 — 'aramo-sign' or the application that sent it (e.g. 'aramo-ats').
   source_application?: string;
+  // Retention and Purge — absent from an older server (read as no purge).
+  purge?: PurgeInfo | null;
 }
 
 // A short label for an envelope sent by another Aramo application, or null for Sign's own.
@@ -175,6 +202,8 @@ export interface EnvelopeDetail {
   documents: EnvelopeDocument[];
   recipients: Recipient[];
   fields: EnvelopeField[];
+  // Retention and Purge — absent from an older server (read as no purge).
+  purge?: PurgeInfo | null;
 }
 
 export interface LedgerEvent {
@@ -507,8 +536,9 @@ export const privacyApi = {
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
-  list: (q: { tab?: string; q?: string; days?: number } = {}) => {
+  list: (q: { tab?: string; q?: string; days?: number; folder?: 'deleted' } = {}) => {
     const p = new URLSearchParams();
+    if (q.folder !== undefined) p.set('folder', q.folder);
     if (q.tab !== undefined && q.tab !== 'all') p.set('tab', q.tab);
     if (q.q !== undefined && q.q.trim() !== '') p.set('q', q.q.trim());
     if (q.days !== undefined) p.set('days', String(q.days));
@@ -552,6 +582,16 @@ export const senderApi = {
     apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/remind`, signer_id !== undefined ? { signer_id } : {}),
   void: (id: string, reason: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/void`, { reason }),
   executed: (id: string) => apiClient.get<ExecutedBundle>(`${BASE}/envelopes/${enc(id)}/executed`),
+  // Retention and Purge (DocuSign parity). Delete hides the envelope for this organization only
+  // (the Deleted folder); Restore brings it back until a purge has run.
+  deleteEnvelope: (id: string) => apiClient.post<{ deleted: true }>(`${BASE}/envelopes/${enc(id)}/delete`, {}),
+  restoreEnvelope: (id: string) => apiClient.post<{ restored: true }>(`${BASE}/envelopes/${enc(id)}/restore`, {}),
+  queuePurge: (id: string, level: PurgeLevel) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge`, { level }),
+  dequeuePurge: (id: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge/dequeue`, {}),
+  targetedPurge: (email: string, level: PurgeLevel) => apiClient.post<{ queued: number }>(`${BASE}/purge/targeted`, { email, level }),
+  retentionPolicy: () => apiClient.get<RetentionPolicy>(`${BASE}/retention-policy`),
+  setRetentionPolicy: (retention_days: number | null, purge_level: PurgeLevel) =>
+    apiClient.put<RetentionPolicy>(`${BASE}/retention-policy`, { retention_days, purge_level }),
   evidence: (id: string) => apiClient.get<Evidence>(`${BASE}/envelopes/${enc(id)}/evidence`),
   documents: () => apiClient.get<{ items: DocumentRow[] }>(`${BASE}/documents`),
   contacts: () => apiClient.get<{ items: ContactRow[] }>(`${BASE}/contacts`),
@@ -641,6 +681,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (close !== null) return close;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
+    // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
+    if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;

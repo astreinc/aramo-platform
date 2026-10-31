@@ -19,6 +19,8 @@ export const SIGN_WEBHOOK_EVENT_TYPES = [
   'sign.envelope.declined.v1',
   'sign.envelope.voided.v1',
   'sign.envelope.expired.v1',
+  // Retention and Purge directive (ebd41d99) R-14/LD-8 — DocuSign Connect envelope-purge parity.
+  'sign.envelope.purge.v1',
 ] as const;
 
 // Sign Unified Product S-4 (directive §4.4.1) — installation administration in the

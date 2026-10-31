@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ApiError } from '@aramo/fe-foundation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EnvelopeDetail as Detail, Recipient } from '../api';
@@ -10,6 +11,10 @@ import type { EnvelopeDetail as Detail, Recipient } from '../api';
 
 const remind = vi.fn();
 const detail = vi.fn();
+const executed = vi.fn();
+const dequeue = vi.fn();
+const queuePurge = vi.fn();
+let manageAll = false;
 vi.mock('../api', async (orig) => {
   const mod = await orig<typeof import('../api')>();
   return {
@@ -20,6 +25,9 @@ vi.mock('../api', async (orig) => {
       events: async () => ({ items: [] }),
       evidence: async () => null,
       remind: (...a: unknown[]) => remind(...a),
+      executed: (...a: unknown[]) => executed(...a),
+      dequeuePurge: (...a: unknown[]) => dequeue(...a),
+      queuePurge: (...a: unknown[]) => queuePurge(...a),
     },
   };
 });
@@ -27,7 +35,7 @@ const toast = vi.fn();
 vi.mock('../workspace', () => ({
   useWorkspace: () => ({
     base: '/workspace',
-    ctx: { can_send: true, user: { id: 'u-1' }, permissions: { manage_all: false } },
+    ctx: { can_send: true, user: { id: 'u-1' }, permissions: { manage_all: manageAll } },
     refreshCounts: vi.fn(),
     toast,
   }),
@@ -55,7 +63,10 @@ function show() {
   );
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  manageAll = false;
+});
 
 describe('EnvelopeDetail — multiple signers', () => {
   it('in order: names the signer whose turn it is and offers Remind only to them', async () => {
@@ -81,5 +92,63 @@ describe('EnvelopeDetail — multiple signers', () => {
     expect(screen.getByTestId('remind-s1')).toBeInTheDocument();
     expect(screen.queryByTestId('remind-s2')).toBeNull();
     expect(screen.getByTestId('remind-s3')).toBeInTheDocument();
+  });
+});
+
+// Retention and Purge (DocuSign parity) — the purge banner, Cancel purge for an administrator,
+// no downloads once purged, and a 410 ENVELOPE_PURGED download shown plainly.
+describe('EnvelopeDetail — retention and purge', () => {
+  const done = { status: 'COMPLETED' as const, completed_at: '2026-10-21T00:00:00Z', documents: [{ id: 'd1', title: 'NDA', ordinal: 1, content_type: 'application/pdf', byte_size: 10, source_sha256: 'x', field_count: 1 }] };
+
+  it('a scheduled purge shows its date, and an administrator can cancel it', async () => {
+    manageAll = true;
+    const queued = env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } });
+    detail.mockResolvedValue(queued);
+    dequeue.mockResolvedValue(env({ ...done, purge: { state: 'DEQUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
+    show();
+    expect(await screen.findByTestId('purge-banner')).toHaveTextContent('Purge scheduled');
+    expect(screen.queryByTestId('purge-envelope')).toBeNull();
+    fireEvent.click(screen.getByTestId('cancel-purge'));
+    await waitFor(() => expect(dequeue).toHaveBeenCalledWith('env-00000001'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('Purge cancelled'));
+  });
+
+  it('a sender who is not an administrator sees the schedule but cannot cancel or purge', async () => {
+    detail.mockResolvedValue(env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
+    show();
+    expect(await screen.findByTestId('purge-banner')).toBeInTheDocument();
+    expect(screen.queryByTestId('cancel-purge')).toBeNull();
+    expect(screen.queryByTestId('purge-envelope')).toBeNull();
+    expect(screen.getByTestId('delete-envelope')).toBeInTheDocument();
+  });
+
+  it('a purged envelope offers no downloads or preview and says the documents are gone', async () => {
+    detail.mockResolvedValue(env({ ...done, purge: { state: 'EXECUTED', level: 'DOCUMENTS', due_at: null, executed_at: '2026-10-30T00:00:00Z' } }));
+    show();
+    expect(await screen.findByTestId('purge-banner')).toHaveTextContent('were purged');
+    expect(screen.queryByTestId('download-executed')).toBeNull();
+    expect(screen.getByTestId('document-purged')).toBeInTheDocument();
+  });
+
+  it('a download refused with ENVELOPE_PURGED (410) explains it', async () => {
+    detail.mockResolvedValue(env(done));
+    executed.mockRejectedValue(new ApiError(410, 'purged', 'ENVELOPE_PURGED', {}));
+    show();
+    fireEvent.click(await screen.findByTestId('download-executed'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('This envelope’s documents were purged and can’t be downloaded.'));
+  });
+
+  it('an administrator queues a purge only after choosing a level and typing PURGE', async () => {
+    manageAll = true;
+    detail.mockResolvedValue(env(done));
+    queuePurge.mockResolvedValue(env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS_AND_METADATA', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
+    show();
+    fireEvent.click(await screen.findByTestId('purge-envelope'));
+    const go = await screen.findByTestId('confirm-purge');
+    fireEvent.change(screen.getByLabelText('What is purged'), { target: { value: 'DOCUMENTS_AND_METADATA' } });
+    expect(go).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Type PURGE to confirm'), { target: { value: 'PURGE' } });
+    fireEvent.click(go);
+    await waitFor(() => expect(queuePurge).toHaveBeenCalledWith('env-00000001', 'DOCUMENTS_AND_METADATA'));
   });
 });

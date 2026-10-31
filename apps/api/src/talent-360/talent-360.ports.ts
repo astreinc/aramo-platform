@@ -178,6 +178,8 @@ export interface DocumentRow {
   readonly executed_at: string | null;
   readonly created_at: string;
   readonly regarding_requisition_id: string | null;
+  // Retention and Purge W11 — Aramo Sign's own copy (null when not signed through Aramo Sign).
+  readonly esign_copy?: { readonly status: 'held' | 'purge_scheduled' | 'purged'; readonly at: string | null } | null;
 }
 
 export type ConsentSummaryValue =

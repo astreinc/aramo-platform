@@ -60,6 +60,18 @@ model SignatureEnvelope {
   // UUIDs, no FK; set together, written once (CHECK + trigger).
   template_ref         String? @db.Uuid
   template_version_ref String? @db.Uuid
+  // Retention and Purge directive (ebd41d99) W3 — DocuSign-parity purge state (migration
+  // 20261101100000). NULL until queued. CHECKs: level DOCUMENTS|DOCUMENTS_AND_METADATA|
+  // DOCUMENTS_AND_METADATA_AND_REDACT; state QUEUED|DEQUEUED|EXECUTED (EXECUTED is final);
+  // reason retention|targeted|all_parties_deleted|account_closed|manual; terminal status only.
+  purge_level         String?
+  purge_state         String?
+  purge_reason        String?
+  purge_requested_by  String?   @db.Uuid
+  purge_queued_at     DateTime? @db.Timestamptz
+  purge_due_at        DateTime? @db.Timestamptz
+  purge_waiting_until DateTime? @db.Timestamptz
+  purge_executed_at   DateTime? @db.Timestamptz
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -68,9 +80,11 @@ model SignatureEnvelope {
   executed_access ExecutedAccessGrant[]
   recipient_bindings SignRecipientBinding[]
   abuse_reports      AbuseReport[]
+  party_deletions    SignEnvelopePartyDeletion[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
+  @@index([purge_state, purge_due_at], map: "SignatureEnvelope_purge_due_idx")
   @@index([tenant_id, created_by])
   @@schema("sign")
 }
@@ -250,7 +264,8 @@ model SignatureEvent {
   ip_address          String?
   user_agent          String?
 
-  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Restrict)
+  envelope  SignatureEnvelope        @relation(fields: [envelope_id], references: [id], onDelete: Restrict)
+  redaction SignatureEventRedaction?
 
   @@index([tenant_id, envelope_id, occurred_at])
   @@index([tenant_id, occurred_at])
@@ -325,7 +340,8 @@ model ExecutedDocument {
   source_sha256        String
   executed_sha256      String
   byte_size            Int
-  executed_bytes       Bytes
+  // NULL only once purged (purged_at set; DB-enforced, Retention and Purge W3/LD-4).
+  executed_bytes       Bytes?
   produced_at          DateTime @default(now()) @db.Timestamptz
   written_back_at      DateTime? @db.Timestamptz
   // SX-2 item 7 — custody in the dedicated Sign artifact bucket (set once, NULL to value).
@@ -334,6 +350,7 @@ model ExecutedDocument {
   custody_sha256       String?
   custody_retain_until DateTime? @db.Timestamptz
   custody_stored_at    DateTime? @db.Timestamptz
+  purged_at            DateTime? @db.Timestamptz
 
   @@unique([envelope_document_id])
   @@index([tenant_id])
@@ -350,7 +367,8 @@ model ExecutionCertificate {
   envelope_id     String    @db.Uuid
   certificate_sha256 String
   byte_size       Int
-  certificate_bytes Bytes
+  // NULL only once purged (purged_at set; DB-enforced, Retention and Purge W3/LD-4).
+  certificate_bytes Bytes?
   produced_at     DateTime  @default(now()) @db.Timestamptz
   written_back_at DateTime? @db.Timestamptz
   // SX-2 item 7 — custody in the dedicated Sign artifact bucket (set once, NULL to value).
@@ -359,6 +377,7 @@ model ExecutionCertificate {
   custody_sha256       String?
   custody_retain_until DateTime? @db.Timestamptz
   custody_stored_at    DateTime? @db.Timestamptz
+  purged_at            DateTime? @db.Timestamptz
 
   @@unique([envelope_id])
   @@index([tenant_id])
@@ -887,5 +906,72 @@ model SignEnvelopeDocumentPages {
   document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
+  @@schema("sign")
+}
+
+// Retention and Purge directive (ebd41d99) W1 / LD-1 — the tenant's Sign retention
+// setting. retention_days NULL = keep forever (the default for every tenant, R-3);
+// otherwise 1..9999 days after the envelope reaches a terminal state (CHECK).
+model SignTenantRetentionPolicy {
+  tenant_id      String   @id @db.Uuid
+  retention_days Int?
+  // What the retention purge removes (DocuSign retention option). CHECK as purge_level.
+  purge_level    String   @default("DOCUMENTS")
+  updated_by     String   @db.Uuid
+  updated_at     DateTime @default(now()) @db.Timestamptz
+
+  @@schema("sign")
+}
+
+// §3.1 — every change of the retention setting, append-only (trigger).
+model SignTenantRetentionPolicyEvent {
+  id                 String   @id @db.Uuid
+  tenant_id          String   @db.Uuid
+  actor_user_id      String   @db.Uuid
+  old_retention_days Int?
+  new_retention_days Int?
+  old_purge_level    String?
+  new_purge_level    String
+  changed_at         DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, changed_at], map: "SignTenantRetentionPolicyEvent_tenant_idx")
+  @@schema("sign")
+}
+
+// Retention and Purge directive W3 / LD-2 — one append-only row per redacted ledger
+// event, written before the event is changed. event_hash on the event never changes.
+model SignatureEventRedaction {
+  event_id                  String   @id @db.Uuid
+  tenant_id                 String   @db.Uuid
+  envelope_id               String   @db.Uuid
+  redacted_at               DateTime @default(now()) @db.Timestamptz
+  redacted_fields           String[]
+  original_event_hash       String
+  original_payload_sha256   String
+  verified_before_redaction Boolean
+
+  event SignatureEvent @relation(fields: [event_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenant_id, envelope_id], map: "SignatureEventRedaction_envelope_idx")
+  @@schema("sign")
+}
+
+// Retention and Purge directive W5 / LD-5 — the DocuSign "Deleted" folder: an envelope
+// hidden for one party only. SENDER rows are keyed by the sending tenant, RECIPIENT rows
+// by the Aramo user bound to the recipient. CHECK party_kind SENDER|RECIPIENT.
+model SignEnvelopePartyDeletion {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  envelope_id   String    @db.Uuid
+  party_kind    String
+  party_key     String    @db.Uuid
+  actor_user_id String    @db.Uuid
+  deleted_at    DateTime  @default(now()) @db.Timestamptz
+  restored_at   DateTime? @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([envelope_id, party_kind, party_key], map: "SignEnvelopePartyDeletion_party_key")
+  @@index([tenant_id], map: "SignEnvelopePartyDeletion_tenant_idx")
   @@schema("sign")
 }
