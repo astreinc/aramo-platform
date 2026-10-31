@@ -4150,6 +4150,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4891,6 +4897,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
@@ -5478,6 +5490,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esign-purge-consumer.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7880,6 +7898,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8747,6 +8777,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esign-purge-consumer.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10987,6 +11023,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12853,7 +12895,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-event.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-report-routing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
