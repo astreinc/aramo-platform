@@ -170,6 +170,18 @@ rc=0; out="$(runmain "$TMPD/no-user.env" "$TMPD/nu.log")" || rc=$?
   && grep -q "INTELLIGENCE_DB_USER=aramo_intelligence" "$TMPD/nu.log" && grep -q "ensure-intelligence-db.sh" "$TMPD/nu.log" \
   && [ "$(grep -c 'db-sync-local.sh$' "$TMPD/nu.log")" = 1 ] && [ "$(grep -c 'db-sync-intelligence.sh$' "$TMPD/nu.log")" = 1 ] \
   && okcase "DEF1-8 main(): INTELLIGENCE_DB_USER absent → shared apply + gate, then the TI step runs to its gate with the default role (exit 0)" || badcase "DEF1-8 (rc=$rc out=$out)"
+# CP-10 (LC-4): the per-domain grants are re-asserted exactly once, after the shared apply and gate
+# and before the TI step, so a new table is granted before containers are recreated.
+gate_line="$(grep -n 'db-sync-local.sh --status$' "$TMPD/nu.log" | tail -n1 | cut -d: -f1)"
+roles_line="$(grep -n 'aramo-domain-roles.sql' "$TMPD/nu.log" | cut -d: -f1)"
+ti_line="$(grep -n 'ensure-intelligence-db.sh' "$TMPD/nu.log" | head -n1 | cut -d: -f1)"
+[ "$(grep -c 'aramo-domain-roles.sql' "$TMPD/nu.log")" = 1 ] && [ -n "$gate_line" ] && [ -n "$ti_line" ] \
+  && [ "$roles_line" -gt "$gate_line" ] && [ "$roles_line" -lt "$ti_line" ] && grep 'aramo-domain-roles.sql' "$TMPD/nu.log" | grep -q 'ON_ERROR_STOP=1' \
+  && printf '%s' "$out" | grep -q "per-domain role grants converged" \
+  && okcase "LC4-1 main(): domain-role grants re-run once (ON_ERROR_STOP) after the shared gate, before the TI step" || badcase "LC4-1 (gate=$gate_line roles=$roles_line ti=$ti_line)"
+rc=0; out="$(runmain "$TMPD/no-password.env" "$TMPD/np2.log")" || rc=$?
+[ "$rc" = 2 ] && ! grep -q 'aramo-domain-roles.sql' "$TMPD/np2.log" \
+  && okcase "LC4-2 main(): a refused precheck never reaches the grant step" || badcase "LC4-2 (rc=$rc)"
 rm -rf "$TMPD"
 
 echo ""

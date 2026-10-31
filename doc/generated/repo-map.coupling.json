@@ -23,6 +23,11 @@
     {
       "from": ".env.prod.example",
       "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
+    {
+      "from": ".env.prod.example",
+      "status": "unscoped",
       "to": "deploy/geoip/docker-compose.geoip.yml"
     },
     { "from": ".env.prod.example", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
@@ -11875,6 +11880,11 @@
     },
     { "from": "deploy/backup/pg-restore.sh", "status": "unscoped", "to": "deploy/backup/lib.sh" },
     { "from": "deploy/build-images.test.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
+    {
+      "from": "deploy/migrate-prod.sh",
+      "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
     { "from": "deploy/migrate-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.test.sh" },
     {
       "from": "deploy/migrate-prod.sh",
@@ -29674,6 +29684,11 @@
     },
     { "from": "docker-compose.images.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": "docker-compose.prod.yml", "status": "unscoped", "to": "deploy/build-images.sh" },
+    {
+      "from": "docker-compose.prod.yml",
+      "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
     {
       "from": "docker-compose.prod.yml",
       "status": "unscoped",
