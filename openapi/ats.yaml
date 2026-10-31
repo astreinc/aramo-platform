@@ -12875,7 +12875,7 @@ components:
       type: object
       additionalProperties: false
       description: Signed state is DISPLAYED from the Documents/e-sign authority; Talent 360 never stores it.
-      required: [id, kind, requisition_id, requisition_label, meta, signed, signed_at]
+      required: [id, kind, requisition_id, requisition_label, meta, signed, signed_at, esign_copy]
       properties:
         id: { type: string, format: uuid }
         kind: { type: string }
@@ -12884,6 +12884,16 @@ components:
         meta: { type: [string, 'null'] }
         signed: { type: boolean }
         signed_at: { type: [string, 'null'], format: date-time }
+        esign_copy:
+          description: Retention and Purge directive W11 — whether Aramo Sign still holds its own copy of a document signed through it (null otherwise). Display only; the ATS copy is unaffected.
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [status, at]
+              properties:
+                status: { type: string, enum: [held, purge_scheduled, purged] }
+                at: { type: [string, 'null'], format: date-time }
     DocumentsView:
       type: object
       additionalProperties: false

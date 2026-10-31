@@ -5,6 +5,7 @@ import { ExecutedArtifactHashMismatchError } from '@aramo/documents';
 
 import { EsignWriteBackOrchestrator } from '../../documents/esign-writeback.js';
 import { EsignSigningEndedRecorder, signingEndedStatusFor } from '../../documents/esign-signing-ended.js';
+import { EsignEnvelopePurgedError, EsignPurgeRecorder, isPurgeEvent, purgeFieldsOf } from '../../documents/esign-purge.js';
 
 import {
   ESIGN_WEBHOOK_SIGNATURE_HEADER,
@@ -40,6 +41,8 @@ export class EsignEventsController {
     private readonly orchestrator: EsignWriteBackOrchestrator,
     // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / expired / voided.
     private readonly signingEnded: EsignSigningEndedRecorder,
+    // Retention and Purge directive (ebd41d99) W11 — Sign's copy queued / dequeued / purged.
+    private readonly purges: EsignPurgeRecorder,
   ) {}
 
   @Post('events')
@@ -67,7 +70,7 @@ export class EsignEventsController {
       return undefined;
     }
 
-    let event: { event_id?: unknown; event_type?: unknown; tenant_id?: unknown; envelope_id?: unknown; correlation_id?: unknown };
+    let event: { event_id?: unknown; event_type?: unknown; tenant_id?: unknown; envelope_id?: unknown; correlation_id?: unknown; purge?: unknown };
     try {
       event = JSON.parse(rawBody.toString('utf8'));
     } catch {
@@ -106,6 +109,33 @@ export class EsignEventsController {
       }
     }
 
+    // Retention and Purge W11 — a purge concerns Sign's copy only: recorded on the routed
+    // Document (idempotent per event_id); the ATS's own stored copy is never touched.
+    if (isPurgeEvent(event.event_type)) {
+      const fields = purgeFieldsOf(event);
+      if (fields === null) {
+        res.status(400);
+        return undefined;
+      }
+      try {
+        const outcome = await this.purges.record({
+          tenant_id: event.tenant_id,
+          envelope_id: event.envelope_id,
+          fact_key: event.event_id,
+          purge_state: fields.purge_state,
+          reason: fields.reason,
+          purge_due_at: fields.purge_due_at,
+          ...(typeof event.correlation_id === 'string' ? { correlation_id: event.correlation_id } : {}),
+          requestId,
+        });
+        res.status(200);
+        return { received: true, event_id: event.event_id, ...(outcome === 'unrouted' ? { ignored: true } : {}) };
+      } catch {
+        res.status(502);
+        return undefined;
+      }
+    }
+
     // Only completion facts drive write-back; other generic lifecycle facts are
     // acknowledged and ignored (a generic platform may emit created/sent/viewed/…).
     if (!isCompletionEvent(event.event_type)) {
@@ -129,6 +159,26 @@ export class EsignEventsController {
       if (e instanceof ExecutedArtifactHashMismatchError) {
         res.status(422);
         return undefined;
+      }
+      // Retention and Purge W11 — Sign already purged its copy before the pull: terminal.
+      // Record the fact and acknowledge, so Sign does not redeliver forever.
+      if (e instanceof EsignEnvelopePurgedError) {
+        try {
+          await this.purges.record({
+            tenant_id: event.tenant_id,
+            envelope_id: event.envelope_id,
+            fact_key: `executed-pull-410:${event.event_id}`,
+            purge_state: 'executed',
+            reason: null,
+            ...(typeof event.correlation_id === 'string' ? { correlation_id: event.correlation_id } : {}),
+            requestId,
+          });
+        } catch {
+          res.status(502);
+          return undefined;
+        }
+        res.status(200);
+        return { received: true, event_id: event.event_id, ignored: true };
       }
       // Everything else (esign pull / storage / transient) is retryable — E-Sign
       // owns redelivery from its durable outbox. Do NOT 200 an unaccepted event.

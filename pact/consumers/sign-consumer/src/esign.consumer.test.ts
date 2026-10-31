@@ -37,6 +37,8 @@ afterAll(() => undefined);
 //   3. GET  /v1/sign/api/envelopes/for-document 200 { envelope }   (user grant)
 //   4. POST /v1/sign/oauth/token  (sign-event) 200 event-bound grant (client credential + delivered event)
 //   5. GET  /v1/sign/api/envelopes/{id}/executed 200 executed bundle (event grant)
+//   6. GET  /v1/sign/api/envelopes/{id}/executed 410 ENVELOPE_PURGED  (event grant, purged envelope —
+//      Retention and Purge directive ebd41d99 W3/W11: terminal for the ATS write-back)
 // The user-mode token exchange itself (a real RS256 recruiter token) is proven
 // end to end in apps/sign-service/src/tests/sign-api.integration.spec.ts; here
 // the provider seeds the live grants the consumer presents.
@@ -51,6 +53,8 @@ const ATS_EVENT_ID = 'a7500000-0000-7000-8000-0000000000e1';
 const ATS_EXEC_ENVELOPE_ID = 'a7500000-0000-7000-8000-0000000000f1';
 const ATS_DOC_REF = 'a7500000-0000-7000-8000-0000000000d1';
 const ATS_REV_REF = 'a7500000-0000-7000-8000-0000000000d2';
+const ATS_PURGED_EVENT_GRANT = 'sgt_pact_ats_purged_grant_0123456789abcdefgh';
+const ATS_PURGED_ENVELOPE_ID = 'a7500000-0000-7000-8000-0000000000f3';
 
 describe('aramo-core → Sign API (API transport)', () => {
   it('creates an envelope by reference under the recruiter’s delegated grant', async () => {
@@ -180,6 +184,25 @@ describe('aramo-core → Sign API (API transport)', () => {
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/sign/api/envelopes/${ATS_EXEC_ENVELOPE_ID}/executed`, { headers: { authorization: `Bearer ${ATS_EVENT_GRANT}` } });
         expect(res.status).toBe(200);
+      });
+  });
+
+  it('a pull of an envelope Sign has purged answers 410 ENVELOPE_PURGED (terminal for the write-back)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ATS event grant is live for a purged envelope')
+      .uponReceiving('an executed-artifact pull from the ATS write-back for a purged envelope')
+      .withRequest('GET', `/v1/sign/api/envelopes/${ATS_PURGED_ENVELOPE_ID}/executed`, (b) => {
+        b.headers({ authorization: `Bearer ${ATS_PURGED_EVENT_GRANT}` });
+      })
+      .willRespondWith(410, (b) => {
+        b.jsonBody({ error: { code: 'ENVELOPE_PURGED', message: like('envelope documents were purged') } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/api/envelopes/${ATS_PURGED_ENVELOPE_ID}/executed`, { headers: { authorization: `Bearer ${ATS_PURGED_EVENT_GRANT}` } });
+        expect(res.status).toBe(410);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error.code).toBe('ENVELOPE_PURGED');
       });
   });
 });

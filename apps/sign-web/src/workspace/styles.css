@@ -790,6 +790,12 @@ a.sg-row:hover {
   font-size: 12.5px;
   color: var(--muted);
 }
+/* Retention and Purge — a scheduled purge on the envelope detail. */
+.sg-note--warn {
+  border-style: solid;
+  border-color: var(--warn);
+  color: var(--warn);
+}
 .sg-toast {
   position: fixed;
   bottom: 22px;

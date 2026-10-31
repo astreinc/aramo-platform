@@ -800,6 +800,45 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // Retention and Purge directive (ebd41d99) W3/W11 — an ATS envelope whose purge EXECUTED:
+    // the rows keep their hashes but no bytes (purged_at set). Inserted directly in the final
+    // state (the purge guards act on UPDATE only). MUST match the sign-consumer 410 interaction.
+    const ATS_PURGED_EVENT_GRANT = 'sgt_pact_ats_purged_grant_0123456789abcdefgh';
+    const ATS_PURGED_ENVELOPE_ID = 'a7500000-0000-7000-8000-0000000000f3';
+    const ATS_PURGED_EVENT_ID = 'a7500000-0000-7000-8000-0000000000e2';
+    async function seedAtsPurged(): Promise<void> {
+      await seedAtsApi();
+      const doc = 'a7500000-0000-7000-8000-0000000000f4';
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, completed_at, source_application, installation_id,
+                                                 purge_level, purge_state, purge_reason, purge_queued_at, purge_due_at, purge_executed_at)
+         VALUES ($1,$2,'[purged]','COMPLETED','SINGLE_SIGNATURE',$3, now() - interval '30 days','aramo-ats',$4,
+                 'DOCUMENTS','EXECUTED','retention', now() - interval '15 days', now() - interval '1 day', now() - interval '1 day') ON CONFLICT (id) DO NOTHING`,
+        [ATS_PURGED_ENVELOPE_ID, ATS_TENANT_ID, ATS_RECRUITER_ID, ATS_INSTALLATION_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."EnvelopeDocument" (id, tenant_id, envelope_id, document_ref, document_revision_ref, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,'a7500000-0000-7000-8000-0000000000d3','a7500000-0000-7000-8000-0000000000d4','RTR',$4,1) ON CONFLICT (id) DO NOTHING`,
+        [doc, ATS_TENANT_ID, ATS_PURGED_ENVELOPE_ID, SHA256],
+      );
+      await db.query(
+        `INSERT INTO "sign"."ExecutedDocument" (id, tenant_id, envelope_id, envelope_document_id, source_sha256, executed_sha256, byte_size, executed_bytes, purged_at)
+         SELECT gen_random_uuid(),$1,$2,$3,$4,$5,8, NULL, now() - interval '1 day' WHERE NOT EXISTS (SELECT 1 FROM "sign"."ExecutedDocument" WHERE envelope_id = $2)`,
+        [ATS_TENANT_ID, ATS_PURGED_ENVELOPE_ID, doc, SHA256, 'b'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "sign"."ExecutionCertificate" (id, tenant_id, envelope_id, certificate_sha256, byte_size, certificate_bytes, purged_at)
+         SELECT gen_random_uuid(),$1,$2,$3,4, NULL, now() - interval '1 day' WHERE NOT EXISTS (SELECT 1 FROM "sign"."ExecutionCertificate" WHERE envelope_id = $2)`,
+        [ATS_TENANT_ID, ATS_PURGED_ENVELOPE_ID, 'c'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignAccessToken" (id, token_hash, credential_id, installation_id, tenant_id, mode, subject_id, scopes, audience, expires_at, grant_kind, envelope_id, event_id)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'APPLICATION', $3, ARRAY['sign:envelope:read'], 'aramo-sign-api', now() + interval '1 day', 'EVENT_ARTIFACT', $5, $6)
+         ON CONFLICT (token_hash) DO NOTHING`,
+        [sha(ATS_PURGED_EVENT_GRANT), ATS_CREDENTIAL_ID, ATS_INSTALLATION_ID, ATS_TENANT_ID, ATS_PURGED_ENVELOPE_ID, ATS_PURGED_EVENT_ID],
+      );
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
@@ -956,6 +995,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                ON CONFLICT (token_hash) DO NOTHING`,
               [sha(ATS_EVENT_GRANT), ATS_CREDENTIAL_ID, ATS_INSTALLATION_ID, ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID, ATS_EVENT_ID],
             );
+          },
+          'an ATS event grant is live for a purged envelope': async () => {
+            await seedAtsPurged();
           },
           'no prior envelope for the request': async () => undefined,
           'a signature envelope exists': async () => {

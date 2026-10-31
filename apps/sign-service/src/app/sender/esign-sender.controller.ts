@@ -85,11 +85,12 @@ export class EsignSenderController {
     @Query('q') q?: string,
     @Query('days') days?: string,
     @Query('limit') limit?: string,
+    @Query('folder') folder?: string,
   ) {
     return this.run(requestId, () =>
       this.envelopes.list(
         auth,
-        { ...(tab !== undefined ? { tab } : {}), ...(q !== undefined ? { q } : {}), ...(days !== undefined ? { days } : {}), ...(limit !== undefined ? { limit } : {}) },
+        { ...(tab !== undefined ? { tab } : {}), ...(q !== undefined ? { q } : {}), ...(days !== undefined ? { days } : {}), ...(limit !== undefined ? { limit } : {}), ...(folder !== undefined ? { folder } : {}) },
         requestId,
       ),
     );

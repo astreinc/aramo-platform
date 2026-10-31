@@ -145,7 +145,8 @@ export class SignPrivacyExecutionService {
       let outcome_text: string;
       if (personalOwner) {
         // M-A8 §3.2 — computed now, never cached.
-        const report = await this.inspector.inspect(ctx.user_id, ctx.tenant_id);
+        // F-P4-1 — the Sign scope never reads an ATS schema (aramo_sign has no grant on them).
+        const report = await this.inspector.inspect(ctx.user_id, ctx.tenant_id, { scope: 'sign' });
         if (report.legal_hold) {
           return {
             status: 'held',

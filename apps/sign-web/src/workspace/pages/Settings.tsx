@@ -9,6 +9,7 @@ import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
 import { PrivacyRequestsSection } from './PrivacyRequests';
+import { RetentionSection } from './Retention';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -33,6 +34,8 @@ const SECTIONS = [
   { key: 'members', label: 'Users & roles' },
   { key: 'branding', label: 'Branding' },
   { key: 'security', label: 'Signing security' },
+  // Retention and Purge directive (DocuSign parity) — keep forever, or purge after N days.
+  { key: 'retention', label: 'Document retention' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'audit', label: 'Envelope audit' },
 ] as const;
@@ -43,7 +46,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const allowed = personalWs
-    ? ['personal']
+    ? ['personal', 'retention']
     : SECTIONS.map((s) => s.key)
         .filter((k) => k !== 'members' || ctx.permissions.members === true)
         .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
@@ -75,6 +78,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           {section === 'members' ? <UsersRolesSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
+          {section === 'retention' ? <RetentionSection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
           {section === 'audit' ? <AuditSection /> : null}
         </div>
@@ -247,25 +251,21 @@ function SecuritySection() {
           </span>
         </div>
       </section>
-      <section className="sg-card">
-        <div className="sg-card__head">
-          Retention <span className="sg-card__end sg-tag sg-tag--warn">Concept</span>
-        </div>
-        <div className="sg-card__body sg-grid sg-grid--2">
-          <Field label="Completed documents" htmlFor="r-docs">
-            <Sel id="r-docs" disabled value="forever" onChange={() => undefined}>
-              <option value="forever">Retain indefinitely</option>
-            </Sel>
-          </Field>
-          <Field label="Audit records" htmlFor="r-audit">
-            <Sel id="r-audit" disabled value="with" onChange={() => undefined}>
-              <option value="with">Retain with document</option>
-            </Sel>
-          </Field>
-          <p className="sg-help">Design proposal — not established in the backend contract.</p>
-        </div>
-      </section>
+      <RetentionPointer />
     </>
+  );
+}
+
+function RetentionPointer() {
+  const { base } = useWorkspace();
+  return (
+    <section className="sg-card">
+      <div className="sg-card__body">
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Retention</div>
+        <span className="sg-muted">How long completed documents are kept is set in </span>
+        <NavLink to={`${base}/settings/retention`}>Document retention</NavLink>.
+      </div>
+    </section>
   );
 }
 

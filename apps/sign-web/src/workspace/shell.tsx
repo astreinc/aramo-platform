@@ -54,6 +54,8 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/documents`, label: 'Documents', icon: 'doc' },
             // Sign Unified Product S-7 — documents sent TO this user.
             { to: `${base}/inbox`, label: 'Waiting for me', icon: 'mail' },
+            // Retention and Purge (DocuSign parity) — envelopes this account deleted.
+            { to: `${base}/envelopes/deleted`, label: 'Deleted', icon: 'trash' },
           ],
         },
         { label: 'Insights', items: [{ to: `${base}/activity`, label: 'Activity', icon: 'activity' }] },
@@ -70,6 +72,8 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/templates`, label: 'Templates', icon: 'tpl' },
             { to: `${base}/documents`, label: 'Documents', icon: 'doc' },
             { to: `${base}/contacts`, label: 'Contacts', icon: 'contacts' },
+            // Retention and Purge (DocuSign parity) — envelopes this organization deleted.
+            { to: `${base}/envelopes/deleted`, label: 'Deleted', icon: 'trash' },
           ],
         },
         {

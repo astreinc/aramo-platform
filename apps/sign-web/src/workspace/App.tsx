@@ -186,6 +186,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
         <Route index element={<Dashboard />} />
         <Route path="envelopes" element={<EnvelopeList />} />
         <Route path="envelopes/new" element={<NewEnvelope />} />
+        {/* Retention and Purge (DocuSign parity) — the organization's Deleted folder. */}
+        <Route path="envelopes/deleted" element={<EnvelopeList folder="deleted" />} />
         <Route path="envelopes/:id" element={<EnvelopeDetail />} />
         <Route path="envelopes/:id/edit" element={<EnvelopeWizard />} />
         <Route path="envelopes/:id/prepare" element={<EnvelopeWizard prepare />} />

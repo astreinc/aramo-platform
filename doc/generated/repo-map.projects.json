@@ -2164,12 +2164,21 @@
       "MAX_COPY_RECIPIENTS",
       "OutboxDeliveryService",
       "OutboxService",
+      "PII_PAYLOAD_KEYS",
+      "PURGED_EVENT",
+      "PURGE_DEQUEUED_EVENT",
+      "PURGE_ELIGIBLE_STATUSES",
+      "PURGE_LEVELS",
+      "PURGE_QUEUED_EVENT",
+      "PURGE_QUEUE_DAYS",
       "PrismaService",
       "PrismaSignerAttestedNameAdapter",
       "RECIPIENT_COPY_TTL_MS",
       "RECIPIENT_INBOX_SESSION_EVENT",
       "RECIPIENT_KINDS",
       "RECIPIENT_SESSION_TTL_MS",
+      "RETENTION_DAYS_MAX",
+      "RETENTION_DAYS_MIN",
       "RecipientInboxRepository",
       "ReminderLimitError",
       "ReminderNotAllowedError",
@@ -2184,6 +2193,7 @@
       "SIGNING_RECIPIENT_WHERE",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
+      "SIGN_ENVELOPE_PURGE_EVENT_TYPE",
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
       "SIGN_REMINDER_LIMITS",
@@ -2195,6 +2205,7 @@
       "SignContactRepository",
       "SignIdempotencyRepository",
       "SignIntegrationRepository",
+      "SignPurgeRepository",
       "SignSavedSignatureRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
@@ -2232,18 +2243,21 @@
       "isCopyRecipient",
       "isKmsEvidenceSigningAlgorithm",
       "isLinkSigner",
+      "isPurgeLevel",
       "isServerFilledName",
       "isSigningRecipient",
       "kmsEvidenceAlgorithmHash",
       "listDisclosures",
       "mayActNow",
       "nextReminderAt",
+      "purgeStateFor",
       "recipientKindOf",
       "reminderHistory",
       "signBaseUrl",
       "signingRecipients",
       "signingSessionExpiresAt",
       "toLifecycleEvent",
+      "verifyEventChain",
       "verifyKmsEvidenceSignatureWithPublicKey",
       "weighReport"
     ],
@@ -4136,6 +4150,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4877,6 +4897,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
@@ -5464,6 +5490,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esign-purge-consumer.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7866,6 +7898,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8733,6 +8777,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esign-purge-consumer.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10268,6 +10318,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -10962,6 +11018,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12833,7 +12895,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-purge-event.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-report-routing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

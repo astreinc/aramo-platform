@@ -173,6 +173,7 @@ const ICONS: Record<string, string> = {
   upload: 'M12 16V4M6 10l6-6 6 6M4 20h16',
   swap: 'M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4',
   ext: 'M7 17 17 7M9 7h8v8',
+  trash: 'M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3',
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof ICONS | string; size?: number }) {
@@ -224,8 +225,15 @@ export function eventLabel(type: string, detail: Record<string, string> | null):
     ENVELOPE_VOIDED: 'Envelope voided',
     ENVELOPE_EXPIRED: 'Link expired',
     SIGNATURE_REMINDER_SENT: 'Reminder sent',
+    // Retention and Purge (DocuSign parity).
+    ENVELOPE_PURGE_QUEUED: 'Purge scheduled',
+    ENVELOPE_PURGE_DEQUEUED: 'Purge cancelled',
+    ENVELOPE_PURGED: 'Documents purged',
+    ENVELOPE_DELETED_BY_PARTY: 'Moved to Deleted',
+    ENVELOPE_RESTORED_BY_PARTY: 'Restored from Deleted',
   };
   const base = map[type] ?? type.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
+  if (/^ENVELOPE_PURGE/.test(type)) return base;
   if (detail?.['reason'] !== undefined) return `${base} · “${detail['reason']}”`;
   if (detail?.['title'] !== undefined) return `${base} · ${detail['title']}`;
   return base;
@@ -255,4 +263,20 @@ export function downloadBase64(base64: string, filename: string, type = 'applica
 // A fe-foundation Button with ONLY the caller's class (icon buttons, menu rows).
 export function Bare({ className, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <Button unstyled className={className} {...rest} />;
+}
+
+// Retention and Purge — a compact tag for an envelope with a scheduled or completed purge.
+export function PurgeTag({ purge }: { purge: { state: string; due_at: string | null; executed_at: string | null } | null | undefined }) {
+  if (purge === null || purge === undefined || purge.state === 'DEQUEUED') return null;
+  if (purge.state === 'EXECUTED')
+    return (
+      <span className="sg-tag sg-tag--grey" data-testid="purge-tag">
+        Purged
+      </span>
+    );
+  return (
+    <span className="sg-tag sg-tag--warn" data-testid="purge-tag" title={purge.due_at === null ? undefined : `Documents are deleted on ${fmtDate(purge.due_at)}`}>
+      Purge scheduled
+    </span>
+  );
 }

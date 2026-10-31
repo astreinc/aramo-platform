@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, Put, Query, Req, UseFilters } from '@nestjs/common';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE } from '@aramo/identity';
@@ -51,6 +51,19 @@ export class SignApiController {
     } catch (e) {
       throw toHttp(e, requestId);
     }
+  }
+
+  // Retention and Purge directive (ebd41d99) W1 — the tenant retention setting over the API.
+  @Get('retention-policy')
+  @SignApiBoundary(ESIGN_SCOPE.ENVELOPE_READ)
+  getRetentionPolicy(@AuthContext() auth: AuthContextType, @Req() req: SignApiRequest, @RequestId() requestId: string) {
+    return this.run(requestId, () => this.api.getRetentionPolicy(auth, integration(req, requestId), requestId));
+  }
+
+  @Put('retention-policy')
+  @SignApiBoundary(ESIGN_SCOPE.SETTINGS_MANAGE)
+  setRetentionPolicy(@AuthContext() auth: AuthContextType, @Req() req: SignApiRequest, @RequestId() requestId: string, @Body() body: { retention_days?: unknown; purge_level?: unknown }) {
+    return this.run(requestId, () => this.api.setRetentionPolicy(auth, integration(req, requestId), body ?? {}, requestId));
   }
 
   @Get('availability')

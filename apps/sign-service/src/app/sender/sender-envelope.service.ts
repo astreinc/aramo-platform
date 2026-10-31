@@ -39,6 +39,7 @@ import {
   type SenderFieldInput,
   type SignerNameMode,
   SenderFieldPassthroughRefusedError,
+  SignPurgeRepository,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -47,6 +48,7 @@ import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import { SIGN_IN_PERSON_SIGNING_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
+import { purgeViewOf } from '../retention/purge-view.js';
 
 import { SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
@@ -134,7 +136,14 @@ export class SenderEnvelopeService {
     @Optional() private readonly engine?: EsignService,
     // M-A5 §3.7 — the sign.in_person_signing launch availability.
     @Optional() private readonly features?: SignFeatureGate,
+    // Retention and Purge directive (ebd41d99) W5 — the "Deleted" folder.
+    @Optional() private readonly purges?: SignPurgeRepository,
   ) {}
+
+  /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
+  async assertVisible(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+    await this.describe(auth, envelope_id, requestId, false);
+  }
 
   // Sign Mobile M-A3 §7/§8 — run `fn` at most once per (tenant, actor, operation,
   // Idempotency-Key). A replay with the same request returns the stored response
@@ -252,8 +261,11 @@ export class SenderEnvelopeService {
     };
   }
 
-  async list(auth: AuthContextType, query: { tab?: string; q?: string; days?: string; limit?: string }, requestId: string) {
+  async list(auth: AuthContextType, query: { tab?: string; q?: string; days?: string; limit?: string; folder?: string }, requestId: string) {
     const createdBy = await this.ownerFilter(auth, requestId);
+    if (query.folder !== undefined && query.folder !== 'deleted') throw bad(requestId, 'unknown folder', { folder: query.folder });
+    // Retention and Purge W5 — envelopes this tenant deleted live only in the Deleted folder.
+    const deleted = this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'SENDER', key: auth.tenant_id }) : [];
     const statuses = ENVELOPE_TABS[query.tab ?? 'all'];
     if (query.tab !== undefined && !(query.tab in ENVELOPE_TABS)) throw bad(requestId, 'unknown tab', { tab: query.tab });
     const days = query.days !== undefined ? Number(query.days) : undefined;
@@ -265,6 +277,7 @@ export class SenderEnvelopeService {
       ...(query.q !== undefined ? { q: query.q } : {}),
       ...(days !== undefined ? { created_since: new Date(Date.now() - days * 86_400_000) } : {}),
       created_by: createdBy,
+      ...(query.folder === 'deleted' ? { only_ids: deleted } : { exclude_ids: deleted }),
       limit,
     });
     const last = await this.repo.lastEventAt(auth.tenant_id, rows.map((r) => r.id));
@@ -281,6 +294,7 @@ export class SenderEnvelopeService {
         document_count: e.documents.length,
         source_application: e.source_application,
         recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status, recipient_kind: recipientKindOf(s) })),
+        purge: purgeViewOf(e),
       })),
       counts,
     };
@@ -327,6 +341,8 @@ export class SenderEnvelopeService {
       id: env.id,
       subject: env.subject,
       status: env.status,
+      // Retention and Purge directive W4/W5 — null until queued for purge.
+      purge: purgeViewOf(env as { purge_state?: string | null; purge_level?: string | null; purge_due_at?: Date | null; purge_executed_at?: Date | null }),
       created_at: env.created_at.toISOString(),
       sent_at: iso(env.sent_at),
       completed_at: iso(env.completed_at),

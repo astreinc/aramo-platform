@@ -20,6 +20,7 @@ import {
 
 import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
 import { EsignWriteBackOrchestrator, EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
+import { EsignPurgeRecorder } from '../documents/esign-purge.js';
 import { EsignSigningEndedRecorder } from '../documents/esign-signing-ended.js';
 
 import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
@@ -161,6 +162,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           { provide: DocumentExecutedWriteBackService, useValue: writeBack },
           // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / expired / voided.
           { provide: EsignSigningEndedRecorder, useValue: signingEnded },
+          // Retention and Purge directive (ebd41d99) W11 — purge facts (not exercised here).
+          { provide: EsignPurgeRecorder, useValue: { record: async () => 'unrouted' } },
         ],
       }).compile();
 

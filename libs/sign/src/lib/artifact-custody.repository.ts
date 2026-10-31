@@ -44,9 +44,11 @@ export interface ExecutedArtifactSummary {
 }
 
 export interface CustodyValidationRows {
-  executed: Array<{ id: string; tenant_id: string; envelope_id: string; executed_sha256: string; custody_object_key: string | null; custody_version_id: string | null; custody_sha256: string | null }>;
-  certificates: Array<{ id: string; tenant_id: string; envelope_id: string; certificate_sha256: string; custody_object_key: string | null; custody_version_id: string | null; custody_sha256: string | null }>;
+  executed: Array<{ id: string; tenant_id: string; envelope_id: string; executed_sha256: string; custody_object_key: string | null; custody_version_id: string | null; custody_sha256: string | null; purged_at: Date | null }>;
+  certificates: Array<{ id: string; tenant_id: string; envelope_id: string; certificate_sha256: string; custody_object_key: string | null; custody_version_id: string | null; custody_sha256: string | null; purged_at: Date | null }>;
   events: Array<{ envelope_id: string; payload: unknown }>;
+  // Retention and Purge W8 — envelope_id → purge_waiting_until (queued, waiting on an Object Lock).
+  purge_waiting: Map<string, Date>;
 }
 
 @Injectable()
@@ -56,19 +58,22 @@ export class SignArtifactCustodyRepository {
     private readonly repo: EsignRepository,
   ) {}
 
+  // A purged artifact (Retention and Purge W3) has no bytes left and is never re-uploaded.
   async pendingExecuted(tenant_id: string, envelope_id: string): Promise<PendingExecutedArtifact[]> {
-    return this.prisma.executedDocument.findMany({
-      where: { tenant_id, envelope_id, custody_object_key: null },
+    const rows = await this.prisma.executedDocument.findMany({
+      where: { tenant_id, envelope_id, custody_object_key: null, purged_at: null },
       select: { id: true, envelope_document_id: true, executed_sha256: true, byte_size: true, executed_bytes: true },
       orderBy: { produced_at: 'asc' },
     });
+    return rows.flatMap((r) => (r.executed_bytes === null ? [] : [{ ...r, executed_bytes: r.executed_bytes }]));
   }
 
   async pendingCertificate(tenant_id: string, envelope_id: string): Promise<PendingCertificateArtifact | null> {
-    return this.prisma.executionCertificate.findFirst({
-      where: { tenant_id, envelope_id, custody_object_key: null },
+    const row = await this.prisma.executionCertificate.findFirst({
+      where: { tenant_id, envelope_id, custody_object_key: null, purged_at: null },
       select: { id: true, certificate_sha256: true, byte_size: true, certificate_bytes: true },
     });
+    return row === null || row.certificate_bytes === null ? null : { ...row, certificate_bytes: row.certificate_bytes };
   }
 
   /** Hash summary of every executed document of the envelope (evidence snapshot). */
@@ -82,7 +87,7 @@ export class SignArtifactCustodyRepository {
 
   /** Envelopes with any NULL-custody artifact produced before `cutoff`, oldest first. */
   async pendingEnvelopes(cutoff: Date, max: number): Promise<Array<{ tenant_id: string; envelope_id: string }>> {
-    const where = { custody_object_key: null, produced_at: { lt: cutoff } };
+    const where = { custody_object_key: null, purged_at: null, produced_at: { lt: cutoff } };
     const select = { tenant_id: true, envelope_id: true } as const;
     const [docs, certs] = await Promise.all([
       this.prisma.executedDocument.findMany({ where, select, orderBy: { produced_at: 'asc' }, take: max }),
@@ -132,7 +137,7 @@ export class SignArtifactCustodyRepository {
     const envelopeFilter = envelope_ids.length > 0 ? { envelope_id: { in: [...envelope_ids] } } : {};
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
-      const custody = { custody_object_key: true, custody_version_id: true, custody_sha256: true } as const;
+      const custody = { custody_object_key: true, custody_version_id: true, custody_sha256: true, purged_at: true } as const;
       const executed = await tx.executedDocument.findMany({
         where: { tenant_id, ...envelopeFilter },
         select: { id: true, tenant_id: true, envelope_id: true, executed_sha256: true, ...custody },
@@ -146,7 +151,12 @@ export class SignArtifactCustodyRepository {
         select: { envelope_id: true, payload: true },
         orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
       });
-      return { executed, certificates, events };
+      const waiting = await tx.signatureEnvelope.findMany({
+        where: { tenant_id, purge_state: 'QUEUED', purge_waiting_until: { not: null }, ...(envelope_ids.length > 0 ? { id: { in: [...envelope_ids] } } : {}) },
+        select: { id: true, purge_waiting_until: true },
+      });
+      const purge_waiting = new Map(waiting.flatMap((w) => (w.purge_waiting_until !== null ? [[w.id, w.purge_waiting_until] as const] : [])));
+      return { executed, certificates, events, purge_waiting };
     });
   }
 }

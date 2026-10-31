@@ -6,6 +6,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import {
   EVENT_PUBLISHER_PORT,
   type EsignDomainEvent,
+  type EsignPurgeEventFields,
   type EventPublisherPort,
 } from './ports/event-publisher.port.js';
 
@@ -37,7 +38,8 @@ export class OutboxService {
           envelope_id: event.envelope_id,
           correlation_id: event.correlation_id,
           artifact_refs: event.artifact_refs,
-        },
+          ...(event.purge !== undefined ? { purge: { ...event.purge } } : {}),
+        } as never,
       },
     });
   }
@@ -53,10 +55,11 @@ export class OutboxService {
     });
     let count = 0;
     for (const row of rows) {
-      const payload = row.event_payload as {
+      const payload = row.event_payload as unknown as {
         envelope_id: string;
         correlation_id: string;
         artifact_refs: { executed_document_ids: string[]; has_certificate: boolean };
+        purge?: EsignPurgeEventFields;
       };
       await this.publisher.publish({
         event_type: row.event_type,
@@ -64,6 +67,7 @@ export class OutboxService {
         envelope_id: payload.envelope_id,
         correlation_id: payload.correlation_id,
         artifact_refs: payload.artifact_refs,
+        ...(payload.purge !== undefined ? { purge: payload.purge } : {}),
       });
       await this.prisma.outboxEvent.update({ where: { id: row.id }, data: { published_at: new Date() } });
       count += 1;

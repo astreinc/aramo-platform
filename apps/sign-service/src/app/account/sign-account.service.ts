@@ -5,6 +5,7 @@ import { IdentityRepository, IdentityService, PersonalRiskService, TenantReposit
 
 import { ConvenienceDataPurgeService } from '../push/convenience-data-purge.service.js';
 import { SavedDataPurgeService } from '../me/signature/saved-data-purge.service.js';
+import { SignPurgeService } from '../retention/sign-purge.service.js';
 
 // Aramo Sign Personal (Free) — "Close account" in Sign settings (PO decision
 // 2026-10-22; Personal Terms: "You may close your account at any time from your
@@ -20,8 +21,10 @@ import { SavedDataPurgeService } from '../me/signature/saved-data-purge.service.
 //     replaced by it, so documents can no longer be opened or downloaded);
 //   - the tenant lifecycle status is unchanged (sign-in still works and the
 //     workspace shows the account as closed).
-// Deleting the account's data after closing is NOT done here (records are kept or
-// deleted under the retention program; a deletion request goes to privacy@aramo.ai).
+// Retention and Purge directive (ebd41d99) R-11: when purge is enabled (SIGN_PURGE_ENABLED=1)
+// the close also queues every completed, declined or voided envelope of the account for the
+// full purge (documents, metadata and personal data) after the 14-day queue; Aramo legal hold
+// blocks it. With purge disabled nothing is deleted here (a deletion request goes to privacy@aramo.ai).
 //
 // Refusals (stable details.reason):
 //   account_close_confirmation_required  400  body.confirm is not exactly 'CLOSE'
@@ -57,6 +60,9 @@ export class SignAccountService {
     @Optional() private readonly purge?: ConvenienceDataPurgeService,
     // Sign Mobile M-A3 §9 — and deletes saved signatures and contacts.
     @Optional() private readonly savedData?: SavedDataPurgeService,
+    // Retention and Purge directive (ebd41d99) R-11 — closure queues the account's envelopes
+    // for the DocuSign-style purge (only when SIGN_PURGE_ENABLED=1; a no-op otherwise).
+    @Optional() private readonly envelopePurge?: SignPurgeService,
   ) {}
 
   /** The account's close state for the workspace (never throws for a valid session). */
@@ -116,6 +122,7 @@ export class SignAccountService {
       const closed = await this.risk.close(auth.tenant_id, auth.sub, OWNER_CLOSE_REASON, new Date(), { closed_by: 'owner', note });
       await this.purge?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
       await this.savedData?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
+      await this.envelopePurge?.queueForAccountClosure(auth.tenant_id, auth.sub);
       return { state: 'closed', closed_at: closed.updated_at.toISOString() };
     } catch (err) {
       // A concurrent close (operator or a second tab) won the race: answer the closed state.
