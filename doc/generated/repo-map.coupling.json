@@ -12915,6 +12915,21 @@
       "to": "libs/ai-draft/src/lib/redaction.ts"
     },
     {
+      "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/sign/sign-talent-erasure.client.ts"
+    },
+    {
+      "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts"
+    },
+    {
+      "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/talent-rtbf-erasure.md"
+    },
+    {
       "from": "doc/backlog/manual-create-consent-policy-directive-DRAFT.md",
       "status": "unscoped",
       "to": "doc/backlog/add-talent-consent-capture.md"
