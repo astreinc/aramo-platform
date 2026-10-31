@@ -35,7 +35,18 @@ export interface RecipientInboxRow {
   envelope_id: string;
   signer_id: string;
   created_at: Date;
-  envelope: { subject: string; status: string; sent_at: Date | null; completed_at: Date | null; expires_at: Date | null };
+  envelope: {
+    subject: string;
+    status: string;
+    sent_at: Date | null;
+    completed_at: Date | null;
+    expires_at: Date | null;
+    // Retention and Purge directive (ebd41d99) — the envelope's purge state (null until queued).
+    purge_state?: string | null;
+    purge_level?: string | null;
+    purge_due_at?: Date | null;
+    purge_executed_at?: Date | null;
+  };
   signer: { name: string; status: string; signed_at: Date | null };
 }
 
@@ -81,7 +92,7 @@ export class RecipientInboxRepository {
         envelope_id: true,
         signer_id: true,
         created_at: true,
-        envelope: { select: { subject: true, status: true, sent_at: true, completed_at: true, expires_at: true } },
+        envelope: { select: { subject: true, status: true, sent_at: true, completed_at: true, expires_at: true, purge_state: true, purge_level: true, purge_due_at: true, purge_executed_at: true } },
         signer: { select: { name: true, status: true, signed_at: true } },
       },
     });
@@ -96,7 +107,7 @@ export class RecipientInboxRepository {
         envelope_id: true,
         signer_id: true,
         created_at: true,
-        envelope: { select: { subject: true, status: true, sent_at: true, completed_at: true, expires_at: true } },
+        envelope: { select: { subject: true, status: true, sent_at: true, completed_at: true, expires_at: true, purge_state: true, purge_level: true, purge_due_at: true, purge_executed_at: true } },
         signer: { select: { name: true, status: true, signed_at: true } },
       },
     });

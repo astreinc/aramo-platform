@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import { DocumentExecutedWriteBackService } from '@aramo/documents';
 
 import { SignApiClient } from '../sign/sign-api.client.js';
+
+import { EsignEnvelopePurgedError } from './esign-purge.js';
 
 // DOC-4 (R-4-7) — the apps/api side of the executed-artifact write-back seam.
 //   EsignExecutedArtifactsClient — pulls executed bytes + certificate FROM
@@ -38,7 +41,13 @@ export class EsignExecutedArtifactsClient {
   async fetchExecuted(tenant_id: string, envelope_id: string, event_id?: string): Promise<ExecutedArtifactsBundle> {
     if (event_id === undefined) throw new Error(`esign executed pull for envelope ${envelope_id} needs its completion event`);
     const grant = await this.sign.eventGrant(event_id, tenant_id, envelope_id);
-    return this.sign.call<ExecutedArtifactsBundle>('GET', `/v1/sign/api/envelopes/${encodeURIComponent(envelope_id)}/executed`, grant);
+    try {
+      return await this.sign.call<ExecutedArtifactsBundle>('GET', `/v1/sign/api/envelopes/${encodeURIComponent(envelope_id)}/executed`, grant);
+    } catch (e) {
+      // Retention and Purge W11 — Sign purged its copy (410 ENVELOPE_PURGED): terminal, never retried.
+      if (e instanceof AramoError && e.code === 'ENVELOPE_PURGED') throw new EsignEnvelopePurgedError(envelope_id);
+      throw e;
+    }
   }
 }
 

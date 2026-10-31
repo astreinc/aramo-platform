@@ -21,6 +21,10 @@ import { type EvidenceArtifactHash, type EvidenceArtifactHashSource } from './po
 // Its hashes are taken from the rows (after the stored bytes are re-digested and
 // match), and the manifest says so: artifact_hash_source = LEGACY_UNLEDGERED_ROW.
 // A MIX (some rows recorded, some not) is never legacy and is refused.
+//
+// Purged (Retention and Purge directive W3/LD-4): a purged row keeps its hashes but
+// not its bytes (NULL). Its bytes cannot be re-digested; its hash still has to match
+// the ledger record, which is unchanged by a purge.
 
 export const ARTIFACT_LEDGER_EVENT_TYPES: readonly string[] = [EXECUTED_DOCUMENT_RECORDED, EXECUTION_CERTIFICATE_RECORDED];
 
@@ -30,14 +34,14 @@ export interface ExecutedDocumentRow {
   source_sha256: string;
   executed_sha256: string;
   byte_size: number;
-  executed_bytes: Uint8Array;
+  executed_bytes: Uint8Array | null; // NULL once purged
 }
 
 export interface ExecutionCertificateRow {
   id: string;
   certificate_sha256: string;
   byte_size: number;
-  certificate_bytes: Uint8Array;
+  certificate_bytes: Uint8Array | null; // NULL once purged
 }
 
 export interface ArtifactLedgerEvent {
@@ -79,10 +83,10 @@ export function resolveArtifactHashes(input: {
     ledger.set(p.artifact_id, p);
   }
 
-  // Every stored artifact's bytes must digest to its recorded hash.
-  for (const d of input.documents) if (sha256Hex(d.executed_bytes) !== d.executed_sha256) refuse('EXECUTED_DOCUMENT', d.id, 'bytes_digest_mismatch');
+  // Every stored artifact's bytes must digest to its recorded hash (purged rows have none left).
+  for (const d of input.documents) if (d.executed_bytes !== null && sha256Hex(d.executed_bytes) !== d.executed_sha256) refuse('EXECUTED_DOCUMENT', d.id, 'bytes_digest_mismatch');
   const c = input.certificate;
-  if (c !== null && sha256Hex(c.certificate_bytes) !== c.certificate_sha256) refuse('EXECUTION_CERTIFICATE', c.id, 'bytes_digest_mismatch');
+  if (c !== null && c.certificate_bytes !== null && sha256Hex(c.certificate_bytes) !== c.certificate_sha256) refuse('EXECUTION_CERTIFICATE', c.id, 'bytes_digest_mismatch');
 
   const order = new Map(input.document_order.map((id, i) => [id, i]));
   const byOrdinal = (a: { envelope_document_id: string | null; artifact_id: string }, b: { envelope_document_id: string | null; artifact_id: string }): number =>

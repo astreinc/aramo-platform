@@ -1,9 +1,19 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, EnvelopeNotFoundError, EsignRepository } from '@aramo/sign';
+import {
+  DOCUMENT_STORAGE_PORT,
+  type DocumentStoragePort,
+  EnvelopeNotFoundError,
+  EsignRepository,
+  RETENTION_DAYS_MAX,
+  RETENTION_DAYS_MIN,
+  SignPurgeRepository,
+  isPurgeLevel,
+  purgeStateFor,
+} from '@aramo/sign';
 import { ESIGN_SCOPE } from '@aramo/identity';
 import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, SIGN_PRODUCT_KEY } from '@aramo/subscription';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
@@ -13,6 +23,7 @@ import { PDFDocument } from 'pdf-lib';
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import { type CreatedDocumentRef, type CreatedSignerRef, resolveAndValidateFields } from '../envelope-field-mapper.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
+import { SignPurgeService } from '../retention/sign-purge.service.js';
 
 import type { SignIntegrationContext } from './sign-api.guard.js';
 
@@ -56,6 +67,10 @@ export class SignApiService {
     private readonly allowance: AllowanceService,
     private readonly storageGate: AramoSignStorageGate,
     @Inject(DOCUMENT_STORAGE_PORT) private readonly storage: DocumentStoragePort,
+    // Retention and Purge directive (ebd41d99) W1/§3.7 — the retention setting over the API
+    // and the envelope's purge state. Optional: absent in tests that do not wire it.
+    @Optional() private readonly purges?: SignPurgeRepository,
+    @Optional() private readonly purgeEngine?: SignPurgeService,
   ) {}
 
   // D-12 — the Sign-owned availability contract (replaces direct subscription reads).
@@ -129,7 +144,50 @@ export class SignApiService {
 
   async get(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string) {
     await this.visible(auth, integ, id, requestId);
-    return this.provider.getEnvelope(auth.tenant_id, id);
+    const envelope = await this.provider.getEnvelope(auth.tenant_id, id);
+    if (this.purges === undefined) return envelope;
+    // §3.7 — DocuSign purgeState (documents_queued … documents_dequeued, or executed) and its due date.
+    const s = await this.purges.status(auth.tenant_id, id);
+    return {
+      ...envelope,
+      purge_state: s === null ? null : purgeStateFor(s.state, s.level),
+      purge_due_at: s === null || s.state !== 'QUEUED' ? null : s.due_at.toISOString(),
+    };
+  }
+
+  // Retention and Purge directive (ebd41d99) W1 — the tenant's retention setting over the Sign
+  // API (the installation's tenant). Reading needs sign:envelope:read; writing needs
+  // sign:settings:manage (the installation's Sign role, e.g. sign_admin). Writes are refused
+  // while purge is disabled (SIGN_PURGE_ENABLED unset), exactly as in the sender workspace.
+  async getRetentionPolicy(auth: AuthContextType, integ: SignIntegrationContext, requestId: string) {
+    this.assertNotEventGrant(integ, requestId);
+    const p = await this.retention(requestId).getPolicy(auth.tenant_id);
+    return {
+      retention_days: p.retention_days,
+      purge_level: p.purge_level,
+      updated_at: p.updated_at !== null ? p.updated_at.toISOString() : null,
+      can_edit: this.purgeEngine?.enabled === true && auth.scopes.includes(ESIGN_SCOPE.SETTINGS_MANAGE),
+    };
+  }
+
+  async setRetentionPolicy(auth: AuthContextType, integ: SignIntegrationContext, body: { retention_days?: unknown; purge_level?: unknown }, requestId: string) {
+    this.assertNotEventGrant(integ, requestId);
+    if (this.purgeEngine?.enabled !== true) {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention and purge are not enabled', 403, { requestId, details: { reason: 'purge_not_enabled' } });
+    }
+    const days = body?.retention_days;
+    if (!(days === null || (typeof days === 'number' && Number.isInteger(days) && days >= RETENTION_DAYS_MIN && days <= RETENTION_DAYS_MAX))) {
+      throw new AramoError('VALIDATION_ERROR', `retention_days must be null (keep forever) or an integer ${RETENTION_DAYS_MIN}..${RETENTION_DAYS_MAX}`, 400, { requestId, details: { reason: 'invalid_retention_days' } });
+    }
+    const level = body?.purge_level ?? 'DOCUMENTS';
+    if (!isPurgeLevel(level)) throw new AramoError('VALIDATION_ERROR', 'purge_level is not recognised', 400, { requestId, details: { reason: 'invalid_purge_level' } });
+    const p = await this.retention(requestId).setPolicy(auth.tenant_id, { retention_days: days, purge_level: level }, auth.sub);
+    return { retention_days: p.retention_days, purge_level: p.purge_level, updated_at: p.updated_at !== null ? p.updated_at.toISOString() : null, can_edit: true };
+  }
+
+  private retention(requestId: string): SignPurgeRepository {
+    if (this.purges === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention is not available', 403, { requestId, details: { reason: 'purge_not_enabled' } });
+    return this.purges;
   }
 
   async evidence(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string) {

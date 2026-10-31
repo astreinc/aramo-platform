@@ -409,12 +409,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     }
   });
 
-  it('(f) a legal hold on the tenant or on any DocumentArtifact of it → nothing executed; back to the queue', async () => {
+  // Retention and Purge directive (ebd41d99) W9 / R-17 (finding F-P4-1): the Sign deletion
+  // path reads Sign-owned signals and identity."Tenant".legal_hold only. An ATS
+  // documents."DocumentArtifact" hold is the ATS's own concern and is no longer read by Sign
+  // (under the aramo_sign runtime role that read is refused).
+  it('(f) a legal hold on the tenant → nothing executed; back to the queue', async () => {
     const held = await personal({ legal_hold: true });
     await seedUserData(held);
     const r1 = await deleteAccount(held);
     expect(r1.body.status).toBe('DATA_INVENTORY');
+    expect(await liveSessions(held.user)).toBe(1);
+    expect(await userRow(held.user)).toEqual({ is_active: true, email: held.email });
+    expect(await links(held.user)).toBe(1);
+    expect(await tenantStatus(held.tenant)).toBe('ACTIVE');
+  });
 
+  it('(f2) an ATS DocumentArtifact hold is not read by the Sign deletion path (W9)', async () => {
     const doc = await personal();
     await seedUserData(doc);
     await db.query('BEGIN');
@@ -425,20 +435,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
       [randomUUID(), doc.tenant, randomUUID(), randomUUID(), 'b'.repeat(64), doc.user],
     );
     await db.query('COMMIT');
-    const requests = module.get(PrivacyRequestService);
     const r2 = await deleteAccount(doc);
-    // The request service saw no TENANT hold, moved it to EXECUTING; the execution found the document hold.
-    expect((await row(r2.body.reference))['status']).toBe('DATA_INVENTORY');
+    // No document_legal_hold: the Sign scope never consults the ATS documents schema.
     const holdEvents = (await eventsOf(r2.body.reference)).filter((e) => e.event_type === 'LEGAL_HOLD');
-    expect(holdEvents.map((e) => e.payload['reason'])).toContain('document_legal_hold');
-    for (const a of [held, doc]) {
-      expect(await liveSessions(a.user)).toBe(1);
-      expect(await userRow(a.user)).toEqual({ is_active: true, email: a.email });
-      expect(await links(a.user)).toBe(1);
-      expect(await tenantStatus(a.tenant)).toBe('ACTIVE');
-    }
-    expect(pool.retired).toEqual([]);
-    expect((await requests.findByReference(r2.body.reference))?.status).toBe('DATA_INVENTORY');
+    expect(holdEvents.map((e) => e.payload['reason'])).not.toContain('document_legal_hold');
+    expect((await row(r2.body.reference))['status']).not.toBe('DATA_INVENTORY');
   });
 
   it('idempotent retry: a failed identity retirement leaves the request EXECUTING with the link intact; the retry completes; a re-run after the tombstone skips the identity steps', async () => {

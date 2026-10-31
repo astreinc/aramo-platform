@@ -144,7 +144,7 @@ export {
   SIGNING_TOKEN_BYTES,
   SIGNING_SESSION_TTL_MS,
 } from './lib/signing-token.js';
-export { computeEventHash, type EventHashInput } from './lib/hash-chain.js';
+export { computeEventHash, verifyEventChain, type EventHashInput, type ChainEventRow, type ChainRedactionRow, type ChainVerification } from './lib/hash-chain.js';
 export {
   EnvelopeNotFoundError,
   EnvelopeIllegalTransitionError,
@@ -299,3 +299,33 @@ export * from './lib/retention/sign-retention.repository.js';
 export * from './lib/privacy/sign-privacy.repository.js';
 // Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3 — the Sign-owned talent-erasure contract.
 export * from './lib/privacy/sign-talent-erasure.repository.js';
+// Retention and Purge directive (ebd41d99) R-14/LD-8 — the purge lifecycle event.
+export {
+  SIGN_ENVELOPE_PURGE_EVENT_TYPE,
+  type EsignPurgeEventFields,
+  type EsignPurgeReason,
+  type EsignPurgeState,
+} from './lib/ports/event-publisher.port.js';
+
+// Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge.
+export {
+  SignPurgeRepository,
+  PURGE_LEVELS,
+  PURGE_ELIGIBLE_STATUSES,
+  PURGE_QUEUE_DAYS,
+  RETENTION_DAYS_MIN,
+  RETENTION_DAYS_MAX,
+  PII_PAYLOAD_KEYS,
+  PURGED_EVENT,
+  PURGE_QUEUED_EVENT,
+  PURGE_DEQUEUED_EVENT,
+  isPurgeLevel,
+  purgeStateFor,
+  type PurgeLevel,
+  type RetentionPolicy,
+  type EnvelopePurgeStatus,
+  type QueueOutcome,
+  type DueEnvelope,
+  type PurgeObjectsReport,
+  type ExecuteOutcome,
+} from './lib/retention/sign-purge.repository.js';

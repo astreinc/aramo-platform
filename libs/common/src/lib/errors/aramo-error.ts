@@ -119,6 +119,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ENVELOPE_NOT_FOUND: 404,
   ENVELOPE_ILLEGAL_TRANSITION: 409,
   ENVELOPE_ALREADY_EXECUTED: 409,
+  ENVELOPE_PURGED: 410,
   // Multi-Provider directive §B — the Aramo Sign allowance refusals.
   ESIGN_NOT_SUBSCRIBED: 403,
   ESIGN_ALLOWANCE_EXHAUSTED: 409,

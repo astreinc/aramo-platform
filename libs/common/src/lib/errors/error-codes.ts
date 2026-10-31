@@ -417,6 +417,8 @@ export const ERROR_CODES = [
   'ENVELOPE_NOT_FOUND',
   'ENVELOPE_ILLEGAL_TRANSITION',
   'ENVELOPE_ALREADY_EXECUTED',
+  // Retention and Purge directive (ebd41d99) — a purged envelope's documents are gone (410).
+  'ENVELOPE_PURGED',
   'ESIGN_NOT_SUBSCRIBED',
   'ESIGN_ALLOWANCE_EXHAUSTED',
   'ESIGN_SEND_UNAVAILABLE',

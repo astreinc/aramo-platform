@@ -19,6 +19,7 @@ import {
   SignNotificationRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
+  SignPurgeRepository,
   SignTalentErasureRepository,
   SignRetentionRepository,
   WEBHOOK_DELIVERY_PORT,
@@ -100,6 +101,8 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup worker (default off).
 import { SignRetentionService } from './retention/sign-retention.service.js';
 import { SignRetentionWorker } from './retention/sign-retention.worker.js';
+import { SignPurgeService, SignPurgeWorker } from './retention/sign-purge.service.js';
+import { SignRetentionController } from './retention/sign-retention.controller.js';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (in-app, public web) and the
 // staged deletion execution (OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1).
 import { SignPrivacyRequestController } from './privacy/sign-privacy-request.controller.js';
@@ -150,7 +153,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -171,6 +174,11 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SignArtifactCustodyRepository,
         { provide: EXECUTED_ARTIFACT_CUSTODY_PORT, useClass: ExecutedArtifactCustodyService },
         SignArtifactReconcileWorker,
+        // Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge.
+        // DARK unless SIGN_PURGE_ENABLED=1 (writes refused, worker not scheduled).
+        SignPurgeRepository,
+        SignPurgeService,
+        SignPurgeWorker,
         { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
@@ -201,7 +209,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,

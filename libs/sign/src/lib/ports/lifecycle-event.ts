@@ -1,3 +1,5 @@
+import type { EsignPurgeEventFields } from './event-publisher.port.js';
+
 // E-Sign OC v2 — the GENERIC outbound lifecycle event (Independent-Digital-
 // Signature-Platform Directive sections 5, 6). This is the platform's public
 // signing-fact contract: generic signing-domain vocabulary ONLY — no RTR / Offer
@@ -23,6 +25,8 @@ export interface EsignLifecycleEvent {
   envelope_id: string;
   correlation_id: string;
   artifact_refs: EsignLifecycleEventArtifactRefs; // identifiers only
+  // Present on sign.envelope.purge.v1 only (Retention and Purge directive R-14).
+  purge?: EsignPurgeEventFields;
 }
 
 // The minimal shape of an OutboxEvent row this builder needs.
@@ -42,6 +46,7 @@ export function toLifecycleEvent(row: OutboxRowForLifecycleEvent): EsignLifecycl
     envelope_id?: string;
     correlation_id?: string;
     artifact_refs?: EsignLifecycleEventArtifactRefs;
+    purge?: EsignPurgeEventFields;
   };
   return {
     event_id: row.id,
@@ -52,5 +57,6 @@ export function toLifecycleEvent(row: OutboxRowForLifecycleEvent): EsignLifecycl
     envelope_id: payload.envelope_id ?? '',
     correlation_id: payload.correlation_id ?? '',
     artifact_refs: payload.artifact_refs ?? { executed_document_ids: [], has_certificate: false },
+    ...(payload.purge !== undefined ? { purge: payload.purge } : {}),
   };
 }

@@ -479,6 +479,12 @@ function DocumentViewer({
                   <dd>{shortDate(doc.signed_at)}</dd>
                 </div>
               ) : null}
+              {esignCopyLine(doc.esign_copy) !== null ? (
+                <div className="t360-dv__row" data-testid="t360-esign-copy">
+                  <dt>Signed copy also held by Sign</dt>
+                  <dd>{esignCopyLine(doc.esign_copy)}</dd>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {doc !== null && doc.signed ? (
@@ -728,4 +734,13 @@ function UploadDialog({
       </div>
     </Dialog>
   );
+}
+
+// Retention and Purge directive (ebd41d99) W11 — Aramo Sign's own copy of a signed document.
+// The ATS keeps its copy regardless; this only says whether Sign still holds one too.
+export function esignCopyLine(copy: TalentDocumentView['esign_copy']): string | null {
+  if (copy === undefined || copy === null) return null;
+  if (copy.status === 'held') return 'Yes';
+  if (copy.status === 'purge_scheduled') return copy.at !== null ? `Yes · purge scheduled ${shortDate(copy.at) ?? ''}`.trim() : 'Yes · purge scheduled';
+  return copy.at !== null ? `No · purged on ${shortDate(copy.at) ?? ''}`.trim() : 'No · purged';
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import {
   type CreateEnvelopeRequest,
   type EnvelopeSummary,
@@ -294,6 +295,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   async getExecutedArtifacts(tenant_id: string, envelope_id: string): Promise<ExecutedArtifactsBundle> {
     const docs = await this.repo.listExecutedDocuments(tenant_id, envelope_id);
     const cert = await this.repo.getExecutionCertificate(tenant_id, envelope_id);
+    const purged = assertNotPurged(docs, cert, envelope_id);
     return {
       envelope_id,
       documents: docs.map((d) => ({
@@ -302,7 +304,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
         document_revision_ref: d.document_revision_ref,
         executed_sha256: d.executed_sha256,
         byte_size: d.byte_size,
-        executed_base64: Buffer.from(d.executed_bytes).toString('base64'),
+        executed_base64: Buffer.from(purged.executed(d)).toString('base64'),
       })),
       certificate:
         cert === null
@@ -310,7 +312,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           : {
               certificate_sha256: cert.certificate_sha256,
               byte_size: cert.byte_size,
-              certificate_base64: Buffer.from(cert.certificate_bytes).toString('base64'),
+              certificate_base64: Buffer.from(purged.certificate(cert)).toString('base64'),
             },
     };
   }
@@ -327,4 +329,22 @@ export interface ExecutedArtifactsBundle {
     executed_base64: string;
   }[];
   certificate: { certificate_sha256: string; byte_size: number; certificate_base64: string } | null;
+}
+
+// Retention and Purge directive (ebd41d99) W3 — a purged envelope's executed documents and
+// certificate have no bytes left. Every bytes read refuses with ENVELOPE_PURGED (410) rather
+// than returning an empty file, so the ATS and signers learn the copy is gone.
+export function assertNotPurged(
+  docs: ReadonlyArray<{ executed_bytes: Uint8Array | null }>,
+  cert: { certificate_bytes: Uint8Array | null } | null,
+  envelope_id: string,
+): { executed: (d: { executed_bytes: Uint8Array | null }) => Uint8Array; certificate: (c: { certificate_bytes: Uint8Array | null }) => Uint8Array } {
+  const gone = (): never => {
+    throw new AramoError('ENVELOPE_PURGED', `envelope ${envelope_id} documents were purged`, 410, { requestId: '' });
+  };
+  if (docs.some((d) => d.executed_bytes === null) || (cert !== null && cert.certificate_bytes === null)) gone();
+  return {
+    executed: (d) => d.executed_bytes ?? gone(),
+    certificate: (c) => c.certificate_bytes ?? gone(),
+  };
 }

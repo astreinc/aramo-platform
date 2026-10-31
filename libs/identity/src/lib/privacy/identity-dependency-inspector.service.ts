@@ -66,6 +66,16 @@ export interface IdentityDependencyReport {
   cognito_sub: string | null;
 }
 
+/**
+ * Retention and Purge directive (ebd41d99) W9 / finding F-P4-1. 'platform' (default) reads
+ * every schema it can see, as before. 'sign' is the scope for the Sign deletion path: it
+ * never reads an ATS schema (Sign holds no grant on them), so (f) comes from
+ * identity."Tenant".legal_hold alone and document_artifacts is 0.
+ */
+export interface IdentityDependencyInspectOptions {
+  scope?: 'platform' | 'sign';
+}
+
 type Count = Array<{ n: bigint | number }>;
 const num = (rows: Count): number => Number(rows[0]?.n ?? 0);
 
@@ -82,7 +92,8 @@ export class IdentityDependencyInspector {
     return rows[0]?.present === true;
   }
 
-  async inspect(user_id: string, tenant_id: string): Promise<IdentityDependencyReport> {
+  async inspect(user_id: string, tenant_id: string, opts: IdentityDependencyInspectOptions = {}): Promise<IdentityDependencyReport> {
+    const signScope = opts.scope === 'sign';
     const user = await this.prisma.user.findUnique({ where: { id: user_id }, select: { email: true, tenant_id: true } });
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenant_id }, select: { legal_hold: true } });
     if (user === null || tenant === null || user.tenant_id !== tenant_id) throw new Error('identity_dependency_subject_not_in_tenant');
@@ -131,8 +142,8 @@ export class IdentityDependencyInspector {
             other_users_same_email: lookup.other_users_same_email,
           };
 
-    // (f)
-    const document_artifacts = (await this.present('documents."DocumentArtifact"'))
+    // (f) — the ATS document check is skipped entirely in the Sign scope (F-P4-1).
+    const document_artifacts = !signScope && (await this.present('documents."DocumentArtifact"'))
       ? num(await this.prisma.$queryRaw<Count>`SELECT count(*) AS n FROM "documents"."DocumentArtifact" WHERE tenant_id = ${tenant_id}::uuid AND legal_hold`)
       : 0;
     const legal_hold = tenant.legal_hold || document_artifacts > 0;

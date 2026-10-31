@@ -1,4 +1,4 @@
-import { applyDecorators, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, UseFilters, UseGuards } from '@nestjs/common';
+import { applyDecorators, Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
@@ -35,8 +35,8 @@ export class RecipientInboxController {
 
   @Get()
   @RecipientInboxBoundary()
-  list(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
-    return this.run(requestId, () => this.inbox.list(auth));
+  list(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Query('folder') folder?: string) {
+    return this.run(requestId, () => this.inbox.list(auth, folder, requestId));
   }
 
   @Post('claim')
@@ -67,6 +67,22 @@ export class RecipientInboxController {
   @RecipientInboxBoundary()
   report(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { reason?: unknown; note?: unknown }) {
     return this.run(requestId, () => this.reports.submitFromInbox(auth.sub, id, body ?? {}, requestId));
+  }
+
+  // Retention and Purge directive (ebd41d99) R-10 — the DocuSign "Deleted" folder (binding
+  // kept, restorable); `DELETE :id` below still removes the binding itself.
+  @Post(':id/delete')
+  @HttpCode(HttpStatus.OK)
+  @RecipientInboxBoundary()
+  deleteForMe(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.inbox.deleteForMe(auth, id, requestId));
+  }
+
+  @Post(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @RecipientInboxBoundary()
+  restoreForMe(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.inbox.restoreForMe(auth, id, requestId));
   }
 
   @Delete(':id')

@@ -33,8 +33,9 @@ export const GRANT_TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exch
 export const TOKEN_TYPE_ACCESS_TOKEN = 'urn:ietf:params:oauth:token-type:access_token';
 // Addendum S6 ruling 1 — the event-bound executed-artifact read grant.
 export const GRANT_SIGN_EVENT = 'urn:aramo:params:oauth:grant-type:sign-event';
-// The lifecycle events whose envelope may be read through an event grant.
-const ARTIFACT_EVENT_TYPES = new Set(['sign.envelope.executed.v1']);
+// The lifecycle events whose envelope may be read through an event grant. A purge
+// event (sign.envelope.purge.v1) never grants artifact access (Retention and Purge R-14).
+export const ARTIFACT_EVENT_TYPES: ReadonlySet<string> = new Set(['sign.envelope.executed.v1']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Consumers whose user sessions may be delegated to Sign. Never platform
