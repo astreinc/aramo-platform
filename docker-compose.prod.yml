@@ -568,6 +568,10 @@ services:
       - SIGN_ARTIFACT_RETENTION_DAYS
       - SIGN_ARTIFACT_S3_ENDPOINT
       - SIGN_ARTIFACT_RECONCILE_INTERVAL_MS
+      # Retention and Purge directive (ebd41d99) — the purge engine and worker. Unset = dark:
+      # the worker never runs and every retention write is refused (403 purge_not_enabled).
+      - SIGN_PURGE_ENABLED
+      - SIGN_PURGE_INTERVAL_MS
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as
