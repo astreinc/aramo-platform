@@ -51,6 +51,11 @@
       "status": "unscoped",
       "to": "infrastructure-lightsail/ses-mailer-iam.json"
     },
+    {
+      "from": ".env.prod.example",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/sign-artifacts.tf"
+    },
     { "from": ".env.prod.example", "status": "unscoped", "to": "tools/ensure-intelligence-db.sh" },
     {
       "from": ".env.prod.example",
