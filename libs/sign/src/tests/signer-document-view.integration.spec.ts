@@ -78,6 +78,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F3 signer d
     expect(view.documents).toHaveLength(1);
     expect(view.documents[0]).toMatchObject({ document_id: docId, title: 'agreement.pdf', ordinal: 1 });
     expect(view.fields).toHaveLength(2);
+    // B3 — the sender did not allow delegation.
+    expect(view.can_delegate).toBe(false);
     // Sorted by page/y/x → SIGNATURE (y120) before SIGN_DATE (y150).
     expect(view.fields[0]).toMatchObject({ document_id: docId, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 120, required: true, filled: false });
     // PX-2 — a filled field reports filled:true and the signer's own value (progress survives a reload).

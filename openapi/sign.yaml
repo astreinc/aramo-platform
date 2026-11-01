@@ -417,6 +417,13 @@ paths:
                     type: [string, 'null']
                     maxLength: 1000
                     description: Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup.
+                  can_delegate:
+                    type: boolean
+                    description: >-
+                      Consolidated Directive v1.0 B3 (Feature-Parity §1.17) — true when sign.delegate_signing is
+                      available, the sender allowed delegation and this recipient may still hand the envelope to
+                      someone else (a signer with an email who has not delegated or signed). The signer page offers
+                      the hand-off only then; POST /v1/sign/signing/delegate re-checks every rule.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -7324,6 +7331,21 @@ components:
             access_code:
               type: boolean
               description: Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available.
+            sms_delivery:
+              type: boolean
+              description: Consolidated Directive v1.0 B2 — sign.sms_delivery is available (the signing link also goes by SMS; launch availability only, no plan rule).
+            whatsapp_delivery:
+              type: boolean
+              description: Consolidated Directive v1.0 B2 — sign.whatsapp_delivery is available (the signing link also goes by WhatsApp; launch availability only, no plan rule).
+            sms_otp:
+              type: boolean
+              description: Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule).
+            id_verification:
+              type: boolean
+              description: Consolidated Directive v1.0 B2 — sign.id_verification is available and the tenant is a BUSINESS tenant (government-ID check per recipient).
+            kba:
+              type: boolean
+              description: Consolidated Directive v1.0 B2 — sign.kba is available and the tenant is a BUSINESS tenant (knowledge-based questions per recipient).
             payments:
               type: boolean
               description: >-

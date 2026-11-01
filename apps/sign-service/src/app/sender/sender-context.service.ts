@@ -9,10 +9,15 @@ import {
   SIGN_ACCESS_CODE_FEATURE,
   SIGN_DELEGATE_SIGNING_FEATURE,
   SIGN_IN_PERSON_SIGNING_FEATURE,
+  SIGN_ID_VERIFICATION_FEATURE,
   SIGN_INDIA_ESTAMP_FEATURE,
+  SIGN_KBA_FEATURE,
   SIGN_QES_FEATURE,
   SIGN_REPORTS_FEATURE,
+  SIGN_SMS_DELIVERY_FEATURE,
+  SIGN_SMS_OTP_FEATURE,
   SIGN_TEMPLATES_FEATURE,
+  SIGN_WHATSAPP_DELIVERY_FEATURE,
   SIGN_WITNESS_SIGNING_FEATURE,
   SignFeatureGate,
 } from '../sign-feature.gate.js';
@@ -74,7 +79,26 @@ export interface SenderContextView {
   // Feature-Parity directive §1.17 / §1.9 — witness and delegate signing (BUSINESS tenants,
   // the B+ plans) and the per-recipient access code (every plan), by launch availability.
   // Feature-Parity §1.13 — sign.reports (organization reports; BUSINESS only).
-  features: { templates: boolean; in_person_signing: boolean; witness_signing: boolean; delegate_signing: boolean; access_code: boolean; custom_roles: boolean; payments: boolean; qes: boolean; india_estamp: boolean; reports: boolean };
+  // Consolidated Directive v1.0 B2 — the sender's per-recipient choices: SMS / WhatsApp
+  // delivery and the SMS one-time code (launch availability only, as the messaging routes
+  // check), government-ID verification and KBA (BUSINESS only, as the recipients PUT checks).
+  features: {
+    templates: boolean;
+    in_person_signing: boolean;
+    witness_signing: boolean;
+    delegate_signing: boolean;
+    access_code: boolean;
+    sms_delivery: boolean;
+    whatsapp_delivery: boolean;
+    sms_otp: boolean;
+    id_verification: boolean;
+    kba: boolean;
+    custom_roles: boolean;
+    payments: boolean;
+    qes: boolean;
+    india_estamp: boolean;
+    reports: boolean;
+  };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
@@ -234,6 +258,13 @@ export class SenderContextService {
         witness_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WITNESS_SIGNING_FEATURE),
         delegate_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE),
         access_code: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ACCESS_CODE_FEATURE),
+        // B2 — no plan rule exists for messaging in code (OD-3 / D-D open): availability only.
+        sms_delivery: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_DELIVERY_FEATURE),
+        whatsapp_delivery: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WHATSAPP_DELIVERY_FEATURE),
+        sms_otp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_SMS_OTP_FEATURE),
+        // B2 — identity checks are refused for a Personal account (plan_not_eligible).
+        id_verification: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ID_VERIFICATION_FEATURE),
+        kba: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_KBA_FEATURE),
         payments: this.payments === undefined ? false : await this.payments.available(tenant.id).catch(() => false),
         qes: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_QES_FEATURE),
         india_estamp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_INDIA_ESTAMP_FEATURE),
