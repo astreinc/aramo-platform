@@ -107,6 +107,38 @@ describe('legal publication readiness — blocks scheduling an unfinished text',
   });
 });
 
+// Lead Architect ruling (2026-11-01) item 5 — at publication the legal text and BOTH registries
+// change together: the subscription registry (this lib) and the sign-web catalog that serves the
+// public pages. Every APPROVED registry version with a public URL must appear in the catalog
+// with the same key, version and effective_from (null until release day), and the catalog lists
+// nothing the registry does not. (sign-web's legal.spec.tsx also checks the bundled text's hash.)
+const CATALOG_SRC = readFileSync(resolve(ROOT, 'apps/sign-web/src/workspace/legal/catalog.ts'), 'utf8');
+const catalogEntries = (): { slug: string; key: string; version: string; effective_from: string | null }[] =>
+  [...CATALOG_SRC.matchAll(/\{ slug: '([^']+)', key: '([^']+)', version: '([^']+)',[^}]*effective_from: (null|'[^']*') \}/g)].map((m) => ({
+    slug: m[1]!,
+    key: m[2]!,
+    version: m[3]!,
+    effective_from: m[4] === 'null' ? null : m[4]!.slice(1, -1),
+  }));
+
+describe('legal publication readiness — the registry and the web catalog agree', () => {
+  it('the catalog source parses', () => {
+    expect(catalogEntries().length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('every APPROVED, published registry version is in the web catalog with the same effective_from, and nothing else is', () => {
+    const published = LEGAL_DOCUMENTS.filter((d) => d.status === 'APPROVED' && d.url !== null);
+    const catalog = catalogEntries();
+    for (const d of published) {
+      const c = catalog.find((x) => x.key === d.key && x.version === d.version);
+      expect(c, `${d.key}@${d.version} missing from the sign-web catalog`).toBeDefined();
+      expect(c!.effective_from, `${d.key}@${d.version}: registry and catalog effective_from differ`).toBe(d.effective_from);
+      expect(d.url).toBe(`https://sign.aramo.ai/legal/${c!.slug}/${d.version}`);
+    }
+    expect(catalog.map((c) => `${c.key}@${c.version}`).sort()).toEqual(published.map((d) => `${d.key}@${d.version}`).sort());
+  });
+});
+
 describe('publicationBlockers — the rules', () => {
   it('flags review markers, placeholders and the effective-date placeholder; a Markdown link is fine', () => {
     const t = ['# T', '', 'See [the policy](https://sign.aramo.ai/legal/privacy/1.0).', '`[COUNSEL: x]`', 'Within **[30] days**.', '| Effective date | [Date of publication] |', 'A [FACT: y] here.'].join('\n');
