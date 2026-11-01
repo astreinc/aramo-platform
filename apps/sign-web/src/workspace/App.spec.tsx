@@ -155,12 +155,16 @@ describe('Sign workspace App', () => {
 
   // DOC-TEMPLATE-LIB-1 T-5 — the Templates page follows the plan capability (sign.templates)
   // and the document_template:read permission the backend reports.
-  it('Templates — plan capability NOT available: the unavailable treatment, no list call, no create action', async () => {
+  // Feature-Parity 1.1 (R-8 catalog honesty) — while sign.templates is NOT_AVAILABLE the page says
+  // "Coming soon" and never presents templates as part of a plan.
+  it('Templates — launch availability NOT available: Coming soon, no list call, no create action', async () => {
     const f = stubFetch(ctx({ features: { templates: false }, permissions: { read: true, create: true, send: true, templates: true } }));
     vi.stubGlobal('fetch', f);
     renderAt('/sign/templates');
-    expect(await screen.findByTestId('templates-unavailable')).toHaveTextContent('Templates aren’t available on your plan yet');
-    expect(screen.getByTestId('templates-unavailable-tag')).toHaveTextContent('Not available');
+    expect(await screen.findByTestId('templates-unavailable')).toHaveTextContent('Templates are coming soon');
+    expect(screen.getByTestId('templates-unavailable')).toHaveTextContent('It isn’t part of any plan yet');
+    expect(screen.getByTestId('templates-unavailable-tag')).toHaveTextContent('Coming soon');
+    expect(screen.queryByTestId('manage-templates-link')).toBeNull();
     expect(f.mock.calls.some(([u]) => String(u).includes('/v1/sign/sender/templates'))).toBe(false);
     expect(screen.queryByText('Future capability')).toBeNull();
   });
@@ -191,6 +195,28 @@ describe('Sign workspace App', () => {
     expect(screen.getByText(/Aramo default · v2/)).toBeInTheDocument();
     expect(screen.getByTestId('use-template-tpl-1')).toHaveAttribute('href', '/sign/templates/tpl-1/use');
     expect(screen.getByTestId('manage-templates-link')).toHaveAttribute('href', 'https://northwind.aramo.ai/org/document-templates');
+    // Feature-Parity 1.1 — adopting and editing happen in Org Home (the shared Template Studio).
+    expect(screen.getByTestId('manage-templates-link')).toHaveTextContent('Adopt and edit templates in Org Home');
+  });
+
+  // Feature-Parity 1.1 (Catalog v2 P-6) — the Free plan never gets templates: the server's plan
+  // refusal is shown as a plan message, never as a permission problem.
+  it('Templates — available but the Free plan: the plan refusal is explained', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/v1/sign/sender/templates')) {
+          return json(
+            { error: { code: 'ESIGN_FEATURE_NOT_AVAILABLE', message: 'Templates are not included in your Aramo Sign plan', details: { feature_key: 'sign.templates', reason: 'templates_not_in_plan', plan_key: 'aramo-sign-free-personal-v1' } } },
+            403,
+          );
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates');
+    expect(await screen.findByText('Templates aren’t included in the Free plan. They come with every paid Aramo Sign plan.')).toBeInTheDocument();
   });
 
   it('Use template — sender-filled fields, then the envelope is created from the template (CORE_REF) and the wizard opens', async () => {

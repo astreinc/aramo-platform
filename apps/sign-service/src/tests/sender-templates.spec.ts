@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
+import type { SignTemplateEntitlement } from '@aramo/subscription';
 import {
   ESIGN_S2S_SIGNATURE_HEADER,
   ESIGN_S2S_TIMESTAMP_HEADER,
@@ -75,7 +76,7 @@ const RENDERED_ROLES: SignTemplateRenderResponse = {
 };
 const LISTED = { template_id: TEMPLATE, signing: SIGNING };
 
-function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string; roles?: boolean } = {}) {
+function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string; roles?: boolean; plan?: SignTemplateEntitlement } = {}) {
   const documents: DocumentTemplatesPort = {
     list: vi.fn(async () => ({ items: opts.roles === true ? [LISTED as never] : [{ template_id: TEMPLATE, signing: null } as never], unavailable: [] })),
     preview: vi.fn(async () => ({}) as never),
@@ -95,8 +96,10 @@ function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'
     replaceFields: vi.fn(async () => ({})),
     detail: vi.fn(async () => ({ id: 'env-1', status: 'DRAFT' })),
   };
-  const svc = new SenderTemplatesService(documents, gate, context as never, repo as never, envelopes as never);
-  return { svc, documents, repo, envelopes, context };
+  // Feature-Parity 1.1 — the plan (default: a paid plan that includes templates).
+  const entitlements = { of: vi.fn(async (): Promise<SignTemplateEntitlement> => opts.plan ?? { kind: 'INCLUDED', plan_key: 'aramo-sign-standard-business-v1' }) };
+  const svc = new SenderTemplatesService(documents, gate, context as never, repo as never, envelopes as never, entitlements as never);
+  return { svc, documents, repo, envelopes, context, entitlements };
 }
 
 describe('plan capability sign.templates — NOT_AVAILABLE (the production registry)', () => {
@@ -114,6 +117,49 @@ describe('plan capability sign.templates — NOT_AVAILABLE (the production regis
     expect(h.documents.preview).not.toHaveBeenCalled();
     expect(h.documents.render).not.toHaveBeenCalled();
     expect(h.repo.createDraft).not.toHaveBeenCalled();
+  });
+});
+
+// Aramo Sign Feature-Parity 1.1 (Directive v1.0 LOCKED §5 D-1; Catalog v2 P-6) — after the
+// launch gate and the session scope, the PLAN: Free never gets templates. Sign never creates a
+// template (PO locked model): templates are adopted and approved in Org Home's Template Studio.
+describe('Feature-Parity 1.1 — the plan includes templates (sign.templates AVAILABLE in a test registry)', () => {
+  const a = () => auth(SENDER_SCOPES);
+  it('P-6 — the Free plan is refused on list / preview / from-template before any Documents call', async () => {
+    const h = harness({ registry: AVAILABLE, plan: { kind: 'NONE', plan_key: 'aramo-sign-free-personal-v1', reason: 'free_plan' } });
+    for (const call of [() => h.svc.list(a(), 'r'), () => h.svc.preview(a(), TEMPLATE, {}, 'r'), () => h.svc.createEnvelope(a(), { template_id: TEMPLATE }, 'r')]) {
+      await expect(call()).rejects.toMatchObject({
+        code: 'ESIGN_FEATURE_NOT_AVAILABLE',
+        statusCode: 403,
+        context: { details: { feature_key: SIGN_TEMPLATES_FEATURE, reason: 'templates_not_in_plan', plan_key: 'aramo-sign-free-personal-v1' } },
+      });
+    }
+    expect(h.documents.list).not.toHaveBeenCalled();
+    expect(h.documents.preview).not.toHaveBeenCalled();
+    expect(h.documents.render).not.toHaveBeenCalled();
+    expect(h.repo.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('no Sign subscription → ESIGN_NOT_SUBSCRIBED; a subscription that does not send → subscription_inactive', async () => {
+    const none = harness({ registry: AVAILABLE, plan: { kind: 'NOT_SUBSCRIBED' } });
+    await expect(none.svc.list(a(), 'r')).rejects.toMatchObject({ code: 'ESIGN_NOT_SUBSCRIBED', statusCode: 403 });
+    const lapsed = harness({ registry: AVAILABLE, plan: { kind: 'NONE', plan_key: 'aramo-sign-standard-business-v1', reason: 'subscription_inactive' } });
+    await expect(lapsed.svc.list(a(), 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', context: { details: { reason: 'subscription_inactive' } } });
+    expect(none.documents.list).not.toHaveBeenCalled();
+    expect(lapsed.documents.list).not.toHaveBeenCalled();
+  });
+
+  it('a paid plan (Standard, Business, Professional, Enterprise) is let through to the Documents library', async () => {
+    const h = harness({ registry: AVAILABLE, plan: { kind: 'INCLUDED', plan_key: 'aramo-sign-standard-personal-v1' } });
+    await h.svc.list(a(), 'r');
+    expect(h.entitlements.of).toHaveBeenCalledWith(TENANT);
+    expect(h.documents.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('the launch gate is checked before the plan: NOT_AVAILABLE never reads the plan', async () => {
+    const h = harness();
+    await expect(h.svc.list(a(), 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
+    expect(h.entitlements.of).not.toHaveBeenCalled();
   });
 });
 

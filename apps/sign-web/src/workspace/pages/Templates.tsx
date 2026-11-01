@@ -14,8 +14,12 @@ import { useWorkspace } from '../workspace';
 // supply become fields the sender fills in. Every authority stays server-side (plan
 // capability, document_template:read, sign:envelope:create); this page only reflects it.
 //
-// When the plan capability `sign.templates` is not available, the page shows the same
-// "Not available" treatment the console uses for other unavailable capabilities.
+// Aramo Sign Feature-Parity 1.1 (Feature-Parity Program Directive v1.0 LOCKED §1.1; PO locked
+// model 2026-11-01) — templates are created only as Aramo (platform) defaults; the organization
+// adopts one, edits and approves it in Org Home (the shared Template Studio). Aramo Sign never
+// creates or edits a template: it links to Org Home for that. While `sign.templates` is not
+// available (R-8) the page shows "Coming soon" and is never presented as part of a plan; the
+// Free plan never gets templates (Catalog v2 P-6, refused by the server).
 
 export function TemplatesPage() {
   return (
@@ -32,13 +36,13 @@ function orgTemplatesUrl(appHomeUrl: string | null): string | null {
   return appHomeUrl === null ? null : `${appHomeUrl.replace(/\/+$/, '')}/org/document-templates`;
 }
 
-function Unavailable({ title, children }: { title: string; children: React.ReactNode }) {
+function Unavailable({ title, tag = 'Not available', children }: { title: string; tag?: string; children: React.ReactNode }) {
   return (
     <div className="sg-page sg-page--wide">
       <div className="sg-pagehead">
         <h1 className="sg-h1">Templates</h1>
         <span className="sg-tag sg-tag--grey" data-testid="templates-unavailable-tag">
-          Not available
+          {tag}
         </span>
       </div>
       <section className="sg-card" data-testid="templates-unavailable">
@@ -61,11 +65,13 @@ function useTemplateAccess(): 'unavailable' | 'no-permission' | 'ok' {
 
 function AccessGate({ access }: { access: 'unavailable' | 'no-permission' }) {
   return access === 'unavailable' ? (
-    <Unavailable title="Templates aren’t available on your plan yet">
-      Starting envelopes from your organization’s document templates isn’t part of your Aramo Sign plan yet. Until then, create each envelope from your PDF.
+    <Unavailable title="Templates are coming soon" tag="Coming soon">
+      Starting envelopes from your organization’s templates is coming soon. It isn’t part of any plan yet. Until then, create each envelope from your PDF.
     </Unavailable>
   ) : (
-    <Unavailable title="You don’t have access to templates">Ask your organization admin for access to document templates.</Unavailable>
+    <Unavailable title="You don’t have access to templates">
+      Ask your organization admin for access to document templates.
+    </Unavailable>
   );
 }
 
@@ -98,13 +104,13 @@ function TemplateList() {
         <div className="sg-pagehead__end">
           {manageUrl !== null ? (
             <a className="sg-btn" href={manageUrl} data-testid="manage-templates-link">
-              Manage templates in Org Home
+              Adopt and edit templates in Org Home
             </a>
           ) : null}
         </div>
       </div>
       <p className="sg-muted" style={{ marginTop: 0 }}>
-        Your organization’s document templates, with your organization’s branding. Choose the one you need.
+        Your organization’s document templates, with your organization’s branding. Choose the one you need. To add one, adopt an Aramo template in Org Home, edit it and approve it.
       </p>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {items === null && error === '' ? <Loading /> : null}

@@ -5,6 +5,7 @@ import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { EsignSenderRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
 import { type SignTemplateSigning } from '@aramo/documents-contracts';
+import { SignTemplateEntitlementService } from '@aramo/subscription';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -28,6 +29,14 @@ import { MAX_SIGNERS, ROUTING_MODES, SenderEnvelopeService } from './sender-enve
 // The envelope is an ordinary Sign console draft (source_application 'aramo-sign') whose
 // document is a CORE_REF source: the frozen DocumentRevision apps/api rendered, pinned to
 // the exact template version.
+//
+// Aramo Sign Feature-Parity 1.1 (Feature-Parity Program Directive v1.0 LOCKED §1.1, §5 D-1; PO
+// locked model 2026-11-01) — templates are authored ONLY at the platform level and adopted,
+// edited and approved by the tenant in the shared Template Studio (Org Home); Aramo Sign never
+// creates, edits or stores a template. Sign lists what the tenant adopted and approved,
+// previews it and starts an envelope from it. Every route now also checks the PLAN after the
+// launch gate: the Free plan never gets templates (Catalog v2 P-6), nor a subscription that
+// does not send. The launch gate itself (sign.templates NOT_AVAILABLE) is unchanged.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -99,11 +108,13 @@ export class SenderTemplatesService {
     private readonly context: SenderContextService,
     private readonly repo: EsignSenderRepository,
     private readonly envelopes: SenderEnvelopeService,
+    // Feature-Parity 1.1 — whether the tenant's Sign plan includes templates (P-6).
+    private readonly entitlements: SignTemplateEntitlementService,
   ) {}
 
-  // Plan capability first (an unavailable feature is unavailable to everyone), then the
-  // session's template permission.
-  private assertMayUse(auth: AuthContextType, requestId: string): void {
+  // Launch availability first (an unavailable feature is unavailable to everyone), then the
+  // session's template permission, then the plan (Feature-Parity 1.1: Free never, P-6).
+  private async assertMayUse(auth: AuthContextType, requestId: string): Promise<void> {
     this.gate.assertAvailable(SIGN_TEMPLATES_FEATURE, requestId);
     if (!auth.scopes.includes(DOCUMENT_TEMPLATE_READ_SCOPE)) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'You do not have access to document templates', 403, {
@@ -111,21 +122,31 @@ export class SenderTemplatesService {
         details: { missing_scopes: [DOCUMENT_TEMPLATE_READ_SCOPE] },
       });
     }
+    const plan = await this.entitlements.of(auth.tenant_id);
+    if (plan.kind === 'NOT_SUBSCRIBED') {
+      throw new AramoError('ESIGN_NOT_SUBSCRIBED', 'Templates need an Aramo Sign plan', 403, { requestId, details: { reason: 'NOT_SUBSCRIBED' } });
+    }
+    if (plan.kind === 'NONE') {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Templates are not included in your Aramo Sign plan', 403, {
+        requestId,
+        details: { feature_key: SIGN_TEMPLATES_FEATURE, reason: plan.reason === 'free_plan' ? 'templates_not_in_plan' : 'subscription_inactive', plan_key: plan.plan_key },
+      });
+    }
   }
 
   async list(auth: AuthContextType, requestId: string) {
-    this.assertMayUse(auth, requestId);
+    await this.assertMayUse(auth, requestId);
     return this.documents.list({ tenant_id: auth.tenant_id, requestId });
   }
 
   async preview(auth: AuthContextType, template_id: string, body: { values?: unknown }, requestId: string) {
-    this.assertMayUse(auth, requestId);
+    await this.assertMayUse(auth, requestId);
     if (!UUID_RE.test(template_id)) throw bad(requestId, 'template id must be a uuid', { field: 'id' });
     return this.documents.preview({ tenant_id: auth.tenant_id, template_id, body: { values: textValues(body?.values, requestId) }, requestId });
   }
 
   async createEnvelope(auth: AuthContextType, body: FromTemplateBody, requestId: string) {
-    this.assertMayUse(auth, requestId);
+    await this.assertMayUse(auth, requestId);
     if (!auth.scopes.includes(ESIGN_CREATE_SCOPE)) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'You cannot create envelopes', 403, { requestId, details: { missing_scopes: [ESIGN_CREATE_SCOPE] } });
     }

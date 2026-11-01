@@ -10704,6 +10704,12 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/sign-template-authoring-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/prisma/schema.prisma"
+    },
+    {
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"

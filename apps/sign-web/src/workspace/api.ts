@@ -675,6 +675,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required') return 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'NO_BILLING_ACCOUNT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
     if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.';
+    // Feature-Parity 1.1 — the plan refusal (Catalog v2 P-6: the Free plan never has templates).
+    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['reason'] === 'templates_not_in_plan') return 'Templates aren’t included in the Free plan. They come with every paid Aramo Sign plan.';
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
