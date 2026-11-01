@@ -378,7 +378,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     expect(reason(await start(person({ email: 'pat@acme-corp.example' })))).toBe('business_email_use_business_signup');
     expect(reason(await start(person({ email: 'pat@mailinator.com' })))).toBe('personal_email_not_allowed');
     process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '1';
-    const b = await http().post('/v1/signup/sign/start').send({ email: 'pat@gmail.com', organization_name: 'Pat Co' });
+    // ToS v2.0 â€” the fixture registry schedules sign.terms_of_service, which Business signup
+    // also requires; accept it so the email rule is what refuses.
+    const b = await http().post('/v1/signup/sign/start').send({ email: 'pat@gmail.com', organization_name: 'Pat Co', accept_terms: true });
     expect(reason(b)).toBe('business_email_required');
     delete process.env['SIGN_PUBLIC_SIGNUP_ENABLED'];
   });
