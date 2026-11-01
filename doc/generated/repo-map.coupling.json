@@ -36412,6 +36412,11 @@
       "status": "unscoped",
       "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
     },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
     { "from": "prisma.config.ts", "status": "unscoped", "to": "libs/consent/prisma/schema.prisma" },
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/auth.yaml" },
