@@ -141,7 +141,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     expect(() => usageMetricOf('sign', 'sign.storage_bytes')).toThrow(ProductContextError);
     expect(() => usageMetricsOf('ats' as never)).toThrow(ProductContextError);
     // No price, rate or amount column anywhere in the D1 tables (usage-based pricing is out).
-    const cols = (await pg.query(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name LIKE 'Usage%'`)).rows;
+    // The D1 tables only: the A3 metered-billing tables (UsageLedgerEntry, UsageProviderReport,
+    // UsagePeriodReconciliation) carry approved unit prices by design (Amendment A3) and are not D1 objects.
+    const cols = (await pg.query(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name IN ('UsageMetric', 'UsageRollupDaily', 'UsageRollupPeriod', 'UsageRollupRun', 'UsageRollupWatermark', 'AllowanceUsageChange')`)).rows;
     expect(cols.length).toBeGreaterThan(0);
     expect(cols.filter((c) => /price|amount|rate|currency|minor/i.test(c.column_name as string))).toEqual([]);
   });
@@ -509,7 +511,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     const before = await ledgerFingerprint(pg);
     await pg.query(readFileSync(CCP_D1_COMPENSATING, 'utf8'));
     const left = (await pg.query(
-      `SELECT (SELECT count(*)::int FROM information_schema.tables WHERE table_schema = 'subscription' AND (table_name LIKE 'Usage%' OR table_name = 'AllowanceUsageChange')) AS tables,
+      `SELECT (SELECT count(*)::int FROM information_schema.tables WHERE table_schema = 'subscription' AND table_name IN ('UsageMetric', 'UsageRollupDaily', 'UsageRollupPeriod', 'UsageRollupRun', 'UsageRollupWatermark', 'AllowanceUsageChange')) AS tables,
               (SELECT count(*)::int FROM pg_proc WHERE proname LIKE 'ccp_d1_%') AS functions,
               (SELECT count(*)::int FROM pg_trigger WHERE tgname LIKE 'allowance_usage_change%') AS triggers`,
     )).rows[0];

@@ -72,12 +72,16 @@ list must match exactly — any extra pending migration = STOP and report):
   would run that drop, which needs a separate PO authorization and an archive first (ADR-0036).
   Report and wait.
 
-### Environment — NO `.env` changes tonight
+### Environment — two `.env` settings for ToS v2.0 (PO 2026-11-01)
 
-This release adds many optional env vars (SMS/WhatsApp, Stripe Connect/Identity, seal, TSA, QES,
-e-stamp, `SIGN_USAGE_BILLING_ENABLED`, messaging limits). **Leave them
-all unset.** None is a required (`:?`) interpolation; unset = feature off. Do not edit `.env`.
-(`env:passthrough-check` must still pass in STEP 0.)
+Before STEP 5, take the encrypted `.env` snapshot (`deploy/backup/aramo-env-snapshot.sh`), then:
+
+- `SIGN_POST_TERMINATION_EXPORT_DAYS=90` (sign-service; matches ToS v2.0 B7.5 "90 calendar days").
+- `BILLING_PAST_DUE_GRACE_DAYS` must be **unset or 7** (matches B4.3 "7 calendar days"); report its value.
+
+Leave every other new optional variable unset (SMS/WhatsApp, Stripe Connect/Identity, seal, TSA, QES,
+e-stamp, `SIGN_USAGE_BILLING_ENABLED`, messaging limits): unset = feature off. None is a required
+(`:?`) interpolation. (`SIGN_PERSONAL_UPGRADE_ENABLED` no longer exists: the upgrade is removed, A5.)
 
 ### nginx
 
@@ -92,9 +96,12 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
   `NOT_AVAILABLE` (branding, custom_roles, trusted_timestamp, witness_signing, delegate_signing,
   sms_delivery, whatsapp_delivery, sms_otp, id_verification, kba, payments,
   document_seal, qes, india_estamp, metering keys). Flipping any is a separate PO authorization (R-8).
-- ToS v2.0: `effective_from: null` in both `libs/subscription/src/lib/legal/legal-documents.ts` and
-  `apps/sign-web/src/workspace/legal/catalog.ts`. Nobody is offered or owes v2.0 tonight. Release
-  day is a separate PR after counsel answers B5.3, B9.1 and the four bracketed periods.
+- **ToS v2.0 goes live tonight (PO 2026-11-01; counsel approved B5.1, B5.3, B9.1):** `effective_from`
+  `2026-11-01T23:00:00-05:00` in both `libs/subscription/src/lib/legal/legal-documents.ts` and
+  `apps/sign-web/src/workspace/legal/catalog.ts`. The code is clock-driven: before 23:00 EST v2.0 shows as
+  "Upcoming"; at 23:00 it takes effect. **HARD STOP: if STEP 8 (all services recreated and verified) cannot
+  finish by 22:45 EST, STOP before recreating sign-service / auth-service / nginx and report** — the
+  effective time must not precede the real activation; the PO moves it in a follow-up.
 - Notification worker stays paused (=0). Retention/purge settings unchanged (`SIGN_PURGE_ENABLED=1`
   as before).
 
@@ -110,14 +117,18 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
    is published; the invite flow returns success for a test alias invite only if the PO asks for one.
 5. `docker logs` for sign-service, auth-service, api, platform-admin: no ERROR at boot; auth-service
    mints a Sign token (custom-roles path, zero custom roles) — sign-in works end to end.
-6. Monitoring probe (`doc/runbooks/sign/monitoring-and-alerts.md`) reports healthy, if installed.
+6. ToS v2.0 before 23:00 EST: `/legal/terms-of-service` shows v2.0 as Upcoming; existing users sign in with no
+   terms dialog. After 23:00 EST (re-check then): an existing Business and an existing Personal user get
+   the blocking accept dialog at sign-in (web) and the accept screen (mobile); accepting records it;
+   Business sign-up asks for v2.0; the mobile "Personal Terms" link opens v2.0.
+7. Monitoring probe (`doc/runbooks/sign/monitoring-and-alerts.md`) reports healthy, if installed.
 
 ### Hard stops specific to this release
 
 - Pending set ≠ the 13 above → STOP.
 - G-073 drop pending → STOP.
 - No recorded Lead migration approval → STOP before STEP 3.
-- Any `.env` change needed to boot → STOP (none should be).
+- Any `.env` change beyond the two ToS settings above → STOP and report.
 - auth-service unhealthy or Sign sign-in fails after recreate → ROLLBACK auth-service first
   (the custom-roles table is additive; the old image ignores it).
 
