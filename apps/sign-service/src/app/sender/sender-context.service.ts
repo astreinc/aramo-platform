@@ -4,7 +4,7 @@ import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
-import { SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import { SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_REPORTS_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -51,10 +51,13 @@ export interface SenderContextView {
     billing: boolean;
     // DOC-TEMPLATE-LIB-1 T-5 — document_template:read (start envelopes from templates).
     templates: boolean;
+    // Feature-Parity §1.13 — sign:report:read (organization reports; BUSINESS only).
+    reports: boolean;
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (sign.templates).
   // M-A5 §3.7 — sign.in_person_signing (hosted signing).
-  features: { templates: boolean; in_person_signing: boolean };
+  // Feature-Parity §1.13 — sign.reports (organization reports; BUSINESS only).
+  features: { templates: boolean; in_person_signing: boolean; reports: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
@@ -178,6 +181,7 @@ export class SenderContextService {
       // ROLES-1 PR-2 (§3.4) — sign:billing:manage only (the tenant_owner bundle).
       billing: business && scopes.has(ESIGN_SCOPE.BILLING_MANAGE),
       templates: scopes.has(DOCUMENT_TEMPLATE_READ_SCOPE),
+      reports: business && scopes.has(ESIGN_SCOPE.REPORT_READ),
     };
     const tenantBase = tenantHostBase(slug);
     // M-A8 §2.1 — the membership's roles are read for both kinds: org_admin (BUSINESS)
@@ -194,6 +198,8 @@ export class SenderContextService {
       features: {
         templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE),
         in_person_signing: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
+        // Feature-Parity §1.13 — plans B+: never true for a PERSONAL tenant.
+        reports: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_REPORTS_FEATURE),
       },
       can_send: (business || personalOpen) && permissions.create && permissions.send,
       personal_sending_enabled: personalOpen,

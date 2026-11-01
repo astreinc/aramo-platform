@@ -2055,6 +2055,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/reports/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organization reports — volume, turnaround, completion rate, by sender and by template.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive v1.0 §1.13 (basic reports). Totals, completion rate, turnaround and the breakdowns describe envelopes SENT in the range; the volume series counts each sent / completed / declined / voided event in the period it happened. Read-only, organization-wide. Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+         */
+        get: operations["getSenderReportsOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/reports/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One report table as CSV (summary, volume, senders or templates).
+         * @description The same figures as the overview, as an RFC 4180 CSV attachment (text cells that a spreadsheet would read as a formula are prefixed with an apostrophe). Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+         */
+        get: operations["exportSenderReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/reports/envelopes/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Envelope audit export (CSV) — envelopes created in the range, with status and timestamps.
+         * @description Columns envelope_id, subject, status, sender_id, sender_name, source_application, template_ref, created_at, sent_at, completed_at, declined_at, voided_at, recipients, signed, purge_state, purge_level, purge_executed_at. Never document contents, field values or recipient identities. A purged envelope's subject reads [purged] (metadata level and above) and a redacted envelope has no sender name. At most 10000 envelopes (400 VALIDATION_ERROR too_many_rows otherwise). Deleted drafts are excluded. Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+         */
+        get: operations["exportSenderEnvelopeAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/retention-policy": {
         parameters: {
             query?: never;
@@ -2249,6 +2309,55 @@ export interface components {
     schemas: {
         /** @enum {string} */
         SignPurgeLevel: "DOCUMENTS" | "DOCUMENTS_AND_METADATA" | "DOCUMENTS_AND_METADATA_AND_REDACT";
+        SignReportStats: {
+            sent: number;
+            completed: number;
+            declined: number;
+            voided: number;
+            expired: number;
+            /** @description Sent or in progress. */
+            in_flight: number;
+            /** @description Percent of the envelopes sent that completed (one decimal); null when none were sent. */
+            completion_rate: number | null;
+            turnaround_average_hours: number | null;
+            turnaround_median_hours: number | null;
+            turnaround_p90_hours: number | null;
+        };
+        SignReportsOverview: {
+            range: {
+                /** Format: date */
+                from: string;
+                /** Format: date */
+                to: string;
+                /** @enum {string} */
+                period: "day" | "week" | "month";
+                /** @enum {string} */
+                timezone: "UTC";
+            };
+            totals: components["schemas"]["SignReportStats"];
+            volume: {
+                /** Format: date */
+                period_start: string;
+                sent: number;
+                completed: number;
+                declined: number;
+                voided: number;
+            }[];
+            by_sender: (components["schemas"]["SignReportStats"] & {
+                /** Format: uuid */
+                sender_id: string;
+                sender_name: string | null;
+            })[];
+            by_template: (components["schemas"]["SignReportStats"] & {
+                /**
+                 * Format: uuid
+                 * @description null = envelopes not started from a template.
+                 */
+                template_ref: string | null;
+                /** @description Reserved for the template library; null until it is wired. */
+                template_name: string | null;
+            })[];
+        };
         SignRetentionPolicy: {
             /** @description null = keep forever (the default). */
             retention_days: number | null;
@@ -2581,12 +2690,16 @@ export interface components {
                 billing?: boolean;
                 /** @description DOC-TEMPLATE-LIB-1 T-5 — the session holds document_template:read (start envelopes from templates). */
                 templates?: boolean;
+                /** @description Feature-Parity §1.13 — the session holds sign:report:read in a BUSINESS tenant (organization reports). */
+                reports?: boolean;
             };
             /** @description DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability. templates = the sign.templates capability is available; while false every template route answers ESIGN_FEATURE_NOT_AVAILABLE (403). */
             features?: {
                 templates?: boolean;
                 /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available. */
                 in_person_signing?: boolean;
+                /** @description Feature-Parity §1.13 — the sign.reports capability is available for this BUSINESS tenant (always false for PERSONAL); while false every reports route answers ESIGN_FEATURE_NOT_AVAILABLE (403). */
+                reports?: boolean;
             };
             can_send: boolean;
             /** @description True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off). */
@@ -7005,6 +7118,95 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getSenderReportsOverview: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`. */
+                from?: string;
+                /** @description Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days. */
+                to?: string;
+                /** @description Volume series granularity (UTC; weeks start Monday). A daily series covers at most 366 days. */
+                period?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignReportsOverview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    exportSenderReport: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`. */
+                from?: string;
+                /** @description Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days. */
+                to?: string;
+                /** @description Volume series granularity (UTC; weeks start Monday). A daily series covers at most 366 days. */
+                period?: "day" | "week" | "month";
+                report?: "summary" | "volume" | "senders" | "templates";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    exportSenderEnvelopeAudit: {
+        parameters: {
+            query?: {
+                /** @description First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`. */
+                from?: string;
+                /** @description Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV attachment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
         };
     };
     getSenderRetentionPolicy: {
