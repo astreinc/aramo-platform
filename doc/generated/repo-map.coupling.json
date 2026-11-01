@@ -29599,6 +29599,36 @@
       "to": "libs/talent-embedding/prisma/migrations/20260930120000_init_talent_embedding/migration.sql"
     },
     {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
       "from": "doc/runbooks/run-layer.md",
       "status": "unscoped",
       "to": "doc/step4-deploy-substrate-recon.md"
@@ -29704,6 +29734,306 @@
       "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
       "status": "unscoped",
       "to": "libs/sign/src/lib/ports/evidence-manifest-signer.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/sign-metering-usage-recorder.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-seal/remote-hash-signing.provider.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-seal/seal-provider-profiles.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/identity-verification/sign-identity-verification.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/messaging-adapters.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/recipient-otp.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sender-messaging.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sign-messaging.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/stripe-connect-payment.provider.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/csc-qes-signing.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/estamp-adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/regulated-signing.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-context.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-envelope.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-reports.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-templates.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sign-feature.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/trusted-timestamp/rfc3161-tsa.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/guest/App.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/guest/sign-api.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/App.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/Settings.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/migrations/20261101130000_sign_tenant_branding/migration.sql"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/identity-gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/kba.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261101120000_sign_catalog_v2/migration.sql"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-command.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/provider-price.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/usage-meter.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog-apply.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-plan-create.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/sign-template-entitlement.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/metered-units.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-provider-report.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/legal-publication-readiness.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/api/generated/sign.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/config/env.ts"
     },
     {
       "from": "doc/runbooks/sign/incident-response-and-rollback.md",

@@ -13276,6 +13276,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-metering-usage-recorder.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13883,6 +13889,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-metering-usage-recorder.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
