@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
-import { SignApiError, signApi, type SignField, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
-import { FILLED_MARK, completionProblem, incompleteMessage, isBox, isChecked, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import { SignApiError, signApi, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
+import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isPayment, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -33,6 +33,10 @@ type Screen =
   | 'expired'
   | 'ended'
   | 'notyet'
+  | 'accesscode'
+  | 'locked'
+  | 'identity'
+  | 'idlocked'
   | 'network'
   | 'error';
 
@@ -44,6 +48,7 @@ const FIELD_LABEL: Record<string, string> = {
   TEXT: 'Text',
   CHECKBOX: 'Checkbox',
   ACKNOWLEDGEMENT: 'Acknowledgement',
+  PAYMENT: 'Payment',
 };
 const ACTION_LABEL: Record<string, string> = {
   SIGNATURE: 'Sign',
@@ -53,6 +58,7 @@ const ACTION_LABEL: Record<string, string> = {
   TEXT: 'Enter text',
   CHECKBOX: 'Check',
   ACKNOWLEDGEMENT: 'Acknowledge',
+  PAYMENT: 'Pay',
 };
 
 // M-A6 — a check box shows its caption; a server-filled name says where it is from.
@@ -82,7 +88,27 @@ function ReportLink({ token, className }: { readonly token?: string; readonly cl
   );
 }
 
+// Sign 1.14 — Stripe returns the payer to /s/payment-return?field=…&payment=success|cancel.
+// The signing token never goes to Stripe: it is kept in this tab while the payer is away.
+const PAYMENT_RETURN_PATH = '/s/payment-return';
+const PAYMENT_TOKEN_KEY = 'aramo-sign-payment-token';
+
+function paymentReturn(): { field_id: string } | null {
+  if (window.location.pathname !== PAYMENT_RETURN_PATH) return null;
+  const field_id = new URLSearchParams(window.location.search).get('field');
+  return field_id !== null && field_id.length > 0 ? { field_id } : null;
+}
+
+function storedPaymentToken(): string {
+  try {
+    return window.sessionStorage.getItem(PAYMENT_TOKEN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 function tokenFromLocation(): string {
+  if (window.location.pathname === PAYMENT_RETURN_PATH) return storedPaymentToken();
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -108,6 +134,12 @@ function screenForError(e: unknown): Screen {
     if (e.code === 'ENVELOPE_ALREADY_EXECUTED') return 'ended';
     // Multi-Signer §4 — signing in order: an earlier signer has not signed yet.
     if (e.code === 'SIGNER_NOT_YET_ELIGIBLE') return 'notyet';
+    // Feature-Parity §1.9 — the sender set an access code for this recipient.
+    if (e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'accesscode';
+    if (e.code === 'SIGNER_ACCESS_CODE_LOCKED') return 'locked';
+    // Feature-Parity §1.9 — the sender asked this recipient to verify their identity.
+    if (e.code === 'SIGNER_IDENTITY_VERIFICATION_REQUIRED') return 'identity';
+    if (e.code === 'SIGNER_IDENTITY_VERIFICATION_LOCKED') return 'idlocked';
     if (e.code === 'NETWORK') return 'network';
   }
   return 'error';
@@ -162,6 +194,52 @@ export function base64ToBlobUrl(b64: string, type: string): string {
   return URL.createObjectURL(new Blob([bytes], { type }));
 }
 
+// ── Branding (Feature-Parity §1.10): the sending organization's logo, colours and name, or
+// the Aramo Sign look (null). Fetched once per page; any failure keeps the default look. ──
+const SignerBrandingContext = createContext<SignerBranding | null>(null);
+
+const HEX = /^#[0-9A-Fa-f]{6}$/;
+const SAME_ORIGIN_LOGO = /^\/v1\/sign\/signing\/brand-logo\/[0-9a-fA-F-]{36}$/;
+
+/** The branding to apply: only well-formed colours and a same-origin logo path survive. */
+export function safeBranding(b: SignerBranding | null | undefined): SignerBranding | null {
+  if (b == null) return null;
+  return {
+    display_name: typeof b.display_name === 'string' && b.display_name.trim() !== '' ? b.display_name.trim() : null,
+    primary_color: typeof b.primary_color === 'string' && HEX.test(b.primary_color) ? b.primary_color : null,
+    accent_color: typeof b.accent_color === 'string' && HEX.test(b.accent_color) ? b.accent_color : null,
+    logo_url: typeof b.logo_url === 'string' && SAME_ORIGIN_LOGO.test(b.logo_url) ? b.logo_url : null,
+  };
+}
+
+function useSignerBranding(token: string): SignerBranding | null {
+  const [branding, setBranding] = useState<SignerBranding | null>(null);
+  useEffect(() => {
+    if (token.length === 0) return;
+    let live = true;
+    signApi
+      .branding(token)
+      .then((b) => {
+        if (live) setBranding(safeBranding(b));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token]);
+  useEffect(() => {
+    const root = document.documentElement.style;
+    if (branding?.primary_color == null) return;
+    root.setProperty('--sg-accent', branding.primary_color);
+    root.setProperty('--sg-accent-hover', branding.accent_color ?? branding.primary_color);
+    return () => {
+      root.removeProperty('--sg-accent');
+      root.removeProperty('--sg-accent-hover');
+    };
+  }, [branding]);
+  return branding;
+}
+
 // ── Header: brand + security note; in the workspace also the subject, progress,
 // Help and Decline. Never any navigation into an Aramo app. ──
 export function Header({
@@ -177,15 +255,20 @@ export function Header({
   readonly reportToken?: string;
 }) {
   const [help, setHelp] = useState(false);
+  const brand = useContext(SignerBrandingContext);
   return (
     <header className="sg-head">
-      <span className="sg-mark" aria-hidden="true">
-        S
-      </span>
+      {brand?.logo_url ? (
+        <img className="sg-logo" src={brand.logo_url} alt={brand.display_name ?? 'Sender logo'} data-testid="sg-brand-logo" />
+      ) : (
+        <span className="sg-mark" aria-hidden="true">
+          {brand?.display_name ? brand.display_name.charAt(0).toUpperCase() : 'S'}
+        </span>
+      )}
       <span className="sg-head__text">
-        <span className="sg-head__title">{title ?? 'Aramo Sign'}</span>
+        <span className="sg-head__title">{title ?? brand?.display_name ?? 'Aramo Sign'}</span>
         <span className="sg-head__sub">
-          <LockIcon /> Secured by Aramo Sign{progress ? ` · ${progress}` : ''}
+          <LockIcon /> {brand?.display_name && title ? `${brand.display_name} · ` : ''}Secured by Aramo Sign{progress ? ` · ${progress}` : ''}
         </span>
       </span>
       <span className="sg-head__grow" />
@@ -434,6 +517,44 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
   );
 }
 
+// Feature-Parity §1.9 — the recipient enters the access code the sender gave them
+// before anything of the document is shown. The code is sent once and never kept.
+function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Promise<'ok' | 'incorrect'> }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [wrong, setWrong] = useState(false);
+  return (
+    <main className="sg-center">
+      <div className="sg-card" data-testid="sg-access-code">
+        <h1>Enter the access code</h1>
+        <p className="sg-muted">The sender protected this document with an access code. They will have given it to you separately.</p>
+        <label className="sg-label">
+          Access code
+          <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label="Access code" autoComplete="off" />
+        </label>
+        {wrong ? (
+          <p className="sg-error" role="alert">
+            That code isn&apos;t right. Check it and try again.
+          </p>
+        ) : null}
+        <Btn
+          className="sg-btn--block"
+          disabled={code.trim().length === 0 || busy}
+          onClick={() => {
+            setBusy(true);
+            void onSubmit(code).then((r) => {
+              setWrong(r === 'incorrect');
+              setBusy(false);
+            });
+          }}
+        >
+          Continue
+        </Btn>
+      </div>
+    </main>
+  );
+}
+
 // ── End-state screens: plain language, no link into any Aramo app ──
 export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
   return (
@@ -449,6 +570,15 @@ export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' 
 
 export function App(): JSX.Element {
   const [token] = useState<string>(tokenFromLocation);
+  const branding = useSignerBranding(token);
+  return (
+    <SignerBrandingContext.Provider value={branding}>
+      <SignerApp token={token} />
+    </SignerBrandingContext.Provider>
+  );
+}
+
+function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
@@ -469,6 +599,8 @@ export function App(): JSX.Element {
   const [allSigned, setAllSigned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
+  // Sign 1.14 — the workspace loader, for the payment return (declared below).
+  const loadWorkspaceRef = useRef<() => Promise<void>>(async () => undefined);
 
   const fail = useCallback((e: unknown) => setScreen(screenForError(e)), []);
   const onRenderError = useCallback(() => setRenderFailed(true), []);
@@ -476,11 +608,24 @@ export function App(): JSX.Element {
   const open = useCallback(() => {
     if (token.length === 0) return;
     setScreen('loading');
+    const back = paymentReturn();
     signApi
       .exchange(token)
       .then(() => signApi.disclosureText(token))
-      .then((d) => {
+      .then(async (d) => {
         setDisclosure(d);
+        // Sign 1.14 — back from Stripe: confirm the payment (the server reads it from
+        // Stripe), then return to the document (the disclosure was already accepted).
+        if (back !== null) {
+          try {
+            const r = await signApi.confirmPayment(token, back.field_id);
+            await loadWorkspaceRef.current();
+            if (r.status !== 'PAID') setNotice('The payment was not completed. You can pay again from the payment field.');
+            return;
+          } catch {
+            // Fall back to the start of the signing flow.
+          }
+        }
         setScreen('landing');
       })
       .catch(fail);
@@ -526,6 +671,48 @@ export function App(): JSX.Element {
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
     setScreen('workspace');
   };
+
+  // Feature-Parity §1.9 — open the verification vendor's page in a new tab; on return the
+  // recipient continues here and the document opens once the check has passed.
+  const [idMessage, setIdMessage] = useState<string | null>(null);
+  const startIdentityCheck = async () => {
+    setBusy(true);
+    setIdMessage(null);
+    try {
+      const r = await signApi.identityStart(token);
+      if (r.state === 'VERIFIED') return await loadWorkspace();
+      if (typeof r.verification_url === 'string' && r.verification_url.length > 0) {
+        window.open(r.verification_url, '_blank', 'noopener');
+        setIdMessage('Finish the check in the new tab, then come back and select Continue.');
+      } else setIdMessage('Your check is being processed. Select Continue in a moment.');
+    } catch (e) {
+      if (e instanceof SignApiError && e.code === 'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE') setIdMessage('Identity checks are not available right now. Try again later.');
+      else fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const continueAfterIdentityCheck = async () => {
+    setBusy(true);
+    setIdMessage(null);
+    try {
+      const r = await signApi.identityStatus(token);
+      if (r.state === 'VERIFIED') await loadWorkspace();
+      else if (r.state === 'LOCKED') setScreen('idlocked');
+      else if (r.state === 'PENDING') setIdMessage('Your check is not finished yet. Complete it in the other tab, or wait a moment and try again.');
+      else
+        setIdMessage(
+          r.last_failure !== null
+            ? `That check did not pass (${r.last_failure.replace(/_/g, ' ')}). ${r.attempts_remaining ?? 0} attempt(s) left.`
+            : 'Start the identity check to continue.',
+        );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  loadWorkspaceRef.current = loadWorkspace;
 
   const acceptAndContinue = async () => {
     setBusy(true);
@@ -583,6 +770,12 @@ export function App(): JSX.Element {
     const done = filled[f.field_id] !== undefined;
     // M-A6 §2.2 — the server fills this name; the page never sends one.
     if (isServerName(f)) return;
+    // Sign 1.14 — a payment is made on Stripe's hosted page (never on this page).
+    if (isPayment(f)) {
+      if (done) return;
+      void pay(f);
+      return;
+    }
     if (t === 'SIGNATURE' || t === 'INITIALS') {
       const a = adopted[t];
       if (a && !done) void fill(f, a.value, a.method);
@@ -605,9 +798,41 @@ export function App(): JSX.Element {
     }
     await fill(f, 'true');
   };
-  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f);
+  // Sign 1.14 — send the payer to Stripe's hosted Checkout (the organization's own Stripe
+  // account). The token stays in this tab for the return; it is never sent to Stripe.
+  const pay = async (f: SignField) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await signApi.startPayment(token, f.field_id);
+      if (r.status === 'PAID') {
+        await loadWorkspace();
+        return;
+      }
+      try {
+        window.sessionStorage.setItem(PAYMENT_TOKEN_KEY, token);
+      } catch {
+        setNotice('Your browser blocked the payment page. Allow site storage for this page and try again.');
+        return;
+      }
+      window.location.assign(r.checkout_url);
+    } catch (e) {
+      const s = screenForError(e);
+      if (e instanceof SignApiError && (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' || e.reason === 'payments_account_not_ready')) {
+        setNotice('The sender cannot take payments right now. Contact the sender.');
+      } else if (s === 'error' || s === 'network') setNotice('The payment page could not be opened. Try again in a moment.');
+      else setScreen(s);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f) && !isPayment(f);
   const statusOf = (f: SignField): string => {
     if (isServerName(f)) return 'From the signing request';
+    if (isPayment(f)) {
+      const amount = f.payment ? formatAmount(f.payment.amount_minor, f.payment.currency) : '';
+      return filled[f.field_id] !== undefined ? `Paid ${amount}` : `Payment required · ${amount}`;
+    }
     if (isBox(f)) return isChecked(filled[f.field_id]) ? 'Checked' : 'Not checked';
     return filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped';
   };
@@ -635,6 +860,18 @@ export function App(): JSX.Element {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitAccessCode = async (code: string): Promise<'ok' | 'incorrect'> => {
+    try {
+      await signApi.accessCode(token, code);
+      open();
+      return 'ok';
+    } catch (e) {
+      if (e instanceof SignApiError && e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'incorrect';
+      fail(e);
+      return 'ok';
     }
   };
 
@@ -693,6 +930,49 @@ export function App(): JSX.Element {
           title="It's not your turn to sign yet"
           body="This document is signed in a set order, and someone before you hasn't signed yet. We'll email you a new link as soon as it's your turn."
         />
+      </>
+    );
+  if (screen === 'accesscode')
+    return (
+      <>
+        <Header reportToken={token} />
+        <AccessCodeCard onSubmit={submitAccessCode} />
+      </>
+    );
+  if (screen === 'locked')
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="error" title="Too many incorrect access codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
+      </>
+    );
+  if (screen === 'idlocked')
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="muted" title="We couldn't verify your identity" body="The sender has been told and may send you a new request. You can close this page." />
+      </>
+    );
+  if (screen === 'identity')
+    return (
+      <>
+        <Header reportToken={token} />
+        <main className="sg-center">
+          <div className="sg-card" data-testid="sg-identity">
+            <div className="sg-eyebrow">Identity check</div>
+            <h1>Verify your identity to open this document</h1>
+            <p className="sg-muted">
+              The sender asked you to confirm who you are with a photo ID. Our verification partner checks the ID; Aramo Sign keeps only the result, never the ID itself.
+            </p>
+            {idMessage !== null && <p role="status">{idMessage}</p>}
+            <Btn className="sg-btn--block" onClick={() => void startIdentityCheck()} disabled={busy}>
+              Verify my identity
+            </Btn>
+            <Btn variant="quiet" className="sg-btn--block" onClick={() => void continueAfterIdentityCheck()} disabled={busy}>
+              Continue
+            </Btn>
+          </div>
+        </main>
       </>
     );
   if (screen === 'declined')

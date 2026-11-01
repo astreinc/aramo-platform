@@ -14,7 +14,9 @@ import {
   EsignService,
   type IssuedSession,
   type ReminderLimits,
+  SIGNER_LINK_MESSAGING_PORT,
   SIGNING_NOTIFICATION_PORT,
+  type SignerLinkMessagingPort,
   type SigningNotificationPort,
   signBaseUrl,
   signingRecipients,
@@ -41,7 +43,16 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
     // Aramo Sign launch — delivery records + void/decline/expiry notifications.
     @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
+    // Feature-Parity §1.7 / §1.8 — the same link also by SMS / WhatsApp when the sender chose
+    // it for the recipient. Unbound = email only. Never fails the send or the reminder.
+    @Optional() @Inject(SIGNER_LINK_MESSAGING_PORT) private readonly messaging?: SignerLinkMessagingPort,
   ) {}
+
+  private async messageLink(tenant_id: string, envelope_id: string, signer_id: string, purpose: 'INVITATION' | 'REMINDER', signing_url: string): Promise<void> {
+    await this.messaging?.deliverSigningLink({ tenant_id, envelope_id, signer_id, purpose, signing_url }).catch((err: unknown) => {
+      this.logger.warn(`${purpose} message channel failed — envelope ${envelope_id} signer ${signer_id}: ${(err as Error).message}`);
+    });
+  }
 
   private async summarize(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
@@ -149,6 +160,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           this.logger.warn(`SIGNATURE_REQUEST reported not delivered — envelope ${envelope_id} signer ${signer.id}`);
         }
         await this.recordRequest(tenant_id, envelope_id, signer.id, result.delivered ? { ok: true } : { ok: false, error: 'provider reported not delivered' });
+        await this.messageLink(tenant_id, envelope_id, signer.id, 'INVITATION', signing_url);
       } catch (err) {
         // A delivery-provider failure is a RETRYABLE condition, not envelope
         // corruption. Surface it explicitly (never the token/url).
@@ -260,6 +272,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           status: result.delivered ? 'SENT' : 'FAILED',
           last_error: result.delivered ? null : 'provider reported not delivered',
         });
+        await this.messageLink(tenant_id, envelope_id, signer.id, 'REMINDER', signing_url);
       } catch (err) {
         this.logger.warn(`SIGNATURE_REMINDER delivery failed — envelope ${envelope_id} signer ${signer.id}: ${(err as Error).message}`);
         await this.repo.recordNotificationDelivery({
@@ -277,6 +290,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   async getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const signed = await this.service.evidenceManifest(tenant_id, envelope_id);
+    // Feature-Parity §1.18 — the RFC 3161 timestamps, only when any were recorded.
+    const timestamps = await this.service.trustedTimestampsFor(tenant_id, envelope_id);
     return {
       envelope_id,
       status: env.status,
@@ -284,6 +299,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       signature: signed.signature,
       signature_algorithm: signed.signature_algorithm,
       completed_at: signed.manifest.completed_at,
+      ...(timestamps.length > 0 ? { trusted_timestamps: timestamps } : {}),
     };
   }
 

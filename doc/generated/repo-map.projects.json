@@ -1040,6 +1040,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "BILLING_REGION_US",
+      "BUSINESS_OWNER_ROLE_KEYS",
       "CognitoIdentityRetirement",
       "CursorDecodeError",
       "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
@@ -1115,6 +1116,7 @@
       "PERSONAL_SIGNUP_TTL_MS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PERSONAL_UNBOUND_LAPSE_DAYS",
+      "PERSONAL_UPGRADE_AUDIT_SOURCE",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRIVACY_OUTCOME_TEXT_MAX",
@@ -1122,6 +1124,7 @@
       "PRODUCT_KEYS",
       "PersonalRiskService",
       "PersonalSignupRepository",
+      "PersonalUpgradeRepository",
       "PrismaService",
       "PrivacyRequestService",
       "PrivacySubjectService",
@@ -1138,11 +1141,16 @@
       "SEE_ALL_ROLE_KEYS",
       "SEND_LOCATION_YOUNG_ACCOUNT_DAYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_CUSTOM_ROLES_PER_TENANT_MAX",
+      "SIGN_CUSTOM_ROLE_COMPOSABLE_SCOPES",
+      "SIGN_CUSTOM_ROLE_DESCRIPTION_MAX",
+      "SIGN_CUSTOM_ROLE_NAME_MAX",
       "SIGN_NATIVE_SESSION_CONSUMER",
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SMS_VERIFICATION_PORT",
+      "SignCustomRoleService",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
@@ -1170,8 +1178,10 @@
       "bumpPrincipalVersion",
       "bumpPrincipalsWithRoleVersion",
       "canonicalEmailForDuplicates",
+      "checkCustomRoleScopes",
       "checkPersonalOtp",
       "cognitoCreateUserAttributes",
+      "composableScopesOf",
       "decisionForPoints",
       "decodeCursor",
       "decryptPrivacyEmail",
@@ -1195,6 +1205,7 @@
       "hashPersonalOtp",
       "identityRetirementFromEnv",
       "initialRiskState",
+      "isComposableSignScope",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
       "isHolderIndexViolation",
@@ -1211,6 +1222,7 @@
       "mayResendPersonalOtp",
       "mmdbVersion",
       "normalizeClaimDomain",
+      "normalizeCustomRoleText",
       "normalizeE164",
       "normalizeEmail",
       "normalizeIdp",
@@ -1230,6 +1242,7 @@
       "retiredEmailTombstone",
       "robotCheckAdapterFromEnv",
       "safeGeoLookup",
+      "scopesActorLacks",
       "sendLocation",
       "signEntryActivated",
       "signEntryUrl",
@@ -2113,8 +2126,17 @@
       "ABUSE_REPORT_NOTE_MAX",
       "ABUSE_REPORT_OUTCOMES",
       "ABUSE_REPORT_REASONS",
+      "ACCESS_CODE_FAILED_EVENT",
+      "ACCESS_CODE_LOCKED_EVENT",
+      "ACCESS_CODE_MAX_LENGTH",
+      "ACCESS_CODE_MIN_LENGTH",
+      "ACCESS_CODE_VERIFIED_EVENT",
       "AbuseReportService",
       "AttestedNameRequiredError",
+      "BRANDING_DISPLAY_NAME_MAX",
+      "BRANDING_LOGO_MAX_BYTES",
+      "BRANDING_LOGO_MAX_PIXELS",
+      "BRANDING_LOGO_MIN_PIXELS",
       "CHECKBOX_GROUP_RULES",
       "COPY_DELIVERIES",
       "COPY_DELIVERY_ISSUED_EVENT",
@@ -2123,14 +2145,27 @@
       "DEFAULT_SIGN_BASE_URL",
       "DELETED_DRAFT_SUBJECT",
       "DISCLOSURE_V2_TEXT",
+      "DOCUMENT_SEAL_SIGNING_PROVIDER",
+      "DOCUMENT_SEAL_TIMESTAMP_SOURCE",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
+      "DelegationRefusedError",
+      "DisabledEstampAdapter",
+      "DisabledIdentityVerificationAdapter",
+      "DisabledKbaAdapter",
+      "DisabledQesSigningAdapter",
       "DisclosureNotAcceptedError",
       "DisclosureVersionInvalidError",
+      "DocumentSealCmsError",
+      "DocumentSealPdfError",
+      "DocumentSealService",
       "ENVELOPE_NOTIFICATION_SERVICE",
       "ENVELOPE_TTL_DAYS_DEFAULT",
       "ESIGN_LIFECYCLE_EVENT_VERSION",
       "ESIGN_SCHEMA",
+      "ESTAMP_EVENT",
+      "ESTAMP_PORT",
+      "ESTAMP_STATES",
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
       "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
@@ -2138,6 +2173,7 @@
       "EXECUTED_ARTIFACT_CUSTODY_PORT",
       "EXECUTED_ARTIFACT_INTEGRITY_CONFLICT",
       "EXECUTED_DOCUMENT_RECORDED",
+      "EXECUTED_DOCUMENT_SEALED",
       "EXECUTION_CERTIFICATE_RECORDED",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
@@ -2151,19 +2187,49 @@
       "EsignRepository",
       "EsignSenderRepository",
       "EsignService",
+      "EstampProviderNotConfiguredError",
+      "EstampWorkflowService",
       "ExecutedArtifactIntegrityConflictError",
       "ExecutedArtifactLedgerMismatchError",
       "ExecutionService",
       "HOSTED_SESSION_STARTED_EVENT",
       "HOSTED_SESSION_TTL_MS",
+      "IDENTITY_VERIFICATION_CANCELLED_EVENT",
+      "IDENTITY_VERIFICATION_FAILED_EVENT",
+      "IDENTITY_VERIFICATION_LOCKED_EVENT",
+      "IDENTITY_VERIFICATION_METHODS",
+      "IDENTITY_VERIFICATION_PORT",
+      "IDENTITY_VERIFICATION_STARTED_EVENT",
+      "IDENTITY_VERIFIED_EVENT",
+      "ID_VERIFICATION_MAX_ATTEMPTS_DEFAULT",
+      "INDIA_STATE_CODES",
       "IdempotencyKeyReuseError",
       "IdempotencyRequestInProgressError",
+      "IdentityVerificationService",
+      "IdentityVerificationUnavailableError",
+      "IdentityVerificationWebhookSignatureError",
       "InboxSigningRefusedError",
+      "KBA_PORT",
       "KMS_SIGNATURE_ALGORITHM_PREFIX",
+      "KbaUnavailableError",
       "LocalEventPublisher",
+      "MAX_ACCESS_CODE_ATTEMPTS",
       "MAX_COPY_RECIPIENTS",
+      "MAX_SEAL_ATTEMPTS",
+      "MESSAGING_CHANNELS",
+      "NoopSignUsageRecorder",
+      "OID_SHA256",
+      "OUTBOUND_MESSAGING_PORT",
       "OutboxDeliveryService",
       "OutboxService",
+      "PAYMENT_CHECKOUT_STARTED",
+      "PAYMENT_FAILED",
+      "PAYMENT_FIELD_TYPE",
+      "PAYMENT_LEDGER_EVENT_TYPES",
+      "PAYMENT_REFUNDED",
+      "PAYMENT_REFUND_FAILED",
+      "PAYMENT_REFUND_REQUESTED",
+      "PAYMENT_SUCCEEDED",
       "PII_PAYLOAD_KEYS",
       "PURGED_EVENT",
       "PURGE_DEQUEUED_EVENT",
@@ -2171,21 +2237,38 @@
       "PURGE_LEVELS",
       "PURGE_QUEUED_EVENT",
       "PURGE_QUEUE_DAYS",
+      "PaymentProviderRefusedError",
+      "PaymentProviderUnavailableError",
+      "PaymentWebhookSignatureError",
       "PrismaService",
       "PrismaSignerAttestedNameAdapter",
+      "QES_EVENT",
+      "QES_HASH_ALGORITHM_SHA256_OID",
+      "QES_SIGNATURE_LEVELS",
+      "QES_SIGNING_PORT",
+      "QES_STATES",
+      "QesProviderError",
+      "QesProviderNotConfiguredError",
+      "QesWorkflowService",
       "RECIPIENT_COPY_TTL_MS",
       "RECIPIENT_INBOX_SESSION_EVENT",
       "RECIPIENT_KINDS",
       "RECIPIENT_SESSION_TTL_MS",
       "RETENTION_DAYS_MAX",
       "RETENTION_DAYS_MIN",
+      "RSA_SHA256_SIGNATURE_OID",
       "RecipientInboxRepository",
+      "RegulatedSigningStateError",
+      "RegulatedSigningValidationError",
       "ReminderLimitError",
       "ReminderNotAllowedError",
+      "Rfc3161Error",
       "SELF_SIGN_SESSION_ISSUED_EVENT",
       "SELF_SIGN_SESSION_TTL_MS",
       "SENDER_DIRECTORY_PORT",
       "SIGNER_ATTESTED_NAME_PORT",
+      "SIGNER_DELEGATED_EVENT",
+      "SIGNER_LINK_MESSAGING_PORT",
       "SIGNER_NAME_MODES",
       "SIGNING_INVITATION_MAX_ATTEMPTS",
       "SIGNING_NOTIFICATION_PORT",
@@ -2193,37 +2276,62 @@
       "SIGNING_RECIPIENT_WHERE",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
+      "SIGN_BRANDING_PORT",
       "SIGN_ENVELOPE_PURGE_EVENT_TYPE",
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
+      "SIGN_ID_VERIFICATION_ATTEMPT_METER",
+      "SIGN_KBA_ATTEMPT_METER",
+      "SIGN_PAYMENT_PROVIDER_PORT",
       "SIGN_REMINDER_LIMITS",
+      "SIGN_USAGE_RECORDER_PORT",
       "STORAGE_ACCOUNTING_PORT",
+      "STRIPE_IDENTITY_API_VERSION",
       "SenderFieldPassthroughRefusedError",
       "SessionIssueRefusedError",
       "SignArtifactCustodyRepository",
+      "SignBrandingRepository",
       "SignContactDuplicateError",
       "SignContactRepository",
       "SignIdempotencyRepository",
       "SignIntegrationRepository",
+      "SignMessagingRepository",
+      "SignPaymentRepository",
+      "SignPaymentStateError",
       "SignPurgeRepository",
+      "SignReportRepository",
       "SignSavedSignatureRepository",
+      "SignUsageMeterRecorderPort",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
       "SignatureFieldValueRefusedError",
+      "SignerAccessCodeLockedError",
+      "SignerAccessCodeRequiredError",
+      "SignerIdentityVerificationLockedError",
+      "SignerIdentityVerificationRequiredError",
       "SignerNotFoundError",
       "SignerNotYetEligibleError",
       "SigningInvitationService",
       "SigningSessionExpiredError",
       "SigningSessionInvalidError",
       "SoftwareEvidenceManifestSigner",
+      "StripeIdentityAdapter",
+      "TRUSTED_TIMESTAMP_PORT",
+      "TrustedTimestampService",
       "WEBHOOK_DELIVERY_PORT",
+      "WITNESS_ATTESTED_EVENT",
       "abuseReportConfig",
       "abuseReporterKey",
       "allSigningRecipientsSigned",
       "applyReminderLimits",
+      "assertIdentityVerificationCleared",
+      "assertQesSatisfied",
       "backoffMs",
+      "buildTimeStampRequest",
       "canonicalEvidenceManifestBytes",
       "canonicalSignEventType",
+      "certificateChainSha256",
+      "certificateFacts",
       "computeEventHash",
       "contactEmailKey",
       "copyRecipients",
@@ -2233,33 +2341,67 @@
       "emailDomainOf",
       "envelopeExpiresAt",
       "envelopeReminderAvailableAt",
+      "estampView",
       "evaluateSignerFieldRules",
       "findDisclosure",
+      "formatPaymentAmount",
       "generateSigningToken",
+      "hashAccessCode",
       "hashSigningToken",
+      "idVerificationMaxAttempts",
       "idempotencyRequestHash",
+      "identityVerificationProviderFromEnv",
+      "identityVerificationReturnUrl",
       "invitedAtSend",
       "isAbuseReportReason",
       "isCopyRecipient",
       "isKmsEvidenceSigningAlgorithm",
       "isLinkSigner",
+      "isParsableChain",
+      "isPaymentField",
       "isPurgeLevel",
       "isServerFilledName",
       "isSigningRecipient",
+      "isWitness",
+      "kbaProviderFromEnv",
       "kmsEvidenceAlgorithmHash",
       "listDisclosures",
       "mayActNow",
+      "nameTokens",
       "nextReminderAt",
+      "nonceValue",
+      "normalizeAccessCode",
+      "normalizeBrandColor",
+      "normalizeDisplayName",
+      "parseEstampRequest",
+      "paymentReceiptText",
+      "pendingWitnessesOf",
       "purgeStateFor",
+      "qesSigningDigest",
+      "qesView",
+      "readableTextOn",
       "recipientKindOf",
       "reminderHistory",
+      "sealPdf",
+      "sealedPdfBytes",
       "signBaseUrl",
+      "signatureFromVendorCms",
+      "signerCertificateSummary",
       "signingRecipients",
       "signingSessionExpiresAt",
+      "sniffBrandingImage",
+      "stripeIdentityResult",
       "toLifecycleEvent",
+      "validateBrandingLogo",
+      "verifiedNameMatches",
+      "verifyAccessCode",
       "verifyEventChain",
       "verifyKmsEvidenceSignatureWithPublicKey",
-      "weighReport"
+      "verifyQesSignature",
+      "verifyStripeIdentitySignature",
+      "verifyTimeStampResponse",
+      "weighReport",
+      "witnessReady"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -2525,10 +2667,7 @@
       "LegalChangeNoticeRefusedError",
       "LegalChangeNoticeRepository",
       "LegalChangeNoticeService",
-      "METERED_UNIT_KEYS",
-      "METERED_USAGE_OPTIONS",
       "MONETARY_ACTION_TYPES",
-      "MeteredUsageService",
       "OBLIGATION_PAYMENT_STATUSES",
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "OUTSTANDING_STATUSES",
@@ -2545,7 +2684,18 @@
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PIN_REASON_CHANGE_REQUEST",
       "PIN_REASON_PROVIDER_PLAN_CHANGE",
+      "PLAN_CREATE_ALLOWANCE_PERIOD",
+      "PLAN_CREATE_BILLING_INTERVAL",
+      "PLAN_CREATE_CURRENCY",
+      "PLAN_CREATE_LIMITS",
+      "PLAN_CREATE_MAX_DISPLAY_ORDER",
+      "PLAN_CREATE_OPEN",
+      "PLAN_CREATE_PAYLOAD_KEYS",
+      "PLAN_CREATE_SALES_MODELS",
+      "PLAN_CREATE_TENANT_KINDS",
       "PLAN_ELIGIBILITY_PORT",
+      "PLAN_KEY_PATTERN",
+      "PLAN_KEY_TAKEN",
       "PLAN_VERSION_CONTENT_FORMAT",
       "PLAN_VERSION_ID_REQUIRED",
       "PLAN_VERSION_STATUSES",
@@ -2600,7 +2750,6 @@
       "SELF_SERVICE_PRODUCTS",
       "SELF_SERVICE_PRODUCT_REGISTRY",
       "SIGN_PRODUCT_KEY",
-      "SIGN_USAGE_BILLING_FLAG",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
       "STRIPE_READ_ADAPTER_METHODS",
@@ -2610,6 +2759,7 @@
       "SUPPORT_EXTENSION_SCOPE",
       "SelfServiceBillingService",
       "SelfServiceRefusedError",
+      "SignTemplateEntitlementService",
       "StaticUpcomingLegalChangeSource",
       "StripeBillingProvider",
       "StripeBillingReadAdapter",
@@ -2622,21 +2772,12 @@
       "TENANT_AMOUNT_KEYS",
       "UPCOMING_LEGAL_CHANGES",
       "UPCOMING_LEGAL_CHANGE_SOURCE",
-      "USAGE_MAX_AGE_MS",
-      "USAGE_MAX_FUTURE_MS",
-      "USAGE_MAX_QUANTITY",
-      "USAGE_METER_REPORT_PORT",
       "USAGE_METRICS",
       "USAGE_METRIC_SOURCES",
       "USAGE_PERIODS_DEFAULT_LIMIT",
       "USAGE_PERIODS_MAX_LIMIT",
       "USAGE_RECONCILIATION_MISMATCH_LIMIT",
-      "USAGE_RECORDER",
-      "USAGE_REPORT_BATCH",
-      "USAGE_REPORT_LEASE_MS",
-      "USAGE_REPORT_MAX_ATTEMPTS",
       "USAGE_ROLLUP_LOCK_KEY",
-      "UsageProviderReportService",
       "UsageRollupService",
       "accountingPeriodOf",
       "activatePolicyVersionInTx",
@@ -2721,7 +2862,6 @@
       "isFinancialRequestAction",
       "isGovernedSubscription",
       "isIanaTimeZone",
-      "isMeteredUnitKey",
       "isPlatformLastOwnerViolation",
       "isProductKey",
       "isWithinPastDueGrace",
@@ -2749,7 +2889,11 @@
       "paymentTermsErrors",
       "personalCheckoutDisclosure",
       "personalSignupMode",
+      "planCreateAvailableKeys",
+      "planCreateContent",
+      "planCreatePayloadErrors",
       "planMatchesTenantKind",
+      "planRowOf",
       "planVersionChecksum",
       "planVersionContentFromRows",
       "planVersionTerms",
@@ -2757,7 +2901,6 @@
       "postTerminationExportDays",
       "priceFigure",
       "productOfMeteredKey",
-      "productOfMeteredUnit",
       "projectApprovalNotes",
       "projectChangeRequestFinance",
       "readPlatformSubject",
@@ -2790,14 +2933,10 @@
       "thresholdOf",
       "unlinkedReceipts",
       "upcomingLegalNotices",
-      "usageBillingEnabled",
       "usageMetricOf",
       "usageMetricsOf",
-      "usageReportBackoffMs",
       "validateContractBlocks",
       "validatePayload",
-      "validateRecordInput",
-      "validateUsageInput",
       "verifyStripeSignature",
       "withholdAuditPayloadAmounts",
       "withholdChangeRequestAmounts",
@@ -4142,6 +4281,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-reports.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4149,6 +4294,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -4185,6 +4336,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -4910,6 +5067,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -6923,6 +7086,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/sign-custom-role.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/tenant-profile.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -7710,6 +7879,12 @@
       { "project": "settings", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/envelope-contracts.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -7776,6 +7951,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/qes-estamp-schema.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/qes-estamp-workflow.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/sender-workspace.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -7789,6 +7976,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/signer-field-rules.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/trusted-timestamp.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/witness-delegate-access-code.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
@@ -7854,6 +8053,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7878,6 +8083,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7891,6 +8108,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7932,6 +8155,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-reports.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention-controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7957,6 +8186,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8308,6 +8543,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-plan-create.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -8357,12 +8598,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/sign-personal-paid-checkout.integration.spec.ts",
-        "project": "subscription",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/subscription/src/tests/sign-usage-metering.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9134,6 +9369,18 @@
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/certificate-branding.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -9147,6 +9394,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/trusted-timestamp.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
@@ -10358,6 +10611,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/AccountUpgrade.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -10394,7 +10653,7 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/sign-web/src/workspace/pages/UsageCharges.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Reports.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -11009,6 +11268,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -11028,6 +11299,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12791,6 +13068,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12887,6 +13170,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/regulated-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/rfc3161-tsa.adapter.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12911,6 +13206,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12918,6 +13219,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12959,6 +13266,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-payments.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12977,6 +13290,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-reports.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12990,6 +13309,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13433,7 +13758,61 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/regulated-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/rfc3161-tsa.adapter.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-reports.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13451,7 +13830,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

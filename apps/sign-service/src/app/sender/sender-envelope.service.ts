@@ -40,15 +40,36 @@ import {
   type SignerNameMode,
   SenderFieldPassthroughRefusedError,
   SignPurgeRepository,
+  hashAccessCode,
+  normalizeAccessCode,
+  ACCESS_CODE_MIN_LENGTH,
+  ACCESS_CODE_MAX_LENGTH,
+  isWitness,
+  witnessReady,
+  IDENTITY_VERIFICATION_METHODS,
+  type IdentityVerificationMethod,
+  PAYMENT_FIELD_TYPE,
+  SignPaymentRepository,
+  QesWorkflowService,
+  EstampWorkflowService,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
-import { SIGN_IN_PERSON_SIGNING_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import {
+  SIGN_ACCESS_CODE_FEATURE,
+  SIGN_DELEGATE_SIGNING_FEATURE,
+  SIGN_ID_VERIFICATION_FEATURE,
+  SIGN_IN_PERSON_SIGNING_FEATURE,
+  SIGN_KBA_FEATURE,
+  SIGN_WITNESS_SIGNING_FEATURE,
+  SignFeatureGate,
+} from '../sign-feature.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
+import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 
 import { SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
@@ -138,7 +159,19 @@ export class SenderEnvelopeService {
     @Optional() private readonly features?: SignFeatureGate,
     // Retention and Purge directive (ebd41d99) W5 — the "Deleted" folder.
     @Optional() private readonly purges?: SignPurgeRepository,
+    // Sign 1.14 — PAYMENT fields: availability (feature, configuration, plan) and the
+    // tenant's connected account. Absent ⇒ PAYMENT is never authorable.
+    @Optional() private readonly payments?: SignPaymentsGate,
+    @Optional() private readonly paymentRecords?: SignPaymentRepository,
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — the QES and e-stamp send guards.
+    @Optional() private readonly qes?: QesWorkflowService,
+    @Optional() private readonly estamp?: EstampWorkflowService,
   ) {}
+
+  /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
+  async assertMayChangeEnvelope(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+    await this.assertMayChange(auth, envelope_id, requestId);
+  }
 
   /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
   async assertVisible(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
@@ -179,7 +212,7 @@ export class SenderEnvelopeService {
   // (Sign Admin / Owner). An ordinary sender never changes another member's
   // envelope merely because they share a Business tenant. Visibility first: an
   // envelope the caller cannot see reads as not found.
-  private async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+  async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
     const d = await this.describe(auth, envelope_id, requestId, false);
     // Sign Unified Product S-3 — an envelope that another application created
     // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays
@@ -319,8 +352,8 @@ export class SenderEnvelopeService {
     // M-A5 §1.3 — the shared current-turn rule (a copy recipient never takes a turn).
     const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
     // M-A5 §1.2 / §3 — only a SIGNER holds an emailed link, so only a SIGNER is reminded.
-    const canRemind = (s: { id: string; status: string; recipient_kind?: string | null }): boolean =>
-      open && isLinkSigner(s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
+    const canRemind = (s: { id: string; status: string; recipient_kind?: string | null; witness_for_signer_id?: string | null }): boolean =>
+      open && isLinkSigner(s) && witnessReady(env.signers, s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
     // Sign Mobile M-A3 §7 — when each remindable signer may next be reminded (the
     // later of their 60-minute cooldown and the envelope's rolling 24-hour limit).
     const now = new Date();
@@ -368,6 +401,8 @@ export class SenderEnvelopeService {
       // Multi-Signer §4/§5 — the routing mode and, while signing is open, who may sign now.
       routing_mode: env.routing_mode,
       next_signer_id: nextSignerId,
+      // Feature-Parity §1.17 — whether a signer may delegate (set in DRAFT, fixed at send).
+      allow_delegation: env.allow_delegation,
       documents: env.documents.map((d) => ({
         id: d.id,
         title: d.title,
@@ -403,6 +438,19 @@ export class SenderEnvelopeService {
         reminder_available_at: reminderAvailableAt(s),
         // Amendment M-A6 §3.5 — the template role this recipient was bound to (from-template), else null.
         role_key: s.signer_role ?? null,
+        // Feature-Parity §1.17 — the recipient a WITNESS attests for (null otherwise).
+        witness_for_signer_id: isWitness(s) ? s.witness_for_signer_id : null,
+        // §1.9 — whether an access code is set and whether the recipient is locked out
+        // (the code and its hash are never returned).
+        access_code_set: (s.access_code_hash ?? null) !== null,
+        access_code_locked: (s.access_code_locked_at ?? null) !== null,
+        // §1.17 — the original recipient of a delegated slot (this row now names the delegate).
+        delegated_from:
+          s.delegated_at instanceof Date ? { name: s.delegated_from_name ?? null, email: s.delegated_from_email ?? null, delegated_at: s.delegated_at.toISOString() } : null,
+        // Feature-Parity §1.9 — the recipient's identity-verification method (null = none) and
+        // whether verification locked them out (failed name match or every attempt used).
+        identity_verification_method: s.identity_verification_method ?? null,
+        identity_verification_locked: s.identity_verification_locked_at !== null,
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -423,6 +471,9 @@ export class SenderEnvelopeService {
           group_rule: f.group_rule,
           min_selected: f.min_selected,
           name_mode: f.name_mode,
+          // Sign 1.14 — PAYMENT only (null for every other type).
+          payment_amount_minor: f.payment_amount_minor ?? null,
+          payment_currency: f.payment_currency ?? null,
         })),
       ),
     };
@@ -656,7 +707,7 @@ export class SenderEnvelopeService {
     return { id: env.id, status: env.status, subject: env.subject };
   }
 
-  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown }, requestId: string, ifMatch?: string) {
+  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
@@ -664,7 +715,13 @@ export class SenderEnvelopeService {
     const hasRouting = body?.routing_mode !== undefined;
     // Sign Mobile M-A3 §3 — the sender message (DRAFT only; null or "" clears it).
     const hasMessage = body?.message !== undefined;
-    if (!hasSubject && !hasRouting && !hasMessage) throw bad(requestId, 'subject, routing_mode or message is required');
+    // Feature-Parity §1.17 — the sender allows delegation (Business and up; dark until flipped).
+    const hasDelegation = body?.allow_delegation !== undefined;
+    if (!hasSubject && !hasRouting && !hasMessage && !hasDelegation) throw bad(requestId, 'subject, routing_mode, message or allow_delegation is required');
+    if (hasDelegation) {
+      if (typeof body.allow_delegation !== 'boolean') throw bad(requestId, 'allow_delegation must be true or false', { field: 'allow_delegation' });
+      if (body.allow_delegation) await this.assertBusinessFeature(auth, SIGN_DELEGATE_SIGNING_FEATURE, requestId);
+    }
     const message = hasMessage ? sanitizeMessage(body.message, requestId) : undefined;
     if (hasSubject) {
       if (typeof body.subject !== 'string' || body.subject.trim().length === 0) throw bad(requestId, 'subject is required');
@@ -680,9 +737,19 @@ export class SenderEnvelopeService {
       ...(hasSubject ? { subject: (body.subject as string).trim() } : {}),
       ...(hasRouting ? { routing_mode: body.routing_mode as string } : {}),
       ...(message !== undefined ? { message } : {}),
+      ...(hasDelegation ? { allow_delegation: body.allow_delegation as boolean } : {}),
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     return this.detail(auth, envelope_id, requestId);
+  }
+
+  // Feature-Parity §1.17 — witness and delegate signing are Business-and-up features
+  // (B+), dark until the PO makes them AVAILABLE. Refused 403 otherwise.
+  private async assertBusinessFeature(auth: AuthContextType, feature_key: string, requestId: string): Promise<void> {
+    (this.features ?? new SignFeatureGate()).assertAvailable(feature_key, requestId);
+    if ((await this.context.tenantKind(auth.tenant_id, requestId)) !== 'BUSINESS') {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'This feature is available on Business plans', 403, { requestId, details: { feature_key, reason: 'plan_not_eligible' } });
+    }
   }
 
   // Sign Mobile M-A3 §8 — with an Idempotency-Key a retried upload returns the first
@@ -814,16 +881,32 @@ export class SenderEnvelopeService {
     }
     const seen = new Set<string>();
     let verifiedEmail: string | null | undefined;
-    const recipients: Array<{ id?: string; name: string; email: string | null; recipient_kind: RecipientKind; copy_delivery: CopyDelivery | null; bound_user_id: string | null }> = [];
-    for (const [i, r] of (body.recipients as unknown[]).entries()) {
+    const recipients: Array<{
+      id?: string;
+      name: string;
+      email: string | null;
+      recipient_kind: RecipientKind;
+      copy_delivery: CopyDelivery | null;
+      bound_user_id: string | null;
+      witness_for_index: number | null;
+      access_code_hash?: string | null;
+      identity_verification_method?: IdentityVerificationMethod | null;
+    }> = [];
+    const list = body.recipients as unknown[];
+    for (const [i, r] of list.entries()) {
       const o = (r ?? {}) as Record<string, unknown>;
       const name = typeof o['name'] === 'string' ? o['name'].trim() : '';
       // M-A5 §1.7 — no recipient_kind ⇒ SIGNER (every existing client).
       const kindRaw = o['recipient_kind'] ?? 'SIGNER';
       if (typeof kindRaw !== 'string' || !(RECIPIENT_KINDS as readonly string[]).includes(kindRaw)) {
-        throw bad(requestId, `recipient ${i + 1}: recipient_kind must be SIGNER, IN_PERSON_SIGNER or RECEIVES_COPY`, { index: i, field: 'recipient_kind', reason: 'invalid_recipient_kind' });
+        throw bad(requestId, `recipient ${i + 1}: recipient_kind must be SIGNER, IN_PERSON_SIGNER, RECEIVES_COPY or WITNESS`, { index: i, field: 'recipient_kind', reason: 'invalid_recipient_kind' });
       }
       const kind = kindRaw as RecipientKind;
+      // Feature-Parity §1.17 — a WITNESS names the signing recipient it attests for by list position.
+      const witnessFor = this.witnessForIndex(o, kind, i, list, requestId);
+      if (kind === 'WITNESS') await this.assertBusinessFeature(auth, SIGN_WITNESS_SIGNING_FEATURE, requestId);
+      // §1.9 — the access code: a string sets it, null clears it, omitted keeps it.
+      const accessCodeHash = this.accessCodeHashOf(o, kind, i, requestId);
       // M-A5 §2.1 — copy_delivery is required iff RECEIVES_COPY.
       const cdRaw = o['copy_delivery'] ?? null;
       if (kind === 'RECEIVES_COPY' && (typeof cdRaw !== 'string' || !(COPY_DELIVERIES as readonly string[]).includes(cdRaw))) {
@@ -860,8 +943,23 @@ export class SenderEnvelopeService {
         bound = auth.sub;
       }
       const id = typeof o['id'] === 'string' && o['id'].length > 0 ? o['id'] : undefined;
-      recipients.push({ ...(id !== undefined ? { id } : {}), name, email, recipient_kind: kind, copy_delivery: kind === 'RECEIVES_COPY' ? (cdRaw as CopyDelivery) : null, bound_user_id: bound });
+      // Feature-Parity §1.9 — a value sets the method, null clears it, omitted keeps it.
+      const idv = await this.identityVerificationMethodOf(auth, o, kind, i, requestId);
+      recipients.push({
+        ...(id !== undefined ? { id } : {}),
+        name,
+        email,
+        recipient_kind: kind,
+        copy_delivery: kind === 'RECEIVES_COPY' ? (cdRaw as CopyDelivery) : null,
+        bound_user_id: bound,
+        witness_for_index: witnessFor,
+        ...(accessCodeHash !== undefined ? { access_code_hash: accessCodeHash } : {}),
+        ...(idv !== undefined ? { identity_verification_method: idv } : {}),
+      });
     }
+    // §1.17 — one witness per signer.
+    const witnessed = recipients.flatMap((r) => (r.witness_for_index === null ? [] : [r.witness_for_index]));
+    if (new Set(witnessed).size !== witnessed.length) throw bad(requestId, 'A signer can have only one witness', { field: 'witness_for_index', reason: 'witness_duplicate' });
     const signingCount = recipients.filter((r) => r.recipient_kind !== 'RECEIVES_COPY').length;
     if (signingCount > MAX_SIGNERS) {
       throw bad(requestId, `An envelope can have at most ${MAX_SIGNERS} signers`, { reason: 'too_many_signers', max: MAX_SIGNERS });
@@ -873,6 +971,75 @@ export class SenderEnvelopeService {
     return this.detail(auth, envelope_id, requestId);
   }
 
+  // Feature-Parity §1.17 — witness_for_index: required for a WITNESS (and refused for any
+  // other kind), an integer position in the same list naming a SIGNER or IN_PERSON_SIGNER
+  // other than the witness. The signing-order rule (a witness signs after its signer when
+  // the envelope signs in order) is checked at send (readiness).
+  private witnessForIndex(o: Record<string, unknown>, kind: RecipientKind, i: number, list: readonly unknown[], requestId: string): number | null {
+    const raw = o['witness_for_index'];
+    if (kind !== 'WITNESS') {
+      if (raw !== undefined && raw !== null) throw bad(requestId, `recipient ${i + 1}: witness_for_index applies only to a witness`, { index: i, field: 'witness_for_index', reason: 'witness_for_not_allowed' });
+      return null;
+    }
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0 || raw >= list.length || raw === i) {
+      throw bad(requestId, `recipient ${i + 1}: choose the signer this witness attests for`, { index: i, field: 'witness_for_index', reason: 'witness_for_required' });
+    }
+    const target = (list[raw] ?? {}) as Record<string, unknown>;
+    const targetKind = target['recipient_kind'] ?? 'SIGNER';
+    if (targetKind !== 'SIGNER' && targetKind !== 'IN_PERSON_SIGNER') {
+      throw bad(requestId, `recipient ${i + 1}: a witness attests for a signer`, { index: i, field: 'witness_for_index', reason: 'witness_for_invalid' });
+    }
+    return raw;
+  }
+
+  // Feature-Parity §1.9 — the access code of one recipient, hashed (never stored or
+  // returned as text). undefined = omitted (keep); null = clear. SIGNER and WITNESS only.
+  private accessCodeHashOf(o: Record<string, unknown>, kind: RecipientKind, i: number, requestId: string): string | null | undefined {
+    const raw = o['access_code'];
+    if (raw === undefined) return undefined;
+    if (raw === null) return null;
+    (this.features ?? new SignFeatureGate()).assertAvailable(SIGN_ACCESS_CODE_FEATURE, requestId);
+    if (kind !== 'SIGNER' && kind !== 'WITNESS') {
+      throw bad(requestId, `recipient ${i + 1}: an access code applies to a recipient who signs through a link`, { index: i, field: 'access_code', reason: 'access_code_not_allowed' });
+    }
+    const code = normalizeAccessCode(raw);
+    if (code === null) {
+      throw bad(requestId, `recipient ${i + 1}: the access code must be ${ACCESS_CODE_MIN_LENGTH} to ${ACCESS_CODE_MAX_LENGTH} printable characters`, {
+        index: i,
+        field: 'access_code',
+        reason: 'access_code_invalid',
+      });
+    }
+    return hashAccessCode(code);
+  }
+
+  // Feature-Parity §1.9 + A1 — government-ID verification and KBA are Professional and
+  // Enterprise metered features (§1.9 "Plans"), DARK until the PO flips sign.id_verification /
+  // sign.kba to AVAILABLE. Setting a method is refused 403 while the feature is not available
+  // or for a Personal account; clearing (null) is always allowed. Link signers only.
+  private async identityVerificationMethodOf(
+    auth: AuthContextType,
+    o: Record<string, unknown>,
+    kind: RecipientKind,
+    i: number,
+    requestId: string,
+  ): Promise<IdentityVerificationMethod | null | undefined> {
+    const raw = o['identity_verification_method'];
+    if (raw === undefined || raw === null) return raw;
+    if (typeof raw !== 'string' || !(IDENTITY_VERIFICATION_METHODS as readonly string[]).includes(raw)) {
+      throw bad(requestId, `recipient ${i + 1}: identity_verification_method must be ID_VERIFICATION, KBA or null`, { index: i, field: 'identity_verification_method', reason: 'invalid_identity_verification_method' });
+    }
+    if (kind === 'RECEIVES_COPY' || kind === 'IN_PERSON_SIGNER') {
+      throw bad(requestId, `recipient ${i + 1}: only a signer who signs from a link can be asked to verify their identity`, { index: i, field: 'identity_verification_method', reason: 'identity_verification_not_link_signer' });
+    }
+    const feature_key = raw === 'KBA' ? SIGN_KBA_FEATURE : SIGN_ID_VERIFICATION_FEATURE;
+    (this.features ?? new SignFeatureGate()).assertAvailable(feature_key, requestId);
+    if ((await this.context.tenantKind(auth.tenant_id, requestId)) !== 'BUSINESS') {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Identity verification is available on Business plans', 403, { requestId, details: { feature_key, reason: 'plan_not_eligible' } });
+    }
+    return raw as IdentityVerificationMethod;
+  }
+
   async replaceFields(auth: AuthContextType, envelope_id: string, body: { fields?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
@@ -880,6 +1047,12 @@ export class SenderEnvelopeService {
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
     const copyIds = new Set((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).signers.filter(isCopyRecipient).map((s) => s.id));
+    // Sign 1.14 — a PAYMENT field is authorable only while payments are available to this
+    // tenant (sign.payments AVAILABLE, Connect configured, plan Professional/Enterprise).
+    if (body.fields.some((f: unknown) => ((f ?? {}) as Record<string, unknown>)['field_type'] === PAYMENT_FIELD_TYPE)) {
+      if (this.payments === undefined) throw paymentsNotAvailable(requestId, 'payments_not_configured');
+      await this.payments.assertAvailable(auth.tenant_id, requestId);
+    }
     const fields = body.fields.map((f: unknown, i: number): SenderFieldInput => {
       const o = (f ?? {}) as Record<string, unknown>;
       const num = (k: string): number => {
@@ -888,7 +1061,7 @@ export class SenderEnvelopeService {
         return v;
       };
       const field_type = o['field_type'];
-      if (typeof field_type !== 'string' || !FIELD_TYPE_SET.has(field_type)) {
+      if (typeof field_type !== 'string' || (!FIELD_TYPE_SET.has(field_type) && field_type !== PAYMENT_FIELD_TYPE)) {
         // M-A6 §2 (coordinator ruling) — an engine-only type passes through only
         // unchanged: it names an existing field (id) and the repository keeps it
         // when it is identical to the stored row (refused otherwise).
@@ -907,7 +1080,7 @@ export class SenderEnvelopeService {
       const width = num('width');
       const height = num('height');
       if (x < 0 || y < 0 || width <= 0 || height <= 0) throw bad(requestId, `field ${i + 1}: position and size must be positive`, { index: i });
-      const config = fieldConfig(o, field_type, i, requestId);
+      const config = { ...fieldConfig(o, field_type, i, requestId), ...paymentConfig(o, field_type, i, requestId) };
       return {
         ...config,
         envelope_document_id: o['envelope_document_id'] as string,
@@ -922,6 +1095,7 @@ export class SenderEnvelopeService {
       };
     });
     checkboxGroups(fields, requestId);
+    onePaymentPerSigner(fields, requestId);
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.
     const docIds = [...new Set(fields.map((f) => f.envelope_document_id))];
@@ -954,8 +1128,17 @@ export class SenderEnvelopeService {
   // Readiness the send step enforces (also returned to the UI): ≥1 document,
   // ≥1 signing recipient, every signing recipient has at least one SIGNATURE field,
   // and (M-A5 §1.5) a recipient who receives a copy has no fields.
-  readiness(d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'>): { ok: boolean; problems: string[] } {
+  readiness(
+    d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'> & { routing_mode?: string },
+  ): { ok: boolean; problems: string[] } {
     const problems: string[] = [];
+    // Feature-Parity §1.17 — when signing in order, a witness comes after the signer it witnesses.
+    for (const r of d.recipients as Array<{ id: string; name: string; recipient_kind?: string | null; witness_for_signer_id?: string | null; signing_order?: number }>) {
+      if (!isWitness(r)) continue;
+      const principal = d.recipients.find((x) => x.id === r.witness_for_signer_id) as { name: string; signing_order?: number } | undefined;
+      if (principal === undefined) problems.push(`${r.name} needs a signer to witness`);
+      else if (d.routing_mode === 'SEQUENTIAL' && (r.signing_order ?? 0) <= (principal.signing_order ?? 0)) problems.push(`${r.name} witnesses ${principal.name} and must sign after them`);
+    }
     if (d.documents.length === 0) problems.push('Add at least one document');
     if (signingRecipients(d.recipients).length === 0) problems.push('Add at least one recipient who signs');
     for (const r of d.recipients) {
@@ -986,6 +1169,20 @@ export class SenderEnvelopeService {
     }
     const ready = this.readiness(d);
     if (!ready.ok) throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ready.problems });
+    // Sign 1.14 — an envelope that collects a payment is sent only while payments are
+    // available and the organization's Stripe account can take them (charges enabled).
+    if (d.fields.some((f) => f.field_type === PAYMENT_FIELD_TYPE)) {
+      if (this.payments === undefined) throw paymentsNotAvailable(requestId, 'payments_not_configured');
+      await this.payments.assertAvailable(auth.tenant_id, requestId);
+      const account = await this.paymentRecords?.connectedAccount(auth.tenant_id);
+      if (account === undefined || account === null || !account.charges_enabled) {
+        throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ['Connect a Stripe account that can accept payments (Settings → Payments)'] });
+      }
+    }
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — a QES signer needs a configured QTSP,
+    // and a live e-stamp order must be attached, its certificate first.
+    await this.qes?.assertSendable(auth.tenant_id, envelope_id);
+    await this.estamp?.assertSendable(auth.tenant_id, envelope_id);
     // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
     if (tenant.kind === 'PERSONAL') {
       if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
@@ -1182,6 +1379,38 @@ function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, 
     min_selected = m;
   }
   return { label, group_key, group_rule: rule as CheckboxGroupRule, min_selected };
+}
+
+// Sign 1.14 — the PAYMENT configuration: the amount in cents (50 = the Stripe minimum, to
+// 99999999) and the currency (USD only, directive §4). A PAYMENT field is always required
+// (payment is required to complete). No other type takes these properties.
+const PAYMENT_MIN_MINOR = 50;
+const PAYMENT_MAX_MINOR = 99_999_999;
+function paymentConfig(o: Record<string, unknown>, field_type: string, i: number, requestId: string): Pick<SenderFieldInput, 'payment_amount_minor' | 'payment_currency'> {
+  const refuse = (field: string, reason: string, message: string): AramoError => bad(requestId, `field ${i + 1}: ${message}`, { index: i, field, reason });
+  const present = (k: string): boolean => o[k] !== undefined && o[k] !== null;
+  if (field_type !== PAYMENT_FIELD_TYPE) {
+    for (const k of ['payment_amount_minor', 'payment_currency']) if (present(k)) throw refuse(k, 'field_config_not_applicable', `${k} applies to payment fields only`);
+    return {};
+  }
+  const amount = o['payment_amount_minor'];
+  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < PAYMENT_MIN_MINOR || amount > PAYMENT_MAX_MINOR) {
+    throw refuse('payment_amount_minor', 'payment_amount_invalid', `the amount must be a whole number of cents from ${PAYMENT_MIN_MINOR} to ${PAYMENT_MAX_MINOR}`);
+  }
+  const currency = o['payment_currency'] ?? 'USD';
+  if (currency !== 'USD') throw refuse('payment_currency', 'payment_currency_invalid', 'payments are collected in USD only');
+  if (o['required'] === false) throw refuse('required', 'payment_field_required', 'a payment field is always required');
+  return { payment_amount_minor: amount, payment_currency: 'USD' };
+}
+
+// Sign 1.14 — one PAYMENT field per signer (each signer pays at most one amount).
+function onePaymentPerSigner(fields: ReadonlyArray<SenderFieldInput>, requestId: string): void {
+  const seen = new Set<string>();
+  for (const [i, f] of fields.entries()) {
+    if (f.field_type !== PAYMENT_FIELD_TYPE || f.signer_id === null) continue;
+    if (seen.has(f.signer_id)) throw bad(requestId, `field ${i + 1}: a recipient can have only one payment field`, { index: i, field: 'field_type', reason: 'payment_field_duplicate' });
+    seen.add(f.signer_id);
+  }
 }
 
 // M-A6 §2 (coordinator ruling) — an engine-only field sent back on the replace-all

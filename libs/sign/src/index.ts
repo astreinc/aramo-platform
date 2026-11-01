@@ -15,6 +15,17 @@ export {
   type DocumentPageSize,
   DELETED_DRAFT_SUBJECT,
 } from './lib/sender-workspace.repository.js';
+// Feature-Parity Program §1.13 — read-only organization reports.
+export {
+  SignReportRepository,
+  type ReportPeriod,
+  type ReportGroup,
+  type ReportRange,
+  type CohortStats,
+  type GroupedCohortStats,
+  type VolumeBucket,
+  type AuditEnvelopeRow,
+} from './lib/sign-report.repository.js';
 export {
   EsignRepository,
   type CreateEnvelopeInput,
@@ -31,6 +42,7 @@ export {
   type SignerDocumentMeta,
   type SignerDocumentView,
   type SignerSourceDescriptor,
+  type SignerPaymentField,
   ENVELOPE_TTL_DAYS_DEFAULT,
   envelopeExpiresAt,
 } from './lib/esign.service.js';
@@ -60,6 +72,25 @@ export {
   type ExecutedProductionResult,
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
+// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (dark unless a provider is bound).
+export {
+  DOCUMENT_SEAL_SIGNING_PROVIDER,
+  DOCUMENT_SEAL_TIMESTAMP_SOURCE,
+  type DocumentSealIdentity,
+  type DocumentSealSigningProvider,
+  type DocumentSealTimestampSource,
+} from './lib/ports/document-seal.port.js';
+export {
+  DocumentSealService,
+  EXECUTED_DOCUMENT_SEALED,
+  MAX_SEAL_ATTEMPTS,
+  sealedPdfBytes,
+  type DocumentSealStatus,
+  type DocumentSealSummary,
+  type ExecutedDocumentSealedPayload,
+} from './lib/document-seal/document-seal.service.js';
+export { sealPdf, DocumentSealPdfError, type PadesLevel, type PadesSealResult } from './lib/document-seal/pades.js';
+export { certificateFacts, DocumentSealCmsError, signatureFromVendorCms } from './lib/document-seal/cms.js';
 export {
   EXECUTED_ARTIFACT_CUSTODY_PORT,
   EXECUTED_ARTIFACT_CUSTODY_EVENT_TYPE,
@@ -85,7 +116,9 @@ export {
   CHECKBOX_GROUP_RULES,
   SIGNER_NAME_MODES,
   evaluateSignerFieldRules,
+  isPaymentField,
   isServerFilledName,
+  PAYMENT_FIELD_TYPE,
   type CheckboxGroupRule,
   type SignerNameMode,
   type FieldRuleRow,
@@ -161,7 +194,23 @@ export {
   ReminderNotAllowedError,
   SignerNotYetEligibleError,
   DisclosureVersionInvalidError,
+  SignerAccessCodeRequiredError,
+  SignerAccessCodeLockedError,
+  DelegationRefusedError,
+  type DelegationRefusal,
 } from './lib/domain/errors.js';
+// Feature-Parity directive (2bd74ca5) §1.9 — the per-recipient access code.
+export {
+  ACCESS_CODE_MIN_LENGTH,
+  ACCESS_CODE_MAX_LENGTH,
+  MAX_ACCESS_CODE_ATTEMPTS,
+  ACCESS_CODE_VERIFIED_EVENT,
+  ACCESS_CODE_FAILED_EVENT,
+  ACCESS_CODE_LOCKED_EVENT,
+  normalizeAccessCode,
+  hashAccessCode,
+  verifyAccessCode,
+} from './lib/domain/access-code.js';
 // Aramo Sign launch — server-held disclosure, lifecycle notifications, sender lookup.
 export {
   CURRENT_DISCLOSURE_VERSION,
@@ -251,7 +300,12 @@ export {
   COPY_DELIVERY_ISSUED_EVENT,
   HOSTED_SESSION_STARTED_EVENT,
   SELF_SIGN_SESSION_ISSUED_EVENT,
+  WITNESS_ATTESTED_EVENT,
+  SIGNER_DELEGATED_EVENT,
   SIGNING_RECIPIENT_WHERE,
+  isWitness,
+  witnessReady,
+  pendingWitnessesOf,
   recipientKindOf,
   isSigningRecipient,
   isCopyRecipient,
@@ -317,6 +371,8 @@ export {
   RETENTION_DAYS_MAX,
   PII_PAYLOAD_KEYS,
   PURGED_EVENT,
+  // Feature-Parity §1.13 — the reports' audit export masks a purged subject with it.
+  PURGED_TEXT,
   PURGE_QUEUED_EVENT,
   PURGE_DEQUEUED_EVENT,
   isPurgeLevel,
@@ -329,3 +385,238 @@ export {
   type PurgeObjectsReport,
   type ExecuteOutcome,
 } from './lib/retention/sign-purge.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (storage, validation and the certificate branding port).
+export {
+  SignBrandingRepository,
+  type StoredBranding,
+  type StoredBrandingLogo,
+  type BrandingLogoBytes,
+  type BrandingSettingsInput,
+} from './lib/branding/sign-branding.repository.js';
+export {
+  BRANDING_DISPLAY_NAME_MAX,
+  BRANDING_LOGO_MAX_BYTES,
+  BRANDING_LOGO_MAX_PIXELS,
+  BRANDING_LOGO_MIN_PIXELS,
+  normalizeBrandColor,
+  normalizeDisplayName,
+  readableTextOn,
+  sniffBrandingImage,
+  validateBrandingLogo,
+  type BrandingLogoType,
+  type LogoRejection,
+  type SniffedImage,
+} from './lib/branding/branding-validation.js';
+export { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './lib/ports/sign-branding.port.js';
+// Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
+export {
+  TRUSTED_TIMESTAMP_PORT,
+  type TrustedTimestampPort,
+  type TrustedTimestampToken,
+} from './lib/ports/trusted-timestamp.port.js';
+export {
+  TrustedTimestampService,
+  type TrustedTimestampStatus,
+  type TrustedTimestampSubjectKind,
+  type TrustedTimestampView,
+} from './lib/trusted-timestamp/trusted-timestamp.service.js';
+export {
+  OID_SHA256,
+  Rfc3161Error,
+  buildTimeStampRequest,
+  nonceValue,
+  verifyTimeStampResponse,
+  type TimeStampRequestInput,
+  type VerifiedTimeStamp,
+  type VerifyExpectations,
+} from './lib/trusted-timestamp/rfc3161.js';
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
+// — SMS and WhatsApp delivery and SMS one-time-code recipient verification (dark).
+export {
+  OUTBOUND_MESSAGING_PORT,
+  MESSAGING_CHANNELS,
+  type MessagingChannel,
+  type MessagePurpose,
+  type OutboundMessage,
+  type OutboundMessagingPort,
+  type OutboundSendResult,
+} from './lib/ports/outbound-messaging.port.js';
+export { SIGN_USAGE_RECORDER_PORT, type SignUsageRecord, type SignUsageRecorderPort, type SignUsageUnit } from './lib/ports/usage-recorder.port.js';
+export { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessage, type SignerLinkMessagingPort } from './lib/ports/signer-link-messaging.port.js';
+export * from './lib/messaging/messaging-rules.js';
+export {
+  SignMessagingRepository,
+  type DeliveryStatus,
+  type LedgerAppend,
+  type NewDelivery,
+  type OtpChallengeStatus,
+  type RecipientMessagingRow,
+  type SuppressedReason,
+} from './lib/messaging/sign-messaging.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
+// identity verification (government ID via Stripe Identity; KBA port, disabled). DARK.
+export {
+  IDENTITY_VERIFICATION_PORT,
+  DisabledIdentityVerificationAdapter,
+  IdentityVerificationUnavailableError,
+  IdentityVerificationWebhookSignatureError,
+  type IdentityVerificationPort,
+  type IdentityVerificationProviderKey,
+  type IdentityVerificationOutcome,
+  type IdentityVerificationResult,
+  type IdentityVerificationWebhookEvent,
+  type IdentityVerificationWebhookRejection,
+  type StartIdentityVerificationInput,
+  type StartedIdentityVerification,
+} from './lib/identity-verification/identity-verification.port.js';
+export {
+  StripeIdentityAdapter,
+  STRIPE_IDENTITY_API_VERSION,
+  stripeIdentityResult,
+  verifyStripeIdentitySignature,
+} from './lib/identity-verification/stripe-identity.adapter.js';
+export {
+  KBA_PORT,
+  DisabledKbaAdapter,
+  KbaUnavailableError,
+  kbaProviderFromEnv,
+  type KbaPort,
+  type KbaQuestion,
+  type KbaSubject,
+  type KbaOutcome,
+  type StartedKbaQuiz,
+} from './lib/identity-verification/kba.port.js';
+// Consolidation (feature-parity PR): SIGN_USAGE_RECORDER_PORT is exported once, from
+// ./lib/ports/usage-recorder.port.js (same token value); the identity-verification
+// recorder shape is exported as SignUsageMeterRecorderPort until the usage-metering model
+// unifies the two (held for the Lead ruling on MP-A2 N-1).
+export {
+  SIGN_ID_VERIFICATION_ATTEMPT_METER,
+  SIGN_KBA_ATTEMPT_METER,
+  NoopSignUsageRecorder,
+  type SignUsageEvent,
+  type SignUsageRecorderPort as SignUsageMeterRecorderPort,
+} from './lib/identity-verification/usage-recorder.port.js';
+export { nameTokens, verifiedNameMatches } from './lib/identity-verification/name-match.js';
+export {
+  IDENTITY_VERIFICATION_METHODS,
+  IDENTITY_VERIFICATION_STARTED_EVENT,
+  IDENTITY_VERIFIED_EVENT,
+  IDENTITY_VERIFICATION_FAILED_EVENT,
+  IDENTITY_VERIFICATION_CANCELLED_EVENT,
+  IDENTITY_VERIFICATION_LOCKED_EVENT,
+  ID_VERIFICATION_MAX_ATTEMPTS_DEFAULT,
+  SignerIdentityVerificationLockedError,
+  SignerIdentityVerificationRequiredError,
+  assertIdentityVerificationCleared,
+  idVerificationMaxAttempts,
+  identityVerificationProviderFromEnv,
+  type IdentityVerificationMethod,
+} from './lib/identity-verification/identity-gate.js';
+export {
+  IdentityVerificationService,
+  identityVerificationReturnUrl,
+  type IdentityVerificationState,
+  type IdentityVerificationStatusView,
+  type IdentityVerificationStartView,
+  type IdentityWebhookOutcome,
+} from './lib/identity-verification/identity-verification.service.js';
+
+// Aramo Sign 1.14 (Feature-Parity directive §1.14, R-6) — payment collection through Stripe
+// Connect: the vendor-neutral port and the payment records. Dark until enabled.
+export {
+  SIGN_PAYMENT_PROVIDER_PORT,
+  PaymentProviderRefusedError,
+  PaymentProviderUnavailableError,
+  PaymentWebhookSignatureError,
+  type PaymentProviderPort,
+  type PaymentAccountState,
+  type PaymentCheckoutRequest,
+  type PaymentCheckoutState,
+  type PaymentRefundRequest,
+  type PaymentRefundState,
+  type PaymentChargeState,
+  type VerifiedPaymentEvent,
+} from './lib/ports/payment-provider.port.js';
+export {
+  SignPaymentRepository,
+  SignPaymentStateError,
+  PAYMENT_CHECKOUT_STARTED,
+  PAYMENT_SUCCEEDED,
+  PAYMENT_FAILED,
+  PAYMENT_REFUND_REQUESTED,
+  PAYMENT_REFUNDED,
+  PAYMENT_REFUND_FAILED,
+  PAYMENT_LEDGER_EVENT_TYPES,
+  formatPaymentAmount,
+  paymentReceiptText,
+  type SignPaymentStatus,
+  type SignPaymentAccountRow,
+  type SignPaymentRow,
+  type SignPaymentRefundRow,
+} from './lib/payments/sign-payment.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 / §1.19 under Amendment A1 —
+// vendor-neutral QES and India e-stamp ports and workflows (dark; disabled adapters only).
+export {
+  QES_SIGNING_PORT,
+  QES_HASH_ALGORITHM_SHA256_OID,
+  DisabledQesSigningAdapter,
+  QesProviderError,
+  QesProviderNotConfiguredError,
+  type QesSigningPort,
+  type QesSignerHint,
+  type QesBeginIdentityInput,
+  type QesCompleteIdentityInput,
+  type QesCredential,
+  type QesBeginSignatureInput,
+  type QesSignHashInput,
+  type QesSignatureResult,
+} from './lib/ports/qes-signing.port.js';
+export {
+  ESTAMP_PORT,
+  DisabledEstampAdapter,
+  EstampProviderNotConfiguredError,
+  type EstampPort,
+  type EstampOrderInput,
+  type EstampOrderResult,
+  type EstampOrderStatus,
+  type EstampCertificateResult,
+} from './lib/ports/estamp.port.js';
+export { RegulatedSigningStateError, RegulatedSigningValidationError } from './lib/regulated/regulated-errors.js';
+export {
+  RSA_SHA256_SIGNATURE_OID,
+  certificateChainSha256,
+  isParsableChain,
+  qesSigningDigest,
+  signerCertificateSummary,
+  verifyQesSignature,
+  type CertificateSummary,
+} from './lib/regulated/qes-evidence.js';
+export { assertQesSatisfied } from './lib/regulated/qes-guard.js';
+export {
+  QesWorkflowService,
+  QES_EVENT,
+  QES_SIGNATURE_LEVELS,
+  QES_STATES,
+  qesView,
+  type QesSignatureLevel,
+  type QesState,
+  type QesSignatureView,
+  type QesStepResult,
+  type QesSessionRef,
+} from './lib/regulated/qes-workflow.service.js';
+export {
+  EstampWorkflowService,
+  ESTAMP_EVENT,
+  ESTAMP_STATES,
+  INDIA_STATE_CODES,
+  estampView,
+  parseEstampRequest,
+  type EstampState,
+  type EstampRequestInput,
+  type EstampOrderView,
+  type EstampPollResult,
+  type StoredEstampCertificate,
+} from './lib/regulated/estamp-workflow.service.js';

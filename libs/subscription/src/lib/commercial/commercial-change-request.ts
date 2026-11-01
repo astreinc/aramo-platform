@@ -6,6 +6,7 @@ import { creditEscalation, discountEscalates } from './commercial-policy-boundar
 import { CONTRACT_PAYLOAD_KEYS, validateContractBlocks } from './commercial-contract.js';
 import { conversionPayloadErrors } from './commercial-conversion.js';
 import { paymentRecordPayloadErrors } from './commercial-payment-terms.js';
+import { planCreatePayloadErrors } from './commercial-plan-create.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §5.1 D6, D8,
 // D9, §6.4; Recon Report §1 C2 and §2) — the PURE half of the change-request model: the
@@ -50,6 +51,10 @@ export const COMMERCIAL_ACTION_TYPES = [
   // the closed set grows from 15 to 16) — record, with evidence, an enterprise payment received outside
   // Aramo against one obligation (RECORD), or correct an earlier record (CORRECT, PR-9).
   'PAYMENT_RECORD',
+  // CCP PLAN_CREATE (Aramo-CCP-Amendment-PLAN_CREATE-Console-Plan-Creation, catalog row 17; the closed set
+  // grows from 16 to 17) — create a new catalog plan and its PUBLISHED version 1 from the console, after
+  // the Finance → Owner chain (PC-1…PC-12). Applied by the CCP-B2 governed catalog apply.
+  'PLAN_CREATE',
 ] as const;
 export type CommercialActionType = (typeof COMMERCIAL_ACTION_TYPES)[number];
 
@@ -94,6 +99,8 @@ export const COMMERCIAL_ACTIONS: Readonly<Record<CommercialActionType, Commercia
   PAYMENT_RECORD: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:payment:request', requester_role: null },
   PLAN_VERSION_PUBLISH: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
+  // CCP PLAN_CREATE (PC-1): catalog_manager through platform:catalog:draft; the product is in the payload.
+  PLAN_CREATE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'finance_admin' }, // TD-A3-5
   ROLE_GRANT: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
   ROLE_REVOKE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
@@ -215,7 +222,7 @@ export const COMMERCIAL_A6_APPLY_TRANSITIONS: Readonly<Partial<Record<Commercial
  * applied on the A6 apply infrastructure: PLAN_VERSION_PUBLISH and PLAN_RETIRE (the CCP-A3 action
  * types, retire = a plan VERSION). Same apply transitions as A6 (migration 20261025220000).
  */
-export const B2_CATALOG_APPLY_ACTIONS = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'] as const;
+export const B2_CATALOG_APPLY_ACTIONS = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'PLAN_CREATE'] as const; // + CCP PLAN_CREATE (PC-7)
 export type B2CatalogApplyAction = (typeof B2_CATALOG_APPLY_ACTIONS)[number];
 export function isCatalogApplicable(action_type: string): action_type is B2CatalogApplyAction {
   return (B2_CATALOG_APPLY_ACTIONS as readonly string[]).includes(action_type);
@@ -307,6 +314,7 @@ export const APPLY_EXPIRABLE_ACTIONS: readonly CommercialActionType[] = [
   'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION', // CCP-B5-R
   'CREDIT', 'DISCOUNT', 'REFUND', // CCP-C4 (AD-4: every applyable type)
   'PAYMENT_RECORD', // CCP-C8-PR (PR-4: the apply deadline applies unchanged, K-1)
+  'PLAN_CREATE', // CCP PLAN_CREATE (PC-2: the apply deadline applies unchanged)
 ];
 export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean {
   if (!(APPLY_EXPIRABLE_ACTIONS as readonly string[]).includes(action_type)) return false;
@@ -427,6 +435,7 @@ export function chainOf(rule: CommercialChainRule, domain: CommercialDomain, bas
  *   REFUND (CCP-C4, TD-C4-2)  → Finance → Owner (Charter §7 defines no refund threshold; none is
  *                               invented — the escalated chain until the refund policy sets one)
  *   PLAN_VERSION_PUBLISH, PLAN_RETIRE (catalog publish)          → Finance → Owner
+ *   PLAN_CREATE (catalog row 17, PC-2; no threshold, no bypass)  → Finance → Owner
  *   POLICY_ACTIVATE (Q1)                                         → Finance → Owner
  *   ROLE_GRANT, ROLE_REVOKE (D6 owner/finance grants; Q2 others) → a distinct platform_owner
  *   every other action (no threshold dimension; D6 "below threshold", DDR v1.2 §3.1
@@ -473,6 +482,8 @@ export function resolveRequiredChain(
     case 'PLAN_VERSION_PUBLISH':
     case 'PLAN_RETIRE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'D6 catalog publish' });
+    case 'PLAN_CREATE':
+      return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'PC-2 plan creation (Finance then Owner)' });
     case 'POLICY_ACTIVATE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'Q1 policy activation' });
     case 'ROLE_GRANT':
@@ -729,6 +740,11 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // (commercial-payment-terms.ts). Validated at create and again at apply.
     case 'PAYMENT_RECORD':
       errors.push(...paymentRecordPayloadErrors(p));
+      break;
+    // CCP PLAN_CREATE — the whole plan definition (PC-3) with only AVAILABLE capabilities (PC-4)
+    // (commercial-plan-create.ts). Validated at create and again at apply.
+    case 'PLAN_CREATE':
+      errors.push(...planCreatePayloadErrors(p));
       break;
     default:
       break;

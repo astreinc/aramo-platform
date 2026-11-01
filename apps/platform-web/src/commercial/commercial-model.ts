@@ -71,6 +71,7 @@ export const ACTION_LABEL: Readonly<Record<string, string>> = {
   CREDIT: 'Account credit',
   DISCOUNT: 'Discount',
   CONVERSION: 'Subscription conversion',
+  PLAN_CREATE: 'Create plan', // CCP PLAN_CREATE (catalog row 17)
 };
 
 export function actionLabel(type: string): string {
@@ -205,7 +206,7 @@ export function chainName(r: Pick<ChangeRequest, 'action_type' | 'required_chain
   const rule = r.required_chain.rule;
   if (rule === 'DISTINCT_PLATFORM_OWNER') return 'Role change (privileged)';
   if (r.action_type === 'POLICY_ACTIVATE') return 'Policy change';
-  if (r.action_type === 'PLAN_VERSION_PUBLISH' || r.action_type === 'PLAN_RETIRE') return 'Catalog publish';
+  if (r.action_type === 'PLAN_VERSION_PUBLISH' || r.action_type === 'PLAN_RETIRE' || r.action_type === 'PLAN_CREATE') return 'Catalog publish';
   // CCP-UI-V12 (AM-8; TD-MERGE-31 open item): an escalated support extension (not a removal)
   // carries the "Extension outside policy bounds" chain (Finance; maker Support admin).
   if (isEscalatedExtension(r)) return 'Extension outside policy bounds';
@@ -437,6 +438,11 @@ export function summaryOf(r: ChangeRequest, me: Me): string {
       return 'Publish a plan version';
     case 'PLAN_RETIRE':
       return 'Retire a plan version';
+    case 'PLAN_CREATE': {
+      // CCP PLAN_CREATE — "Create plan Team (aramo-sign-team-v2)".
+      const name = typeof p['name'] === 'string' ? p['name'] : 'a plan';
+      return typeof p['plan_key'] === 'string' ? `Create plan ${name} (${p['plan_key']})` : `Create plan ${name}`;
+    }
     default:
       return `${actionLabel(r.action_type)} · ${productLabel(r.product_key)}`;
   }
@@ -483,6 +489,8 @@ export function effectRows(r: ChangeRequest, me: Me): EffectRow[] {
     }
     case 'POLICY_ACTIVATE':
       return [{ field: 'Active commercial policy', before: null, after: typeof p['policy_version_id'] === 'string' ? shortId(p['policy_version_id']) : '—' }];
+    case 'PLAN_CREATE':
+      return planCreateEffectRows(p);
     default:
       return [{ field: actionLabel(r.action_type), before: null, after: productLabel(r.product_key) }];
   }
@@ -662,4 +670,29 @@ export function timelineOf(detail: ChangeRequestDetail, me: Me, dl?: DeadlineCon
 /** The short reference shown in the table ("0f3a91c…"); the full id is in the drawer. */
 export function requestRef(id: string): string {
   return shortId(id);
+}
+
+/**
+ * CCP PLAN_CREATE (catalog row 17) — what the approvers approve: the whole new plan (it does not exist
+ * yet, so every `before` is null). The list price is catalog data (shown on the Catalog screen to every
+ * catalog reader), not a tenant amount, so it is not withheld.
+ */
+export function planCreateEffectRows(p: Record<string, unknown>): EffectRow[] {
+  const str = (v: unknown): string => (typeof v === 'string' && v !== '' ? v : '—');
+  const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? (v.filter((x) => typeof x === 'object' && x !== null) as Record<string, unknown>[]) : []);
+  const price = num(p['list_price_minor']);
+  const env = list(p['allowances']).find((a) => a['allowance_key'] === 'sign.envelopes');
+  const sto = list(p['capacities']).find((c) => c['capacity_key'] === 'sign.storage_bytes');
+  const storage = num(sto?.['limit_quantity']);
+  const features = list(p['features']).filter((f) => f['enabled'] === true).map((f) => str(f['feature_key']));
+  return [
+    { field: 'Plan', before: null, after: `${str(p['name'])} (${str(p['plan_key'])})` },
+    { field: 'Product', before: null, after: productLabel(typeof p['product_key'] === 'string' ? p['product_key'] : null) },
+    { field: 'For', before: null, after: p['tenant_kind'] === 'PERSONAL' ? 'Personal accounts' : p['tenant_kind'] === 'BUSINESS' ? 'Business organizations' : '—' },
+    { field: 'Sales channel', before: null, after: str(p['sales_model']) },
+    { field: 'Price', before: null, after: price === null ? 'By contract' : price === 0 ? 'Free' : `${money(price, str(p['currency']) === '—' ? 'USD' : str(p['currency']))} / month` },
+    { field: 'Envelopes per month', before: null, after: env === undefined ? 'Not included' : env['unlimited'] === true ? 'Unlimited' : String(num(env['included_quantity']) ?? '—') },
+    { field: 'Storage', before: null, after: sto === undefined ? 'Not included' : sto['unlimited'] === true ? 'Unlimited' : storage === null ? '—' : `${String(Math.round((storage / 1024 ** 3) * 100) / 100)} GB` },
+    { field: 'Features', before: null, after: features.length === 0 ? 'None' : features.join(', ') },
+  ];
 }

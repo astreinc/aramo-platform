@@ -251,7 +251,8 @@ function harness(opts: { executed?: Row[]; certificate?: Row | null; evidenceFai
     if (opts.evidenceFails) throw new Error('manifest unavailable');
     return { manifest: { envelope_id: E }, signature: 'sig', signature_algorithm: 'SHA256-SOFTWARE-DOC3', kms_key_version_ref: null, signing_timestamp: 't' };
   });
-  const moduleRef = { get: () => ({ evidenceManifest }) };
+  // Feature-Parity §1.18 — off here: no trusted timestamps recorded.
+  const moduleRef = { get: () => ({ evidenceManifest, trustedTimestampsFor: async () => [] }) };
   return { executed, certs, prisma, repo, events, moduleRef, evidenceManifest };
 }
 

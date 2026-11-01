@@ -1,0 +1,27 @@
+# /etc/aramo/monitoring.conf — root:root 0600. Read by aramo-health-probe.service
+# (EnvironmentFile=). Copy this file, fill in the three AWS lines, never commit the copy.
+#
+# From `terraform output` in infrastructure-monitoring/ (on the Mac):
+MON_SNS_TOPIC_ARN=arn:aws:sns:us-east-1:<account>:aramo-prod-ops-alerts
+MON_METRIC_NAMESPACE=Aramo/Prod
+MON_HOST_LABEL=astre-prod
+AWS_REGION=us-east-1
+# The aramo-prod-monitoring-publisher access key (sns:Publish to the one topic +
+# cloudwatch:PutMetricData in the one namespace; nothing else). Created out of band:
+#   aws iam create-access-key --user-name aramo-prod-monitoring-publisher
+AWS_ACCESS_KEY_ID=<publisher access key id>
+AWS_SECRET_ACCESS_KEY=<publisher secret>
+#
+# Optional overrides (defaults shown; see the header of aramo-health-probe.sh):
+# MON_TENANT_HOST=astre.aramo.ai
+# MON_SIGN_HOST=sign.aramo.ai
+# MON_ADMIN_HOST=admin.aramo.ai
+# MON_DISK_FAIL_PCT=85
+# MON_MEM_AVAIL_MIN_PCT=10
+# MON_TLS_MIN_DAYS=14
+# MON_5XX_MIN_COUNT=10
+# MON_5XX_MAX_PCT=5
+# MON_REMIND_HOURS=6
+# Set to 1 once the M-A8 backup timer is enabled (RUNBOOK-backups.md §5):
+# MON_BACKUP_REQUIRED=0
+# MON_BACKUP_MAX_AGE_HOURS=26

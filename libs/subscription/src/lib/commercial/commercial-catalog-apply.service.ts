@@ -17,6 +17,7 @@ import {
 } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import { type B2CatalogApplyAction, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
+import { type PlanCreatePayload, planCreateContent, planRowOf } from './commercial-plan-create.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -24,6 +25,7 @@ import {
   type CommercialClock,
   type CommercialChangeRequestRow,
   CommercialChangeRequestService,
+  PLAN_CREATE_KEY_LOCK_SQL,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
 
@@ -44,6 +46,14 @@ export { isCatalogApplicable } from './commercial-change-request.js';
 // rules as CCP-A6 (TD-A6-3: the original requester, a human, live authority; NC-5 re-check;
 // APPLY_FAILED retryable; the shared records in commercial-apply-records.ts). Reached through the
 // same command, CommercialApplyService.apply, and route POST …/change-requests/{id}/apply.
+//
+// CCP PLAN_CREATE (Aramo-CCP-Amendment-PLAN_CREATE-Console-Plan-Creation PC-7, catalog row 17) — the
+// same apply, one more branch:
+//   PLAN_CREATE           under the per-key lock (PC-6, re-checked): the Plan row (status ACTIVE,
+//                         sellable false), its allowance / window / capacity / feature rows in payload
+//                         order, then version 1 as DRAFT (content = the projection of those rows) and
+//                         PUBLISHED (PlanVersionRepository.createDraft + publish). No provider price is
+//                         pinned (PC-10). Nothing exists before this transaction commits (PC-8).
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -161,7 +171,21 @@ export class CommercialCatalogApplyService {
             },
             tx,
           );
-        await append(action === 'PLAN_VERSION_PUBLISH' ? 'COMMERCIAL_PLAN_VERSION_PUBLISHED' : 'COMMERCIAL_PLAN_VERSION_RETIRED', `plan_version:${effect.plan_version_id}`, {
+        if (action === 'PLAN_CREATE') {
+          // PC-9 — the plan, then its version 1 publish (the row-11 event shape).
+          await append('COMMERCIAL_PLAN_CREATED', `plan:${effect.plan_id}`, {
+            plan_id: effect.plan_id,
+            plan_key: effect.plan_key,
+            product_key: payload['product_key'],
+            tenant_kind: payload['tenant_kind'],
+            sales_model: payload['sales_model'],
+            plan_version_id: effect.plan_version_id,
+            version_number: effect.version_number,
+            content_checksum: effect.content_checksum,
+            effective_at: now.toISOString(),
+          });
+        }
+        await append(action === 'PLAN_RETIRE' ? 'COMMERCIAL_PLAN_VERSION_RETIRED' : 'COMMERCIAL_PLAN_VERSION_PUBLISHED', `plan_version:${effect.plan_version_id}`, {
           plan_id: effect.plan_id,
           plan_key: effect.plan_key,
           plan_version_id: effect.plan_version_id,
@@ -205,6 +229,7 @@ export class CommercialCatalogApplyService {
   }
 
   private async applyDomain(tx: Tx, action: B2CatalogApplyAction, p: Record<string, unknown>, actor: CommercialActor, now: Date) {
+    if (action === 'PLAN_CREATE') return this.createPlan(tx, p as unknown as PlanCreatePayload, actor, now);
     const head = await tx.planVersion.findUnique({ where: { id: p['plan_version_id'] as string }, include: { plan: true } });
     if (head === null) throw new ApplyFailure('VERSION_NOT_FOUND', { plan_version_id: p['plan_version_id'] });
     if (!isProductKey(head.plan.product_key)) throw new ApplyFailure('PRODUCT_NOT_REGISTERED', { plan_key: head.plan.key, product_key: head.plan.product_key });
@@ -230,5 +255,33 @@ export class CommercialCatalogApplyService {
     if (version.status !== 'PUBLISHED') throw new ApplyFailure('VERSION_NOT_PUBLISHED', { plan_version_id: version.id, status: version.status });
     await this.versions.retire(version.id, now, tx);
     return { ...base, retired_plan_version_id: null, provider_price_ref: null, from_status: 'PUBLISHED', to_status: 'RETIRED' };
+  }
+
+  /** CCP PLAN_CREATE (PC-7) — the plan, its rows and its PUBLISHED version 1, in the apply transaction. */
+  private async createPlan(tx: Tx, p: PlanCreatePayload, actor: CommercialActor, now: Date) {
+    if (!isProductKey(p.product_key)) throw new ApplyFailure('PRODUCT_NOT_REGISTERED', { plan_key: p.plan_key, product_key: p.product_key });
+    await tx.$executeRawUnsafe(PLAN_CREATE_KEY_LOCK_SQL, p.plan_key);
+    const taken = await tx.plan.findUnique({ where: { key: p.plan_key }, select: { id: true } });
+    if (taken !== null) throw new ApplyFailure('PLAN_KEY_TAKEN', { plan_key: p.plan_key, plan_id: taken.id });
+    const plan_id = uuidv7();
+    await tx.plan.create({ data: { id: plan_id, ...planRowOf(p), created_at: now } });
+    // Payload order (the content projection below lists them in the same order).
+    for (const a of p.allowances) await tx.planAllowance.create({ data: { plan_id, ...a } });
+    for (const w of p.allowance_windows) await tx.planAllowanceWindow.create({ data: { plan_id, ...w } });
+    for (const c of p.capacities) await tx.planCapacity.create({ data: { plan_id, capacity_key: c.capacity_key, limit_quantity: c.limit_quantity === null ? null : BigInt(c.limit_quantity), unlimited: c.unlimited } });
+    for (const f of p.features) await tx.planFeature.create({ data: { plan_id, ...f } });
+    const draft = await this.versions.createDraft({ plan_id, content: planCreateContent(p), created_by: actor.user_id, note: 'PLAN_CREATE version 1', at: now, exclusive: true }, tx);
+    const published = await this.versions.publish(draft.id, now, tx);
+    return {
+      plan_id,
+      plan_key: p.plan_key,
+      plan_version_id: published.id,
+      version_number: published.version_number,
+      content_checksum: published.content_checksum,
+      retired_plan_version_id: null,
+      provider_price_ref: null,
+      from_status: 'NONE',
+      to_status: 'PUBLISHED',
+    };
   }
 }

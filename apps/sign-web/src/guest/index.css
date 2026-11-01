@@ -42,6 +42,7 @@ p { line-height: 1.5; margin: 0 0 12px; }
 /* Header — brand + security note (+ subject, progress, Help, Decline in the workspace). */
 .sg-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); }
 .sg-mark { width: 36px; height: 36px; border-radius: 9px; background: var(--sg-accent); color: #fff; display: grid; place-items: center; font-weight: 800; flex: none; }
+.sg-logo { max-height: 36px; max-width: 140px; object-fit: contain; flex: none; }
 .sg-head__text { display: flex; flex-direction: column; min-width: 0; }
 .sg-head__title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sg-head__sub { color: var(--sg-muted); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }

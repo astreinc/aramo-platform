@@ -16,6 +16,15 @@ export const isServerName = (f: Pick<SignField, 'field_type' | 'name_mode' | 'se
 
 export const isChecked = (v: string | undefined): boolean => v === 'true' || v === FILLED_MARK;
 
+// Sign 1.14 — a PAYMENT field: paid on Stripe's hosted page, filled by the server.
+export const isPayment = (f: Pick<SignField, 'field_type'>): boolean => f.field_type === 'PAYMENT';
+
+// "$25.00" for a USD amount in cents.
+export function formatAmount(amount_minor: number, currency: string): string {
+  const v = (amount_minor / 100).toFixed(2);
+  return currency === 'USD' ? `$${v}` : `${v} ${currency}`;
+}
+
 const groupOf = (f: Pick<SignField, 'field_type' | 'group_key'>): string | null =>
   f.field_type === 'CHECKBOX' && typeof f.group_key === 'string' && f.group_key.length > 0 ? f.group_key : null;
 
@@ -46,7 +55,8 @@ export function requirements(fields: readonly SignField[], filled: Readonly<Reco
       continue;
     }
     if (!f.required) continue;
-    if (isBox(f)) out.push({ key: f.field_id, done: isChecked(filled[f.field_id]), message: `Check the required box${f.label ? ` “${f.label}”` : ''}.` });
+    if (isPayment(f)) out.push({ key: f.field_id, done: filled[f.field_id] !== undefined, message: 'A payment is required before you can finish.' });
+    else if (isBox(f)) out.push({ key: f.field_id, done: isChecked(filled[f.field_id]), message: `Check the required box${f.label ? ` “${f.label}”` : ''}.` });
     else out.push({ key: f.field_id, done: filled[f.field_id] !== undefined, message: 'Some required fields still need your input.' });
   }
   for (const [g, boxes] of groups) {
@@ -78,5 +88,6 @@ export function incompleteMessage(reason: string | undefined): string {
   if (reason === 'checkbox_required_unchecked') return 'A required box still needs to be checked.';
   if (reason === 'checkbox_group_select_one') return 'Choose exactly one option in each “select one” group.';
   if (reason === 'checkbox_group_min_selected') return 'Check enough options in each required group.';
+  if (reason === 'payment_required') return 'A payment is required before you can finish.';
   return 'Some required fields still need your input.';
 }

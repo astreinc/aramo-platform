@@ -37,6 +37,16 @@ export class RoleService {
     return this.roleRepo.findActiveRoleKeysForUserInTenantAndSite(args);
   }
 
+  // Aramo Sign Feature-Parity §1.21 — the principal's custom Sign role scopes in ONE tenant
+  // (same site rule as getScopesByUserTenantAndSite). Only `sign` consumer resolution reads it.
+  async getSignCustomRoleScopes(args: {
+    user_id: string;
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<string[]> {
+    return this.roleRepo.findSignCustomRoleScopeKeys(args);
+  }
+
   // PR-A1a Ruling 4 site-aware variant. When site_id is provided, the
   // returned set is the union of tenant-wide and site-X membership
   // scopes. When site_id is undefined, only tenant-wide membership

@@ -30,6 +30,8 @@ import {
   VERSION_PILL,
   type EditorFieldKey,
 } from './catalog-model';
+import { NewPlanDialog } from './NewPlanDialog';
+import { pendingPlanCreateLine, planCreateApplyable } from './new-plan-model';
 import './catalog.css';
 
 // CCP-B2 (Program Build Directive §5.3 row B2; CCP handoff §5.4) — the product and plan catalog
@@ -42,6 +44,9 @@ import './catalog.css';
 //     request and submit it (Finance → Owner). The console never publishes or retires;
 //   - a PUBLISHED or RETIRED version is read-only: no field is editable and no edit action exists.
 // Other roles see the view-only note; their buttons are disabled with the reason as a tooltip.
+// CCP PLAN_CREATE (catalog row 17): "New plan…" (catalog manager) creates a PLAN_CREATE change request
+// (Finance → Owner); the pending creations are listed under the plans, and the requester applies an
+// approved one here (the plan and its published v1 exist only after that apply).
 
 const PUBLISH_INTRO =
   'Products, their plans and plan versions. A published version never changes: subscriptions pin it, and edits happen in a new draft that Finance and an Owner approve before it publishes.';
@@ -75,6 +80,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
   const [evidence, setEvidence] = useState('');
   const [typed, setTyped] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [newPlanOpen, setNewPlanOpen] = useState(false);
   const saving = useRef<Promise<unknown> | null>(null);
   // The latest render's version, so a queued save sends the checksum the previous save left.
   const latest = useRef<CatalogVersion | undefined>(undefined);
@@ -278,6 +284,10 @@ export function CatalogView({ session }: { readonly session: Session }) {
     />
   ) : null;
 
+  const planCreate = catalog?.plan_create;
+  const availableKeys = planCreate?.available_keys.find((k) => k.product_key === 'sign')?.keys ?? [];
+  const pendingCreates = planCreate?.pending ?? [];
+
   const dialogDiff: CommercialDiffRow[] = (() => {
     if (dialog === null) return [];
     if (dialog.kind === 'retire') return [{ field: versionTitle(dialog.plan, dialog.version), before: 'Published', after: 'Retired', changed: true }];
@@ -339,6 +349,18 @@ export function CatalogView({ session }: { readonly session: Session }) {
                   <h2 id="pc-plans-title" className="pc-card__title">
                     Aramo Sign plans
                   </h2>
+                  {planCreate !== undefined ? (
+                    <Button
+                      unstyled
+                      type="button"
+                      className="pc-btn"
+                      disabled={!canDraft || busy}
+                      title={canDraft ? undefined : 'Needs the Catalog manager role.'}
+                      onClick={() => setNewPlanOpen(true)}
+                    >
+                      New plan…
+                    </Button>
+                  ) : null}
                 </div>
                 {plans.map((pl) => {
                   const row = planRow(pl);
@@ -351,6 +373,25 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     </Button>
                   );
                 })}
+                {pendingCreates.length > 0 ? (
+                  <div className="pc-pending" data-testid="pending-plan-creates">
+                    <div className="pc-caps pc-caps--14">Pending new plans</div>
+                    {pendingCreates.map((r) => (
+                      <div key={r.id} className="pc-open">
+                        {`${pendingPlanCreateLine(r)} · `}
+                        <a href={`/commercial/approvals?request=${encodeURIComponent(r.id)}`}>{shortId(r.id)}</a>
+                        {canDraft && planCreateApplyable(r, session.sub) ? (
+                          <>
+                            {' '}
+                            <Button unstyled type="button" className="pc-btn" disabled={busy} onClick={() => void applyRequest(r.id)}>
+                              Apply
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </section>
 
               <section className="pc-card" aria-labelledby="pc-versions-title">
@@ -483,6 +524,21 @@ export function CatalogView({ session }: { readonly session: Session }) {
           )}
         </>
       )}
+
+      {newPlanOpen ? (
+        <NewPlanDialog
+          availableKeys={availableKeys}
+          existingKeys={plans.map((p) => p.key)}
+          chain={chainNode}
+          onClose={() => setNewPlanOpen(false)}
+          onSubmitted={(req) => {
+            setNewPlanOpen(false);
+            void load();
+            const steps = req.required_chain.steps.map((s) => STEP_LABEL[s.role_key] ?? s.role_key).join(' → ');
+            toast.show(`${shortId(req.id)} submitted · ${steps}`);
+          }}
+        />
+      ) : null}
 
       {dialog !== null ? (
         <CommercialRequestDialog

@@ -799,10 +799,11 @@ model UsageRollupRun {
 // CCP-B2-backend (Architect disposition TD-A6-13) — the durable record of one APPLIED catalog
 // change request (PLAN_VERSION_PUBLISH / PLAN_RETIRE), written in the same transaction as the
 // version transition and the APPLIED move; append-only; one per request (migration 20261025220000).
+// CCP PLAN_CREATE (migration 20261101200000): also one applied plan creation (plan + its version 1).
 model CommercialCatalogApplication {
   id                      String   @id @db.Uuid
   change_request_id       String   @unique @db.Uuid
-  // CHECK: PLAN_VERSION_PUBLISH | PLAN_RETIRE
+  // CHECK: PLAN_VERSION_PUBLISH | PLAN_RETIRE | PLAN_CREATE
   action_type             String
   plan_id                 String   @db.Uuid
   plan_version_id         String   @db.Uuid

@@ -69,6 +69,29 @@ export interface EvidenceSummary {
   signature: string | null;
   signature_algorithm: string | null;
   completed_at: string | null;
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted
+  // timestamps (Aramo Sign only). Present only when at least one was recorded.
+  trusted_timestamps?: TrustedTimestampEvidence[];
+}
+
+// One RFC 3161 timestamp: an executed document's SHA-256 or the completed evidence
+// manifest's. PENDING = requested, not yet granted (retried in the background).
+export interface TrustedTimestampEvidence {
+  subject_kind: 'EXECUTED_DOCUMENT' | 'EVIDENCE_MANIFEST';
+  envelope_document_id: string | null;
+  message_imprint_sha256: string;
+  hash_algorithm: string;
+  status: 'PENDING' | 'GRANTED';
+  gen_time: string | null;
+  tsa_name: string | null;
+  tsa_url: string;
+  serial_number: string | null;
+  policy_oid: string | null;
+  tsa_certificate_sha256: string | null;
+  // The DER TimeStampToken, base64.
+  token_der_base64: string | null;
+  // EVIDENCE_MANIFEST only: the exact manifest JSON that was time-stamped.
+  subject_canonical: string | null;
 }
 
 // Sign Unified Product — Addendum S6 ruling 2: the OPTIONAL typed actor credential

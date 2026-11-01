@@ -15,7 +15,9 @@ export type SigningNotificationKind =
   // Multi-Signer M-3b — the sender's progress notice: a signer has signed (not the last).
   | 'SIGNER_SIGNED'
   // M-A5 §2.2 — a copy recipient's ON_SEND copy (a link to the source documents).
-  | 'RECIPIENT_COPY';
+  | 'RECIPIENT_COPY'
+  // Feature-Parity §1.9 — the sender's notice that a recipient failed identity verification.
+  | 'IDENTITY_VERIFICATION_FAILED';
 
 // Who the notification is for: a signer (recipient) or the envelope's sender.
 export type SigningNotificationAudience = 'SIGNER' | 'SENDER';
@@ -53,6 +55,8 @@ export interface SigningNotification {
   // Sign Mobile M-A3 §3 — SIGNATURE_REQUEST: the sender's plain-text message
   // (sanitized at write; the renderer escapes it like every dynamic value).
   sender_message?: string;
+  // Feature-Parity §1.9 — IDENTITY_VERIFICATION_FAILED: why the recipient was stopped.
+  verification_failure?: 'name_mismatch' | 'attempts_exhausted';
 }
 
 export interface SigningNotificationResult {

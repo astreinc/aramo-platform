@@ -42,6 +42,12 @@ export interface SignInPageProps {
   notEntitledAction?: ReactNode;
   /** Show the "signing a document someone sent you?" aside (Aramo Sign). */
   signerNote?: boolean;
+  /**
+   * Account-creation links (Aramo Sign: self-service sign-up), shown under the
+   * sign-in buttons and on the "no Aramo account" screen. The app decides which
+   * links exist (e.g. only while that sign-up is switched on).
+   */
+  accountLinks?: ReactNode;
   // Test seams.
   search?: string;
   onNavigate?: (url: string) => void;
@@ -144,6 +150,20 @@ function errorScreen(
   errorCopy: Readonly<Record<string, SignInErrorCopy>> | undefined,
   signerNote: boolean,
 ): ErrorScreen {
+  if (error === 'VALIDATION_ERROR' && reason === 'idp_email_unverified') {
+    // The PreSignUp trigger refused an identity whose provider has not verified
+    // its email (a Microsoft account with no mailbox, `xms_edov` false). Checked
+    // before the per-app copy: an app's generic VALIDATION_ERROR copy (the
+    // platform console's "Your session ended.") would hide the cause.
+    return {
+      tone: 'amber',
+      icon: ICON.warn,
+      title: 'Your Microsoft account’s email isn’t verified',
+      body: 'Microsoft didn’t confirm an email address for this account, so we can’t sign you in with it. This usually means the work account has no mailbox.',
+      note: 'Ask your administrator to give the account a mailbox, then try again. Or use another sign-in method.',
+      actions: ['providers', 'different-account'],
+    };
+  }
   const override = errorCopy?.[error];
   if (override !== undefined) {
     return {
@@ -262,6 +282,7 @@ export function SignInPage({
   errorCopy,
   notEntitledAction,
   signerNote = false,
+  accountLinks,
   search,
   onNavigate,
   onSignOut,
@@ -363,6 +384,7 @@ export function SignInPage({
             <span>{screen.note}</span>
           </div>
         ) : null}
+        {error === 'INSUFFICIENT_PERMISSIONS' && accountLinks !== undefined ? accountLinks : null}
       </AuthShell>
     );
   }
@@ -399,6 +421,7 @@ export function SignInPage({
           <b>Signing a document someone sent you?</b> Open the link in your email. You don’t need an Aramo account.
         </div>
       ) : null}
+      {accountLinks ?? null}
     </AuthShell>
   );
 }

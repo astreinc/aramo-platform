@@ -21,8 +21,16 @@ export interface FieldRuleRow {
   name_mode?: string | null;
 }
 
+// Sign 1.14 — a PAYMENT field is filled by the server when its payment succeeds
+// (the receipt line the executed PDF prints); a signer never fills it.
+export const PAYMENT_FIELD_TYPE = 'PAYMENT';
+
+export function isPaymentField(f: Pick<FieldRuleRow, 'field_type'>): boolean {
+  return f.field_type === PAYMENT_FIELD_TYPE;
+}
+
 export interface FieldRuleViolation {
-  reason: 'required_field_unfilled' | 'checkbox_required_unchecked' | 'checkbox_group_select_one' | 'checkbox_group_min_selected';
+  reason: 'required_field_unfilled' | 'checkbox_required_unchecked' | 'checkbox_group_select_one' | 'checkbox_group_min_selected' | 'payment_required';
   field_id?: string;
   group_key?: string;
 }
@@ -37,6 +45,8 @@ const isChecked = (f: FieldRuleRow): boolean => f.filled_at !== null && f.value 
 
 // The first rule a signer's fields break at completion, or null.
 //   - a server-filled name is never the signer's to fill (skipped here);
+//   - Sign 1.14: a PAYMENT field is always required and is filled only by a
+//     succeeded payment (payment required before the signer can complete);
 //   - a required ungrouped check box must be checked ('true');
 //   - any other required field must be filled;
 //   - SELECT_ONE: at most one box checked, exactly one when the group is required;
@@ -46,6 +56,10 @@ export function evaluateSignerFieldRules(fields: readonly FieldRuleRow[]): Field
   const groups = new Map<string, FieldRuleRow[]>();
   for (const f of fields) {
     if (isServerFilledName(f)) continue;
+    if (isPaymentField(f)) {
+      if (f.filled_at === null) return { reason: 'payment_required', field_id: f.id };
+      continue;
+    }
     if (f.field_type === 'CHECKBOX' && f.group_key !== undefined && f.group_key !== null) {
       const g = groups.get(f.group_key) ?? [];
       g.push(f);

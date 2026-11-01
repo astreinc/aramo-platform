@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Input, logout, ssoEntryHref } from '@aramo/fe-foundation';
 
 import { senderApi, type LedgerEvent } from './api';
+import { customRolesVisible } from './custom-roles-api';
 import { Avatar, Bare, Btn, Icon, eventDot, eventLabel, rel } from './ui';
 import { useWorkspace } from './workspace';
 import { LegalLinks } from './legal/LegalAcceptance';
@@ -83,7 +84,14 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/activity`, label: 'Activity', icon: 'activity' },
           ],
         },
-        { label: 'Administration', items: [{ to: `${base}/settings`, label: 'Settings', icon: 'settings' }] },
+        {
+          label: 'Administration',
+          items: [
+            { to: `${base}/settings`, label: 'Settings', icon: 'settings' },
+            // Sign Feature-Parity §1.21 — custom roles, only while available and for member managers.
+            ...(customRolesVisible(ctx) ? [{ to: `${base}/roles`, label: 'Roles', icon: 'contacts' }] : []),
+          ],
+        },
       ];
 
   const sidebar = (

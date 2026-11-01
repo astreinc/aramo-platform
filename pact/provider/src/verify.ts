@@ -311,6 +311,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           getScopesByUserTenantAndSite: async () => ['auth:session:read', 'sign:envelope:read'],
           // M-A1 — the native mint/refresh paths stamp the site axis (tenant-wide here).
           findActiveMembershipSite: async () => null,
+          // Feature-Parity §1.21 — the sign consumer also adds custom-role scopes; the pact
+          // principal holds no custom Sign role.
+          getSignCustomRoleScopes: async () => [],
         })
         // M-A1 — the sign-mobile pact. Cognito is a fake behind the exchange port;
         // the ID token is checked by the real verifier against the fake's local

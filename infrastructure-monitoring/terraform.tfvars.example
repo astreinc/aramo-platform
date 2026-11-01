@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars on the operator Mac (never commit the copy; *.tfvars is
+# gitignored). Everything except alert_email has a default; nothing here is secret.
+# Apply procedure: doc/runbooks/sign/monitoring-and-alerts.md §2.
+alert_email = "ops@example.invalid" # PO confirms the real address at the apply checkpoint
+
+# Override only with a recorded reason, e.g.:
+# tls_min_days = 14
+# remind_hours = 6

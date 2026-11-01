@@ -183,6 +183,8 @@ model Tenant {
   sites        Site[]
   // IC-1 PR-2 — the Users this tenant OWNS (one owning tenant per User).
   owned_users  User[]   @relation("UserOwner")
+  // Sign Feature-Parity §1.21 — the organization's custom Sign roles.
+  sign_custom_roles SignCustomRole[]
 
   @@index([is_active])
   @@index([status])
@@ -256,8 +258,13 @@ model UserTenantMembership {
   tenant       Tenant   @relation(fields: [tenant_id], references: [id])
   site         Site?    @relation(fields: [site_id], references: [id])
   role_assignments UserTenantMembershipRole[]
+  // Sign Feature-Parity §1.21 — custom Sign role assignments (composite FK pins the
+  // assignment's tenant to the membership's tenant).
+  sign_custom_role_assignments SignCustomRoleAssignment[]
 
   @@unique([user_id, tenant_id])
+  // Sign Feature-Parity §1.21 — target of the (membership_id, tenant_id) composite FK.
+  @@unique([id, tenant_id])
   @@index([tenant_id, is_active])
   @@index([user_id, is_active])
   @@index([tenant_id, site_id, is_active])
@@ -313,6 +320,52 @@ model UserTenantMembershipRole {
   role          Role                 @relation(fields: [role_id], references: [id])
 
   @@unique([membership_id, role_id])
+  @@schema("identity")
+}
+
+// Aramo Sign Feature-Parity Program Directive v1.0 (LOCKED) §1.21 — organization-defined
+// Sign roles. A custom role is TENANT-OWNED (tenant_id NOT NULL), composed ONLY of existing
+// `sign:*` scope keys (SIGN_CUSTOM_ROLE_COMPOSABLE_SCOPES; never platform/ATS/billing — a
+// DB CHECK refuses any key outside the `sign:` namespace), and adds to the member's
+// effective Sign scopes for THAT tenant only (RoleRepository). The global Role/RoleScope
+// catalog and the built-in roles are untouched. Soft delete (deleted_at) keeps history;
+// a role still assigned cannot be deleted. Partial unique (tenant_id, lower(name)) WHERE
+// deleted_at IS NULL lives in the migration (Prisma cannot express it).
+model SignCustomRole {
+  id           String    @id @db.Uuid
+  tenant_id    String    @db.Uuid
+  name         String
+  description  String?
+  scope_keys   String[]
+  created_by   String    @db.Uuid
+  updated_by   String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @updatedAt @db.Timestamptz
+  deleted_at   DateTime? @db.Timestamptz
+
+  tenant       Tenant    @relation(fields: [tenant_id], references: [id])
+  assignments  SignCustomRoleAssignment[]
+
+  @@unique([id, tenant_id])
+  @@index([tenant_id, deleted_at])
+  @@schema("identity")
+}
+
+model SignCustomRoleAssignment {
+  id             String   @id @db.Uuid
+  tenant_id      String   @db.Uuid
+  custom_role_id String   @db.Uuid
+  membership_id  String   @db.Uuid
+  created_by     String   @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz
+
+  // Both relations are COMPOSITE on tenant_id: an assignment can never join a role of
+  // one tenant to a membership of another (cross-tenant isolation in the database).
+  role           SignCustomRole       @relation(fields: [custom_role_id, tenant_id], references: [id, tenant_id])
+  membership     UserTenantMembership @relation(fields: [membership_id, tenant_id], references: [id, tenant_id])
+
+  @@unique([custom_role_id, membership_id])
+  @@index([tenant_id, membership_id])
   @@schema("identity")
 }
 

@@ -60,12 +60,21 @@ export interface SenderRecipientInput {
   // M-A5 §3.5 — null only for an IN_PERSON_SIGNER.
   email: string | null;
   // M-A5 §1 — omitted ⇒ SIGNER (the column default; every existing caller).
-  recipient_kind?: 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+  recipient_kind?: 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY' | 'WITNESS';
   // M-A5 §2.1 — required iff RECEIVES_COPY.
   copy_delivery?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH' | null;
   // M-A5 §4.1 — set by the service to the caller's user id (Assign to me); never
   // taken from the request body.
   bound_user_id?: string | null;
+  // Feature-Parity directive §1.17 — a WITNESS names the recipient it witnesses by its
+  // position in this same list (required iff WITNESS; the service validates it).
+  witness_for_index?: number | null;
+  // §1.9 — the access code as a salted hash (never the code). undefined keeps the
+  // stored value of an existing recipient (none for a new one); null clears it.
+  access_code_hash?: string | null;
+  // Feature-Parity §1.9 — the recipient's identity-verification method: a value sets it,
+  // null clears it, omitted keeps it (a new recipient starts without one).
+  identity_verification_method?: 'ID_VERIFICATION' | 'KBA' | null;
 }
 
 export interface SenderFieldInput {
@@ -87,6 +96,9 @@ export interface SenderFieldInput {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
+  payment_amount_minor?: number | null;
+  payment_currency?: string | null;
 }
 
 // Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
@@ -436,6 +448,8 @@ export class EsignSenderRepository {
     execution_mode?: string;
     routing_mode?: string;
     message?: string | null;
+    // Feature-Parity §1.17 — the sender allows a signer to delegate (DRAFT only).
+    allow_delegation?: boolean;
     expected_revision?: number;
   }): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
@@ -443,6 +457,7 @@ export class EsignSenderRepository {
       await tx.signatureEnvelope.update({
         where: { id: input.envelope_id },
         data: {
+          ...(input.allow_delegation !== undefined ? { allow_delegation: input.allow_delegation } : {}),
           ...(input.subject !== undefined ? { subject: input.subject } : {}),
           ...(input.execution_mode !== undefined ? { execution_mode: input.execution_mode } : {}),
           ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
@@ -682,13 +697,17 @@ export class EsignSenderRepository {
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) await tx.signer.update({ where: { id: r.id }, data: { signing_order: PARK + i + 1 } });
       }
+      // Feature-Parity §1.17 — ids are fixed first so a witness can name a recipient created
+      // in this same write (Signer_witness_for_fkey is deferred to commit).
+      const ids = input.recipients.map((r) => r.id ?? randomUUID());
+      const extra = (r: SenderRecipientInput) => recipientExtraData(r, ids);
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {
-          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r) } });
+          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r), ...extra(r), ...identityVerificationData(r) } });
         } else {
           await tx.signer.create({
             data: {
-              id: randomUUID(),
+              id: ids[i] as string,
               tenant_id: input.tenant_id,
               envelope_id: input.envelope_id,
               name: r.name,
@@ -697,6 +716,7 @@ export class EsignSenderRepository {
               signer_role: null,
               status: 'PENDING',
               ...recipientKindData(r),
+              ...extra(r), ...identityVerificationData(r),
             },
           });
         }
@@ -751,6 +771,8 @@ export class EsignSenderRepository {
             group_rule: f.group_rule ?? null,
             min_selected: f.min_selected ?? null,
             name_mode: f.name_mode ?? null,
+            payment_amount_minor: f.payment_amount_minor ?? null,
+            payment_currency: f.payment_currency ?? null,
           },
         });
       }
@@ -785,6 +807,17 @@ export type { Db as SenderWorkspaceDb };
 
 // M-A5 §1 / §2 / §4 — the recipient-kind columns a PUT recipients item writes (a
 // full replacement: an omitted kind is SIGNER, an omitted binding is cleared).
+// Feature-Parity §1.17 / §1.9 — the witness link (by list position) and the access code
+// hash. A recipient that cannot carry an access code (in-person, copy) always has none.
+function recipientExtraData(r: SenderRecipientInput, ids: readonly string[]): { witness_for_signer_id: string | null; access_code_hash?: string | null; access_code_failed_count?: number; access_code_locked_at?: null } {
+  const kind = r.recipient_kind ?? 'SIGNER';
+  const witness_for_signer_id = kind === 'WITNESS' && typeof r.witness_for_index === 'number' ? (ids[r.witness_for_index] ?? null) : null;
+  const codeAllowed = kind === 'SIGNER' || kind === 'WITNESS';
+  if (!codeAllowed) return { witness_for_signer_id, access_code_hash: null, access_code_failed_count: 0, access_code_locked_at: null };
+  if (r.access_code_hash === undefined) return { witness_for_signer_id };
+  return { witness_for_signer_id, access_code_hash: r.access_code_hash, access_code_failed_count: 0, access_code_locked_at: null };
+}
+
 function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; copy_delivery: string | null; bound_user_id: string | null } {
   const kind = r.recipient_kind ?? 'SIGNER';
   return {
@@ -792,4 +825,11 @@ function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; c
     copy_delivery: kind === 'RECEIVES_COPY' ? (r.copy_delivery ?? null) : null,
     bound_user_id: kind === 'RECEIVES_COPY' ? null : (r.bound_user_id ?? null),
   };
+}
+
+// Feature-Parity §1.9 — the identity-verification column a PUT recipients item writes:
+// omitted keeps the stored method; a copy recipient never carries one (DB CHECK).
+function identityVerificationData(r: SenderRecipientInput): { identity_verification_method?: string | null } {
+  if (r.recipient_kind === 'RECEIVES_COPY') return { identity_verification_method: null };
+  return r.identity_verification_method === undefined ? {} : { identity_verification_method: r.identity_verification_method };
 }

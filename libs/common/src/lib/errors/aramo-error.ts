@@ -144,6 +144,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_WEBHOOKS_UNAVAILABLE: 503,
   // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (sign.templates).
   ESIGN_FEATURE_NOT_AVAILABLE: 403,
+  // Sign Feature-Parity §1.21 — custom Sign role conflict (name_taken | custom_role_in_use | custom_role_limit).
+  SIGN_CUSTOM_ROLE_CONFLICT: 409,
+  // Aramo Sign 1.14 — Stripe Connect not reachable (network, rate limit, 5xx).
+  ESIGN_PAYMENTS_UNAVAILABLE: 503,
   SIGNER_NOT_FOUND: 404,
   SIGNER_NOT_YET_ELIGIBLE: 409,
   SIGNING_SESSION_INVALID: 401,
@@ -359,6 +363,13 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   USAGE_ROLLUP_NOT_RECONCILED: 409,
   // CCP-B2 — catalog draft writes (a published version is never edited).
   COMMERCIAL_CATALOG_CONFLICT: 409,
+  // Sign Feature-Parity §1.9 — the per-recipient access code.
+  SIGNER_ACCESS_CODE_REQUIRED: 403,
+  SIGNER_ACCESS_CODE_LOCKED: 423,
+  // Feature-Parity §1.9 — recipient identity verification.
+  SIGNER_IDENTITY_VERIFICATION_REQUIRED: 403,
+  SIGNER_IDENTITY_VERIFICATION_LOCKED: 423,
+  ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE: 503,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

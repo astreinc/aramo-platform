@@ -270,6 +270,9 @@ export function toAramoError(err: unknown, requestId: string, amount_access = fa
       // PAYMENT_RECORD_NOT_GOVERNED | CONTRACT_REF_TAKEN | PAYMENT_CORRECTION_TARGET_INVALID; audited.
       case 'PAYMENT_REFUSED':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'payment_refused', ...d } });
+      // CCP PLAN_CREATE (PC-6) — details.reason: plan_key_taken | plan_create_open.
+      case 'PLAN_KEY_TAKEN':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: d });
     }
   }
   return err;

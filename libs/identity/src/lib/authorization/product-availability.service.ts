@@ -122,7 +122,14 @@ export class ProductAvailabilityService {
     );
     // Sign — the esign consumer's view restricted to the esign namespace (read from
     // the HELD scopes; the capability half of "authorized" is applied below).
-    const signScopes = held.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX));
+    const builtInSignScopes = held.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX));
+    // Sign Feature-Parity §1.21 — a member whose Sign access comes only from custom Sign roles
+    // is authorized too (the sign session resolves those scopes). Read only when it can decide
+    // the answer: the tenant holds Sign and no built-in role already grants a sign scope.
+    const signScopes =
+      tenantHasEsign && builtInSignScopes.length === 0
+        ? await heldSignCustomScopes(this.roles, args)
+        : builtInSignScopes;
     // Organization — ORG-UX-1 §4.3 (Lead Correction A): admin from the ROLE model
     // (tenant_owner / tenant_admin), templates from the template-authoring scopes the org
     // session would carry. A tenant:admin:* scope or the directory read alone is neither.
@@ -170,6 +177,12 @@ export class ProductAvailabilityService {
 async function heldRoleKeys(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {
   const site_id = await roles.findActiveMembershipSite(args);
   return roles.getRoleKeysByUserTenantAndSite(site_id === null ? args : { ...args, site_id });
+}
+
+// Sign Feature-Parity §1.21 — custom Sign role scopes under the same membership rule.
+async function heldSignCustomScopes(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {
+  const site_id = await roles.findActiveMembershipSite(args);
+  return roles.getSignCustomRoleScopes(site_id === null ? args : { ...args, site_id });
 }
 
 async function heldScopes(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {

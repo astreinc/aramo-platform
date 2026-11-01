@@ -14,7 +14,8 @@ const BASE = '/v1/sign/sender';
 
 export type EnvelopeStatus = 'DRAFT' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'VOIDED' | 'EXPIRED';
 export type RecipientStatus = 'PENDING' | 'VIEWED' | 'SIGNED' | 'DECLINED';
-export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT';
+// Sign 1.14 — PAYMENT: paid by the signer on Stripe's hosted page (only while features.payments).
+export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT' | 'PAYMENT';
 
 export interface SenderContext {
   user: { id: string; email: string | null; display_name: string | null };
@@ -33,10 +34,14 @@ export interface SenderContext {
     billing?: boolean;
     // DOC-TEMPLATE-LIB-1 T-5 — document_template:read (start envelopes from templates).
     templates?: boolean;
+    // Feature-Parity §1.13 — sign:report:read (organization reports).
+    reports?: boolean;
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (absent = not available).
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — in_person_signing (hosted signing; mobile only this release).
-  features?: { templates?: boolean; in_person_signing?: boolean };
+  // Sign 1.14 — payments (Stripe Connect): available to this organization.
+  // Feature-Parity §1.13 — reports = the sign.reports capability (BUSINESS only; absent = not available).
+  features?: { templates?: boolean; in_person_signing?: boolean; payments?: boolean; reports?: boolean };
   can_send: boolean;
   // Aramo Sign Personal (Free) — true only while Personal sending is switched on for this
   // deployment; whether THIS account may send is still `can_send` (backend-decided).
@@ -155,7 +160,8 @@ export interface Recipient {
 }
 
 // M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
-export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX']);
+// Sign 1.14 — PAYMENT is authored too (the server refuses it while payments are not available).
+export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'PAYMENT']);
 
 export interface EnvelopeField {
   id?: string;
@@ -175,6 +181,46 @@ export interface EnvelopeField {
   group_key?: string | null;
   group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | null;
   min_selected?: number | null;
+  // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
+  payment_amount_minor?: number | null;
+  payment_currency?: 'USD' | null;
+}
+
+// Sign 1.14 — the organization's Stripe Connect account (Settings → Payments).
+export interface PaymentAccount {
+  available: boolean;
+  unavailable_reason: 'feature_not_available' | 'payments_not_configured' | 'plan_not_entitled' | null;
+  account: {
+    status: 'CONNECTED' | 'DISCONNECTED';
+    charges_enabled: boolean;
+    details_submitted: boolean;
+    payouts_enabled: boolean;
+    live: boolean;
+    connected_at: string;
+    disconnected_at: string | null;
+  } | null;
+  application_fee_minor: number;
+  can_manage: boolean;
+}
+
+// Sign 1.14 — one payment collected on an envelope, with its refunds.
+export interface EnvelopePayment {
+  id: string;
+  signer_id: string;
+  field_id: string;
+  amount_minor: number;
+  currency: 'USD';
+  status: 'PENDING' | 'PAID' | 'FAILED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+  amount_refunded_minor: number;
+  refundable_minor: number;
+  payment_ref: string | null;
+  paid_at: string | null;
+  live: boolean;
+  refunds: { id: string; amount_minor: number; status: string; refund_ref: string | null; reason: string | null; created_at: string }[];
+}
+
+export function formatUsd(amount_minor: number): string {
+  return `$${(amount_minor / 100).toFixed(2)}`;
 }
 
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
@@ -587,7 +633,7 @@ export const senderApi = {
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
       // M-A6 §2 — the type's configuration travels with the field; a value never does.
-      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected }) => ({
+      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency }) => ({
         // An engine-only type goes back with its stored id, unchanged (the server
         // keeps it only when identical to the stored row).
         ...(id != null && !SENDER_FIELD_TYPES.has(field_type) ? { id } : {}),
@@ -597,6 +643,7 @@ export const senderApi = {
         ...(group_key != null ? { group_key } : {}),
         ...(group_rule != null ? { group_rule } : {}),
         ...(min_selected != null ? { min_selected } : {}),
+        ...(payment_amount_minor != null ? { payment_amount_minor, payment_currency: payment_currency ?? 'USD' } : {}),
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),
@@ -616,6 +663,14 @@ export const senderApi = {
   setRetentionPolicy: (retention_days: number | null, purge_level: PurgeLevel) =>
     apiClient.put<RetentionPolicy>(`${BASE}/retention-policy`, { retention_days, purge_level }),
   evidence: (id: string) => apiClient.get<Evidence>(`${BASE}/envelopes/${enc(id)}/evidence`),
+  // Sign 1.14 — payments through Stripe Connect (the organization's own Stripe account).
+  paymentAccount: () => apiClient.get<PaymentAccount>(`${BASE}/payments/account`),
+  paymentOnboardingLink: () => apiClient.post<{ url: string; expires_at: string }>(`${BASE}/payments/account/onboarding-link`, {}),
+  refreshPaymentAccount: () => apiClient.post<PaymentAccount>(`${BASE}/payments/account/refresh`, {}),
+  disconnectPaymentAccount: () => apiClient.post<PaymentAccount>(`${BASE}/payments/account/disconnect`, {}),
+  envelopePayments: (id: string) => apiClient.get<{ items: EnvelopePayment[]; can_refund: boolean }>(`${BASE}/envelopes/${enc(id)}/payments`),
+  refundPayment: (id: string, paymentId: string, body: { amount_minor?: number; reason?: string }) =>
+    apiClient.post<EnvelopePayment>(`${BASE}/envelopes/${enc(id)}/payments/${enc(paymentId)}/refund`, body),
   documents: () => apiClient.get<{ items: DocumentRow[] }>(`${BASE}/documents`),
   contacts: () => apiClient.get<{ items: ContactRow[] }>(`${BASE}/contacts`),
   activity: (limit = 200) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/activity?limit=${limit}`),
@@ -635,6 +690,80 @@ export const senderApi = {
     message?: string | null;
   }) => apiClient.post<FromTemplateResult>(`${BASE}/envelopes/from-template`, body),
 };
+
+// Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — organization reports.
+export type ReportPeriod = 'day' | 'week' | 'month';
+export interface ReportStats {
+  sent: number;
+  completed: number;
+  declined: number;
+  voided: number;
+  expired: number;
+  in_flight: number;
+  completion_rate: number | null;
+  turnaround_average_hours: number | null;
+  turnaround_median_hours: number | null;
+  turnaround_p90_hours: number | null;
+}
+export interface ReportsOverview {
+  range: { from: string; to: string; period: ReportPeriod; timezone: 'UTC' };
+  totals: ReportStats;
+  volume: { period_start: string; sent: number; completed: number; declined: number; voided: number }[];
+  by_sender: (ReportStats & { sender_id: string; sender_name: string | null })[];
+  by_template: (ReportStats & { template_ref: string | null; template_name: string | null })[];
+}
+export interface ReportQuery {
+  from?: string;
+  to?: string;
+  period?: ReportPeriod;
+}
+export type ReportExportKind = 'summary' | 'volume' | 'senders' | 'templates';
+
+function reportQs(q: ReportQuery & { report?: ReportExportKind }): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (typeof v === 'string' && v !== '') p.set(k, v);
+  const qs = p.toString();
+  return qs === '' ? '' : `?${qs}`;
+}
+
+export const reportsApi = {
+  overview: (q: ReportQuery = {}) => apiClient.get<ReportsOverview>(`${BASE}/reports/overview${reportQs(q)}`),
+  exportUrl: (kind: ReportExportKind, q: ReportQuery = {}) => `${BASE}/reports/export${reportQs({ ...q, report: kind })}`,
+  auditUrl: (q: ReportQuery = {}) => `${BASE}/reports/envelopes/export${reportQs({ from: q.from, to: q.to })}`,
+};
+
+// A CSV attachment (reports exports): same credentials, consumer header and one-shot refresh
+// as fetchSourcePdf; saved under the server's filename.
+export async function downloadCsv(url: string, fallbackName: string): Promise<void> {
+  const get = () => fetch(url, { credentials: 'include', headers: { 'X-Aramo-Consumer': getAuthConsumer() } });
+  let res = await get();
+  if (res.status === 401) {
+    const refreshed = await fetch(`/auth/${getAuthConsumer()}/refresh`, { method: 'POST', credentials: 'include' });
+    if (refreshed.ok) res = await get();
+  }
+  if (!res.ok) {
+    let code: string | undefined;
+    let message = `Could not export (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: { code?: string; message?: string } };
+      code = body.error?.code;
+      if (typeof body.error?.message === 'string') message = body.error.message;
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(res.status, message, code);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
+  const blobUrl = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+}
 
 // PDF bytes for the editor / preview. Binary, so it bypasses the JSON client but
 // keeps the same credentials + consumer header and the same one-shot refresh on 401.
@@ -694,6 +823,10 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required') return 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'NO_BILLING_ACCOUNT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
     if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.';
+    // Feature-Parity 1.1 — the plan refusal (Catalog v2 P-6: the Free plan never has templates).
+    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['reason'] === 'templates_not_in_plan') return 'Templates aren’t included in the Free plan. They come with every paid Aramo Sign plan.';
+    // Feature-Parity §1.13 — the reports capability (or a Personal plan) refuses with its own key.
+    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['feature_key'] === 'sign.reports') return 'Reports aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';

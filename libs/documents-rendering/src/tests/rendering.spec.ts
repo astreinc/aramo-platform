@@ -337,6 +337,20 @@ describe('PdfLibDocumentRenderingAdapter (GENERATED path — rich content, A1)',
     expect(parsed.getPageCount()).toBe(1);
   });
 
+  // Aramo-Sign-Feature-Parity §1.10 — the Sign certificate's optional brand-coloured rule.
+  it('draws an optional brand rule under the letterhead; absent, the output and manifest are unchanged', async () => {
+    const lh = { image_bytes: PNG, image_format: 'PNG' as const, image_sha256: 'abc', name: 'Acme' };
+    const plain = await adapter.renderGenerated({ ...MODEL, letterhead: lh });
+    const again = await adapter.renderGenerated({ ...MODEL, letterhead: lh });
+    expect(again.sha256).toBe(plain.sha256);
+    const ruled = await adapter.renderGenerated({ ...MODEL, letterhead: { ...lh, rule_color: '#0A7F3F' } });
+    expect(ruled.sha256).not.toBe(plain.sha256);
+    expect((manifestProjection({ ...MODEL, letterhead: lh }) as { letterhead: Record<string, unknown> }).letterhead).not.toHaveProperty('rule_color');
+    expect((manifestProjection({ ...MODEL, letterhead: { ...lh, rule_color: '#0A7F3F' } }) as { letterhead: Record<string, unknown> }).letterhead).toMatchObject({ rule_color: '#0A7F3F' });
+    // A malformed colour draws nothing.
+    expect((await adapter.renderGenerated({ ...MODEL, letterhead: { ...lh, rule_color: 'red' } })).bytes.byteLength).toBeGreaterThan(0);
+  });
+
   it('layoutRuns: wraps styled words to width, honours \n, keeps marks per segment, hard-breaks long words', () => {
     const measure = (t: string) => t.length * 5;
     const lines = layoutRuns([{ text: 'aaaa bbbb ' }, { text: 'cccc', bold: true }, { text: '\ndd' }], measure, 50);

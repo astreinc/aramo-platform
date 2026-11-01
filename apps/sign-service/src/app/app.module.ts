@@ -1,6 +1,8 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { CommonModule, RequestIdMiddleware } from '@aramo/common';
 import {
+  DOCUMENT_SEAL_SIGNING_PROVIDER,
+  DOCUMENT_SEAL_TIMESTAMP_SOURCE,
   DOCUMENT_SOURCE_PROVIDER_PORT,
   DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
@@ -11,18 +13,34 @@ import {
   EnvelopeNotificationService,
   EsignModule,
   ExecutionService,
+  OUTBOUND_MESSAGING_PORT,
+  SIGNER_LINK_MESSAGING_PORT,
+  SignMessagingRepository,
   OutboxDeliveryService,
   OutboxService,
   SENDER_DIRECTORY_PORT,
   SIGNING_NOTIFICATION_PORT,
+  SIGN_PAYMENT_PROVIDER_PORT,
   STORAGE_ACCOUNTING_PORT,
+  TRUSTED_TIMESTAMP_PORT,
+  QES_SIGNING_PORT,
+  ESTAMP_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
   SignPurgeRepository,
+  SignBrandingRepository,
+  SIGN_BRANDING_PORT,
   SignTalentErasureRepository,
   SignRetentionRepository,
   WEBHOOK_DELIVERY_PORT,
+  IDENTITY_VERIFICATION_PORT,
+  IdentityVerificationService,
+  KBA_PORT,
+  NoopSignUsageRecorder,
+  SIGN_USAGE_RECORDER_PORT,
+  identityVerificationProviderFromEnv,
+  kbaProviderFromEnv,
 } from '@aramo/sign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
@@ -34,6 +52,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { AuthorizationResolverModule, IdentityCoreModule } from '@aramo/identity';
 
 import { EsignProviderController, EsignSignerController } from './esign-http.controller.js';
+import { SignIdentityVerificationController } from './identity-verification/sign-identity-verification.controller.js';
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
@@ -46,11 +65,19 @@ import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-docume
 import { SignArtifactStore } from './custody/sign-artifact-store.js';
 import { ExecutedArtifactCustodyService } from './custody/executed-artifact-custody.service.js';
 import { SignArtifactReconcileWorker } from './custody/sign-artifact-reconcile.worker.js';
+// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (vendor-neutral remote
+// hash-signing adapter; dark unless SIGN_SEAL_PROVIDER is set AND sign.document_seal is AVAILABLE).
+import { documentSealProviderFromEnv } from './document-seal/remote-hash-signing.provider.js';
+import { DocumentSealRetryWorker } from './document-seal/document-seal-retry.worker.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 import { EsignExpiryWorker } from './esign-expiry.worker.js';
 import { SigningInvitationWorker } from './signing-invitation.worker.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted timestamps
+// (dark: SIGN_TSA_URL unset or sign.trusted_timestamp NOT_AVAILABLE ⇒ no adapter, no worker).
+import { trustedTimestampFromEnv } from './trusted-timestamp/rfc3161-tsa.adapter.js';
+import { TrustedTimestampRetryWorker } from './trusted-timestamp/trusted-timestamp-retry.worker.js';
 import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adapter.js';
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
@@ -76,7 +103,14 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
 import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './document-templates-http.adapter.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
+import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
+import { estampAdapterFromEnv } from './regulated/estamp-adapter.js';
+import { RegulatedSigningService } from './regulated/regulated-signing.service.js';
+import { EsignSenderRegulatedController } from './regulated/esign-sender-regulated.controller.js';
+import { EsignSignerQesController } from './regulated/esign-signer-qes.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
+import { EsignSenderReportsController } from './sender/esign-sender-reports.controller.js';
+import { SenderReportsService } from './sender/sender-reports.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
@@ -85,6 +119,8 @@ import { PersonalLegalStatusService } from './legal/personal-legal-status.servic
 import { LegalChangeBannerService } from './legal/legal-change-banner.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
+import { PersonalUpgradeController } from './account/personal-upgrade.controller.js';
+import { PersonalUpgradeService } from './account/personal-upgrade.service.js';
 // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
 import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
@@ -104,6 +140,14 @@ import { SignRetentionService } from './retention/sign-retention.service.js';
 import { SignRetentionWorker } from './retention/sign-retention.worker.js';
 import { SignPurgeService, SignPurgeWorker } from './retention/sign-purge.service.js';
 import { SignRetentionController } from './retention/sign-retention.controller.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (DARK while `sign.branding` is NOT_AVAILABLE; applied only for an entitled plan).
+import { SignBrandingService } from './branding/sign-branding.service.js';
+import { SignBrandingController } from './branding/sign-branding.controller.js';
+import { SignBrandingPublicController } from './branding/sign-branding-public.controller.js';
+// Aramo Sign Feature-Parity §1.21 — custom roles and permissions (dark: sign.custom_roles).
+import { SignCustomRolesController } from './custom-roles/sign-custom-roles.controller.js';
+import { SIGN_PLAN_FEATURE_READER, SignCustomRolesGate, SubscriptionPlanFeatureReader } from './custom-roles/sign-custom-roles.gate.js';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (in-app, public web) and the
 // staged deletion execution (OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1).
 import { SignPrivacyRequestController } from './privacy/sign-privacy-request.controller.js';
@@ -111,6 +155,20 @@ import { SignPrivacyPublicController } from './privacy/sign-privacy-public.contr
 import { PrivacyWebBudget, SignPrivacyRequestService } from './privacy/sign-privacy-request.service.js';
 import { SignPrivacyExecutionService } from './privacy/sign-privacy-execution.service.js';
 import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.worker.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1) —
+// SMS / WhatsApp delivery and SMS one-time-code verification. DARK: the features are
+// NOT_AVAILABLE and every provider is off unless SIGN_SMS_PROVIDER / SIGN_WHATSAPP_PROVIDER is set.
+import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
+import { SignMessagingService } from './messaging/sign-messaging.service.js';
+import { RecipientOtpService } from './messaging/recipient-otp.service.js';
+import { SenderMessagingService } from './messaging/sender-messaging.service.js';
+import { SignRecipientVerificationController, SignSenderMessagingController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
+// Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
+import { SignPaymentService } from './payments/sign-payment.service.js';
+import { SIGN_PAYMENTS_PLAN_SOURCE, SignPaymentsGate, SubscriptionPlanSource } from './payments/sign-payments.gate.js';
+import { SignPaymentsPublicController } from './payments/sign-payments-public.controller.js';
+import { SignPaymentsSenderController } from './payments/sign-payments-sender.controller.js';
+import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.provider.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -154,7 +212,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -175,11 +233,23 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SignArtifactCustodyRepository,
         { provide: EXECUTED_ARTIFACT_CUSTODY_PORT, useClass: ExecutedArtifactCustodyService },
         SignArtifactReconcileWorker,
+        // Feature-Parity §1.15 — the document seal signing provider (null = off). Built at
+        // boot: an invalid SIGN_SEAL_* setting refuses to boot. B-T: the §1.18 RFC 3161
+        // TrustedTimestampPort is bound to DOCUMENT_SEAL_TIMESTAMP_SOURCE below, so a seal is
+        // PAdES B-T when a TSA is configured and B-B when it is not (the TSA port is null).
+        { provide: DOCUMENT_SEAL_SIGNING_PROVIDER, useFactory: () => documentSealProviderFromEnv(process.env) },
+        DocumentSealRetryWorker,
         // Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge.
         // DARK unless SIGN_PURGE_ENABLED=1 (writes refused, worker not scheduled).
         SignPurgeRepository,
         SignPurgeService,
         SignPurgeWorker,
+        // Feature-Parity §1.10 — branding store + the applied-branding service (signing pages,
+        // emails via the mailer adapter, the certificate via SIGN_BRANDING_PORT). DARK.
+        SignFeatureGate,
+        SignBrandingRepository,
+        SignBrandingService,
+        { provide: SIGN_BRANDING_PORT, useExisting: SignBrandingService },
         { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
@@ -202,6 +272,31 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SigningInvitationWorker,
         // A1 — kept artifacts (signed copies, certificates) count toward storage.
         { provide: STORAGE_ACCOUNTING_PORT, useClass: AramoSignStorageGate },
+        // Feature-Parity §1.18 — the RFC 3161 TSA (null = off) and its "timestamp pending" retry job.
+        { provide: TRUSTED_TIMESTAMP_PORT, useFactory: () => trustedTimestampFromEnv(process.env) },
+        // §1.15 + §1.18 — the seal's signature time-stamp source is the same TSA (structurally
+        // the DocumentSealTimestampSource interface); null when the TSA is off.
+        { provide: DOCUMENT_SEAL_TIMESTAMP_SOURCE, useExisting: TRUSTED_TIMESTAMP_PORT },
+        TrustedTimestampRetryWorker,
+        // Feature-Parity §1.7 / §1.8 — inside the E-Sign module so SigningInvitationService
+        // (sequential next-signer invitations) also reaches SIGNER_LINK_MESSAGING_PORT.
+        SignFeatureGate,
+        SignMessagingRepository,
+        { provide: OUTBOUND_MESSAGING_PORT, useFactory: () => outboundMessagingFromEnv(process.env) },
+        SignMessagingService,
+        { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
+        // Feature-Parity §1.9 + A1 — recipient identity verification, DARK: the provider is
+        // disabled unless SIGN_ID_VERIFICATION_PROVIDER=stripe_identity (SIGN_STRIPE_IDENTITY_*);
+        // KBA has no vendor (disabled adapter); metering is a no-op until the usage-metering
+        // model binds SIGN_USAGE_RECORDER_PORT. Inside the module so the purge redacts too.
+        { provide: IDENTITY_VERIFICATION_PORT, useFactory: () => identityVerificationProviderFromEnv(process.env) },
+        { provide: KBA_PORT, useFactory: () => kbaProviderFromEnv(process.env) },
+        { provide: SIGN_USAGE_RECORDER_PORT, useClass: NoopSignUsageRecorder },
+        IdentityVerificationService,
+        // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES (QTSP) and India e-stamp ports.
+        // Env unset (the default) ⇒ disabled adapters; no vendor is contracted.
+        { provide: QES_SIGNING_PORT, useFactory: () => qesSigningAdapterFromEnv(process.env) },
+        { provide: ESTAMP_PORT, useFactory: () => estampAdapterFromEnv(process.env) },
       ],
     }),
   ],
@@ -210,7 +305,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -231,8 +326,15 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     RecipientInboxService,
     // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
     SignFeatureGate,
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp (dark).
+    RegulatedSigningService,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
+    // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
+    SignCustomRolesGate,
+    { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
+    // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
+    SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
     // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
     PersonalSendGate,
@@ -248,6 +350,8 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new RegistryUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
+    // Feature-Parity §5 — the Personal → Business upgrade (dark: SIGN_PERSONAL_UPGRADE_ENABLED).
+    PersonalUpgradeService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)
     // and the account-close purge of saved signatures and contacts.
     SavedSignatureService,
@@ -276,6 +380,16 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignPrivacyRequestService,
     SignPrivacyExecutionService,
     SignPrivacyExecutionWorker,
+    // Feature-Parity §1.7 / §1.9 — the sender's messaging choices and the SMS one-time code.
+    RecipientOtpService,
+    SenderMessagingService,
+    // Aramo Sign 1.14 — payments (Stripe Connect adapter of the vendor-neutral port; inert
+    // unless SIGN_STRIPE_CONNECT_ENABLED=1 with both SIGN_STRIPE_CONNECT_* keys, and
+    // sign.payments AVAILABLE, and the plan entitled).
+    { provide: SIGN_PAYMENT_PROVIDER_PORT, useClass: StripeConnectPaymentProvider },
+    { provide: SIGN_PAYMENTS_PLAN_SOURCE, useClass: SubscriptionPlanSource },
+    SignPaymentsGate,
+    SignPaymentService,
     // M-A8 §3.5 — the identity retirement port and the dependency inspector are
     // identity-owned (IdentityCoreModule); sign-service no longer binds a Cognito adapter.
   ],

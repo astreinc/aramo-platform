@@ -60,6 +60,9 @@ model SignatureEnvelope {
   // UUIDs, no FK; set together, written once (CHECK + trigger).
   template_ref         String? @db.Uuid
   template_version_ref String? @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.17 — the sender allows a signer to delegate
+  // (migration 20261102100000). DRAFT-only (trigger signature_envelope_allow_delegation_immutable).
+  allow_delegation     Boolean @default(false)
   // Retention and Purge directive (ebd41d99) W3 — DocuSign-parity purge state (migration
   // 20261101100000). NULL until queued. CHECKs: level DOCUMENTS|DOCUMENTS_AND_METADATA|
   // DOCUMENTS_AND_METADATA_AND_REDACT; state QUEUED|DEQUEUED|EXECUTED (EXECUTED is final);
@@ -81,11 +84,18 @@ model SignatureEnvelope {
   recipient_bindings SignRecipientBinding[]
   abuse_reports      AbuseReport[]
   party_deletions    SignEnvelopePartyDeletion[]
+  trusted_timestamps SignTrustedTimestamp[]
+  // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES requirements and India e-stamp orders.
+  qes_signatures     SignQesSignature[]
+  estamp_orders      SignEstampOrder[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
   @@index([purge_state, purge_due_at], map: "SignatureEnvelope_purge_due_idx")
   @@index([tenant_id, created_by])
+  // Feature-Parity §1.13 reports (migration 20261101150000) — cohort / volume and audit range scans.
+  @@index([tenant_id, sent_at], map: "SignatureEnvelope_tenant_sent_at_idx")
+  @@index([tenant_id, created_at], map: "SignatureEnvelope_tenant_created_at_idx")
   @@schema("sign")
 }
 
@@ -111,6 +121,8 @@ model EnvelopeDocument {
   envelope   SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   fields     SignatureField[]
   page_sizes SignEnvelopeDocumentPages?
+  // Feature-Parity §1.19 (Amendment A1) — set on the e-stamp certificate document.
+  estamp_orders SignEstampOrder[]
 
   @@unique([envelope_id, document_ref])
   @@index([tenant_id])
@@ -133,13 +145,31 @@ model Signer {
   signing_order Int
   signer_role   String?
   status        String // CHECK: PENDING|VIEWED|SIGNED|DECLINED
-  // M-A5 §1 — SIGNER (default) | IN_PERSON_SIGNER | RECEIVES_COPY. CHECK. Distinct from
+  // M-A5 §1 — SIGNER (default) | IN_PERSON_SIGNER | RECEIVES_COPY | WITNESS (§1.17). CHECK. Distinct from
   // signer_role (the template role label). RECEIVES_COPY never signs.
   recipient_kind String   @default("SIGNER")
   // M-A5 §2.1 — ON_SEND | ON_COMPLETION | BOTH; required iff RECEIVES_COPY (CHECK).
   copy_delivery  String?
   // M-A5 §4.1 — Assign to me: set by the server to the caller's user id, never client-supplied.
   bound_user_id  String?  @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.17 — the signing recipient a WITNESS attests for
+  // (migration 20261102100000). Set iff WITNESS (CHECK); same envelope (deferred composite FK
+  // Signer_witness_for_fkey on (envelope_id, witness_for_signer_id), declared in SQL only).
+  witness_for_signer_id String? @db.Uuid
+  // §1.17 — the original recipient of a delegated SIGNER slot (set together, once; CHECK).
+  delegated_from_name  String?
+  delegated_from_email String?
+  delegated_at         DateTime? @db.Timestamptz
+  // §1.9 — the access code as a salted scrypt hash ('scrypt$…'; never the code), the failed
+  // attempts and the lockout. SIGNER / WITNESS only (CHECK).
+  access_code_hash         String?
+  access_code_failed_count Int       @default(0)
+  access_code_locked_at    DateTime? @db.Timestamptz
+  // Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — the sender's recipient verification
+  // method: ID_VERIFICATION | KBA (CHECK; link recipients only; migration 20261102130000). Dark
+  // (sign.id_verification / sign.kba NOT_AVAILABLE). locked_at = attempts exhausted.
+  identity_verification_method    String?
+  identity_verification_locked_at DateTime? @db.Timestamptz
   viewed_at     DateTime? @db.Timestamptz
   signed_at     DateTime? @db.Timestamptz
   declined_at   DateTime? @db.Timestamptz
@@ -152,6 +182,9 @@ model Signer {
 
   recipient_bindings SignRecipientBinding[]
   abuse_reports      AbuseReport[]
+  identity_verifications SignRecipientIdentityVerification[]
+  // Feature-Parity §1.16 (Amendment A1) — this signer's qualified-signature workflow.
+  qes_signature      SignQesSignature?
   @@unique([envelope_id, signing_order])
   @@index([tenant_id])
   @@index([envelope_id])
@@ -164,7 +197,7 @@ model SignatureField {
   tenant_id            String    @db.Uuid
   envelope_document_id String    @db.Uuid
   signer_id            String?   @db.Uuid
-  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT
+  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT
   signature_method     String? // CHECK (nullable): TYPED|DRAWN|UPLOADED|DIGITAL_CERTIFICATE
   page_number          Int
   x                    Float
@@ -181,6 +214,9 @@ model SignatureField {
   group_rule           String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
   min_selected         Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
   name_mode            String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only
+  // Sign 1.14 — PAYMENT only (CHECK): the amount in cents (50..99999999) and the currency (USD).
+  payment_amount_minor Int?
+  payment_currency     String?
 
   envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
   signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)
@@ -213,6 +249,8 @@ model SigningSession {
   host_user_id          String? @db.Uuid
   // M-A5 §4.2 — the authenticated signer of a SELF session (CHECK: SELF only).
   authenticated_user_id String? @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.9 — the recipient entered the access code in this session.
+  access_code_verified_at DateTime? @db.Timestamptz
 
   envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
@@ -278,7 +316,7 @@ model NotificationDelivery {
   tenant_id         String    @db.Uuid
   envelope_id       String    @db.Uuid
   signer_id         String?   @db.Uuid
-  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED|SIGNER_SIGNED|RECIPIENT_COPY
+  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED|SIGNER_SIGNED|RECIPIENT_COPY|IDENTITY_VERIFICATION_FAILED
   status            String // CHECK: PENDING|DISPATCHING|SENT|FAILED|CANCELLED
   // Multi-Signer §4 — when a dispatcher claimed this invitation intent (stale claims are reclaimable).
   claimed_at        DateTime? @db.Timestamptz
@@ -355,6 +393,44 @@ model ExecutedDocument {
   @@unique([envelope_document_id])
   @@index([tenant_id])
   @@index([envelope_id])
+  @@schema("sign")
+}
+
+/// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal of one executed
+/// document. The ExecutedDocument row is never changed: the seal is an incremental
+/// update, so the sealed PDF is executed_bytes || seal_tail and executed_sha256 stays
+/// the SHA-256 of its prefix. PENDING / FAILED rows are retried by the seal job; once
+/// SEALED the seal columns are write-once (DB trigger). seal_tail is NULLed by purge.
+model ExecutedDocumentSeal {
+  id                        String    @id @db.Uuid
+  tenant_id                 String    @db.Uuid
+  envelope_id               String    @db.Uuid
+  executed_document_id      String    @db.Uuid
+  envelope_document_id      String    @db.Uuid
+  executed_sha256           String
+  // PENDING | SEALED | FAILED (retries exhausted)
+  status                    String
+  attempts                  Int       @default(0)
+  next_attempt_at           DateTime? @db.Timestamptz
+  // Error class only (no message text, no document content).
+  last_error                String?
+  provider                  String?
+  // PAdES-B-B | PAdES-B-T
+  seal_level                String?
+  sealed_sha256             String?
+  sealed_byte_size          Int?
+  signer_certificate_sha256 String?
+  signer_subject            String?
+  signing_time              DateTime? @db.Timestamptz
+  seal_tail                 Bytes?
+  sealed_at                 DateTime? @db.Timestamptz
+  purged_at                 DateTime? @db.Timestamptz
+  created_at                DateTime  @default(now()) @db.Timestamptz
+
+  @@unique([executed_document_id])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@index([status, next_attempt_at])
   @@schema("sign")
 }
 
@@ -973,5 +1049,348 @@ model SignEnvelopePartyDeletion {
 
   @@unique([envelope_id, party_kind, party_key], map: "SignEnvelopePartyDeletion_party_key")
   @@index([tenant_id], map: "SignEnvelopePartyDeletion_tenant_idx")
+  @@schema("sign")
+}
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (logo, colours, sender display name) for the signing pages, the notification emails and the
+// execution certificate. One row per tenant. The logo is a validated PNG or JPEG (≤ 256 KiB)
+// held in the row; logo_id is a fresh random id per upload (the public, unguessable logo
+// address). Applied only while `sign.branding` is AVAILABLE and the tenant's plan includes it.
+// CHECKs: colours #RRGGBB, content type PNG|JPEG, logo columns all set or all null.
+model SignTenantBranding {
+  tenant_id         String   @id @db.Uuid
+  display_name      String?
+  primary_color     String?
+  accent_color      String?
+  logo_id           String?  @unique(map: "SignTenantBranding_logo_id_key") @db.Uuid
+  logo_bytes        Bytes?
+  logo_content_type String?
+  logo_sha256       String?
+  logo_byte_size    Int?
+  logo_width        Int?
+  logo_height       Int?
+  updated_by        String   @db.Uuid
+  updated_at        DateTime @default(now()) @db.Timestamptz
+
+  @@schema("sign")
+}
+
+// Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps. One row per
+// time-stamped subject: each executed document's SHA-256 (subject_kind
+// EXECUTED_DOCUMENT, keyed by envelope_document_id) and the canonical evidence manifest
+// at completion (EVIDENCE_MANIFEST, its exact JSON kept in subject_canonical so the
+// imprint can be re-derived). PENDING until a TSA grants a verified token; a TSA failure
+// never blocks completion (the retry worker re-requests with backoff). A GRANTED row is
+// immutable and no row is ever deleted (trigger). CHECKs: subject_kind, status, hex
+// digest, GRANTED ⇒ token + gen_time.
+model SignTrustedTimestamp {
+  id                     String    @id @db.Uuid
+  tenant_id              String    @db.Uuid
+  envelope_id            String    @db.Uuid
+  subject_kind           String
+  envelope_document_id   String?   @db.Uuid
+  message_imprint_sha256 String
+  hash_algorithm         String    @default("SHA-256")
+  subject_canonical      String?
+  status                 String    @default("PENDING")
+  tsa_url                String
+  token_der              Bytes?
+  gen_time               DateTime? @db.Timestamptz
+  serial_number          String?
+  policy_oid             String?
+  tsa_name               String?
+  tsa_certificate_sha256 String?
+  attempt_count          Int       @default(0)
+  next_attempt_at        DateTime? @db.Timestamptz
+  last_error             String?
+  created_at             DateTime  @default(now()) @db.Timestamptz
+  granted_at             DateTime? @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenant_id, envelope_id], map: "SignTrustedTimestamp_envelope_idx")
+  @@index([status, next_attempt_at], map: "SignTrustedTimestamp_due_idx")
+  @@schema("sign")
+}
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1;
+// migration 20261101400000) — the sender's messaging choice for one recipient: the extra
+// channel (SMS | WHATSAPP, CHECK) that carries the signing link beside email, and/or an
+// SMS one-time code the recipient must enter (sms_otp_required). phone_e164 CHECK E.164.
+// FK signer_id → Signer ON DELETE CASCADE (SQL only; no Prisma relation, so the Signer
+// model is unchanged).
+model SignRecipientMessaging {
+  signer_id        String   @id @db.Uuid
+  tenant_id        String   @db.Uuid
+  envelope_id      String   @db.Uuid
+  delivery_channel String?
+  phone_e164       String
+  timezone         String?
+  sms_otp_required Boolean  @default(false)
+  updated_by       String   @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, envelope_id], map: "SignRecipientMessaging_envelope_idx")
+  @@schema("sign")
+}
+
+// §1.7 / §1.8 — one outbound SMS or WhatsApp message. status SENT|DELIVERED|READ|
+// UNDELIVERED|FAILED|SUPPRESSED; suppressed_reason (SUPPRESSED only) opted_out|
+// rate_limited|quiet_hours|channel_unavailable; purpose INVITATION|REMINDER|OTP. Never the
+// number, the text or the link: only the number's lookup hash and a masked form.
+model SignMessageDelivery {
+  id                  String    @id @db.Uuid
+  tenant_id           String    @db.Uuid
+  envelope_id         String    @db.Uuid
+  signer_id           String?   @db.Uuid
+  channel             String
+  purpose             String
+  status              String
+  suppressed_reason   String?
+  provider            String?
+  provider_message_id String?
+  phone_hash          String?
+  phone_masked        String?
+  error_code          String?   @db.VarChar(64)
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  sent_at             DateTime? @db.Timestamptz
+  status_updated_at   DateTime? @db.Timestamptz
+
+  @@index([tenant_id, sent_at], map: "SignMessageDelivery_tenant_sent_idx")
+  @@index([tenant_id, envelope_id], map: "SignMessageDelivery_envelope_idx")
+  @@schema("sign")
+}
+
+// §1.7 — the opt-out list (STOP), platform-wide per number lookup hash and channel.
+// source INBOUND_KEYWORD (the recipient texted STOP / START) | PROVIDER (the vendor refused).
+model SignMessagingOptOut {
+  phone_hash String
+  channel    String
+  opted_out  Boolean
+  source     String
+  updated_at DateTime @default(now()) @db.Timestamptz
+
+  @@id([phone_hash, channel])
+  @@schema("sign")
+}
+
+// §1.9 — one SMS one-time code for one signing session. Only the SHA-256 of the code is
+// kept. status ACTIVE|VERIFIED|EXPIRED|LOCKED|SUPERSEDED (CHECK).
+model SignRecipientOtpChallenge {
+  id           String    @id @db.Uuid
+  tenant_id    String    @db.Uuid
+  envelope_id  String    @db.Uuid
+  signer_id    String    @db.Uuid
+  session_id   String    @db.Uuid
+  phone_hash   String?
+  phone_masked String?
+  code_hash    String
+  status       String    @default("ACTIVE")
+  attempts     Int       @default(0)
+  expires_at   DateTime  @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  verified_at  DateTime? @db.Timestamptz
+  locked_at    DateTime? @db.Timestamptz
+
+  @@index([tenant_id, signer_id, created_at], map: "SignRecipientOtpChallenge_signer_idx")
+  @@index([session_id], map: "SignRecipientOtpChallenge_session_idx")
+  @@schema("sign")
+}
+
+// Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — one recipient identity-verification
+// attempt (migration 20261102130000). R-5: the outcome only; raw ID images and document data
+// stay at the vendor. CHECKs: method ID_VERIFICATION|KBA; status PENDING|VERIFIED|FAILED|CANCELLED;
+// completed_at iff not PENDING; VERIFIED requires name_match; document_country ISO alpha-2.
+model SignRecipientIdentityVerification {
+  id               String    @id @db.Uuid
+  tenant_id        String    @db.Uuid
+  envelope_id      String    @db.Uuid
+  signer_id        String    @db.Uuid
+  session_id       String    @db.Uuid
+  method           String
+  provider         String
+  vendor_reference String?
+  status           String    @default("PENDING")
+  failure_reason   String?
+  name_match       Boolean?
+  document_country String?
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  completed_at     DateTime? @db.Timestamptz
+  redacted_at      DateTime? @db.Timestamptz
+
+  signer Signer @relation(fields: [signer_id], references: [id], onDelete: Cascade, map: "SignRecipientIdentityVerification_signer_fkey")
+
+  @@unique([provider, vendor_reference], map: "SignRecipientIdentityVerification_vendor_reference_key")
+  @@index([tenant_id, signer_id], map: "SignRecipientIdentityVerification_signer_idx")
+  @@index([tenant_id, envelope_id], map: "SignRecipientIdentityVerification_envelope_idx")
+  @@schema("sign")
+}
+
+// Aramo Sign 1.14 (Feature-Parity directive §1.14, R-6) — payment collection through Stripe
+// Connect. Aramo never holds subscriber funds: each payment is a direct charge on the
+// tenant's own connected account. Only Stripe references and amounts are stored.
+
+// The tenant's connected account. CHECK provider STRIPE_CONNECT, status CONNECTED|DISCONNECTED.
+model SignPaymentAccount {
+  id                String    @id @db.Uuid
+  tenant_id         String    @unique(map: "SignPaymentAccount_tenant_key") @db.Uuid
+  provider          String    @default("STRIPE_CONNECT")
+  account_ref       String    @unique(map: "SignPaymentAccount_account_ref_key")
+  status            String
+  charges_enabled   Boolean   @default(false)
+  details_submitted Boolean   @default(false)
+  payouts_enabled   Boolean   @default(false)
+  live              Boolean   @default(false)
+  created_by        String    @db.Uuid
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @default(now()) @db.Timestamptz
+  disconnected_at   DateTime? @db.Timestamptz
+  disconnected_by   String?   @db.Uuid
+
+  @@schema("sign")
+}
+
+// One payment per PAYMENT field. CHECK status PENDING|PAID|FAILED|PARTIALLY_REFUNDED|REFUNDED.
+model SignPayment {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  envelope_id           String    @db.Uuid
+  signer_id             String    @db.Uuid
+  field_id              String    @unique(map: "SignPayment_field_key") @db.Uuid
+  account_ref           String
+  amount_minor          Int
+  currency              String
+  application_fee_minor Int       @default(0)
+  status                String
+  checkout_ref          String?   @unique(map: "SignPayment_checkout_ref_key")
+  payment_ref           String?   @unique(map: "SignPayment_payment_ref_key")
+  amount_refunded_minor Int       @default(0)
+  live                  Boolean   @default(false)
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  updated_at            DateTime  @default(now()) @db.Timestamptz
+  paid_at               DateTime? @db.Timestamptz
+
+  refunds SignPaymentRefund[]
+
+  @@index([tenant_id, envelope_id], map: "SignPayment_tenant_envelope_idx")
+  @@schema("sign")
+}
+
+// A refund requested from the sender console. CHECK status REQUESTED|PENDING|SUCCEEDED|FAILED|CANCELED.
+model SignPaymentRefund {
+  id           String   @id @db.Uuid
+  tenant_id    String   @db.Uuid
+  payment_id   String   @db.Uuid
+  amount_minor Int
+  status       String
+  refund_ref   String?  @unique(map: "SignPaymentRefund_refund_ref_key")
+  reason       String?
+  requested_by String   @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @default(now()) @db.Timestamptz
+
+  payment SignPayment @relation(fields: [payment_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "SignPaymentRefund_payment_fkey")
+
+  @@index([payment_id], map: "SignPaymentRefund_payment_idx")
+  @@schema("sign")
+}
+
+// Verified Connect webhook events, processed at most once. CHECK outcome APPLIED|IGNORED|FAILED.
+model SignPaymentWebhookEvent {
+  event_ref    String    @id
+  event_type   String
+  account_ref  String?
+  outcome      String?
+  received_at  DateTime  @default(now()) @db.Timestamptz
+  processed_at DateTime? @db.Timestamptz
+
+  @@schema("sign")
+}
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 under Amendment A1 —
+// one signer's qualified electronic signature (QES) through a QTSP remote-signing flow
+// (migration 20261101310000). Aramo is not a QTSP: the QTSP proofs identity, holds the
+// key and signs; this row keeps the workflow state and the evidence the QTSP returned.
+// CHECKs: signature_level QES; state REQUIRED|IDENTITY_PROOFING_PENDING|AUTHORIZED|
+// SIGNED|FAILED; AUTHORIZED and SIGNED carry a credential and a certificate chain;
+// SIGNED carries the signature. No access token or secret is ever stored.
+model SignQesSignature {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  envelope_id              String    @db.Uuid
+  signer_id                String    @unique @db.Uuid
+  signature_level          String    @default("QES")
+  state                    String    @default("REQUIRED")
+  // The adapter that ran the flow (e.g. "csc"); NULL until the signer starts.
+  provider                 String?
+  // sha256 of the OAuth `state` nonce of the step in flight; the raw nonce is never stored.
+  pending_state_sha256     String?
+  credential_id            String?
+  certificate_chain_pem    String[]
+  certificate_chain_sha256 String?
+  authorization_level      String?
+  hash_algorithm_oid       String?
+  signature_algorithm_oid  String?
+  // base64 digest the signer authorized (sha256 over the envelope's source documents).
+  signed_digest_b64        String?
+  signature_value_b64      String?
+  signature_sha256         String?
+  qtsp_reference           String?
+  failure_reason           String?
+  requested_by             String    @db.Uuid
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  updated_at               DateTime  @default(now()) @db.Timestamptz
+  identity_started_at      DateTime? @db.Timestamptz
+  authorized_at            DateTime? @db.Timestamptz
+  signed_at                DateTime? @db.Timestamptz
+  failed_at                DateTime? @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, envelope_id], map: "SignQesSignature_envelope_idx")
+  @@schema("sign")
+}
+
+// Feature-Parity §1.19 under Amendment A1 — an Indian e-stamp paper bought through an
+// aggregator and placed in front of the envelope's documents (migration 20261101310000).
+// Amounts are paise. CHECKs: state REQUESTED|ORDERED|ISSUED|ATTACHED|FAILED; state_code
+// IN-XX; positive duty; ISSUED/ATTACHED carry the certificate; ATTACHED carries the
+// document. At most one live (non-FAILED) order per envelope (partial unique index).
+model SignEstampOrder {
+  id                         String    @id @db.Uuid
+  tenant_id                  String    @db.Uuid
+  envelope_id                String    @db.Uuid
+  state                      String    @default("REQUESTED")
+  provider                   String
+  provider_order_ref         String?
+  state_code                 String
+  article_code               String
+  stamp_duty_amount_paise    BigInt
+  consideration_amount_paise BigInt?
+  first_party                String
+  second_party               String
+  purchaser                  String
+  description                String?
+  certificate_number         String?
+  certificate_issued_at      DateTime? @db.Timestamptz
+  certificate_sha256         String?
+  certificate_object_key     String?
+  certificate_page_count     Int?
+  attached_document_id       String?   @db.Uuid
+  failure_reason             String?
+  requested_by               String    @db.Uuid
+  created_at                 DateTime  @default(now()) @db.Timestamptz
+  updated_at                 DateTime  @default(now()) @db.Timestamptz
+  ordered_at                 DateTime? @db.Timestamptz
+  attached_at                DateTime? @db.Timestamptz
+  failed_at                  DateTime? @db.Timestamptz
+
+  envelope          SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  attached_document EnvelopeDocument? @relation(fields: [attached_document_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, envelope_id], map: "SignEstampOrder_envelope_idx")
   @@schema("sign")
 }

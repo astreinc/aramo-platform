@@ -2,15 +2,19 @@ import { NavLink, Navigate, useLocation, useParams } from 'react-router-dom';
 import { logout, ssoEntryHref } from '@aramo/fe-foundation';
 
 import { orgLinkWithReturn } from '../org-link';
-import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
+import { Btn, Check, Field, Icon, LinkBtn, Sel } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
+// Feature-Parity §1.10 — Settings → Branding (dark until `sign.branding` is offered).
+import { BrandingSection } from './Branding';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
 import { PersonalPlanPanel } from './PersonalPlan';
+import { UpgradeToBusinessSection } from './AccountUpgrade';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 import { RetentionSection } from './Retention';
+import { PaymentsSection } from './Payments';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -22,7 +26,8 @@ function useOrgLink(): (orgUrl: string) => string {
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
 // to Organization administration (the single shared authority for the tenant
 // profile and users), and (Aramo Sign launch) Plan & billing. Nothing here pretends to persist: Sign-only notification
-// and branding storage do not exist yet, so those controls ship as labelled seams.
+// storage does not exist yet, so those controls ship as labelled seams. Branding (Feature-Parity §1.10) is
+// backend-held and reports whether it is offered (Branding.tsx).
 
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
@@ -37,6 +42,8 @@ const SECTIONS = [
   { key: 'security', label: 'Signing security' },
   // Retention and Purge directive (DocuSign parity) — keep forever, or purge after N days.
   { key: 'retention', label: 'Document retention' },
+  // Aramo Sign 1.14 — payment collection through the organization's own Stripe account.
+  { key: 'payments', label: 'Payments' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'audit', label: 'Envelope audit' },
 ] as const;
@@ -50,7 +57,9 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
     ? ['personal', 'billing', 'retention']
     : SECTIONS.map((s) => s.key)
         .filter((k) => k !== 'members' || ctx.permissions.members === true)
-        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
+        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
+        // Sign 1.14 — shown only while payments are available to this organization.
+        .filter((k) => k !== 'payments' || ctx.features?.payments === true);
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   const orgLink = useOrgLink();
@@ -81,6 +90,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'retention' ? <RetentionSection /> : null}
+          {section === 'payments' ? <PaymentsSection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
           {section === 'audit' ? <AuditSection /> : null}
         </div>
@@ -158,56 +168,11 @@ function PersonalSection() {
           for the Personal account owner (backend-decided; an older backend without the flag
           falls back to the workspace kind). Business users are organization-managed. */}
       <PrivacyRequestsSection personal={ctx.personal_account_owner ?? ctx.workspace === 'personal'} />
+      {/* Feature-Parity §5 — Personal → Business upgrade (dark unless the backend enables it). */}
+      {ctx.workspace === 'personal' ? <UpgradeToBusinessSection /> : null}
       {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
       {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>
-  );
-}
-
-function BrandingSection() {
-  const { ctx } = useWorkspace();
-  const orgLink = useOrgLink();
-  return (
-    <div className="sg-grid sg-grid--2" style={{ alignItems: 'start' }}>
-      <section className="sg-card">
-        <div className="sg-card__head">
-          Branding <span className="sg-card__end sg-tag sg-tag--warn">Proposed</span>
-        </div>
-        <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
-          <Field label="Organization name shown to recipients" htmlFor="b-name">
-            <TextIn id="b-name" value={ctx.tenant.name} disabled readOnly />
-          </Field>
-          <Field label="Accent color" htmlFor="b-accent">
-            <Sel id="b-accent" disabled value="blue" onChange={() => undefined}>
-              <option value="blue">Aramo blue</option>
-            </Sel>
-          </Field>
-          <Field label="Button style" htmlFor="b-btn">
-            <Sel id="b-btn" disabled value="rounded" onChange={() => undefined}>
-              <option value="rounded">Rounded</option>
-            </Sel>
-          </Field>
-          <p className="sg-help">
-            Custom signing branding is a proposed capability: there is no Sign branding store yet, so recipients see the Aramo Sign brand.
-          </p>
-        </div>
-      </section>
-      <section className="sg-card">
-        <div className="sg-card__head">Organization profile</div>
-        <div className="sg-card__body">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="sg-brand__mark">{ctx.tenant.name.charAt(0).toUpperCase()}</span>
-            <strong>{ctx.tenant.name}</strong>
-          </div>
-          <p className="sg-help">The organization name and logo come from Organization administration, shared by every Aramo app.</p>
-          {ctx.organization_url !== null ? (
-            <a className="sg-btn sg-btn--sm" href={orgLink(ctx.organization_url)}>
-              Open organization profile <Icon name="ext" size={12} />
-            </a>
-          ) : null}
-        </div>
-      </section>
-    </div>
   );
 }
 

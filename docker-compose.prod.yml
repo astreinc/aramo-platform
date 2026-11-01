@@ -1,3 +1,4 @@
+
 # Aramo — Single-Box Directive 1: the runnable PROD stack.
 #
 # The D5 dev stack + a production front-door, composed so it comes up with one
@@ -46,7 +47,6 @@
 # credentials are its own per-domain login (ATS_/AUTH_/SIGN_/PLATFORM_DB_*, Sign
 # Domain Isolation LC-4); POSTGRES_* configures the postgres service and stays the
 # migration/seed/backup owner only. See .env.prod.example for the full env surface.
-
 # Pin the compose PROJECT NAME (E17) — the FIRST top-level key. Without it, an
 # invocation with no `-p`/COMPOSE_PROJECT_NAME defaults the project to the
 # working-directory name, which collides a second parallel stack (and its
@@ -54,7 +54,6 @@
 # redundant belt, never load-bearing. The named volumes below are therefore
 # addressed as `aramo-singlebox_<volume>` (E16b).
 name: aramo-singlebox
-
 # Bounded container logs (M-A7 §1, R-16): docker's json-file driver keeps
 # everything forever by default. Every service rotates at 10 MB and keeps 5 files
 # (at most 50 MB per container); nginx's access log is redacted at the source
@@ -575,6 +574,57 @@ services:
       # the worker never runs and every retention write is refused (403 purge_not_enabled).
       - SIGN_PURGE_ENABLED
       - SIGN_PURGE_INTERVAL_MS
+      # Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps. Unset SIGN_TSA_URL = dark
+      # (no TSA request, no row, no certificate line); also off while sign.trusted_timestamp is
+      # NOT_AVAILABLE. A TSA failure never blocks completion ("timestamp pending", retried).
+      - SIGN_TSA_URL
+      - SIGN_TSA_TIMEOUT_MS
+      - SIGN_TSA_RETRY_INTERVAL_MS
+      # Feature-Parity directive §5 — the Personal → Business upgrade. Unset = dark:
+      # v1/sign/account/upgrade answers 404 and sign-web hides the upgrade card.
+      - SIGN_PERSONAL_UPGRADE_ENABLED
+      # Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — recipient identity verification.
+      # Unset = dark: the provider is disabled and every start is refused (503). Stripe Identity
+      # uses its OWN keys (never the billing STRIPE_* keys). KBA has no vendor (disabled).
+      - SIGN_ID_VERIFICATION_PROVIDER
+      - SIGN_STRIPE_IDENTITY_SECRET_KEY
+      - SIGN_STRIPE_IDENTITY_WEBHOOK_SECRET
+      - SIGN_ID_VERIFICATION_MAX_ATTEMPTS
+      - SIGN_KBA_PROVIDER
+      # Aramo Sign 1.14 — payment collection through Stripe Connect (directive §1.14, R-6).
+      # SEPARATE from Aramo's own billing keys (STRIPE_*). Unset = off (dark): payments are
+      # also gated by sign.payments (NOT_AVAILABLE) and the plan (Professional, Enterprise).
+      - SIGN_STRIPE_CONNECT_ENABLED
+      - SIGN_STRIPE_CONNECT_SECRET_KEY
+      - SIGN_STRIPE_CONNECT_WEBHOOK_SECRET
+      - SIGN_STRIPE_CONNECT_APPLICATION_FEE_AMOUNT
+      # Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (vendor-neutral remote
+      # hash-signing adapter; SIGN_SEAL_PROVIDER picks the vendor profile). Unset = dark.
+      # Also off while sign.document_seal is NOT_AVAILABLE; an invalid setting refuses boot.
+      - SIGN_SEAL_PROVIDER
+      - SIGN_SEAL_ENDPOINT
+      - SIGN_SEAL_AUTH_TYPE
+      - SIGN_SEAL_AUTH_API_KEY
+      - SIGN_SEAL_AUTH_API_SECRET
+      - SIGN_SEAL_AUTH_CLIENT_ID
+      - SIGN_SEAL_AUTH_CLIENT_SECRET
+      - SIGN_SEAL_AUTH_TOKEN_URL
+      - SIGN_SEAL_AUTH_MTLS_CERT
+      - SIGN_SEAL_AUTH_MTLS_KEY
+      - SIGN_SEAL_CERT_CREDENTIAL_ID
+      - SIGN_SEAL_CERT_SUBJECT_DN
+      - SIGN_SEAL_CERT_CHAIN
+      - SIGN_SEAL_RETRY_INTERVAL_MS
+      # Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP and India e-stamp.
+      # No vendor is contracted: unset = disabled adapters, the features stay NOT_AVAILABLE.
+      # SIGN_QES_PROVIDER=csc selects the generic CSC API v2 adapter, which needs all four
+      # SIGN_QES_CSC_* values; SIGN_ESTAMP_PROVIDER has no adapter yet (any value = disabled).
+      - SIGN_QES_PROVIDER
+      - SIGN_QES_CSC_BASE_URL
+      - SIGN_QES_CSC_OAUTH_URL
+      - SIGN_QES_CSC_CLIENT_ID
+      - SIGN_QES_CSC_CLIENT_SECRET
+      - SIGN_ESTAMP_PROVIDER
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as
@@ -587,6 +637,33 @@ services:
       # exactly `1`: no upgrade offer, no purchasable Personal plan, checkout refused 403.
       - SIGN_PERSONAL_PAID_CHECKOUT_ENABLED
       - SIGN_SMS_PROVIDER
+      # Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment
+      # A1) — SMS / WhatsApp signer delivery and SMS one-time codes. DARK: the features are
+      # NOT_AVAILABLE and every provider is off while unset. SIGN_SMS_PROVIDER (above):
+      # aws | msg91 | aws,msg91 | log. Go-live needs the vendor contract, 10DLC / DLT / Meta
+      # template registration, counsel review and a separate PO authorization.
+      - SIGN_SMS_AWS_ORIGINATION_IDENTITY
+      - SIGN_SMS_AWS_REGION
+      - SIGN_SMS_AWS_CONFIGURATION_SET
+      - SIGN_SMS_AWS_ACCESS_KEY_ID
+      - SIGN_SMS_AWS_SECRET_ACCESS_KEY
+      - SIGN_SMS_MSG91_AUTH_KEY
+      - SIGN_SMS_MSG91_TEMPLATE_INVITATION
+      - SIGN_SMS_MSG91_TEMPLATE_REMINDER
+      - SIGN_SMS_MSG91_TEMPLATE_OTP
+      - SIGN_WHATSAPP_PROVIDER
+      - SIGN_WHATSAPP_PHONE_NUMBER_ID
+      - SIGN_WHATSAPP_ACCESS_TOKEN
+      - SIGN_WHATSAPP_TEMPLATE_INVITATION
+      - SIGN_WHATSAPP_TEMPLATE_REMINDER
+      - SIGN_WHATSAPP_TEMPLATE_LANGUAGE
+      - SIGN_WHATSAPP_GRAPH_VERSION
+      - SIGN_WHATSAPP_APP_SECRET
+      - SIGN_WHATSAPP_VERIFY_TOKEN
+      - SIGN_MESSAGING_QUIET_HOURS
+      - SIGN_MESSAGING_DEFAULT_TIMEZONE
+      - SIGN_MESSAGING_TENANT_HOURLY_LIMIT
+      - SIGN_MESSAGING_TENANT_DAILY_LIMIT
       - SIGN_GEOIP_DB_PATH=${SIGN_GEOIP_DB_PATH:-/geoip/GeoLite2-Country.mmdb}
       - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}
       # Aramo Sign Mobile (M-A3 §2) — push delivery. SIGN_PUSH_DELIVERY: disabled (the

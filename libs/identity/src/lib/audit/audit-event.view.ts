@@ -56,6 +56,8 @@ export function categoryOf(eventType: EventType): AuditCategory {
   if (
     eventType.startsWith('identity.role.') ||
     eventType.startsWith('identity.scope.') ||
+    // Sign Feature-Parity §1.21 — custom Sign role definitions and assignments.
+    eventType.startsWith('identity.sign_custom_role.') ||
     eventType === 'identity.tenant_user.role_assigned' ||
     eventType === 'identity.tenant_user.role_removed' ||
     // M-A8 §2.3 — an administrator removed a member's product access.
@@ -261,6 +263,9 @@ export function summarizeDetail(
       return 'Issued a personal pilot invite';
     case 'identity.personal.signup.attempts_purged':
       return 'Deleted expired and refused personal signup attempts';
+    // Feature-Parity §5 — the Personal → Business upgrade.
+    case 'identity.tenant.upgraded_to_business':
+      return 'Upgraded the personal account to a business organization';
     // ORG-UX-1 §8.10 — P3 verification delegation (previously unsummarized).
     case 'identity.domain.verification.delegation.issued':
       return 'Asked someone else to verify the email domain';
@@ -281,6 +286,24 @@ export function summarizeDetail(
       return 'Chose the active document template';
     case 'identity.document_template.selection_cleared':
       return 'Cleared the active document template choice';
+    // Sign Feature-Parity §1.21 — the role name and its Sign permissions (whitelisted fields only).
+    case 'identity.sign_custom_role.created':
+    case 'identity.sign_custom_role.updated':
+    case 'identity.sign_custom_role.deleted':
+    case 'identity.sign_custom_role.assigned':
+    case 'identity.sign_custom_role.unassigned': {
+      const verb = {
+        'identity.sign_custom_role.created': 'Created',
+        'identity.sign_custom_role.updated': 'Updated',
+        'identity.sign_custom_role.deleted': 'Deleted',
+        'identity.sign_custom_role.assigned': 'Assigned',
+        'identity.sign_custom_role.unassigned': 'Removed',
+      }[eventType];
+      const name = str(payload['name']);
+      const scopes = renderStringList(payload['scope_keys']);
+      const subject = name === null ? 'custom Sign role' : `custom Sign role ${name}`;
+      return scopes === null ? `${verb} ${subject}` : `${verb} ${subject} (${scopes})`;
+    }
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

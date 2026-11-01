@@ -17,7 +17,9 @@ export type SignFieldType =
   | 'SIGNER_NAME'
   | 'TEXT'
   | 'CHECKBOX'
-  | 'ACKNOWLEDGEMENT';
+  | 'ACKNOWLEDGEMENT'
+  // Sign 1.14 — paid on Stripe's hosted page; filled by the server once paid.
+  | 'PAYMENT';
 
 export interface SignField {
   field_id: string;
@@ -41,8 +43,14 @@ export interface SignField {
   min_selected?: number | null;
   name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | null;
   // M-A6 §2.2 — true for a SIGNER_PROFILE name: shown read-only, never filled here.
+  // Sign 1.14 — also true for a PAYMENT field (filled when the payment succeeds).
   server_filled?: boolean;
+  // Sign 1.14 — the amount to pay (PAYMENT only).
+  payment?: { amount_minor: number; currency: string } | null;
 }
+
+// Sign 1.14 — starting a payment: Stripe's hosted page, or already paid.
+export type PaymentStart = { status: 'CHECKOUT'; checkout_url: string } | { status: 'PAID' };
 
 export interface SignDocumentMeta {
   document_id: string;
@@ -108,7 +116,35 @@ export interface ExecutedCopy {
   certificate_base64: string | null;
 }
 
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — the sending organization's
+// branding for this page, or null for the Aramo Sign look (dark until the feature is offered).
+export interface SignerBranding {
+  display_name: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
+  // A same-origin path (/v1/sign/signing/brand-logo/<id>), or null.
+  logo_url: string | null;
+}
+
+// Feature-Parity §1.9 — the identity check the sender may require before the document opens.
+export interface IdentityVerificationStatus {
+  method: 'ID_VERIFICATION' | 'KBA' | null;
+  state: 'NOT_REQUIRED' | 'REQUIRED' | 'PENDING' | 'VERIFIED' | 'LOCKED';
+  attempts_remaining: number | null;
+  last_failure: string | null;
+  verification_url?: string | null;
+}
+
 export const signApi = {
+  branding(token: string): Promise<SignerBranding | null> {
+    return post<{ branding: SignerBranding | null }>('branding', { token }).then((r) => r.branding ?? null);
+  },
+  identityStatus(token: string): Promise<IdentityVerificationStatus> {
+    return post<IdentityVerificationStatus>('identity-verification/status', { token });
+  },
+  identityStart(token: string): Promise<IdentityVerificationStatus> {
+    return post<IdentityVerificationStatus>('identity-verification/start', { token });
+  },
   exchange(token: string): Promise<SignerSession> {
     return post<SignerSession>('exchange', { token });
   },
@@ -139,5 +175,17 @@ export const signApi = {
   },
   decline(token: string, reason: string): Promise<void> {
     return post<void>('decline', { token, reason });
+  },
+  // Feature-Parity §1.9 — the access code the sender set for this recipient (never stored here).
+  accessCode(token: string, access_code: string): Promise<{ verified: true }> {
+    return post<{ verified: true }>('access-code', { token, access_code });
+  },
+  // Sign 1.14 — pay a PAYMENT field on Stripe's hosted Checkout page (the organization's
+  // own Stripe account), then confirm on return. The server is the only authority.
+  startPayment(token: string, field_id: string): Promise<PaymentStart> {
+    return post<PaymentStart>('payment/checkout', { token, field_id });
+  },
+  confirmPayment(token: string, field_id: string): Promise<{ status: string }> {
+    return post<{ status: string }>('payment/confirm', { token, field_id });
   },
 };

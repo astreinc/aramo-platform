@@ -17,6 +17,7 @@ import {
 import { COMMERCIAL_OPEN_STATES, resolveRequiredChain, type CommercialChainRule } from './commercial-change-request.js';
 import type { CommercialActor, CommercialCallContext } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
+import { planCreateAvailableKeys } from './commercial-plan-create.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 
 // CCP-B2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.3 row B2; MP-A2 N-15…N-18) — the
@@ -32,6 +33,9 @@ import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 //                 envelopes per month or storage. A PUBLISHED or RETIRED version is NEVER
 //                 edited (repository refusal + the N-16 DB trigger): a change of terms is a new
 //                 version. Each write appends a CommercialAuditEvent in its transaction.
+//   plan_create   CCP PLAN_CREATE (catalog row 17): the capability keys a new plan may name (PC-4) and
+//                 the open PLAN_CREATE requests (PC-8: before apply nothing else exists). A new plan is a
+//                 PLAN_CREATE change request, never a write here.
 //   NOT here      publish, retire, pin. Those are commercial changes: the console submits a
 //                 PLAN_VERSION_PUBLISH / PLAN_RETIRE change request (CCP-A3; Finance → Owner),
 //                 and CCP-A6 applies an approved one (PlanVersionRepository.publish / retire).
@@ -105,10 +109,32 @@ export interface CatalogChainPreview {
   approval_expiry_hours: number;
 }
 
+/** CCP PLAN_CREATE (PC-8) — an open request to create a plan (nothing exists until it is applied). */
+export interface CatalogPendingPlanCreate {
+  id: string;
+  plan_key: string;
+  name: string;
+  product_key: string;
+  tenant_kind: string;
+  sales_model: string;
+  state: string;
+  requested_by: string;
+  expires_at: Date | null;
+}
+
+export interface CatalogPlanCreateView {
+  /** PC-4 — per registered product, the AVAILABLE capability keys a new plan may name. */
+  available_keys: Array<{ product_key: ProductKey; keys: string[] }>;
+  /** Open PLAN_CREATE requests, newest first. */
+  pending: CatalogPendingPlanCreate[];
+}
+
 export interface CatalogView {
   products: CatalogProductView[];
   /** The chain a publish or retire request gets under the ACTIVE policy; null if none is valid. */
   publish_chain: CatalogChainPreview | null;
+  /** CCP PLAN_CREATE — creation options and pending creations (same Finance → Owner chain as publish_chain). */
+  plan_create: CatalogPlanCreateView;
 }
 
 export interface CatalogPinnedTenant {
@@ -163,7 +189,7 @@ export class CommercialCatalogService {
           versions: rows.filter((r) => r.plan_id === p.id).map((r) => summaryOf(r, pins.get(r.id) ?? 0, open.get(r.id) ?? [])),
         })),
     }));
-    return { products, publish_chain: await this.publishChain() };
+    return { products, publish_chain: await this.publishChain(), plan_create: await this.planCreateView(now) };
   }
 
   async readVersion(version_id: string, now: Date = new Date()): Promise<CatalogVersionDetail> {
@@ -312,6 +338,33 @@ export class CommercialCatalogService {
       out.set(target, list);
     }
     return out;
+  }
+
+  /** CCP PLAN_CREATE (PC-4, PC-8). Lazily expired PENDING requests are not listed. */
+  private async planCreateView(now: Date): Promise<CatalogPlanCreateView> {
+    const rows = await this.prisma.commercialChangeRequest.findMany({
+      where: { action_type: 'PLAN_CREATE', state: { in: [...COMMERCIAL_OPEN_STATES] } },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: { id: true, state: true, payload: true, requested_by: true, expires_at: true },
+    });
+    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const pending = rows
+      .filter((r) => !(r.state === 'PENDING_APPROVAL' && r.expires_at !== null && r.expires_at.getTime() <= now.getTime()))
+      .map((r) => {
+        const p = (r.payload ?? {}) as Record<string, unknown>;
+        return {
+          id: r.id,
+          plan_key: str(p['plan_key']),
+          name: str(p['name']),
+          product_key: str(p['product_key']),
+          tenant_kind: str(p['tenant_kind']),
+          sales_model: str(p['sales_model']),
+          state: r.state,
+          requested_by: r.requested_by,
+          expires_at: r.expires_at,
+        };
+      });
+    return { available_keys: productKeys().map((product_key) => ({ product_key, keys: planCreateAvailableKeys(product_key) })), pending };
   }
 
   private async publishChain(): Promise<CatalogChainPreview | null> {
