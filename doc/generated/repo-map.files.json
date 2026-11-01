@@ -6533,6 +6533,7 @@
     "libs/subscription/src/tests/fixtures/organization-billing-profile.fake.ts",
     "libs/subscription/src/tests/legal-change-notice-template.spec.ts",
     "libs/subscription/src/tests/legal-documents.spec.ts",
+    "libs/subscription/src/tests/legal-publication-readiness.spec.ts",
     "libs/subscription/src/tests/personal-free.integration.spec.ts",
     "libs/subscription/src/tests/sign-catalog-v2.integration.spec.ts",
     "libs/subscription/src/tests/sign-personal-checkout-terms.spec.ts",

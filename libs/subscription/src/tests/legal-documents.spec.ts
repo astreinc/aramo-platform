@@ -199,20 +199,17 @@ describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
 
   it('is APPROVED at its stable Sign-host URL, pinned to the cleaned public text, and NOT effective (effective_from null)', () => {
     expect(v20).toMatchObject({ status: 'APPROVED', path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', effective_from: null });
-    expect(v20.sha256).toBe('3409e44d177a0fb21ec12730d062bfe144d1879be49cf90002abf8b64f447db9');
+    expect(v20.sha256).toBe('beb749494fb146f8ea8416d6f0cf0691e08cec8c8a4242cdfdc4b8ee54f58b9b');
     expect(effectiveLegalDocument('sign.terms_of_service')).toBeNull();
     expect(approvedLegalDocument('sign.terms_of_service')).toBeNull();
   });
 
   it('the public text carries no counsel/fact notes and no notes-for-counsel section', () => {
     const text = readFileSync(resolve(ROOT, v20.path), 'utf8');
-    // The "Drafting conventions" blockquote (it describes the markers) was outside the approved
-    // removal and is kept verbatim; every other line is checked.
-    const body = text
-      .split('\n')
-      .filter((l) => !l.startsWith('> '))
-      .join('\n');
-    for (const marker of ['`[COUNSEL: ', '`[COUNSEL/PO: ', '`[FACT: ', '## Notes for counsel', 'Document key (proposed)', 'Prepared by']) expect(body).not.toContain(marker);
+    // Amendment 1 (Lead Architect, 2026-11-01): the "Drafting conventions" blockquote is removed too.
+    for (const marker of ['[COUNSEL', '[FACT', '## Notes for counsel', 'Document key (proposed)', 'Prepared by', 'Drafting conventions', '06372585', 'Claude Code']) {
+      expect(text).not.toContain(marker);
+    }
     expect(text.startsWith('# Aramo Sign — Terms of Service (combined Business and Personal)\n')).toBe(true);
   });
 

@@ -79,9 +79,11 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
   },
   // Aramo Sign Terms of Service v2.0 — the combined Business + Personal terms,
   // APPROVED 2026-11-01 (counsel and the Architect, relayed by the PO). The public
-  // text is the approved file with the PO-approved defined removal (counsel/fact
-  // notes, notes-for-counsel section, internal metadata rows; removal record in
-  // Aramo/documents). It replaces the 0.1.1 DRAFT above and, for Personal accounts,
+  // text is the approved file with the approved defined removal (counsel/fact
+  // notes, notes-for-counsel section, internal metadata rows, the drafting-
+  // conventions paragraph; removal record in Aramo/documents). Its placeholders and
+  // empty clauses await counsel (open-questions list in Aramo/documents); the
+  // publication-readiness spec blocks scheduling it until they are resolved. It replaces the 0.1.1 DRAFT above and, for Personal accounts,
   // sign.personal_terms_of_service 1.0 (see effectivePersonalLegalDocument).
   // effective_from is null on purpose (PO 2026-11-01): NOT yet effective — never
   // offered, owed or served — until the release-day change sets the ship instant
@@ -91,7 +93,7 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     version: '2.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo-sign/terms-of-service-2.0.md',
-    sha256: '3409e44d177a0fb21ec12730d062bfe144d1879be49cf90002abf8b64f447db9',
+    sha256: 'beb749494fb146f8ea8416d6f0cf0691e08cec8c8a4242cdfdc4b8ee54f58b9b',
     url: 'https://sign.aramo.ai/legal/terms-of-service/2.0',
     effective_from: null,
   },

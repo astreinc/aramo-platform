@@ -7,10 +7,6 @@
 | Operator | **Astre Consulting Services Inc**, a Virginia corporation, 2909 Gettysburg Sq, Vienna, VA 22181, USA ("Aramo", "we", "us") |
 | Effective date | [Date of publication] |
 
-> **Drafting conventions.** `[COUNSEL: …]` marks a decision or wording counsel must settle. `[FACT: …]`
-> notes how the live service behaves (production `06372585`, 2026-10-31), so counsel can check the
-> text against reality. Part C carries over the substance of the live Personal Terms 1.0, corrected
-> where the service has changed since.
 
 ---
 
