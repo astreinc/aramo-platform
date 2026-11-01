@@ -21,7 +21,17 @@ import {
   SignerNotYetEligibleError,
   SigningSessionExpiredError,
   SigningSessionInvalidError,
+  SignerAccessCodeLockedError,
+  SignerAccessCodeRequiredError,
+  DelegationRefusedError,
 } from './domain/errors.js';
+import {
+  ACCESS_CODE_FAILED_EVENT,
+  ACCESS_CODE_LOCKED_EVENT,
+  ACCESS_CODE_VERIFIED_EVENT,
+  MAX_ACCESS_CODE_ATTEMPTS,
+  verifyAccessCode as accessCodeMatches,
+} from './domain/access-code.js';
 import {
   EVIDENCE_MANIFEST_SIGNER_PORT,
   canonicalEvidenceManifestBytes,
@@ -37,7 +47,12 @@ import {
   HOSTED_SESSION_TTL_MS,
   SELF_SIGN_SESSION_ISSUED_EVENT,
   SELF_SIGN_SESSION_TTL_MS,
+  SIGNER_DELEGATED_EVENT,
   SIGNING_RECIPIENT_WHERE,
+  WITNESS_ATTESTED_EVENT,
+  isWitness,
+  pendingWitnessesOf,
+  witnessReady,
   allSigningRecipientsSigned,
   copyRecipients,
   currentTurnSignerId,
@@ -283,6 +298,8 @@ export class EsignService {
         return 'spent' as const;
       }
       await this.assertEligible(tx, { tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id });
+      // Feature-Parity §1.9 — a recipient with an access code enters it before viewing.
+      await this.assertAccessCodeCleared(tx, { session_id: session.id, tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id });
       await tx.signingSession.update({
         where: { id: session.id },
         data: { status: 'ACTIVE', first_accessed_at: session.first_accessed_at ?? new Date(), last_accessed_at: new Date() },
@@ -364,6 +381,14 @@ export class EsignService {
     client: Pick<LockingTx, 'signer' | 'signatureEnvelope'>,
     ctx: { tenant_id: string; envelope_id: string; signer_id: string },
   ): Promise<void> {
+    // Feature-Parity §1.17 — a WITNESS acts only after the signer it witnesses has signed.
+    const me = await client.signer.findFirst({ where: { id: ctx.signer_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { recipient_kind: true, witness_for_signer_id: true } });
+    if (me !== null && isWitness(me)) {
+      const principal = me.witness_for_signer_id === null
+        ? null
+        : await client.signer.findFirst({ where: { id: me.witness_for_signer_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true } });
+      if (principal?.status !== 'SIGNED') throw new SignerNotYetEligibleError(ctx.signer_id, 'witness_signer_not_signed');
+    }
     const env = await client.signatureEnvelope.findFirst({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { routing_mode: true } });
     if (env?.routing_mode !== 'SEQUENTIAL') return;
     if ((await this.currentSequentialSigner(client, ctx.tenant_id, ctx.envelope_id)) !== ctx.signer_id) throw new SignerNotYetEligibleError(ctx.signer_id);
@@ -383,6 +408,7 @@ export class EsignService {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
+      await this.assertAccessCodeCleared(tx, ctx);
       const attested = live.origin === 'HOSTED' ? normalizeAttestedName(input.attested_name) : null;
       if (live.origin === 'HOSTED' && attested === null) throw new AttestedNameRequiredError();
       await tx.signerDisclosureAcceptance.create({
@@ -415,9 +441,152 @@ export class EsignService {
     });
   }
 
-  private async hasAcceptedDisclosure(tenant_id: string, signer_id: string, client: Pick<LockingTx, 'signerDisclosureAcceptance'> = this.prisma): Promise<boolean> {
-    const n = await client.signerDisclosureAcceptance.count({ where: { tenant_id, signer_id } });
+  // Feature-Parity §1.17 — after a delegation only the delegate's own acceptance counts
+  // (the original recipient's acceptance stays on record as evidence).
+  private async hasAcceptedDisclosure(tenant_id: string, signer_id: string, client: Pick<LockingTx, 'signerDisclosureAcceptance' | 'signer'> = this.prisma): Promise<boolean> {
+    const signer = await client.signer.findFirst({ where: { id: signer_id, tenant_id }, select: { delegated_at: true } });
+    const since = signer?.delegated_at ?? null;
+    const n = await client.signerDisclosureAcceptance.count({ where: { tenant_id, signer_id, ...(since !== null ? { accepted_at: { gte: since } } : {}) } });
     return n > 0;
+  }
+
+  // Feature-Parity §1.9 — when the recipient has an access code, this session must have
+  // entered it; a locked-out recipient is refused whatever the session.
+  private async assertAccessCodeCleared(client: Pick<LockingTx, 'signer' | 'signingSession'>, ctx: SessionContext): Promise<void> {
+    const signer = await client.signer.findFirst({ where: { id: ctx.signer_id, tenant_id: ctx.tenant_id }, select: { access_code_hash: true, access_code_locked_at: true } });
+    if (signer === null || signer.access_code_hash === null) return;
+    if (signer.access_code_locked_at !== null) throw new SignerAccessCodeLockedError(ctx.signer_id);
+    const session = await client.signingSession.findFirst({ where: { id: ctx.session_id, tenant_id: ctx.tenant_id }, select: { access_code_verified_at: true } });
+    if (session === null || session.access_code_verified_at === null) throw new SignerAccessCodeRequiredError(ctx.signer_id);
+  }
+
+  // ── Feature-Parity §1.9 — the recipient enters the access code for this session.
+  // Token-authorized; under the envelope row lock. A recipient without an access code
+  // verifies trivially (no ledger event). A wrong code is counted (ACCESS_CODE_FAILED);
+  // the MAX_ACCESS_CODE_ATTEMPTS-th wrong code locks the recipient out of the envelope,
+  // revokes every live session (ACCESS_CODE_LOCKED). The code is never logged or written
+  // to the ledger. A failure commits before the refusal is raised. ──
+  async verifyRecipientAccessCode(rawToken: string, entered: unknown, meta: { ip_address?: string; user_agent?: string } = {}): Promise<{ verified: true }> {
+    const found = await this.findSessionByToken(rawToken);
+    const ctx: SessionContext = { session_id: found.id, tenant_id: found.tenant_id, envelope_id: found.envelope_id, signer_id: found.signer_id };
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      const signer = await tx.signer.findFirstOrThrow({
+        where: { id: ctx.signer_id, tenant_id: ctx.tenant_id },
+        select: { access_code_hash: true, access_code_failed_count: true, access_code_locked_at: true },
+      });
+      if (signer.access_code_hash === null) return { kind: 'verified' } as const;
+      if (signer.access_code_locked_at !== null) return { kind: 'locked' } as const;
+      const now = new Date();
+      if (accessCodeMatches(entered, signer.access_code_hash)) {
+        await tx.signingSession.update({ where: { id: ctx.session_id }, data: { access_code_verified_at: now } });
+        await tx.signer.update({ where: { id: ctx.signer_id }, data: { access_code_failed_count: 0 } });
+        await this.repo.appendEvent(tx, {
+          tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id,
+          event_type: ACCESS_CODE_VERIFIED_EVENT, actor_type: 'SIGNER', actor_ref: ctx.signer_id,
+          payload: { session_id: ctx.session_id, verification_method: 'ACCESS_CODE' },
+          ip_address: meta.ip_address, user_agent: meta.user_agent,
+        });
+        return { kind: 'verified' } as const;
+      }
+      const failed = signer.access_code_failed_count + 1;
+      const locked = failed >= MAX_ACCESS_CODE_ATTEMPTS;
+      await tx.signer.update({ where: { id: ctx.signer_id }, data: { access_code_failed_count: failed, ...(locked ? { access_code_locked_at: now } : {}) } });
+      await this.repo.appendEvent(tx, {
+        tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id,
+        event_type: locked ? ACCESS_CODE_LOCKED_EVENT : ACCESS_CODE_FAILED_EVENT, actor_type: 'SIGNER', actor_ref: ctx.signer_id,
+        payload: { session_id: ctx.session_id, failed_attempts: failed, verification_method: 'ACCESS_CODE' },
+        ip_address: meta.ip_address, user_agent: meta.user_agent,
+      });
+      if (locked) {
+        await tx.signingSession.updateMany({
+          where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id, status: { in: [...LIVE_SESSION_STATUSES] } },
+          data: { status: 'REVOKED', revoked_at: now },
+        });
+        return { kind: 'locked' } as const;
+      }
+      return { kind: 'incorrect', remaining: MAX_ACCESS_CODE_ATTEMPTS - failed } as const;
+    });
+    if (outcome.kind === 'locked') throw new SignerAccessCodeLockedError(ctx.signer_id);
+    if (outcome.kind === 'incorrect') throw new SignerAccessCodeRequiredError(ctx.signer_id, 'access_code_incorrect', outcome.remaining);
+    return { verified: true };
+  }
+
+  // ── Feature-Parity §1.17 — delegate signing. A SIGNER whose envelope allows
+  // delegation (the sender's choice, fixed at send) reassigns their slot to another
+  // person before signing. Under the envelope row lock, with a live session, on the
+  // signer's turn and past any access code: the slot keeps its id, order and fields
+  // (values cleared) and now names the delegate; the original name and email are kept
+  // on the row (delegated_from_*); the original's sessions and inbox bindings are
+  // revoked; SIGNER_DELEGATED is appended (email hashes only); and a durable
+  // SIGNATURE_REQUEST intent is recorded so SigningInvitationService issues the
+  // delegate's own capability session and emails it after commit. Once per slot. ──
+  async delegateSigner(ctx: SessionContext, input: { name: string; email: string; reason?: string | null }): Promise<{ signer_id: string }> {
+    const name = input.name.trim().replace(/\s+/g, ' ');
+    const email = input.email.trim();
+    if (name.length === 0 || name.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new DelegationRefusedError('delegate_invalid');
+    const reason = typeof input.reason === 'string' && input.reason.trim().length > 0 ? input.reason.trim().slice(0, 500) : null;
+    return this.prisma.$transaction(async (tx) => {
+      await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      await this.assertEligible(tx, ctx);
+      await this.assertAccessCodeCleared(tx, ctx);
+      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { allow_delegation: true } });
+      if (!env.allow_delegation) throw new DelegationRefusedError('delegation_not_allowed');
+      const signer = await tx.signer.findFirstOrThrow({
+        where: { id: ctx.signer_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id },
+        select: { id: true, name: true, email: true, status: true, recipient_kind: true, delegated_at: true },
+      });
+      if (recipientKindOf(signer) !== 'SIGNER' || signer.email === null) throw new DelegationRefusedError('not_delegable_recipient');
+      if (signer.delegated_at !== null) throw new DelegationRefusedError('already_delegated');
+      if (signer.status !== 'PENDING' && signer.status !== 'VIEWED') throw new DelegationRefusedError('signer_not_awaiting');
+      const clash = await tx.signer.count({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, email: { equals: email, mode: 'insensitive' } } });
+      if (clash > 0) throw new DelegationRefusedError('delegate_email_on_envelope');
+      const now = new Date();
+      await tx.signer.update({
+        where: { id: signer.id },
+        data: {
+          name,
+          email,
+          delegated_from_name: signer.name,
+          delegated_from_email: signer.email,
+          delegated_at: now,
+          bound_user_id: null,
+          status: 'PENDING',
+          viewed_at: null,
+        },
+      });
+      await tx.signatureField.updateMany({ where: { tenant_id: ctx.tenant_id, signer_id: signer.id }, data: { value: null, signature_method: null, filled_at: null } });
+      await tx.signingSession.updateMany({
+        where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: signer.id, status: { in: [...LIVE_SESSION_STATUSES] } },
+        data: { status: 'REVOKED', revoked_at: now },
+      });
+      await tx.signRecipientBinding.updateMany({ where: { envelope_id: ctx.envelope_id, signer_id: signer.id, revoked_at: null }, data: { revoked_at: now } });
+      await this.repo.appendEvent(tx, {
+        tenant_id: ctx.tenant_id,
+        envelope_id: ctx.envelope_id,
+        signer_id: signer.id,
+        event_type: SIGNER_DELEGATED_EVENT,
+        actor_type: 'SIGNER',
+        actor_ref: signer.id,
+        payload: {
+          from_email_sha256: sha256Hex(signer.email.trim().toLowerCase()),
+          to_email_sha256: sha256Hex(email.toLowerCase()),
+          revoked_session_id: ctx.session_id,
+          ...(reason !== null ? { reason } : {}),
+        },
+      });
+      const open = await tx.notificationDelivery.count({
+        where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: signer.id, notification_kind: 'SIGNATURE_REQUEST', status: { in: ['PENDING', 'DISPATCHING'] } },
+      });
+      if (open === 0) {
+        await tx.notificationDelivery.create({
+          data: { id: randomUUID(), tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: signer.id, notification_kind: 'SIGNATURE_REQUEST', status: 'PENDING' },
+        });
+      }
+      return { signer_id: signer.id };
+    });
   }
 
   // ── Fill a signature field (requires disclosure accepted). ES-1: under the
@@ -428,6 +597,7 @@ export class EsignService {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
+      await this.assertAccessCodeCleared(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
@@ -449,6 +619,7 @@ export class EsignService {
   // the signer's own (or unbound) fields; NO tenant_id, NO source bytes. ──
   async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
     await this.assertEligible(this.prisma, ctx);
+    await this.assertAccessCodeCleared(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
@@ -492,6 +663,8 @@ export class EsignService {
   // Sign Mobile M-A3 §3 — the sender message for the signer consent screen. Read
   // with an already-resolved session (token-authorized); no tenant id leaves here.
   async signerEnvelopeMessage(ctx: SessionContext): Promise<string | null> {
+    // Feature-Parity §1.9 — the sender's message is content: shown only past the access code.
+    await this.assertAccessCodeCleared(this.prisma, ctx);
     const env = await this.prisma.signatureEnvelope.findFirst({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { message: true } });
     return env?.message ?? null;
   }
@@ -502,6 +675,7 @@ export class EsignService {
   // client. ──
   async resolveSignerSource(ctx: SessionContext, documentId: string): Promise<SignerSourceDescriptor> {
     await this.assertEligible(this.prisma, ctx);
+    await this.assertAccessCodeCleared(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const doc = full.documents.find((d) => d.id === documentId);
@@ -528,6 +702,7 @@ export class EsignService {
       const envelopeStatus = await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
+      await this.assertAccessCodeCleared(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       // M-A6 §2.3 — required fields filled, required check boxes checked, and the
       // check-box group rules (SELECT_ONE, min_selected) hold.
@@ -562,7 +737,23 @@ export class EsignService {
       });
 
       // M-A5 §1.2 — only signing recipients block completion (never a copy).
-      const signers = await tx.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true, recipient_kind: true } });
+      const signers = await tx.signer.findMany({
+        where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id },
+        select: { id: true, status: true, recipient_kind: true, signing_order: true, witness_for_signer_id: true },
+      });
+      // Feature-Parity §1.17 — a witness's signature is its attestation for its signer.
+      const me = signers.find((s) => s.id === ctx.signer_id);
+      if (me !== undefined && isWitness(me) && me.witness_for_signer_id !== null) {
+        await this.repo.appendEvent(tx, {
+          tenant_id: ctx.tenant_id,
+          envelope_id: ctx.envelope_id,
+          signer_id: ctx.signer_id,
+          event_type: WITNESS_ATTESTED_EVENT,
+          actor_type: 'SIGNER',
+          actor_ref: ctx.signer_id,
+          payload: { witness_for_signer_id: me.witness_for_signer_id },
+        });
+      }
       if (!allSigningRecipientsSigned(signers)) {
         // Multi-Signer §4 — SEQUENTIAL: record the next signer's invitation as a
         // durable intent IN THIS TRANSACTION (it commits with the completion or not at
@@ -584,6 +775,21 @@ export class EsignService {
             }
             nextSignerId = nextId;
           }
+        } else {
+          // Feature-Parity §1.17 — PARALLEL: this signer's witnesses may attest now. Their
+          // invitations are durable intents in this transaction (delivered after commit).
+          const witnesses = pendingWitnessesOf(signers, ctx.signer_id);
+          for (const w of witnesses) {
+            const open = await tx.notificationDelivery.count({
+              where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: w.id, notification_kind: 'SIGNATURE_REQUEST', status: { in: ['PENDING', 'DISPATCHING'] } },
+            });
+            if (open === 0) {
+              await tx.notificationDelivery.create({
+                data: { id: randomUUID(), tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: w.id, notification_kind: 'SIGNATURE_REQUEST', status: 'PENDING' },
+              });
+            }
+          }
+          if (witnesses[0] !== undefined) nextSignerId = witnesses[0].id;
         }
         return false;
       }
@@ -633,6 +839,8 @@ export class EsignService {
         await this.assertLiveSession(tx, { session_id, tenant_id, envelope_id, signer_id });
         // Multi-Signer §4 — a signer acting through their link may decline only on their turn.
         await this.assertEligible(tx, { tenant_id, envelope_id, signer_id });
+        // Feature-Parity §1.9 — and only past their access code.
+        await this.assertAccessCodeCleared(tx, { session_id, tenant_id, envelope_id, signer_id });
       }
       await tx.signer.update({ where: { id: signer_id }, data: { status: 'DECLINED', declined_at: new Date(), decline_reason: reason } });
       await this.repo.transitionEnvelopeIn(tx, {
@@ -977,7 +1185,9 @@ export class EsignService {
       // Multi-Signer §4 — in a SEQUENTIAL envelope only the signer whose turn it is
       // holds a link, so only they can be reminded.
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
-      const eligible = (env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete).filter(isLinkSigner);
+      // Feature-Parity §1.17 — a witness holds a link only once its signer has signed.
+      const everyone = await tx.signer.findMany({ where: { tenant_id, envelope_id }, select: { id: true, status: true } });
+      const eligible = (env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete).filter((s) => isLinkSigner(s) && witnessReady(everyone, s));
       let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
       if (targets.length === 0) {
         throw new ReminderNotAllowedError(
@@ -1032,6 +1242,10 @@ export class EsignService {
     });
     return { sessions };
   }
+}
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 // M-A5 §3.4 — the name a hosted signer confirmed: trimmed, 1..200 characters.

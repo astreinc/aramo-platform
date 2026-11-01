@@ -4,7 +4,15 @@ import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
-import { SIGN_CUSTOM_ROLES_FEATURE, SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import {
+  SIGN_CUSTOM_ROLES_FEATURE,
+  SIGN_ACCESS_CODE_FEATURE,
+  SIGN_DELEGATE_SIGNING_FEATURE,
+  SIGN_IN_PERSON_SIGNING_FEATURE,
+  SIGN_TEMPLATES_FEATURE,
+  SIGN_WITNESS_SIGNING_FEATURE,
+  SignFeatureGate,
+} from '../sign-feature.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -55,7 +63,9 @@ export interface SenderContextView {
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (sign.templates).
   // M-A5 §3.7 — sign.in_person_signing (hosted signing).
   // Sign Feature-Parity §1.21 — sign.custom_roles launch availability (BUSINESS only).
-  features: { templates: boolean; in_person_signing: boolean; custom_roles: boolean };
+  // Feature-Parity directive §1.17 / §1.9 — witness and delegate signing (BUSINESS tenants,
+  // the B+ plans) and the per-recipient access code (every plan), by launch availability.
+  features: { templates: boolean; in_person_signing: boolean; witness_signing: boolean; delegate_signing: boolean; access_code: boolean; custom_roles: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
@@ -209,6 +219,9 @@ export class SenderContextService {
         templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE),
         in_person_signing: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
         custom_roles: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_CUSTOM_ROLES_FEATURE),
+        witness_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WITNESS_SIGNING_FEATURE),
+        delegate_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE),
+        access_code: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_ACCESS_CODE_FEATURE),
       },
       can_send: (business || personalOpen) && permissions.create && permissions.send,
       personal_sending_enabled: personalOpen,

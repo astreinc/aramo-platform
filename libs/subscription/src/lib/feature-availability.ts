@@ -37,6 +37,13 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // timestamps. Built dark: sign-service binds a TSA only when this is AVAILABLE and
   // SIGN_TSA_URL is set. Flipping it is a PO decision (R-8), after the TSA contract (D-3).
   'sign.trusted_timestamp': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED (2bd74ca5) §1.17 / §1.9 — built
+  // dark (R-8): witness signing and delegate signing (Business and up), and the
+  // per-recipient access code (every plan, including Free). Moving any of them to
+  // AVAILABLE is a separate PO authorization.
+  'sign.witness_signing': 'NOT_AVAILABLE',
+  'sign.delegate_signing': 'NOT_AVAILABLE',
+  'sign.access_code': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

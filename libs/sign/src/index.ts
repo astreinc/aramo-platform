@@ -161,7 +161,23 @@ export {
   ReminderNotAllowedError,
   SignerNotYetEligibleError,
   DisclosureVersionInvalidError,
+  SignerAccessCodeRequiredError,
+  SignerAccessCodeLockedError,
+  DelegationRefusedError,
+  type DelegationRefusal,
 } from './lib/domain/errors.js';
+// Feature-Parity directive (2bd74ca5) §1.9 — the per-recipient access code.
+export {
+  ACCESS_CODE_MIN_LENGTH,
+  ACCESS_CODE_MAX_LENGTH,
+  MAX_ACCESS_CODE_ATTEMPTS,
+  ACCESS_CODE_VERIFIED_EVENT,
+  ACCESS_CODE_FAILED_EVENT,
+  ACCESS_CODE_LOCKED_EVENT,
+  normalizeAccessCode,
+  hashAccessCode,
+  verifyAccessCode,
+} from './lib/domain/access-code.js';
 // Aramo Sign launch — server-held disclosure, lifecycle notifications, sender lookup.
 export {
   CURRENT_DISCLOSURE_VERSION,
@@ -251,7 +267,12 @@ export {
   COPY_DELIVERY_ISSUED_EVENT,
   HOSTED_SESSION_STARTED_EVENT,
   SELF_SIGN_SESSION_ISSUED_EVENT,
+  WITNESS_ATTESTED_EVENT,
+  SIGNER_DELEGATED_EVENT,
   SIGNING_RECIPIENT_WHERE,
+  isWitness,
+  witnessReady,
+  pendingWitnessesOf,
   recipientKindOf,
   isSigningRecipient,
   isCopyRecipient,

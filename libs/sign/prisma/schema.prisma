@@ -60,6 +60,9 @@ model SignatureEnvelope {
   // UUIDs, no FK; set together, written once (CHECK + trigger).
   template_ref         String? @db.Uuid
   template_version_ref String? @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.17 — the sender allows a signer to delegate
+  // (migration 20261102100000). DRAFT-only (trigger signature_envelope_allow_delegation_immutable).
+  allow_delegation     Boolean @default(false)
   // Retention and Purge directive (ebd41d99) W3 — DocuSign-parity purge state (migration
   // 20261101100000). NULL until queued. CHECKs: level DOCUMENTS|DOCUMENTS_AND_METADATA|
   // DOCUMENTS_AND_METADATA_AND_REDACT; state QUEUED|DEQUEUED|EXECUTED (EXECUTED is final);
@@ -134,13 +137,26 @@ model Signer {
   signing_order Int
   signer_role   String?
   status        String // CHECK: PENDING|VIEWED|SIGNED|DECLINED
-  // M-A5 §1 — SIGNER (default) | IN_PERSON_SIGNER | RECEIVES_COPY. CHECK. Distinct from
+  // M-A5 §1 — SIGNER (default) | IN_PERSON_SIGNER | RECEIVES_COPY | WITNESS (§1.17). CHECK. Distinct from
   // signer_role (the template role label). RECEIVES_COPY never signs.
   recipient_kind String   @default("SIGNER")
   // M-A5 §2.1 — ON_SEND | ON_COMPLETION | BOTH; required iff RECEIVES_COPY (CHECK).
   copy_delivery  String?
   // M-A5 §4.1 — Assign to me: set by the server to the caller's user id, never client-supplied.
   bound_user_id  String?  @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.17 — the signing recipient a WITNESS attests for
+  // (migration 20261102100000). Set iff WITNESS (CHECK); same envelope (deferred composite FK
+  // Signer_witness_for_fkey on (envelope_id, witness_for_signer_id), declared in SQL only).
+  witness_for_signer_id String? @db.Uuid
+  // §1.17 — the original recipient of a delegated SIGNER slot (set together, once; CHECK).
+  delegated_from_name  String?
+  delegated_from_email String?
+  delegated_at         DateTime? @db.Timestamptz
+  // §1.9 — the access code as a salted scrypt hash ('scrypt$…'; never the code), the failed
+  // attempts and the lockout. SIGNER / WITNESS only (CHECK).
+  access_code_hash         String?
+  access_code_failed_count Int       @default(0)
+  access_code_locked_at    DateTime? @db.Timestamptz
   viewed_at     DateTime? @db.Timestamptz
   signed_at     DateTime? @db.Timestamptz
   declined_at   DateTime? @db.Timestamptz
@@ -214,6 +230,8 @@ model SigningSession {
   host_user_id          String? @db.Uuid
   // M-A5 §4.2 — the authenticated signer of a SELF session (CHECK: SELF only).
   authenticated_user_id String? @db.Uuid
+  // Feature-Parity directive (2bd74ca5) §1.9 — the recipient entered the access code in this session.
+  access_code_verified_at DateTime? @db.Timestamptz
 
   envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)

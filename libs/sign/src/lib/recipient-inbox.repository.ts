@@ -7,7 +7,7 @@ import { generateSigningToken } from './signing-token.js';
 import { EsignRepository } from './esign.repository.js';
 import { LIVE_SESSION_STATUSES } from './domain/envelope-lifecycle.js';
 import { InboxSigningRefusedError } from './domain/envelope-contract-errors.js';
-import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
+import { currentTurnSignerId, isLinkSigner, isWitness } from './domain/recipients.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — persistence
@@ -161,6 +161,13 @@ export class RecipientInboxRepository {
         // M-A5 §1.3 — the shared current-turn rule (copy recipients never take a turn).
         const next = await currentTurnSignerId(tx as never, tenant_id, binding.envelope_id);
         if (next !== signer.id) throw new InboxSigningRefusedError('not_your_turn');
+      }
+      // Feature-Parity §1.17 — a witness signs only after the signer it witnesses.
+      if (isWitness(signer)) {
+        const principal = signer.witness_for_signer_id === null
+          ? null
+          : await tx.signer.findFirst({ where: { id: signer.witness_for_signer_id, tenant_id, envelope_id: binding.envelope_id }, select: { status: true } });
+        if (principal?.status !== 'SIGNED') throw new InboxSigningRefusedError('not_your_turn');
       }
       const linkExpiry = await this.claimedLinkExpiry(tx, binding, now);
       const bound = Math.min(now.getTime() + RECIPIENT_SESSION_TTL_MS, linkExpiry.getTime(), env.expires_at?.getTime() ?? Number.POSITIVE_INFINITY);

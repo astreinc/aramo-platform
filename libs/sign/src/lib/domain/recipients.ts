@@ -9,11 +9,15 @@
 //                     signing link (email optional; when given, it receives the copy).
 //   RECEIVES_COPY     never signs: no fields, no session, no turn, never blocks
 //                     completion, never reminded.
+//   WITNESS           Feature-Parity directive (2bd74ca5) §1.17 — signs (attests) through
+//                     an emailed link, for ONE other signing recipient
+//                     (witness_for_signer_id), and only after that signer has signed.
+//                     Blocks completion like any signing recipient.
 
-export const RECIPIENT_KINDS = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY'] as const;
+export const RECIPIENT_KINDS = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'] as const;
 export type RecipientKind = (typeof RECIPIENT_KINDS)[number];
 
-export const SIGNING_RECIPIENT_KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER'];
+export const SIGNING_RECIPIENT_KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'WITNESS'];
 
 export const COPY_DELIVERIES = ['ON_SEND', 'ON_COMPLETION', 'BOTH'] as const;
 export type CopyDelivery = (typeof COPY_DELIVERIES)[number];
@@ -32,6 +36,9 @@ export type SessionOrigin = 'LINK' | 'INBOX' | 'HOSTED' | 'SELF';
 export const COPY_DELIVERY_ISSUED_EVENT = 'COPY_DELIVERY_ISSUED';
 export const HOSTED_SESSION_STARTED_EVENT = 'HOSTED_SESSION_STARTED';
 export const SELF_SIGN_SESSION_ISSUED_EVENT = 'SELF_SIGN_SESSION_ISSUED';
+// Feature-Parity directive §1.17 — the ledger events witness and delegate signing add.
+export const WITNESS_ATTESTED_EVENT = 'WITNESS_ATTESTED';
+export const SIGNER_DELEGATED_EVENT = 'SIGNER_DELEGATED';
 
 // A Prisma `where` fragment selecting the signing recipients of an envelope.
 export const SIGNING_RECIPIENT_WHERE = { recipient_kind: { in: [...SIGNING_RECIPIENT_KINDS] } };
@@ -43,12 +50,26 @@ interface TurnRow extends KindRow {
   id: string;
   status: string;
   signing_order: number;
+  // §1.17 — set for a WITNESS only (rows read without it are never witnesses).
+  witness_for_signer_id?: string | null;
 }
 
 // A row without recipient_kind (an older read) is a SIGNER: the column default.
 export function recipientKindOf(r: KindRow): RecipientKind {
   const k = r.recipient_kind;
-  return k === 'IN_PERSON_SIGNER' || k === 'RECEIVES_COPY' ? k : 'SIGNER';
+  return k === 'IN_PERSON_SIGNER' || k === 'RECEIVES_COPY' || k === 'WITNESS' ? k : 'SIGNER';
+}
+
+export function isWitness(r: KindRow): boolean {
+  return recipientKindOf(r) === 'WITNESS';
+}
+
+// §1.17 — a witness may act only once the signer it witnesses has SIGNED. Every
+// other recipient is always "ready" by this rule (turn rules still apply).
+export function witnessReady(rows: readonly { id: string; status: string }[], r: KindRow & { witness_for_signer_id?: string | null }): boolean {
+  if (!isWitness(r)) return true;
+  const principal = rows.find((x) => x.id === r.witness_for_signer_id);
+  return principal !== undefined && principal.status === 'SIGNED';
 }
 
 export function isSigningRecipient(r: KindRow): boolean {
@@ -59,9 +80,10 @@ export function isCopyRecipient(r: KindRow): boolean {
   return recipientKindOf(r) === 'RECEIVES_COPY';
 }
 
-// Only a SIGNER is emailed a signing link (invitation and reminder).
+// Only a SIGNER (and, §1.17, a WITNESS) is emailed a signing link (invitation and reminder).
 export function isLinkSigner(r: KindRow): boolean {
-  return recipientKindOf(r) === 'SIGNER';
+  const k = recipientKindOf(r);
+  return k === 'SIGNER' || k === 'WITNESS';
 }
 
 export function signingRecipients<T extends KindRow>(rows: readonly T[]): T[] {
@@ -108,17 +130,25 @@ export async function currentTurnSignerId(
 export function mayActNow<T extends TurnRow>(routing_mode: string, rows: readonly T[], signer_id: string): boolean {
   const row = rows.find((r) => r.id === signer_id);
   if (row === undefined || !isSigningRecipient(row)) return false;
+  if (!witnessReady(rows, row)) return false;
   if (routing_mode !== 'SEQUENTIAL') return true;
   return currentTurnOf(rows)?.id === signer_id;
 }
 
 // The recipients emailed a signing link at send: PARALLEL — every SIGNER;
 // SEQUENTIAL — the first signing recipient, when it is a SIGNER (an in-person signer
-// is started by the host instead).
+// is started by the host instead). §1.17 — a WITNESS is never invited at send (its
+// signer has not signed yet); it is invited when that signer completes.
 export function invitedAtSend<T extends TurnRow>(routing_mode: string, rows: readonly T[]): T[] {
   if (routing_mode === 'SEQUENTIAL') {
     const first = currentTurnOf(rows);
-    return first !== null && isLinkSigner(first) ? [first] : [];
+    return first !== null && isLinkSigner(first) && witnessReady(rows, first) ? [first] : [];
   }
-  return signingRecipients(rows).filter(isLinkSigner);
+  return signingRecipients(rows).filter((r) => isLinkSigner(r) && witnessReady(rows, r));
+}
+
+// §1.17 — the witnesses of `signer_id` that are waiting to attest (emailed when that
+// signer completes, in a PARALLEL envelope).
+export function pendingWitnessesOf<T extends TurnRow>(rows: readonly T[], signer_id: string): T[] {
+  return rows.filter((r) => isWitness(r) && r.witness_for_signer_id === signer_id && (r.status === 'PENDING' || r.status === 'VIEWED'));
 }

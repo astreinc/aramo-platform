@@ -1083,6 +1083,14 @@ export const ERROR_CODES = [
   // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
   // | contract_priced | term_missing. HTTP 409.
   'COMMERCIAL_CATALOG_CONFLICT',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the signing recipient has
+  // a sender-set access code and this signing session has not entered it (details.reason
+  // access_code_required), or the code entered was wrong (access_code_incorrect, with
+  // details.attempts_remaining). HTTP 403.
+  'SIGNER_ACCESS_CODE_REQUIRED',
+  // §1.9 — too many wrong access codes: the recipient is locked out of the envelope until the
+  // sender acts. HTTP 423.
+  'SIGNER_ACCESS_CODE_LOCKED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

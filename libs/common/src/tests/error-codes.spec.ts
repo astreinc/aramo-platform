@@ -375,6 +375,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PLATFORM_LAST_OWNER',
       'USAGE_ROLLUP_NOT_RECONCILED',
       'COMMERCIAL_CATALOG_CONFLICT',
+      'SIGNER_ACCESS_CODE_REQUIRED',
+      'SIGNER_ACCESS_CODE_LOCKED',
     ]);
   });
 });

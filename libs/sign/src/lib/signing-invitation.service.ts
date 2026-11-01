@@ -7,7 +7,7 @@ import { EsignRepository } from './esign.repository.js';
 import { signBaseUrl } from './sign-base-url.js';
 import { generateSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import { SIGNING_NOTIFICATION_PORT, type SigningNotificationPort } from './ports/signing-notification.port.js';
-import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
+import { currentTurnSignerId, isLinkSigner, isWitness } from './domain/recipients.js';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §4 — delivery of the next signer's
 // invitation in a SEQUENTIAL envelope.
@@ -92,12 +92,19 @@ export class SigningInvitationService {
       if (intent.signer_id === null) return { kind: 'cancel', reason: 'no signer' } as const;
       const signer = await tx.signer.findFirst({
         where: { id: intent.signer_id, tenant_id: intent.tenant_id, envelope_id: intent.envelope_id },
-        select: { id: true, name: true, email: true, status: true, recipient_kind: true },
+        select: { id: true, name: true, email: true, status: true, recipient_kind: true, witness_for_signer_id: true },
       });
       if (signer === null || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) return { kind: 'cancel', reason: 'signer no longer awaiting' } as const;
       // M-A5 §1/§3 — only a SIGNER is emailed a signing link (a copy recipient never
       // signs; an in-person signer is started by the host).
       if (!isLinkSigner(signer) || signer.email === null) return { kind: 'cancel', reason: 'recipient is not invited by email' } as const;
+      // Feature-Parity §1.17 — a witness is invited only once the signer it witnesses has signed.
+      if (isWitness(signer)) {
+        const principal = signer.witness_for_signer_id === null
+          ? null
+          : await tx.signer.findFirst({ where: { id: signer.witness_for_signer_id, tenant_id: intent.tenant_id, envelope_id: intent.envelope_id }, select: { status: true } });
+        if (principal?.status !== 'SIGNED') return { kind: 'cancel', reason: 'witnessed signer has not signed' } as const;
+      }
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: intent.envelope_id, tenant_id: intent.tenant_id }, select: { routing_mode: true, subject: true, message: true } });
       if (env.routing_mode === 'SEQUENTIAL') {
         // M-A5 §1.3 — the shared current-turn rule.

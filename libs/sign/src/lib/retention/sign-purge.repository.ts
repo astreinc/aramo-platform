@@ -303,7 +303,7 @@ export class SignPurgeRepository {
         WHERE e.tenant_id = $1::uuid
           AND e.status IN ('COMPLETED', 'DECLINED', 'VOIDED')
           AND e.deleted_at IS NULL
-          AND (EXISTS (SELECT 1 FROM "sign"."Signer" s WHERE s.envelope_id = e.id AND lower(s.email) = lower($2))
+          AND (EXISTS (SELECT 1 FROM "sign"."Signer" s WHERE s.envelope_id = e.id AND (lower(s.email) = lower($2) OR lower(s.delegated_from_email) = lower($2)))
                OR EXISTS (SELECT 1 FROM identity."User" u WHERE u.id = e.created_by AND lower(u.email) = lower($2)))`,
       tenant_id,
       email,
@@ -371,7 +371,9 @@ export class SignPurgeRepository {
       }
       if (LEVEL_RANK[level] >= LEVEL_RANK.DOCUMENTS_AND_METADATA_AND_REDACT) {
         const signerIds = (await tx.signer.findMany({ where: { tenant_id, envelope_id }, select: { id: true } })).map((s) => s.id);
-        await tx.signer.updateMany({ where: { tenant_id, envelope_id }, data: { name: REDACTED_TEXT, email: REDACTED_TEXT, decline_reason: null } /* email stays non-null: Signer_email_required_check */ });
+        await tx.signer.updateMany({ where: { tenant_id, envelope_id }, data: { name: REDACTED_TEXT, email: REDACTED_TEXT, decline_reason: null, access_code_hash: null } /* email stays non-null: Signer_email_required_check */ });
+        // Feature-Parity §1.17 — the original recipient of a delegated slot (Signer_delegation_check keeps them non-null).
+        await tx.signer.updateMany({ where: { tenant_id, envelope_id, delegated_at: { not: null } }, data: { delegated_from_name: REDACTED_TEXT, delegated_from_email: REDACTED_TEXT } });
         if (signerIds.length > 0) {
           await tx.signerDisclosureAcceptance.updateMany({ where: { tenant_id, signer_id: { in: signerIds } }, data: { ip_address: null, user_agent: null, attested_name: null } });
         }

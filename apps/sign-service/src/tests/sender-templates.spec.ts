@@ -274,7 +274,9 @@ describe('sender context — templates permission + feature availability', () =>
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry.
     // Sign Feature-Parity §1.21 — sign.custom_roles ships NOT_AVAILABLE (dark).
-    expect(v.features).toEqual({ templates: false, in_person_signing: true, custom_roles: false });
+    // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry;
+    // Feature-Parity §1.17 / §1.9 — witness, delegate and access code stay dark (R-8).
+    expect(v.features).toEqual({ templates: false, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: false, custom_roles: false });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {
