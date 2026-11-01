@@ -100,6 +100,8 @@
     "apps/sign-service/src/app/branding/sign-branding.controller.ts": "AP",
     "apps/sign-service/src/app/branding/sign-branding-public.controller.ts": "PZ",
     "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts": "AP",
+    "apps/sign-service/src/app/payments/sign-payments-sender.controller.ts": "AP",
+    "apps/sign-service/src/app/payments/sign-payments-public.controller.ts": "PZ",
     "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts": "AP",
     "apps/sign-service/src/app/messaging/sign-messaging.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/integration-admin.controller.ts": "AP",

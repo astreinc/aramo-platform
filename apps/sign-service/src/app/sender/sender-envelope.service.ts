@@ -48,6 +48,8 @@ import {
   witnessReady,
   IDENTITY_VERIFICATION_METHODS,
   type IdentityVerificationMethod,
+  PAYMENT_FIELD_TYPE,
+  SignPaymentRepository,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -65,6 +67,7 @@ import {
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
+import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 
 import { SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
@@ -154,6 +157,10 @@ export class SenderEnvelopeService {
     @Optional() private readonly features?: SignFeatureGate,
     // Retention and Purge directive (ebd41d99) W5 — the "Deleted" folder.
     @Optional() private readonly purges?: SignPurgeRepository,
+    // Sign 1.14 — PAYMENT fields: availability (feature, configuration, plan) and the
+    // tenant's connected account. Absent ⇒ PAYMENT is never authorable.
+    @Optional() private readonly payments?: SignPaymentsGate,
+    @Optional() private readonly paymentRecords?: SignPaymentRepository,
   ) {}
 
   /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
@@ -454,6 +461,9 @@ export class SenderEnvelopeService {
           group_rule: f.group_rule,
           min_selected: f.min_selected,
           name_mode: f.name_mode,
+          // Sign 1.14 — PAYMENT only (null for every other type).
+          payment_amount_minor: f.payment_amount_minor ?? null,
+          payment_currency: f.payment_currency ?? null,
         })),
       ),
     };
@@ -1027,6 +1037,12 @@ export class SenderEnvelopeService {
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
     const copyIds = new Set((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).signers.filter(isCopyRecipient).map((s) => s.id));
+    // Sign 1.14 — a PAYMENT field is authorable only while payments are available to this
+    // tenant (sign.payments AVAILABLE, Connect configured, plan Professional/Enterprise).
+    if (body.fields.some((f: unknown) => ((f ?? {}) as Record<string, unknown>)['field_type'] === PAYMENT_FIELD_TYPE)) {
+      if (this.payments === undefined) throw paymentsNotAvailable(requestId, 'payments_not_configured');
+      await this.payments.assertAvailable(auth.tenant_id, requestId);
+    }
     const fields = body.fields.map((f: unknown, i: number): SenderFieldInput => {
       const o = (f ?? {}) as Record<string, unknown>;
       const num = (k: string): number => {
@@ -1035,7 +1051,7 @@ export class SenderEnvelopeService {
         return v;
       };
       const field_type = o['field_type'];
-      if (typeof field_type !== 'string' || !FIELD_TYPE_SET.has(field_type)) {
+      if (typeof field_type !== 'string' || (!FIELD_TYPE_SET.has(field_type) && field_type !== PAYMENT_FIELD_TYPE)) {
         // M-A6 §2 (coordinator ruling) — an engine-only type passes through only
         // unchanged: it names an existing field (id) and the repository keeps it
         // when it is identical to the stored row (refused otherwise).
@@ -1054,7 +1070,7 @@ export class SenderEnvelopeService {
       const width = num('width');
       const height = num('height');
       if (x < 0 || y < 0 || width <= 0 || height <= 0) throw bad(requestId, `field ${i + 1}: position and size must be positive`, { index: i });
-      const config = fieldConfig(o, field_type, i, requestId);
+      const config = { ...fieldConfig(o, field_type, i, requestId), ...paymentConfig(o, field_type, i, requestId) };
       return {
         ...config,
         envelope_document_id: o['envelope_document_id'] as string,
@@ -1069,6 +1085,7 @@ export class SenderEnvelopeService {
       };
     });
     checkboxGroups(fields, requestId);
+    onePaymentPerSigner(fields, requestId);
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.
     const docIds = [...new Set(fields.map((f) => f.envelope_document_id))];
@@ -1142,6 +1159,16 @@ export class SenderEnvelopeService {
     }
     const ready = this.readiness(d);
     if (!ready.ok) throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ready.problems });
+    // Sign 1.14 — an envelope that collects a payment is sent only while payments are
+    // available and the organization's Stripe account can take them (charges enabled).
+    if (d.fields.some((f) => f.field_type === PAYMENT_FIELD_TYPE)) {
+      if (this.payments === undefined) throw paymentsNotAvailable(requestId, 'payments_not_configured');
+      await this.payments.assertAvailable(auth.tenant_id, requestId);
+      const account = await this.paymentRecords?.connectedAccount(auth.tenant_id);
+      if (account === undefined || account === null || !account.charges_enabled) {
+        throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ['Connect a Stripe account that can accept payments (Settings → Payments)'] });
+      }
+    }
     // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
     if (tenant.kind === 'PERSONAL') {
       if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
@@ -1338,6 +1365,38 @@ function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, 
     min_selected = m;
   }
   return { label, group_key, group_rule: rule as CheckboxGroupRule, min_selected };
+}
+
+// Sign 1.14 — the PAYMENT configuration: the amount in cents (50 = the Stripe minimum, to
+// 99999999) and the currency (USD only, directive §4). A PAYMENT field is always required
+// (payment is required to complete). No other type takes these properties.
+const PAYMENT_MIN_MINOR = 50;
+const PAYMENT_MAX_MINOR = 99_999_999;
+function paymentConfig(o: Record<string, unknown>, field_type: string, i: number, requestId: string): Pick<SenderFieldInput, 'payment_amount_minor' | 'payment_currency'> {
+  const refuse = (field: string, reason: string, message: string): AramoError => bad(requestId, `field ${i + 1}: ${message}`, { index: i, field, reason });
+  const present = (k: string): boolean => o[k] !== undefined && o[k] !== null;
+  if (field_type !== PAYMENT_FIELD_TYPE) {
+    for (const k of ['payment_amount_minor', 'payment_currency']) if (present(k)) throw refuse(k, 'field_config_not_applicable', `${k} applies to payment fields only`);
+    return {};
+  }
+  const amount = o['payment_amount_minor'];
+  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < PAYMENT_MIN_MINOR || amount > PAYMENT_MAX_MINOR) {
+    throw refuse('payment_amount_minor', 'payment_amount_invalid', `the amount must be a whole number of cents from ${PAYMENT_MIN_MINOR} to ${PAYMENT_MAX_MINOR}`);
+  }
+  const currency = o['payment_currency'] ?? 'USD';
+  if (currency !== 'USD') throw refuse('payment_currency', 'payment_currency_invalid', 'payments are collected in USD only');
+  if (o['required'] === false) throw refuse('required', 'payment_field_required', 'a payment field is always required');
+  return { payment_amount_minor: amount, payment_currency: 'USD' };
+}
+
+// Sign 1.14 — one PAYMENT field per signer (each signer pays at most one amount).
+function onePaymentPerSigner(fields: ReadonlyArray<SenderFieldInput>, requestId: string): void {
+  const seen = new Set<string>();
+  for (const [i, f] of fields.entries()) {
+    if (f.field_type !== PAYMENT_FIELD_TYPE || f.signer_id === null) continue;
+    if (seen.has(f.signer_id)) throw bad(requestId, `field ${i + 1}: a recipient can have only one payment field`, { index: i, field: 'field_type', reason: 'payment_field_duplicate' });
+    seen.add(f.signer_id);
+  }
 }
 
 // M-A6 §2 (coordinator ruling) — an engine-only field sent back on the replace-all

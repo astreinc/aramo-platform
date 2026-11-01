@@ -15,6 +15,7 @@ import { SignContactRepository } from './sign-contact.repository.js';
 import { SIGNER_ATTESTED_NAME_PORT } from './ports/signer-attested-name.port.js';
 import { PrismaSignerAttestedNameAdapter } from './prisma-signer-attested-name.adapter.js';
 import { TrustedTimestampService } from './trusted-timestamp/trusted-timestamp.service.js';
+import { SignPaymentRepository } from './payments/sign-payment.repository.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
 // (apps/sign-service) supplies the EvidenceManifestSignerPort via forRoot:
@@ -70,10 +71,12 @@ export class EsignModule {
         // Feature-Parity §1.18 — RFC 3161 timestamps. Off unless the composition root
         // binds TRUSTED_TIMESTAMP_PORT to a TSA adapter (apps/sign-service, SIGN_TSA_URL).
         TrustedTimestampService,
+        // Sign 1.14 — payment collection records (Stripe Connect; dark until enabled).
+        SignPaymentRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository],
     };
   }
 }

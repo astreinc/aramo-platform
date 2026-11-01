@@ -187,7 +187,7 @@ model SignatureField {
   tenant_id            String    @db.Uuid
   envelope_document_id String    @db.Uuid
   signer_id            String?   @db.Uuid
-  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT
+  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT
   signature_method     String? // CHECK (nullable): TYPED|DRAWN|UPLOADED|DIGITAL_CERTIFICATE
   page_number          Int
   x                    Float
@@ -204,6 +204,9 @@ model SignatureField {
   group_rule           String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
   min_selected         Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
   name_mode            String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only
+  // Sign 1.14 — PAYMENT only (CHECK): the amount in cents (50..99999999) and the currency (USD).
+  payment_amount_minor Int?
+  payment_currency     String?
 
   envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
   signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)
@@ -1174,5 +1177,86 @@ model SignRecipientIdentityVerification {
   @@unique([provider, vendor_reference], map: "SignRecipientIdentityVerification_vendor_reference_key")
   @@index([tenant_id, signer_id], map: "SignRecipientIdentityVerification_signer_idx")
   @@index([tenant_id, envelope_id], map: "SignRecipientIdentityVerification_envelope_idx")
+  @@schema("sign")
+}
+
+// Aramo Sign 1.14 (Feature-Parity directive §1.14, R-6) — payment collection through Stripe
+// Connect. Aramo never holds subscriber funds: each payment is a direct charge on the
+// tenant's own connected account. Only Stripe references and amounts are stored.
+
+// The tenant's connected account. CHECK provider STRIPE_CONNECT, status CONNECTED|DISCONNECTED.
+model SignPaymentAccount {
+  id                String    @id @db.Uuid
+  tenant_id         String    @unique(map: "SignPaymentAccount_tenant_key") @db.Uuid
+  provider          String    @default("STRIPE_CONNECT")
+  account_ref       String    @unique(map: "SignPaymentAccount_account_ref_key")
+  status            String
+  charges_enabled   Boolean   @default(false)
+  details_submitted Boolean   @default(false)
+  payouts_enabled   Boolean   @default(false)
+  live              Boolean   @default(false)
+  created_by        String    @db.Uuid
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @default(now()) @db.Timestamptz
+  disconnected_at   DateTime? @db.Timestamptz
+  disconnected_by   String?   @db.Uuid
+
+  @@schema("sign")
+}
+
+// One payment per PAYMENT field. CHECK status PENDING|PAID|FAILED|PARTIALLY_REFUNDED|REFUNDED.
+model SignPayment {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  envelope_id           String    @db.Uuid
+  signer_id             String    @db.Uuid
+  field_id              String    @unique(map: "SignPayment_field_key") @db.Uuid
+  account_ref           String
+  amount_minor          Int
+  currency              String
+  application_fee_minor Int       @default(0)
+  status                String
+  checkout_ref          String?   @unique(map: "SignPayment_checkout_ref_key")
+  payment_ref           String?   @unique(map: "SignPayment_payment_ref_key")
+  amount_refunded_minor Int       @default(0)
+  live                  Boolean   @default(false)
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  updated_at            DateTime  @default(now()) @db.Timestamptz
+  paid_at               DateTime? @db.Timestamptz
+
+  refunds SignPaymentRefund[]
+
+  @@index([tenant_id, envelope_id], map: "SignPayment_tenant_envelope_idx")
+  @@schema("sign")
+}
+
+// A refund requested from the sender console. CHECK status REQUESTED|PENDING|SUCCEEDED|FAILED|CANCELED.
+model SignPaymentRefund {
+  id           String   @id @db.Uuid
+  tenant_id    String   @db.Uuid
+  payment_id   String   @db.Uuid
+  amount_minor Int
+  status       String
+  refund_ref   String?  @unique(map: "SignPaymentRefund_refund_ref_key")
+  reason       String?
+  requested_by String   @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @default(now()) @db.Timestamptz
+
+  payment SignPayment @relation(fields: [payment_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "SignPaymentRefund_payment_fkey")
+
+  @@index([payment_id], map: "SignPaymentRefund_payment_idx")
+  @@schema("sign")
+}
+
+// Verified Connect webhook events, processed at most once. CHECK outcome APPLIED|IGNORED|FAILED.
+model SignPaymentWebhookEvent {
+  event_ref    String    @id
+  event_type   String
+  account_ref  String?
+  outcome      String?
+  received_at  DateTime  @default(now()) @db.Timestamptz
+  processed_at DateTime? @db.Timestamptz
+
   @@schema("sign")
 }

@@ -17,7 +17,9 @@ export type SignFieldType =
   | 'SIGNER_NAME'
   | 'TEXT'
   | 'CHECKBOX'
-  | 'ACKNOWLEDGEMENT';
+  | 'ACKNOWLEDGEMENT'
+  // Sign 1.14 — paid on Stripe's hosted page; filled by the server once paid.
+  | 'PAYMENT';
 
 export interface SignField {
   field_id: string;
@@ -41,8 +43,14 @@ export interface SignField {
   min_selected?: number | null;
   name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | null;
   // M-A6 §2.2 — true for a SIGNER_PROFILE name: shown read-only, never filled here.
+  // Sign 1.14 — also true for a PAYMENT field (filled when the payment succeeds).
   server_filled?: boolean;
+  // Sign 1.14 — the amount to pay (PAYMENT only).
+  payment?: { amount_minor: number; currency: string } | null;
 }
+
+// Sign 1.14 — starting a payment: Stripe's hosted page, or already paid.
+export type PaymentStart = { status: 'CHECKOUT'; checkout_url: string } | { status: 'PAID' };
 
 export interface SignDocumentMeta {
   document_id: string;
@@ -171,5 +179,13 @@ export const signApi = {
   // Feature-Parity §1.9 — the access code the sender set for this recipient (never stored here).
   accessCode(token: string, access_code: string): Promise<{ verified: true }> {
     return post<{ verified: true }>('access-code', { token, access_code });
+  },
+  // Sign 1.14 — pay a PAYMENT field on Stripe's hosted Checkout page (the organization's
+  // own Stripe account), then confirm on return. The server is the only authority.
+  startPayment(token: string, field_id: string): Promise<PaymentStart> {
+    return post<PaymentStart>('payment/checkout', { token, field_id });
+  },
+  confirmPayment(token: string, field_id: string): Promise<{ status: string }> {
+    return post<{ status: string }>('payment/confirm', { token, field_id });
   },
 };

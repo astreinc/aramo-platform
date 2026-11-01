@@ -169,6 +169,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_FEATURE_NOT_AVAILABLE',
       // Sign Feature-Parity §1.21 — custom Sign role conflict (409).
       'SIGN_CUSTOM_ROLE_CONFLICT',
+      // Aramo Sign 1.14 — the payment provider could not be reached (503).
+      'ESIGN_PAYMENTS_UNAVAILABLE',
       'SIGNER_NOT_FOUND',
       'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',

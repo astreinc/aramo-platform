@@ -117,7 +117,9 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
       .map((f) => relative(REPO, f))
       .sort();
     expect(readers).toEqual(['libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
-    // And no other code anywhere in libs/ or apps/ talks to the provider API host.
+    // And no other code anywhere in libs/ or apps/ talks to the provider API host — except the
+    // Sign 1.14 Stripe Connect settings (a SEPARATE Connect platform account, its own
+    // SIGN_STRIPE_CONNECT_* keys; under apps/sign-service, so C5-G-2 scans it for tax parameters).
     const hosts = ['libs', 'apps']
       .flatMap((r) => sources(resolve(REPO, r)))
       .filter((f) => /api\.stripe\.com/.test(readFileSync(f, 'utf8')))
@@ -127,7 +129,7 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
     // non-billing client of the host. It uses its own key (SIGN_STRIPE_IDENTITY_SECRET_KEY, never
     // STRIPE_SECRET_KEY) and calls only /v1/identity/ endpoints, so it can make no tax call.
     const IDENTITY = 'libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts';
-    expect(hosts).toEqual([IDENTITY, 'libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
+    expect(hosts).toEqual(['apps/sign-service/src/app/payments/sign-payments.config.ts', IDENTITY, 'libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
     const identitySrc = readFileSync(resolve(REPO, IDENTITY), 'utf8');
     expect(identitySrc).not.toMatch(/STRIPE_SECRET_KEY['"]|\btax/i);
     expect([...identitySrc.matchAll(/['`](\/v1\/[a-z_/]+)/g)].map((m) => m[1]).every((p) => p?.startsWith('/v1/identity/'))).toBe(true);

@@ -98,7 +98,9 @@ export class SignatureFieldValueRefusedError extends Error {
   constructor(public readonly fieldId: string, public readonly reason: string) {
     super(reason === 'signer_profile_name_server_filled'
       ? 'This name is filled from the signer profile and cannot be entered'
-      : 'A check box value must be true or false');
+      : reason === 'payment_field_server_filled'
+        ? 'A payment field is completed by paying, not by entering a value'
+        : 'A check box value must be true or false');
     this.name = 'SignatureFieldValueRefusedError';
   }
 }

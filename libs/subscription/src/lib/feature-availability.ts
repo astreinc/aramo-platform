@@ -58,6 +58,9 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // separate PO authorization (A1.2).
   'sign.id_verification': 'NOT_AVAILABLE',
   'sign.kba': 'NOT_AVAILABLE',
+  // Feature-Parity directive §1.14 — payment collection through Stripe Connect (plans P, E).
+  // Built dark (Amendment A1); AVAILABLE only with a separate PO authorization (R-8).
+  'sign.payments': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

@@ -96,6 +96,9 @@ export interface SenderFieldInput {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
+  payment_amount_minor?: number | null;
+  payment_currency?: string | null;
 }
 
 // Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
@@ -768,6 +771,8 @@ export class EsignSenderRepository {
             group_rule: f.group_rule ?? null,
             min_selected: f.min_selected ?? null,
             name_mode: f.name_mode ?? null,
+            payment_amount_minor: f.payment_amount_minor ?? null,
+            payment_currency: f.payment_currency ?? null,
           },
         });
       }

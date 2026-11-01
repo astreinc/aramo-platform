@@ -438,6 +438,8 @@ export const ERROR_CODES = [
   // Sign Feature-Parity §1.21 — a custom Sign role write that conflicts with the organization's
   // state: details.reason = name_taken | custom_role_in_use | custom_role_limit. HTTP 409.
   'SIGN_CUSTOM_ROLE_CONFLICT',
+  // Aramo Sign 1.14 — the payment provider (Stripe Connect) could not be reached (503).
+  'ESIGN_PAYMENTS_UNAVAILABLE',
   'SIGNER_NOT_FOUND',
   // Multi-Signer Amendment §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   'SIGNER_NOT_YET_ELIGIBLE',
