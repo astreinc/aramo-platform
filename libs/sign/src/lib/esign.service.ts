@@ -24,6 +24,7 @@ import {
 } from './domain/errors.js';
 import {
   EVIDENCE_MANIFEST_SIGNER_PORT,
+  canonicalEvidenceManifestBytes,
   type EvidenceManifest,
   type EvidenceManifestSignerPort,
   type SignedEvidenceManifest,
@@ -50,6 +51,7 @@ import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
 import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
+import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -168,6 +170,8 @@ export class EsignService {
     // M-A6 §2.2 — the HOSTED signer's attested name (M-A5 §3.4). Unbound ⇒
     // SIGNER_PROFILE names fill from Signer.name.
     @Optional() @Inject(SIGNER_ATTESTED_NAME_PORT) private readonly attestedNames?: SignerAttestedNamePort,
+    // Feature-Parity §1.18 — RFC 3161 timestamps (off unless a TSA adapter is bound).
+    @Optional() private readonly trustedTimestamps?: TrustedTimestampService,
   ) {}
 
   // M-A6 §2.2 — the name the server fills into a SIGNER_PROFILE name field: the
@@ -610,6 +614,10 @@ export class EsignService {
     // producer is bound (apps/sign-service composition root). Runs only for the
     // transaction that won the COMPLETED transition.
     await this.executionProducer?.produce(ctx.tenant_id, ctx.envelope_id);
+    // Feature-Parity §1.18 — time-stamp the evidence manifest as completed (after the
+    // executed documents and certificate exist). Never blocks or fails completion: a
+    // TSA failure leaves it PENDING for the retry worker.
+    await this.stampCompletedManifest(ctx.tenant_id, ctx.envelope_id);
     return { envelope_status: 'COMPLETED' };
   }
 
@@ -834,6 +842,11 @@ export class EsignService {
   // ── Evidence metadata (R19). DOC-3 provides hashes + event-chain hash +
   // (software) signature; KMS signer + executed bytes/certificate are DOC-4. ──
   async evidenceManifest(tenant_id: string, envelope_id: string): Promise<SignedEvidenceManifest> {
+    return this.evidenceSigner.sign(await this.buildEvidenceManifest(tenant_id, envelope_id), new Date().toISOString());
+  }
+
+  // The unsigned evidence manifest (the content evidenceManifest signs).
+  private async buildEvidenceManifest(tenant_id: string, envelope_id: string): Promise<EvidenceManifest> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
     // M-A5 §1.2 — a copy recipient is never a signer of the evidence.
@@ -861,7 +874,28 @@ export class EsignService {
       certificate: artifacts.certificate,
       artifact_hash_source: artifacts.source,
     };
-    return this.evidenceSigner.sign(manifest, new Date().toISOString());
+    return manifest;
+  }
+
+  // Feature-Parity §1.18 — the RFC 3161 timestamp of the completed evidence manifest:
+  // SHA-256 over the same canonical bytes the evidence signature covers. No-op when the
+  // feature is off; never throws.
+  private async stampCompletedManifest(tenant_id: string, envelope_id: string): Promise<void> {
+    if (this.trustedTimestamps?.enabled !== true) return;
+    try {
+      const manifest = await this.buildEvidenceManifest(tenant_id, envelope_id);
+      await this.trustedTimestamps.stampEvidenceManifest(tenant_id, envelope_id, canonicalEvidenceManifestBytes(manifest).toString('utf8'));
+    } catch {
+      // The manifest could not be built (e.g. a ledger refusal) — evidence reads surface
+      // that; completion itself is unaffected.
+    }
+  }
+
+  /** Feature-Parity §1.18 — the envelope's RFC 3161 timestamps (empty when none were recorded). */
+  async trustedTimestampsFor(tenant_id: string, envelope_id: string): Promise<TrustedTimestampView[]> {
+    if (this.trustedTimestamps === undefined) return [];
+    const documents = await this.prisma.envelopeDocument.findMany({ where: { tenant_id, envelope_id }, orderBy: { ordinal: 'asc' }, select: { id: true } });
+    return this.trustedTimestamps.listForEnvelope(tenant_id, envelope_id, documents.map((d) => d.id));
   }
 
   private async executedArtifactHashes(tenant_id: string, envelope_id: string, document_order: string[]): Promise<ResolvedArtifactHashes> {

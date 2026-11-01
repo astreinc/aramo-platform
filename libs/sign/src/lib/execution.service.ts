@@ -35,6 +35,7 @@ import {
 } from './domain/executed-artifact-integrity.js';
 import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
 import { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './ports/sign-branding.port.js';
+import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -94,6 +95,27 @@ function checkboxLines(
     });
 }
 
+// Feature-Parity §1.18 — the certificate's RFC 3161 section: each executed document's
+// timestamp (genTime + TSA) or "pending". The evidence manifest is time-stamped after the
+// certificate (the manifest carries the certificate's hash), so it is in the evidence record.
+export function trustedTimestampBlocks(
+  documents: ReadonlyArray<{ envelope_document_id: string }>,
+  timestamps: ReadonlyArray<TrustedTimestampView>,
+): RenderBlock[] {
+  const byDocument = new Map(timestamps.filter((t) => t.subject_kind === 'EXECUTED_DOCUMENT').map((t) => [t.envelope_document_id, t]));
+  return [
+    { type: 'HEADING', text: 'Trusted timestamps (RFC 3161)' },
+    ...documents.map((d): RenderBlock => {
+      const t = byDocument.get(d.envelope_document_id);
+      const text = t !== undefined && t.status === 'GRANTED' && t.gen_time !== null
+        ? `Doc ${d.envelope_document_id}: ${t.gen_time} by ${t.tsa_name ?? 'the time-stamping authority'} (serial ${t.serial_number ?? 'unknown'})`
+        : `Doc ${d.envelope_document_id}: timestamp pending (recorded in the evidence record when the time-stamping authority responds)`;
+      return { type: 'TEXT', text };
+    }),
+    { type: 'TEXT', text: 'The evidence manifest is time-stamped after this certificate; its token is in the evidence record.' },
+  ];
+}
+
 @Injectable()
 export class ExecutionService implements ExecutionProducerPort {
   constructor(
@@ -115,6 +137,9 @@ export class ExecutionService implements ExecutionProducerPort {
     // Feature-Parity §1.10 — the organization's branding on the certificate (unbound / null =
     // the Aramo default; dark until `sign.branding` is AVAILABLE and the plan includes it).
     @Optional() @Inject(SIGN_BRANDING_PORT) private readonly branding?: SignBrandingPort,
+    // Feature-Parity §1.18 — RFC 3161 timestamps of the executed documents (off unless a
+    // TSA adapter is bound; never blocks completion).
+    @Optional() private readonly timestamps?: TrustedTimestampService,
   ) {}
 
   // Feature-Parity §1.10 — never fails a completion: any error reads as "no branding".
@@ -259,6 +284,16 @@ export class ExecutionService implements ExecutionProducerPort {
     const priorCertificate = await this.prisma.executionCertificate.findUnique({ where: { envelope_id }, select: { id: true } });
     if (priorCertificate !== null) return results;
 
+    // Feature-Parity §1.18 — time-stamp each executed document's hash before the
+    // certificate is rendered, so the certificate can print the result (or "pending").
+    const timestamps = this.timestamps?.enabled === true
+      ? await this.timestamps.stampExecutedDocuments(
+          tenant_id,
+          envelope_id,
+          results.map((r) => ({ envelope_document_id: r.envelope_document_id, executed_sha256: r.executed_sha256 })),
+        )
+      : null;
+
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
@@ -286,6 +321,7 @@ export class ExecutionService implements ExecutionProducerPort {
       ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
+      ...(timestamps !== null ? trustedTimestampBlocks(results, timestamps) : []),
     ];
 
     const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results, await this.certificateBranding(tenant_id));

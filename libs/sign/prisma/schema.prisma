@@ -81,6 +81,7 @@ model SignatureEnvelope {
   recipient_bindings SignRecipientBinding[]
   abuse_reports      AbuseReport[]
   party_deletions    SignEnvelopePartyDeletion[]
+  trusted_timestamps SignTrustedTimestamp[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -997,5 +998,43 @@ model SignTenantBranding {
   updated_by        String   @db.Uuid
   updated_at        DateTime @default(now()) @db.Timestamptz
 
+  @@schema("sign")
+}
+
+// Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps. One row per
+// time-stamped subject: each executed document's SHA-256 (subject_kind
+// EXECUTED_DOCUMENT, keyed by envelope_document_id) and the canonical evidence manifest
+// at completion (EVIDENCE_MANIFEST, its exact JSON kept in subject_canonical so the
+// imprint can be re-derived). PENDING until a TSA grants a verified token; a TSA failure
+// never blocks completion (the retry worker re-requests with backoff). A GRANTED row is
+// immutable and no row is ever deleted (trigger). CHECKs: subject_kind, status, hex
+// digest, GRANTED ⇒ token + gen_time.
+model SignTrustedTimestamp {
+  id                     String    @id @db.Uuid
+  tenant_id              String    @db.Uuid
+  envelope_id            String    @db.Uuid
+  subject_kind           String
+  envelope_document_id   String?   @db.Uuid
+  message_imprint_sha256 String
+  hash_algorithm         String    @default("SHA-256")
+  subject_canonical      String?
+  status                 String    @default("PENDING")
+  tsa_url                String
+  token_der              Bytes?
+  gen_time               DateTime? @db.Timestamptz
+  serial_number          String?
+  policy_oid             String?
+  tsa_name               String?
+  tsa_certificate_sha256 String?
+  attempt_count          Int       @default(0)
+  next_attempt_at        DateTime? @db.Timestamptz
+  last_error             String?
+  created_at             DateTime  @default(now()) @db.Timestamptz
+  granted_at             DateTime? @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenant_id, envelope_id], map: "SignTrustedTimestamp_envelope_idx")
+  @@index([status, next_attempt_at], map: "SignTrustedTimestamp_due_idx")
   @@schema("sign")
 }

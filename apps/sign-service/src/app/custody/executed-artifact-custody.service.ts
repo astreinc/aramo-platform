@@ -194,6 +194,9 @@ export class ExecutedArtifactCustodyService implements ExecutedArtifactCustodyPo
     const esign = this.moduleRef.get(EsignService, { strict: false });
     const evidence: SignedEvidenceManifest = await esign.evidenceManifest(tenant_id, envelope_id);
     const executed = await this.rows.executedSummaries(tenant_id, envelope_id);
+    // Feature-Parity §1.18 — RFC 3161 timestamps recorded so far (only when any exist, so
+    // the snapshot is unchanged while the feature is off).
+    const timestamps = await esign.trustedTimestampsFor(tenant_id, envelope_id);
     const snapshot = {
       schema: 'aramo.sign.evidence-snapshot.v1',
       tenant_id,
@@ -210,6 +213,7 @@ export class ExecutedArtifactCustodyService implements ExecutedArtifactCustodyPo
         })),
         certificate: { artifact_id: cert.id, certificate_sha256: cert.certificate_sha256, byte_size: cert.byte_size },
       },
+      ...(timestamps.length > 0 ? { trusted_timestamps: timestamps } : {}),
     };
     const body = Buffer.from(JSON.stringify(snapshot), 'utf8');
     const sha = sha256Hex(body);

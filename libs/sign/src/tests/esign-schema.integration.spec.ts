@@ -116,6 +116,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignEnvelopePartyDeletion',
         // Feature-Parity §1.10 — per-organization branding (logo, colours, display name).
         'SignTenantBranding',
+        // Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
+        'SignTrustedTimestamp',
       ].sort(),
     );
   });

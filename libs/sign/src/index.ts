@@ -353,3 +353,22 @@ export {
   type SniffedImage,
 } from './lib/branding/branding-validation.js';
 export { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './lib/ports/sign-branding.port.js';
+// Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
+  TRUSTED_TIMESTAMP_PORT,
+  type TrustedTimestampPort,
+  type TrustedTimestampToken,
+} from './lib/ports/trusted-timestamp.port.js';
+  TrustedTimestampService,
+  type TrustedTimestampStatus,
+  type TrustedTimestampSubjectKind,
+  type TrustedTimestampView,
+} from './lib/trusted-timestamp/trusted-timestamp.service.js';
+  OID_SHA256,
+  Rfc3161Error,
+  buildTimeStampRequest,
+  nonceValue,
+  verifyTimeStampResponse,
+  type TimeStampRequestInput,
+  type VerifiedTimeStamp,
+  type VerifyExpectations,
+} from './lib/trusted-timestamp/rfc3161.js';

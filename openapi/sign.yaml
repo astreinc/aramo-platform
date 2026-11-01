@@ -6841,6 +6841,13 @@ components:
         completed_at:
           type: [string, 'null']
           format: date-time
+        trusted_timestamps:
+          type: array
+          description: >
+            Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps on each executed document's SHA-256 and on
+            the completed evidence manifest. Present only when at least one was recorded (the feature is off by default).
+          items:
+            $ref: '#/components/schemas/TrustedTimestampEvidence'
     # Sign Feature-Parity §1.21 — custom Sign roles.
     SignCustomRoleScopeKey:
       type: string
@@ -6963,3 +6970,57 @@ components:
                 items:
                   type: string
                   format: uuid
+    TrustedTimestampEvidence:
+      type: object
+      description: >
+        One RFC 3161 timestamp. PENDING means requested but not yet granted by the time-stamping authority; it is retried
+        in the background and never blocks completion.
+      required:
+        - subject_kind
+        - envelope_document_id
+        - message_imprint_sha256
+        - hash_algorithm
+        - status
+        - gen_time
+        - tsa_name
+        - tsa_url
+        - serial_number
+        - policy_oid
+        - tsa_certificate_sha256
+        - token_der_base64
+        - subject_canonical
+      properties:
+        subject_kind:
+          type: string
+          enum: [EXECUTED_DOCUMENT, EVIDENCE_MANIFEST]
+        envelope_document_id:
+          type: [string, 'null']
+          format: uuid
+        message_imprint_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        hash_algorithm:
+          type: string
+          enum: [SHA-256]
+        status:
+          type: string
+          enum: [PENDING, GRANTED]
+        gen_time:
+          type: [string, 'null']
+          format: date-time
+        tsa_name:
+          type: [string, 'null']
+        tsa_url:
+          type: string
+        serial_number:
+          type: [string, 'null']
+        policy_oid:
+          type: [string, 'null']
+        tsa_certificate_sha256:
+          type: [string, 'null']
+        token_der_base64:
+          type: [string, 'null']
+          description: The DER TimeStampToken (CMS SignedData), base64.
+        subject_canonical:
+          type: [string, 'null']
+          description: EVIDENCE_MANIFEST only — the exact manifest JSON whose SHA-256 was time-stamped.
