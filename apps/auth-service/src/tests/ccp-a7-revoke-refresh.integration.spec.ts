@@ -61,6 +61,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A7 revoke →
       findActiveMembershipSite: async () => null,
       getScopesByUserAndTenant: async () => ['sign:envelope:send'],
       getScopesByUserTenantAndSite: async () => ['sign:envelope:send'],
+      // Feature-Parity §1.21: no custom Sign role assigned.
+      getSignCustomRoleScopes: async () => [],
     } as unknown as RoleService;
     const audit = { writeGlobalEvent: async () => undefined } as unknown as IdentityAuditService;
     const versions = { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService;

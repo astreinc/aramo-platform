@@ -228,8 +228,9 @@ function manifestSha256(value: unknown): string {
 // letterhead is returned unchanged, so v1 manifests hash exactly as before.
 export function manifestProjection(model: RenderModel): unknown {
   if (model.letterhead === undefined) return model;
-  const { image_format, image_sha256, name } = model.letterhead;
-  return { ...model, letterhead: { image_format, image_sha256, name } };
+  const { image_format, image_sha256, name, rule_color } = model.letterhead;
+  // Feature-Parity §1.10 — the rule colour enters the manifest only when present.
+  return { ...model, letterhead: { image_format, image_sha256, name, ...(rule_color !== undefined ? { rule_color } : {}) } };
 }
 
 // ── Rich (rtr-html-v1) run layout ──────────────────────────────────────────────────
@@ -309,6 +310,13 @@ export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth:
 const LIST_INDENT = 18;
 const LIST_ITEM_GAP = 2;
 const LETTERHEAD_TOP = 762;
+
+// `#RRGGBB` → pdf-lib rgb components (0..1), or null when not a 6-digit hex colour.
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) return null;
+  const c = (i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
+  return { r: c(1), g: c(3), b: c(5) };
+}
 const LETTERHEAD_MAX_HEIGHT = 44;
 const LETTERHEAD_MAX_WIDTH = 170;
 const LETTERHEAD_NAME_SIZE = 13;
@@ -356,6 +364,13 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           }
         }
         cursorY = Math.min(TOP_Y, LETTERHEAD_TOP - h - 24);
+        // Feature-Parity §1.10 (Sign branding) — an optional brand-coloured rule under the
+        // letterhead. Absent ⇒ nothing drawn (byte-identical to before).
+        const rule = lh.rule_color !== undefined ? hexToRgb(lh.rule_color) : null;
+        if (rule !== null) {
+          const ruleY = LETTERHEAD_TOP - h - 10;
+          page.drawLine({ start: { x: MARGIN_X, y: ruleY }, end: { x: PAGE_WIDTH - MARGIN_X, y: ruleY }, thickness: 2, color: rgb(rule.r, rule.g, rule.b) });
+        }
       }
       // Word-wrap each block to the content width; a line that would cross the bottom
       // margin starts a new page. Long paragraphs therefore flow instead of running off

@@ -16,8 +16,11 @@ function svc(
   held: string[],
   site: { site_id: string; siteHeld: string[] } | null = null,
   roleKeys: string[] = [],
+  customSign: string[] = [],
 ): ProductAvailabilityService {
   const roles = {
+    // Sign Feature-Parity §1.21 — the custom Sign role scopes (none unless a test passes them).
+    getSignCustomRoleScopes: async () => customSign,
     // ORG-UX-1 §4.3 — the held ROLE KEYS (organization administration is role-based).
     getRoleKeysByUserTenantAndSite: async () => roleKeys,
     findActiveMembershipSite: async () => (site === null ? null : site.site_id),
@@ -39,6 +42,13 @@ const ORG_ADMIN = ['auth:session:read', 'tenant:admin:user-manage', 'tenant:admi
 const SIGN_SENDER = ['auth:session:read', 'sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read'];
 
 describe('ProductAvailabilityService (D-ORG)', () => {
+  // Aramo Sign Feature-Parity §1.21 — a member whose Sign access is only a custom Sign role.
+  it('Sign is authorized by custom Sign role scopes alone; never without the Sign capability', async () => {
+    const custom = ['sign:envelope:read'];
+    expect(byKey(await svc(['core', 'sign'], ['auth:session:read'], null, [], custom).forPrincipal({ user_id: U, tenant_id: T }))['sign']).toMatchObject({ subscribed: true, authorized: true });
+    expect(byKey(await svc(['core', 'sign'], ['auth:session:read'], null, [], []).forPrincipal({ user_id: U, tenant_id: T }))['sign']).toMatchObject({ authorized: false, reason: 'not_authorized' });
+    expect(byKey(await svc(['core', 'ats'], ['auth:session:read'], null, [], custom).forPrincipal({ user_id: U, tenant_id: T }))['sign']).toMatchObject({ subscribed: false, authorized: false });
+  });
   afterEach(() => {
     delete process.env['ARAMO_SIGN_ENTRY_ENABLED'];
   });

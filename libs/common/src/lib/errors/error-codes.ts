@@ -435,6 +435,11 @@ export const ERROR_CODES = [
   'ESIGN_WEBHOOKS_UNAVAILABLE',
   // DOC-TEMPLATE-LIB-1 T-5 — the plan capability is not launched (libs/subscription feature availability) (403).
   'ESIGN_FEATURE_NOT_AVAILABLE',
+  // Sign Feature-Parity §1.21 — a custom Sign role write that conflicts with the organization's
+  // state: details.reason = name_taken | custom_role_in_use | custom_role_limit. HTTP 409.
+  'SIGN_CUSTOM_ROLE_CONFLICT',
+  // Aramo Sign 1.14 — the payment provider (Stripe Connect) could not be reached (503).
+  'ESIGN_PAYMENTS_UNAVAILABLE',
   'SIGNER_NOT_FOUND',
   // Multi-Signer Amendment §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   'SIGNER_NOT_YET_ELIGIBLE',
@@ -1080,6 +1085,22 @@ export const ERROR_CODES = [
   // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
   // | contract_priced | term_missing. HTTP 409.
   'COMMERCIAL_CATALOG_CONFLICT',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the signing recipient has
+  // a sender-set access code and this signing session has not entered it (details.reason
+  // access_code_required), or the code entered was wrong (access_code_incorrect, with
+  // details.attempts_remaining). HTTP 403.
+  'SIGNER_ACCESS_CODE_REQUIRED',
+  // §1.9 — too many wrong access codes: the recipient is locked out of the envelope until the
+  // sender acts. HTTP 423.
+  'SIGNER_ACCESS_CODE_LOCKED',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — recipient identity
+  // verification. REQUIRED (403): the recipient must verify their identity before the envelope
+  // is shown (details.method ID_VERIFICATION | KBA). LOCKED (423): verification locked the
+  // recipient out (details.reason name_mismatch | attempts_exhausted | locked). UNAVAILABLE (503):
+  // no verification vendor is configured or it could not be reached (details.reason).
+  'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
+  'SIGNER_IDENTITY_VERIFICATION_LOCKED',
+  'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

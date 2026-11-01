@@ -254,7 +254,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('SX-1 executed-art
     it('DELETE and TRUNCATE are refused on both tables', async () => {
       await refused(`DELETE FROM "sign"."ExecutedDocument" WHERE id = $1`, [docId], /ExecutedDocument is write-once \(SX-1\): DELETE is rejected/);
       await refused(`DELETE FROM "sign"."ExecutionCertificate" WHERE id = $1`, [certId], /ExecutionCertificate is write-once \(SX-1\): DELETE is rejected/);
-      await refused(`TRUNCATE "sign"."ExecutedDocument"`, [], /TRUNCATE is rejected/);
+      // Feature-Parity §1.15: ExecutedDocumentSeal references ExecutedDocument, so Postgres refuses the
+      // TRUNCATE on that foreign key before the SX-1 trigger runs; either way it is refused.
+      await refused(`TRUNCATE "sign"."ExecutedDocument"`, [], /TRUNCATE is rejected|cannot truncate a table referenced in a foreign key constraint/);
       await refused(`TRUNCATE "sign"."ExecutionCertificate"`, [], /TRUNCATE is rejected/);
       expect(await q(`SELECT 1 FROM "sign"."ExecutedDocument" WHERE id = $1`, [docId])).toHaveLength(1);
     });

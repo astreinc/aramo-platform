@@ -92,7 +92,7 @@ so that several phones behind one carrier-NAT address are not starved.
 | `sign_report` | 10 r/m | `/v1/sign/report` (5) |
 | `sign_signup` | 10 r/m | `/v1/signup/sign/` (10) |
 | `domain_delegate` | 30 r/m | `/v1/domain-verification/delegate` (10) |
-| `sign_workspace` | 20 r/s | `/v1/sign/sender/` (100), `/v1/sign/inbox` (40), `/v1/sign/me/` (40), `/v1/sign/legal/` (20), `/v1/sign/account/` (20), `/v1/sign/billing/` (20) |
+| `sign_workspace` | 20 r/s | `/v1/sign/sender/` (100), `/v1/sign/inbox` (40), `/v1/sign/me/` (40), `/v1/sign/legal/` (20), `/v1/sign/account/` (20), `/v1/sign/billing/` (20), `/v1/sign/payments/webhook/` (20) |
 | `sign_auth` | 10 r/s | `/auth/` (40) |
 | `sign_native_auth` | 30 r/m | `/auth/native/` (20) |
 

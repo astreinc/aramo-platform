@@ -920,3 +920,8 @@ export {
   type CommercialAlertScanTally,
   type CommercialAlertSourceState,
 } from './lib/observability/commercial-alert.service.js';
+// Aramo Sign Feature-Parity 1.1 — whether the Sign plan includes templates (P-6: Free never).
+export {
+  SignTemplateEntitlementService,
+  type SignTemplateEntitlement,
+} from './lib/sign-template-entitlement.service.js';

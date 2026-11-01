@@ -97,7 +97,15 @@
     "apps/sign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/sign-service/src/app/retention/sign-retention.controller.ts": "AP",
+    "apps/sign-service/src/app/branding/sign-branding.controller.ts": "AP",
+    "apps/sign-service/src/app/branding/sign-branding-public.controller.ts": "PZ",
+    "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts": "AP",
+    "apps/sign-service/src/app/payments/sign-payments-sender.controller.ts": "AP",
+    "apps/sign-service/src/app/payments/sign-payments-public.controller.ts": "PZ",
     "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts": "AP",
+    "apps/sign-service/src/app/messaging/sign-messaging.controller.ts": "AP",
+    "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts": "AP",
+    "apps/sign-service/src/app/regulated/esign-signer-qes.controller.ts": "SS",
     "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/integration-admin.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/sign-api.controller.ts": "XP",
@@ -105,6 +113,7 @@
     "apps/sign-service/src/app/personal/sign-report.controller.ts": "PZ",
     "apps/sign-service/src/app/legal/sign-legal.controller.ts": "AP",
     "apps/sign-service/src/app/account/sign-account.controller.ts": "AP",
+    "apps/sign-service/src/app/account/personal-upgrade.controller.ts": "AP",
     "apps/sign-service/src/app/me/signature/saved-signature.controller.ts": "AP",
     "apps/sign-service/src/app/me/notifications/sign-me-notifications.controller.ts": "AP",
     "apps/sign-service/src/app/privacy/sign-privacy-request.controller.ts": "AP",
@@ -232,7 +241,57 @@
     },
     {
       "method": "POST",
+      "path": "/v1/sign/signing/access-code",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/delegate",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
       "path": "/v1/sign/billing/webhook/stripe",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/sms-otp/send",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/verification/sms-otp/verify",
+      "class": "PZ"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/sign/messaging/whatsapp/webhook",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/messaging/whatsapp/webhook",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/identity-verification/status",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/identity-verification/start",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/identity-verification/webhook/stripe",
       "class": "XP"
     }
   ],

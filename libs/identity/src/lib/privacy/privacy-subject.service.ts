@@ -121,9 +121,11 @@ export class PrivacySubjectService {
       const membership = await tx.userTenantMembership.findFirst({ where: { user_id, tenant_id }, select: { id: true } });
       if (membership === null) return { roles_removed: 0, remaining_role_keys: [] };
       const removed = await tx.userTenantMembershipRole.deleteMany({ where: { membership_id: membership.id, role: { key: { in: [...ESIGN_ROLE_KEYS] } } } });
-      if (removed.count > 0) await bumpPrincipalVersion(tx, { tenant_id, principal_id: user_id });
+      // Sign Feature-Parity §1.21 — the member's custom Sign roles in this tenant go too.
+      const custom = await tx.signCustomRoleAssignment.deleteMany({ where: { tenant_id, membership_id: membership.id } });
+      if (removed.count + custom.count > 0) await bumpPrincipalVersion(tx, { tenant_id, principal_id: user_id });
       const remaining = await tx.userTenantMembershipRole.findMany({ where: { membership_id: membership.id }, select: { role: { select: { key: true } } } });
-      return { roles_removed: removed.count, remaining_role_keys: remaining.map((r) => r.role.key).sort() };
+      return { roles_removed: removed.count + custom.count, remaining_role_keys: remaining.map((r) => r.role.key).sort() };
     });
   }
 }

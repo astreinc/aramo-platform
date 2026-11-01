@@ -4,8 +4,10 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   DOCUMENT_RENDERING_PORT,
   type DocumentRenderingPort,
+  type LetterheadModel,
   type PreparedField,
   type RenderBlock,
+  type RenderModel,
 } from '@aramo/documents-rendering';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -22,7 +24,10 @@ import {
 import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from './envelope-notification.service.js';
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
-import { signingRecipients } from './domain/recipients.js';
+import { isWitness, signingRecipients } from './domain/recipients.js';
+import { ACCESS_CODE_VERIFIED_EVENT } from './domain/access-code.js';
+import { RECIPIENT_OTP_VERIFIED_EVENT } from './messaging/messaging-rules.js';
+import { formatPaymentAmount } from './payments/sign-payment.repository.js';
 import {
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
   EXECUTED_DOCUMENT_RECORDED,
@@ -32,6 +37,9 @@ import {
   type ExecutedArtifactRecordedPayload,
 } from './domain/executed-artifact-integrity.js';
 import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
+import { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './ports/sign-branding.port.js';
+import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
+import { DocumentSealService, type DocumentSealSummary } from './document-seal/document-seal.service.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -91,6 +99,52 @@ function checkboxLines(
     });
 }
 
+// Feature-Parity §1.18 — the certificate's RFC 3161 section: each executed document's
+// timestamp (genTime + TSA) or "pending". The evidence manifest is time-stamped after the
+// certificate (the manifest carries the certificate's hash), so it is in the evidence record.
+export function trustedTimestampBlocks(
+  documents: ReadonlyArray<{ envelope_document_id: string }>,
+  timestamps: ReadonlyArray<TrustedTimestampView>,
+): RenderBlock[] {
+  const byDocument = new Map(timestamps.filter((t) => t.subject_kind === 'EXECUTED_DOCUMENT').map((t) => [t.envelope_document_id, t]));
+  return [
+    { type: 'HEADING', text: 'Trusted timestamps (RFC 3161)' },
+    ...documents.map((d): RenderBlock => {
+      const t = byDocument.get(d.envelope_document_id);
+      const text = t !== undefined && t.status === 'GRANTED' && t.gen_time !== null
+        ? `Doc ${d.envelope_document_id}: ${t.gen_time} by ${t.tsa_name ?? 'the time-stamping authority'} (serial ${t.serial_number ?? 'unknown'})`
+        : `Doc ${d.envelope_document_id}: timestamp pending (recorded in the evidence record when the time-stamping authority responds)`;
+      return { type: 'TEXT', text };
+    }),
+    { type: 'TEXT', text: 'The evidence manifest is time-stamped after this certificate; its token is in the evidence record.' },
+  ];
+}
+
+// Sign 1.14 — one certificate line per payment of a signer: amount, status and the Stripe
+// payment reference (collected on the sender's connected account; Aramo holds no funds).
+function paymentLines(
+  payments: ReadonlyArray<{ signer_id: string; amount_minor: number; currency: string; status: string; payment_ref: string | null; paid_at: Date | null; amount_refunded_minor: number }>,
+  signer_id: string,
+): string[] {
+  return payments
+    .filter((p) => p.signer_id === signer_id)
+    .map((p) => {
+      const amount = formatPaymentAmount(p.amount_minor, p.currency);
+      if (p.paid_at === null || p.payment_ref === null) return `Payment: ${amount} — ${p.status.toLowerCase()}`;
+      const refunded = p.amount_refunded_minor > 0 ? ` (refunded ${formatPaymentAmount(p.amount_refunded_minor, p.currency)})` : '';
+      return `Payment: ${amount} — paid ${p.paid_at.toISOString()} via Stripe, payment ${p.payment_ref}${refunded}`;
+    });
+}
+
+// Feature-Parity §1.15 — the certificate line of a document seal. A pending seal is
+// recorded in the evidence ledger when it is applied.
+export function sealLine(envelope_document_id: string, seal: DocumentSealSummary): string {
+  if (seal.status === 'SEALED' && seal.sealed_sha256 !== null) {
+    return `Doc ${envelope_document_id} — document seal: ${seal.seal_level ?? 'PAdES'} by ${seal.signer_subject ?? 'unknown'}; sealed copy ${seal.sealed_sha256.slice(0, 16)}… (the executed document is unchanged inside the sealed copy)`;
+  }
+  return `Doc ${envelope_document_id} — document seal: pending; when applied it is recorded in the evidence ledger`;
+}
+
 @Injectable()
 export class ExecutionService implements ExecutionProducerPort {
   constructor(
@@ -109,7 +163,25 @@ export class ExecutionService implements ExecutionProducerPort {
     @Optional() @Inject(SENDER_DIRECTORY_PORT) private readonly users?: SenderDirectoryPort,
     // SX-2 item 7 — custody upload to the Sign artifact bucket (unbound/dark = no-op).
     @Optional() @Inject(EXECUTED_ARTIFACT_CUSTODY_PORT) private readonly custody?: ExecutedArtifactCustodyPort,
+    // Feature-Parity §1.10 — the organization's branding on the certificate (unbound / null =
+    // the Aramo default; dark until `sign.branding` is AVAILABLE and the plan includes it).
+    @Optional() @Inject(SIGN_BRANDING_PORT) private readonly branding?: SignBrandingPort,
+    // Feature-Parity §1.18 — RFC 3161 timestamps of the executed documents (off unless a
+    // TSA adapter is bound; never blocks completion).
+    @Optional() private readonly timestamps?: TrustedTimestampService,
+    // Feature-Parity §1.15 — the PAdES document seal (dark: unbound or no provider = no seal).
+    @Optional() private readonly sealer?: DocumentSealService,
   ) {}
+
+  // Feature-Parity §1.10 — never fails a completion: any error reads as "no branding".
+  private async certificateBranding(tenant_id: string): Promise<CertificateBranding | null> {
+    if (this.branding === undefined) return null;
+    try {
+      return await this.branding.certificateBranding(tenant_id);
+    } catch {
+      return null;
+    }
+  }
 
   // M-A5 §3.6 — for each signer who signed in a HOSTED session, the host's display
   // name (the session that completed carries host_user_id).
@@ -127,9 +199,50 @@ export class ExecutionService implements ExecutionProducerPort {
     return out;
   }
 
+  // Feature-Parity §1.9 — "Recipient verification: SMS one-time code to +1•••••••23,
+  // verified <time>" per signer, from RECIPIENT_OTP_VERIFIED ledger events (the masked
+  // number only). The last verification of each signer is printed.
+  private async recipientVerifications(tenant_id: string, envelope_id: string): Promise<Map<string, string[]>> {
+    const events = await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: RECIPIENT_OTP_VERIFIED_EVENT },
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      select: { signer_id: true, payload: true, occurred_at: true },
+    });
+    const out = new Map<string, string[]>();
+    for (const e of events) {
+      if (e.signer_id === null) continue;
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      const phone = typeof p['phone'] === 'string' ? ` to ${p['phone']}` : '';
+      out.set(e.signer_id, [`Recipient verification: SMS one-time code${phone}, verified ${e.occurred_at.toISOString()}`]);
+    }
+    return out;
+  }
+
+  // Feature-Parity §1.9 — one certificate line per recipient who passed identity verification:
+  // the method, the vendor, when, the document's issuing country and the vendor reference.
+  // Never any document data (R-5).
+  private async identityChecks(tenant_id: string, envelope_id: string): Promise<Map<string, string>> {
+    const rows = await this.prisma.signRecipientIdentityVerification.findMany({
+      where: { tenant_id, envelope_id, status: 'VERIFIED' },
+      select: { signer_id: true, method: true, provider: true, vendor_reference: true, document_country: true, completed_at: true },
+      orderBy: { completed_at: 'asc' },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      const how = r.method === 'KBA' ? 'knowledge-based questions' : 'government ID';
+      const vendor = r.provider === 'STRIPE_IDENTITY' ? 'Stripe Identity' : r.provider;
+      const at = r.completed_at !== null ? ` at ${r.completed_at.toISOString()}` : '';
+      const country = r.document_country !== null ? `, document issued in ${r.document_country}` : '';
+      out.set(r.signer_id, `Identity verified by ${how} (${vendor})${at}${country}. Name matched. Reference: ${r.vendor_reference ?? 'none'}`);
+    }
+    return out;
+  }
+
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const results: ExecutedProductionResult[] = [];
+    // Feature-Parity §1.15 — only documents executed by THIS produce are sealed.
+    const inserted: string[] = [];
     // PX-2 — each signer's Signature ID is the hash of their SIGNER_SIGNED entry
     // in the append-only, hash-chained ledger. The stamp prints its first 15
     // characters; the execution certificate prints it in full beside the signer,
@@ -233,7 +346,10 @@ export class ExecutionService implements ExecutionProducerPort {
         executed_sha256: rendered.sha256,
         bytes: rendered.bytes,
       });
-      if (kept.inserted) await this.recordKept(tenant_id, `esign:executed:${doc.id}`, kept.result.byte_size);
+      if (kept.inserted) {
+        inserted.push(doc.id);
+        await this.recordKept(tenant_id, `esign:executed:${doc.id}`, kept.result.byte_size);
+      }
       results.push(kept.result);
     }
 
@@ -243,7 +359,38 @@ export class ExecutionService implements ExecutionProducerPort {
     const priorCertificate = await this.prisma.executionCertificate.findUnique({ where: { envelope_id }, select: { id: true } });
     if (priorCertificate !== null) return results;
 
+    // Feature-Parity §1.18 — time-stamp each executed document's hash before the
+    // certificate is rendered, so the certificate can print the result (or "pending").
+    const timestamps = this.timestamps?.enabled === true
+      ? await this.timestamps.stampExecutedDocuments(
+          tenant_id,
+          envelope_id,
+          results.map((r) => ({ envelope_document_id: r.envelope_document_id, executed_sha256: r.executed_sha256 })),
+        )
+      : null;
+    // Feature-Parity §1.15 — seal the newly executed documents after they are kept and
+    // before the certificate and custody. Never throws; a failed seal stays PENDING for
+    // the seal job and completion continues with the unsealed executed document.
+    const seals = new Map<string, DocumentSealSummary>();
+    for (const s of (await this.sealer?.sealProduced(tenant_id, envelope_id, inserted).catch(() => [])) ?? []) seals.set(s.envelope_document_id, s);
+
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
+    // Feature-Parity §1.9 — when each recipient with an access code entered it (the ledger).
+    const codeVerified = new Map<string, Date>();
+    for (const e of await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: ACCESS_CODE_VERIFIED_EVENT },
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      select: { signer_id: true, occurred_at: true },
+    })) {
+      if (e.signer_id !== null) codeVerified.set(e.signer_id, e.occurred_at);
+    }
+    const signerNameById = new Map(full.signers.map((s) => [s.id, s.name]));
+    // Feature-Parity §1.9 — each signer's recipient-verification results (SMS one-time
+    // code), read from the ledger. Absent for every envelope without one.
+    const verifications = await this.recipientVerifications(tenant_id, envelope_id);
+    const identityChecks = await this.identityChecks(tenant_id, envelope_id);
+    // Sign 1.14 — each signer's payment (status and Stripe reference) on the certificate.
+    const payments = await this.prisma.signPayment.findMany({ where: { tenant_id, envelope_id }, orderBy: { created_at: 'asc' } });
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
@@ -254,6 +401,12 @@ export class ExecutionService implements ExecutionProducerPort {
         type: 'TEXT',
         text: `Doc ${r.envelope_document_id} — source ${r.source_sha256.slice(0, 16)}… executed ${r.executed_sha256.slice(0, 16)}…`,
       })),
+      // Feature-Parity §1.15 — the document seal, only when the seal is enabled.
+      ...results.flatMap((r): RenderBlock[] => {
+        const seal = seals.get(r.envelope_document_id);
+        if (seal === undefined) return [];
+        return [{ type: 'TEXT', text: sealLine(r.envelope_document_id, seal) }];
+      }),
       { type: 'HEADING', text: 'Signers' },
       // M-A5 §1.2 — copy recipients are not signers and are not listed here.
       ...signingRecipients(full.signers).flatMap((s): RenderBlock[] => [
@@ -265,14 +418,31 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(hostedBy.has(s.id)
           ? [{ type: 'TEXT', text: `Signed in person. Hosted by ${hostedBy.get(s.id) ?? ''}. Signer identity was not independently verified.` } as RenderBlock]
           : []),
+        // Feature-Parity §1.17 — a witness and the signer it attested for.
+        ...(isWitness(s) && s.witness_for_signer_id !== null
+          ? [{ type: 'TEXT', text: `Witness for ${signerNameById.get(s.witness_for_signer_id) ?? 'a signer'}${s.signed_at ? `. Attested ${s.signed_at.toISOString()}` : ''}.` } as RenderBlock]
+          : []),
+        // §1.17 — a delegated signature names the original recipient.
+        ...(s.delegated_at !== null
+          ? [{ type: 'TEXT', text: `Delegated by ${s.delegated_from_name ?? 'the original recipient'} <${maskEmail(s.delegated_from_email)}> at ${s.delegated_at.toISOString()}.` } as RenderBlock]
+          : []),
+        // §1.9 — recipient authentication by access code.
+        ...(s.access_code_hash !== null
+          ? [{ type: 'TEXT', text: codeVerified.has(s.id) ? `Recipient authentication: access code, verified ${codeVerified.get(s.id)?.toISOString() ?? ''}.` : 'Recipient authentication: access code (not entered).' } as RenderBlock]
+          : []),
+        ...(verifications.get(s.id) ?? []).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        // Feature-Parity §1.9 — the recipient's identity verification (outcome only, R-5).
+        ...(identityChecks.has(s.id) ? [{ type: 'TEXT', text: identityChecks.get(s.id) ?? '' } as RenderBlock] : []),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        ...paymentLines(payments, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
+      ...(timestamps !== null ? trustedTimestampBlocks(results, timestamps) : []),
     ];
 
-    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results);
+    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results, await this.certificateBranding(tenant_id));
     if (!certificate.inserted) return results;
 
     await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.byte_size);
@@ -370,6 +540,35 @@ export class ExecutionService implements ExecutionProducerPort {
     return { inserted: outcome.kind === 'inserted', result: outcome.result };
   }
 
+  // Feature-Parity §1.10 — the certificate, with the organization's letterhead when branded.
+  // No branding ⇒ exactly the model rendered before this feature. A branded render that
+  // fails (e.g. an image the PDF engine refuses) falls back to the unbranded certificate.
+  private async renderCertificate(blocks: RenderBlock[], branding: CertificateBranding | null) {
+    const base: RenderModel = { render_schema_version: 'v1', title: 'Execution Certificate', blocks };
+    if (branding === null) return this.rendering.renderGenerated(base);
+    const name = branding.display_name !== null && branding.display_name.trim().length > 0 ? branding.display_name.trim() : null;
+    let branded: RenderModel;
+    if (branding.logo !== null) {
+      const letterhead: LetterheadModel = {
+        image_bytes: branding.logo.bytes,
+        image_format: branding.logo.format,
+        image_sha256: branding.logo.sha256,
+        name,
+        ...(branding.primary_color !== null ? { rule_color: branding.primary_color } : {}),
+      };
+      branded = { ...base, letterhead };
+    } else if (name !== null) {
+      branded = { ...base, blocks: [{ type: 'TEXT', text: `Organization: ${name}` }, ...blocks] };
+    } else {
+      return this.rendering.renderGenerated(base);
+    }
+    try {
+      return await this.rendering.renderGenerated(branded);
+    } catch {
+      return this.rendering.renderGenerated(base);
+    }
+  }
+
   // SX-1 items 1 and 3 — the certificate cites the ledger's event-chain hash, which
   // grows, so it is rendered, inserted and recorded under the envelope row lock in
   // one transaction (with the DOC-4 outbox event). A writer that finds a kept
@@ -381,6 +580,7 @@ export class ExecutionService implements ExecutionProducerPort {
     envelope_id: string,
     blocksFor: (chainHash: string) => RenderBlock[],
     results: ExecutedProductionResult[],
+    branding: CertificateBranding | null = null,
   ): Promise<{ inserted: boolean; byte_size: number }> {
     // Set inside the transaction closure once the certificate is rendered.
     const attemptedRef: { sha: string | null } = { sha: null };
@@ -394,7 +594,7 @@ export class ExecutionService implements ExecutionProducerPort {
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { event_hash: true },
         });
-        const certificate = await this.rendering.renderGenerated({ render_schema_version: 'v1', title: 'Execution Certificate', blocks: blocksFor(terminal?.event_hash ?? '') });
+        const certificate = await this.renderCertificate(blocksFor(terminal?.event_hash ?? ''), branding);
         attemptedRef.sha = certificate.sha256;
         const id = randomUUID();
         const byte_size = certificate.bytes.byteLength;

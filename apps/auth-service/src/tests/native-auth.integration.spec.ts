@@ -189,6 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           findActiveMembershipSite: vi.fn(async () => null),
           getScopesByUserAndTenant: vi.fn(async () => ['esign:envelope:read', 'sign:envelope:read']),
           getScopesByUserTenantAndSite: vi.fn(async () => ['esign:envelope:read', 'sign:envelope:read']),
+          getSignCustomRoleScopes: vi.fn(async () => []),
         })
         .overrideProvider(TenantEntitlementReader)
         .useValue({ getCapabilities: vi.fn(async () => new Set(capabilities)) })

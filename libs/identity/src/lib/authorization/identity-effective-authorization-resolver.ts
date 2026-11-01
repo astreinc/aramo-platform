@@ -139,12 +139,20 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
 
   // Canonical RBAC resolution — site-aware union (tenant-wide ∪ site-matched), the
   // exact set the pre-HF-AUTH-1 token carried, now resolved server-side.
+  //
+  // Sign Feature-Parity §1.21 — for the `sign` consumer ONLY, plus the principal's custom Sign
+  // role scopes in this tenant (same site rule; composable `sign:*` scopes only). The union is
+  // part of the canonical set, so it is cached under the same immutable version key — every
+  // custom-role change bumps the holder's authorization version.
   private async resolveFromCanonical(input: EffectiveAuthorizationInput): Promise<string[]> {
-    return this.roles.getScopesByUserTenantAndSite({
+    const args = {
       user_id: input.principal_id,
       tenant_id: input.tenant_id,
       ...(input.site_id === undefined ? {} : { site_id: input.site_id }),
-    });
+    };
+    const scopes = await this.roles.getScopesByUserTenantAndSite(args);
+    if (input.consumer_type !== 'sign') return scopes;
+    return [...new Set([...scopes, ...(await this.roles.getSignCustomRoleScopes(args))])];
   }
 
   // Version + site are BOTH in the key: version keeps entries immutable (a bump

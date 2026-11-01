@@ -10668,6 +10668,11 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
+      "from": "apps/sign-service/src/app/account/personal-upgrade.service.ts",
+      "status": "production",
+      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
+    },
+    {
       "excludedBy": "src/sign-negative-control/**",
       "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
       "status": "excluded",
@@ -10693,6 +10698,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/sign-service/src/tests/sign-negative-control.spec.ts",
       "status": "excluded",
       "to": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts"
@@ -10702,6 +10719,12 @@
       "from": "apps/sign-service/src/tests/sign-negative-control.spec.ts",
       "status": "excluded",
       "to": "apps/sign-service/tsconfig.app.json"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/sign-template-authoring-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/prisma/schema.prisma"
     },
     {
       "from": "apps/sign-web/project.json",
@@ -11212,12 +11235,32 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/account/sign-account.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding-public.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11257,6 +11300,21 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sign-messaging.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments-public.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments-sender.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/personal/sign-report.controller.ts"
     },
     {
@@ -11273,6 +11331,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/esign-signer-qes.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -13023,6 +13091,81 @@
       "from": "doc/backlog/sign-personal-sms-provider-selection.md",
       "status": "unscoped",
       "to": "libs/identity/src/lib/personal/sms-verification.port.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/personal-signup.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/sign-account.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custody/sign-artifact-storage.config.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/legal/personal-legal-status.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/personal-send.gate.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/sign-report.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-context.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/audit/identity-audit.repository.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/util/tenant-kind.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/free-personal-subscription.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
     },
     {
       "from": "doc/backlog/talent-lifecycle-am5-verified-inbound-application-DEFERRED.md",
@@ -31102,6 +31245,11 @@
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -31920,6 +32068,11 @@
       "to": "apps/platform-admin/src/app/platform/cognito/cognito-admin.service.ts"
     },
     {
+      "from": "libs/identity/src/lib/personal/personal-upgrade.repository.ts",
+      "status": "production",
+      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
+    },
+    {
       "from": "libs/identity/src/lib/prisma/prisma.service.ts",
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
@@ -32001,6 +32154,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -32025,6 +32184,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
@@ -32040,6 +32205,12 @@
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32070,6 +32241,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -33390,6 +33567,11 @@
       "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
     },
     {
+      "from": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts",
+      "status": "production",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
       "from": "libs/sign/src/lib/signing-token.ts",
       "status": "production",
       "to": "libs/portal-identity/src/lib/portal-login-token.ts"
@@ -34153,7 +34335,25 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/app/payments/sign-payments.config.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
       "to": "doc/ccp/slices/CCP-C5-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

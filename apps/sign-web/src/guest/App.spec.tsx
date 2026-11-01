@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { App, reportHrefForToken } from './App.js';
+import { App, reportHrefForToken, safeBranding } from './App.js';
 import { fieldBox } from './field-geometry.js';
 
 // The page renderer (pdfjs) cannot load under jsdom; this stand-in renders each
@@ -175,6 +175,72 @@ describe('signer app', () => {
     expect(document.querySelectorAll('a')).toHaveLength(0);
   });
 
+  // Feature-Parity §1.9 — the per-recipient access code.
+  it('access code: asked before anything is shown; a wrong code says so; the right code opens the document', async () => {
+    let verified = false;
+    const calls = transport({
+      exchange: () => (verified ? json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1' }) : json({ error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_required' } } }, 403)),
+      'access-code': () => {
+        const last = calls[calls.length - 1]!;
+        if (last.body['access_code'] !== 'Blue-42') return json({ error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_incorrect', attempts_remaining: 4 } } }, 403);
+        verified = true;
+        return json({ verified: true });
+      },
+    });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Enter the access code' })).toBeInTheDocument();
+    expect(calls.some((c) => c.path === 'disclosure-text' || c.path === 'document')).toBe(false);
+    fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'wrong' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code isn't right");
+    fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'Blue-42' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Review document' })).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === 'access-code').map((c) => c.body['access_code'])).toEqual(['wrong', 'Blue-42']);
+  });
+
+  it('access code locked → its own screen with no navigation', async () => {
+    transport({ exchange: () => json({ error: { code: 'SIGNER_ACCESS_CODE_LOCKED' } }, 423) });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Too many incorrect access codes' })).toBeInTheDocument();
+    expect(document.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  // Feature-Parity §1.9 — a recipient the sender asked to verify sees the identity check first,
+  // opens the vendor's page in a new tab, and continues to the document once it has passed.
+  it('identity check required → verify in a new tab → Continue opens the document', async () => {
+    let verified = false;
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    const calls = transport({
+      document: () => (verified ? json(VIEW) : json({ error: { code: 'SIGNER_IDENTITY_VERIFICATION_REQUIRED', details: { reason: 'identity_verification_required' } } }, 403)),
+      'identity-verification/start': () => json({ method: 'ID_VERIFICATION', state: 'PENDING', attempts_remaining: 2, last_failure: null, verification_url: 'https://verify.example/vs_1' }),
+      'identity-verification/status': () => {
+        verified = true;
+        return json({ method: 'ID_VERIFICATION', state: 'VERIFIED', attempts_remaining: 2, last_failure: null });
+      },
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review document' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
+    expect(await screen.findByRole('heading', { name: 'Verify your identity to open this document' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify my identity' }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('https://verify.example/vs_1', '_blank', 'noopener'));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('sg-workspace');
+    expect(calls.filter((c) => c.path.startsWith('identity-verification/')).every((c) => c.body['token'] === 'tok-123')).toBe(true);
+  });
+
+  it('identity verification locked → its own end screen', async () => {
+    transport({ document: () => json({ error: { code: 'SIGNER_IDENTITY_VERIFICATION_LOCKED', details: { reason: 'name_mismatch' } } }, 423) });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review document' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
+    expect(await screen.findByRole('heading', { name: "We couldn't verify your identity" })).toBeInTheDocument();
+  });
+
   it('opened without a token → Invalid link, no network call, never a sign-in page', () => {
     window.history.pushState({}, '', '/s/');
     const calls = transport();
@@ -307,5 +373,51 @@ describe('M-A7 §5.2 — Report action on the guest signing page', () => {
     expect(reportHrefForToken('short')).toBeNull();
     expect(reportHrefForToken('bad/token/with/slashes')).toBeNull();
     expect(reportHrefForToken(TOKEN)).toBe(`/report#token=${TOKEN}`);
+  });
+});
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — the sending organization's
+// branding on the signer page (dark by default: the server answers null).
+describe('signer page branding', () => {
+  const LOGO = '/v1/sign/signing/brand-logo/019000a0-0000-4000-8000-0000000000aa';
+
+  it('default look when the server answers null (feature dark)', async () => {
+    transport({ branding: () => json({ branding: null }) });
+    render(<App />);
+    await screen.findByRole('button', { name: 'Review document' });
+    expect(screen.queryByTestId('sg-brand-logo')).toBeNull();
+    expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('');
+  });
+
+  it('shows the logo and applies the brand colours when the server returns branding', async () => {
+    const calls = transport({ branding: () => json({ branding: { display_name: 'Acme Staffing', primary_color: '#0A7F3F', accent_color: '#FFB000', logo_url: LOGO } }) });
+    render(<App />);
+    expect(await screen.findByTestId('sg-brand-logo')).toHaveAttribute('src', LOGO);
+    expect(screen.getByTestId('sg-brand-logo')).toHaveAttribute('alt', 'Acme Staffing');
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('#0A7F3F'));
+    expect(document.documentElement.style.getPropertyValue('--sg-accent-hover')).toBe('#FFB000');
+    expect(calls.find((c) => c.path === 'branding')?.body).toEqual({ token: 'tok-123' });
+    cleanup();
+    expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('');
+  });
+
+  it('a branding failure keeps the default look and the page works', async () => {
+    transport({ branding: () => json({ error: { code: 'INTERNAL' } }, 500) });
+    render(<App />);
+    await screen.findByRole('button', { name: 'Review document' });
+    expect(screen.queryByTestId('sg-brand-logo')).toBeNull();
+  });
+
+  it('safeBranding drops malformed colours and any logo address that is not the same-origin logo route', () => {
+    expect(safeBranding(null)).toBeNull();
+    expect(
+      safeBranding({ display_name: '  ', primary_color: 'red;background:url(x)', accent_color: '#12345', logo_url: 'https://evil.example/x.png' }),
+    ).toEqual({ display_name: null, primary_color: null, accent_color: null, logo_url: null });
+    expect(safeBranding({ display_name: 'Acme', primary_color: '#0A7F3F', accent_color: null, logo_url: LOGO })).toEqual({
+      display_name: 'Acme',
+      primary_color: '#0A7F3F',
+      accent_color: null,
+      logo_url: LOGO,
+    });
   });
 });

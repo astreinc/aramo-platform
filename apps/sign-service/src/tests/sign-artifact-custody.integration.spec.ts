@@ -40,6 +40,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('SX-2 artifact cus
       evidenceManifest: async (_t: string, envelope_id: string) => ({
         manifest: { envelope_id }, signature: 'sig', signature_algorithm: 'SHA256-SOFTWARE-DOC3', kms_key_version_ref: null, signing_timestamp: new Date().toISOString(),
       }),
+      // Feature-Parity §1.18 — off here: no trusted timestamps recorded.
+      trustedTimestampsFor: async () => [],
     }),
   };
 

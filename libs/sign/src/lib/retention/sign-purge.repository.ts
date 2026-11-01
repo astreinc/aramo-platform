@@ -45,7 +45,8 @@ export const REDACTED_TEXT = '[redacted]';
 export const REDACTED_PAYLOAD_VALUE = '[REDACTED]';
 // Ledger payload keys that can carry personal data (LD-2). Every other key is an id,
 // hash, size, version or enum and is kept.
-export const PII_PAYLOAD_KEYS: readonly string[] = ['title', 'reason', 'name', 'email', 'attested_name', 'subject', 'message', 'decline_reason'];
+// Feature-Parity §1.7–§1.9 — 'phone' (a masked number on the messaging and one-time-code events).
+export const PII_PAYLOAD_KEYS: readonly string[] = ['title', 'reason', 'name', 'email', 'attested_name', 'subject', 'message', 'decline_reason', 'phone'];
 
 export const PURGE_QUEUED_EVENT = 'ENVELOPE_PURGE_QUEUED';
 export const PURGE_DEQUEUED_EVENT = 'ENVELOPE_PURGE_DEQUEUED';
@@ -303,7 +304,7 @@ export class SignPurgeRepository {
         WHERE e.tenant_id = $1::uuid
           AND e.status IN ('COMPLETED', 'DECLINED', 'VOIDED')
           AND e.deleted_at IS NULL
-          AND (EXISTS (SELECT 1 FROM "sign"."Signer" s WHERE s.envelope_id = e.id AND lower(s.email) = lower($2))
+          AND (EXISTS (SELECT 1 FROM "sign"."Signer" s WHERE s.envelope_id = e.id AND (lower(s.email) = lower($2) OR lower(s.delegated_from_email) = lower($2)))
                OR EXISTS (SELECT 1 FROM identity."User" u WHERE u.id = e.created_by AND lower(u.email) = lower($2)))`,
       tenant_id,
       email,
@@ -360,6 +361,8 @@ export class SignPurgeRepository {
       // Documents (every level): bytes go, rows / hashes / custody records stay (LD-3, LD-4).
       const documents = await tx.executedDocument.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { executed_bytes: null, purged_at: now } });
       const certificates = await tx.executionCertificate.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { certificate_bytes: null, purged_at: now } });
+      // Feature-Parity §1.15 — the seal tail of a sealed copy goes with the executed bytes.
+      await tx.executedDocumentSeal.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { seal_tail: null, purged_at: now } });
       const docIds = (await tx.envelopeDocument.findMany({ where: { tenant_id, envelope_id }, select: { id: true } })).map((d) => d.id);
       if (docIds.length > 0) await tx.signEnvelopeDocumentPages.deleteMany({ where: { tenant_id, envelope_document_id: { in: docIds } } });
 
@@ -371,12 +374,18 @@ export class SignPurgeRepository {
       }
       if (LEVEL_RANK[level] >= LEVEL_RANK.DOCUMENTS_AND_METADATA_AND_REDACT) {
         const signerIds = (await tx.signer.findMany({ where: { tenant_id, envelope_id }, select: { id: true } })).map((s) => s.id);
-        await tx.signer.updateMany({ where: { tenant_id, envelope_id }, data: { name: REDACTED_TEXT, email: REDACTED_TEXT, decline_reason: null } /* email stays non-null: Signer_email_required_check */ });
+        await tx.signer.updateMany({ where: { tenant_id, envelope_id }, data: { name: REDACTED_TEXT, email: REDACTED_TEXT, decline_reason: null, access_code_hash: null } /* email stays non-null: Signer_email_required_check */ });
+        // Feature-Parity §1.17 — the original recipient of a delegated slot (Signer_delegation_check keeps them non-null).
+        await tx.signer.updateMany({ where: { tenant_id, envelope_id, delegated_at: { not: null } }, data: { delegated_from_name: REDACTED_TEXT, delegated_from_email: REDACTED_TEXT } });
         if (signerIds.length > 0) {
           await tx.signerDisclosureAcceptance.updateMany({ where: { tenant_id, signer_id: { in: signerIds } }, data: { ip_address: null, user_agent: null, attested_name: null } });
         }
         await tx.signRecipientBinding.updateMany({ where: { envelope_id }, data: { email: REDACTED_TEXT } });
         await tx.notificationDelivery.updateMany({ where: { tenant_id, envelope_id }, data: { last_error: null } });
+        // Feature-Parity §1.7–§1.9 — the recipient's phone number and its traces.
+        await tx.signRecipientMessaging.deleteMany({ where: { tenant_id, envelope_id } });
+        await tx.signMessageDelivery.updateMany({ where: { tenant_id, envelope_id }, data: { phone_hash: null, phone_masked: null } });
+        await tx.signRecipientOtpChallenge.updateMany({ where: { tenant_id, envelope_id }, data: { phone_hash: null, phone_masked: null } });
         events_redacted = await this.redactLedger(tx, tenant_id, envelope_id, now);
       }
 

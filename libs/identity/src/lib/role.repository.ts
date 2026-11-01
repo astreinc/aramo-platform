@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { composableScopesOf } from './sign-custom-role/sign-custom-role.policy.js';
 
 // Repository for Role / Scope reads. Per §7 RoleService.getScopesByUserAndTenant,
 // callers want the set of scope keys the user has via active role assignments
@@ -51,6 +52,38 @@ export class RoleRepository {
       }
     }
     return [...keys];
+  }
+
+  // Aramo Sign Feature-Parity Program Directive v1.0 (LOCKED) §1.21 — the scope keys the
+  // principal's CUSTOM Sign roles contribute in ONE tenant. Read ONLY where a `sign` consumer's
+  // authority is resolved (the effective-authorization resolver for consumer `sign`, the
+  // auth-service sign mint/refresh, App Home's Sign product row) — never for ATS, org or
+  // platform consumers, whose scope sets therefore stay exactly as before.
+  //
+  // Tenant isolation is threefold: the assignment, its role and its membership are all
+  // filtered on the same tenant_id (and the database's composite FKs pin them together).
+  // Only live roles (deleted_at NULL) on an active membership count, the membership follows
+  // the SAME site rule as findScopeKeysForUserInTenantAndSite (site undefined = tenant-wide
+  // memberships only), and every key is re-filtered through the composable set (`sign:*`,
+  // never billing, platform or ATS) — a tampered row can never widen authority.
+  async findSignCustomRoleScopeKeys(args: {
+    user_id: string;
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<string[]> {
+    const siteFilter =
+      args.site_id === undefined
+        ? { site_id: null }
+        : { OR: [{ site_id: null }, { site_id: args.site_id }] };
+    const rows = await this.prisma.signCustomRoleAssignment.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        membership: { user_id: args.user_id, tenant_id: args.tenant_id, is_active: true, ...siteFilter },
+        role: { tenant_id: args.tenant_id, deleted_at: null },
+      },
+      select: { role: { select: { scope_keys: true } } },
+    });
+    return composableScopesOf(rows.flatMap((r) => r.role.scope_keys));
   }
 
   // PR-A1a-3 Ruling 1 (auto-stamp): returns the site_id of the user's

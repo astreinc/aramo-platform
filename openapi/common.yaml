@@ -1810,6 +1810,15 @@ components:
         CCP-B2 adds COMMERCIAL_CATALOG_CONFLICT (HTTP 409; a catalog draft write refused:
         details.reason not_draft, draft_exists, stale, plan_mismatch, contract_priced or
         term_missing; a published version is never edited).
+        Sign Feature-Parity §1.9 adds SIGNER_ACCESS_CODE_REQUIRED (HTTP 403; the signing
+        recipient must enter the sender's access code, details.reason access_code_required
+        or access_code_incorrect with details.attempts_remaining) and
+        SIGNER_ACCESS_CODE_LOCKED (HTTP 423; too many wrong access codes).
+        Sign Feature-Parity §1.9 adds SIGNER_IDENTITY_VERIFICATION_REQUIRED (HTTP 403; the
+        recipient must verify their identity before the envelope is shown; details.method),
+        SIGNER_IDENTITY_VERIFICATION_LOCKED (HTTP 423; verification locked the recipient out;
+        details.reason) and ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE (HTTP 503; no verification
+        vendor is configured or reachable; details.reason).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -1913,6 +1922,8 @@ components:
         - ESIGN_INSTALLATION_REVOKED
         - ESIGN_WEBHOOKS_UNAVAILABLE
         - ESIGN_FEATURE_NOT_AVAILABLE
+        - SIGN_CUSTOM_ROLE_CONFLICT
+        - ESIGN_PAYMENTS_UNAVAILABLE
         - SIGNER_NOT_FOUND
         - SIGNER_NOT_YET_ELIGIBLE
         - SIGNING_SESSION_INVALID
@@ -2058,6 +2069,11 @@ components:
         - PLATFORM_LAST_OWNER
         - USAGE_ROLLUP_NOT_RECONCILED
         - COMMERCIAL_CATALOG_CONFLICT
+        - SIGNER_ACCESS_CODE_REQUIRED
+        - SIGNER_ACCESS_CODE_LOCKED
+        - SIGNER_IDENTITY_VERIFICATION_REQUIRED
+        - SIGNER_IDENTITY_VERIFICATION_LOCKED
+        - ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE
 
     ErrorObject:
       type: object

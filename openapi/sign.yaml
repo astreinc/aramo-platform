@@ -299,6 +299,30 @@ paths:
                     format: uuid
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: >-
+            Feature-Parity §1.9 — the recipient has an access code and this session has not entered it
+            (SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_required). The same refusal applies to every
+            signer route (disclosure-text, document, source, disclosure, fill, complete, decline, delegate) until
+            POST /v1/sign/signing/access-code succeeds for the session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: >-
+            Not this signer's turn (SIGNER_NOT_YET_ELIGIBLE; details.reason witness_signer_not_signed for a witness whose
+            signer has not signed), or the envelope is no longer signable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: The recipient is locked out after too many wrong access codes (SIGNER_ACCESS_CODE_LOCKED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/signing/document:
     post:
       operationId: getSignerDocumentView
@@ -306,7 +330,11 @@ paths:
       description: >-
         PX-V1 F3 — token-authorized, disclosure-gated. Tenant is resolved
         server-side from the capability token; the response carries no tenant id
-        and no source bytes.
+        and no source bytes. Feature-Parity §1.9 — when the sender requires an
+        identity check, this route (and source, fill and complete) answers 403
+        SIGNER_IDENTITY_VERIFICATION_REQUIRED (details.method) until the recipient
+        has verified, and 423 SIGNER_IDENTITY_VERIFICATION_LOCKED once verification
+        locked them out.
       requestBody:
         required: true
         content:
@@ -375,7 +403,16 @@ paths:
                           description: M-A6 §2.2 — SIGNER_NAME only; null for engine name fields, which the signer types.
                         server_filled:
                           type: boolean
-                          description: M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client.
+                          description: >-
+                            M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client.
+                            Sign 1.14 — also true for a PAYMENT field, which is filled (with its receipt line) only
+                            when the payment succeeds; the signer pays it through /v1/sign/signing/payment/checkout.
+                        payment:
+                          type: [object, 'null']
+                          description: Sign 1.14 — the amount to pay for a PAYMENT field (null for every other type).
+                          properties:
+                            amount_minor: { type: integer }
+                            currency: { type: string, enum: [USD] }
                   message:
                     type: [string, 'null']
                     maxLength: 1000
@@ -384,6 +421,112 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: Disclosure not yet accepted for this signer.
+  /v1/sign/signing/qes/status:
+    post:
+      operationId: getSignerQesStatus
+      summary: The signer's qualified-signature (QES) state (Feature-Parity §1.16, Amendment A1).
+      description: >-
+        Token-authorized like every signer route; the tenant is resolved server-side. qes is null when this
+        signer signs at the standard level. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is
+        not available (today, always: no QTSP is contracted). Aramo is not a QTSP: the QTSP proofs the signer's
+        identity, holds the key and signs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignerTokenRequest'
+      responses:
+        '200':
+          description: The signer's QES state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [qes]
+                properties:
+                  qes:
+                    oneOf:
+                      - $ref: '#/components/schemas/QesSignatureView'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/signing/qes/begin:
+    post:
+      operationId: beginSignerQes
+      summary: Start the QTSP identity-proofing step of a QES signer (Feature-Parity §1.16).
+      description: >-
+        Moves the signer's QES row to IDENTITY_PROOFING_PENDING and returns the QTSP URL to send the signer to
+        (OAuth 2.0 authorization, CSC API v2 shape). Restartable after FAILED. Refused (403
+        ESIGN_FEATURE_NOT_AVAILABLE) while sign.qes is not available or no QTSP is configured
+        (details.reason provider_not_configured); 409 ENVELOPE_ILLEGAL_TRANSITION when QES is not required for
+        this signer (details.reason qes_not_required), already signed, or the envelope is not signable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignerTokenRequest'
+      responses:
+        '200':
+          description: The next QTSP step.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QesStepResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/signing/qes/complete:
+    post:
+      operationId: completeSignerQes
+      summary: Hand the QTSP redirect (code, state) back to Aramo (Feature-Parity §1.16).
+      description: >-
+        After identity proofing the row becomes AUTHORIZED (the QTSP's credential and certificate chain are
+        recorded) and redirect_url is the QTSP step where the signer authorizes signing exactly one digest; after
+        that step the QTSP signs and the row becomes SIGNED (signature and certificate-chain evidence recorded,
+        ledger QES_SIGNED). No OAuth code or token is stored. A QTSP refusal moves the row to FAILED (409,
+        details.reason qes_provider_refused); a state that does not match is refused (qes_state_mismatch).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code, state]
+              properties:
+                token:
+                  type: string
+                code:
+                  type: string
+                  maxLength: 2048
+                state:
+                  type: string
+                  maxLength: 256
+      responses:
+        '200':
+          description: The resulting state, and the next QTSP step when there is one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QesStepResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/signing/source:
     post:
       operationId: getSignerDocumentSource
@@ -454,6 +597,67 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED).
+  /v1/sign/signing/branding:
+    post:
+      operationId: getSignerBranding
+      summary: The sending organization's branding for the signer page.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — token-authorized (the
+        signing capability token is the only authority; no tenant id is returned). branding is
+        null — the default Aramo look — unless the `sign.branding` feature is available and the
+        sending organization's plan includes it (dark in this release). A token that no longer
+        signs also answers null.
+      tags: [sender]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, maxLength: 512 }
+      responses:
+        '200':
+          description: The branding, or null for the default look.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branding]
+                properties:
+                  branding:
+                    oneOf:
+                      - $ref: '#/components/schemas/SignSignerBranding'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/sign/signing/brand-logo/{logoId}:
+    get:
+      operationId: getSignBrandLogo
+      summary: An organization's branding logo (PNG or JPEG).
+      description: >-
+        Feature-Parity §1.10 — public, for the signing page and the notification emails. The id
+        is random per upload (an old id stops working when the logo is replaced or removed).
+        Served only while the organization's branding applies; otherwise 404.
+      tags: [sender]
+      security: []
+      parameters:
+        - name: logoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The logo image.
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/signing/executed:
     post:
       operationId: getSignerExecutedCopy
@@ -748,6 +952,261 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/access-code:
+    post:
+      operationId: verifySigningAccessCode
+      security: []
+      summary: Enter the access code the sender set for this recipient.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9. Token-authorized. A recipient with an access
+        code enters it once per signing session before anything of the envelope is shown. The code is stored only
+        as a salted hash and is never logged, echoed or written to the ledger. A wrong code is counted
+        (ACCESS_CODE_FAILED ledger event; 403 SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_incorrect,
+        details.attempts_remaining); the fifth wrong code locks the recipient out of the envelope and revokes their
+        sessions (ACCESS_CODE_LOCKED; 423 SIGNER_ACCESS_CODE_LOCKED). Success is recorded (ACCESS_CODE_VERIFIED) and
+        printed on the certificate of completion. A recipient without an access code verifies trivially.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, access_code]
+              properties:
+                token: { type: string }
+                access_code: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        '200':
+          description: The session may now view and sign.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verified]
+                properties:
+                  verified: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The access code is not correct (SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_incorrect, details.attempts_remaining).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED / ENVELOPE_ILLEGAL_TRANSITION).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: Too many wrong access codes (SIGNER_ACCESS_CODE_LOCKED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/delegate:
+    post:
+      operationId: delegateSigning
+      security: []
+      summary: Hand this signature to another person.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.17. Token-authorized; refused 403
+        ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available. Only a SIGNER who has not signed,
+        on their turn and past any access code, of an envelope whose sender allowed delegation
+        (allow_delegation), once per recipient. The recipient slot keeps its fields (values cleared) and now names
+        the delegate; the original recipient is kept on the record and printed on the certificate; every session of
+        the original recipient is revoked (this link stops working); SIGNER_DELEGATED is appended to the ledger
+        (email hashes only); and the delegate receives a new signing link by email. 409 ENVELOPE_ILLEGAL_TRANSITION
+        details.reason delegation_not_allowed | not_delegable_recipient | already_delegated | signer_not_awaiting;
+        400 VALIDATION_ERROR details.reason delegate_invalid | delegate_email_on_envelope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, name, email]
+              properties:
+                token: { type: string }
+                name: { type: string, minLength: 1, maxLength: 200 }
+                email: { type: string, format: email, maxLength: 254 }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Delegated. The delegate is emailed a signing link.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delegated]
+                properties:
+                  delegated: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Delegate signing is not available (ESIGN_FEATURE_NOT_AVAILABLE), or the access code was not entered (SIGNER_ACCESS_CODE_REQUIRED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The signature cannot be delegated (ENVELOPE_ILLEGAL_TRANSITION with details.reason), or it is not this signer's turn (SIGNER_NOT_YET_ELIGIBLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/identity-verification/status:
+    post:
+      operationId: getSignerIdentityVerificationStatus
+      security: []
+      summary: Where the recipient stands with the identity check the sender requires.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized (tenant
+        resolved server-side). NOT_REQUIRED when the sender asked for no identity check. A vendor session the
+        recipient has finished is settled first (its result is read from the vendor). No document data is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The recipient's identity-verification state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignerIdentityVerificationStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/identity-verification/start:
+    post:
+      operationId: startSignerIdentityVerification
+      security: []
+      summary: Open (or resume) the vendor's identity check for this recipient.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized. Returns the
+        vendor's hosted verification page (verification_url), which the signer app opens in a new tab; the URL is never
+        stored. An open session is resumed rather than started again. Each new vendor session is one metered attempt;
+        a recipient who uses every attempt (SIGN_ID_VERIFICATION_MAX_ATTEMPTS, default 3) is locked (423) and the sender
+        is told. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification is not available, and 503
+        ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE when no vendor is configured (details.reason provider_not_configured,
+        kba_vendor_not_selected).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The recipient's state and, while a session is open, the vendor's hosted page.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SignerIdentityVerificationStatus'
+                  - type: object
+                    required: [verification_url]
+                    properties:
+                      verification_url:
+                        type: [string, 'null']
+                        format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The feature is not available (ESIGN_FEATURE_NOT_AVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: Identity verification locked this recipient out (SIGNER_IDENTITY_VERIFICATION_LOCKED; details.reason).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: No identity-verification vendor is configured or reachable (ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/identity-verification/webhook/stripe:
+    post:
+      operationId: receiveStripeIdentityWebhook
+      summary: Stripe Identity webhook receiver.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1. No session. Authenticity is the
+        Stripe-Signature header (HMAC-SHA256 over the raw body with SIGN_STRIPE_IDENTITY_WEBHOOK_SECRET, 300 second
+        tolerance). Only the verification session id is taken from the event; the result is re-read from Stripe and
+        recorded once. A vendor read failure returns 5xx so Stripe redelivers. Refused 401 while no webhook secret is set.
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [IGNORED, UNKNOWN_SESSION, PENDING, ALREADY_SETTLED, SETTLED]
+        '401':
+          description: The signature is missing, stale or invalid, or no webhook secret is configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The vendor could not be read; Stripe redelivers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/sender/context:
     get:
       operationId: getSenderContext
@@ -904,7 +1363,7 @@ paths:
           application/json:
             schema:
               type: object
-              description: At least one of subject, routing_mode or message.
+              description: At least one of subject, routing_mode, message or allow_delegation.
               properties:
                 subject:
                   type: string
@@ -917,6 +1376,12 @@ paths:
                   type: [string, 'null']
                   maxLength: 1000
                   description: The sender message shown to signers (invitation email and consent screen). 400 message_too_long.
+                allow_delegation:
+                  type: boolean
+                  description: >-
+                    Feature-Parity §1.17 — allow a signer to hand their signature to another person (DRAFT only; fixed at
+                    send). true is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available or
+                    for a PERSONAL account (details.reason plan_not_eligible).
       responses:
         '200':
           description: OK.
@@ -1280,6 +1745,34 @@ paths:
                         description: >-
                           M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the
                           recipient email equals the caller's verified account email. Omitted or false clears it.
+                      witness_for_index:
+                        type: [integer, 'null']
+                        minimum: 0
+                        description: >-
+                          Feature-Parity §1.17 — required for a WITNESS (400 witness_for_required / witness_for_invalid), refused
+                          for any other kind (400 witness_for_not_allowed): the position in this list of the SIGNER or
+                          IN_PERSON_SIGNER the witness attests for. One witness per signer (400 witness_duplicate). A witness is
+                          invited and may sign only after that signer has signed; when signing in order it must come after
+                          them (checked at send). WITNESS is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.witness_signing
+                          is not available or for a PERSONAL account.
+                      access_code:
+                        type: [string, 'null']
+                        minLength: 4
+                        maxLength: 32
+                        description: >-
+                          Feature-Parity §1.9 — the access code the recipient must enter before viewing (SIGNER and WITNESS only:
+                          400 access_code_not_allowed; 4 to 32 printable characters: 400 access_code_invalid). Stored only as a
+                          salted hash and never returned. Omitted keeps the stored code of an existing recipient; null clears
+                          it. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.access_code is not available.
+                      identity_verification_method:
+                        type: [string, 'null']
+                        enum: [ID_VERIFICATION, KBA, null]
+                        description: >-
+                          Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — require an identity check before this
+                          recipient sees the envelope. A value sets it, null clears it, omitted keeps it. Link signers only (400
+                          identity_verification_not_link_signer; 400 invalid_identity_verification_method). Refused 403
+                          ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification / sign.kba is not available or for a Personal
+                          account (details.reason plan_not_eligible).
       responses:
         '200':
           description: OK.
@@ -1750,7 +2243,7 @@ paths:
       operationId: listSenderTemplates
       summary: Document templates the organization can start an envelope from (DOC-TEMPLATE-LIB-1 T-5).
       description: >
-        Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service). Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing): EVERY ACTIVE template the organization may use (its own templates and the Aramo defaults it adopted) is listed and the user chooses; is_default marks the automatic per-type choice. Each item carries its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created) — its signing roles and list metadata.
+        Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Feature-Parity 1.1 (Catalog v2 P-6) — then the plan: ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Templates are adopted and edited in Org Home; Aramo Sign never creates one. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service). Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing): EVERY ACTIVE template the organization may use (its own templates and the Aramo defaults it adopted) is listed and the user chooses; is_default marks the automatic per-type choice. Each item carries its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created) — its signing roles and list metadata.
       tags: [sender]
       security:
         - senderSession: []
@@ -1771,7 +2264,7 @@ paths:
       operationId: previewSenderTemplate
       summary: Organization-branded preview of a template with the sender's values (DOC-TEMPLATE-LIB-1 T-5).
       description: >
-        Requires document_template:read; refused while sign.templates is not available. Writes nothing.
+        Requires document_template:read; refused while sign.templates is not available. Writes nothing. Feature-Parity 1.1 (Catalog v2 P-6) — then the plan: ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Templates are adopted and edited in Org Home; Aramo Sign never creates one.
       tags: [sender]
       security:
         - senderSession: []
@@ -1809,12 +2302,203 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/qes:
+    get:
+      operationId: getSenderEnvelopeQes
+      summary: The envelope's QES signers and their state (Feature-Parity §1.16, Amendment A1).
+      description: >-
+        Requires sign:envelope:read and envelope visibility. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while
+        sign.qes is not available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: One item per signer who must sign with QES.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QesSignatureView'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/signers/{signerId}/signature-level:
+    put:
+      operationId: setSenderSignerSignatureLevel
+      summary: Set one signer's signature level on a DRAFT — STANDARD or QES (Feature-Parity §1.16).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership (S-1). DRAFT only; the signer
+        must be a remote SIGNER (not in-person, not a copy recipient: details.reason qes_requires_remote_signer).
+        QES needs a configured QTSP (403 ESIGN_FEATURE_NOT_AVAILABLE, details.reason provider_not_configured).
+        Appends QES_LEVEL_SET to the ledger. Replacing the recipients clears the level. Refused with
+        ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is not available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+        - name: signerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signature_level]
+              properties:
+                signature_level:
+                  type: string
+                  enum: [STANDARD, QES]
+      responses:
+        '200':
+          description: The envelope's QES signers after the change.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QesSignatureView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/estamp:
+    get:
+      operationId: getSenderEnvelopeEstamp
+      summary: The envelope's India e-stamp order (Feature-Parity §1.19, Amendment A1).
+      description: >-
+        Requires sign:envelope:read and envelope visibility. order is the live (not FAILED) order, else the most
+        recent one, else null. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.india_estamp is not
+        available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: The e-stamp order, or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstampOrderResponse'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: requestSenderEnvelopeEstamp
+      summary: Order Indian e-stamp paper for a DRAFT envelope (Feature-Parity §1.19).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership. DRAFT only; one live order
+        per envelope (details.reason estamp_order_exists). The sender supplies the state, the article and the
+        stamp duty; Aramo does not compute duty. Amounts are paise (INR). Ledger ESTAMP_REQUESTED then
+        ESTAMP_ORDERED (or ESTAMP_FAILED). Needs a configured aggregator (403 ESIGN_FEATURE_NOT_AVAILABLE,
+        details.reason provider_not_configured — today, always). Refused while sign.india_estamp is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstampRequest'
+      responses:
+        '201':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [order]
+                properties:
+                  order:
+                    $ref: '#/components/schemas/EstampOrderView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/estamp/refresh:
+    post:
+      operationId: refreshSenderEnvelopeEstamp
+      summary: Fetch the issued e-stamp certificate and place it first in the DRAFT (Feature-Parity §1.19).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership. While the aggregator is still
+        working the order is returned unchanged. Once issued, the certificate PDF passes the safe-PDF checks,
+        counts against the storage allocation, is stored as an OWNED source document placed FIRST (ordinal 0)
+        in front of the documents to sign, and the order becomes ATTACHED (ledger ESTAMP_ISSUED,
+        ESTAMP_ATTACHED). Sending refuses an envelope whose live order is not attached first (409,
+        details.reason estamp_not_attached / estamp_not_first). Refused while sign.india_estamp is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: The e-stamp order, or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstampOrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/envelopes/from-template:
     post:
       operationId: createSenderEnvelopeFromTemplate
       summary: Create a DRAFT envelope from a document template (DOC-TEMPLATE-LIB-1 T-5).
       description: >
-        Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF) and records the template + version (template provenance, M-A6 §3.6). With `signer`, that first signer is added and the template's signature area is placed for them. Amendment M-A6 §3.5 — with `recipients` (mutually exclusive with `signer`; only for a template with signing roles) each SIGNER role is bound to exactly one recipient (signing order = role order) and its signature blocks are placed for them; `cc` binds CC roles as copy recipients (delivery at completion); emails are distinct across all of them; `routing_mode`, `message` and `subject` default to the template's. Every refusal (details.reason: signer_and_recipients, recipients_required, template_has_roles, template_has_no_roles, unknown_role, role_not_signer, role_not_cc, role_bound_twice, role_unbound, duplicate_email, routing_mode_invalid, too_many_signers, too_many_copy_recipients) happens before the render. Idempotent on idempotency_key for the render.
+        Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Feature-Parity 1.1 (Catalog v2 P-6) — then the plan: ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Templates are adopted and edited in Org Home; Aramo Sign never creates one. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF) and records the template + version (template provenance, M-A6 §3.6). With `signer`, that first signer is added and the template's signature area is placed for them. Amendment M-A6 §3.5 — with `recipients` (mutually exclusive with `signer`; only for a template with signing roles) each SIGNER role is bound to exactly one recipient (signing order = role order) and its signature blocks are placed for them; `cc` binds CC roles as copy recipients (delivery at completion); emails are distinct across all of them; `routing_mode`, `message` and `subject` default to the template's. Every refusal (details.reason: signer_and_recipients, recipients_required, template_has_roles, template_has_no_roles, unknown_role, role_not_signer, role_not_cc, role_bound_twice, role_unbound, duplicate_email, routing_mode_invalid, too_many_signers, too_many_copy_recipients) happens before the render. Idempotent on idempotency_key for the render.
       tags: [sender]
       security:
         - senderSession: []
@@ -3062,6 +3746,80 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/account/upgrade:
+    get:
+      operationId: getSignPersonalUpgradeStatus
+      summary: Whether the signed-in owner's Personal account can be upgraded to a Business organization.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless
+        SIGN_PERSONAL_UPGRADE_ENABLED=1. eligible is true only for the owner (tenant_owner) of an
+        ACTIVE PERSONAL account in good standing (risk state clear) whose open subscription, if
+        any, is the FREE Personal plan, while APPROVED Business terms are in effect; otherwise
+        reason names the first rule that fails. terms is the Business terms version the upgrade
+        accepts (null while none is approved). Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPersonalUpgradeStatus'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: upgradeSignPersonalAccount
+      summary: Upgrade the signed-in owner's Personal account to a Business organization, in place.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless
+        SIGN_PERSONAL_UPGRADE_ENABLED=1. Irreversible. The same tenant becomes a BUSINESS
+        organization: its envelopes, evidence, custody and retention setting are unchanged. The
+        Business terms acceptance is recorded, the FREE Personal subscription ends (the owner then
+        chooses a Business plan on the Billing page), the organization name and US organization
+        details are written with the signer's authority attestation, the owner receives
+        tenant_admin beside tenant_owner, and the change is audited
+        (identity.tenant.upgraded_to_business). Requires confirm = UPGRADE (else details.reason =
+        upgrade_confirmation_required), accept_terms = true (terms_not_accepted) and
+        organization.authority_attested = true (authority_attestation_required). Refused with 403
+        and details.reason not_personal_account, not_account_owner, personal_account_not_active,
+        personal_account_not_in_good_standing, business_terms_not_available or
+        personal_paid_subscription_upgrade_unsupported; 409 TENANT_ALREADY_EXISTS
+        (organization_name_taken) when another organization uses the name. Requires a Sign session
+        of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignPersonalUpgradeRequest'
+      responses:
+        '200':
+          description: The account is now a Business organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPersonalUpgradeResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/me/privacy-requests:
     get:
       operationId: listMyPrivacyRequests
@@ -4113,9 +4871,6 @@ paths:
           description: Client authentication failed.
         '403':
           description: The client is not the first-party ATS application.
-  # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
-  # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
-  # service runs with SIGN_PURGE_ENABLED=1.
   /v1/sign/sender/reports/overview:
     get:
       operationId: getSenderReportsOverview
@@ -4253,6 +5008,333 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/branding:
+    get:
+      operationId: getSenderBranding
+      summary: The organization's Sign branding (logo, colours, sender display name).
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10. Requires sign:envelope:read.
+        available reports the `sign.branding` launch availability (false in this release: every
+        value is then null); entitled reports whether the organization's plan includes branding;
+        can_edit is true only when both hold and the caller holds sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: setSenderBranding
+      summary: Set the sender display name and brand colours (null or omitted = the Aramo default).
+      description: >-
+        Requires sign:settings:manage. 403 ESIGN_FEATURE_NOT_AVAILABLE while the feature is not
+        available (details.reason feature_not_available) or when the plan does not include
+        branding (plan_not_entitled). The logo is unchanged.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignBrandingInput'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/branding/logo:
+    put:
+      operationId: setSenderBrandingLogo
+      summary: Upload or replace the organization's logo (PNG or JPEG, at most 256 KB, 16 to 4096 pixels a side).
+      description: >-
+        Requires sign:settings:manage; the same availability and plan refusals as PUT branding.
+        The type is checked from the bytes and must match content_type; SVG and other types are
+        refused (400 details.reason logo_type_unsupported, logo_type_mismatch, logo_too_large,
+        logo_dimensions_invalid, logo_encoding_invalid or logo_empty).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, data_base64]
+              properties:
+                content_type:
+                  type: string
+                  enum: [image/png, image/jpeg]
+                data_base64:
+                  type: string
+                  maxLength: 349528
+                  description: The image bytes, standard base64.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    delete:
+      operationId: deleteSenderBrandingLogo
+      summary: Remove the organization's logo (the Aramo default is shown).
+      description: Requires sign:settings:manage; the same availability and plan refusals as PUT branding.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
+  # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
+  # service runs with SIGN_PURGE_ENABLED=1.
+  # Aramo Sign Feature-Parity Program Directive v1.0 (LOCKED) §1.21 — custom roles and permissions.
+  # DARK: every route answers 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.custom_roles is NOT_AVAILABLE,
+  # for a plan without the feature (details.reason not_in_plan); a PERSONAL tenant gets 403
+  # INSUFFICIENT_PERMISSIONS (custom_roles_business_only).
+  /v1/sign/sender/custom-roles:
+    get:
+      operationId: listSignCustomRoles
+      summary: The organization's custom Sign roles and the Sign permissions a custom role may be composed of.
+      description: Requires sign:member:manage. permissions[].grantable is true only for the permissions the caller holds (a custom role can never hold a permission its creator lacks).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleList'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSignCustomRole
+      summary: Create a custom Sign role from existing Sign permissions.
+      description: >
+        Requires sign:member:manage. scope_keys must be non-empty composable Sign permissions (never billing, platform or
+        ATS permissions — 400 scope_not_composable) that the caller holds (403 INSUFFICIENT_PERMISSIONS scope_exceeds_actor).
+        409 SIGN_CUSTOM_ROLE_CONFLICT name_taken | custom_role_limit. Audited (identity.sign_custom_role.created).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignCustomRoleInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/custom-roles/members:
+    get:
+      operationId: listSignCustomRoleMembers
+      summary: The organization's active members, their built-in Sign and organization roles, and the custom roles they hold.
+      description: Requires sign:member:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleMembers'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/custom-roles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateSignCustomRole
+      summary: Change a custom Sign role's name, description or permissions.
+      description: >
+        Requires sign:member:manage and every permission the role grants today and after the change (403 scope_exceeds_actor).
+        A permission change takes effect for every holder on their next request. Audited (identity.sign_custom_role.updated).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignCustomRolePatch'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: deleteSignCustomRole
+      summary: Delete a custom Sign role.
+      description: >
+        Requires sign:member:manage and every permission the role grants. Refused while the role is assigned to any member
+        (409 SIGN_CUSTOM_ROLE_CONFLICT custom_role_in_use, details.assigned_count). Audited (identity.sign_custom_role.deleted).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/custom-roles/{id}/members/{user_id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: assignSignCustomRole
+      summary: Give an active organization member a custom Sign role (idempotent).
+      description: Requires sign:member:manage and every permission the role grants. assigned is false when the member already held it. Audited (identity.sign_custom_role.assigned).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assigned]
+                properties:
+                  assigned:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: unassignSignCustomRole
+      summary: Remove a custom Sign role from a member (idempotent).
+      description: Requires sign:member:manage and every permission the role grants. Takes effect on the member's next request. Audited (identity.sign_custom_role.unassigned).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unassigned]
+                properties:
+                  unassigned:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/sender/retention-policy:
     get:
       operationId: getSenderRetentionPolicy
@@ -4569,6 +5651,677 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  # Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1) —
+  # SMS / WhatsApp delivery and SMS one-time-code recipient verification. DARK: sign.sms_delivery,
+  # sign.whatsapp_delivery and sign.sms_otp are NOT_AVAILABLE and every provider is off.
+  /v1/sign/sender/envelopes/{id}/messaging:
+    get:
+      operationId: getEnvelopeMessaging
+      summary: The envelope's SMS / WhatsApp / SMS-code choices and its message deliveries.
+      description: >
+        Feature-Parity §1.7–§1.9. Requires sign:envelope:read and visibility of the envelope. Refused with 403
+        ESIGN_FEATURE_NOT_AVAILABLE while sign.sms_delivery, sign.whatsapp_delivery and sign.sms_otp are all NOT_AVAILABLE.
+        Deliveries never carry the full number, the text or the signing link (phone_masked only).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: The choices and deliveries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeMessaging'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/recipients/{signerId}/messaging:
+    put:
+      operationId: setRecipientMessaging
+      summary: Set a recipient's text delivery channel and / or SMS one-time code.
+      description: >
+        Feature-Parity §1.7–§1.9. DRAFT only (409 envelope_not_draft), sign:envelope:create and the right to change the
+        envelope. For a SIGNER who receives a link (400 recipient_kind_not_supported otherwise): delivery_channel SMS |
+        WHATSAPP sends the signing link to the phone as well as by email (sign.sms_delivery / sign.whatsapp_delivery);
+        sms_otp_required makes the recipient enter an SMS code before acting (sign.sms_otp). phone_e164 is required when
+        either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A
+        feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503
+        messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: signerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery_channel:
+                  type: [string, 'null']
+                  enum: [SMS, WHATSAPP, null]
+                sms_otp_required:
+                  type: boolean
+                phone_e164:
+                  type: string
+                  pattern: '^\+[1-9][0-9]{7,14}$'
+                timezone:
+                  type: [string, 'null']
+      responses:
+        '200':
+          description: The recipient's choice now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderRecipientMessaging'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: 503 ESIGN_FEATURE_NOT_AVAILABLE — details.reason messaging_provider_not_configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/verification:
+    post:
+      operationId: getRecipientVerificationStatus
+      summary: The recipient-verification status of this signing session.
+      description: >
+        Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP on the recipient, every other signer action
+        (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403
+        INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until
+        a code is verified for this session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningTokenRequest'
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipientVerificationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/sign/signing/verification/sms-otp/send:
+    post:
+      operationId: sendRecipientSmsOtp
+      summary: Send a one-time code to the recipient's phone.
+      description: >
+        Feature-Parity §1.9 — 6 digits, valid 10 minutes, 5 attempts; at most one send per 60 seconds and 5 a day (429
+        INVALID_REQUEST otp_resend_cooldown / otp_daily_limit). 400 otp_not_required; 403 otp_locked after 3 codes were
+        used up; 409 / 503 ESIGN_SEND_UNAVAILABLE otp_opted_out / otp_delivery_failed. Appends RECIPIENT_OTP_SENT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningTokenRequest'
+      responses:
+        '200':
+          description: The code was sent (or the session is already verified).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent, verified, phone]
+                properties:
+                  sent:
+                    type: boolean
+                  verified:
+                    type: boolean
+                  phone:
+                    type: string
+                    description: The masked number.
+                  expires_at:
+                    type: [string, 'null']
+                    format: date-time
+                  resend_after_seconds:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 403 INSUFFICIENT_PERMISSIONS — details.reason otp_locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          description: 429 INVALID_REQUEST — details.reason otp_resend_cooldown (retry_after_seconds, retry_at) or otp_daily_limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 503 ESIGN_SEND_UNAVAILABLE — details.reason otp_delivery_failed (or another otp_* suppression).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/verification/sms-otp/verify:
+    post:
+      operationId: verifyRecipientSmsOtp
+      summary: Check the one-time code.
+      description: >
+        Feature-Parity §1.9 — 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked
+        (5 wrong attempts; ask for a new code) or otp_locked (3 codes used up; locked out of the envelope); 409 otp_retry.
+        Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED; the verification is printed on the
+        certificate of completion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code]
+              properties:
+                token:
+                  type: string
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: Verified for this session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verified]
+                properties:
+                  verified:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 403 INSUFFICIENT_PERMISSIONS — details.reason otp_code_locked or otp_locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/messaging/whatsapp/webhook:
+    get:
+      operationId: verifyWhatsAppWebhook
+      summary: Meta WhatsApp webhook subscription check.
+      description: >
+        Feature-Parity §1.8 — no session. Echoes hub.challenge when hub.mode is subscribe and hub.verify_token equals
+        SIGN_WHATSAPP_VERIFY_TOKEN. 404 while the webhook is unconfigured or sign.whatsapp_delivery is NOT_AVAILABLE.
+      security: []
+      parameters:
+        - name: hub.mode
+          in: query
+          schema:
+            type: string
+        - name: hub.verify_token
+          in: query
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The challenge.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The verify token does not match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: receiveWhatsAppWebhook
+      summary: Meta WhatsApp webhook receiver (STOP / START and delivery statuses).
+      description: >
+        Feature-Parity §1.8 — no session. Authenticity is X-Hub-Signature-256 (HMAC-SHA256 of the raw body with
+        SIGN_WHATSAPP_APP_SECRET). An inbound STOP / START updates the opt-out list; a delivered / read / failed status
+        updates the delivery and, while the envelope is open, appends SIGNER_MESSAGE_STATUS. 404 while unconfigured or
+        NOT_AVAILABLE.
+      security: []
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, keywords, statuses]
+                properties:
+                  received:
+                    type: boolean
+                  keywords:
+                    type: integer
+                  statuses:
+                    type: integer
+        '401':
+          description: The signature is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  # ── Aramo Sign 1.14 — payment collection through Stripe Connect ──
+  # (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.14, R-6; Amendment A1). Dark:
+  # sign.payments is NOT_AVAILABLE and SIGN_STRIPE_CONNECT_* unset. Aramo never holds the
+  # funds: each payment is a direct charge on the organization's own connected Stripe account,
+  # paid on Stripe's hosted Checkout page (no card data reaches Aramo).
+  /v1/sign/signing/payment/checkout:
+    post:
+      operationId: startSignerPaymentCheckout
+      security: []
+      summary: Start (or resume) the payment of one of the signer's PAYMENT fields.
+      description: >-
+        Token-authorized and disclosure-gated, with the same guards as filling a field (live session,
+        the signer's turn, a signable envelope). Returns the URL of Stripe's hosted Checkout page on the
+        sending organization's connected account (a direct charge), or status PAID when the field is
+        already paid. The signing token is never sent to Stripe: Stripe returns the payer to
+        /s/payment-return. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason) while payments
+        are not available, 409 details.reason payments_account_not_ready while the organization's
+        account cannot take charges, 503 ESIGN_PAYMENTS_UNAVAILABLE when Stripe cannot be reached.
+      tags: [sender]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, field_id]
+              properties:
+                token: { type: string }
+                field_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The checkout to send the payer to, or PAID.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [CHECKOUT, PAID]
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Present when status is CHECKOUT (a Stripe-hosted page).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ESIGN_FEATURE_NOT_AVAILABLE — payments are not available (details.reason).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: SIGNER_NOT_FOUND — not one of this signer's PAYMENT fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/payment/confirm:
+    post:
+      operationId: confirmSignerPayment
+      security: []
+      summary: After the payer returns from Stripe, read the checkout through and record a paid payment.
+      description: >-
+        Token-authorized. The browser never asserts a payment: the server reads the checkout from
+        Stripe and records it only when Stripe reports it paid (the Connect webhook records it too).
+        Once PAID, the PAYMENT field is filled with the receipt line and the signer can complete.
+      tags: [sender]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, field_id]
+              properties:
+                token: { type: string }
+                field_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The payment's status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [PENDING, PAID, EXPIRED, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ESIGN_FEATURE_NOT_AVAILABLE — payments are not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/payments/webhook/stripe:
+    post:
+      operationId: receiveStripeConnectWebhook
+      summary: Stripe Connect webhook receiver (payments collected for organizations).
+      description: >
+        No session. A Connect endpoint SEPARATE from the Aramo billing webhook, with its own signing
+        secret (SIGN_STRIPE_CONNECT_WEBHOOK_SECRET). Authenticity is the Stripe-Signature header
+        (HMAC-SHA256 over the raw body, 300 second tolerance). Handles account.updated,
+        account.application.deauthorized, checkout.session.completed / async_payment_succeeded /
+        async_payment_failed / expired, charge.refunded and refund.created / updated / failed. Each
+        event is processed at most once; a processing failure returns 5xx so Stripe redelivers.
+        404 while payments are not configured (dark).
+      tags: [sender]
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE, FAILED]
+        '401':
+          description: The signature is missing, stale or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/payments/account:
+    get:
+      operationId: getSenderPaymentAccount
+      summary: The organization's payment availability and connected Stripe account.
+      description: >-
+        Requires sign:envelope:read. available is true only while sign.payments is available, Stripe
+        Connect is configured and the plan is Standard Professional or Enterprise; unavailable_reason
+        names the first refusal. can_manage is true for sign:settings:manage (Sign Admin).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/payments/account/onboarding-link:
+    post:
+      operationId: createSenderPaymentOnboardingLink
+      summary: Create the organization's Stripe Standard account (first time) and return Stripe's hosted onboarding link.
+      description: >-
+        Requires sign:settings:manage. The account is a Stripe Standard account owned by the
+        organization (its funds, payouts and refunds stay with it). The link expires; Stripe returns
+        the admin to Settings → Payments. 403 ESIGN_FEATURE_NOT_AVAILABLE while payments are not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: The Stripe-hosted onboarding link.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expires_at]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/sender/payments/account/refresh:
+    post:
+      operationId: refreshSenderPaymentAccount
+      summary: Re-read the connected account from Stripe (charges enabled, details submitted).
+      description: Requires sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/sender/payments/account/disconnect:
+    post:
+      operationId: disconnectSenderPaymentAccount
+      summary: Stop collecting payments through the connected account.
+      description: >-
+        Requires sign:settings:manage. Aramo stops using the account; the Stripe account itself, its
+        balance and history stay the organization's. Earlier payments can still be refunded.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/payments:
+    get:
+      operationId: listSenderEnvelopePayments
+      summary: The payments collected on an envelope, with their refunds.
+      description: Requires sign:envelope:read and visibility of the envelope. can_refund is true for sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, can_refund]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignEnvelopePayment'
+                  can_refund:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/payments/{paymentId}/refund:
+    post:
+      operationId: refundSenderEnvelopePayment
+      summary: Refund a payment (in full or in part) through Stripe, on the account that collected it.
+      description: >-
+        Requires sign:settings:manage and visibility of the envelope. amount_minor omitted refunds
+        everything still refundable. The refund is a Stripe refund on the organization's connected
+        account; a refusal by Stripe answers 400 details.reason payment_provider_refused, an amount
+        above what remains 409 details.reason refund_amount_invalid. Every request and result is a
+        ledger event on the envelope.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount_minor:
+                  type: [integer, 'null']
+                  minimum: 1
+                reason:
+                  type: [string, 'null']
+                  maxLength: 500
+      responses:
+        '200':
+          description: The payment after the refund request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignEnvelopePayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     senderSession:
@@ -4591,6 +6344,14 @@ components:
       bearerFormat: opaque (sgt_…)
       description: A short-lived Sign API access token from /v1/sign/oauth/token (never a session token).
   parameters:
+    RegulatedEnvelopeId:
+      name: id
+      in: path
+      required: true
+      description: The envelope id (UUID).
+      schema:
+        type: string
+        format: uuid
     DocumentId:
       name: documentId
       in: path
@@ -4864,6 +6625,69 @@ components:
                   template_name:
                     type: [string, 'null']
                     description: Reserved for the template library; null until it is wired.
+    SignBranding:
+      type: object
+      required: [available, entitled, can_edit, display_name, primary_color, accent_color, logo, updated_at]
+      properties:
+        available:
+          type: boolean
+          description: The `sign.branding` launch availability (false = dark; every value null).
+        entitled:
+          type: boolean
+          description: The organization's plan includes branding.
+        can_edit:
+          type: boolean
+        display_name:
+          type: [string, 'null']
+          maxLength: 80
+          description: Shown to recipients as "<display name> via Aramo Sign"; null = the organization name is not added.
+        primary_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-F]{6}$'
+        accent_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-F]{6}$'
+        logo:
+          oneOf:
+            - type: object
+              required: [url, content_type, byte_size, width, height]
+              properties:
+                url:
+                  type: string
+                  description: The public logo path (GET /v1/sign/signing/brand-logo/{logoId}).
+                content_type:
+                  type: string
+                  enum: [image/png, image/jpeg]
+                byte_size: { type: integer }
+                width: { type: integer }
+                height: { type: integer }
+            - type: 'null'
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+    SignBrandingInput:
+      type: object
+      properties:
+        display_name:
+          type: [string, 'null']
+          maxLength: 80
+          description: 1 to 80 printable Latin-1 characters; null or omitted = none.
+        primary_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        accent_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    SignSignerBranding:
+      type: object
+      required: [display_name, primary_color, accent_color, logo_url]
+      properties:
+        display_name: { type: [string, 'null'] }
+        primary_color: { type: [string, 'null'], pattern: '^#[0-9A-F]{6}$' }
+        accent_color: { type: [string, 'null'], pattern: '^#[0-9A-F]{6}$' }
+        logo_url:
+          type: [string, 'null']
+          description: The public logo path (same origin), or null.
     SignRetentionPolicy:
       type: object
       required: [retention_days, purge_level, updated_at]
@@ -5400,6 +7224,109 @@ components:
           type: [string, 'null']
         privacy_contact:
           type: string
+    SignPersonalUpgradeStatus:
+      type: object
+      required: [eligible, reason, current_name, terms, subscription]
+      properties:
+        eligible:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [not_personal_account, not_account_owner, personal_account_not_active, personal_account_not_in_good_standing, business_terms_not_available, personal_paid_subscription_upgrade_unsupported, null]
+        current_name:
+          type: string
+        terms:
+          type: [object, 'null']
+          required: [key, version, url]
+          properties:
+            key:
+              type: string
+            version:
+              type: string
+            url:
+              type: string
+              format: uri
+        subscription:
+          type: [object, 'null']
+          required: [plan_key, source]
+          properties:
+            plan_key:
+              type: string
+            source:
+              type: string
+    SignPersonalUpgradeRequest:
+      type: object
+      required: [confirm, organization_name, organization, accept_terms]
+      properties:
+        confirm:
+          type: string
+          enum: [UPGRADE]
+        organization_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        accept_terms:
+          type: boolean
+          enum: [true]
+        organization:
+          type: object
+          description: US organization details (Sign Signup Amendment A1; US only).
+          required: [legal_name, address_line1, city, state_province, postal_code, primary_contact_email, primary_contact_name, signer_title, authority_attested]
+          properties:
+            legal_name:
+              type: string
+              maxLength: 200
+            address_line1:
+              type: string
+              maxLength: 200
+            address_line2:
+              type: [string, 'null']
+              maxLength: 200
+            city:
+              type: string
+              maxLength: 100
+            state_province:
+              type: string
+              description: US state or DC (two-letter code).
+            postal_code:
+              type: string
+            country_code:
+              type: string
+              enum: [US]
+            primary_contact_email:
+              type: string
+              format: email
+            primary_contact_name:
+              type: string
+              maxLength: 100
+            signer_title:
+              type: string
+              maxLength: 100
+            primary_contact_phone:
+              type: [string, 'null']
+            tax_id:
+              type: [string, 'null']
+            registration_number:
+              type: [string, 'null']
+              maxLength: 50
+            authority_attested:
+              type: boolean
+              enum: [true]
+    SignPersonalUpgradeResult:
+      type: object
+      required: [state, kind, organization_name, upgraded_at]
+      properties:
+        state:
+          type: string
+          enum: [upgraded]
+        kind:
+          type: string
+          enum: [BUSINESS]
+        organization_name:
+          type: string
+        upgraded_at:
+          type: string
+          format: date-time
     SignAccountClosed:
       type: object
       required: [state, closed_at]
@@ -5486,6 +7413,29 @@ components:
             reports:
               type: boolean
               description: Feature-Parity §1.13 — the sign.reports capability is available for this BUSINESS tenant (always false for PERSONAL); while false every reports route answers ESIGN_FEATURE_NOT_AVAILABLE (403).
+            custom_roles:
+              type: boolean
+              description: Sign Feature-Parity §1.21 — the sign.custom_roles capability is available (launch availability) and the tenant is an organization. The plan entitlement is checked by every custom-role route.
+            witness_signing:
+              type: boolean
+              description: Feature-Parity §1.17 — sign.witness_signing is available and the tenant is a BUSINESS tenant (B+ plans).
+            delegate_signing:
+              type: boolean
+              description: Feature-Parity §1.17 — sign.delegate_signing is available and the tenant is a BUSINESS tenant (B+ plans).
+            access_code:
+              type: boolean
+              description: Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available.
+            payments:
+              type: boolean
+              description: >-
+                Sign 1.14 — payment collection is available: sign.payments is available, Stripe Connect is
+                configured and the plan is Standard Professional or Enterprise.
+            qes:
+              type: boolean
+              description: Feature-Parity §1.16 (Amendment A1) — the sign.qes capability (signing through a QTSP) is available. False until the PO authorizes it.
+            india_estamp:
+              type: boolean
+              description: Feature-Parity §1.19 (Amendment A1) — the sign.india_estamp capability is available. False until the PO authorizes it.
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -5539,6 +7489,169 @@ components:
           type: string
         default_message:
           type: string
+    SignerTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    QesSignatureView:
+      type: object
+      description: >-
+        Feature-Parity §1.16 (Amendment A1) — one signer's qualified electronic signature through a Qualified Trust
+        Service Provider. Aramo is not a QTSP; the certificate and signature are the QTSP's evidence.
+      required: [signer_id, signature_level, state]
+      properties:
+        signer_id:
+          type: string
+          format: uuid
+        signature_level:
+          type: string
+          enum: [QES]
+        state:
+          type: string
+          enum: [REQUIRED, IDENTITY_PROOFING_PENDING, AUTHORIZED, SIGNED, FAILED]
+        provider:
+          type: [string, 'null']
+        certificate:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                subject:
+                  type: string
+                issuer:
+                  type: string
+                serial_number:
+                  type: string
+                valid_from:
+                  type: string
+                  format: date-time
+                valid_to:
+                  type: string
+                  format: date-time
+                fingerprint_sha256:
+                  type: string
+        certificate_chain_sha256:
+          type: [string, 'null']
+        signature_sha256:
+          type: [string, 'null']
+        qtsp_reference:
+          type: [string, 'null']
+        failure_reason:
+          type: [string, 'null']
+        identity_started_at:
+          type: [string, 'null']
+          format: date-time
+        authorized_at:
+          type: [string, 'null']
+          format: date-time
+        signed_at:
+          type: [string, 'null']
+          format: date-time
+    QesStepResult:
+      type: object
+      required: [state, redirect_url]
+      properties:
+        state:
+          type: string
+          enum: [REQUIRED, IDENTITY_PROOFING_PENDING, AUTHORIZED, SIGNED, FAILED]
+        redirect_url:
+          type: [string, 'null']
+          description: The QTSP page to send the signer to next; null when the flow is finished.
+    EstampRequest:
+      type: object
+      description: Feature-Parity §1.19 (Amendment A1) — Indian e-stamp paper for the envelope. Amounts are paise (INR × 100).
+      required: [state_code, article_code, stamp_duty_amount_paise, first_party, second_party, purchaser]
+      properties:
+        state_code:
+          type: string
+          pattern: '^IN-[A-Z]{2}$'
+          description: ISO 3166-2:IN code of the stamping state, e.g. IN-KA.
+        article_code:
+          type: string
+          maxLength: 120
+          description: The article of that state's stamp act, as the aggregator names it.
+        stamp_duty_amount_paise:
+          type: integer
+          minimum: 1
+        consideration_amount_paise:
+          type: [integer, 'null']
+          minimum: 0
+        first_party:
+          type: string
+          maxLength: 200
+        second_party:
+          type: string
+          maxLength: 200
+        purchaser:
+          type: string
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 500
+    EstampOrderView:
+      type: object
+      required: [id, state, provider, state_code, article_code, stamp_duty_amount_paise, currency, first_party, second_party, purchaser, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [REQUESTED, ORDERED, ISSUED, ATTACHED, FAILED]
+        provider:
+          type: string
+        provider_order_ref:
+          type: [string, 'null']
+        state_code:
+          type: string
+        article_code:
+          type: string
+        stamp_duty_amount_paise:
+          type: integer
+        consideration_amount_paise:
+          type: [integer, 'null']
+        currency:
+          type: string
+          enum: [INR]
+        first_party:
+          type: string
+        second_party:
+          type: string
+        purchaser:
+          type: string
+        description:
+          type: [string, 'null']
+        certificate_number:
+          type: [string, 'null']
+        certificate_issued_at:
+          type: [string, 'null']
+          format: date-time
+        certificate_sha256:
+          type: [string, 'null']
+        attached_document_id:
+          type: [string, 'null']
+          format: uuid
+        failure_reason:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        ordered_at:
+          type: [string, 'null']
+          format: date-time
+        attached_at:
+          type: [string, 'null']
+          format: date-time
+    EstampOrderResponse:
+      type: object
+      required: [order]
+      properties:
+        order:
+          oneOf:
+            - $ref: '#/components/schemas/EstampOrderView'
+            - type: 'null'
     SenderTemplateRoleBinding:
       type: object
       required: [role_key, name, email]
@@ -5853,11 +7966,12 @@ components:
       enum: [PENDING, VIEWED, SIGNED, DECLINED]
     SenderRecipientKind:
       type: string
-      enum: [SIGNER, IN_PERSON_SIGNER, RECEIVES_COPY]
+      enum: [SIGNER, IN_PERSON_SIGNER, RECEIVES_COPY, WITNESS]
       description: >-
         Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the
         host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks
-        completion).
+        completion). Feature-Parity §1.17 — WITNESS signs (attests) through an emailed link for one other signer, only after
+        that signer has signed.
     SenderCopyDelivery:
       type: string
       enum: [ON_SEND, ON_COMPLETION, BOTH]
@@ -5972,9 +8086,59 @@ components:
           type: [string, 'null']
           format: date-time
           description: Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
+        witness_for_signer_id:
+          type: [string, 'null']
+          format: uuid
+          description: Feature-Parity §1.17 — for a WITNESS, the recipient it attests for; null otherwise.
+        access_code_set:
+          type: boolean
+          description: Feature-Parity §1.9 — an access code is set for this recipient (the code itself is never returned).
+        access_code_locked:
+          type: boolean
+          description: Feature-Parity §1.9 — the recipient is locked out after too many wrong access codes.
+        delegated_from:
+          type: [object, 'null']
+          description: Feature-Parity §1.17 — the original recipient when this signature was delegated (the row now names the delegate).
+          required: [name, email, delegated_at]
+          properties:
+            name:
+              type: [string, 'null']
+            email:
+              type: [string, 'null']
+            delegated_at:
+              type: string
+              format: date-time
         role_key:
           type: [string, 'null']
           description: Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise.
+        identity_verification_method:
+          type: [string, 'null']
+          enum: [ID_VERIFICATION, KBA, null]
+          description: >-
+            Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the identity check the sender requires before
+            this recipient sees the envelope (government ID or knowledge-based questions); null when none.
+        identity_verification_locked:
+          type: boolean
+          description: §1.9 — true when identity verification locked this recipient out (a document in another name, or every attempt used).
+    SignerIdentityVerificationStatus:
+      type: object
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient's identity-verification state.
+        Outcome only: no document data, image or verified name is ever returned or stored (R-5).
+      required: [method, state, attempts_remaining, last_failure]
+      properties:
+        method:
+          type: [string, 'null']
+          enum: [ID_VERIFICATION, KBA, null]
+        state:
+          type: string
+          enum: [NOT_REQUIRED, REQUIRED, PENDING, VERIFIED, LOCKED]
+        attempts_remaining:
+          type: [integer, 'null']
+          minimum: 0
+        last_failure:
+          type: [string, 'null']
+          description: The last attempt's failure reason (for example name_mismatch or document_expired).
     SenderExecutedDocuments:
       type: object
       required: [envelope_id, documents, certificate]
@@ -6137,6 +8301,9 @@ components:
         next_signer_id:
           type: [string, 'null']
           description: When signing in order and the envelope is open, the signer whose turn it is.
+        allow_delegation:
+          type: boolean
+          description: Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send).
         revision:
           type: integer
           minimum: 1
@@ -6189,7 +8356,7 @@ components:
           format: uuid
         field_type:
           type: string
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT, PAYMENT]
         page_number:
           type: integer
           minimum: 0
@@ -6205,6 +8372,13 @@ components:
           type: boolean
         filled:
           type: boolean
+        payment_amount_minor:
+          type: [integer, 'null']
+          description: Sign 1.14 — PAYMENT only; the amount in cents.
+        payment_currency:
+          type: [string, 'null']
+          enum: [USD, null]
+          description: Sign 1.14 — PAYMENT only.
         name_mode:
           type: [string, 'null']
           enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
@@ -6279,8 +8453,10 @@ components:
           type: string
           description: >-
             M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the
-            service-to-service and Sign API paths keep all seven engine types).
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX]
+            service-to-service and Sign API paths keep all seven engine types). Sign 1.14 — PAYMENT
+            is accepted only while payments are available to the organization (403
+            ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient.
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX, PAYMENT]
         page_number:
           type: integer
           minimum: 0
@@ -6322,6 +8498,15 @@ components:
           type: [integer, 'null']
           minimum: 1
           description: M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE).
+        payment_amount_minor:
+          type: [integer, 'null']
+          minimum: 50
+          maximum: 99999999
+          description: Sign 1.14 — PAYMENT only (required for it); the amount in cents.
+        payment_currency:
+          type: [string, 'null']
+          enum: [USD, null]
+          description: Sign 1.14 — PAYMENT only; USD (the default and the only currency).
     SenderUploadedDocument:
       type: object
       required: [id, envelope_id, title, ordinal, byte_size, page_count, pages, revision]
@@ -6481,6 +8666,112 @@ components:
         updated_at:
           type: string
           format: date-time
+    # Feature-Parity §1.7–§1.9 (Amendment A1) — messaging and SMS one-time codes.
+    SigningTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    RecipientVerificationStatus:
+      type: object
+      required: [required, method, verified, locked, phone]
+      properties:
+        required:
+          type: boolean
+        method:
+          type: [string, 'null']
+          enum: [SMS_OTP, null]
+        verified:
+          type: boolean
+        locked:
+          type: boolean
+        phone:
+          type: [string, 'null']
+          description: The masked number.
+    SenderRecipientMessaging:
+      type: object
+      required: [signer_id, delivery_channel, sms_otp_required, phone_e164, phone_masked, timezone]
+      properties:
+        signer_id:
+          type: string
+          format: uuid
+        delivery_channel:
+          type: [string, 'null']
+          enum: [SMS, WHATSAPP, null]
+        sms_otp_required:
+          type: boolean
+        phone_e164:
+          type: [string, 'null']
+        phone_masked:
+          type: [string, 'null']
+        timezone:
+          type: [string, 'null']
+    SenderEnvelopeMessaging:
+      type: object
+      required: [envelope_id, features, recipients, deliveries]
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        features:
+          type: object
+          required: [sms_delivery, whatsapp_delivery, sms_otp]
+          properties:
+            sms_delivery:
+              type: boolean
+            whatsapp_delivery:
+              type: boolean
+            sms_otp:
+              type: boolean
+        recipients:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/SenderRecipientMessaging'
+              - type: object
+                required: [updated_at]
+                properties:
+                  updated_at:
+                    type: string
+                    format: date-time
+        deliveries:
+          type: array
+          items:
+            type: object
+            required: [id, signer_id, channel, purpose, status, suppressed_reason, phone_masked, error_code, created_at, sent_at, status_updated_at]
+            properties:
+              id:
+                type: string
+                format: uuid
+              signer_id:
+                type: [string, 'null']
+                format: uuid
+              channel:
+                type: string
+                enum: [SMS, WHATSAPP]
+              purpose:
+                type: string
+                enum: [INVITATION, REMINDER, OTP]
+              status:
+                type: string
+                enum: [SENT, DELIVERED, READ, UNDELIVERED, FAILED, SUPPRESSED]
+              suppressed_reason:
+                type: [string, 'null']
+                enum: [opted_out, rate_limited, quiet_hours, channel_unavailable, null]
+              phone_masked:
+                type: [string, 'null']
+              error_code:
+                type: [string, 'null']
+              created_at:
+                type: string
+                format: date-time
+              sent_at:
+                type: [string, 'null']
+                format: date-time
+              status_updated_at:
+                type: [string, 'null']
+                format: date-time
     ErrorResponse:
       type: object
       description: The canonical Aramo error envelope.
@@ -6623,3 +8914,278 @@ components:
         completed_at:
           type: [string, 'null']
           format: date-time
+        trusted_timestamps:
+          type: array
+          description: >
+            Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps on each executed document's SHA-256 and on
+            the completed evidence manifest. Present only when at least one was recorded (the feature is off by default).
+          items:
+            $ref: '#/components/schemas/TrustedTimestampEvidence'
+    # Sign Feature-Parity §1.21 — custom Sign roles.
+    SignCustomRoleScopeKey:
+      type: string
+      description: A composable Sign permission (every sign:* permission except sign:billing:manage).
+      enum:
+        - sign:envelope:read
+        - sign:envelope:read:all
+        - sign:envelope:create
+        - sign:envelope:send
+        - sign:envelope:manage:all
+        - sign:contact:read
+        - sign:report:read
+        - sign:member:manage
+        - sign:settings:manage
+        - sign:integration:manage
+    SignCustomRole:
+      type: object
+      required: [id, name, description, scope_keys, member_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignCustomRoleScopeKey'
+        member_count:
+          type: integer
+          description: Active members holding the role.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SignCustomRoleEnvelope:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/SignCustomRole'
+    SignCustomRoleList:
+      type: object
+      required: [permissions, roles]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [key, grantable]
+            properties:
+              key:
+                $ref: '#/components/schemas/SignCustomRoleScopeKey'
+              grantable:
+                type: boolean
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignCustomRole'
+    SignCustomRoleInput:
+      type: object
+      required: [name, scope_keys]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    SignCustomRolePatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    SignCustomRoleMembers:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items:
+            type: object
+            required: [user_id, email, display_name, role_keys, custom_role_ids]
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              email:
+                type: [string, 'null']
+              display_name:
+                type: [string, 'null']
+              role_keys:
+                type: array
+                items:
+                  type: string
+              custom_role_ids:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+    TrustedTimestampEvidence:
+      type: object
+      description: >
+        One RFC 3161 timestamp. PENDING means requested but not yet granted by the time-stamping authority; it is retried
+        in the background and never blocks completion.
+      required:
+        - subject_kind
+        - envelope_document_id
+        - message_imprint_sha256
+        - hash_algorithm
+        - status
+        - gen_time
+        - tsa_name
+        - tsa_url
+        - serial_number
+        - policy_oid
+        - tsa_certificate_sha256
+        - token_der_base64
+        - subject_canonical
+      properties:
+        subject_kind:
+          type: string
+          enum: [EXECUTED_DOCUMENT, EVIDENCE_MANIFEST]
+        envelope_document_id:
+          type: [string, 'null']
+          format: uuid
+        message_imprint_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        hash_algorithm:
+          type: string
+          enum: [SHA-256]
+        status:
+          type: string
+          enum: [PENDING, GRANTED]
+        gen_time:
+          type: [string, 'null']
+          format: date-time
+        tsa_name:
+          type: [string, 'null']
+        tsa_url:
+          type: string
+        serial_number:
+          type: [string, 'null']
+        policy_oid:
+          type: [string, 'null']
+        tsa_certificate_sha256:
+          type: [string, 'null']
+        token_der_base64:
+          type: [string, 'null']
+          description: The DER TimeStampToken (CMS SignedData), base64.
+        subject_canonical:
+          type: [string, 'null']
+          description: EVIDENCE_MANIFEST only — the exact manifest JSON whose SHA-256 was time-stamped.
+    # Aramo Sign 1.14 — payment collection (Stripe Connect).
+    SignPaymentAccount:
+      type: object
+      required: [available, unavailable_reason, account, application_fee_minor, can_manage]
+      properties:
+        available:
+          type: boolean
+        unavailable_reason:
+          type: [string, 'null']
+          enum: [feature_not_available, payments_not_configured, plan_not_entitled, null]
+        account:
+          type: [object, 'null']
+          required: [status, charges_enabled, details_submitted, payouts_enabled, live, connected_at, disconnected_at]
+          properties:
+            status:
+              type: string
+              enum: [CONNECTED, DISCONNECTED]
+            charges_enabled:
+              type: boolean
+            details_submitted:
+              type: boolean
+            payouts_enabled:
+              type: boolean
+            live:
+              type: boolean
+              description: False while the Connect platform key is a test key.
+            connected_at:
+              type: string
+              format: date-time
+            disconnected_at:
+              type: [string, 'null']
+              format: date-time
+        application_fee_minor:
+          type: integer
+          minimum: 0
+          description: Aramo's fee per payment in cents (default 0).
+        can_manage:
+          type: boolean
+    SignEnvelopePayment:
+      type: object
+      required: [id, signer_id, field_id, amount_minor, currency, status, amount_refunded_minor, refundable_minor, payment_ref, paid_at, live, refunds]
+      properties:
+        id:
+          type: string
+          format: uuid
+        signer_id:
+          type: string
+          format: uuid
+        field_id:
+          type: string
+          format: uuid
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+          enum: [USD]
+        status:
+          type: string
+          enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        amount_refunded_minor:
+          type: integer
+        refundable_minor:
+          type: integer
+        payment_ref:
+          type: [string, 'null']
+          description: The Stripe payment reference (on the organization's connected account).
+        paid_at:
+          type: [string, 'null']
+          format: date-time
+        live:
+          type: boolean
+        refunds:
+          type: array
+          items:
+            type: object
+            required: [id, amount_minor, status, refund_ref, reason, created_at]
+            properties:
+              id:
+                type: string
+                format: uuid
+              amount_minor:
+                type: integer
+              status:
+                type: string
+                enum: [REQUESTED, PENDING, SUCCEEDED, FAILED, CANCELED]
+              refund_ref:
+                type: [string, 'null']
+              reason:
+                type: [string, 'null']
+              created_at:
+                type: string
+                format: date-time

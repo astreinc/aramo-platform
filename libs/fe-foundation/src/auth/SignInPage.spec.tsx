@@ -108,6 +108,54 @@ describe('SignInPage', () => {
     await screen.findByTestId('signin-google');
   });
 
+  it('an unverified Microsoft email says why and how to fix it, with the buttons and a different-account option', async () => {
+    renderPage('?error=VALIDATION_ERROR&reason=idp_email_unverified');
+    expect(screen.getByText('Your Microsoft account’s email isn’t verified')).toBeTruthy();
+    expect(screen.getByText(/give the account a mailbox/)).toBeTruthy();
+    expect(screen.queryByText('Sign-in was canceled')).toBeNull();
+    await screen.findByTestId('signin-google');
+    expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeTruthy();
+  });
+
+  it('the unverified-email screen wins over an app’s generic VALIDATION_ERROR copy', () => {
+    render(
+      <MemoryRouter initialEntries={['/login?error=VALIDATION_ERROR&reason=idp_email_unverified']}>
+        <SignInPage
+          fetchLoginOptions={vi.fn().mockResolvedValue({ providers: ['microsoft', 'google'] })}
+          errorCopy={{ VALIDATION_ERROR: { title: 'Your session ended.', message: 'Sign in again to continue.', retry: true } }}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Your Microsoft account’s email isn’t verified')).toBeTruthy();
+    expect(screen.queryByText('Your session ended.')).toBeNull();
+  });
+
+  it('accountLinks render under the sign-in buttons and on the no-account screen only', async () => {
+    const links = <a href="/signup/personal">Create a Personal account</a>;
+    const fetchLoginOptions = vi.fn().mockResolvedValue({ providers: ['microsoft', 'google'] });
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/login']}>
+        <SignInPage fetchLoginOptions={fetchLoginOptions} accountLinks={links} />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId('signin-google');
+    expect(screen.getByRole('link', { name: 'Create a Personal account' })).toBeTruthy();
+    unmount();
+    const second = render(
+      <MemoryRouter initialEntries={['/login?error=INSUFFICIENT_PERMISSIONS']}>
+        <SignInPage fetchLoginOptions={fetchLoginOptions} accountLinks={links} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'Create a Personal account' })).toBeTruthy();
+    second.unmount();
+    render(
+      <MemoryRouter initialEntries={['/login?error=TENANT_SUSPENDED']}>
+        <SignInPage fetchLoginOptions={fetchLoginOptions} accountLinks={links} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Create a Personal account' })).toBeNull();
+  });
+
   it('no Aramo account: no JIT message', () => {
     renderPage('?error=INSUFFICIENT_PERMISSIONS');
     expect(screen.getByText('We couldn’t find an Aramo account for you')).toBeTruthy();

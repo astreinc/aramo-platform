@@ -68,6 +68,9 @@ export interface LetterheadModel {
   // sha256 of image_bytes — what the provenance manifest records instead of the bytes.
   image_sha256: string;
   name: string | null;
+  // Aramo-Sign-Feature-Parity §1.10 (Sign branding) — optional `#RRGGBB` rule drawn under the
+  // letterhead. Absent ⇒ no rule (existing letterheads render byte-identically).
+  rule_color?: string;
 }
 
 export interface SignatureBlockModel {

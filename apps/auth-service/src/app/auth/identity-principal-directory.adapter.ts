@@ -264,6 +264,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: user.id,
       tenant_id: selectedTenant.id,
+      consumer: input.consumer,
     });
     // HF-AUTH-1 — the authorization revision to stamp into the compact token.
     const authz_version = await this.authzVersions.getCurrentVersion({
@@ -356,6 +357,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: input.principal_id,
       tenant_id: input.context_id,
+      consumer: input.consumer,
     });
     // Aramo-Sign-Mobile-Amendment-M-A8 §2.4 — defence in depth: a `sign` session
     // (browser `sign` and native `sign_native` refresh both re-mint as consumer
@@ -385,9 +387,15 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   // Invariant 6: site-stamp scope selection, shared by resolveSession and
   // resolveScopes. site_id === null → tenant-wide (byte-identical to the pre-port
   // tenant-wide path); otherwise → site-scoped (tenant-wide ∪ site-X).
+  //
+  // Sign Feature-Parity §1.21 — a `sign` consumer additionally holds its custom Sign role
+  // scopes in this tenant (same site rule), so a member whose Sign access comes only from a
+  // custom role mints and refreshes a Sign session (and loses it when the role is removed:
+  // the refresh check below reads this same set). Every other consumer is unchanged.
   private async resolveScopesInternal(args: {
     user_id: string;
     tenant_id: string;
+    consumer?: string;
   }): Promise<{ scopes: string[]; site_id: string | null }> {
     const site_id = await this.role.findActiveMembershipSite({
       user_id: args.user_id,
@@ -404,6 +412,12 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
             tenant_id: args.tenant_id,
             site_id,
           });
-    return { scopes, site_id };
+    if (args.consumer !== 'sign') return { scopes, site_id };
+    const custom = await this.role.getSignCustomRoleScopes({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+      ...(site_id !== null ? { site_id } : {}),
+    });
+    return { scopes: [...new Set([...scopes, ...custom])], site_id };
   }
 }

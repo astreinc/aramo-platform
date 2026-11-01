@@ -241,6 +241,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           findActiveMembershipSite: vi.fn().mockResolvedValue(null),
           getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
           getScopesByUserTenantAndSite: vi.fn().mockResolvedValue(['auth:session:read']),
+          getSignCustomRoleScopes: vi.fn().mockResolvedValue([]),
         })
         // IC-2 PR-6 — the LIVE product-entitlement read (mint/refresh gate + the
         // resolver's esign check). Default = the standard ATS bundle; tests mutate.

@@ -29,6 +29,53 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // dark: flipping it to AVAILABLE is a PO authorization (R-8), never made in code review.
   'sign.reports': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+  // (logo, colours, sender display name on signing pages, emails and the certificate). Built
+  // DARK: flipping it to AVAILABLE is a separate PO authorization (R-8).
+  'sign.branding': 'NOT_AVAILABLE',
+  // Aramo Sign Feature-Parity §1.21 — organization-defined Sign roles (Professional,
+  // Enterprise). Built DARK: every custom-role route refuses with ESIGN_FEATURE_NOT_AVAILABLE
+  // until the PO authorizes the flip (R-8).
+  'sign.custom_roles': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted
+  // timestamps. Built dark: sign-service binds a TSA only when this is AVAILABLE and
+  // SIGN_TSA_URL is set. Flipping it is a PO decision (R-8), after the TSA contract (D-3).
+  'sign.trusted_timestamp': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED (2bd74ca5) §1.17 / §1.9 — built
+  // dark (R-8): witness signing and delegate signing (Business and up), and the
+  // per-recipient access code (every plan, including Free). Moving any of them to
+  // AVAILABLE is a separate PO authorization.
+  'sign.witness_signing': 'NOT_AVAILABLE',
+  'sign.delegate_signing': 'NOT_AVAILABLE',
+  'sign.access_code': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
+  // — built dark: SMS and WhatsApp delivery of the signing link and SMS one-time-code
+  // recipient verification. Each moves to AVAILABLE only with a separate PO authorization
+  // after its vendor contract, registration (10DLC / DLT / Meta templates) and counsel
+  // review (A1.2). Server-side gated like sign.templates (SignFeatureGate).
+  'sign.sms_delivery': 'NOT_AVAILABLE',
+  'sign.whatsapp_delivery': 'NOT_AVAILABLE',
+  'sign.sms_otp': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
+  // identity verification by government ID (Stripe Identity) and KBA (no vendor selected).
+  // Built dark; going live needs the vendor contract, counsel review (BIPA/DPDP) and a
+  // separate PO authorization (A1.2).
+  'sign.id_verification': 'NOT_AVAILABLE',
+  'sign.kba': 'NOT_AVAILABLE',
+  // Feature-Parity directive §1.14 — payment collection through Stripe Connect (plans P, E).
+  // Built dark (Amendment A1); AVAILABLE only with a separate PO authorization (R-8).
+  'sign.payments': 'NOT_AVAILABLE',
+  // Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (AATL). Built dark;
+  // AVAILABLE only with a separate PO authorization after the CA subscriber agreement,
+  // production account and counsel review (Amendment A1 §A1.2). R-2: never marketed
+  // as an advanced or qualified signature.
+  'sign.document_seal': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 / §1.19 under Amendment
+  // A1 — ports and workflows are built, but no QTSP or e-stamp aggregator is contracted.
+  // Aramo is not a QTSP (R-1); neither is marketed or sold (R-2). Flipping either needs a
+  // vendor contract, counsel review and a separate PO authorization (A1 §A1.2).
+  'sign.qes': 'NOT_AVAILABLE',
+  'sign.india_estamp': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

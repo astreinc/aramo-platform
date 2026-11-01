@@ -437,6 +437,13 @@ export {
   type PersonalSignupStatus,
   type PersonalReviewItem,
 } from './lib/personal/personal-signup.repository.js';
+export {
+  PersonalUpgradeRepository,
+  PERSONAL_UPGRADE_AUDIT_SOURCE,
+  BUSINESS_OWNER_ROLE_KEYS,
+  type PersonalUpgradeInput,
+  type PersonalUpgradeOutcome,
+} from './lib/personal/personal-upgrade.repository.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability
 // (TM-L12 rights-request path; Aramo Sign is the first consumer).
@@ -477,3 +484,22 @@ export {
   privacyEmailHash,
   privacyEmailKeyAvailable,
 } from './lib/privacy/privacy-request-crypto.js';
+
+// Aramo Sign Feature-Parity Program Directive v1.0 (LOCKED) §1.21 — custom Sign roles.
+export {
+  SignCustomRoleService,
+  type SignCustomRoleActor,
+  type SignCustomRoleMemberView,
+  type SignCustomRoleView,
+} from './lib/sign-custom-role/sign-custom-role.service.js';
+export {
+  SIGN_CUSTOM_ROLE_COMPOSABLE_SCOPES,
+  SIGN_CUSTOM_ROLE_DESCRIPTION_MAX,
+  SIGN_CUSTOM_ROLE_NAME_MAX,
+  SIGN_CUSTOM_ROLES_PER_TENANT_MAX,
+  checkCustomRoleScopes,
+  composableScopesOf,
+  isComposableSignScope,
+  normalizeCustomRoleText,
+  scopesActorLacks,
+} from './lib/sign-custom-role/sign-custom-role.policy.js';

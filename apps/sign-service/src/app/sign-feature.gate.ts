@@ -17,6 +17,25 @@ export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding.
+export const SIGN_BRANDING_FEATURE = 'sign.branding';
+// Aramo Sign Feature-Parity §1.21 — organization-defined Sign roles (dark).
+export const SIGN_CUSTOM_ROLES_FEATURE = 'sign.custom_roles';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.17 / §1.9 — dark until the PO flips them.
+export const SIGN_WITNESS_SIGNING_FEATURE = 'sign.witness_signing';
+export const SIGN_DELEGATE_SIGNING_FEATURE = 'sign.delegate_signing';
+export const SIGN_ACCESS_CODE_FEATURE = 'sign.access_code';
+// Feature-Parity §1.7 / §1.8 / §1.9 (Amendment A1) — dark until the PO authorizes each flip.
+export const SIGN_SMS_DELIVERY_FEATURE = 'sign.sms_delivery';
+export const SIGN_WHATSAPP_DELIVERY_FEATURE = 'sign.whatsapp_delivery';
+export const SIGN_SMS_OTP_FEATURE = 'sign.sms_otp';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + A1 — recipient identity
+// verification (government ID; KBA). Dark until the PO flips them (A1.2).
+export const SIGN_ID_VERIFICATION_FEATURE = 'sign.id_verification';
+export const SIGN_KBA_FEATURE = 'sign.kba';
+// Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP; India e-stamp.
+export const SIGN_QES_FEATURE = 'sign.qes';
+export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
 // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (plans B+).
 export const SIGN_REPORTS_FEATURE = 'sign.reports';
 

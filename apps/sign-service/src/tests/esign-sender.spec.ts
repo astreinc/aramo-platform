@@ -10,7 +10,7 @@ import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EsignSenderController } from '../app/sender/esign-sender.controller.js';
-import { SenderContextService, tenantHostBase } from '../app/sender/sender-context.service.js';
+import { SenderContextService, personalWorkspaceLabel, tenantHostBase } from '../app/sender/sender-context.service.js';
 import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js';
 
 // PX-1 — the authenticated sender zone. Guard metadata per route (the boundary
@@ -94,6 +94,19 @@ describe('SenderContextService — workspace and Personal rule from the backend 
   it('PERSONAL → personal workspace; never can_send, even with every scope; no organization link', async () => {
     const view = await contextService('PERSONAL').context(AUTH, 'r');
     expect(view).toMatchObject({ workspace: 'personal', can_send: false, organization_url: null, org_admin: false, organization_roles_url: null });
+  });
+
+  it('PERSONAL → the workspace is labelled with the owner\'s own name, never the stored handle (display only)', async () => {
+    const svc = contextService('PERSONAL');
+    const tenants = (svc as unknown as { tenants: { findById: ReturnType<typeof vi.fn>; findOrganizationNameById: ReturnType<typeof vi.fn> } }).tenants;
+    tenants.findById.mockResolvedValue({ id: AUTH.tenant_id, name: 'Priya Nair (Personal 88df9551)', kind: 'PERSONAL', is_active: true, status: 'ACTIVE' });
+    tenants.findOrganizationNameById.mockResolvedValue('Priya Nair (Personal 88df9551)');
+    const view = await svc.context(AUTH, 'r');
+    expect(view.tenant).toEqual({ id: AUTH.tenant_id, name: 'Priya Nair — Personal', kind: 'PERSONAL' });
+    expect(view.tenant.name).not.toMatch(/88df9551/);
+    expect(personalWorkspaceLabel(null)).toBe('Personal');
+    expect(personalWorkspaceLabel('   ')).toBe('Personal');
+    expect(personalWorkspaceLabel(' Jane Doe ')).toBe('Jane Doe — Personal');
   });
 
   // Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — only the tenant_owner of a PERSONAL tenant is a

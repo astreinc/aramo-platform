@@ -492,6 +492,26 @@ describe('SessionOrchestratorService.handleCallback', () => {
     );
   });
 
+  it.each([
+    ['access_denied', undefined, 'cognito_error'],
+    ['invalid_request', 'PreSignUp failed with error Sign-in provider is not permitted. ', 'cognito_error'],
+    ['invalid_request', 'PreSignUp failed with error Your sign-in provider has not verified your email address. ', 'idp_email_unverified'],
+  ])('a Cognito error (%s, %j) → validation_error reason %s, nothing exchanged', async (error, description, reason) => {
+    const mocks = makeMocks();
+    const svc = makeService(mocks);
+    const result = await svc.handleCallback({
+      consumer: 'sign',
+      code: undefined,
+      state: undefined,
+      cognitoError: error,
+      cognitoErrorDescription: description,
+      pkceStateCipher: 'cipher',
+    });
+    expect(result).toEqual({ kind: 'validation_error', reason, cognitoError: error, cognitoErrorDescription: description });
+    expect(mocks.pkce.decryptState).not.toHaveBeenCalled();
+    expect(mocks.cognito.verify).not.toHaveBeenCalled();
+  });
+
   it('returns validation_error when state mismatches between query and decrypted cookie', async () => {
     const mocks = makeMocks();
     const svc = makeService(mocks);

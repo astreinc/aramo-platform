@@ -7,7 +7,8 @@ import { EsignRepository } from './esign.repository.js';
 import { signBaseUrl } from './sign-base-url.js';
 import { generateSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import { SIGNING_NOTIFICATION_PORT, type SigningNotificationPort } from './ports/signing-notification.port.js';
-import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
+import { currentTurnSignerId, isLinkSigner, isWitness } from './domain/recipients.js';
+import { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessagingPort } from './ports/signer-link-messaging.port.js';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §4 — delivery of the next signer's
 // invitation in a SEQUENTIAL envelope.
@@ -47,6 +48,9 @@ export class SigningInvitationService {
     private readonly prisma: PrismaService,
     private readonly repo: EsignRepository,
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+    // Feature-Parity §1.7 / §1.8 — the same link also goes by SMS / WhatsApp when the
+    // sender chose that channel. Unbound = email only. Never fails the delivery.
+    @Optional() @Inject(SIGNER_LINK_MESSAGING_PORT) private readonly messaging?: SignerLinkMessagingPort,
   ) {}
 
   // Delivers open invitation intents (optionally for one envelope). Returns how many
@@ -92,12 +96,19 @@ export class SigningInvitationService {
       if (intent.signer_id === null) return { kind: 'cancel', reason: 'no signer' } as const;
       const signer = await tx.signer.findFirst({
         where: { id: intent.signer_id, tenant_id: intent.tenant_id, envelope_id: intent.envelope_id },
-        select: { id: true, name: true, email: true, status: true, recipient_kind: true },
+        select: { id: true, name: true, email: true, status: true, recipient_kind: true, witness_for_signer_id: true },
       });
       if (signer === null || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) return { kind: 'cancel', reason: 'signer no longer awaiting' } as const;
       // M-A5 §1/§3 — only a SIGNER is emailed a signing link (a copy recipient never
       // signs; an in-person signer is started by the host).
       if (!isLinkSigner(signer) || signer.email === null) return { kind: 'cancel', reason: 'recipient is not invited by email' } as const;
+      // Feature-Parity §1.17 — a witness is invited only once the signer it witnesses has signed.
+      if (isWitness(signer)) {
+        const principal = signer.witness_for_signer_id === null
+          ? null
+          : await tx.signer.findFirst({ where: { id: signer.witness_for_signer_id, tenant_id: intent.tenant_id, envelope_id: intent.envelope_id }, select: { status: true } });
+        if (principal?.status !== 'SIGNED') return { kind: 'cancel', reason: 'witnessed signer has not signed' } as const;
+      }
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: intent.envelope_id, tenant_id: intent.tenant_id }, select: { routing_mode: true, subject: true, message: true } });
       if (env.routing_mode === 'SEQUENTIAL') {
         // M-A5 §1.3 — the shared current-turn rule.
@@ -150,6 +161,9 @@ export class SigningInvitationService {
         return false;
       }
       await this.prisma.notificationDelivery.update({ where: { id: intent.id }, data: { status: 'SENT', sent_at: new Date(), last_error: null } });
+      await this.messaging
+        ?.deliverSigningLink({ tenant_id: intent.tenant_id, envelope_id: intent.envelope_id, signer_id: issued.signer.id, purpose: 'INVITATION', signing_url: `${base}/s/${issued.raw}` })
+        .catch((err: unknown) => this.logger.warn(`invitation ${intent.id} message channel failed: ${(err as Error).message}`));
       return true;
     } catch (err) {
       await this.fail(intent.id, (err as Error).message);
