@@ -164,21 +164,21 @@ Professional $20, E Enterprise; B+ = B, P, E) next to what the code enforces tod
 | Reports | `sign.reports` | No | None | B+ / BUSINESS | — | PO authorization only |
 | Branding | `sign.branding` | No | None | B+ / plan feature row | — | No console path to entitle existing plans (OD-1) |
 | Custom roles | `sign.custom_roles` | No | None | P, E / BUSINESS + plan feature row | — | Same as branding (OD-1) |
-| Witness signing | `sign.witness_signing` | No | None | B+ / BUSINESS | — | Sender UI not found (section 3.5) |
-| Delegate signing | `sign.delegate_signing` | No | None | B+ / BUSINESS | — | Sender and signer UI not found (section 3.6) |
-| Access code | `sign.access_code` | No | None | All incl. F / all | — | Sender UI not found (section 3.7) |
+| Witness signing | `sign.witness_signing` | No | None | B+ / BUSINESS | — | Sender UI built (B2; section 3.5) |
+| Delegate signing | `sign.delegate_signing` | No | None | B+ / BUSINESS | — | Sender and signer UI built (B2/B3; section 3.6) |
+| Access code | `sign.access_code` | No | None | All incl. F / all | — | Sender UI built (B2; section 3.7) |
 | Personal → Business upgrade | — | — | — | — | — | REMOVED from the code (A5); not offered (section 3.8) |
 | Personal paid checkout | none (env only) | Stripe live | 1–3 weeks for Stripe live setup (estimate) | S (US only) | `SIGN_PERSONAL_PAID_CHECKOUT_ENABLED` | Stripe live, ToS v2.0 effective, Standard price |
 | Trusted timestamp | `sign.trusted_timestamp` | TSA | 2–6 weeks (estimate) | paid tiers / everyone | `SIGN_TSA_URL`, `SIGN_TSA_TIMEOUT_MS`, `SIGN_TSA_RETRY_INTERVAL_MS`, optional `SIGN_TSA_USERNAME` / `_PASSWORD` / `_CLIENT_CERT` / `_CLIENT_KEY` | Commercial TSA contract (basic or client-certificate authentication supported, section 3.10) |
 | Document seal (AATL) | `sign.document_seal` | GlobalSign DSS (or CSC CA) | 4–8 weeks (estimate) | B+ / everyone | `SIGN_SEAL_*` (14 vars) | CA agreement, OV vetting, mTLS cert |
 | SMS delivery (US) | `sign.sms_delivery` | AWS End User Messaging | 4–7 weeks (documented steps) | B+ metered / no check | `SIGN_SMS_PROVIDER`, `SIGN_SMS_AWS_*` (incl. `SIGN_SMS_AWS_INBOUND_TOPIC_ARN`), `SIGN_MESSAGING_*` | 10DLC, sandbox exit, TCPA review; two-way SNS topic for STOP; no plan check (OD-3) |
 | SMS delivery (India) | `sign.sms_delivery` | MSG91 + DLT | 3–8 weeks (estimate; longer if an Indian entity is needed) | B+ metered / no check | `SIGN_SMS_PROVIDER`, `SIGN_SMS_MSG91_*` | Indian entity question; DLT |
-| WhatsApp delivery | `sign.whatsapp_delivery` | Meta Cloud API | 1–4 weeks (estimate) | B+ metered / no check | `SIGN_WHATSAPP_*`, `SIGN_MESSAGING_*` | Meta verification; nginx route added (B1, deploys with nginx) |
-| SMS one-time code | `sign.sms_otp` | Same as SMS | Same as SMS | B+ metered / no check | Same as SMS | Same as SMS; sender UI not found |
-| ID verification | `sign.id_verification` | Stripe Identity | Days to 2 weeks (estimate) | P, E metered / BUSINESS | `SIGN_ID_VERIFICATION_PROVIDER`, `SIGN_STRIPE_IDENTITY_*`, `SIGN_ID_VERIFICATION_MAX_ATTEMPTS` | BIPA/DPDP counsel; nginx route added (B1, deploys with nginx); sender UI not found |
+| WhatsApp delivery | `sign.whatsapp_delivery` | Meta Cloud API | 1–4 weeks (estimate) | B+ metered / no check | `SIGN_WHATSAPP_*`, `SIGN_MESSAGING_*` | Meta verification; nginx route added (B1, deploys with nginx); sender UI built (B2) |
+| SMS one-time code | `sign.sms_otp` | Same as SMS | Same as SMS | B+ metered / no check | Same as SMS | Same as SMS; sender UI and web signer screen built (B2), mobile signer screen missing |
+| ID verification | `sign.id_verification` | Stripe Identity | Days to 2 weeks (estimate) | P, E metered / BUSINESS | `SIGN_ID_VERIFICATION_PROVIDER`, `SIGN_STRIPE_IDENTITY_*`, `SIGN_ID_VERIFICATION_MAX_ATTEMPTS` | BIPA/DPDP counsel; nginx route added (B1, deploys with nginx); sender UI not found; sender UI built (B2) |
 | KBA | `sign.kba` | None selected | 6–12 weeks (estimate) | P, E metered / BUSINESS | `SIGN_KBA_PROVIDER` (no adapter) | No vendor, no adapter |
 | Payments | `sign.payments` | Stripe Connect | 1–3 weeks (estimate) | P, E / plan key or feature row | `SIGN_STRIPE_CONNECT_*` | Connect platform profile, counsel |
-| QES | `sign.qes` | QTSP (none selected) | 3–6 months (estimate) | E metered / BUSINESS | `SIGN_QES_PROVIDER`, `SIGN_QES_CSC_*` | No vendor; deferred (R-1); UI and callback page not found |
+| QES | `sign.qes` | QTSP (none selected) | 3–6 months (estimate) | E metered / BUSINESS | `SIGN_QES_PROVIDER`, `SIGN_QES_CSC_*` | No vendor; deferred (R-1); web signer step and callback page built (B3); no sender level control |
 | India e-stamp | `sign.india_estamp` | Aggregator (none selected) | 2–4 months (estimate) | E (India) metered / BUSINESS | `SIGN_ESTAMP_PROVIDER` (no adapter) | No vendor, no adapter; deferred |
 | Usage metering | none (env only) | Stripe meters | Part of Stripe live | metered units | `SIGN_USAGE_BILLING_ENABLED` (branch) | Branch not merged; D4 Stripe meters; live-mode hold in code |
 | ToS v2.0 release day | none (registry dates) | Counsel | Counsel answers | all | `SIGN_POST_TERMINATION_EXPORT_DAYS` (to match B7.5) | Counsel Q1–Q7; PR #1057 |
@@ -308,15 +308,16 @@ verification · Rollback/turn-off · Open decisions.
   records: identity by email link only, unless a verification method is set).
 - **Secrets & settings.** None.
 - **Webhooks/DNS/nginx.** None.
-- **Engineering flip steps.** **UI check first:** no sender-side control for WITNESS was found in
-  `apps/sign-web/src` or `mobile/sign/src` (only the generated API types in
-  `mobile/sign/src/api/generated/sign.ts`). Confirm at flip time; if absent, a UI PR (web, and mobile if
-  wanted) ships before or with the flip. Then Step B → Step C (with `nginx` in SERVICES for a web UI change).
+- **Engineering flip steps.** Sender UI exists (Consolidated Directive B2, branch `feat/sign-rw-screens`):
+  web Role "Witnesses a signer" + "Witnesses" picker in `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step); mobile "Witness" chip + picker in
+  `mobile/sign/src/screens/send/RecipientOptions.tsx` / `RecipientsStep.tsx`. Both appear only when `GET /v1/sign/sender/context` reports `features.witness_signing`
+  (BUSINESS + key AVAILABLE), so the flip shows them. Step B → Step C (with `nginx` in SERVICES for the web
+  bundle) and a mobile release.
 - **Production verification.** Business test organization: create an envelope with signer A and witness W
   bound to A; W cannot act before A; after A and W act, the certificate lists W as witness for A. Personal
   account: adding a witness answers 403 `plan_not_eligible`.
 - **Rollback/turn-off.** Key back + release.
-- **Open decisions.** None beyond the UI.
+- **Open decisions.** None.
 
 ### 3.6 Delegate signing
 
@@ -331,18 +332,21 @@ verification · Rollback/turn-off · Open decisions.
   in their own name; the original signer's consent to delegate is recorded).
 - **Secrets & settings.** None.
 - **Webhooks/DNS/nginx.** None (signer calls go through `/v1/sign/signing/`, already proxied).
-- **Engineering flip steps.** **UI check first:** no sender control for `allow_delegation` and no signer
-  "delegate" action were found in `apps/sign-web/src` (guest or workspace) or `mobile/sign/src`. Confirm at
-  flip time; ship the UI with the flip. Then Step B → Step C.
+- **Engineering flip steps.** UI exists (B2/B3): sender "Let signers hand off to someone else" (web
+  `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step); mobile `RecipientsStep.tsx`), shown only with `features.delegate_signing`; signer "Ask someone else
+  to sign" (web `apps/sign-web/src/guest/App.tsx` DelegateDialog; mobile
+  `mobile/sign/src/features/signing/SigningFlow.tsx`), shown only when the signer document view returns
+  `can_delegate` (new field: sender allowed it + key AVAILABLE + the recipient may still hand off;
+  `esign-http.controller.ts` `document`). Step B → Step C (`nginx` for web) and a mobile release.
 - **Production verification.** Business test organization: envelope with delegation allowed; the signer
   delegates to a second address; the new address receives a link and signs; the activity log and
   certificate show the delegation. With delegation not allowed: the delegate call is refused.
 - **Rollback/turn-off.** Key back + release.
-- **Open decisions.** None beyond the UI.
+- **Open decisions.** None.
 
 ### 3.7 Access code (per recipient)
 
-> **Status:** SWITCHED ON (AVAILABLE) by PO authorization 2026-11-01, live with the release of PR #1057. Usable through the API and the signer page; the sender control is readiness item AR-2.
+> **Status:** SWITCHED ON (AVAILABLE) by PO authorization 2026-11-01, live with the release of PR #1057. Usable through the API and the signer page; the sender control (set / change / remove) ships with Consolidated Directive B2 (`feat/sign-rw-screens`) and is visible as soon as that release is deployed.
 
 - **What it does.** The sender sets a code that the recipient must enter before signing (directive §1.9).
 - **Launch key.** `sign.access_code` (`feature-availability.ts:50`); `sender-envelope.service.ts:1001`.
@@ -351,16 +355,16 @@ verification · Rollback/turn-off · Open decisions.
 - **Legal/counsel.** None beyond describing it accurately on the certificate.
 - **Secrets & settings.** None.
 - **Webhooks/DNS/nginx.** None.
-- **Engineering flip steps.** **UI check first:** the signer entry screen exists
-  (`apps/sign-web/src/guest/App.tsx:138-139`, `apps/sign-web/src/guest/sign-api.ts:180-181`), but no sender
-  control to set a code was found in `apps/sign-web/src/workspace` or `mobile/sign/src`. Confirm at flip
-  time; ship the sender UI with the flip. Then Step B → Step C.
+- **Engineering flip steps.** Signer entry screen: `apps/sign-web/src/guest/App.tsx` (AccessCodeCard).
+  Sender control (B2): web `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step) (AccessCodeControl: 4 to 32 printable characters, sent once, never shown
+  again); mobile `mobile/sign/src/screens/send/RecipientOptions.tsx` / `RecipientsStep.tsx`. Shown with `features.access_code`. The key is already AVAILABLE: deploying the B2 web
+  bundle (`nginx`) and the mobile release makes the control visible; no key change.
 - **Production verification.** Send to a test address with a code; the signing page asks for it; a wrong
   code is refused and repeated wrong codes lock (`SIGNER_ACCESS_CODE_LOCKED`); the right code opens the
   document; the certificate records the method. Repeat from a Free Personal account.
 - **Rollback/turn-off.** Key back + release. Confirm at flip time how envelopes already sent with a code
   behave once the key is off (look for the access-code check in the signer path).
-- **Open decisions.** None beyond the UI.
+- **Open decisions.** None.
 
 ### 3.8 Personal → Business upgrade
 
@@ -548,10 +552,11 @@ verification · Rollback/turn-off · Open decisions.
   checks (service header step 3). AWS also keeps its own opt-out list; a vendor-reported opt-out on a failed
   send is still added (step 6). **Confirm at flip time** that the topic policy lets End User Messaging
   publish to it (AWS console) — not verifiable from code.
-- **Engineering flip steps.** UI check: confirm the sender can choose SMS for a recipient (no sender control
-  was found in `apps/sign-web/src/workspace`; the read route is `GET /v1/sign/sender/envelopes/:id/messaging`,
-  `sign-messaging.controller.ts:46`). Resolve OD-3. Step D → Step B → Step C. Decide whether metering
-  (section 3.21) must be on first so SMS is billed.
+- **Engineering flip steps.** Sender UI exists (B2): "Send the link by: Email and text message (SMS)" with a
+  mobile number checked as E.164, web `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step) (TextMessageControl) and mobile `mobile/sign/src/screens/send/RecipientOptions.tsx` / `RecipientsStep.tsx`; saved through
+  `PUT /v1/sign/sender/envelopes/:id/recipients/:signerId/messaging`. Shown with the new sender-context key
+  `features.sms_delivery` (availability only — no plan rule, OD-3). Resolve OD-3. Step D → Step B → Step C.
+  Decide whether metering (section 3.21) must be on first so SMS is billed.
 - **Production verification.** Send to a US test phone; the SMS arrives with the link; the delivery row and
   ledger event exist (`SIGNER_MESSAGE_SENT`); reply STOP and confirm the next send is suppressed
   (`opted_out`); send during quiet hours and confirm suppression; the log shows only masked numbers.
@@ -642,9 +647,9 @@ verification · Rollback/turn-off · Open decisions.
   session-less with the body untouched (the signature is over the raw body), rate-limited in `sign_workspace`;
   the release that carries it rebuilds and recreates nginx (with sign-service running first). Because the
   handshake needs the launch key, register the webhook at Meta **after** the flip release.
-- **Engineering flip steps.** UI check (no sender channel choice found in the workspace) → Step D →
-  Step B → Step C (SERVICES includes `nginx` if the B1 nginx change is not yet deployed) → register the
-  webhook at Meta.
+- **Engineering flip steps.** Step D → Step B → Step C (SERVICES includes `nginx` if the B1 nginx change is not yet
+  deployed) → register the webhook at Meta. The sender choice "Email and WhatsApp" exists (B2, web and mobile,
+  shown with the new context key `features.whatsapp_delivery`).
 - **Production verification.** Meta's "Verify and save" succeeds; a test envelope sends the template to a test
   WhatsApp number; delivered and read statuses update the delivery row; replying STOP suppresses the next
   send.
@@ -664,9 +669,12 @@ verification · Rollback/turn-off · Open decisions.
 - **Legal/counsel.** As SMS; certificate wording for "verified by SMS code".
 - **Secrets & settings.** As 3.12 / 3.13.
 - **Webhooks/DNS/nginx.** None (signer routes under `/v1/sign/signing/` are proxied).
-- **Engineering flip steps.** UI check: the sender's "Link + passcode" option is disabled as a proposal
-  (`apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx:512`); confirm the sender path and the signer screen
-  exist at flip time. Then Step B → Step C (after SMS is live).
+- **Engineering flip steps.** Sender: "Ask for a code sent by SMS before signing" (web `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step); mobile
+  `mobile/sign/src/screens/send/RecipientOptions.tsx` / `RecipientsStep.tsx`), shown with the new context key `features.sms_otp`; the old disabled "Link + passcode (proposal)"
+  option is gone. Signer (web): `apps/sign-web/src/guest/App.tsx` SmsCodeCard (text me a code → enter it;
+  locked → its own end screen). **Gap:** the mobile signer has no SMS-code screen — a recipient with the code
+  set who opens the link in the Aramo Sign app gets an error screen; ship that screen before the flip or
+  accept web-only signing for these recipients. Then Step B → Step C (after SMS is live).
 - **Production verification.** Signer receives the code, a wrong code is refused, the right code opens the
   document, the certificate records the method; exhaust attempts and confirm the lock message.
 - **Rollback/turn-off.** Key back + release, or remove the SMS provider.
@@ -712,9 +720,10 @@ verification · Rollback/turn-off · Open decisions.
   host (Remaining-Work Directive B1) proxies to `sign-service:3003` session-less with the body untouched
   (modelled on `/v1/sign/payments/webhook/`), rate-limited in `sign_workspace`; the release that carries it
   rebuilds and recreates nginx.
-- **Engineering flip steps.** UI check (the signer screens exist, `apps/sign-web/src/guest/App.tsx:141-142,689`;
-  no sender control to set `identity_verification_method` was found in the workspace) → Step D → Step B →
-  Step C.
+- **Engineering flip steps.** Step D → Step B → Step C. Signer screens exist
+  (`apps/sign-web/src/guest/App.tsx`, identity screen). Sender control exists (B2): web "Verification →
+  Secure link + photo ID check" in `apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx` (Recipients step); mobile "ID check" in `mobile/sign/src/screens/send/RecipientOptions.tsx` / `RecipientsStep.tsx`; shown with the new context key
+  `features.id_verification` (BUSINESS + key AVAILABLE).
 - **Production verification.** Business test envelope with ID verification on a signer: the signer is sent to
   Stripe, completes with a real document, returns, and can sign; the certificate shows the result; Stripe's
   dashboard shows the session; a failed attempt counts toward the limit and locks after
@@ -738,7 +747,9 @@ verification · Rollback/turn-off · Open decisions.
   `SIGN_KBA_ACCOUNT_ID`, etc. do not exist.
 - **Webhooks/DNS/nginx.** Unknown until an adapter exists.
 - **Engineering flip steps.** **Not activatable.** Needs a vendor choice, then an adapter PR (directive D-4),
-  then this guide's steps.
+  then this guide's steps. The sender choice exists (B2: "Secure link + identity questions (US)" on web,
+  "Questions" on mobile, shown with the new context key `features.kba`), but there is **no signer KBA
+  screen** (web or mobile); build it with the adapter.
 - **Production verification.** N/A.
 - **Rollback/turn-off.** N/A.
 - **Open decisions.** Vendor selection (go-live list item 37).
@@ -809,10 +820,15 @@ verification · Rollback/turn-off · Open decisions.
   Vendor pack names that differ: `SIGN_QES_OAUTH_CLIENT_ID`, `SIGN_QES_OAUTH_CLIENT_SECRET`,
   `SIGN_QES_OAUTH_REDIRECT_URI` (derived, not set), `SIGN_QES_MTLS_*` (not supported).
 - **Webhooks/DNS/nginx.** The redirect URI registered at the QTSP is `https://sign.aramo.ai/qes/callback`
-  (`regulated-signing.service.ts:36-45`). **Gap:** no `/qes/callback` page was found in `apps/sign-web/src`
-  (and no QES screen at all); the path falls to the SPA. Confirm at flip time.
-- **Engineering flip steps.** **Not activatable as built:** needs a vendor, the signer and sender UI, the
-  callback page, and a CSC sandbox test. Then Step D → Step B → Step C.
+  (`regulated-signing.service.ts:36-45`). The page exists (B3): `/qes/callback` is a guest page
+  (`apps/sign-web/src/zones.ts`; `QesCallback` in `apps/sign-web/src/guest/App.tsx`); it finishes each step
+  with the signing token kept in the browser tab (never sent to the QTSP) and returns the signer to
+  `/s/qes-return` → Review & finish. The SPA `location /` already serves it; no nginx change.
+- **Engineering flip steps.** **Not activatable as built:** needs a vendor and a CSC sandbox test. Signer
+  web UI exists (B3): Review & finish shows "Qualified electronic signature → Continue to sign" while the
+  signer's QES row is not SIGNED, and Finish waits for it. **Gaps:** no sender control for
+  `PUT /v1/sign/sender/envelopes/:id/signers/:signerId/signature-level` (not in B2's list) and no mobile
+  signer QES step. Then Step D → Step B → Step C.
 - **Production verification.** N/A until built.
 - **Rollback/turn-off.** Unset `SIGN_QES_PROVIDER` + recreate.
 - **Open decisions.** Whether QES is in scope at all (directive §3 item 4).
@@ -1056,7 +1072,7 @@ decide whether Personal accounts may text at all (OD-3), and review the per-orga
 3. **No-vendor features**, each with a PO authorization and, where noted, a UI or entitlement step:
    1. Reports (3.2) — no blockers.
    2. Templates (3.1) — after OD-2.
-   3. Access code (3.7), witness (3.5), delegate (3.6) — after the sender UI check.
+   3. Access code (3.7, already AVAILABLE; its sender control ships with B2), witness (3.5), delegate (3.6) — sender UI built (B2/B3).
    4. Branding (3.3) and custom roles (3.4) — after OD-1.
 4. **Stripe live** (4.1), then **Personal paid checkout** (3.9).
 5. **Trusted timestamp** (3.10) — as soon as a commercial TSA that fits the code is contracted (2–6 weeks).
@@ -1094,8 +1110,10 @@ Personal → Business upgrade) was ruled by Amendment A5: not offered, and the c
 
 1. [AR-1, B1] Done: nginx locations for the WhatsApp (3.14), Stripe Identity (3.16) and inbound SMS (3.12)
    webhooks.
-2. [AR-2, AR-3] No sender UI found for witness, delegate, access code, SMS/WhatsApp channel, SMS OTP or ID verification
-   method; no signer UI for delegation; no QES screens or `/qes/callback` page.
+2. [AR-2, AR-3] **Closed by Consolidated Directive B2/B3** (`feat/sign-rw-screens`): sender UI (web + mobile) for
+   witness, delegate, access code, SMS/WhatsApp channel, SMS code and identity check; signer delegation (web +
+   mobile); web QES step and `/qes/callback`; web signer SMS-code screen. Still open: a sender control for the
+   QES signature level, mobile signer QES and SMS-code screens, and a signer KBA screen (with a KBA vendor).
 3. [AR-4, B4] Done: optional TSA basic credentials and client certificate (3.10).
 4. [AR-6] No console path to add a feature key to an existing plan (1.3, OD-1).
 5. [AR-7] Messaging has no plan or organization-type gate (OD-3).

@@ -174,6 +174,11 @@ export interface SignerDocumentView {
   // Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not
   // part of the signed document content). Null when none was given.
   message: string | null;
+  // Consolidated Directive v1.0 B3 (Feature-Parity §1.17) — the sender allowed delegation
+  // and this recipient may still hand the envelope to someone else (a SIGNER with an
+  // email, not yet delegated, not yet signed). The signer route ANDs it with the
+  // sign.delegate_signing launch availability; the delegate call re-checks everything.
+  can_delegate: boolean;
 }
 
 // Server-side source descriptor (NOT returned to the client) used by the
@@ -680,7 +685,14 @@ export class EsignService {
         }),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);
-    return { documents, fields, message: full.message ?? null };
+    const can_delegate =
+      full.allow_delegation === true &&
+      me !== undefined &&
+      recipientKindOf(me) === 'SIGNER' &&
+      me.email !== null &&
+      (me.delegated_at ?? null) === null &&
+      (me.status === 'PENDING' || me.status === 'VIEWED');
+    return { documents, fields, message: full.message ?? null, can_delegate };
   }
 
   // Sign 1.14 — the signer's own PAYMENT field, for starting a payment. The same guards

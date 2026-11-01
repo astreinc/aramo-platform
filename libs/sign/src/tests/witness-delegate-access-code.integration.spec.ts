@@ -218,6 +218,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign witness, del
       const ctx = await service.exchangeToken(e.tokens.get(s1)!);
       await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
       await service.fillField(ctx, e.fields.get(s1)!, { value: 'Signed', signature_method: 'TYPED' });
+      // B3 — the signer page offers the hand-off while it is still possible.
+      expect((await service.getSignerDocumentView(ctx)).can_delegate).toBe(true);
 
       await service.delegateSigner(ctx, { name: 'Delegate Person', email: 'delegate@x.com', reason: 'on leave' });
       const row = (await prisma.signer.findUniqueOrThrow({ where: { id: s1 } }));
@@ -238,7 +240,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign witness, del
       // The original recipient's disclosure acceptance does not carry over to the delegate.
       const dctx = await service.exchangeToken(delegateToken);
       await expect(service.fillField(dctx, e.fields.get(s1)!, { value: 'x' })).rejects.toThrow(/disclosure/i);
-      await sign(delegateToken, e.fields.get(s1)!);
+      await service.acceptDisclosure(dctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
+      // A delegated slot is never handed off again.
+      expect((await service.getSignerDocumentView(dctx)).can_delegate).toBe(false);
+      await service.fillField(dctx, e.fields.get(s1)!, { value: 'Signed', signature_method: 'TYPED' });
+      await service.completeSigner(dctx);
       expect((await sign(e.tokens.get(s2)!, e.fields.get(s2)!)).result.envelope_status).toBe('COMPLETED');
       await expectChainVerified(e.envelopeId);
     });

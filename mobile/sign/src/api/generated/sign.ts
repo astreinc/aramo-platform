@@ -3538,6 +3538,16 @@ export interface components {
                 delegate_signing?: boolean;
                 /** @description Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available. */
                 access_code?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.sms_delivery is available (the signing link also goes by SMS; launch availability only, no plan rule). */
+                sms_delivery?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.whatsapp_delivery is available (the signing link also goes by WhatsApp; launch availability only, no plan rule). */
+                whatsapp_delivery?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule). */
+                sms_otp?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.id_verification is available and the tenant is a BUSINESS tenant (government-ID check per recipient). */
+                id_verification?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.kba is available and the tenant is a BUSINESS tenant (knowledge-based questions per recipient). */
+                kba?: boolean;
                 /** @description Sign 1.14 — payment collection is available: sign.payments is available, Stripe Connect is configured and the plan is Standard Professional or Enterprise. */
                 payments?: boolean;
                 /** @description Feature-Parity §1.16 (Amendment A1) — the sign.qes capability (signing through a QTSP) is available. False until the PO authorizes it. */
@@ -5007,6 +5017,8 @@ export interface operations {
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
+                        /** @description Consolidated Directive v1.0 B3 (Feature-Parity §1.17) — true when sign.delegate_signing is available, the sender allowed delegation and this recipient may still hand the envelope to someone else (a signer with an email who has not delegated or signed). The signer page offers the hand-off only then; POST /v1/sign/signing/delegate re-checks every rule. */
+                        can_delegate?: boolean;
                     };
                 };
             };

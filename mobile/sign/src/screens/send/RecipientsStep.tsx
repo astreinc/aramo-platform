@@ -13,6 +13,9 @@
 //   - **Assign to me** adds the signed-in user as a signer bound to them (the server
 //     binds only when the email is their verified account email), refusing a duplicate
 //     with the same email check every recipient goes through.
+//   - Consolidated Directive v1.0 B2: Witness (a chip), Let signers hand off (an envelope
+//     switch), access code, identity check, text delivery and the SMS code — each only
+//     while the sender context reports it available (RecipientOptions.tsx).
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -20,7 +23,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { FEATURES } from '../../config/features';
 import { ContactsSheet, type PickResult } from '../../features/contacts/ContactsSheet';
-import { Segments } from '../../features/inbox/ui';
+import { Segments, SettingRow } from '../../features/inbox/ui';
 import {
   MAX_COPY_RECIPIENTS,
   MAX_RECIPIENTS,
@@ -38,6 +41,7 @@ import {
   ROLE_COPY,
   signingRecipients,
 } from '../../features/send/recipientRoles';
+import { NO_SEND_FEATURES, type SendFeatures } from '../../features/send/sendFeatures';
 import type {
   AddOutcome,
   SendFlowController,
@@ -45,6 +49,7 @@ import type {
 } from '../../features/send/sendFlowController';
 import { StepTitle, TextField } from '../../features/send/ui';
 import { recipientColor, useTheme } from '../../theme';
+import { RecipientOptions } from './RecipientOptions';
 
 export const ROUTING_ITEMS: readonly { readonly key: RoutingMode; readonly label: string }[] = [
   { key: 'PARALLEL', label: 'Any order' },
@@ -199,6 +204,7 @@ export function RecipientsStep({
   online,
   roles = FEATURES.recipientRoles,
   inPerson = false,
+  features = NO_SEND_FEATURES,
 }: {
   readonly controller: SendFlowController;
   readonly state: SendFlowState;
@@ -208,6 +214,8 @@ export function RecipientsStep({
   readonly roles?: boolean;
   /** Hosting is available (FEATURES.hostedSigning + the server's in_person_signing). */
   readonly inPerson?: boolean;
+  /** B2 — the options the sender context reports available (all off by default). */
+  readonly features?: SendFeatures;
 }) {
   const t = useTheme();
   const [sheet, setSheet] = useState(false);
@@ -229,9 +237,13 @@ export function RecipientsStep({
   const pickKind: RecipientKind = roles && signersFull ? 'RECEIVES_COPY' : 'SIGNER';
   const full = signersFull && (!roles || copiesFull);
   const kinds: RecipientKind[] = roles
-    ? inPerson
-      ? ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY']
-      : ['SIGNER', 'RECEIVES_COPY']
+    ? [
+        'SIGNER',
+        ...(inPerson ? (['IN_PERSON_SIGNER'] as const) : []),
+        'RECEIVES_COPY',
+        // A witness already on the draft keeps its chip, so it can be changed back.
+        ...(features.witness || recipients.some((x) => kindOf(x) === 'WITNESS') ? (['WITNESS'] as const) : []),
+      ]
     : [];
 
   const setKind = (key: string, k: RecipientKind) => setNotice(controller.setRecipientKind(key, k));
@@ -327,6 +339,9 @@ export function RecipientsStep({
               ) : null}
             </View>
           ) : null}
+          <View style={styles.options}>
+            <RecipientOptions r={r} list={recipients} features={features} controller={controller} />
+          </View>
         </View>
       </Card>
     );
@@ -339,6 +354,16 @@ export function RecipientsStep({
         <Segments items={ROUTING_ITEMS} value={mode} onChange={(m) => controller.setRouting(m)} testIDPrefix="routing" />
       ) : null}
       {signing.map((r, i) => card(r, i, i))}
+      {features.delegation && signing.length > 0 ? (
+        <SettingRow
+          title="Let signers hand off to someone else"
+          subtitle="A signer can send their part to another person to sign."
+          value={p?.allowDelegation === true}
+          onValueChange={(v) => controller.setAllowDelegation(v)}
+          testID="allow-delegation"
+          last
+        />
+      ) : null}
       {copies.length > 0 ? (
         <>
           <Text
@@ -419,6 +444,7 @@ const styles = StyleSheet.create({
   body: { gap: 12, padding: 16 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 16, paddingRight: 4, paddingVertical: 8 },
   extra: { gap: 10, paddingHorizontal: 16, paddingBottom: 14 },
+  options: { paddingHorizontal: 16, paddingBottom: 4 },
   chips: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   order: { width: 18, fontSize: 15, fontWeight: '600', textAlign: 'center' },

@@ -15,6 +15,12 @@ export function readinessOf(d: EnvelopeDetail): { ok: boolean; items: { ok: bool
       continue;
     }
     if (!d.fields.some((f) => f.signer_id === r.id && f.field_type === 'SIGNATURE')) items.push({ ok: false, t: `${r.name} needs a signature field` });
+    // Feature-Parity §1.17 — a witness names a signer and, when signing in order, signs after them.
+    if (r.recipient_kind === 'WITNESS') {
+      const principal = d.recipients.find((x) => x.id === r.witness_for_signer_id);
+      if (principal === undefined) items.push({ ok: false, t: `${r.name} needs a signer to witness` });
+      else if (d.routing_mode === 'SEQUENTIAL' && r.signing_order <= principal.signing_order) items.push({ ok: false, t: `${r.name} witnesses ${principal.name} and must sign after them` });
+    }
   }
   return { ok: items.every((i) => i.ok), items };
 }

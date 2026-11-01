@@ -282,7 +282,7 @@ describe('sender context — templates permission + feature availability', () =>
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry;
     // Feature-Parity §1.17 / §1.9 — witness and delegate stay dark (R-8).
     // PO authorization (R-8) 2026-11-01 — templates, access code and reports are AVAILABLE.
-    expect(v.features).toEqual({ templates: true, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: true, custom_roles: false, payments: false, qes: false, india_estamp: false, reports: true });
+    expect(v.features).toEqual({ templates: true, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: true, sms_delivery: false, whatsapp_delivery: false, sms_otp: false, id_verification: false, kba: false, custom_roles: false, payments: false, qes: false, india_estamp: false, reports: true });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {

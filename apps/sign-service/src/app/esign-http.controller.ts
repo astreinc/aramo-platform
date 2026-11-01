@@ -398,7 +398,9 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     try {
       const ctx = await this.verifiedSession(body.token, requestId);
-      return await this.service.getSignerDocumentView(ctx);
+      const view = await this.service.getSignerDocumentView(ctx);
+      // B3 — the delegate action is offered only while sign.delegate_signing is available.
+      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE) };
     } catch (e) {
       throw toHttp(e, requestId);
     }

@@ -41,7 +41,23 @@ export interface SenderContext {
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — in_person_signing (hosted signing; mobile only this release).
   // Sign 1.14 — payments (Stripe Connect): available to this organization.
   // Feature-Parity §1.13 — reports = the sign.reports capability (BUSINESS only; absent = not available).
-  features?: { templates?: boolean; in_person_signing?: boolean; payments?: boolean; reports?: boolean };
+  // Consolidated Directive v1.0 B2 — the sender's per-recipient choices (absent = not available):
+  // witness and delegate signing, the access code, SMS / WhatsApp delivery, the SMS code, and
+  // the identity checks (government ID; KBA).
+  features?: {
+    templates?: boolean;
+    in_person_signing?: boolean;
+    payments?: boolean;
+    reports?: boolean;
+    witness_signing?: boolean;
+    delegate_signing?: boolean;
+    access_code?: boolean;
+    sms_delivery?: boolean;
+    whatsapp_delivery?: boolean;
+    sms_otp?: boolean;
+    id_verification?: boolean;
+    kba?: boolean;
+  };
   can_send: boolean;
   // Aramo Sign Personal (Free) — true only while Personal sending is switched on for this
   // deployment; whether THIS account may send is still `can_send` (backend-decided).
@@ -132,7 +148,12 @@ export interface EnvelopeDocument {
 }
 
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 — recipient kinds and copy timing.
-export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+// Feature-Parity §1.17 — WITNESS attests for one signer (witness_for_signer_id).
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY' | 'WITNESS';
+// Feature-Parity §1.9 — the identity check the sender may require of a recipient.
+export type IdentityVerificationMethod = 'ID_VERIFICATION' | 'KBA';
+// Feature-Parity §1.7 / §1.8 — the signing link also goes to the phone (email is always sent).
+export type DeliveryChannel = 'SMS' | 'WHATSAPP';
 export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
 // M-A5 §1.4 — at most this many copy recipients per envelope (besides MAX_SIGNERS signers).
 export const MAX_COPY_RECIPIENTS = 10;
@@ -157,6 +178,49 @@ export interface Recipient {
   can_remind?: boolean;
   // Amendment M-A6 §3.5 — the template role this recipient was bound to; null otherwise.
   role_key?: string | null;
+  // Feature-Parity §1.17 — the recipient a WITNESS attests for (null otherwise).
+  witness_for_signer_id?: string | null;
+  // §1.9 — an access code is set / the recipient is locked out (the code is never returned).
+  access_code_set?: boolean;
+  access_code_locked?: boolean;
+  // §1.9 — the identity check required of this recipient (null = none).
+  identity_verification_method?: IdentityVerificationMethod | null;
+  // §1.17 — the original recipient of a delegated slot.
+  delegated_from?: { name: string | null; email: string | null; delegated_at: string } | null;
+}
+
+// Feature-Parity §1.7–§1.9 — one recipient's text-message choices (GET …/messaging).
+export interface RecipientMessaging {
+  signer_id: string;
+  delivery_channel: DeliveryChannel | null;
+  sms_otp_required: boolean;
+  phone_e164: string | null;
+  phone_masked?: string | null;
+  timezone?: string | null;
+}
+
+/** The recipient write of PUT …/recipients (B2 adds witness, access code and identity check). */
+export interface RecipientWrite {
+  id?: string;
+  name: string;
+  email: string | null;
+  recipient_kind?: RecipientKind;
+  copy_delivery?: CopyDelivery | null;
+  assign_to_me?: boolean;
+  // A WITNESS names the signer it attests for by list position.
+  witness_for_index?: number | null;
+  // A string sets the code, null clears it, omitted keeps it.
+  access_code?: string | null;
+  // A value sets the check, null clears it, omitted keeps it.
+  identity_verification_method?: IdentityVerificationMethod | null;
+}
+
+// E.164 as sign-service checks it (libs/sign messaging-rules isE164).
+export const E164_RE = /^\+[1-9]\d{7,14}$/;
+// The access code rule (libs/sign access-code normalizeAccessCode): 4 to 32 printable characters.
+export function validAccessCode(code: string): boolean {
+  const c = code.trim();
+  return c.length >= 4 && c.length <= 32 && /^[\x20-\x7E]+$/.test(c);
 }
 
 // M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
@@ -244,6 +308,8 @@ export interface EnvelopeDetail {
   editable: boolean;
   // Multi-Signer §4 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL), and who may sign now.
   routing_mode?: RoutingMode;
+  // Feature-Parity §1.17 — signers may hand the envelope to someone else (set in DRAFT).
+  allow_delegation?: boolean;
   next_signer_id?: string | null;
   documents: EnvelopeDocument[];
   recipients: Recipient[];
@@ -626,11 +692,13 @@ export const senderApi = {
     apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`, { title }),
   reorderDocuments: (id: string, order: string[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/order`, { order }),
   removeDocument: (id: string, docId: string) => apiClient.delete<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`),
-  recipients: (
-    id: string,
-    recipients: { id?: string; name: string; email: string | null; recipient_kind?: RecipientKind; copy_delivery?: CopyDelivery | null; assign_to_me?: boolean }[],
-  ) =>
-    apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
+  recipients: (id: string, recipients: RecipientWrite[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
+  // Feature-Parity §1.17 — allow signers to delegate (DRAFT; refused while not available).
+  setAllowDelegation: (id: string, allow_delegation: boolean) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { allow_delegation }),
+  // Feature-Parity §1.7–§1.9 — text delivery and the SMS code, per recipient (no envelope revision change).
+  messaging: (id: string) => apiClient.get<{ envelope_id: string; recipients: RecipientMessaging[] }>(`${BASE}/envelopes/${enc(id)}/messaging`),
+  setMessaging: (id: string, signerId: string, body: { delivery_channel: DeliveryChannel | null; sms_otp_required: boolean; phone_e164?: string }) =>
+    apiClient.put<RecipientMessaging>(`${BASE}/envelopes/${enc(id)}/recipients/${enc(signerId)}/messaging`, body),
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
       // M-A6 §2 — the type's configuration travels with the field; a value never does.

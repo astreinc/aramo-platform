@@ -8,7 +8,14 @@ import type { paths } from '../../api/generated/sign';
 import type { HttpResponse } from '../../api/http';
 import { etagFor, type WorkspaceClient } from '../../api/workspaceClient';
 import type { PageSize } from '../editor/geometry';
-import { parseEnvelope, type RoutingMode, type ServerEnvelope } from './draftModel';
+import {
+  parseEnvelope,
+  type MessagingBySigner,
+  type RecipientMessaging,
+  type RoutingMode,
+  type ServerEnvelope,
+  type TextChannel,
+} from './draftModel';
 import type { RecipientWire } from './recipientRoles';
 
 export interface Versioned {
@@ -87,7 +94,12 @@ export interface SenderApi {
   update(
     id: string,
     ifMatch: string,
-    body: { subject?: string; routing_mode?: RoutingMode; message?: string | null },
+    body: {
+      subject?: string;
+      routing_mode?: RoutingMode;
+      message?: string | null;
+      allow_delegation?: boolean;
+    },
   ): Promise<Versioned>;
   upload(id: string, ifMatch: string, input: UploadInput): Promise<UploadedDocument>;
   removeDocument(id: string, ifMatch: string, documentId: string): Promise<Versioned>;
@@ -97,6 +109,14 @@ export interface SenderApi {
     recipients: readonly RecipientWire[],
   ): Promise<Versioned>;
   putFields(id: string, ifMatch: string, fields: readonly FieldWire[]): Promise<Versioned>;
+  /**
+   * Feature-Parity §1.7–§1.9 — one signer's text delivery and SMS code. Its own route:
+   * no If-Match, and the envelope's revision does not change. Channel null with the code
+   * off clears the choice.
+   */
+  putMessaging(id: string, signerId: string, body: MessagingWire): Promise<void>;
+  /** The envelope's messaging choices by signer id (refused while no messaging feature is available). */
+  messaging(id: string): Promise<MessagingBySigner>;
   send(id: string, ifMatch: string, subject: string): Promise<Versioned>;
   /**
    * M-A5 §4.2 "Sign a document": a SELF session for the recipient assigned to the
@@ -106,6 +126,22 @@ export interface SenderApi {
   selfSignSession(id: string, signerId?: string): Promise<IssuedSigningSession>;
   /** M-A5 §3.2: a HOSTED session for an in-person signer whose turn it is. Same token rules. */
   hostedSession(id: string, signerId: string): Promise<IssuedSigningSession>;
+}
+
+export interface MessagingWire {
+  readonly delivery_channel: TextChannel | null;
+  readonly sms_otp_required: boolean;
+  readonly phone_e164?: string;
+}
+
+/** The PUT …/messaging body for a recipient's choice (a cleared choice sends no phone). */
+export function messagingToWire(m: RecipientMessaging): MessagingWire {
+  const set = m.channel !== null || m.smsOtp;
+  return {
+    delivery_channel: m.channel,
+    sms_otp_required: m.smsOtp,
+    ...(set ? { phone_e164: m.phone.trim() } : {}),
+  };
 }
 
 export interface IssuedSigningSession {
@@ -182,6 +218,27 @@ export function createSenderApi(workspace: WorkspaceClient): SenderApi {
           ifMatch,
         }),
       );
+    },
+    async putMessaging(id, signerId, body) {
+      await workspace.call('/v1/sign/sender/envelopes/{id}/recipients/{signerId}/messaging', 'put', {
+        path: { id, signerId },
+        body: { ...body },
+      });
+    },
+    async messaging(id) {
+      const out = await workspace.call('/v1/sign/sender/envelopes/{id}/messaging', 'get', {
+        path: { id },
+      });
+      const map = new Map<string, RecipientMessaging>();
+      for (const r of out.recipients ?? []) {
+        if (!r.signer_id) continue;
+        map.set(r.signer_id, {
+          channel: r.delivery_channel === 'SMS' || r.delivery_channel === 'WHATSAPP' ? r.delivery_channel : null,
+          smsOtp: r.sms_otp_required === true,
+          phone: r.phone_e164 ?? '',
+        });
+      }
+      return map;
     },
     async send(id, ifMatch, subject) {
       return versioned(

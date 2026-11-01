@@ -29876,11 +29876,6 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/guest/sign-api.ts"
-    },
-    {
-      "from": "doc/runbooks/sign/feature-activation-guide.md",
-      "status": "unscoped",
       "to": "apps/sign-web/src/workspace/App.tsx"
     },
     {
@@ -29897,6 +29892,11 @@
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
       "to": "apps/sign-web/src/workspace/pages/Settings.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/zones.ts"
     },
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
@@ -30016,12 +30016,17 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
-      "to": "mobile/sign/src/api/generated/sign.ts"
+      "to": "mobile/sign/src/config/env.ts"
     },
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
-      "to": "mobile/sign/src/config/env.ts"
+      "to": "mobile/sign/src/features/signing/SigningFlow.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/screens/send/RecipientOptions.tsx"
     },
     {
       "from": "doc/runbooks/sign/incident-response-and-rollback.md",

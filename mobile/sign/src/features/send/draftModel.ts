@@ -34,8 +34,29 @@ export interface DraftDocument {
   readonly pendingUpload: { readonly idempotencyKey: string } | null;
 }
 
-/** M-A5 §1 — what a recipient does. Never overloads the template role label. */
-export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+/**
+ * M-A5 §1 — what a recipient does. Never overloads the template role label.
+ * Feature-Parity §1.17 — WITNESS attests for one signer (shown only while available).
+ */
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY' | 'WITNESS';
+/** Feature-Parity §1.9 — the identity check a recipient passes before signing. */
+export type IdentityCheck = 'ID_VERIFICATION' | 'KBA';
+/** Feature-Parity §1.7 / §1.8 — the signing link also goes to the phone. */
+export type TextChannel = 'SMS' | 'WHATSAPP';
+
+/** Feature-Parity §1.7–§1.9 — a signer's text delivery and SMS code (saved apart from the list). */
+export interface RecipientMessaging {
+  readonly channel: TextChannel | null;
+  readonly smsOtp: boolean;
+  /** E.164 as typed ('' when none). */
+  readonly phone: string;
+}
+
+export const NO_MESSAGING: RecipientMessaging = { channel: null, smsOtp: false, phone: '' };
+
+export function hasMessaging(m: RecipientMessaging | undefined): boolean {
+  return m !== undefined && (m.channel !== null || m.smsOtp);
+}
 /** M-A5 §2.1 — when a copy recipient receives their copy. */
 export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
 
@@ -55,6 +76,21 @@ export interface DraftRecipient {
    * replaces the whole list, so the flag is re-sent on every recipients write.
    */
   readonly assignToMe?: boolean;
+  /** WITNESS only: the key of the signing recipient this witness attests for. */
+  readonly witnessForKey?: string | null;
+  /** The server has an access code for this recipient (the code is never returned). */
+  readonly accessCodeSet?: boolean;
+  /**
+   * A change to the access code not yet saved: a string sets it, null removes it,
+   * absent keeps it. Cleared after the recipients are saved.
+   */
+  readonly accessCode?: string | null;
+  readonly identityCheck?: IdentityCheck | null;
+  /** True when identityCheck was changed here (only then is it sent). */
+  readonly identityDirty?: boolean;
+  readonly messaging?: RecipientMessaging;
+  /** True when messaging still has to be saved (its own route, after the recipients). */
+  readonly messagingDirty?: boolean;
 }
 
 /** What still has to reach the server. */
@@ -89,6 +125,10 @@ export interface SendDraftPayload {
    * the recipient assigned to the user. Kept with the local draft only.
    */
   readonly selfSign?: boolean;
+  /** Feature-Parity §1.17 — signers may hand off to someone else (set while a draft). */
+  readonly allowDelegation?: boolean;
+  /** The server's allow_delegation as last read (the PATCH carries a change only). */
+  readonly serverAllowDelegation?: boolean;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -136,6 +176,7 @@ export function isDirty(p: SendDraftPayload): boolean {
     p.dirty.meta ||
     p.dirty.recipients ||
     p.dirty.fields ||
+    p.recipients.some((r) => r.messagingDirty === true) ||
     p.documents.some((d) => d.pendingUpload !== null)
   );
 }
@@ -167,6 +208,9 @@ export interface ServerRecipient {
   readonly copyDelivery: CopyDelivery | null;
   /** The server's `assigned_to_me` (the bound user id itself is never returned). */
   readonly assignedToMe: boolean;
+  readonly witnessForSignerId: string | null;
+  readonly accessCodeSet: boolean;
+  readonly identityCheck: IdentityCheck | null;
 }
 export interface ServerField {
   /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
@@ -199,6 +243,7 @@ export interface ServerEnvelope {
   readonly message: string | null;
   readonly signingLinkValidDays: number | null;
   readonly envelopeExpiresAt: string | null;
+  readonly allowDelegation: boolean;
   readonly documents: readonly ServerDocument[];
   readonly recipients: readonly ServerRecipient[];
   readonly fields: readonly ServerField[];
@@ -210,7 +255,7 @@ function rec(v: unknown): Record<string, unknown> {
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY'];
+const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'];
 const DELIVERIES: readonly CopyDelivery[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
 function asKind(v: unknown): RecipientKind {
   return KINDS.includes(v as RecipientKind) ? (v as RecipientKind) : 'SIGNER';
@@ -235,6 +280,7 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
     signingLinkValidDays: num(o['signing_link_valid_days']),
     envelopeExpiresAt:
       typeof o['envelope_expires_at'] === 'string' ? (o['envelope_expires_at'] as string) : null,
+    allowDelegation: o['allow_delegation'] === true,
     documents: arr('documents').map((d) => ({
       id: str(d['id']),
       title: str(d['title'], 'Document'),
@@ -249,6 +295,14 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         kind: asKind(r['recipient_kind']),
         copyDelivery: asCopyDelivery(r['copy_delivery']),
         assignedToMe: r['assigned_to_me'] === true,
+        witnessForSignerId:
+          typeof r['witness_for_signer_id'] === 'string' ? (r['witness_for_signer_id'] as string) : null,
+        accessCodeSet: r['access_code_set'] === true,
+        identityCheck:
+          r['identity_verification_method'] === 'ID_VERIFICATION' ||
+          r['identity_verification_method'] === 'KBA'
+            ? (r['identity_verification_method'] as IdentityCheck)
+            : null,
       }))
       // Signing recipients in signing order, then copy recipients (M-A5 §1.6: a copy
       // recipient takes no part in the order and may come back without one).
@@ -318,6 +372,9 @@ export function payloadFromServer(
     kind: r.kind,
     copyDelivery: r.kind === 'RECEIVES_COPY' ? r.copyDelivery : null,
     assignToMe: r.assignedToMe,
+    ...(r.kind === 'WITNESS' ? { witnessForKey: r.witnessForSignerId ? keyOf(r.witnessForSignerId) : null } : {}),
+    ...(r.accessCodeSet ? { accessCodeSet: true } : {}),
+    ...(r.identityCheck ? { identityCheck: r.identityCheck } : {}),
   }));
   let fieldsPending = false;
   const fields: EditorField[] = [];
@@ -360,9 +417,25 @@ export function payloadFromServer(
       recipients,
       fields,
       ...(preservedFields.length > 0 ? { preservedFields } : {}),
+      ...(env.allowDelegation ? { allowDelegation: true, serverAllowDelegation: true } : {}),
       etag,
       dirty: CLEAN,
     },
     fieldsPending,
+  };
+}
+
+/** The server's per-signer messaging choices (GET …/messaging), by signer id. */
+export type MessagingBySigner = ReadonlyMap<string, RecipientMessaging>;
+
+/** Merge the server's messaging choices into the recipients (by server id). */
+export function withMessaging(p: SendDraftPayload, bySigner: MessagingBySigner): SendDraftPayload {
+  if (bySigner.size === 0) return p;
+  return {
+    ...p,
+    recipients: p.recipients.map((r) => {
+      const m = r.serverId ? bySigner.get(r.serverId) : undefined;
+      return m && !r.messagingDirty ? { ...r, messaging: m } : r;
+    }),
   };
 }

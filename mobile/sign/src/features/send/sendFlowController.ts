@@ -20,6 +20,7 @@ import type { DocumentBytesStore } from './documentBytes';
 import {
   MAX_RECIPIENTS,
   MESSAGE_MAX,
+  NO_MESSAGING,
   SUBJECT_MAX,
   defaultSubject,
   effectiveSubject,
@@ -27,7 +28,11 @@ import {
   furthestStep,
   isDirty,
   payloadFromServer,
+  withMessaging,
   type CopyDelivery,
+  type IdentityCheck,
+  type MessagingBySigner,
+  type RecipientMessaging,
   type DirtyFlags,
   type DraftRecipient,
   type RecipientKind,
@@ -39,8 +44,13 @@ import {
 import {
   changeKind,
   checkAdd,
+  clearDanglingWitnesses,
+  isWitnessable,
+  takesLinkChecks,
+  takesMessaging,
   ROLE_COPY,
   signingRecipients,
+  validAccessCode,
   validEmail,
   type AddCheck,
 } from './recipientRoles';
@@ -59,6 +69,12 @@ export interface SendFlowDeps {
   readonly newId: () => string;
   readonly now?: () => Date;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Feature-Parity §1.7–§1.9 — the server's messaging choices for an envelope. Wired only
+   * while a messaging feature is available (the route is refused otherwise); a failure
+   * leaves the draft without them.
+   */
+  readonly loadMessaging?: (envelopeId: string) => Promise<MessagingBySigner>;
 }
 
 export interface SendFlowState {
@@ -146,6 +162,8 @@ export class SendFlowController {
   private persistChain: Promise<void> = Promise.resolve();
   /** Decoded documents for rendering (memory only). */
   private readonly assets = new Map<string, DocumentAsset>();
+  /** B2 — a messaging feature is available, so loadMessaging may be called. */
+  private messagingEnabled = false;
 
   constructor(private readonly deps: SendFlowDeps) {}
 
@@ -210,6 +228,11 @@ export class SendFlowController {
     const d = this.state.draft;
     this.set({ step, error: null });
     if (d) void this.persist({ ...d, step });
+  }
+
+  /** B2 — whether the server's messaging choices are read when a server draft opens. */
+  setMessagingEnabled(on: boolean): void {
+    this.messagingEnabled = on;
   }
 
   dismissNotice(): void {
@@ -284,7 +307,11 @@ export class SendFlowController {
         if (asset) known.set(d.id, asset.pages);
       }
     }
-    const { payload } = payloadFromServer(v.env, v.etag, known);
+    const { payload: base } = payloadFromServer(v.env, v.etag, known);
+    const messaging = this.deps.loadMessaging && this.messagingEnabled
+      ? await this.deps.loadMessaging(v.env.id).catch(() => new Map<string, RecipientMessaging>())
+      : null;
+    const payload = messaging ? withMessaging(base, messaging) : base;
     return {
       localId,
       envelopeId: v.env.id,
@@ -482,15 +509,84 @@ export class SendFlowController {
     );
   }
 
-  /** Remove a recipient and their fields (handoff §4.6). */
+  /** Remove a recipient and their fields (handoff §4.6). A witness for them loses its target. */
   removeRecipient(key: string): void {
     this.update(
       (q) => ({
         ...q,
-        recipients: q.recipients.filter((r) => r.key !== key),
+        recipients: clearDanglingWitnesses(q.recipients.filter((r) => r.key !== key)),
         fields: q.fields.filter((f) => f.recipientKey !== key),
       }),
       { recipients: true, fields: true },
+    );
+  }
+
+  private patchRecipient(
+    key: string,
+    fn: (r: DraftRecipient) => DraftRecipient | null,
+    dirty: Partial<DirtyFlags>,
+  ): void {
+    const r = this.payload.recipients.find((x) => x.key === key);
+    if (!r) return;
+    const next = fn(r);
+    if (next === null) return;
+    this.update(
+      (q) => ({ ...q, recipients: q.recipients.map((x) => (x.key === key ? next : x)) }),
+      dirty,
+    );
+  }
+
+  /** Feature-Parity §1.17 — the signing recipient a witness attests for. */
+  setWitnessFor(key: string, targetKey: string | null): void {
+    const target = targetKey ? this.payload.recipients.find((x) => x.key === targetKey) : null;
+    if (targetKey && (!target || !isWitnessable(target) || targetKey === key)) return;
+    this.patchRecipient(
+      key,
+      (r) => (r.kind === 'WITNESS' ? { ...r, witnessForKey: targetKey } : null),
+      { recipients: true },
+    );
+  }
+
+  /** Feature-Parity §1.17 — signers may hand off to someone else. */
+  setAllowDelegation(on: boolean): void {
+    this.update((q) => ({ ...q, allowDelegation: on }), { meta: true });
+  }
+
+  /**
+   * Feature-Parity §1.9 — set (a code) or remove (null) a recipient's access code. Kept
+   * only until the recipients are saved; the code is never logged. False when refused.
+   */
+  setAccessCode(key: string, code: string | null): boolean {
+    const r = this.payload.recipients.find((x) => x.key === key);
+    if (!r || !takesLinkChecks(r)) return false;
+    if (code !== null && !validAccessCode(code)) return false;
+    // Removing a code that was never saved simply forgets it.
+    const next: DraftRecipient =
+      code === null && r.accessCodeSet !== true
+        ? (({ accessCode: _c, ...rest }) => rest)(r)
+        : { ...r, accessCode: code === null ? null : code.trim() };
+    this.patchRecipient(key, () => next, { recipients: true });
+    return true;
+  }
+
+  /** Feature-Parity §1.9 — the identity check (null = none). */
+  setIdentityCheck(key: string, check: IdentityCheck | null): void {
+    this.patchRecipient(
+      key,
+      (r) => (takesLinkChecks(r) ? { ...r, identityCheck: check, identityDirty: true } : null),
+      { recipients: true },
+    );
+  }
+
+  /** Feature-Parity §1.7–§1.9 — text delivery, the SMS code and the phone (SIGNER only). */
+  setMessaging(key: string, patch: Partial<RecipientMessaging>): void {
+    this.patchRecipient(
+      key,
+      (r) =>
+        takesMessaging(r)
+          ? { ...r, messaging: { ...NO_MESSAGING, ...r.messaging, ...patch }, messagingDirty: true }
+          : null,
+      {},
     );
   }
 
