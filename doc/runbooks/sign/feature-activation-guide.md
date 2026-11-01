@@ -364,7 +364,7 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 3.8 Personal → Business upgrade
 
-> **Status:** OFF. Needs ToS v2.0 in effect, Business plans purchasable (Stripe live) and the PO decision OD-9 (require a work email like Business sign-up; readiness item AR-9). Today the upgrade does not check the email.
+> **Status:** NOT OFFERED — PO ruling 2026-11-01: "Personal stays as Personal only." `SIGN_PERSONAL_UPGRADE_ENABLED` stays unset; the dark code is removed by readiness item AR-9. A sole proprietor uses the Personal Standard plan; a business signs up as Business with a work email. Do not switch this on.
 
 - **What it does.** The owner of a Personal account turns it into a Business organization in place; the
   tenant id, envelopes, evidence and custody stay; the Free subscription ends; the owner then picks a
