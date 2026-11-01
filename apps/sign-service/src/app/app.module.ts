@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { CommonModule, RequestIdMiddleware } from '@aramo/common';
 import {
   DOCUMENT_SEAL_SIGNING_PROVIDER,
+  DOCUMENT_SEAL_TIMESTAMP_SOURCE,
   DOCUMENT_SOURCE_PROVIDER_PORT,
   DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
@@ -231,8 +232,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         SignArtifactReconcileWorker,
         // Feature-Parity §1.15 — the document seal signing provider (null = off). Built at
         // boot: an invalid SIGN_SEAL_* setting refuses to boot. B-T: the §1.18 RFC 3161
-        // TrustedTimestampPort binds to DOCUMENT_SEAL_TIMESTAMP_SOURCE once it is on main;
-        // until then the seal is PAdES B-B.
+        // TrustedTimestampPort is bound to DOCUMENT_SEAL_TIMESTAMP_SOURCE below, so a seal is
+        // PAdES B-T when a TSA is configured and B-B when it is not (the TSA port is null).
         { provide: DOCUMENT_SEAL_SIGNING_PROVIDER, useFactory: () => documentSealProviderFromEnv(process.env) },
         DocumentSealRetryWorker,
         // Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge.
@@ -270,6 +271,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         { provide: STORAGE_ACCOUNTING_PORT, useClass: AramoSignStorageGate },
         // Feature-Parity §1.18 — the RFC 3161 TSA (null = off) and its "timestamp pending" retry job.
         { provide: TRUSTED_TIMESTAMP_PORT, useFactory: () => trustedTimestampFromEnv(process.env) },
+        // §1.15 + §1.18 — the seal's signature time-stamp source is the same TSA (structurally
+        // the DocumentSealTimestampSource interface); null when the TSA is off.
+        { provide: DOCUMENT_SEAL_TIMESTAMP_SOURCE, useExisting: TRUSTED_TIMESTAMP_PORT },
         TrustedTimestampRetryWorker,
         // Feature-Parity §1.7 / §1.8 — inside the E-Sign module so SigningInvitationService
         // (sequential next-signer invitations) also reaches SIGNER_LINK_MESSAGING_PORT.

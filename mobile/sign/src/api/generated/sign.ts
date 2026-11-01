@@ -194,9 +194,69 @@ export interface paths {
         put?: never;
         /**
          * The signer's document view — positioned fields + document metadata.
-         * @description PX-V1 F3 — token-authorized, disclosure-gated. Tenant is resolved server-side from the capability token; the response carries no tenant id and no source bytes.
+         * @description PX-V1 F3 — token-authorized, disclosure-gated. Tenant is resolved server-side from the capability token; the response carries no tenant id and no source bytes. Feature-Parity §1.9 — when the sender requires an identity check, this route (and source, fill and complete) answers 403 SIGNER_IDENTITY_VERIFICATION_REQUIRED (details.method) until the recipient has verified, and 423 SIGNER_IDENTITY_VERIFICATION_LOCKED once verification locked them out.
          */
         post: operations["getSignerDocumentView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/qes/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The signer's qualified-signature (QES) state (Feature-Parity §1.16, Amendment A1).
+         * @description Token-authorized like every signer route; the tenant is resolved server-side. qes is null when this signer signs at the standard level. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is not available (today, always: no QTSP is contracted). Aramo is not a QTSP: the QTSP proofs the signer's identity, holds the key and signs.
+         */
+        post: operations["getSignerQesStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/qes/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start the QTSP identity-proofing step of a QES signer (Feature-Parity §1.16).
+         * @description Moves the signer's QES row to IDENTITY_PROOFING_PENDING and returns the QTSP URL to send the signer to (OAuth 2.0 authorization, CSC API v2 shape). Restartable after FAILED. Refused (403 ESIGN_FEATURE_NOT_AVAILABLE) while sign.qes is not available or no QTSP is configured (details.reason provider_not_configured); 409 ENVELOPE_ILLEGAL_TRANSITION when QES is not required for this signer (details.reason qes_not_required), already signed, or the envelope is not signable.
+         */
+        post: operations["beginSignerQes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/qes/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand the QTSP redirect (code, state) back to Aramo (Feature-Parity §1.16).
+         * @description After identity proofing the row becomes AUTHORIZED (the QTSP's credential and certificate chain are recorded) and redirect_url is the QTSP step where the signer authorizes signing exactly one digest; after that step the QTSP signs and the row becomes SIGNED (signature and certificate-chain evidence recorded, ledger QES_SIGNED). No OAuth code or token is stored. A QTSP refusal moves the row to FAILED (409, details.reason qes_provider_refused); a state that does not match is refused (qes_state_mismatch).
+         */
+        post: operations["completeSignerQes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -437,6 +497,66 @@ export interface paths {
          * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.17. Token-authorized; refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available. Only a SIGNER who has not signed, on their turn and past any access code, of an envelope whose sender allowed delegation (allow_delegation), once per recipient. The recipient slot keeps its fields (values cleared) and now names the delegate; the original recipient is kept on the record and printed on the certificate; every session of the original recipient is revoked (this link stops working); SIGNER_DELEGATED is appended to the ledger (email hashes only); and the delegate receives a new signing link by email. 409 ENVELOPE_ILLEGAL_TRANSITION details.reason delegation_not_allowed | not_delegable_recipient | already_delegated | signer_not_awaiting; 400 VALIDATION_ERROR details.reason delegate_invalid | delegate_email_on_envelope.
          */
         post: operations["delegateSigning"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/identity-verification/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Where the recipient stands with the identity check the sender requires.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized (tenant resolved server-side). NOT_REQUIRED when the sender asked for no identity check. A vendor session the recipient has finished is settled first (its result is read from the vendor). No document data is returned.
+         */
+        post: operations["getSignerIdentityVerificationStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/identity-verification/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open (or resume) the vendor's identity check for this recipient.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized. Returns the vendor's hosted verification page (verification_url), which the signer app opens in a new tab; the URL is never stored. An open session is resumed rather than started again. Each new vendor session is one metered attempt; a recipient who uses every attempt (SIGN_ID_VERIFICATION_MAX_ATTEMPTS, default 3) is locked (423) and the sender is told. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification is not available, and 503 ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE when no vendor is configured (details.reason provider_not_configured, kba_vendor_not_selected).
+         */
+        post: operations["startSignerIdentityVerification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/identity-verification/webhook/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe Identity webhook receiver.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1. No session. Authenticity is the Stripe-Signature header (HMAC-SHA256 over the raw body with SIGN_STRIPE_IDENTITY_WEBHOOK_SECRET, 300 second tolerance). Only the verification session id is taken from the event; the result is re-read from Stripe and recorded once. A vendor read failure returns 5xx so Stripe redelivers. Refused 401 while no webhook secret is set.
+         */
+        post: operations["receiveStripeIdentityWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -897,6 +1017,90 @@ export interface paths {
          * @description Requires document_template:read; refused while sign.templates is not available. Writes nothing. Feature-Parity 1.1 (Catalog v2 P-6) — then the plan: ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Templates are adopted and edited in Org Home; Aramo Sign never creates one.
          */
         post: operations["previewSenderTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/qes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The envelope's QES signers and their state (Feature-Parity §1.16, Amendment A1).
+         * @description Requires sign:envelope:read and envelope visibility. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is not available (today, always).
+         */
+        get: operations["getSenderEnvelopeQes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/signers/{signerId}/signature-level": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set one signer's signature level on a DRAFT — STANDARD or QES (Feature-Parity §1.16).
+         * @description Requires sign:envelope:create, a Business workspace and envelope ownership (S-1). DRAFT only; the signer must be a remote SIGNER (not in-person, not a copy recipient: details.reason qes_requires_remote_signer). QES needs a configured QTSP (403 ESIGN_FEATURE_NOT_AVAILABLE, details.reason provider_not_configured). Appends QES_LEVEL_SET to the ledger. Replacing the recipients clears the level. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is not available (today, always).
+         */
+        put: operations["setSenderSignerSignatureLevel"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/estamp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The envelope's India e-stamp order (Feature-Parity §1.19, Amendment A1).
+         * @description Requires sign:envelope:read and envelope visibility. order is the live (not FAILED) order, else the most recent one, else null. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.india_estamp is not available (today, always).
+         */
+        get: operations["getSenderEnvelopeEstamp"];
+        put?: never;
+        /**
+         * Order Indian e-stamp paper for a DRAFT envelope (Feature-Parity §1.19).
+         * @description Requires sign:envelope:create, a Business workspace and envelope ownership. DRAFT only; one live order per envelope (details.reason estamp_order_exists). The sender supplies the state, the article and the stamp duty; Aramo does not compute duty. Amounts are paise (INR). Ledger ESTAMP_REQUESTED then ESTAMP_ORDERED (or ESTAMP_FAILED). Needs a configured aggregator (403 ESIGN_FEATURE_NOT_AVAILABLE, details.reason provider_not_configured — today, always). Refused while sign.india_estamp is not available.
+         */
+        post: operations["requestSenderEnvelopeEstamp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/estamp/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch the issued e-stamp certificate and place it first in the DRAFT (Feature-Parity §1.19).
+         * @description Requires sign:envelope:create, a Business workspace and envelope ownership. While the aggregator is still working the order is returned unchanged. Once issued, the certificate PDF passes the safe-PDF checks, counts against the storage allocation, is stored as an OWNED source document placed FIRST (ordinal 0) in front of the documents to sign, and the order becomes ATTACHED (ledger ESTAMP_ISSUED, ESTAMP_ATTACHED). Sending refuses an envelope whose live order is not attached first (409, details.reason estamp_not_attached / estamp_not_first). Refused while sign.india_estamp is not available.
+         */
+        post: operations["refreshSenderEnvelopeEstamp"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2207,6 +2411,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/custom-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's custom Sign roles and the Sign permissions a custom role may be composed of.
+         * @description Requires sign:member:manage. permissions[].grantable is true only for the permissions the caller holds (a custom role can never hold a permission its creator lacks).
+         */
+        get: operations["listSignCustomRoles"];
+        put?: never;
+        /**
+         * Create a custom Sign role from existing Sign permissions.
+         * @description Requires sign:member:manage. scope_keys must be non-empty composable Sign permissions (never billing, platform or ATS permissions — 400 scope_not_composable) that the caller holds (403 INSUFFICIENT_PERMISSIONS scope_exceeds_actor). 409 SIGN_CUSTOM_ROLE_CONFLICT name_taken | custom_role_limit. Audited (identity.sign_custom_role.created).
+         */
+        post: operations["createSignCustomRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/custom-roles/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's active members, their built-in Sign and organization roles, and the custom roles they hold.
+         * @description Requires sign:member:manage.
+         */
+        get: operations["listSignCustomRoleMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/custom-roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom Sign role.
+         * @description Requires sign:member:manage and every permission the role grants. Refused while the role is assigned to any member (409 SIGN_CUSTOM_ROLE_CONFLICT custom_role_in_use, details.assigned_count). Audited (identity.sign_custom_role.deleted).
+         */
+        delete: operations["deleteSignCustomRole"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a custom Sign role's name, description or permissions.
+         * @description Requires sign:member:manage and every permission the role grants today and after the change (403 scope_exceeds_actor). A permission change takes effect for every holder on their next request. Audited (identity.sign_custom_role.updated).
+         */
+        patch: operations["updateSignCustomRole"];
+        trace?: never;
+    };
+    "/v1/sign/sender/custom-roles/{id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give an active organization member a custom Sign role (idempotent).
+         * @description Requires sign:member:manage and every permission the role grants. assigned is false when the member already held it. Audited (identity.sign_custom_role.assigned).
+         */
+        put: operations["assignSignCustomRole"];
+        post?: never;
+        /**
+         * Remove a custom Sign role from a member (idempotent).
+         * @description Requires sign:member:manage and every permission the role grants. Takes effect on the member's next request. Audited (identity.sign_custom_role.unassigned).
+         */
+        delete: operations["unassignSignCustomRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/retention-policy": {
         parameters: {
             query?: never;
@@ -2513,6 +2814,186 @@ export interface paths {
          * @description Feature-Parity §1.8 — no session. Authenticity is X-Hub-Signature-256 (HMAC-SHA256 of the raw body with SIGN_WHATSAPP_APP_SECRET). An inbound STOP / START updates the opt-out list; a delivered / read / failed status updates the delivery and, while the envelope is open, appends SIGNER_MESSAGE_STATUS. 404 while unconfigured or NOT_AVAILABLE.
          */
         post: operations["receiveWhatsAppWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/payment/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start (or resume) the payment of one of the signer's PAYMENT fields.
+         * @description Token-authorized and disclosure-gated, with the same guards as filling a field (live session, the signer's turn, a signable envelope). Returns the URL of Stripe's hosted Checkout page on the sending organization's connected account (a direct charge), or status PAID when the field is already paid. The signing token is never sent to Stripe: Stripe returns the payer to /s/payment-return. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason) while payments are not available, 409 details.reason payments_account_not_ready while the organization's account cannot take charges, 503 ESIGN_PAYMENTS_UNAVAILABLE when Stripe cannot be reached.
+         */
+        post: operations["startSignerPaymentCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/payment/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * After the payer returns from Stripe, read the checkout through and record a paid payment.
+         * @description Token-authorized. The browser never asserts a payment: the server reads the checkout from Stripe and records it only when Stripe reports it paid (the Connect webhook records it too). Once PAID, the PAYMENT field is filled with the receipt line and the signer can complete.
+         */
+        post: operations["confirmSignerPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/payments/webhook/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe Connect webhook receiver (payments collected for organizations).
+         * @description No session. A Connect endpoint SEPARATE from the Aramo billing webhook, with its own signing secret (SIGN_STRIPE_CONNECT_WEBHOOK_SECRET). Authenticity is the Stripe-Signature header (HMAC-SHA256 over the raw body, 300 second tolerance). Handles account.updated, account.application.deauthorized, checkout.session.completed / async_payment_succeeded / async_payment_failed / expired, charge.refunded and refund.created / updated / failed. Each event is processed at most once; a processing failure returns 5xx so Stripe redelivers. 404 while payments are not configured (dark).
+         */
+        post: operations["receiveStripeConnectWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/payments/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's payment availability and connected Stripe account.
+         * @description Requires sign:envelope:read. available is true only while sign.payments is available, Stripe Connect is configured and the plan is Standard Professional or Enterprise; unavailable_reason names the first refusal. can_manage is true for sign:settings:manage (Sign Admin).
+         */
+        get: operations["getSenderPaymentAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/payments/account/onboarding-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create the organization's Stripe Standard account (first time) and return Stripe's hosted onboarding link.
+         * @description Requires sign:settings:manage. The account is a Stripe Standard account owned by the organization (its funds, payouts and refunds stay with it). The link expires; Stripe returns the admin to Settings → Payments. 403 ESIGN_FEATURE_NOT_AVAILABLE while payments are not available.
+         */
+        post: operations["createSenderPaymentOnboardingLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/payments/account/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read the connected account from Stripe (charges enabled, details submitted).
+         * @description Requires sign:settings:manage.
+         */
+        post: operations["refreshSenderPaymentAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/payments/account/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop collecting payments through the connected account.
+         * @description Requires sign:settings:manage. Aramo stops using the account; the Stripe account itself, its balance and history stay the organization's. Earlier payments can still be refunded.
+         */
+        post: operations["disconnectSenderPaymentAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The payments collected on an envelope, with their refunds.
+         * @description Requires sign:envelope:read and visibility of the envelope. can_refund is true for sign:settings:manage.
+         */
+        get: operations["listSenderEnvelopePayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/payments/{paymentId}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund a payment (in full or in part) through Stripe, on the account that collected it.
+         * @description Requires sign:settings:manage and visibility of the envelope. amount_minor omitted refunds everything still refundable. The refund is a Stripe refund on the organization's connected account; a refusal by Stripe answers 400 details.reason payment_provider_refused, an amount above what remains 409 details.reason refund_amount_invalid. Every request and result is a ledger event on the envelope.
+         */
+        post: operations["refundSenderEnvelopePayment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2951,12 +3432,20 @@ export interface components {
                 templates?: boolean;
                 /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available. */
                 in_person_signing?: boolean;
+                /** @description Sign Feature-Parity §1.21 — the sign.custom_roles capability is available (launch availability) and the tenant is an organization. The plan entitlement is checked by every custom-role route. */
+                custom_roles?: boolean;
                 /** @description Feature-Parity §1.17 — sign.witness_signing is available and the tenant is a BUSINESS tenant (B+ plans). */
                 witness_signing?: boolean;
                 /** @description Feature-Parity §1.17 — sign.delegate_signing is available and the tenant is a BUSINESS tenant (B+ plans). */
                 delegate_signing?: boolean;
                 /** @description Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available. */
                 access_code?: boolean;
+                /** @description Sign 1.14 — payment collection is available: sign.payments is available, Stripe Connect is configured and the plan is Standard Professional or Enterprise. */
+                payments?: boolean;
+                /** @description Feature-Parity §1.16 (Amendment A1) — the sign.qes capability (signing through a QTSP) is available. False until the PO authorizes it. */
+                qes?: boolean;
+                /** @description Feature-Parity §1.19 (Amendment A1) — the sign.india_estamp capability is available. False until the PO authorizes it. */
+                india_estamp?: boolean;
             };
             can_send: boolean;
             /** @description True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off). */
@@ -2984,6 +3473,92 @@ export interface components {
             routing_mode: "PARALLEL" | "SEQUENTIAL";
             default_subject?: string;
             default_message?: string;
+        };
+        SignerTokenRequest: {
+            token: string;
+        };
+        /** @description Feature-Parity §1.16 (Amendment A1) — one signer's qualified electronic signature through a Qualified Trust Service Provider. Aramo is not a QTSP; the certificate and signature are the QTSP's evidence. */
+        QesSignatureView: {
+            /** Format: uuid */
+            signer_id: string;
+            /** @enum {string} */
+            signature_level: "QES";
+            /** @enum {string} */
+            state: "REQUIRED" | "IDENTITY_PROOFING_PENDING" | "AUTHORIZED" | "SIGNED" | "FAILED";
+            provider?: string | null;
+            certificate?: null | {
+                subject?: string;
+                issuer?: string;
+                serial_number?: string;
+                /** Format: date-time */
+                valid_from?: string;
+                /** Format: date-time */
+                valid_to?: string;
+                fingerprint_sha256?: string;
+            };
+            certificate_chain_sha256?: string | null;
+            signature_sha256?: string | null;
+            qtsp_reference?: string | null;
+            failure_reason?: string | null;
+            /** Format: date-time */
+            identity_started_at?: string | null;
+            /** Format: date-time */
+            authorized_at?: string | null;
+            /** Format: date-time */
+            signed_at?: string | null;
+        };
+        QesStepResult: {
+            /** @enum {string} */
+            state: "REQUIRED" | "IDENTITY_PROOFING_PENDING" | "AUTHORIZED" | "SIGNED" | "FAILED";
+            /** @description The QTSP page to send the signer to next; null when the flow is finished. */
+            redirect_url: string | null;
+        };
+        /** @description Feature-Parity §1.19 (Amendment A1) — Indian e-stamp paper for the envelope. Amounts are paise (INR × 100). */
+        EstampRequest: {
+            /** @description ISO 3166-2:IN code of the stamping state, e.g. IN-KA. */
+            state_code: string;
+            /** @description The article of that state's stamp act, as the aggregator names it. */
+            article_code: string;
+            stamp_duty_amount_paise: number;
+            consideration_amount_paise?: number | null;
+            first_party: string;
+            second_party: string;
+            purchaser: string;
+            description?: string | null;
+        };
+        EstampOrderView: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "REQUESTED" | "ORDERED" | "ISSUED" | "ATTACHED" | "FAILED";
+            provider: string;
+            provider_order_ref?: string | null;
+            state_code: string;
+            article_code: string;
+            stamp_duty_amount_paise: number;
+            consideration_amount_paise?: number | null;
+            /** @enum {string} */
+            currency: "INR";
+            first_party: string;
+            second_party: string;
+            purchaser: string;
+            description?: string | null;
+            certificate_number?: string | null;
+            /** Format: date-time */
+            certificate_issued_at?: string | null;
+            certificate_sha256?: string | null;
+            /** Format: uuid */
+            attached_document_id?: string | null;
+            failure_reason?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            ordered_at?: string | null;
+            /** Format: date-time */
+            attached_at?: string | null;
+        };
+        EstampOrderResponse: {
+            order: components["schemas"]["EstampOrderView"] | null;
         };
         SenderTemplateRoleBinding: {
             role_key: string;
@@ -3244,6 +3819,23 @@ export interface components {
             } | null;
             /** @description Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise. */
             role_key?: string | null;
+            /**
+             * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the identity check the sender requires before this recipient sees the envelope (government ID or knowledge-based questions); null when none.
+             * @enum {string|null}
+             */
+            identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
+            /** @description §1.9 — true when identity verification locked this recipient out (a document in another name, or every attempt used). */
+            identity_verification_locked?: boolean;
+        };
+        /** @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient's identity-verification state. Outcome only: no document data, image or verified name is ever returned or stored (R-5). */
+        SignerIdentityVerificationStatus: {
+            /** @enum {string|null} */
+            method: "ID_VERIFICATION" | "KBA" | null;
+            /** @enum {string} */
+            state: "NOT_REQUIRED" | "REQUIRED" | "PENDING" | "VERIFIED" | "LOCKED";
+            attempts_remaining: number | null;
+            /** @description The last attempt's failure reason (for example name_mismatch or document_expired). */
+            last_failure: string | null;
         };
         SenderExecutedDocuments: {
             /** Format: uuid */
@@ -3373,7 +3965,7 @@ export interface components {
             /** Format: uuid */
             signer_id: string | null;
             /** @enum {string} */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT" | "PAYMENT";
             page_number: number;
             x: number;
             y: number;
@@ -3381,6 +3973,13 @@ export interface components {
             height: number | null;
             required: boolean;
             filled: boolean;
+            /** @description Sign 1.14 — PAYMENT only; the amount in cents. */
+            payment_amount_minor?: number | null;
+            /**
+             * @description Sign 1.14 — PAYMENT only.
+             * @enum {string|null}
+             */
+            payment_currency?: "USD" | null;
             /** @enum {string|null} */
             name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
             label?: string | null;
@@ -3420,10 +4019,10 @@ export interface components {
             /** Format: uuid */
             signer_id: string;
             /**
-             * @description M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the service-to-service and Sign API paths keep all seven engine types).
+             * @description M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the service-to-service and Sign API paths keep all seven engine types). Sign 1.14 — PAYMENT is accepted only while payments are available to the organization (403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient.
              * @enum {string}
              */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX";
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "PAYMENT";
             page_number: number;
             x: number;
             y: number;
@@ -3446,6 +4045,13 @@ export interface components {
             group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
             /** @description M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE). */
             min_selected?: number | null;
+            /** @description Sign 1.14 — PAYMENT only (required for it); the amount in cents. */
+            payment_amount_minor?: number | null;
+            /**
+             * @description Sign 1.14 — PAYMENT only; USD (the default and the only currency).
+             * @enum {string|null}
+             */
+            payment_currency?: "USD" | null;
         };
         SenderUploadedDocument: {
             /** Format: uuid */
@@ -3656,6 +4262,54 @@ export interface components {
             /** @description Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps on each executed document's SHA-256 and on the completed evidence manifest. Present only when at least one was recorded (the feature is off by default). */
             trusted_timestamps?: components["schemas"]["TrustedTimestampEvidence"][];
         };
+        /**
+         * @description A composable Sign permission (every sign:* permission except sign:billing:manage).
+         * @enum {string}
+         */
+        SignCustomRoleScopeKey: "sign:envelope:read" | "sign:envelope:read:all" | "sign:envelope:create" | "sign:envelope:send" | "sign:envelope:manage:all" | "sign:contact:read" | "sign:report:read" | "sign:member:manage" | "sign:settings:manage" | "sign:integration:manage";
+        SignCustomRole: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            scope_keys: components["schemas"]["SignCustomRoleScopeKey"][];
+            /** @description Active members holding the role. */
+            member_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SignCustomRoleEnvelope: {
+            role: components["schemas"]["SignCustomRole"];
+        };
+        SignCustomRoleList: {
+            permissions: {
+                key: components["schemas"]["SignCustomRoleScopeKey"];
+                grantable: boolean;
+            }[];
+            roles: components["schemas"]["SignCustomRole"][];
+        };
+        SignCustomRoleInput: {
+            name: string;
+            description?: string | null;
+            scope_keys: string[];
+        };
+        SignCustomRolePatch: {
+            name?: string;
+            description?: string | null;
+            scope_keys?: string[];
+        };
+        SignCustomRoleMembers: {
+            members: {
+                /** Format: uuid */
+                user_id: string;
+                email: string | null;
+                display_name: string | null;
+                role_keys: string[];
+                custom_role_ids: string[];
+            }[];
+        };
         /** @description One RFC 3161 timestamp. PENDING means requested but not yet granted by the time-stamping authority; it is retried in the background and never blocks completion. */
         TrustedTimestampEvidence: {
             /** @enum {string} */
@@ -3678,6 +4332,58 @@ export interface components {
             token_der_base64: string | null;
             /** @description EVIDENCE_MANIFEST only — the exact manifest JSON whose SHA-256 was time-stamped. */
             subject_canonical: string | null;
+        };
+        SignPaymentAccount: {
+            available: boolean;
+            /** @enum {string|null} */
+            unavailable_reason: "feature_not_available" | "payments_not_configured" | "plan_not_entitled" | null;
+            account: {
+                /** @enum {string} */
+                status: "CONNECTED" | "DISCONNECTED";
+                charges_enabled: boolean;
+                details_submitted: boolean;
+                payouts_enabled: boolean;
+                /** @description False while the Connect platform key is a test key. */
+                live: boolean;
+                /** Format: date-time */
+                connected_at: string;
+                /** Format: date-time */
+                disconnected_at: string | null;
+            } | null;
+            /** @description Aramo's fee per payment in cents (default 0). */
+            application_fee_minor: number;
+            can_manage: boolean;
+        };
+        SignEnvelopePayment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            signer_id: string;
+            /** Format: uuid */
+            field_id: string;
+            amount_minor: number;
+            /** @enum {string} */
+            currency: "USD";
+            /** @enum {string} */
+            status: "PENDING" | "PAID" | "FAILED" | "PARTIALLY_REFUNDED" | "REFUNDED";
+            amount_refunded_minor: number;
+            refundable_minor: number;
+            /** @description The Stripe payment reference (on the organization's connected account). */
+            payment_ref: string | null;
+            /** Format: date-time */
+            paid_at: string | null;
+            live: boolean;
+            refunds: {
+                /** Format: uuid */
+                id: string;
+                amount_minor: number;
+                /** @enum {string} */
+                status: "REQUESTED" | "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+                refund_ref: string | null;
+                reason: string | null;
+                /** Format: date-time */
+                created_at: string;
+            }[];
         };
     };
     responses: {
@@ -3800,6 +4506,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description The envelope id (UUID). */
+        RegulatedEnvelopeId: string;
         /** @description The envelope document id (UUID). */
         DocumentId: string;
         /** @description Status tab. */
@@ -4190,8 +4898,14 @@ export interface operations {
                              * @enum {string|null}
                              */
                             name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
-                            /** @description M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client. */
+                            /** @description M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client. Sign 1.14 — also true for a PAYMENT field, which is filled (with its receipt line) only when the payment succeeds; the signer pays it through /v1/sign/signing/payment/checkout. */
                             server_filled?: boolean;
+                            /** @description Sign 1.14 — the amount to pay for a PAYMENT field (null for every other type). */
+                            payment?: {
+                                amount_minor?: number;
+                                /** @enum {string} */
+                                currency?: "USD";
+                            } | null;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
@@ -4206,6 +4920,95 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getSignerQesStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignerTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The signer's QES state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        qes: components["schemas"]["QesSignatureView"] | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    beginSignerQes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignerTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The next QTSP step. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QesStepResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    completeSignerQes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    code: string;
+                    state: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The resulting state, and the next QTSP step when there is one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QesStepResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     getSignerDocumentSource: {
@@ -4706,6 +5509,158 @@ export interface operations {
             };
         };
     };
+    getSignerIdentityVerificationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The recipient's identity-verification state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignerIdentityVerificationStatus"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startSignerIdentityVerification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The recipient's state and, while a session is open, the vendor's hosted page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignerIdentityVerificationStatus"] & {
+                        /** Format: uri */
+                        verification_url: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The feature is not available (ESIGN_FEATURE_NOT_AVAILABLE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Identity verification locked this recipient out (SIGNER_IDENTITY_VERIFICATION_LOCKED; details.reason). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No identity-verification vendor is configured or reachable (ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    receiveStripeIdentityWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "Stripe-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        outcome: "IGNORED" | "UNKNOWN_SESSION" | "PENDING" | "ALREADY_SETTLED" | "SETTLED";
+                    };
+                };
+            };
+            /** @description The signature is missing, stale or invalid, or no webhook secret is configured. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The vendor could not be read; Stripe redelivers. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getSenderContext: {
         parameters: {
             query?: never;
@@ -5172,6 +6127,11 @@ export interface operations {
                         witness_for_index?: number | null;
                         /** @description Feature-Parity §1.9 — the access code the recipient must enter before viewing (SIGNER and WITNESS only: 400 access_code_not_allowed; 4 to 32 printable characters: 400 access_code_invalid). Stored only as a salted hash and never returned. Omitted keeps the stored code of an existing recipient; null clears it. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.access_code is not available. */
                         access_code?: string | null;
+                        /**
+                         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — require an identity check before this recipient sees the envelope. A value sets it, null clears it, omitted keeps it. Link signers only (400 identity_verification_not_link_signer; 400 invalid_identity_verification_method). Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification / sign.kba is not available or for a Personal account (details.reason plan_not_eligible).
+                         * @enum {string|null}
+                         */
+                        identity_verification_method?: "ID_VERIFICATION" | "KBA" | null;
                     }[];
                 };
             };
@@ -5612,6 +6572,160 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderEnvelopeQes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The envelope id (UUID). */
+                id: components["parameters"]["RegulatedEnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One item per signer who must sign with QES. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["QesSignatureView"][];
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setSenderSignerSignatureLevel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The envelope id (UUID). */
+                id: components["parameters"]["RegulatedEnvelopeId"];
+                signerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    signature_level: "STANDARD" | "QES";
+                };
+            };
+        };
+        responses: {
+            /** @description The envelope's QES signers after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["QesSignatureView"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSenderEnvelopeEstamp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The envelope id (UUID). */
+                id: components["parameters"]["RegulatedEnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The e-stamp order, or null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstampOrderResponse"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    requestSenderEnvelopeEstamp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The envelope id (UUID). */
+                id: components["parameters"]["RegulatedEnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstampRequest"];
+            };
+        };
+        responses: {
+            /** @description The order. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        order: components["schemas"]["EstampOrderView"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    refreshSenderEnvelopeEstamp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The envelope id (UUID). */
+                id: components["parameters"]["RegulatedEnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The e-stamp order, or null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstampOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     createSenderEnvelopeFromTemplate: {
@@ -7830,6 +8944,193 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
         };
     };
+    listSignCustomRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignCustomRoleList"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    createSignCustomRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignCustomRoleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignCustomRoleEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSignCustomRoleMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignCustomRoleMembers"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteSignCustomRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deleted: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateSignCustomRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignCustomRolePatch"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignCustomRoleEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    assignSignCustomRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assigned: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    unassignSignCustomRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        unassigned: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getSenderRetentionPolicy: {
         parameters: {
             query?: never;
@@ -8412,6 +9713,351 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    startSignerPaymentCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    /** Format: uuid */
+                    field_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The checkout to send the payer to, or PAID. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "CHECKOUT" | "PAID";
+                        /**
+                         * Format: uri
+                         * @description Present when status is CHECKOUT (a Stripe-hosted page).
+                         */
+                        checkout_url?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description ESIGN_FEATURE_NOT_AVAILABLE — payments are not available (details.reason). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description SIGNER_NOT_FOUND — not one of this signer's PAYMENT fields. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+            /** @description ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    confirmSignerPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    /** Format: uuid */
+                    field_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The payment's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "PENDING" | "PAID" | "EXPIRED" | "FAILED" | "PARTIALLY_REFUNDED" | "REFUNDED";
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description ESIGN_FEATURE_NOT_AVAILABLE — payments are not configured. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    receiveStripeConnectWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "Stripe-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        outcome: "APPLIED" | "IGNORED" | "DUPLICATE" | "FAILED";
+                    };
+                };
+            };
+            /** @description The signature is missing, stale or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderPaymentAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPaymentAccount"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    createSenderPaymentOnboardingLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The Stripe-hosted onboarding link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        url: string;
+                        /** Format: date-time */
+                        expires_at: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            /** @description ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    refreshSenderPaymentAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPaymentAccount"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            /** @description ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    disconnectSenderPaymentAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPaymentAccount"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderEnvelopePayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["SignEnvelopePayment"][];
+                        can_refund: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    refundSenderEnvelopePayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    amount_minor?: number | null;
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The payment after the refund request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignEnvelopePayment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
 }

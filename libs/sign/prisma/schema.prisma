@@ -1308,7 +1308,7 @@ model SignPaymentWebhookEvent {
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 under Amendment A1 —
 // one signer's qualified electronic signature (QES) through a QTSP remote-signing flow
-// (migration 20261101300000). Aramo is not a QTSP: the QTSP proofs identity, holds the
+// (migration 20261101310000). Aramo is not a QTSP: the QTSP proofs identity, holds the
 // key and signs; this row keeps the workflow state and the evidence the QTSP returned.
 // CHECKs: signature_level QES; state REQUIRED|IDENTITY_PROOFING_PENDING|AUTHORIZED|
 // SIGNED|FAILED; AUTHORIZED and SIGNED carry a credential and a certificate chain;
@@ -1352,7 +1352,7 @@ model SignQesSignature {
 }
 
 // Feature-Parity §1.19 under Amendment A1 — an Indian e-stamp paper bought through an
-// aggregator and placed in front of the envelope's documents (migration 20261101300000).
+// aggregator and placed in front of the envelope's documents (migration 20261101310000).
 // Amounts are paise. CHECKs: state REQUESTED|ORDERED|ISSUED|ATTACHED|FAILED; state_code
 // IN-XX; positive duty; ISSUED/ATTACHED carry the certificate; ATTACHED carries the
 // document. At most one live (non-FAILED) order per envelope (partial unique index).

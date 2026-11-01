@@ -11260,6 +11260,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/esign-http.controller.ts"
     },
     {
@@ -11296,6 +11301,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/messaging/sign-messaging.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments-public.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments-sender.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -30860,6 +30875,11 @@
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -31833,6 +31853,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -33922,6 +33948,12 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/app/payments/sign-payments.config.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

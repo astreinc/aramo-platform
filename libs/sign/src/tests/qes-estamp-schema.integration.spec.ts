@@ -7,7 +7,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// Feature-Parity §1.16 / §1.19 (Amendment A1) — migration 20261101300000 on real Postgres 17:
+// Feature-Parity §1.16 / §1.19 (Amendment A1) — migration 20261101310000 on real Postgres 17:
 // the QES and e-stamp tables' CHECKs, the SIGNED-immutability trigger, the one-live-order
 // index and the cascades.
 

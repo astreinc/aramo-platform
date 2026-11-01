@@ -461,7 +461,7 @@ describe('EsignSignerController — the SMS-code gate in front of signer actions
     const ctx: SessionContext = { session_id: SESSION, tenant_id: TENANT, envelope_id: ENVELOPE, signer_id: SIGNER };
     const svc = { resolveSession: vi.fn(async () => ctx), getSignerDocumentView: vi.fn(async () => ({ documents: [], fields: [], message: null })), fillField: vi.fn(), completeSigner: vi.fn() } as unknown as EsignService;
     const gate = { assertVerified: vi.fn(async () => { throw new AramoError('INSUFFICIENT_PERMISSIONS', 'code required', 403, { requestId: 'r', details: { reason: 'recipient_verification_required' } }); }) };
-    const guarded = new EsignSignerController(svc, {} as EsignRepository, {} as DocumentSourceProviderPort, undefined, undefined, gate as unknown as RecipientOtpService);
+    const guarded = new EsignSignerController(svc, {} as EsignRepository, {} as DocumentSourceProviderPort, undefined, undefined, undefined, gate as unknown as RecipientOtpService);
     await expect(guarded.document({ token: 't' }, 'r')).rejects.toThrow(/code required/);
     await expect(guarded.fill('f1', { token: 't', value: 'x' }, 'r')).rejects.toThrow(/code required/);
     await expect(guarded.complete({ token: 't' }, 'r')).rejects.toThrow(/code required/);
