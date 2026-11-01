@@ -10755,6 +10755,11 @@
     {
       "from": "apps/sign-web/src/workspace/legal/texts.ts",
       "status": "production",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "from": "apps/sign-web/src/workspace/legal/texts.ts",
+      "status": "production",
       "to": "doc/legal/aramo/acceptable-use-policy.md"
     },
     {
@@ -33949,6 +33954,11 @@
     {
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
       "status": "production",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
       "to": "doc/legal/aramo-sign/terms-of-service.md"
     },
     {
@@ -34756,6 +34766,12 @@
       "from": "libs/subscription/src/tests/fixtures/ccp-d3-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-D3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/legal-documents.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
     },
     {
       "excludedBy": "src/tests/**/*",
