@@ -118,6 +118,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignTenantBranding',
         // Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
         'SignTrustedTimestamp',
+        // Feature-Parity §1.7–§1.9 — recipient messaging choice, deliveries, opt-outs, SMS codes.
+        'SignRecipientMessaging',
+        'SignMessageDelivery',
+        'SignMessagingOptOut',
+        'SignRecipientOtpChallenge',
       ].sort(),
     );
   });

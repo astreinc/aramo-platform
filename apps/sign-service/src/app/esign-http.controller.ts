@@ -34,6 +34,7 @@ import { type CreateEnvelopeRequest } from '@aramo/documents-contracts';
 
 import { NativeAramoSignatureProvider, assertNotPurged } from './native-aramo-signature.provider.js';
 import { SIGN_DELEGATE_SIGNING_FEATURE, SignFeatureGate } from './sign-feature.gate.js';
+import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -253,7 +254,17 @@ export class EsignSignerController {
     @Optional() private readonly invitations?: SigningInvitationService,
     // Feature-Parity §1.17 — delegate signing is refused while sign.delegate_signing is not available.
     @Optional() private readonly features?: SignFeatureGate,
+    // Feature-Parity §1.9 — the SMS one-time-code gate (sender-set SMS_OTP). Unbound = none.
+    @Optional() private readonly verification?: RecipientOtpService,
   ) {}
+
+  // Resolve the session and, when the sender set SMS_OTP on this recipient, require a
+  // verified code for this session (403 recipient_verification_required).
+  private async verifiedSession(token: string, requestId: string) {
+    const ctx = await this.service.resolveSession(token);
+    await this.verification?.assertVerified(ctx, requestId);
+    return ctx;
+  }
 
   // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient enters
   // the access code the sender set, before anything of the envelope is shown. Token-
@@ -304,7 +315,7 @@ export class EsignSignerController {
   async disclosureText(@Body() body: { token: string }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       const d = currentDisclosure();
       // Sign Mobile M-A3 §3 — the sender's plain-text message, shown on the consent
       // screen (sender-supplied; not part of the disclosure text or its hash).
@@ -382,7 +393,7 @@ export class EsignSignerController {
   async document(@Body() body: { token: string }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       return await this.service.getSignerDocumentView(ctx);
     } catch (e) {
       throw toHttp(e, requestId);
@@ -399,7 +410,7 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     validate(typeof body?.document_id === 'string' && body.document_id.length > 0, 'document_id is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       const descriptor = await this.service.resolveSignerSource(ctx, body.document_id);
       const bytes = await this.sourceProvider.getSourcePdf(descriptor);
       return { source_base64: Buffer.from(bytes).toString('base64'), content_type: descriptor.content_type };
@@ -413,6 +424,8 @@ export class EsignSignerController {
   async exchange(@Body() body: { token: string }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     try {
+      // Feature-Parity §1.9 — a recipient with SMS_OTP verifies before the link is used.
+      if (this.verification !== undefined) await this.verifiedSession(body.token, requestId);
       const ctx = await this.service.exchangeToken(body.token);
       return { session_id: ctx.session_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id };
     } catch (e) {
@@ -433,7 +446,7 @@ export class EsignSignerController {
     validate(typeof body?.disclosure_text_hash === 'string', 'disclosure_text_hash is required', requestId);
     validate(body?.attested_name === undefined || typeof body.attested_name === 'string', 'attested_name must be a string', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       await this.service.acceptDisclosure(ctx, {
         disclosure_version: body.disclosure_version,
         disclosure_text_hash: body.disclosure_text_hash,
@@ -458,7 +471,7 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     validate(typeof body?.value === 'string', 'value is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       await this.service.fillField(ctx, fieldId, { value: body.value, signature_method: body.signature_method });
       return { filled: true };
     } catch (e) {
@@ -471,7 +484,7 @@ export class EsignSignerController {
   async complete(@Body() body: { token: string }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       const result = await this.service.completeSigner(ctx);
       if (result.envelope_status !== 'COMPLETED') {
         // Multi-Signer §4 / M-3b — after commit: deliver the next sequential signer's
@@ -498,7 +511,7 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     validate(typeof body?.reason === 'string' && body.reason.length > 0, 'reason is required', requestId);
     try {
-      const ctx = await this.service.resolveSession(body.token);
+      const ctx = await this.verifiedSession(body.token, requestId);
       await this.service.decline(ctx.tenant_id, ctx.envelope_id, ctx.signer_id, body.reason, ctx.session_id);
       // Aramo Sign launch — the console sender gets the reason; other open signers
       // learn the envelope ended. Best-effort: the decline itself is already final.

@@ -2395,6 +2395,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/messaging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The envelope's SMS / WhatsApp / SMS-code choices and its message deliveries.
+         * @description Feature-Parity §1.7–§1.9. Requires sign:envelope:read and visibility of the envelope. Refused with 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.sms_delivery, sign.whatsapp_delivery and sign.sms_otp are all NOT_AVAILABLE. Deliveries never carry the full number, the text or the signing link (phone_masked only).
+         */
+        get: operations["getEnvelopeMessaging"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/recipients/{signerId}/messaging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a recipient's text delivery channel and / or SMS one-time code.
+         * @description Feature-Parity §1.7–§1.9. DRAFT only (409 envelope_not_draft), sign:envelope:create and the right to change the envelope. For a SIGNER who receives a link (400 recipient_kind_not_supported otherwise): delivery_channel SMS | WHATSAPP sends the signing link to the phone as well as by email (sign.sms_delivery / sign.whatsapp_delivery); sms_otp_required makes the recipient enter an SMS code before acting (sign.sms_otp). phone_e164 is required when either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503 messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice.
+         */
+        put: operations["setRecipientMessaging"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The recipient-verification status of this signing session.
+         * @description Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP on the recipient, every other signer action (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403 INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until a code is verified for this session.
+         */
+        post: operations["getRecipientVerificationStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/sms-otp/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a one-time code to the recipient's phone.
+         * @description Feature-Parity §1.9 — 6 digits, valid 10 minutes, 5 attempts; at most one send per 60 seconds and 5 a day (429 INVALID_REQUEST otp_resend_cooldown / otp_daily_limit). 400 otp_not_required; 403 otp_locked after 3 codes were used up; 409 / 503 ESIGN_SEND_UNAVAILABLE otp_opted_out / otp_delivery_failed. Appends RECIPIENT_OTP_SENT.
+         */
+        post: operations["sendRecipientSmsOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/verification/sms-otp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check the one-time code.
+         * @description Feature-Parity §1.9 — 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked (5 wrong attempts; ask for a new code) or otp_locked (3 codes used up; locked out of the envelope); 409 otp_retry. Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED; the verification is printed on the certificate of completion.
+         */
+        post: operations["verifyRecipientSmsOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/messaging/whatsapp/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta WhatsApp webhook subscription check.
+         * @description Feature-Parity §1.8 — no session. Echoes hub.challenge when hub.mode is subscribe and hub.verify_token equals SIGN_WHATSAPP_VERIFY_TOKEN. 404 while the webhook is unconfigured or sign.whatsapp_delivery is NOT_AVAILABLE.
+         */
+        get: operations["verifyWhatsAppWebhook"];
+        put?: never;
+        /**
+         * Meta WhatsApp webhook receiver (STOP / START and delivery statuses).
+         * @description Feature-Parity §1.8 — no session. Authenticity is X-Hub-Signature-256 (HMAC-SHA256 of the raw body with SIGN_WHATSAPP_APP_SECRET). An inbound STOP / START updates the opt-out list; a delivered / read / failed status updates the delivery and, while the envelope is open, appends SIGNER_MESSAGE_STATUS. 404 while unconfigured or NOT_AVAILABLE.
+         */
+        post: operations["receiveWhatsAppWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3406,6 +3530,63 @@ export interface components {
             image_data_url: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        SigningTokenRequest: {
+            token: string;
+        };
+        RecipientVerificationStatus: {
+            required: boolean;
+            /** @enum {string|null} */
+            method: "SMS_OTP" | null;
+            verified: boolean;
+            locked: boolean;
+            /** @description The masked number. */
+            phone: string | null;
+        };
+        SenderRecipientMessaging: {
+            /** Format: uuid */
+            signer_id: string;
+            /** @enum {string|null} */
+            delivery_channel: "SMS" | "WHATSAPP" | null;
+            sms_otp_required: boolean;
+            phone_e164: string | null;
+            phone_masked: string | null;
+            timezone: string | null;
+        };
+        SenderEnvelopeMessaging: {
+            /** Format: uuid */
+            envelope_id: string;
+            features: {
+                sms_delivery: boolean;
+                whatsapp_delivery: boolean;
+                sms_otp: boolean;
+            };
+            recipients: (components["schemas"]["SenderRecipientMessaging"] & {
+                /** Format: date-time */
+                updated_at: string;
+            })[];
+            deliveries: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                signer_id: string | null;
+                /** @enum {string} */
+                channel: "SMS" | "WHATSAPP";
+                /** @enum {string} */
+                purpose: "INVITATION" | "REMINDER" | "OTP";
+                /** @enum {string} */
+                status: "SENT" | "DELIVERED" | "READ" | "UNDELIVERED" | "FAILED" | "SUPPRESSED";
+                /** @enum {string|null} */
+                suppressed_reason: "opted_out" | "rate_limited" | "quiet_hours" | "channel_unavailable" | null;
+                phone_masked: string | null;
+                error_code: string | null;
+                /** Format: date-time */
+                created_at: string;
+                /** Format: date-time */
+                sent_at: string | null;
+                /** Format: date-time */
+                status_updated_at: string | null;
+            }[];
         };
         /** @description The canonical Aramo error envelope. */
         ErrorResponse: {
@@ -7955,6 +8136,282 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["SenderForbidden"];
+        };
+    };
+    getEnvelopeMessaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The choices and deliveries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderEnvelopeMessaging"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setRecipientMessaging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+                signerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string|null} */
+                    delivery_channel?: "SMS" | "WHATSAPP" | null;
+                    sms_otp_required?: boolean;
+                    phone_e164?: string;
+                    timezone?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The recipient's choice now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderRecipientMessaging"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 503 ESIGN_FEATURE_NOT_AVAILABLE — details.reason messaging_provider_not_configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getRecipientVerificationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SigningTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientVerificationStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    sendRecipientSmsOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SigningTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The code was sent (or the session is already verified). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                        verified: boolean;
+                        /** @description The masked number. */
+                        phone: string;
+                        /** Format: date-time */
+                        expires_at?: string | null;
+                        resend_after_seconds?: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+            /** @description 429 INVALID_REQUEST — details.reason otp_resend_cooldown (retry_after_seconds, retry_at) or otp_daily_limit. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 503 ESIGN_SEND_UNAVAILABLE — details.reason otp_delivery_failed (or another otp_* suppression). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyRecipientSmsOtp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Verified for this session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        verified: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 403 INSUFFICIENT_PERMISSIONS — details.reason otp_code_locked or otp_locked. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    verifyWhatsAppWebhook: {
+        parameters: {
+            query?: {
+                "hub.mode"?: string;
+                "hub.verify_token"?: string;
+                "hub.challenge"?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The challenge. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description The verify token does not match. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    receiveWhatsAppWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Hub-Signature-256": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        keywords: number;
+                        statuses: number;
+                    };
+                };
+            };
+            /** @description The signature is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }

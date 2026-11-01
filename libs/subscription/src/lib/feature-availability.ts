@@ -44,6 +44,14 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.witness_signing': 'NOT_AVAILABLE',
   'sign.delegate_signing': 'NOT_AVAILABLE',
   'sign.access_code': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
+  // — built dark: SMS and WhatsApp delivery of the signing link and SMS one-time-code
+  // recipient verification. Each moves to AVAILABLE only with a separate PO authorization
+  // after its vendor contract, registration (10DLC / DLT / Meta templates) and counsel
+  // review (A1.2). Server-side gated like sign.templates (SignFeatureGate).
+  'sign.sms_delivery': 'NOT_AVAILABLE',
+  'sign.whatsapp_delivery': 'NOT_AVAILABLE',
+  'sign.sms_otp': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

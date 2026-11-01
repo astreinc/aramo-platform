@@ -1056,3 +1056,88 @@ model SignTrustedTimestamp {
   @@index([status, next_attempt_at], map: "SignTrustedTimestamp_due_idx")
   @@schema("sign")
 }
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1;
+// migration 20261101400000) — the sender's messaging choice for one recipient: the extra
+// channel (SMS | WHATSAPP, CHECK) that carries the signing link beside email, and/or an
+// SMS one-time code the recipient must enter (sms_otp_required). phone_e164 CHECK E.164.
+// FK signer_id → Signer ON DELETE CASCADE (SQL only; no Prisma relation, so the Signer
+// model is unchanged).
+model SignRecipientMessaging {
+  signer_id        String   @id @db.Uuid
+  tenant_id        String   @db.Uuid
+  envelope_id      String   @db.Uuid
+  delivery_channel String?
+  phone_e164       String
+  timezone         String?
+  sms_otp_required Boolean  @default(false)
+  updated_by       String   @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, envelope_id], map: "SignRecipientMessaging_envelope_idx")
+  @@schema("sign")
+}
+
+// §1.7 / §1.8 — one outbound SMS or WhatsApp message. status SENT|DELIVERED|READ|
+// UNDELIVERED|FAILED|SUPPRESSED; suppressed_reason (SUPPRESSED only) opted_out|
+// rate_limited|quiet_hours|channel_unavailable; purpose INVITATION|REMINDER|OTP. Never the
+// number, the text or the link: only the number's lookup hash and a masked form.
+model SignMessageDelivery {
+  id                  String    @id @db.Uuid
+  tenant_id           String    @db.Uuid
+  envelope_id         String    @db.Uuid
+  signer_id           String?   @db.Uuid
+  channel             String
+  purpose             String
+  status              String
+  suppressed_reason   String?
+  provider            String?
+  provider_message_id String?
+  phone_hash          String?
+  phone_masked        String?
+  error_code          String?   @db.VarChar(64)
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  sent_at             DateTime? @db.Timestamptz
+  status_updated_at   DateTime? @db.Timestamptz
+
+  @@index([tenant_id, sent_at], map: "SignMessageDelivery_tenant_sent_idx")
+  @@index([tenant_id, envelope_id], map: "SignMessageDelivery_envelope_idx")
+  @@schema("sign")
+}
+
+// §1.7 — the opt-out list (STOP), platform-wide per number lookup hash and channel.
+// source INBOUND_KEYWORD (the recipient texted STOP / START) | PROVIDER (the vendor refused).
+model SignMessagingOptOut {
+  phone_hash String
+  channel    String
+  opted_out  Boolean
+  source     String
+  updated_at DateTime @default(now()) @db.Timestamptz
+
+  @@id([phone_hash, channel])
+  @@schema("sign")
+}
+
+// §1.9 — one SMS one-time code for one signing session. Only the SHA-256 of the code is
+// kept. status ACTIVE|VERIFIED|EXPIRED|LOCKED|SUPERSEDED (CHECK).
+model SignRecipientOtpChallenge {
+  id           String    @id @db.Uuid
+  tenant_id    String    @db.Uuid
+  envelope_id  String    @db.Uuid
+  signer_id    String    @db.Uuid
+  session_id   String    @db.Uuid
+  phone_hash   String?
+  phone_masked String?
+  code_hash    String
+  status       String    @default("ACTIVE")
+  attempts     Int       @default(0)
+  expires_at   DateTime  @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  verified_at  DateTime? @db.Timestamptz
+  locked_at    DateTime? @db.Timestamptz
+
+  @@index([tenant_id, signer_id, created_at], map: "SignRecipientOtpChallenge_signer_idx")
+  @@index([session_id], map: "SignRecipientOtpChallenge_session_idx")
+  @@schema("sign")
+}

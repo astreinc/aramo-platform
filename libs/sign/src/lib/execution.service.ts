@@ -26,6 +26,7 @@ import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/sto
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { isWitness, signingRecipients } from './domain/recipients.js';
 import { ACCESS_CODE_VERIFIED_EVENT } from './domain/access-code.js';
+import { RECIPIENT_OTP_VERIFIED_EVENT } from './messaging/messaging-rules.js';
 import {
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
   EXECUTED_DOCUMENT_RECORDED,
@@ -169,6 +170,25 @@ export class ExecutionService implements ExecutionProducerPort {
     return out;
   }
 
+  // Feature-Parity §1.9 — "Recipient verification: SMS one-time code to +1•••••••23,
+  // verified <time>" per signer, from RECIPIENT_OTP_VERIFIED ledger events (the masked
+  // number only). The last verification of each signer is printed.
+  private async recipientVerifications(tenant_id: string, envelope_id: string): Promise<Map<string, string[]>> {
+    const events = await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: RECIPIENT_OTP_VERIFIED_EVENT },
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      select: { signer_id: true, payload: true, occurred_at: true },
+    });
+    const out = new Map<string, string[]>();
+    for (const e of events) {
+      if (e.signer_id === null) continue;
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      const phone = typeof p['phone'] === 'string' ? ` to ${p['phone']}` : '';
+      out.set(e.signer_id, [`Recipient verification: SMS one-time code${phone}, verified ${e.occurred_at.toISOString()}`]);
+    }
+    return out;
+  }
+
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const results: ExecutedProductionResult[] = [];
@@ -306,6 +326,9 @@ export class ExecutionService implements ExecutionProducerPort {
       if (e.signer_id !== null) codeVerified.set(e.signer_id, e.occurred_at);
     }
     const signerNameById = new Map(full.signers.map((s) => [s.id, s.name]));
+    // Feature-Parity §1.9 — each signer's recipient-verification results (SMS one-time
+    // code), read from the ledger. Absent for every envelope without one.
+    const verifications = await this.recipientVerifications(tenant_id, envelope_id);
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
@@ -339,6 +362,7 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(s.access_code_hash !== null
           ? [{ type: 'TEXT', text: codeVerified.has(s.id) ? `Recipient authentication: access code, verified ${codeVerified.get(s.id)?.toISOString() ?? ''}.` : 'Recipient authentication: access code (not entered).' } as RenderBlock]
           : []),
+        ...(verifications.get(s.id) ?? []).map((text): RenderBlock => ({ type: 'TEXT', text })),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),

@@ -5051,6 +5051,308 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  # Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1) —
+  # SMS / WhatsApp delivery and SMS one-time-code recipient verification. DARK: sign.sms_delivery,
+  # sign.whatsapp_delivery and sign.sms_otp are NOT_AVAILABLE and every provider is off.
+  /v1/sign/sender/envelopes/{id}/messaging:
+    get:
+      operationId: getEnvelopeMessaging
+      summary: The envelope's SMS / WhatsApp / SMS-code choices and its message deliveries.
+      description: >
+        Feature-Parity §1.7–§1.9. Requires sign:envelope:read and visibility of the envelope. Refused with 403
+        ESIGN_FEATURE_NOT_AVAILABLE while sign.sms_delivery, sign.whatsapp_delivery and sign.sms_otp are all NOT_AVAILABLE.
+        Deliveries never carry the full number, the text or the signing link (phone_masked only).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: The choices and deliveries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeMessaging'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/recipients/{signerId}/messaging:
+    put:
+      operationId: setRecipientMessaging
+      summary: Set a recipient's text delivery channel and / or SMS one-time code.
+      description: >
+        Feature-Parity §1.7–§1.9. DRAFT only (409 envelope_not_draft), sign:envelope:create and the right to change the
+        envelope. For a SIGNER who receives a link (400 recipient_kind_not_supported otherwise): delivery_channel SMS |
+        WHATSAPP sends the signing link to the phone as well as by email (sign.sms_delivery / sign.whatsapp_delivery);
+        sms_otp_required makes the recipient enter an SMS code before acting (sign.sms_otp). phone_e164 is required when
+        either is set (400 invalid_phone); timezone is an optional IANA zone for quiet hours (400 invalid_timezone). A
+        feature that is NOT_AVAILABLE is refused with 403 ESIGN_FEATURE_NOT_AVAILABLE; no provider for the number is 503
+        messaging_provider_not_configured. delivery_channel null with sms_otp_required false clears the choice.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: signerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery_channel:
+                  type: [string, 'null']
+                  enum: [SMS, WHATSAPP, null]
+                sms_otp_required:
+                  type: boolean
+                phone_e164:
+                  type: string
+                  pattern: '^\+[1-9][0-9]{7,14}$'
+                timezone:
+                  type: [string, 'null']
+      responses:
+        '200':
+          description: The recipient's choice now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderRecipientMessaging'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: 503 ESIGN_FEATURE_NOT_AVAILABLE — details.reason messaging_provider_not_configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/verification:
+    post:
+      operationId: getRecipientVerificationStatus
+      summary: The recipient-verification status of this signing session.
+      description: >
+        Feature-Parity §1.9 — token-authorized. When the sender set SMS_OTP on the recipient, every other signer action
+        (exchange, disclosure-text, document, source, disclosure, fill, complete, decline) is refused with 403
+        INSUFFICIENT_PERMISSIONS details.reason recipient_verification_required (or recipient_verification_locked) until
+        a code is verified for this session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningTokenRequest'
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipientVerificationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/sign/signing/verification/sms-otp/send:
+    post:
+      operationId: sendRecipientSmsOtp
+      summary: Send a one-time code to the recipient's phone.
+      description: >
+        Feature-Parity §1.9 — 6 digits, valid 10 minutes, 5 attempts; at most one send per 60 seconds and 5 a day (429
+        INVALID_REQUEST otp_resend_cooldown / otp_daily_limit). 400 otp_not_required; 403 otp_locked after 3 codes were
+        used up; 409 / 503 ESIGN_SEND_UNAVAILABLE otp_opted_out / otp_delivery_failed. Appends RECIPIENT_OTP_SENT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SigningTokenRequest'
+      responses:
+        '200':
+          description: The code was sent (or the session is already verified).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent, verified, phone]
+                properties:
+                  sent:
+                    type: boolean
+                  verified:
+                    type: boolean
+                  phone:
+                    type: string
+                    description: The masked number.
+                  expires_at:
+                    type: [string, 'null']
+                    format: date-time
+                  resend_after_seconds:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 403 INSUFFICIENT_PERMISSIONS — details.reason otp_locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          description: 429 INVALID_REQUEST — details.reason otp_resend_cooldown (retry_after_seconds, retry_at) or otp_daily_limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 503 ESIGN_SEND_UNAVAILABLE — details.reason otp_delivery_failed (or another otp_* suppression).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/verification/sms-otp/verify:
+    post:
+      operationId: verifyRecipientSmsOtp
+      summary: Check the one-time code.
+      description: >
+        Feature-Parity §1.9 — 400 otp_not_requested / otp_expired / otp_mismatch (attempts_remaining); 403 otp_code_locked
+        (5 wrong attempts; ask for a new code) or otp_locked (3 codes used up; locked out of the envelope); 409 otp_retry.
+        Appends RECIPIENT_OTP_VERIFIED / RECIPIENT_OTP_FAILED / RECIPIENT_OTP_LOCKED; the verification is printed on the
+        certificate of completion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code]
+              properties:
+                token:
+                  type: string
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: Verified for this session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verified]
+                properties:
+                  verified:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 403 INSUFFICIENT_PERMISSIONS — details.reason otp_code_locked or otp_locked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/messaging/whatsapp/webhook:
+    get:
+      operationId: verifyWhatsAppWebhook
+      summary: Meta WhatsApp webhook subscription check.
+      description: >
+        Feature-Parity §1.8 — no session. Echoes hub.challenge when hub.mode is subscribe and hub.verify_token equals
+        SIGN_WHATSAPP_VERIFY_TOKEN. 404 while the webhook is unconfigured or sign.whatsapp_delivery is NOT_AVAILABLE.
+      security: []
+      parameters:
+        - name: hub.mode
+          in: query
+          schema:
+            type: string
+        - name: hub.verify_token
+          in: query
+          schema:
+            type: string
+        - name: hub.challenge
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The challenge.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: The verify token does not match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: receiveWhatsAppWebhook
+      summary: Meta WhatsApp webhook receiver (STOP / START and delivery statuses).
+      description: >
+        Feature-Parity §1.8 — no session. Authenticity is X-Hub-Signature-256 (HMAC-SHA256 of the raw body with
+        SIGN_WHATSAPP_APP_SECRET). An inbound STOP / START updates the opt-out list; a delivered / read / failed status
+        updates the delivery and, while the envelope is open, appends SIGNER_MESSAGE_STATUS. 404 while unconfigured or
+        NOT_AVAILABLE.
+      security: []
+      parameters:
+        - name: X-Hub-Signature-256
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, keywords, statuses]
+                properties:
+                  received:
+                    type: boolean
+                  keywords:
+                    type: integer
+                  statuses:
+                    type: integer
+        '401':
+          description: The signature is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     senderSession:
@@ -7068,6 +7370,112 @@ components:
         updated_at:
           type: string
           format: date-time
+    # Feature-Parity §1.7–§1.9 (Amendment A1) — messaging and SMS one-time codes.
+    SigningTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    RecipientVerificationStatus:
+      type: object
+      required: [required, method, verified, locked, phone]
+      properties:
+        required:
+          type: boolean
+        method:
+          type: [string, 'null']
+          enum: [SMS_OTP, null]
+        verified:
+          type: boolean
+        locked:
+          type: boolean
+        phone:
+          type: [string, 'null']
+          description: The masked number.
+    SenderRecipientMessaging:
+      type: object
+      required: [signer_id, delivery_channel, sms_otp_required, phone_e164, phone_masked, timezone]
+      properties:
+        signer_id:
+          type: string
+          format: uuid
+        delivery_channel:
+          type: [string, 'null']
+          enum: [SMS, WHATSAPP, null]
+        sms_otp_required:
+          type: boolean
+        phone_e164:
+          type: [string, 'null']
+        phone_masked:
+          type: [string, 'null']
+        timezone:
+          type: [string, 'null']
+    SenderEnvelopeMessaging:
+      type: object
+      required: [envelope_id, features, recipients, deliveries]
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        features:
+          type: object
+          required: [sms_delivery, whatsapp_delivery, sms_otp]
+          properties:
+            sms_delivery:
+              type: boolean
+            whatsapp_delivery:
+              type: boolean
+            sms_otp:
+              type: boolean
+        recipients:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/SenderRecipientMessaging'
+              - type: object
+                required: [updated_at]
+                properties:
+                  updated_at:
+                    type: string
+                    format: date-time
+        deliveries:
+          type: array
+          items:
+            type: object
+            required: [id, signer_id, channel, purpose, status, suppressed_reason, phone_masked, error_code, created_at, sent_at, status_updated_at]
+            properties:
+              id:
+                type: string
+                format: uuid
+              signer_id:
+                type: [string, 'null']
+                format: uuid
+              channel:
+                type: string
+                enum: [SMS, WHATSAPP]
+              purpose:
+                type: string
+                enum: [INVITATION, REMINDER, OTP]
+              status:
+                type: string
+                enum: [SENT, DELIVERED, READ, UNDELIVERED, FAILED, SUPPRESSED]
+              suppressed_reason:
+                type: [string, 'null']
+                enum: [opted_out, rate_limited, quiet_hours, channel_unavailable, null]
+              phone_masked:
+                type: [string, 'null']
+              error_code:
+                type: [string, 'null']
+              created_at:
+                type: string
+                format: date-time
+              sent_at:
+                type: [string, 'null']
+                format: date-time
+              status_updated_at:
+                type: [string, 'null']
+                format: date-time
     ErrorResponse:
       type: object
       description: The canonical Aramo error envelope.

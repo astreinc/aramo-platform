@@ -191,7 +191,7 @@ export class SenderEnvelopeService {
   // (Sign Admin / Owner). An ordinary sender never changes another member's
   // envelope merely because they share a Business tenant. Visibility first: an
   // envelope the caller cannot see reads as not found.
-  private async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+  async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
     const d = await this.describe(auth, envelope_id, requestId, false);
     // Sign Unified Product S-3 — an envelope that another application created
     // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays

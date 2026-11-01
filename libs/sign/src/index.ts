@@ -375,15 +375,18 @@ export {
 } from './lib/branding/branding-validation.js';
 export { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './lib/ports/sign-branding.port.js';
 // Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
+export {
   TRUSTED_TIMESTAMP_PORT,
   type TrustedTimestampPort,
   type TrustedTimestampToken,
 } from './lib/ports/trusted-timestamp.port.js';
+export {
   TrustedTimestampService,
   type TrustedTimestampStatus,
   type TrustedTimestampSubjectKind,
   type TrustedTimestampView,
 } from './lib/trusted-timestamp/trusted-timestamp.service.js';
+export {
   OID_SHA256,
   Rfc3161Error,
   buildTimeStampRequest,
@@ -393,3 +396,27 @@ export { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } f
   type VerifiedTimeStamp,
   type VerifyExpectations,
 } from './lib/trusted-timestamp/rfc3161.js';
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
+// — SMS and WhatsApp delivery and SMS one-time-code recipient verification (dark).
+export {
+  OUTBOUND_MESSAGING_PORT,
+  MESSAGING_CHANNELS,
+  type MessagingChannel,
+  type MessagePurpose,
+  type OutboundMessage,
+  type OutboundMessagingPort,
+  type OutboundSendResult,
+} from './lib/ports/outbound-messaging.port.js';
+export { SIGN_USAGE_RECORDER_PORT, type SignUsageRecord, type SignUsageRecorderPort, type SignUsageUnit } from './lib/ports/usage-recorder.port.js';
+export { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessage, type SignerLinkMessagingPort } from './lib/ports/signer-link-messaging.port.js';
+export * from './lib/messaging/messaging-rules.js';
+export {
+  SignMessagingRepository,
+  type DeliveryStatus,
+  type LedgerAppend,
+  type NewDelivery,
+  type OtpChallengeStatus,
+  type RecipientMessagingRow,
+  type SuppressedReason,
+} from './lib/messaging/sign-messaging.repository.js';

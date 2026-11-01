@@ -11,6 +11,9 @@ import {
   EnvelopeNotificationService,
   EsignModule,
   ExecutionService,
+  OUTBOUND_MESSAGING_PORT,
+  SIGNER_LINK_MESSAGING_PORT,
+  SignMessagingRepository,
   OutboxDeliveryService,
   OutboxService,
   SENDER_DIRECTORY_PORT,
@@ -127,6 +130,14 @@ import { SignPrivacyPublicController } from './privacy/sign-privacy-public.contr
 import { PrivacyWebBudget, SignPrivacyRequestService } from './privacy/sign-privacy-request.service.js';
 import { SignPrivacyExecutionService } from './privacy/sign-privacy-execution.service.js';
 import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.worker.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1) —
+// SMS / WhatsApp delivery and SMS one-time-code verification. DARK: the features are
+// NOT_AVAILABLE and every provider is off unless SIGN_SMS_PROVIDER / SIGN_WHATSAPP_PROVIDER is set.
+import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
+import { SignMessagingService } from './messaging/sign-messaging.service.js';
+import { RecipientOtpService } from './messaging/recipient-otp.service.js';
+import { SenderMessagingService } from './messaging/sender-messaging.service.js';
+import { SignRecipientVerificationController, SignSenderMessagingController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -170,7 +181,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -227,6 +238,13 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         // Feature-Parity §1.18 — the RFC 3161 TSA (null = off) and its "timestamp pending" retry job.
         { provide: TRUSTED_TIMESTAMP_PORT, useFactory: () => trustedTimestampFromEnv(process.env) },
         TrustedTimestampRetryWorker,
+        // Feature-Parity §1.7 / §1.8 — inside the E-Sign module so SigningInvitationService
+        // (sequential next-signer invitations) also reaches SIGNER_LINK_MESSAGING_PORT.
+        SignFeatureGate,
+        SignMessagingRepository,
+        { provide: OUTBOUND_MESSAGING_PORT, useFactory: () => outboundMessagingFromEnv(process.env) },
+        SignMessagingService,
+        { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
       ],
     }),
   ],
@@ -235,7 +253,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -304,6 +322,9 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignPrivacyRequestService,
     SignPrivacyExecutionService,
     SignPrivacyExecutionWorker,
+    // Feature-Parity §1.7 / §1.9 — the sender's messaging choices and the SMS one-time code.
+    RecipientOtpService,
+    SenderMessagingService,
     // M-A8 §3.5 — the identity retirement port and the dependency inspector are
     // identity-owned (IdentityCoreModule); sign-service no longer binds a Cognito adapter.
   ],
