@@ -35,7 +35,8 @@ parity: templates, branding, custom roles, Personal → Business upgrade, witnes
 RFC 3161 timestamps, SMS/WhatsApp/OTP, ID verification/KBA, payments, AATL seal, QES/e-stamp ports,
 sign-in UX fixes), #1057 (ToS v2.0 registered dark + acceptance gate; usage metering A3/A4).
 
-Everything new ships **dark**. User-visible changes tonight: the sign-in page "Create account"
+Everything new ships **dark** except three features the PO switched on (templates, reports, access
+code via the signer page/API). User-visible changes tonight: the sign-in page "Create account"
 links, the clearer unverified-Microsoft-email error, the cleaner Personal account name, and the
 Platform Console invite fix (finance@ can now be invited).
 
@@ -86,9 +87,10 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
 
 ### Must stay OFF after deploy (verify, do not change)
 
-- `libs/subscription/src/lib/feature-availability.ts`: every new `sign.*` key is `NOT_AVAILABLE`
-  (templates, reports, branding, custom_roles, trusted_timestamp, witness_signing, delegate_signing,
-  access_code, sms_delivery, whatsapp_delivery, sms_otp, id_verification, kba, payments,
+- `libs/subscription/src/lib/feature-availability.ts`: **switched ON by PO authorization 2026-11-01:**
+  `sign.templates`, `sign.reports`, `sign.access_code` (AVAILABLE). Every other new `sign.*` key is
+  `NOT_AVAILABLE` (branding, custom_roles, trusted_timestamp, witness_signing, delegate_signing,
+  sms_delivery, whatsapp_delivery, sms_otp, id_verification, kba, payments,
   document_seal, qes, india_estamp, metering keys). Flipping any is a separate PO authorization (R-8).
 - ToS v2.0: `effective_from: null` in both `libs/subscription/src/lib/legal/legal-documents.ts` and
   `apps/sign-web/src/workspace/legal/catalog.ts`. Nobody is offered or owes v2.0 tonight. Release
@@ -101,7 +103,9 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
 1. `https://sign.aramo.ai` sign-in page shows the Personal / Business "Create account" links.
 2. An existing Business and an existing Personal user can sign in and open the workspace with no
    terms dialog (v2.0 is not in effect).
-3. `GET /v1/sign/sender/context` (signed in) returns `features.*` all false for the new keys.
+3. `GET /v1/sign/sender/context` (signed in, Business): `features.templates`, `features.reports` and
+   `features.access_code` are true; every other new key is false. Reports page loads for a Business
+   admin; Templates page lists adopted templates (empty if none adopted) — not an error.
 4. Platform Console: the catalog shows unit-price fields on a draft plan version (D2) and nothing
    is published; the invite flow returns success for a test alias invite only if the PO asks for one.
 5. `docker logs` for sign-service, auth-service, api, platform-admin: no ERROR at boot; auth-service

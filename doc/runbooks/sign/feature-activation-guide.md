@@ -6,7 +6,17 @@
 | Audience | The PO (decides, signs vendor contracts, arranges counsel, authorizes each flip) and the Claude Code session that does the engineering part of each flip |
 | Code baseline | `origin/main` `394ffcc0` (PR #1056, the consolidated feature build). Usage metering is read from branch `feat/sign-usage-metering` (`0d9944c7`); ToS v2.0 from branch `feat/sign-tos-v2` (PR #1057). Neither branch is on `main` yet. |
 | Governing | `Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED.md` (SHA-256 `2bd74ca5…`) and its Amendments A1 (vendor features), A2 (templates platform-only), A3 (metering D1/D3), A4 (metering D2), all in OneDrive `Aramo/locked/` |
+| Readiness work | `Aramo/documents/Aramo-Sign-Feature-Activation-Readiness-Directive-v0_1-DRAFT.md` (filed to `Aramo/locked/` as v1.0 LOCKED once approved). It builds the missing pieces listed in §7 (screens, nginx routes, console entitlement, plan limits, TSA login) so each feature is ready to switch on when its external prerequisites are done. Its item ids (AR-n) are referenced in each feature section below. |
 | References | Vendor pack `Aramo/documents/Aramo-Sign-Vendor-Onboarding-Pack-20261101.md`; go-live list `Aramo/documents/Aramo-Sign-GoLive-Todo.md`; release runbook [`../RELEASE-box.md`](../RELEASE-box.md) |
+
+**This guide is the master checklist** for switching each Sign feature on in production: what must happen
+outside the code (vendor, registration, counsel, settings, entitlement) and the engineering step. A feature
+is switched on only when its section's prerequisites are done, its readiness items (AR-n) are merged, and
+the PO authorizes the flip.
+
+**Switch-on status (PO R-8 authorization 2026-11-01, shipped in PR #1057):** `sign.templates`,
+`sign.reports` and `sign.access_code` are AVAILABLE. Access code works through the API and the signer
+page only until AR-2 adds the sender control. Every other key below is still `NOT_AVAILABLE`.
 
 This guide does not authorize anything. Every flip below needs its own PO authorization (directive
 §4 R-8; Amendment A1 §A1.2 item 4). Prices and lead times come from the vendor pack: they are
@@ -189,6 +199,8 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 3.1 Templates (adopted from platform defaults)
 
+> **Status:** SWITCHED ON (AVAILABLE) by PO authorization 2026-11-01, live with the release of PR #1057. Standard is included as coded (OD-2; AR-10 only if the PO says no). Organizations see templates only after a platform default is published and they adopt it.
+
 - **What it does.** A sender lists the templates the organization has **adopted** from the Aramo platform
   defaults, previews one, and creates and sends an envelope from it. Sign never creates, saves or edits a
   template; the organization adopts and edits its copy in Template Studio / Org Home (Amendment A2 §A2.1).
@@ -217,6 +229,8 @@ verification · Rollback/turn-off · Open decisions.
 - **Open decisions.** OD-2: does Standard ($10 Personal) get templates? (go-live list item 38).
 
 ### 3.2 Reports
+
+> **Status:** SWITCHED ON (AVAILABLE) by PO authorization 2026-11-01, live with the release of PR #1057.
 
 - **What it does.** Organization reports: volume, turnaround, completion rate, by sender and template,
   CSV export and envelope audit export (directive §1.13; routes `GET /v1/sign/sender/reports/overview`,
@@ -328,6 +342,8 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 3.7 Access code (per recipient)
 
+> **Status:** SWITCHED ON (AVAILABLE) by PO authorization 2026-11-01, live with the release of PR #1057. Usable through the API and the signer page; the sender control is readiness item AR-2.
+
 - **What it does.** The sender sets a code that the recipient must enter before signing (directive §1.9).
 - **Launch key.** `sign.access_code` (`feature-availability.ts:50`); `sender-envelope.service.ts:1001`.
 - **Plan entitlement.** Every plan, including Free (`sender-context.service.ts:236`).
@@ -347,6 +363,8 @@ verification · Rollback/turn-off · Open decisions.
 - **Open decisions.** None beyond the UI.
 
 ### 3.8 Personal → Business upgrade
+
+> **Status:** OFF. Needs ToS v2.0 in effect, Business plans purchasable (Stripe live) and the PO decision OD-9 (require a work email like Business sign-up; readiness item AR-9). Today the upgrade does not check the email.
 
 - **What it does.** The owner of a Personal account turns it into a Business organization in place; the
   tenant id, envelopes, evidence and custody stay; the Free subscription ends; the owner then picks a
@@ -1032,12 +1050,15 @@ decide whether Personal accounts may text at all (OD-3), and review the per-orga
 
 ## 7. Engineering gaps found while writing this guide (fix before the related flip)
 
-1. nginx has no location for `/v1/sign/messaging/whatsapp/webhook` (3.14) or `/v1/sign/identity-verification/`
+Each gap is a work item in the Feature Activation Readiness Directive (AR-n in brackets); OD-9 (the
+Personal → Business upgrade does not require a work email) was added there as well.
+
+1. [AR-1] nginx has no location for `/v1/sign/messaging/whatsapp/webhook` (3.14) or `/v1/sign/identity-verification/`
    (3.16); webhooks would never reach sign-service.
-2. No sender UI found for witness, delegate, access code, SMS/WhatsApp channel, SMS OTP or ID verification
+2. [AR-2, AR-3] No sender UI found for witness, delegate, access code, SMS/WhatsApp channel, SMS OTP or ID verification
    method; no signer UI for delegation; no QES screens or `/qes/callback` page.
-3. The TSA adapter cannot authenticate to a TSA (3.10).
-4. No console path to add a feature key to an existing plan (1.3, OD-1).
-5. Messaging has no plan or organization-type gate (OD-3).
+3. [AR-4] The TSA adapter cannot authenticate to a TSA (3.10).
+4. [AR-6] No console path to add a feature key to an existing plan (1.3, OD-1).
+5. [AR-7] Messaging has no plan or organization-type gate (OD-3).
 6. Live-mode holds in the billing command worker and the metering branch (4.1, 3.21).
-7. The production probe has no patterns for the new vendor features (4.4).
+7. [AR-11] The production probe has no patterns for the new vendor features (4.4).
