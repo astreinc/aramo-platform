@@ -8289,6 +8289,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-plan-create.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"

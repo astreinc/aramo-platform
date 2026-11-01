@@ -34057,6 +34057,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-plan-create.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-plan-create.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/tests/fixtures/ccp-plan-create-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/decisions.md"
