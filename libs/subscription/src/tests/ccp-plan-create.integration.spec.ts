@@ -191,7 +191,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP PLAN_CREATE g
     expect(await outcome(h.changeRequests.approve(as(FA_PO, 'platform_owner'), r.request.id, { step_index: 1 }, A6_CTX))).toBe('APPROVAL:USER_ALREADY_APPROVED');
     await h.changeRequests.approve(as(PO, 'platform_owner'), r.request.id, { step_index: 1 }, A6_CTX);
     // Apply is requester-only.
-    expect(await outcome(applyAs(r.request.id, CAT_FA, 'catalog_manager'))).toBe('REFUSED:NOT_REQUESTER');
+    expect(await outcome(applyAs(r.request.id, CAT_FA, 'catalog_manager'))).toBe('ERROR:NOT_REQUESTER:not_requester');
     expect(await outcome(applyAs(r.request.id))).toBe('OK');
   });
 
