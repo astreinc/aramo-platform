@@ -123,7 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('§1.18 SignTruste
         return real.renderGenerated(model);
       },
     };
-    const execution = new ExecutionService(prisma, repo, rendering, { getSourcePdf: async () => sourcePdf }, undefined, undefined, undefined, undefined, undefined, timestamps);
+    const execution = new ExecutionService(prisma, repo, rendering, { getSourcePdf: async () => sourcePdf }, undefined, undefined, undefined, undefined, undefined, undefined, timestamps);
     await execution.produce(TENANT, envelope_id);
 
     expect(await prisma.executionCertificate.count({ where: { envelope_id } })).toBe(1);

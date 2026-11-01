@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('§1.15 document s
       certificateBlocks.set(heading.replace('Envelope ', ''), input.blocks.map((b) => ('text' in b ? String(b.text) : '')).join('\n'));
       return renderGenerated(input);
     };
-    return new ExecutionService(prisma, repo, rendering, source, undefined, new OutboxService(prisma), undefined, undefined, undefined, sealer);
+    return new ExecutionService(prisma, repo, rendering, source, undefined, new OutboxService(prisma), undefined, undefined, undefined, undefined, undefined, sealer);
   }
 
   async function completedEnvelope(): Promise<{ envelope_id: string; document_id: string }> {
