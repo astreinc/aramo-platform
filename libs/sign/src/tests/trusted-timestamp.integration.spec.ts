@@ -133,7 +133,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('§1.18 SignTruste
     expect(pending.attempt_count).toBe(1);
 
     up = true;
-    expect(await timestamps.retryDue(new Date(Date.now() + 60_000))).toBe(1);
+    // The job grants every due row; the first test's PENDING rows share this database.
+    expect(await timestamps.retryDue(new Date(Date.now() + 60_000))).toBeGreaterThanOrEqual(1);
     const granted = await prisma.signTrustedTimestamp.findFirstOrThrow({ where: { envelope_id } });
     expect(granted.status).toBe('GRANTED');
     expect(granted.tsa_name).toBe('CN=Aramo Test TSA');
