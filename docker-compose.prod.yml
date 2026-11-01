@@ -519,6 +519,9 @@ services:
       # CCP-C1 — the Stripe command outbox + webhook inbox worker (opt-in; unset ⇒ off).
       - SIGN_BILLING_COMMANDS_ENABLED
       - SIGN_BILLING_COMMANDS_INTERVAL_MS
+      # Sign Feature Parity D-2 — metered usage billing (UsageRecorder + usage reporting worker).
+      # Unset ⇒ off: every metered feature call is refused and nothing is reported.
+      - SIGN_USAGE_BILLING_ENABLED
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - SIGN_KMS_KEY_ID

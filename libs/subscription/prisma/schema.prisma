@@ -100,6 +100,9 @@ model PlanVersion {
   plan             Plan                 @relation(fields: [plan_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   prices           PlanVersionPrice[]
   subscriptions    TenantSubscription[]
+  // Sign Feature Parity D-2 (A1) — per-unit prices of metered units on this version.
+  unit_prices      PlanVersionUnitPrice[]
+  usage_entries    UsageLedgerEntry[]
 
   @@unique([plan_id, version_number])
   // The composite FK target of TenantSubscription(plan_version_id, plan_id).
@@ -1178,5 +1181,105 @@ model CommercialBillingAdjustment {
   applied_at                    DateTime @db.Timestamptz(3)
 
   @@index([tenant_id, applied_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sign usage / metered billing (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §3 item 2,
+// §5 D-2, as amended by Amendment A1 §A1.1: "The usage-metering model (D-2) is built now").
+// Migration 20261101200000_sign_usage_metering. Built dark: no unit price is seeded.
+// ---------------------------------------------------------------------------------------------
+
+// The governed, closed registry of per-unit billable units (catalog data, seeded by migration;
+// UPDATE/DELETE rejected). Code mirror: METERED_UNIT_KEYS (src/lib/usage/metered-units.ts).
+model MeteredUnit {
+  unit_key       String                 @id
+  // CHECK: the CCP-A4 product registry (sign); the unit key namespace equals it.
+  product_key    String
+  name           String
+  // CHECK: message | verification | signature | stamp
+  quantity_label String
+  description    String
+  created_at     DateTime               @db.Timestamptz(3)
+  prices         PlanVersionUnitPrice[]
+  usage_entries  UsageLedgerEntry[]
+
+  @@schema("subscription")
+}
+
+// The per-unit price of a metered unit on ONE plan version. No row, or a NULL price, means the
+// unit is NOT SOLD on that version (the feature call is refused, fail closed). Written only while
+// the version is DRAFT (published with it through PLAN_VERSION_PUBLISH, Finance → Owner) and
+// immutable from INSERT (trigger). Never a code constant.
+model PlanVersionUnitPrice {
+  id                   String      @id @db.Uuid
+  plan_version_id      String      @db.Uuid
+  unit_key             String
+  unit_price_minor     Int?
+  // CHECK: USD when priced, NULL when not sold.
+  currency             String?
+  // CHECK: STRIPE (all three provider columns set together, only on a priced row).
+  provider             String?
+  provider_price_ref   String?
+  // The provider meter event name the usage of this unit is reported under.
+  provider_meter_event String?
+  created_by           String
+  created_at           DateTime    @db.Timestamptz(3)
+  plan_version         PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  unit                 MeteredUnit @relation(fields: [unit_key], references: [unit_key], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([plan_version_id, unit_key])
+  @@schema("subscription")
+}
+
+// The APPEND-ONLY, idempotent usage ledger (UPDATE/DELETE/TRUNCATE rejected). One row per billable
+// event, unique per (tenant_id, idempotency_key). Snapshots the subscription, its pinned version,
+// the unit price and the billing period at record time (a later version never re-prices recorded
+// usage); an INSERT trigger refuses a unit not sold on that version or a mismatched price.
+// No personal data: source_ref is an opaque Aramo reference.
+model UsageLedgerEntry {
+  id               String               @id @db.Uuid
+  tenant_id        String               @db.Uuid
+  product_key      String
+  unit_key         String
+  quantity         Int
+  occurred_at      DateTime             @db.Timestamptz(3)
+  recorded_at      DateTime             @db.Timestamptz(3)
+  idempotency_key  String
+  source_ref       String
+  subscription_id  String               @db.Uuid
+  plan_version_id  String               @db.Uuid
+  period_start     DateTime             @db.Timestamptz(6)
+  period_end       DateTime             @db.Timestamptz(6)
+  unit_price_minor Int
+  currency         String
+  amount_minor     BigInt
+  unit             MeteredUnit          @relation(fields: [unit_key], references: [unit_key], onDelete: Restrict, onUpdate: Restrict)
+  plan_version     PlanVersion          @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  report           UsageProviderReport?
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([tenant_id, product_key, period_start])
+  @@schema("subscription")
+}
+
+// The provider-reporting outbox of the usage ledger (one row per entry). Delivery state only; a
+// terminal row (REPORTED | SKIPPED | FAILED) is never changed and no row is deleted (trigger).
+model UsageProviderReport {
+  ledger_entry_id    String           @id @db.Uuid
+  tenant_id          String           @db.Uuid
+  // CHECK: PENDING | REPORTED | SKIPPED | FAILED
+  state              String
+  reason             String?
+  attempts           Int              @default(0)
+  next_attempt_at    DateTime         @db.Timestamptz(3)
+  provider           String?
+  provider_event_ref String?
+  reported_at        DateTime?        @db.Timestamptz(3)
+  created_at         DateTime         @db.Timestamptz(3)
+  updated_at         DateTime         @db.Timestamptz(3)
+  entry              UsageLedgerEntry @relation(fields: [ledger_entry_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([state, next_attempt_at])
   @@schema("subscription")
 }

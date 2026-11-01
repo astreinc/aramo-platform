@@ -437,7 +437,26 @@ export const billingApi = {
   selfService: () => apiClient.get<SelfServiceBilling>(`${BILLING}/self-service`),
   selfServiceCancel: () => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/cancel`, {}),
   selfServiceUpgrade: (plan_key: string) => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/upgrade`, { plan_key }),
+  // Sign Feature Parity D-2 (A1) — metered usage of the current billing period (dark: enabled false).
+  usage: () => apiClient.get<BillingUsage>(`${BILLING}/usage`),
 };
+
+// Sign Feature Parity D-2 (A1) — GET /v1/sign/billing/usage. While metered billing is off
+// (SIGN_USAGE_BILLING_ENABLED unset) the backend answers { enabled: false, period: null } and the
+// console shows nothing. Amounts are minor units of `currency`; a null unit price = not sold on the
+// current plan (usage recorded earlier in the period still shows).
+export interface BillingUsageUnit {
+  unit_key: string;
+  name: string;
+  quantity_label: string;
+  quantity: number;
+  unit_price_minor: number | null;
+  amount_minor: number;
+}
+export interface BillingUsage {
+  enabled: boolean;
+  period: { start: string; end: string; currency: string; units: BillingUsageUnit[]; total_amount_minor: number } | null;
+}
 
 // CCP-C7 — GET /v1/sign/billing/self-service. While the Sign Terms of Service are not APPROVED every
 // action reads { available: false, reason: 'SELF_SERVICE_TERMS_NOT_APPROVED' } (the designed disabled state).

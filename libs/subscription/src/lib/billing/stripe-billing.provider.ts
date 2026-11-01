@@ -17,6 +17,7 @@ import {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
+import type { MeterEventReport, UsageMeterReportPort } from './usage-meter.port.js';
 import {
   isWireSubscriptionEvent,
   wireAccountCountry,
@@ -38,6 +39,9 @@ import {
   wireSubscriptionDiscount,
   wireSubscriptionDiscountParams,
   wireSubscriptionQuery,
+  WIRE_METER_EVENTS_PATH,
+  wireMeterEventParams,
+  wireMeterEventRef,
 } from './stripe-wire.js';
 
 // Aramo Sign launch — Stripe over its REST API (no SDK dependency).
@@ -153,7 +157,7 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
 }
 
 @Injectable()
-export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort {
+export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort, UsageMeterReportPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
@@ -376,6 +380,21 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       complete,
       live: this.mode() === 'live',
     };
+  }
+
+  /** Sign usage / metered billing (D-2, A1) — a secret key is set (meter reporting needs no webhook secret). */
+  meterReportingConfigured(): boolean {
+    return this.secretKey() !== undefined;
+  }
+
+  /**
+   * Sign usage / metered billing (D-2, A1) — one Billing Meter Event, idempotent at Stripe on
+   * `identifier` (the ledger entry id) and on the request idempotency key.
+   */
+  async reportMeterEvent(event: MeterEventReport): Promise<{ provider_event_ref: string }> {
+    const body = form(wireMeterEventParams(event));
+    const r = await this.call('POST', WIRE_METER_EVENTS_PATH, body, `aramo-usage-${event.identifier}`);
+    return { provider_event_ref: wireMeterEventRef(r) ?? event.identifier };
   }
 
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent {
