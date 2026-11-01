@@ -143,7 +143,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
 
   it('the catalog: Standard Business purchasable when a price is configured; the operator plan hidden', async () => {
     const plans = await svc.catalog('sign', t);
-    expect(plans.map((p) => p.key)).toEqual(['aramo-sign-free-personal-v1', AramoSignStandardBusinessPlanKey, 'aramo-sign-standard-professional-v1', 'aramo-sign-enterprise-v1']);
+    expect(plans.map((p) => p.key)).toEqual(['aramo-sign-free-personal-v1', 'aramo-sign-standard-personal-v1', AramoSignStandardBusinessPlanKey, 'aramo-sign-standard-professional-v1', 'aramo-sign-enterprise-v1']);
     expect(plans.find((p) => p.key === AramoSignStandardBusinessPlanKey)).toMatchObject({ purchasable: true, allowances: expect.arrayContaining([{ allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY', available: true }]) });
     billing.configured = false;
     expect((await svc.catalog('sign', t)).find((p) => p.key === AramoSignStandardBusinessPlanKey)!.purchasable).toBe(false);

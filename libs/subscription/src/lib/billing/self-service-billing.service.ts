@@ -79,10 +79,17 @@ export class SelfServiceRefusedError extends Error {
  */
 export interface SelfServiceProductEntry {
   readonly terms_document: LegalDocumentKey;
+  // Sign Catalog v2 §4.3 (P-4) — the terms governing a PERSONAL tenant's self-service actions.
+  readonly personal_terms_document?: LegalDocumentKey;
 }
 export const SELF_SERVICE_PRODUCTS: Readonly<Record<ProductKey, SelfServiceProductEntry>> = {
-  sign: { terms_document: 'sign.terms_of_service' },
+  sign: { terms_document: 'sign.terms_of_service', personal_terms_document: 'sign.personal_terms_of_service' },
 };
+
+/** The terms document for the tenant's kind (a PERSONAL tenant without its own entry: none, fail closed). */
+function termsDocumentFor(e: SelfServiceProductEntry, tenant_kind: string): LegalDocumentKey | null {
+  return tenant_kind === 'PERSONAL' ? (e.personal_terms_document ?? null) : e.terms_document;
+}
 /** Injection token for a test-only fixture registry (never bound in a shipped module). */
 export const SELF_SERVICE_PRODUCT_REGISTRY = 'SELF_SERVICE_PRODUCT_REGISTRY';
 
@@ -161,8 +168,9 @@ export class SelfServiceBillingService {
     return e;
   }
 
-  private terms(e: SelfServiceProductEntry): LegalDocumentVersion | null {
-    return approvedLegalDocument(e.terms_document, this.legal);
+  private terms(e: SelfServiceProductEntry, tenant_kind: string): LegalDocumentVersion | null {
+    const key = termsDocumentFor(e, tenant_kind);
+    return key === null ? null : approvedLegalDocument(key, this.legal);
   }
 
   /** Gates 3–7 (shared by the view and the actions). Returns the self-service row. */
@@ -229,10 +237,11 @@ export class SelfServiceBillingService {
   }
 
   /** GET — the product's self-service state for this tenant (read only). */
-  async view(tenant_id: string, product_key: ProductKey): Promise<SelfServiceView> {
+  async view(tenant_id: string, product_key: ProductKey, tenant_kind = 'BUSINESS'): Promise<SelfServiceView> {
     const product = assertProductKey(product_key);
     const e = this.entry(product);
-    const terms = this.terms(e);
+    const terms = this.terms(e, tenant_kind);
+    const document_key = termsDocumentFor(e, tenant_kind) ?? e.terms_document;
     const row = await this.prisma.tenantSubscription.findFirst({
       where: { ...openBaseSubscription(tenant_id, product), source: 'SELF_SERVICE' },
       include: { plan: { select: { key: true } } },
@@ -253,7 +262,7 @@ export class SelfServiceBillingService {
       });
     return {
       product_key: product,
-      terms: { state: terms === null ? 'NOT_APPROVED' : 'APPROVED', document_key: e.terms_document, version: terms?.version ?? null, url: terms?.url ?? null },
+      terms: { state: terms === null ? 'NOT_APPROVED' : 'APPROVED', document_key, version: terms?.version ?? null, url: terms?.url ?? null },
       subscription:
         row === null
           ? null
@@ -272,13 +281,13 @@ export class SelfServiceBillingService {
    * local transaction: the gates, the SelfServiceBillingRequest, the command (outbox). A repeat for
    * the same subscription returns the recorded request (`replayed`); no second command.
    */
-  async cancel(input: { tenant_id: string; product_key: ProductKey; user_id: string; at?: Date }): Promise<SelfServiceCancelResult> {
+  async cancel(input: { tenant_id: string; product_key: ProductKey; user_id: string; tenant_kind?: string; at?: Date }): Promise<SelfServiceCancelResult> {
     const product = assertProductKey(input.product_key);
     const e = this.entry(product);
     const at = input.at ?? new Date();
     return this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, input.tenant_id);
-      const terms = this.terms(e);
+      const terms = this.terms(e, input.tenant_kind ?? 'BUSINESS');
       if (terms === null) throw new SelfServiceRefusedError('SELF_SERVICE_TERMS_NOT_APPROVED');
       // Replay: the request already recorded for the open SELF_SERVICE row returns as it stands.
       const open = await tx.tenantSubscription.findFirst({ where: { ...openBaseSubscription(input.tenant_id, product), source: 'SELF_SERVICE' }, select: { id: true } });
@@ -328,7 +337,7 @@ export class SelfServiceBillingService {
   async upgrade(input: { tenant_id: string; product_key: ProductKey; plan_key: string }): Promise<never> {
     const product = assertProductKey(input.product_key);
     const e = this.entry(product);
-    if (this.terms(e) === null) throw new SelfServiceRefusedError('SELF_SERVICE_TERMS_NOT_APPROVED');
+    if (this.terms(e, 'BUSINESS') === null) throw new SelfServiceRefusedError('SELF_SERVICE_TERMS_NOT_APPROVED');
     const row = await this.commonGates(this.prisma, input.tenant_id, product);
     await this.upgradeGate(input.tenant_id, product, row, input.plan_key);
     throw new SelfServiceRefusedError('FINANCIAL_TREATMENT_UNDEFINED', PRICE_CHANGE_UNDEFINED_DETAIL);

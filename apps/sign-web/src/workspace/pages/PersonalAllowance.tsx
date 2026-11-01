@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { billingApi, nextSendTime, type BillingAccount } from '../api';
+import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, usd } from '../catalog';
 import { fmtDate } from '../ui';
 
 // Aramo Sign Personal (Free) §4 — the Personal account's usage: the daily window
@@ -9,11 +10,26 @@ import { fmtDate } from '../ui';
 // gate is the backend's.
 
 export const BUSINESS_SIGNUP_URL = '/signup';
+// Catalog v2 directive §4.3 — the Personal plan page (Settings → Plan) where Free upgrades to Standard.
+export const PERSONAL_PLAN_HREF = '/personal/settings/billing';
 
-export function PersonalUpgradeLink() {
+// `standard` is false when /account reports `upgrade: null` (the Standard offer is off).
+export function PersonalUpgradeLink({ standard = true }: { standard?: boolean } = {}) {
+  if (!standard) {
+    return (
+      <p className="sg-help" data-testid="personal-upgrade">
+        Need to send more for a team? <a href={BUSINESS_SIGNUP_URL}>Create a Business organization</a>.
+      </p>
+    );
+  }
   return (
     <p className="sg-help" data-testid="personal-upgrade">
-      Need to send more? <a href={BUSINESS_SIGNUP_URL}>Create a Business organization</a>, or contact Aramo.
+      Need to send more?{' '}
+      <a href={PERSONAL_PLAN_HREF} data-testid="personal-upgrade-standard">
+        Upgrade to {STANDARD_PERSONAL_OFFER.name}
+      </a>{' '}
+      ({usd(STANDARD_PERSONAL_OFFER.price_minor)}/month, {STANDARD_PERSONAL_OFFER.monthly_documents} documents a month, no daily limit). For a team,{' '}
+      <a href={BUSINESS_SIGNUP_URL}>Create a Business organization</a>.
     </p>
   );
 }
@@ -94,10 +110,12 @@ export function PersonalAllowance({ loader = billingApi.account }: { loader?: ()
   const monthLimit = a.limit;
   const atDaily = daily !== null && daily.used >= daily.limit;
   const atMonthly = monthLimit !== null && a.used >= monthLimit;
+  const onFree = a.plan_key === FREE_PERSONAL_PLAN_KEY;
+  const planLabel = onFree ? 'Free plan' : `${account?.subscription?.plan_name ?? 'Your'} plan`;
   return (
-    <section className="sg-card" style={{ marginTop: 14 }} data-testid="personal-allowance" aria-label="Free plan usage">
+    <section className="sg-card" style={{ marginTop: 14 }} data-testid="personal-allowance" aria-label={`${planLabel} usage`}>
       <div className="sg-card__head">
-        Free plan
+        {planLabel}
         <span className="sg-card__end" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {monthLimit !== null ? <AllowanceChip used={a.used} limit={monthLimit} daily={daily} /> : null}
           <span className="sg-muted">Renews {fmtDate(a.period_end)}</span>
@@ -132,7 +150,7 @@ export function PersonalAllowance({ loader = billingApi.account }: { loader?: ()
                 ? `You’ve reached the limit for 24 hours. Your next send is available at ${nextSendTime(daily?.next_available_at)}.`
                 : 'You’ve reached the limit for 24 hours. You can send again later.'}
           </p>
-          <PersonalUpgradeLink />
+          {onFree ? <PersonalUpgradeLink standard={account?.upgrade !== null} /> : null}
         </div>
       ) : null}
     </section>

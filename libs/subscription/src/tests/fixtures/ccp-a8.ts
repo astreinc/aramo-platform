@@ -14,6 +14,9 @@ import type { Client } from 'pg';
 
 const SUB_DIR = resolve(__dirname, '../../../prisma/migrations');
 
+/** Sign Catalog v2 (directive fc755040): catalog DATA only, no schema. The A4/A5 goldens skip it. */
+export const SIGN_CATALOG_V2_MIGRATION = resolve(SUB_DIR, '20261101120000_sign_catalog_v2/migration.sql');
+
 /** Every subscription migration not in `applied` (absolute paths), in name order. */
 export function remainingSubscriptionMigrations(applied: readonly string[]): string[] {
   const done = new Set(applied.map((p) => resolve(p)));
@@ -24,8 +27,9 @@ export function remainingSubscriptionMigrations(applied: readonly string[]): str
     .filter((p) => !done.has(p));
 }
 
-export async function applyRemainingSubscriptionMigrations(pg: Client, applied: readonly string[]): Promise<string[]> {
-  const rest = remainingSubscriptionMigrations(applied);
+/** `skip`: data-only migrations a spec keeps out because it asserts the catalog as it was before them. */
+export async function applyRemainingSubscriptionMigrations(pg: Client, applied: readonly string[], skip: readonly string[] = []): Promise<string[]> {
+  const rest = remainingSubscriptionMigrations([...applied, ...skip]);
   for (const m of rest) await pg.query(readFileSync(m, 'utf8'));
   return rest;
 }

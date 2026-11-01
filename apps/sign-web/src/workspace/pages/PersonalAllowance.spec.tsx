@@ -93,10 +93,20 @@ describe('Personal allowance in the workspace', () => {
     expect(screen.getByRole('meter', { name: 'Envelopes sent today' })).toHaveAttribute('aria-valuenow', '1');
   });
 
+  it('upgrade: null (Standard offer off) keeps only the Business organization link', async () => {
+    render(<PersonalAllowance loader={() => Promise.resolve({ ...account(2, 2), upgrade: null })} />);
+    expect(await screen.findByText('You’ve reached the limit for 24 hours. You can send again later.')).toBeInTheDocument();
+    expect(screen.queryByTestId('personal-upgrade-standard')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Create a Business organization' })).toHaveAttribute('href', '/signup');
+  });
+
   it('at the daily or monthly limit it says so and offers a Business organization', async () => {
     const { unmount } = render(<PersonalAllowance loader={() => Promise.resolve(account(2, 2))} />);
     expect(await screen.findByText('You’ve reached the limit for 24 hours. You can send again later.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create a Business organization' })).toHaveAttribute('href', '/signup');
+    // Catalog v2 §4.3 — the primary way to send more is the in-place upgrade to Standard.
+    expect(screen.getByTestId('personal-upgrade-standard')).toHaveAttribute('href', '/personal/settings/billing');
+    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade to Standard ($10/month, 25 documents a month, no daily limit)');
     unmount();
     // The backend's next_available_at is shown as the exact time of the next send.
     const at = '2026-10-22T09:14:00Z';

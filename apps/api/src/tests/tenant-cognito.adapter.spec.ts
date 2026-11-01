@@ -65,7 +65,7 @@ describe('TenantCognitoAdapter.adminCreateUser (COG-ATTR-1)', () => {
     const cmd = send.mock.calls[0]![0] as { input: Record<string, unknown> };
     expect(cmd.input).toEqual({
       UserPoolId: 'us-east-1_test',
-      Username: 'owner@acme.io',
+      Username: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
       UserAttributes: [
         { Name: 'email', Value: 'owner@acme.io' },
         { Name: 'email_verified', Value: 'true' },
