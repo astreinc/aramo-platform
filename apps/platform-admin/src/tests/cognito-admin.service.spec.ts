@@ -30,7 +30,8 @@ describe('CognitoAdminService.adminCreateUser (COG-ATTR-1)', () => {
     const cmd = send.mock.calls[0]![0] as Sent;
     expect(cmd.input).toEqual({
       UserPoolId: 'us-east-1_platform',
-      Username: 'finance_admin@aramo.ai',
+      // The pool uses email as an alias: the Username is an opaque UUID, never the email.
+      Username: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
       UserAttributes: [
         { Name: 'email', Value: 'finance_admin@aramo.ai' },
         { Name: 'email_verified', Value: 'true' },
@@ -51,5 +52,17 @@ describe('CognitoAdminService.adminCreateUser (COG-ATTR-1)', () => {
     expect(names).toEqual(['email', 'email_verified', 'name', 'given_name', 'family_name', 'profile']);
     expect(cmd.input.UserAttributes.every((a) => a.Value.length > 0)).toBe(true);
     expect(cmd.input.MessageAction).toBe('SUPPRESS');
+  });
+
+  it('COG-PA-3 resend resolves the real (UUID) Username through the email alias before RESEND', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ Username: '7d1c2a4e-0000-4000-8000-000000000001' })
+      .mockResolvedValueOnce({});
+    await serviceWith(send).adminResendInvite({ pool: 'platform', email: 'finance@aramo.ai' });
+    expect((send.mock.calls[0]![0] as Sent).input).toEqual({ UserPoolId: 'us-east-1_platform', Username: 'finance@aramo.ai' });
+    const resend = send.mock.calls[1]![0] as Sent;
+    expect(resend.input.Username).toBe('7d1c2a4e-0000-4000-8000-000000000001');
+    expect(resend.input.MessageAction).toBe('RESEND');
   });
 });

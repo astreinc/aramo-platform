@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable, Logger } from '@nestjs/common';
 import {
   AdminCreateUserCommand,
@@ -85,10 +87,14 @@ export class CognitoAdminService {
     const UserPoolId = this.userPoolIdForPool(args.pool);
     // COG-ATTR-1: the pool requires name / given_name / family_name / profile.
     const userAttributes = cognitoCreateUserAttributes({ email: args.email, display_name: args.display_name });
+    // The pool uses email as an ALIAS (AliasAttributes=[email, phone_number]), so Cognito
+    // refuses an email-format Username ("Username cannot be of email format"). The user is
+    // created under an opaque UUID username; the verified email alias still resolves for
+    // AdminGetUser / AdminDeleteUser and for sign-in.
     const out = await this.client.send(
       new AdminCreateUserCommand({
         UserPoolId,
-        Username: args.email,
+        Username: randomUUID(),
         UserAttributes: userAttributes,
         DesiredDeliveryMediums: ['EMAIL'],
         ...(args.suppress === true ? { MessageAction: 'SUPPRESS' as const } : {}),
@@ -125,10 +131,15 @@ export class CognitoAdminService {
     if (args.display_name !== undefined && args.display_name !== null) {
       userAttributes.push({ Name: 'name', Value: args.display_name });
     }
+    // RESEND must name the user's real Username (the UUID minted at create), not the
+    // email alias — resolve it through AdminGetUser, which accepts the alias.
+    const existing = await this.client.send(
+      new AdminGetUserCommand({ UserPoolId, Username: args.email }),
+    );
     await this.client.send(
       new AdminCreateUserCommand({
         UserPoolId,
-        Username: args.email,
+        Username: existing.Username ?? args.email,
         UserAttributes: userAttributes,
         DesiredDeliveryMediums: ['EMAIL'],
         MessageAction: 'RESEND',

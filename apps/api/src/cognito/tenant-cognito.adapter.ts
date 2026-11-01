@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable, Logger } from '@nestjs/common';
 import {
   AdminCreateUserCommand,
@@ -68,7 +70,8 @@ export class TenantCognitoAdapter implements TenantCognitoPort {
     const out = await this.client.send(
       new AdminCreateUserCommand({
         UserPoolId,
-        Username: args.email,
+        // Email is a pool ALIAS, not the username: an email-format Username is refused.
+        Username: randomUUID(),
         UserAttributes: userAttributes,
         DesiredDeliveryMediums: ['EMAIL'],
       }),
