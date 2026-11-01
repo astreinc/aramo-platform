@@ -45,7 +45,8 @@ export const REDACTED_TEXT = '[redacted]';
 export const REDACTED_PAYLOAD_VALUE = '[REDACTED]';
 // Ledger payload keys that can carry personal data (LD-2). Every other key is an id,
 // hash, size, version or enum and is kept.
-export const PII_PAYLOAD_KEYS: readonly string[] = ['title', 'reason', 'name', 'email', 'attested_name', 'subject', 'message', 'decline_reason'];
+// Feature-Parity §1.7–§1.9 — 'phone' (a masked number on the messaging and one-time-code events).
+export const PII_PAYLOAD_KEYS: readonly string[] = ['title', 'reason', 'name', 'email', 'attested_name', 'subject', 'message', 'decline_reason', 'phone'];
 
 export const PURGE_QUEUED_EVENT = 'ENVELOPE_PURGE_QUEUED';
 export const PURGE_DEQUEUED_EVENT = 'ENVELOPE_PURGE_DEQUEUED';
@@ -377,6 +378,10 @@ export class SignPurgeRepository {
         }
         await tx.signRecipientBinding.updateMany({ where: { envelope_id }, data: { email: REDACTED_TEXT } });
         await tx.notificationDelivery.updateMany({ where: { tenant_id, envelope_id }, data: { last_error: null } });
+        // Feature-Parity §1.7–§1.9 — the recipient's phone number and its traces.
+        await tx.signRecipientMessaging.deleteMany({ where: { tenant_id, envelope_id } });
+        await tx.signMessageDelivery.updateMany({ where: { tenant_id, envelope_id }, data: { phone_hash: null, phone_masked: null } });
+        await tx.signRecipientOtpChallenge.updateMany({ where: { tenant_id, envelope_id }, data: { phone_hash: null, phone_masked: null } });
         events_redacted = await this.redactLedger(tx, tenant_id, envelope_id, now);
       }
 

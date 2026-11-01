@@ -329,3 +329,27 @@ export {
   type PurgeObjectsReport,
   type ExecuteOutcome,
 } from './lib/retention/sign-purge.repository.js';
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
+// — SMS and WhatsApp delivery and SMS one-time-code recipient verification (dark).
+export {
+  OUTBOUND_MESSAGING_PORT,
+  MESSAGING_CHANNELS,
+  type MessagingChannel,
+  type MessagePurpose,
+  type OutboundMessage,
+  type OutboundMessagingPort,
+  type OutboundSendResult,
+} from './lib/ports/outbound-messaging.port.js';
+export { SIGN_USAGE_RECORDER_PORT, type SignUsageRecord, type SignUsageRecorderPort, type SignUsageUnit } from './lib/ports/usage-recorder.port.js';
+export { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessage, type SignerLinkMessagingPort } from './lib/ports/signer-link-messaging.port.js';
+export * from './lib/messaging/messaging-rules.js';
+export {
+  SignMessagingRepository,
+  type DeliveryStatus,
+  type LedgerAppend,
+  type NewDelivery,
+  type OtpChallengeStatus,
+  type RecipientMessagingRow,
+  type SuppressedReason,
+} from './lib/messaging/sign-messaging.repository.js';

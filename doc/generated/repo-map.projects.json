@@ -2162,6 +2162,8 @@
       "KMS_SIGNATURE_ALGORITHM_PREFIX",
       "LocalEventPublisher",
       "MAX_COPY_RECIPIENTS",
+      "MESSAGING_CHANNELS",
+      "OUTBOUND_MESSAGING_PORT",
       "OutboxDeliveryService",
       "OutboxService",
       "PII_PAYLOAD_KEYS",
@@ -2186,6 +2188,7 @@
       "SELF_SIGN_SESSION_TTL_MS",
       "SENDER_DIRECTORY_PORT",
       "SIGNER_ATTESTED_NAME_PORT",
+      "SIGNER_LINK_MESSAGING_PORT",
       "SIGNER_NAME_MODES",
       "SIGNING_INVITATION_MAX_ATTEMPTS",
       "SIGNING_NOTIFICATION_PORT",
@@ -2197,6 +2200,7 @@
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
       "SIGN_REMINDER_LIMITS",
+      "SIGN_USAGE_RECORDER_PORT",
       "STORAGE_ACCOUNTING_PORT",
       "SenderFieldPassthroughRefusedError",
       "SessionIssueRefusedError",
@@ -2205,6 +2209,7 @@
       "SignContactRepository",
       "SignIdempotencyRepository",
       "SignIntegrationRepository",
+      "SignMessagingRepository",
       "SignPurgeRepository",
       "SignSavedSignatureRepository",
       "SignWebhookRepository",
@@ -4127,6 +4132,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7863,6 +7874,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12853,6 +12870,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13376,6 +13399,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

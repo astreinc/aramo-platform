@@ -7,6 +7,7 @@ import { EsignRepository } from './esign.repository.js';
 import { signBaseUrl } from './sign-base-url.js';
 import { generateSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import { SIGNING_NOTIFICATION_PORT, type SigningNotificationPort } from './ports/signing-notification.port.js';
+import { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessagingPort } from './ports/signer-link-messaging.port.js';
 import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §4 — delivery of the next signer's
@@ -47,6 +48,9 @@ export class SigningInvitationService {
     private readonly prisma: PrismaService,
     private readonly repo: EsignRepository,
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+    // Feature-Parity §1.7 / §1.8 — the same link also goes by SMS / WhatsApp when the
+    // sender chose that channel. Unbound = email only. Never fails the delivery.
+    @Optional() @Inject(SIGNER_LINK_MESSAGING_PORT) private readonly messaging?: SignerLinkMessagingPort,
   ) {}
 
   // Delivers open invitation intents (optionally for one envelope). Returns how many
@@ -150,6 +154,9 @@ export class SigningInvitationService {
         return false;
       }
       await this.prisma.notificationDelivery.update({ where: { id: intent.id }, data: { status: 'SENT', sent_at: new Date(), last_error: null } });
+      await this.messaging
+        ?.deliverSigningLink({ tenant_id: intent.tenant_id, envelope_id: intent.envelope_id, signer_id: issued.signer.id, purpose: 'INVITATION', signing_url: `${base}/s/${issued.raw}` })
+        .catch((err: unknown) => this.logger.warn(`invitation ${intent.id} message channel failed: ${(err as Error).message}`));
       return true;
     } catch (err) {
       await this.fail(intent.id, (err as Error).message);

@@ -581,6 +581,33 @@ services:
       - SIGN_PERSONAL_ALLOWED_COUNTRIES
       - SIGN_PERSONAL_SEND_WORDING
       - SIGN_SMS_PROVIDER
+      # Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment
+      # A1) — SMS / WhatsApp signer delivery and SMS one-time codes. DARK: the features are
+      # NOT_AVAILABLE and every provider is off while unset. SIGN_SMS_PROVIDER (above):
+      # aws | msg91 | aws,msg91 | log. Go-live needs the vendor contract, 10DLC / DLT / Meta
+      # template registration, counsel review and a separate PO authorization.
+      - SIGN_SMS_AWS_ORIGINATION_IDENTITY
+      - SIGN_SMS_AWS_REGION
+      - SIGN_SMS_AWS_CONFIGURATION_SET
+      - SIGN_SMS_AWS_ACCESS_KEY_ID
+      - SIGN_SMS_AWS_SECRET_ACCESS_KEY
+      - SIGN_SMS_MSG91_AUTH_KEY
+      - SIGN_SMS_MSG91_TEMPLATE_INVITATION
+      - SIGN_SMS_MSG91_TEMPLATE_REMINDER
+      - SIGN_SMS_MSG91_TEMPLATE_OTP
+      - SIGN_WHATSAPP_PROVIDER
+      - SIGN_WHATSAPP_PHONE_NUMBER_ID
+      - SIGN_WHATSAPP_ACCESS_TOKEN
+      - SIGN_WHATSAPP_TEMPLATE_INVITATION
+      - SIGN_WHATSAPP_TEMPLATE_REMINDER
+      - SIGN_WHATSAPP_TEMPLATE_LANGUAGE
+      - SIGN_WHATSAPP_GRAPH_VERSION
+      - SIGN_WHATSAPP_APP_SECRET
+      - SIGN_WHATSAPP_VERIFY_TOKEN
+      - SIGN_MESSAGING_QUIET_HOURS
+      - SIGN_MESSAGING_DEFAULT_TIMEZONE
+      - SIGN_MESSAGING_TENANT_HOURLY_LIMIT
+      - SIGN_MESSAGING_TENANT_DAILY_LIMIT
       - SIGN_GEOIP_DB_PATH=${SIGN_GEOIP_DB_PATH:-/geoip/GeoLite2-Country.mmdb}
       - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}
       # Aramo Sign Mobile (M-A3 §2) — push delivery. SIGN_PUSH_DELIVERY: disabled (the

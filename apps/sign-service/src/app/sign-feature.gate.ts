@@ -17,6 +17,10 @@ export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
+// Feature-Parity §1.7 / §1.8 / §1.9 (Amendment A1) — dark until the PO authorizes each flip.
+export const SIGN_SMS_DELIVERY_FEATURE = 'sign.sms_delivery';
+export const SIGN_WHATSAPP_DELIVERY_FEATURE = 'sign.whatsapp_delivery';
+export const SIGN_SMS_OTP_FEATURE = 'sign.sms_otp';
 
 @Injectable()
 export class SignFeatureGate {
