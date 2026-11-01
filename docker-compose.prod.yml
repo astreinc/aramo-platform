@@ -612,6 +612,16 @@ services:
       - SIGN_SEAL_CERT_SUBJECT_DN
       - SIGN_SEAL_CERT_CHAIN
       - SIGN_SEAL_RETRY_INTERVAL_MS
+      # Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP and India e-stamp.
+      # No vendor is contracted: unset = disabled adapters, the features stay NOT_AVAILABLE.
+      # SIGN_QES_PROVIDER=csc selects the generic CSC API v2 adapter, which needs all four
+      # SIGN_QES_CSC_* values; SIGN_ESTAMP_PROVIDER has no adapter yet (any value = disabled).
+      - SIGN_QES_PROVIDER
+      - SIGN_QES_CSC_BASE_URL
+      - SIGN_QES_CSC_OAUTH_URL
+      - SIGN_QES_CSC_CLIENT_ID
+      - SIGN_QES_CSC_CLIENT_SECRET
+      - SIGN_ESTAMP_PROVIDER
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as

@@ -544,3 +544,66 @@ export {
   type SignPaymentRow,
   type SignPaymentRefundRow,
 } from './lib/payments/sign-payment.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 / §1.19 under Amendment A1 —
+// vendor-neutral QES and India e-stamp ports and workflows (dark; disabled adapters only).
+export {
+  QES_SIGNING_PORT,
+  QES_HASH_ALGORITHM_SHA256_OID,
+  DisabledQesSigningAdapter,
+  QesProviderError,
+  QesProviderNotConfiguredError,
+  type QesSigningPort,
+  type QesSignerHint,
+  type QesBeginIdentityInput,
+  type QesCompleteIdentityInput,
+  type QesCredential,
+  type QesBeginSignatureInput,
+  type QesSignHashInput,
+  type QesSignatureResult,
+} from './lib/ports/qes-signing.port.js';
+export {
+  ESTAMP_PORT,
+  DisabledEstampAdapter,
+  EstampProviderNotConfiguredError,
+  type EstampPort,
+  type EstampOrderInput,
+  type EstampOrderResult,
+  type EstampOrderStatus,
+  type EstampCertificateResult,
+} from './lib/ports/estamp.port.js';
+export { RegulatedSigningStateError, RegulatedSigningValidationError } from './lib/regulated/regulated-errors.js';
+export {
+  RSA_SHA256_SIGNATURE_OID,
+  certificateChainSha256,
+  isParsableChain,
+  qesSigningDigest,
+  signerCertificateSummary,
+  verifyQesSignature,
+  type CertificateSummary,
+} from './lib/regulated/qes-evidence.js';
+export { assertQesSatisfied } from './lib/regulated/qes-guard.js';
+export {
+  QesWorkflowService,
+  QES_EVENT,
+  QES_SIGNATURE_LEVELS,
+  QES_STATES,
+  qesView,
+  type QesSignatureLevel,
+  type QesState,
+  type QesSignatureView,
+  type QesStepResult,
+  type QesSessionRef,
+} from './lib/regulated/qes-workflow.service.js';
+export {
+  EstampWorkflowService,
+  ESTAMP_EVENT,
+  ESTAMP_STATES,
+  INDIA_STATE_CODES,
+  estampView,
+  parseEstampRequest,
+  type EstampState,
+  type EstampRequestInput,
+  type EstampOrderView,
+  type EstampPollResult,
+  type StoredEstampCertificate,
+} from './lib/regulated/estamp-workflow.service.js';

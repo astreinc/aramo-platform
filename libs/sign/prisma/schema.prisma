@@ -85,6 +85,9 @@ model SignatureEnvelope {
   abuse_reports      AbuseReport[]
   party_deletions    SignEnvelopePartyDeletion[]
   trusted_timestamps SignTrustedTimestamp[]
+  // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES requirements and India e-stamp orders.
+  qes_signatures     SignQesSignature[]
+  estamp_orders      SignEstampOrder[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -115,6 +118,8 @@ model EnvelopeDocument {
   envelope   SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   fields     SignatureField[]
   page_sizes SignEnvelopeDocumentPages?
+  // Feature-Parity §1.19 (Amendment A1) — set on the e-stamp certificate document.
+  estamp_orders SignEstampOrder[]
 
   @@unique([envelope_id, document_ref])
   @@index([tenant_id])
@@ -175,6 +180,8 @@ model Signer {
   recipient_bindings SignRecipientBinding[]
   abuse_reports      AbuseReport[]
   identity_verifications SignRecipientIdentityVerification[]
+  // Feature-Parity §1.16 (Amendment A1) — this signer's qualified-signature workflow.
+  qes_signature      SignQesSignature?
   @@unique([envelope_id, signing_order])
   @@index([tenant_id])
   @@index([envelope_id])
@@ -1296,5 +1303,91 @@ model SignPaymentWebhookEvent {
   received_at  DateTime  @default(now()) @db.Timestamptz
   processed_at DateTime? @db.Timestamptz
 
+  @@schema("sign")
+}
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 under Amendment A1 —
+// one signer's qualified electronic signature (QES) through a QTSP remote-signing flow
+// (migration 20261101300000). Aramo is not a QTSP: the QTSP proofs identity, holds the
+// key and signs; this row keeps the workflow state and the evidence the QTSP returned.
+// CHECKs: signature_level QES; state REQUIRED|IDENTITY_PROOFING_PENDING|AUTHORIZED|
+// SIGNED|FAILED; AUTHORIZED and SIGNED carry a credential and a certificate chain;
+// SIGNED carries the signature. No access token or secret is ever stored.
+model SignQesSignature {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  envelope_id              String    @db.Uuid
+  signer_id                String    @unique @db.Uuid
+  signature_level          String    @default("QES")
+  state                    String    @default("REQUIRED")
+  // The adapter that ran the flow (e.g. "csc"); NULL until the signer starts.
+  provider                 String?
+  // sha256 of the OAuth `state` nonce of the step in flight; the raw nonce is never stored.
+  pending_state_sha256     String?
+  credential_id            String?
+  certificate_chain_pem    String[]
+  certificate_chain_sha256 String?
+  authorization_level      String?
+  hash_algorithm_oid       String?
+  signature_algorithm_oid  String?
+  // base64 digest the signer authorized (sha256 over the envelope's source documents).
+  signed_digest_b64        String?
+  signature_value_b64      String?
+  signature_sha256         String?
+  qtsp_reference           String?
+  failure_reason           String?
+  requested_by             String    @db.Uuid
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  updated_at               DateTime  @default(now()) @db.Timestamptz
+  identity_started_at      DateTime? @db.Timestamptz
+  authorized_at            DateTime? @db.Timestamptz
+  signed_at                DateTime? @db.Timestamptz
+  failed_at                DateTime? @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, envelope_id], map: "SignQesSignature_envelope_idx")
+  @@schema("sign")
+}
+
+// Feature-Parity §1.19 under Amendment A1 — an Indian e-stamp paper bought through an
+// aggregator and placed in front of the envelope's documents (migration 20261101300000).
+// Amounts are paise. CHECKs: state REQUESTED|ORDERED|ISSUED|ATTACHED|FAILED; state_code
+// IN-XX; positive duty; ISSUED/ATTACHED carry the certificate; ATTACHED carries the
+// document. At most one live (non-FAILED) order per envelope (partial unique index).
+model SignEstampOrder {
+  id                         String    @id @db.Uuid
+  tenant_id                  String    @db.Uuid
+  envelope_id                String    @db.Uuid
+  state                      String    @default("REQUESTED")
+  provider                   String
+  provider_order_ref         String?
+  state_code                 String
+  article_code               String
+  stamp_duty_amount_paise    BigInt
+  consideration_amount_paise BigInt?
+  first_party                String
+  second_party               String
+  purchaser                  String
+  description                String?
+  certificate_number         String?
+  certificate_issued_at      DateTime? @db.Timestamptz
+  certificate_sha256         String?
+  certificate_object_key     String?
+  certificate_page_count     Int?
+  attached_document_id       String?   @db.Uuid
+  failure_reason             String?
+  requested_by               String    @db.Uuid
+  created_at                 DateTime  @default(now()) @db.Timestamptz
+  updated_at                 DateTime  @default(now()) @db.Timestamptz
+  ordered_at                 DateTime? @db.Timestamptz
+  attached_at                DateTime? @db.Timestamptz
+  failed_at                  DateTime? @db.Timestamptz
+
+  envelope          SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  attached_document EnvelopeDocument? @relation(fields: [attached_document_id], references: [id], onDelete: SetNull)
+
+  @@index([tenant_id, envelope_id], map: "SignEstampOrder_envelope_idx")
   @@schema("sign")
 }

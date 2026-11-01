@@ -17,6 +17,8 @@ import { PrismaSignerAttestedNameAdapter } from './prisma-signer-attested-name.a
 import { TrustedTimestampService } from './trusted-timestamp/trusted-timestamp.service.js';
 import { SignPaymentRepository } from './payments/sign-payment.repository.js';
 import { DocumentSealService } from './document-seal/document-seal.service.js';
+import { QesWorkflowService } from './regulated/qes-workflow.service.js';
+import { EstampWorkflowService } from './regulated/estamp-workflow.service.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
 // (apps/sign-service) supplies the EvidenceManifestSignerPort via forRoot:
@@ -77,10 +79,15 @@ export class EsignModule {
         // Feature-Parity §1.15 — the PAdES document seal. Inert unless the composition
         // root binds DOCUMENT_SEAL_SIGNING_PROVIDER (env + feature availability).
         DocumentSealService,
+        // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp workflows.
+        // Their vendor ports (QES_SIGNING_PORT, ESTAMP_PORT) come from extraProviders;
+        // unbound, both are disabled.
+        QesWorkflowService,
+        EstampWorkflowService,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
     };
   }
 }

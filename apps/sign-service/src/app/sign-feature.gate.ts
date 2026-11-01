@@ -33,6 +33,9 @@ export const SIGN_SMS_OTP_FEATURE = 'sign.sms_otp';
 // verification (government ID; KBA). Dark until the PO flips them (A1.2).
 export const SIGN_ID_VERIFICATION_FEATURE = 'sign.id_verification';
 export const SIGN_KBA_FEATURE = 'sign.kba';
+// Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP; India e-stamp.
+export const SIGN_QES_FEATURE = 'sign.qes';
+export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
 
 @Injectable()
 export class SignFeatureGate {

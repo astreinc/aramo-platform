@@ -11,6 +11,7 @@ import {
 } from '@aramo/sign';
 
 import { toHttp } from '../esign-http.controller.js';
+import { regulatedHttp } from '../regulated/regulated-http.js';
 
 // Aramo Sign Mobile — the HTTP side of the envelope contracts
 // (Aramo-Sign-Unified-Product-Amendment-M-A3 §3, §6, §7, §8; M-A2 §2.2).
@@ -123,6 +124,9 @@ export function senderHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof InboxSigningRefusedError) {
     return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', inboxRefusalMessage(e.reason), 409, { requestId, details: { reason: e.reason } });
   }
+  // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES / e-stamp refusals.
+  const regulated = regulatedHttp(e, requestId);
+  if (regulated !== null) return regulated;
   return toHttp(e, requestId);
 }
 

@@ -22,6 +22,8 @@ import {
   SIGN_PAYMENT_PROVIDER_PORT,
   STORAGE_ACCOUNTING_PORT,
   TRUSTED_TIMESTAMP_PORT,
+  QES_SIGNING_PORT,
+  ESTAMP_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
@@ -99,6 +101,11 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
 import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './document-templates-http.adapter.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
+import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
+import { estampAdapterFromEnv } from './regulated/estamp-adapter.js';
+import { RegulatedSigningService } from './regulated/regulated-signing.service.js';
+import { EsignSenderRegulatedController } from './regulated/esign-sender-regulated.controller.js';
+import { EsignSignerQesController } from './regulated/esign-signer-qes.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
@@ -279,6 +286,10 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         { provide: KBA_PORT, useFactory: () => kbaProviderFromEnv(process.env) },
         { provide: SIGN_USAGE_RECORDER_PORT, useClass: NoopSignUsageRecorder },
         IdentityVerificationService,
+        // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES (QTSP) and India e-stamp ports.
+        // Env unset (the default) ⇒ disabled adapters; no vendor is contracted.
+        { provide: QES_SIGNING_PORT, useFactory: () => qesSigningAdapterFromEnv(process.env) },
+        { provide: ESTAMP_PORT, useFactory: () => estampAdapterFromEnv(process.env) },
       ],
     }),
   ],
@@ -287,7 +298,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -306,6 +317,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     RecipientInboxService,
     // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
     SignFeatureGate,
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp (dark).
+    RegulatedSigningService,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
     // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
