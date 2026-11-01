@@ -1040,6 +1040,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "BILLING_REGION_US",
+      "BUSINESS_OWNER_ROLE_KEYS",
       "CognitoIdentityRetirement",
       "CursorDecodeError",
       "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
@@ -1115,6 +1116,7 @@
       "PERSONAL_SIGNUP_TTL_MS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PERSONAL_UNBOUND_LAPSE_DAYS",
+      "PERSONAL_UPGRADE_AUDIT_SOURCE",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRIVACY_OUTCOME_TEXT_MAX",
@@ -1122,6 +1124,7 @@
       "PRODUCT_KEYS",
       "PersonalRiskService",
       "PersonalSignupRepository",
+      "PersonalUpgradeRepository",
       "PrismaService",
       "PrivacyRequestService",
       "PrivacySubjectService",
@@ -7826,6 +7829,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10306,6 +10315,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/AccountUpgrade.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -10940,6 +10955,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13364,6 +13391,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

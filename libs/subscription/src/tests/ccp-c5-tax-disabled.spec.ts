@@ -131,7 +131,11 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
     // The ONE allowed mention: the organization's own registration number in the tenant profile
     // (Sign Signup A1 §2.2), an identity column. It never reaches the billing-profile port or the
     // provider (C5-G-6 and C5-G-4 prove that).
-    const ALLOWED: Record<string, string[]> = { 'apps/platform-admin/src/app/signup/sign-signup.service.ts': ['tax_id: o.tax_id,'] };
+    // Feature-Parity §5 — the Personal → Business upgrade writes the same profile column.
+    const ALLOWED: Record<string, string[]> = {
+      'apps/platform-admin/src/app/signup/sign-signup.service.ts': ['tax_id: o.tax_id,'],
+      'apps/sign-service/src/app/account/personal-upgrade.service.ts': ['tax_id: o.tax_id,'],
+    };
     const offenders: string[] = [];
     for (const f of BILLING_ROOTS.flatMap(sources)) {
       const rel = relative(REPO, f);

@@ -214,6 +214,11 @@ export const EVENT_TYPES = [
   // attempts after 180 days. GLOBAL (no tenant exists); subject_id = the run id;
   // the payload carries counts and cutoffs only (no email, phone or address).
   'identity.personal.signup.attempts_purged',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5 — the owner upgraded a
+  // Personal account to a Business organization IN PLACE (same tenant id). Inserted IN
+  // THE SAME transaction as the kind change (PersonalUpgradeRepository). Tenant-scoped;
+  // subject_id = the tenant; actor = the owner.
+  'identity.tenant.upgraded_to_business',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -323,6 +328,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
   'identity.personal.risk.send_location_signal',
+  // Feature-Parity §5 — the Personal → Business upgrade (carries the tenant id).
+  'identity.tenant.upgraded_to_business',
 ]);
 
 export interface WriteAuditEventInput {

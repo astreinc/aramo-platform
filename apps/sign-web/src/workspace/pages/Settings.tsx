@@ -8,6 +8,7 @@ import { useWorkspace } from '../workspace';
 import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
+import { UpgradeToBusinessSection } from './AccountUpgrade';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 import { RetentionSection } from './Retention';
 
@@ -156,6 +157,8 @@ function PersonalSection() {
           for the Personal account owner (backend-decided; an older backend without the flag
           falls back to the workspace kind). Business users are organization-managed. */}
       <PrivacyRequestsSection personal={ctx.personal_account_owner ?? ctx.workspace === 'personal'} />
+      {/* Feature-Parity §5 — Personal → Business upgrade (dark unless the backend enables it). */}
+      {ctx.workspace === 'personal' ? <UpgradeToBusinessSection /> : null}
       {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
       {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>
