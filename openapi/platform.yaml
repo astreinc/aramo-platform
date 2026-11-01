@@ -3713,6 +3713,9 @@ paths:
         (newest first), their terms, the open-subscription pin count and the open
         publish/retire change requests; plus the approval chain a publish or retire request
         gets under the ACTIVE commercial policy (`publish_chain`, null when no valid policy).
+        CCP PLAN_CREATE: `plan_create` carries, per registered product, the AVAILABLE capability
+        keys a new plan may name, and the open PLAN_CREATE requests (nothing else exists for a new
+        plan until its request is applied). The same chain as `publish_chain` applies.
         Requires `platform:catalog:read`.
       security:
         - BearerAuth: []
@@ -9198,7 +9201,18 @@ components:
         `payment_terms` (billing_mode, POSTPAID postpaid_approval, currency USD, IANA timezone,
         obligations with INITIAL for PREPAID, optional grace_days); a PREPAID SUBSCRIPTION_OPEN needs
         its applied INITIAL receipt.
-      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND, PAYMENT_RECORD]
+        CCP PLAN_CREATE (catalog row 17): `PLAN_CREATE` creates a new catalog plan and its PUBLISHED
+        version 1 when the approved request is applied by its requester. Requested with
+        `platform:catalog:draft` (catalog_manager); chain Finance → Owner, always. No tenant_id or
+        product_key on the request: the payload is the whole plan definition (closed key set: plan_key,
+        product_key, tenant_kind, sales_model, name, description, list_price_minor, currency,
+        billing_interval, commitment_months, eligibility, support_tier, display_order, allowances,
+        allowance_windows, capacities, features). Every capability key must be AVAILABLE (400
+        `invalid_payload`, code `PLAN_CREATE_FEATURE_NOT_AVAILABLE`). A taken plan key is 409
+        `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with `details.reason` `plan_key_taken` (a plan exists) or
+        `plan_create_open` (another open PLAN_CREATE names it). The created plan is ACTIVE and not
+        sellable; no provider price is pinned.
+      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND, PAYMENT_RECORD, PLAN_CREATE]
 
     CommercialChangeRequestState:
       type: string
@@ -9457,12 +9471,12 @@ components:
     CommercialCatalogApplication:
       type: object
       additionalProperties: false
-      description: CCP-B2-backend — one applied plan-version publish or retire.
+      description: CCP-B2-backend — one applied plan-version publish or retire; CCP PLAN_CREATE — one applied plan creation (plan_version_id = the created, PUBLISHED version 1).
       required: [id, change_request_id, action_type, plan_id, plan_version_id, retired_plan_version_id, provider_price_ref, attempt, applied_by, applied_at]
       properties:
         id: { type: string, format: uuid }
         change_request_id: { type: string, format: uuid }
-        action_type: { type: string, enum: [PLAN_VERSION_PUBLISH, PLAN_RETIRE] }
+        action_type: { type: string, enum: [PLAN_VERSION_PUBLISH, PLAN_RETIRE, PLAN_CREATE] }
         plan_id: { type: string, format: uuid }
         plan_version_id: { type: string, format: uuid }
         retired_plan_version_id: { type: [string, 'null'], format: uuid }
@@ -10097,7 +10111,7 @@ components:
     CommercialCatalog:
       type: object
       additionalProperties: false
-      required: [products, publish_chain]
+      required: [products, publish_chain, plan_create]
       properties:
         products:
           type: array
@@ -10141,6 +10155,53 @@ components:
                   type: integer
                 approval_expiry_hours:
                   type: integer
+        plan_create:
+          type: object
+          additionalProperties: false
+          description: CCP PLAN_CREATE (catalog row 17) — creation options and the pending creations.
+          required: [available_keys, pending]
+          properties:
+            available_keys:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [product_key, keys]
+                properties:
+                  product_key:
+                    type: string
+                    enum: [sign]
+                  keys:
+                    type: array
+                    items:
+                      type: string
+            pending:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, plan_key, name, product_key, tenant_kind, sales_model, state, requested_by, expires_at]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  plan_key:
+                    type: string
+                  name:
+                    type: string
+                  product_key:
+                    type: string
+                  tenant_kind:
+                    type: string
+                  sales_model:
+                    type: string
+                  state:
+                    type: string
+                  requested_by:
+                    type: string
+                  expires_at:
+                    type: [string, 'null']
+                    format: date-time
 
     CommercialCatalogVersionDetail:
       type: object

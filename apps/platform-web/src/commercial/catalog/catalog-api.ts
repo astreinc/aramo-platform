@@ -1,5 +1,7 @@
 import { apiClient } from '@aramo/fe-foundation';
 
+import type { NewPlanPayload } from './new-plan-model';
+
 // CCP-B2 (Program Build Directive §5.3 row B2) — typed client for the product and plan catalog
 // (/platform/commercial/catalog, platform-admin) and for the two change-request calls the
 // Catalog screen makes to request a publish or a retire (/platform/commercial/change-requests,
@@ -75,9 +77,27 @@ export interface CatalogChainPreview {
   approval_expiry_hours: number;
 }
 
+/** CCP PLAN_CREATE (PC-8) — an open request to create a plan (nothing else exists until it is applied). */
+export interface CatalogPendingPlanCreate {
+  id: string;
+  plan_key: string;
+  name: string;
+  product_key: string;
+  tenant_kind: string;
+  sales_model: string;
+  state: string;
+  requested_by: string;
+  expires_at: string | null;
+}
+
 export interface Catalog {
   products: { product_key: string; plans: CatalogPlan[] }[];
   publish_chain: CatalogChainPreview | null;
+  /** CCP PLAN_CREATE — the capability keys a new plan may name (PC-4) and the pending creations. */
+  plan_create?: {
+    available_keys: { product_key: string; keys: string[] }[];
+    pending: CatalogPendingPlanCreate[];
+  };
 }
 
 export interface CatalogVersionDetail {
@@ -151,6 +171,21 @@ export const catalogApi = {
    * the request now, from the server's `apply_actionable` on the request read. Merge train
    * TD-MERGE-9: the Apply button renders only when this is true.
    */
+  /**
+   * CCP PLAN_CREATE (catalog row 17) — create and submit a PLAN_CREATE change request (requester scope
+   * platform:catalog:draft; Finance → Owner). Nothing is created until the approved request is applied
+   * by its requester (POST …/{id}/apply). Same evidence convention as the publish request.
+   */
+  async requestPlanCreate(input: { payload: NewPlanPayload; reason: string; evidence: string; idempotency_key: string }): Promise<CatalogChangeRequest> {
+    const created = await apiClient.post<{ request: CatalogChangeRequest }>(CR, {
+      action_type: 'PLAN_CREATE',
+      payload: input.payload,
+      reason: `${input.reason.trim()}\n\nEvidence: ${input.evidence.trim()}`,
+      idempotency_key: input.idempotency_key,
+    });
+    const submitted = await apiClient.post<{ request: CatalogChangeRequest }>(`${CR}/${encodeURIComponent(created.request.id)}/submit`);
+    return submitted.request;
+  },
   async isApplyActionable(id: string): Promise<boolean> {
     const out = await apiClient.get<{ apply_actionable?: boolean }>(`${CR}/${encodeURIComponent(id)}`);
     return out.apply_actionable === true;

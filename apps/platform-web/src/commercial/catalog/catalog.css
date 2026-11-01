@@ -397,3 +397,12 @@
   display: grid;
   gap: 16px;
 }
+
+/* CCP PLAN_CREATE — "New plan…" sits at the end of the plans card head; the pending creations list. */
+.pc-card__head--row .pc-btn {
+  margin-left: auto;
+}
+.pc-pending {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--pw-rule);
+}

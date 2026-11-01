@@ -76,6 +76,19 @@ export interface CatalogPlanDto {
   display_order: number;
 }
 
+/** CCP PLAN_CREATE (PC-8) — an open request to create a plan. */
+export interface CatalogPendingPlanCreateDto {
+  id: string;
+  plan_key: string;
+  name: string;
+  product_key: string;
+  tenant_kind: string;
+  sales_model: string;
+  state: string;
+  requested_by: string;
+  expires_at: string | null;
+}
+
 export interface CatalogResponseDto {
   products: { product_key: string; plans: (CatalogPlanDto & { versions: CatalogVersionSummaryDto[] })[] }[];
   publish_chain: {
@@ -85,6 +98,11 @@ export interface CatalogResponseDto {
     policy_version_number: number;
     approval_expiry_hours: number;
   } | null;
+  /** CCP PLAN_CREATE — the capability keys a new plan may name (PC-4) and the pending creations. */
+  plan_create: {
+    available_keys: { product_key: string; keys: string[] }[];
+    pending: CatalogPendingPlanCreateDto[];
+  };
 }
 
 export interface CatalogVersionDetailDto {

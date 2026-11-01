@@ -43,6 +43,11 @@ class UuidShapePipe implements PipeTransform<string, string> {
 // There is deliberately NO publish, retire or apply route: publishing and retiring are
 // PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests (POST /platform/commercial/change-requests,
 // Finance → Owner), applied by CCP-A6 (PLATFORM-UX-1 Amendment A1-2).
+//
+// CCP PLAN_CREATE (catalog row 17): there is no plan-creation route here either. A new plan is a
+// PLAN_CREATE change request on the same change-request route (Finance → Owner), applied by its
+// requester; GET returns `plan_create` (the capability keys a new plan may name, and the pending
+// creations) so the console can build the request.
 
 @Controller('platform/commercial/catalog')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -57,6 +62,10 @@ export class PlatformCommercialCatalogController {
     return {
       products: view.products.map((p) => ({ product_key: p.product_key, plans: p.plans.map((pl) => ({ ...pl, versions: pl.versions.map(summaryDto) })) })),
       publish_chain: view.publish_chain,
+      plan_create: {
+        available_keys: view.plan_create.available_keys.map((k) => ({ product_key: k.product_key, keys: [...k.keys] })),
+        pending: view.plan_create.pending.map((r) => ({ ...r, expires_at: iso(r.expires_at) })),
+      },
     };
   }
 
