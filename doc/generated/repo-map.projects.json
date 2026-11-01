@@ -2606,6 +2606,7 @@
       "SUPPORT_EXTENSION_SCOPE",
       "SelfServiceBillingService",
       "SelfServiceRefusedError",
+      "SignTemplateEntitlementService",
       "StaticUpcomingLegalChangeSource",
       "StripeBillingProvider",
       "StripeBillingReadAdapter",
@@ -13403,6 +13404,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
