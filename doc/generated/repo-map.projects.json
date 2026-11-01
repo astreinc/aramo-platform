@@ -7773,6 +7773,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/trusted-timestamp.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -9102,6 +9108,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/trusted-timestamp.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
@@ -12824,6 +12836,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/rfc3161-tsa.adapter.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13371,6 +13389,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/rfc3161-tsa.adapter.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
