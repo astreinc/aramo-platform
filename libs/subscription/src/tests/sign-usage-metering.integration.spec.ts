@@ -270,8 +270,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign usage meteri
     const ins = (unit: string, price: number, o: { tenant?: string; version?: string; checksum?: string } = {}) =>
       dbError(
         `INSERT INTO subscription."UsageLedgerEntry" (id, tenant_id, product_key, unit_key, quantity, occurred_at, recorded_at, idempotency_key, source_ref, subscription_id, plan_version_id, plan_version_checksum, period_start, period_end, unit_price_minor, currency, amount_minor)
-         VALUES (gen_random_uuid(), $1, 'sign', $2, 1, '2026-11-10T12:00:00Z', now(), $3, 'x', $4, $5, $7, '2026-11-01', '2026-12-01', $6, 'USD', $6)`,
-        [o.tenant ?? t, unit, randomUUID(), s, o.version ?? V1, price, o.checksum ?? v1sum],
+         VALUES (gen_random_uuid(), $1, 'sign', $2, 1, '2026-11-10T12:00:00Z', now(), $3, 'x', $4, $5, $7, '2026-11-01', '2026-12-01', $6, 'USD', $8)`,
+        [o.tenant ?? t, unit, randomUUID(), s, o.version ?? V1, price, o.checksum ?? v1sum, price],
       );
     expect(await ins('sign.sms_message', 1)).toMatch(/does not match the approved price/);
     expect(await ins('sign.id_verification', 0)).toMatch(/is not sold on plan version/);

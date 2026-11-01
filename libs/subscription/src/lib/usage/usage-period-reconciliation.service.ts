@@ -108,7 +108,11 @@ function viewOf(r: Row, replayed: boolean): UsagePeriodReconciliationView {
   };
 }
 
-const sameLines = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+// Compares invoice lines field by field: a jsonb column does not keep object key order, so a
+// JSON.stringify comparison of the stored and the incoming lines would refuse a genuine replay.
+const canonicalLines = (v: unknown): string | null =>
+  Array.isArray(v) ? JSON.stringify((v as Array<Record<string, unknown>>).map((l) => [l['unit_key'], Number(l['quantity']), Number(l['amount_minor'])])) : null;
+const sameLines = (a: unknown, b: unknown): boolean => canonicalLines(a ?? null) === canonicalLines(b ?? null);
 
 function isUniqueViolation(e: unknown): boolean {
   const err = e as { code?: string; message?: string } | null;
