@@ -161,7 +161,7 @@ import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
 import { SignMessagingService } from './messaging/sign-messaging.service.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { SenderMessagingService } from './messaging/sender-messaging.service.js';
-import { SignRecipientVerificationController, SignSenderMessagingController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
+import { SignRecipientVerificationController, SignSenderMessagingController, SignSmsInboundWebhookController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 // Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
 import { SignPaymentService } from './payments/sign-payment.service.js';
 import { SIGN_PAYMENTS_PLAN_SOURCE, SignPaymentsGate, SubscriptionPlanSource } from './payments/sign-payments.gate.js';
@@ -305,7 +305,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,

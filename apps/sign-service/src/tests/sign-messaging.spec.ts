@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
@@ -25,8 +25,11 @@ import {
   DisabledOutboundMessaging,
   LogChannelAdapter,
   MetaWhatsAppAdapter,
+  MSG91_DLT_ENTITY_FIELD,
+  MSG91_SENDER_FIELD,
   Msg91SmsAdapter,
   RoutingOutboundMessaging,
+  msg91ConfigFromEnv,
   outboundMessagingFromEnv,
   smsText,
   type FetchLike,
@@ -34,7 +37,8 @@ import {
 import { SignMessagingService } from '../app/messaging/sign-messaging.service.js';
 import { RecipientOtpService } from '../app/messaging/recipient-otp.service.js';
 import { SenderMessagingService } from '../app/messaging/sender-messaging.service.js';
-import { SignWhatsAppWebhookController, verifyMetaSignature } from '../app/messaging/sign-messaging.controller.js';
+import { SignSmsInboundWebhookController, SignWhatsAppWebhookController, verifyMetaSignature } from '../app/messaging/sign-messaging.controller.js';
+import { SnsInboundRejectedError, SnsMessageVerifier, isSnsHostUrl, parseSnsMessage, snsStringToSign, type SnsHttpGet, type SnsMessage } from '../app/messaging/aws-sns-inbound.js';
 import { SignFeatureGate } from '../app/sign-feature.gate.js';
 import { EsignSignerController } from '../app/esign-http.controller.js';
 import type { SenderContextService } from '../app/sender/sender-context.service.js';
@@ -564,5 +568,186 @@ describe('WhatsApp webhook — signature, STOP and statuses', () => {
       if (prev.verify === undefined) delete process.env['SIGN_WHATSAPP_VERIFY_TOKEN'];
       else process.env['SIGN_WHATSAPP_VERIFY_TOKEN'] = prev.verify;
     }
+  });
+});
+
+// ── MSG91 DLT header and Principal Entity id (Remaining-Work Directive §3 B5) ──
+describe('MSG91 — DLT sender header and entity id from settings', () => {
+  const base = { SIGN_SMS_PROVIDER: 'msg91', SIGN_SMS_MSG91_AUTH_KEY: 'AUTH', SIGN_SMS_MSG91_TEMPLATE_INVITATION: 'dlt-inv' };
+
+  it('unset ⇒ the request carries neither (the MSG91 account mapping applies, as before)', () => {
+    expect(msg91ConfigFromEnv(base)).toEqual({ auth_key: 'AUTH', templates: { INVITATION: 'dlt-inv' }, base_url: 'https://control.msg91.com/api/v5/flow' });
+  });
+
+  it('sends the header and the entity id with every request', async () => {
+    const cfg = msg91ConfigFromEnv({ ...base, SIGN_SMS_MSG91_SENDER_ID: 'aramos', SIGN_SMS_MSG91_DLT_ENTITY_ID: '1201160000000012345' });
+    expect(cfg).toMatchObject({ sender_id: 'ARAMOS', dlt_entity_id: '1201160000000012345' });
+    let body = '';
+    const fetchImpl: FetchLike = async (_url, init) => {
+      body = init.body;
+      return { ok: true, status: 200, json: async () => ({ type: 'success', message: 'req-1' }) };
+    };
+    if (cfg === null) throw new Error('MSG91 config expected');
+    const a = new Msg91SmsAdapter(cfg, fetchImpl);
+    expect(await a.send({ channel: 'SMS', purpose: 'INVITATION', to_e164: IN, reference: 'r', variables: { sender_name: 'Acme', signing_url: 'https://x/s/T' } })).toMatchObject({ outcome: 'sent' });
+    expect(JSON.parse(body)).toEqual({
+      template_id: 'dlt-inv',
+      short_url: '0',
+      [MSG91_SENDER_FIELD]: 'ARAMOS',
+      [MSG91_DLT_ENTITY_FIELD]: '1201160000000012345',
+      recipients: [{ mobiles: '919876543210', sender: 'Acme', link: 'https://x/s/T' }],
+    });
+  });
+
+  it('an invalid header or entity id leaves MSG91 off (logged), never fatal', () => {
+    expect(() => msg91ConfigFromEnv({ ...base, SIGN_SMS_MSG91_SENDER_ID: 'ARAMO1' })).toThrow(/6-letter/);
+    expect(() => msg91ConfigFromEnv({ ...base, SIGN_SMS_MSG91_DLT_ENTITY_ID: 'abc' })).toThrow(/Principal Entity/);
+    expect(outboundMessagingFromEnv({ ...base, SIGN_SMS_MSG91_SENDER_ID: 'TOOLONGX' }).channels.size).toBe(0);
+    expect(outboundMessagingFromEnv({ ...base, SIGN_SMS_MSG91_SENDER_ID: 'ARAMOS' }).channels.has('SMS')).toBe(true);
+  });
+});
+
+// ── Inbound SMS STOP through Amazon SNS (Remaining-Work Directive §3 B5) ─────
+describe('Inbound SMS (AWS two-way SMS → SNS) — signature, topic, STOP', () => {
+  const TOPIC = 'arn:aws:sns:us-east-1:123456789012:aramo-sign-inbound-sms';
+  const CERT_URL = 'https://sns.us-east-1.amazonaws.com/SimpleNotificationService-0000.pem';
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const PEM = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  const NOW = new Date('2026-11-01T12:00:00.000Z');
+
+  function signed(m: Omit<SnsMessage, 'Signature' | 'SignatureVersion' | 'SigningCertURL'> & { SigningCertURL?: string }, version: '1' | '2' = '2'): SnsMessage {
+    const full = { ...m, SignatureVersion: version, SigningCertURL: m.SigningCertURL ?? CERT_URL, Signature: '' } as SnsMessage;
+    full.Signature = cryptoSign(version === '1' ? 'sha1' : 'sha256', Buffer.from(snsStringToSign(full), 'utf8'), privateKey).toString('base64');
+    return full;
+  }
+  const notification = (text: string, from = US, extra: Partial<SnsMessage> = {}) =>
+    signed({
+      Type: 'Notification',
+      MessageId: 'm-1',
+      TopicArn: TOPIC,
+      Timestamp: '2026-11-01T11:59:00.000Z',
+      Message: JSON.stringify({ originationNumber: from, destinationNumber: '+18885550100', messageKeyword: 'KEYWORD_1', messageBody: text, inboundMessageId: 'in-1' }),
+      ...extra,
+    });
+
+  function fakeGet(): SnsHttpGet & { calls: string[] } {
+    const calls: string[] = [];
+    const get = (async (url: string) => {
+      calls.push(url);
+      return { ok: true, status: 200, text: async () => PEM };
+    }) as SnsHttpGet & { calls: string[] };
+    get.calls = calls;
+    return get;
+  }
+
+  it('the canonical string and the SNS host check follow the AWS rules', () => {
+    const m = notification('STOP');
+    expect(snsStringToSign(m).startsWith('Message\n')).toBe(true);
+    expect(snsStringToSign(m)).toContain('\nTopicArn\n' + TOPIC + '\nType\nNotification\n');
+    expect(isSnsHostUrl(CERT_URL, '.pem')).toBe(true);
+    expect(isSnsHostUrl('http://sns.us-east-1.amazonaws.com/x.pem', '.pem')).toBe(false);
+    expect(isSnsHostUrl('https://sns.us-east-1.amazonaws.com.evil.test/x.pem', '.pem')).toBe(false);
+    expect(isSnsHostUrl('https://evil.test/sns.us-east-1.amazonaws.com.pem', '.pem')).toBe(false);
+    expect(() => parseSnsMessage(Buffer.from('not json'))).toThrow(SnsInboundRejectedError);
+    expect(() => parseSnsMessage(Buffer.from(JSON.stringify({ Type: 'Notification' })))).toThrow(SnsInboundRejectedError);
+  });
+
+  it('verifies SignatureVersion 1 and 2; refuses a tampered body, a wrong topic, an untrusted certificate URL and a stale message', async () => {
+    const get = fakeGet();
+    const v = new SnsMessageVerifier(TOPIC, get, () => NOW);
+    await expect(v.verify(notification('STOP'))).resolves.toBeUndefined();
+    await expect(v.verify(signed({ ...notification('STOP') }, '1'))).resolves.toBeUndefined();
+    expect(get.calls).toEqual([CERT_URL]); // the certificate is cached
+    const reason = async (m: SnsMessage) => v.verify(m).then(() => 'OK', (e: SnsInboundRejectedError) => e.reason);
+    expect(await reason({ ...notification('STOP'), Message: '{"originationNumber":"+14155550123","messageBody":"START"}' })).toBe('BAD_SIGNATURE');
+    expect(await reason(notification('STOP', US, { TopicArn: 'arn:aws:sns:us-east-1:123456789012:other' }))).toBe('WRONG_TOPIC');
+    expect(await reason(signed({ ...notification('STOP'), SigningCertURL: 'https://evil.test/cert.pem' }))).toBe('UNTRUSTED_CERT_URL');
+    expect(await reason(notification('STOP', US, { Timestamp: '2026-10-30T00:00:00.000Z' }))).toBe('STALE');
+    const down = new SnsMessageVerifier(TOPIC, async () => ({ ok: false, status: 503, text: async () => '' }), () => NOW);
+    expect(await down.verify(notification('STOP')).then(() => 'OK', (e: SnsInboundRejectedError) => e.reason)).toBe('CERT_UNAVAILABLE');
+  });
+
+  const ENV = { SIGN_SMS_PROVIDER: 'aws', SIGN_SMS_AWS_ORIGINATION_IDENTITY: 'pool-1', SIGN_SMS_AWS_REGION: 'us-east-1', SIGN_SMS_AWS_INBOUND_TOPIC_ARN: TOPIC };
+  async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+    const prev: Record<string, string | undefined> = {};
+    for (const k of Object.keys(ENV)) {
+      prev[k] = process.env[k];
+      delete process.env[k];
+    }
+    Object.assign(process.env, env);
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    try {
+      return await fn();
+    } finally {
+      vi.useRealTimers();
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  }
+  const req = (m: unknown) => ({ rawBody: Buffer.from(JSON.stringify(m)) }) as never;
+
+  it('is not found while the topic, the aws provider or sign.sms_delivery is missing (dark)', async () => {
+    const messaging = { inboundMessage: vi.fn() };
+    const on = new SignSmsInboundWebhookController(messaging as unknown as SignMessagingService, onGate(), fakeGet());
+    const off = new SignSmsInboundWebhookController(messaging as unknown as SignMessagingService, offGate(), fakeGet());
+    await withEnv(ENV, async () => {
+      await expect(off.aws(req(notification('STOP')), 'r')).rejects.toThrow(/Not found/);
+    });
+    await withEnv({ ...ENV, SIGN_SMS_AWS_INBOUND_TOPIC_ARN: '' }, async () => {
+      await expect(on.aws(req(notification('STOP')), 'r')).rejects.toThrow(/Not found/);
+    });
+    await withEnv({ ...ENV, SIGN_SMS_PROVIDER: 'msg91' }, async () => {
+      await expect(on.aws(req(notification('STOP')), 'r')).rejects.toThrow(/Not found/);
+    });
+    await withEnv({ ...ENV, SIGN_SMS_AWS_INBOUND_TOPIC_ARN: 'not-an-arn' }, async () => {
+      await expect(on.aws(req(notification('STOP')), 'r')).rejects.toThrow(/Not found/);
+    });
+    expect(messaging.inboundMessage).not.toHaveBeenCalled();
+  });
+
+  it('records STOP from a signed notification into the opt-out list; refuses a bad signature (401) and a missing certificate (503)', async () => {
+    const messaging = { inboundMessage: vi.fn(async () => 'OPT_OUT') };
+    const c = new SignSmsInboundWebhookController(messaging as unknown as SignMessagingService, onGate(), fakeGet());
+    await withEnv(ENV, async () => {
+      expect(await c.aws(req(notification('STOP')), 'r')).toEqual({ received: true, type: 'Notification', keywords: 1 });
+      expect(messaging.inboundMessage).toHaveBeenCalledWith('SMS', US, 'STOP');
+      const forged = { ...notification('STOP'), Message: JSON.stringify({ originationNumber: IN, messageBody: 'STOP' }) };
+      await expect(c.aws(req(forged), 'r')).rejects.toMatchObject({ statusCode: 401 });
+      // A sender that is not E.164 is ignored (no keyword recorded).
+      expect(await c.aws(req(notification('STOP', '5551234')), 'r')).toEqual({ received: true, type: 'Notification', keywords: 0 });
+      const noCert = new SignSmsInboundWebhookController(messaging as unknown as SignMessagingService, onGate(), async () => ({ ok: false, status: 500, text: async () => '' }));
+      await expect(noCert.aws(req(notification('STOP')), 'r')).rejects.toMatchObject({ statusCode: 503 });
+    });
+    expect(messaging.inboundMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the text/plain body SNS sends (no body parser) from the request stream', async () => {
+    const messaging = { inboundMessage: vi.fn(async () => 'OPT_OUT') };
+    const c = new SignSmsInboundWebhookController(messaging as unknown as SignMessagingService, onGate(), fakeGet());
+    const body = Buffer.from(JSON.stringify(notification('stop')));
+    const stream = Object.assign((async function* () {
+      yield body.subarray(0, 10);
+      yield body.subarray(10);
+    })(), { readableEnded: false });
+    await withEnv(ENV, async () => {
+      expect(await c.aws(stream as never, 'r')).toMatchObject({ keywords: 1 });
+    });
+    expect(messaging.inboundMessage).toHaveBeenCalledWith('SMS', US, 'stop');
+  });
+
+  it('confirms the SNS subscription only through an Amazon SNS https link', async () => {
+    const get = fakeGet();
+    const c = new SignSmsInboundWebhookController({ inboundMessage: vi.fn() } as unknown as SignMessagingService, onGate(), get);
+    const confirm = (url: string) =>
+      signed({ Type: 'SubscriptionConfirmation', MessageId: 'm-2', TopicArn: TOPIC, Timestamp: '2026-11-01T11:59:00.000Z', Message: 'You have chosen to subscribe', SubscribeURL: url, Token: 'tok' });
+    const SUBSCRIBE = 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=x&Token=tok';
+    await withEnv(ENV, async () => {
+      expect(await c.aws(req(confirm(SUBSCRIBE)), 'r')).toEqual({ received: true, type: 'SubscriptionConfirmation', keywords: 0 });
+      expect(get.calls).toContain(SUBSCRIBE);
+      await expect(c.aws(req(confirm('https://evil.test/confirm')), 'r')).rejects.toThrow(/confirmation failed/);
+    });
+    expect(get.calls).not.toContain('https://evil.test/confirm');
   });
 });

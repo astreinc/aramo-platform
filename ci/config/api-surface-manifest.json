@@ -280,6 +280,11 @@
     },
     {
       "method": "POST",
+      "path": "/v1/sign/messaging/sms/inbound/aws",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
       "path": "/v1/sign/signing/identity-verification/status",
       "class": "PZ"
     },

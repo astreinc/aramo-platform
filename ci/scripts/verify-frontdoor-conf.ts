@@ -43,6 +43,9 @@
 //       associate-nothing JSON; valid input ⇒ exactly the three M-A2 §3.1 paths.
 //   (t) `/v1/sign/sender/` sets `gzip off`: nginx turns a compressed response's strong
 //       ETag into a weak W/"..." one, which sign-service refuses as If-Match (M-A3 §6).
+//   (u) the session-less vendor webhooks (SIGN_VENDOR_WEBHOOKS) are proxied with the body
+//       untouched — no proxy_set_body, no sub_filter, no rewrite — because sign-service checks
+//       each vendor's signature over the raw bytes (Remaining-Work Directive §3 B1, B5).
 //
 // Negative tests: `--self-test` (also run before every default run) mutates the real
 // repo text once per rule above and requires that rule to fire. Set
@@ -92,6 +95,10 @@ const SIGN_LIMITS = new Map<string, string>([
   ['/v1/sign/billing/', 'sign_workspace'],
   // Aramo Sign 1.14 — the Stripe Connect webhook (payments collected for organizations).
   ['/v1/sign/payments/webhook/', 'sign_workspace'],
+  // Remaining-Work Directive §3 B1 / B5 — the WhatsApp, inbound-SMS and Stripe Identity webhooks.
+  ['/v1/sign/messaging/whatsapp/webhook', 'sign_workspace'],
+  ['/v1/sign/messaging/sms/inbound/', 'sign_workspace'],
+  ['/v1/sign/identity-verification/webhook/', 'sign_workspace'],
   ['/v1/sign/inbox', 'sign_workspace'],
   ['/v1/sign/legal/', 'sign_workspace'],
   ['/v1/sign/account/', 'sign_workspace'],
@@ -99,6 +106,9 @@ const SIGN_LIMITS = new Map<string, string>([
   ['/auth/', 'sign_auth'],
   ['/auth/native/', 'sign_native_auth'],
 ]);
+
+// (u) the session-less vendor webhook locations: the raw body must reach sign-service unchanged.
+const SIGN_VENDOR_WEBHOOKS = ['/v1/sign/payments/webhook/', '/v1/sign/messaging/whatsapp/webhook', '/v1/sign/messaging/sms/inbound/', '/v1/sign/identity-verification/webhook/'];
 
 interface Issue {
   where: string;
@@ -231,6 +241,11 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
     ['/v1/sign/billing/', 'sign-service:3003'],
     // Aramo Sign 1.14 — the Stripe Connect webhook (session-less; signature-verified).
     ['/v1/sign/payments/webhook/', 'sign-service:3003'],
+    // Remaining-Work Directive §3 B1 — the Meta WhatsApp webhook and the Stripe Identity webhook;
+    // §3 B5 — inbound SMS STOP through Amazon SNS (all session-less; signature-verified).
+    ['/v1/sign/messaging/whatsapp/webhook', 'sign-service:3003'],
+    ['/v1/sign/messaging/sms/inbound/', 'sign-service:3003'],
+    ['/v1/sign/identity-verification/webhook/', 'sign-service:3003'],
     ['/v1/sign/inbox', 'sign-service:3003'],
     // Personal Free v1.1 §6.4 — "Report this email".
     ['/v1/sign/report', 'sign-service:3003'],
@@ -274,6 +289,14 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
   // If-Match is refused with 412, which broke every native draft write.
   if (!/^\s*gzip\s+off;/m.test(exactLocationBody(sign.body, '/v1/sign/sender/') ?? '')) {
     issues.push({ where: TEMPLATE, reason: '(t) /v1/sign/sender/ must set gzip off (a compressed response gets a weak ETag)' });
+  }
+  // (u) a vendor webhook's signature is over the raw body: nginx must not alter it.
+  for (const path of SIGN_VENDOR_WEBHOOKS) {
+    const loc = exactLocationBody(sign.body, path);
+    if (loc === null) continue; // a missing location is reported by (k)
+    if (/\b(proxy_set_body|sub_filter|rewrite|proxy_pass_request_body\s+off)\b/.test(loc)) {
+      issues.push({ where: TEMPLATE, reason: `(u) ${path} must proxy the raw body unchanged (no proxy_set_body / sub_filter / rewrite)` });
+    }
   }
   if (!/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_guest:/.test(template) || !/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_signup:/.test(template)) {
     issues.push({ where: TEMPLATE, reason: '(k) the sign_guest and sign_signup limit_req_zone definitions are missing' });
@@ -693,6 +716,12 @@ function mutations(): Mutation[] {
   out.push({ name: 'envsubst filter widened', tag: '(r) NGINX_ENVSUBST_FILTER', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, 'ENV NGINX_ENVSUBST_FILTER=^NGINX_', 'ENV NGINX_ENVSUBST_FILTER=^(NGINX|SIGN)_', 'filter') }) });
   // (t) — the sender API compressed again.
   out.push(T('sender API gzipped', '(t) /v1/sign/sender/ must set gzip off', (t) => swapInLocation(t, '/v1/sign/sender/', 'gzip off;', '#gzip_on_again', 'sender gzip')));
+  // (k) / (n) / (u) — the vendor webhook locations (Remaining-Work Directive §3 B1, B5).
+  out.push(T('no WhatsApp webhook', '(k) sign block must expose exactly', (t) => swap(t, 'location /v1/sign/messaging/whatsapp/webhook {', 'location /v1/sign/messaging/whatsapp/webhook-gone {', 'whatsapp')));
+  out.push(T('no Stripe Identity webhook', '(k) sign block must expose exactly', (t) => swap(t, 'location /v1/sign/identity-verification/webhook/ {', 'location /v1/sign/identity-verification/hook/ {', 'identity')));
+  out.push(T('inbound SMS to api', '(k) /v1/sign/messaging/sms/inbound/ must proxy_pass', (t) => swapInLocation(t, '/v1/sign/messaging/sms/inbound/', 'http://sign-service:3003', 'http://api:3000', 'sms inbound upstream')));
+  out.push(T('WhatsApp webhook unlimited', '(n) /v1/sign/messaging/whatsapp/webhook must be rate-limited', (t) => swapInLocation(t, '/v1/sign/messaging/whatsapp/webhook', 'limit_req zone=sign_workspace burst=20 nodelay;', '# no limit', 'whatsapp limit')));
+  out.push(T('identity webhook body rewritten', '(u) /v1/sign/identity-verification/webhook/ must proxy the raw body', (t) => swapInLocation(t, '/v1/sign/identity-verification/webhook/', 'proxy_pass http://sign-service:3003;', 'proxy_set_body "{}";\n    proxy_pass http://sign-service:3003;', 'identity body')));
   out.push(T('template references SIGN_*', '(r) the conf template must not reference', (t) => swap(t, 'default_type application/json;', 'default_type application/json; # ${SIGN_IOS_APP_ID}', 'template var')));
   for (const v of APP_LINK_ENV) {
     out.push({ name: `compose drops ${v}`, tag: `(r) nginx environment must pass \`${v}=`, apply: (i) => ({ ...i, compose: swap(i.compose, `- ${v}=\${${v}:-}`, `- ${v}_GONE=\${${v}:-}`, v) }) });

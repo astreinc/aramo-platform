@@ -29791,6 +29791,11 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sign-messaging.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/messaging/sign-messaging.service.ts"
     },
     {
@@ -29901,6 +29906,11 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
+      "to": "deploy/monitoring/install.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
       "to": "deploy/nginx/templates/aramo.conf.template"
     },
     {
@@ -29992,6 +30002,11 @@
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/usage/usage-provider-report.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-reconciliation.ts"
     },
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
@@ -30112,6 +30127,11 @@
       "from": "doc/runbooks/sign/monitoring-and-alerts.md",
       "status": "unscoped",
       "to": "infrastructure-monitoring/lambda/watchdog.py"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-provider-report.service.ts"
     },
     {
       "from": "doc/runbooks/sign/privacy-requests.md",

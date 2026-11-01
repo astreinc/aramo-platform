@@ -87,6 +87,23 @@ cat >"$TMP/sign.log" <<LOG
 [Nest] 1  - 11/01/2026, 10:00:00 AM   ERROR [ExceptionsHandler] KMSInvalidStateException: arn is pending deletion
 [Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignRetentionWorker] retention run failed: x
 [Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignPrivacyExecutionService] privacy request PR-7K3M-9QX2-H4TD execution failed: Error
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignWhatsAppWebhook] sign_webhook.rejected source=whatsapp reason=BAD_SIGNATURE
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignWhatsAppWebhook] sign_webhook.rejected source=whatsapp reason=MISSING
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignIdentityVerificationController] sign_webhook.rejected source=stripe_identity reason=NO_SECRET
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignSmsInboundWebhook] sign_webhook.rejected source=sms_inbound_aws reason=WRONG_TOPIC
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [EsignBillingController] sign_webhook.failed source=stripe_billing error=PrismaClientKnownRequestError
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignPaymentService] payment webhook evt_1 (checkout.session.completed) refused: NOT_PENDING
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignMessagingService] sign_messaging.send_failed channel=SMS purpose=INVITATION provider=aws-end-user-messaging error=ThrottlingException
+[Nest] 1  - 11/01/2026, 10:00:00 AM   ERROR [SignMessaging] SIGN_SMS_PROVIDER includes aws but SIGN_SMS_AWS_ORIGINATION_IDENTITY / a region are not set; AWS SMS is off
+[Nest] 1  - 11/01/2026, 10:00:00 AM   ERROR [SignMessaging] SIGN_SMS_MSG91 configuration refused: SIGN_SMS_MSG91_SENDER_ID must be the 6-letter DLT header; MSG91 is off
+[Nest] 1  - 11/01/2026, 10:00:00 AM     LOG [SignMessagingService] sms inbound: SNS subscription confirmed
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [TrustedTimestampService] trusted timestamp pending (attempt 3) for EXECUTED_DOCUMENT $E: TSA responded HTTP 503
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [TrustedTimestampService] trusted_timestamp.attempts_exceeded timestamp=$E subject=EVIDENCE_MANIFEST attempts=10
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [DocumentSealService] document_seal.attempt_failed seal=$E attempts=3 error=SealProviderTimeout
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [DocumentSealService] document_seal.attempt_failed seal=$E attempts=10 error=SealProviderHttpError final
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [UsageProviderReportService] usage_report.failed ledger_entry=$E reason=PROVIDER_RETRIES_EXHAUSTED
+[Nest] 1  - 11/01/2026, 10:00:00 AM    WARN [SignMeteringUsageRecorder] usage not recorded (UNIT_NOT_SOLD) for sign.sms_message under msg:$E
+[Nest] 1  - 11/01/2026, 10:00:00 AM   ERROR [SignUsageReportWorker] usage report tick failed: connect ECONNREFUSED
 LOG
 check "kms lines" "$(mon_count_matches "$MON_RE_SIGN_KMS" <"$TMP/sign.log")" "2"
 check "custody lines" "$(mon_count_matches "$MON_RE_SIGN_CUSTODY" <"$TMP/sign.log")" "3"
@@ -94,6 +111,10 @@ check "purge lines" "$(mon_count_matches "$MON_RE_SIGN_PURGE" <"$TMP/sign.log")"
 check "r13 lines" "$(mon_count_matches "$MON_RE_SIGN_PURGE_R13" <"$TMP/sign.log")" "1"
 check "retention lines" "$(mon_count_matches "$MON_RE_SIGN_RETENTION" <"$TMP/sign.log")" "1"
 check "privacy lines" "$(mon_count_matches "$MON_RE_SIGN_PRIVACY" <"$TMP/sign.log")" "1"
+check "webhook lines" "$(mon_count_matches "$MON_RE_SIGN_WEBHOOK" <"$TMP/sign.log")" "4"
+check "messaging lines" "$(mon_count_matches "$MON_RE_SIGN_MESSAGING" <"$TMP/sign.log")" "3"
+check "tsa-seal lines" "$(mon_count_matches "$MON_RE_SIGN_TSA_SEAL" <"$TMP/sign.log")" "2"
+check "metering lines" "$(mon_count_matches "$MON_RE_SIGN_METERING" <"$TMP/sign.log")" "2"
 check "no match" "$(printf 'all good\n' | mon_count_matches "$MON_RE_SIGN_KMS")" "0"
 
 # --- transitions ------------------------------------------------------------------
@@ -164,7 +185,7 @@ check "dry-run: no state" "$(ls "$TMP/state" 2>/dev/null | grep -v '^\.lock$' | 
 run_probe
 check "run 1 exit" "$?" "0"
 check "run 1: metrics + one alert" "$(tr '\n' ',' <"$TMP/aws-calls")" "cloudwatch put-metric-data,sns publish,"
-check "run 1: sign failures in state" "$(cut -f1 "$TMP/state/failing.tsv" | sort | tr '\n' ' ')" "sign:custody sign:kms sign:privacy sign:purge sign:purge-r13 sign:retention "
+check "run 1: sign failures in state" "$(cut -f1 "$TMP/state/failing.tsv" | sort | tr '\n' ' ')" "sign:custody sign:kms sign:messaging sign:metering sign:privacy sign:purge sign:purge-r13 sign:retention sign:tsa-seal sign:webhooks "
 : >"$TMP/aws-calls"
 run_probe
 check "run 2: still failing, no new alert" "$(tr '\n' ',' <"$TMP/aws-calls")" "cloudwatch put-metric-data,"
@@ -174,7 +195,7 @@ run_probe
 check "run 3: recovery alert" "$(tr '\n' ',' <"$TMP/aws-calls")" "cloudwatch put-metric-data,sns publish,"
 check "run 3: state empty" "$(cat "$TMP/state/failing.tsv")" ""
 check "status file: no FAIL" "$(cut -f2 "$TMP/state/last-status.tsv" | grep -c FAIL)" "0"
-check "status file: rows" "$(wc -l <"$TMP/state/last-status.tsv" | tr -d ' ')" "16"
+check "status file: rows" "$(wc -l <"$TMP/state/last-status.tsv" | tr -d ' ')" "20"
 
 echo "aramo-health-probe.test.sh — ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

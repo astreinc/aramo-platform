@@ -4,6 +4,7 @@ import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { IdentityVerificationService, IdentityVerificationWebhookSignatureError } from '@aramo/sign';
 
 import { toHttp } from '../esign-http.controller.js';
+import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
 import { SIGN_ID_VERIFICATION_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED (2bd74ca5…) §1.9 + Amendment A1
@@ -65,10 +66,11 @@ export class SignIdentityVerificationController {
       return { received: true, outcome };
     } catch (e) {
       if (e instanceof IdentityVerificationWebhookSignatureError) {
-        this.log.warn(`identity verification webhook rejected: ${e.reason}`);
+        logWebhookRejected(this.log, 'stripe_identity', e.reason);
         throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.reason } });
       }
       // A vendor read failure answers 5xx so the vendor redelivers; nothing was recorded.
+      logWebhookFailed(this.log, 'stripe_identity', e);
       throw toHttp(e, requestId);
     }
   }

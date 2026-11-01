@@ -982,8 +982,11 @@ export { USAGE_METER_REPORT_PORT, type MeterEventReport, type UsageMeterReportPo
 export {
   aggregateLedger,
   normalizeUsageLines,
+  periodSegments,
   reconcileUsageLines,
   type LedgerAggregate,
+  type PeriodSegmentRow,
+  type PeriodSegments,
   type UsageDiscrepancy,
   type UsageLine,
   type UsageReconciliationResult,

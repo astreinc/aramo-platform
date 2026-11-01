@@ -381,6 +381,32 @@ server {
     client_max_body_size 1m;
     proxy_pass http://sign-service:3003;
   }
+  # Aramo Sign 1.8 — the Meta WhatsApp Cloud API webhook (GET subscription check, POST
+  # inbound STOP / START and delivery statuses). Session-less: sign-service verifies
+  # X-Hub-Signature-256 over the raw body (so no body rewriting here). Dark (404) unless
+  # SIGN_WHATSAPP_APP_SECRET, SIGN_WHATSAPP_VERIFY_TOKEN and sign.whatsapp_delivery are set.
+  location /v1/sign/messaging/whatsapp/webhook {
+    limit_req zone=sign_workspace burst=20 nodelay;
+    client_max_body_size 1m;
+    proxy_pass http://sign-service:3003;
+  }
+  # Aramo Sign 1.7 — inbound SMS replies (STOP / START) from the SMS provider (AWS End User
+  # Messaging two-way SMS → Amazon SNS HTTPS subscription). Session-less: sign-service
+  # verifies the SNS message signature over the raw body (so no body rewriting here). Dark
+  # (404) unless SIGN_SMS_AWS_INBOUND_TOPIC_ARN and sign.sms_delivery are set.
+  location /v1/sign/messaging/sms/inbound/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
+    client_max_body_size 256k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Aramo Sign 1.10 — the Stripe Identity webhook (verification session outcomes).
+  # Session-less: sign-service verifies the Stripe-Signature over the raw body (so no
+  # body rewriting here). Dark (404) unless SIGN_STRIPE_IDENTITY_* are configured.
+  location /v1/sign/identity-verification/webhook/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
+    client_max_body_size 1m;
+    proxy_pass http://sign-service:3003;
+  }
   # Workspace — the recipient inbox ("Waiting for me", S-7): GET /v1/sign/inbox
   # plus /claim and /:id/sign. Authenticated (Aramo SSO); the prefix has no
   # trailing slash so the bare list path matches too.

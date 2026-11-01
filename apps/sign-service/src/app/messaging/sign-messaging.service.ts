@@ -197,6 +197,8 @@ export class SignMessagingService implements SignerLinkMessagingPort {
       return { status: 'SUPPRESSED', reason: 'opted_out', delivery_id: r.id };
     }
     if (result.outcome === 'failed') {
+      // The production probe's alert line (Remaining-Work Directive §3 B9): never the number or the link.
+      this.logger.warn(`sign_messaging.send_failed channel=${m.channel} purpose=${m.purpose} provider=${result.provider} error=${result.error_code}`);
       const r = await this.repo.recordDelivery(
         { ...base, id, status: 'FAILED', provider: result.provider, error_code: result.error_code },
         ledgered ? { event_type: SIGNER_MESSAGE_FAILED_EVENT, actor_type: 'SYSTEM', payload: { ...eventPayload, error_code: result.error_code } } : null,

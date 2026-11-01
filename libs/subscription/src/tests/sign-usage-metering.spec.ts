@@ -6,9 +6,11 @@ import { WIRE_METER_EVENTS_PATH, wireMeterEventParams, wireMeterEventRef } from 
 import { ProductContextError } from '../lib/product-registry.js';
 import { CommercialPayloadError, PLAN_TARGET_CHECKSUM_KEY, validatePayload } from '../lib/commercial/commercial-change-request.js';
 import { METERED_UNIT_KEYS, isMeteredUnitKey, meterEventNameOf, productOfMeteredUnit, usageBillingEnabled } from '../lib/usage/metered-units.js';
-import { aggregateLedger, normalizeUsageLines, reconcileUsageLines } from '../lib/usage/usage-reconciliation.js';
+import { billingPeriodAt } from '../lib/billing-period.js';
+import { aggregateLedger, normalizeUsageLines, periodSegments, reconcileUsageLines } from '../lib/usage/usage-reconciliation.js';
 import { USAGE_MAX_AGE_MS, USAGE_MAX_FUTURE_MS, validateRecordInput, validateUsageInput } from '../lib/usage/metered-usage.service.js';
 import { usageReportBackoffMs } from '../lib/usage/usage-provider-report.service.js';
+import { UsagePeriodReconciliationService } from '../lib/usage/usage-period-reconciliation.service.js';
 
 // Sign usage / metered billing (Feature Parity D-2, A1) — the pure parts: the unit registry mirror,
 // the flag, input validation, the Stripe meter-event wire translation and the adapter request (a
@@ -172,5 +174,92 @@ describe('A3 billing-period reconciliation (pure)', () => {
     // Same quantity, different amount (a provider price that differs from the approved price).
     expect(reconcileUsageLines(ledger, [ledger[0]!, { unit_key: 'sign.sms_message', quantity: 200, amount_minor: 7200 }]).outcome).toBe('MISMATCH');
     expect(() => normalizeUsageLines([{ unit_key: 'sign.kba', quantity: -1, amount_minor: 0 }])).toThrow();
+  });
+
+  // Remaining-Work Directive §3 B10 — a period split by a plan-version change.
+  it('a re-pinned period (two versions, two unit prices for one unit) reconciles on the per-event amounts', () => {
+    // 60 SMS at 5 (version 1) then 40 at 7 (version 2): 300 + 280 = 580; the invoice bills each price on its own line.
+    const split = [...Array.from({ length: 60 }, (_, i) => e(`a${String(i).padStart(2, '0')}`, 'sign.sms_message', 1, 5)), ...Array.from({ length: 40 }, (_, i) => e(`b${String(i).padStart(2, '0')}`, 'sign.sms_message', 1, 7))];
+    const ledger = aggregateLedger(split).lines;
+    expect(ledger).toEqual([{ unit_key: 'sign.sms_message', quantity: 100, amount_minor: 580 }]);
+    expect(reconcileUsageLines(ledger, [{ unit_key: 'sign.sms_message', quantity: 60, amount_minor: 300 }, { unit_key: 'sign.sms_message', quantity: 40, amount_minor: 280 }]).outcome).toBe('MATCHED');
+    // The whole period billed at the new price is a real difference, reported.
+    expect(reconcileUsageLines(ledger, [{ unit_key: 'sign.sms_message', quantity: 100, amount_minor: 700 }]).outcome).toBe('MISMATCH');
+  });
+
+  it('periodSegments: a plan change that opened a new row on the same anchor is one period, recorded on the latest row', () => {
+    const anchor = new Date('2026-11-01T00:00:00.000Z');
+    const period = billingPeriodAt(anchor, anchor);
+    const seg = (id: string, started: string, ended: string | null, link: Partial<{ billing_provider: string | null; billing_account_ref: string | null; billing_subscription_ref: string | null }> = {}, a = anchor) => ({
+      id,
+      period_anchor: a,
+      started_at: new Date(started),
+      ended_at: ended === null ? null : new Date(ended),
+      billing_provider: 'STRIPE',
+      billing_account_ref: 'cus_1',
+      billing_subscription_ref: 'sub_1',
+      ...link,
+    });
+    const before = seg('0190-a', '2026-10-01T00:00:00.000Z', '2026-11-10T00:00:00.000Z');
+    const after = seg('0190-b', '2026-11-10T00:00:00.000Z', null);
+    const other = seg('0190-c', '2026-11-10T00:00:00.000Z', null, { billing_subscription_ref: 'sub_2' });
+    const oldRow = seg('0190-d', '2026-09-01T00:00:00.000Z', '2026-10-15T00:00:00.000Z');
+    const shifted = seg('0190-e', '2026-11-10T00:00:00.000Z', null, {}, new Date('2026-11-10T00:00:00.000Z'));
+    for (const subject of [before, after]) {
+      expect(periodSegments(subject, [before, after, other, oldRow, shifted], period, billingPeriodAt)).toEqual({ segment_ids: ['0190-a', '0190-b'], owner_id: '0190-b' });
+    }
+    // No split: the row alone, recorded on itself.
+    expect(periodSegments(other, [before, after, other], period, billingPeriodAt)).toEqual({ segment_ids: ['0190-c'], owner_id: '0190-c' });
+    // Not provider-billed (a manual plan change): the null links group together.
+    const m1 = seg('0190-m1', '2026-10-01T00:00:00.000Z', '2026-11-05T00:00:00.000Z', { billing_provider: null, billing_account_ref: null, billing_subscription_ref: null });
+    const m2 = seg('0190-m2', '2026-11-05T00:00:00.000Z', null, { billing_provider: null, billing_account_ref: null, billing_subscription_ref: null });
+    expect(periodSegments(m1, [m1, m2, before], period, billingPeriodAt)).toEqual({ segment_ids: ['0190-m1', '0190-m2'], owner_id: '0190-m2' });
+  });
+});
+
+describe('B10 the split-period reconciliation (service, in-memory store)', () => {
+  const anchor = new Date('2026-11-01T00:00:00.000Z');
+  const link = { billing_provider: 'STRIPE', billing_account_ref: 'cus_1', billing_subscription_ref: 'sub_1' };
+  const subs = [
+    { id: '0190-a', tenant_id: 't-1', product_key: 'sign', composition_role: 'BASE', period_anchor: anchor, started_at: new Date('2026-10-01T00:00:00.000Z'), ended_at: new Date('2026-11-10T00:00:00.000Z'), ...link },
+    { id: '0190-b', tenant_id: 't-1', product_key: 'sign', composition_role: 'BASE', period_anchor: anchor, started_at: new Date('2026-11-10T00:00:00.000Z'), ended_at: null, ...link },
+  ];
+  // Version 1 priced SMS at 5 (row a), version 2 at 7 (row b).
+  const entries = [
+    { id: 'e1', subscription_id: '0190-a', period_start: anchor, unit_key: 'sign.sms_message', quantity: 60, amount_minor: 300n },
+    { id: 'e2', subscription_id: '0190-b', period_start: anchor, unit_key: 'sign.sms_message', quantity: 40, amount_minor: 280n },
+  ];
+  function store() {
+    const rows: Array<Record<string, unknown>> = [];
+    const prisma = {
+      tenantSubscription: {
+        findUnique: async ({ where }: { where: { id: string } }) => subs.find((x) => x.id === where.id) ?? null,
+        findMany: async () => subs,
+      },
+      usageLedgerEntry: {
+        findMany: async ({ where }: { where: { subscription_id: { in: string[] }; period_start: Date } }) =>
+          entries.filter((x) => where.subscription_id.in.includes(x.subscription_id) && x.period_start.getTime() === where.period_start.getTime()),
+      },
+      usagePeriodReconciliation: {
+        findUnique: async ({ where }: { where: { subscription_id_product_key_period_start: { subscription_id: string } } }) =>
+          rows.find((r) => r['subscription_id'] === where.subscription_id_product_key_period_start.subscription_id) ?? null,
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          rows.push(data);
+          return data;
+        },
+      },
+    };
+    return { rows, svc: new UsagePeriodReconciliationService(prisma as never, { clock: () => new Date('2026-12-01T02:00:00.000Z') } as never) };
+  }
+  const invoice = { provider: 'STRIPE' as const, invoice_ref: 'in_1', currency: 'USD' as const, lines: [{ unit_key: 'sign.sms_message', quantity: 60, amount_minor: 300 }, { unit_key: 'sign.sms_message', quantity: 40, amount_minor: 280 }] };
+
+  it('reconciles both rows of the period once, MATCHED at the per-event prices, recorded on the latest row', async () => {
+    const { rows, svc } = store();
+    const v = await svc.reconcilePeriod({ subscription_id: '0190-b', period_start: anchor, invoice, reconciled_by: 'test' });
+    expect(v).toMatchObject({ outcome: 'MATCHED', subscription_id: '0190-b', ledger_entry_count: 2, ledger_amount_minor: 580, provider_amount_minor: 580, segment_subscription_ids: ['0190-a', '0190-b'], replayed: false });
+    // Through the earlier row: the same reconciliation (replayed), never a second row or a half-period mismatch.
+    const again = await svc.reconcilePeriod({ subscription_id: '0190-a', period_start: anchor, invoice, reconciled_by: 'test' });
+    expect(again).toMatchObject({ outcome: 'MATCHED', subscription_id: '0190-b', replayed: true });
+    expect(rows).toHaveLength(1);
   });
 });
