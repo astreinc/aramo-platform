@@ -11914,6 +11914,41 @@
     },
     { "from": "deploy/migrate-prod.test.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     {
+      "from": "deploy/monitoring/aramo-health-probe.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
+    {
+      "from": "deploy/monitoring/aramo-health-probe.sh",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.test.sh"
+    },
+    {
+      "from": "deploy/monitoring/aramo-health-probe.sh",
+      "status": "unscoped",
+      "to": "deploy/monitoring/monitoring.conf.example"
+    },
+    {
+      "from": "deploy/monitoring/aramo-health-probe.sh",
+      "status": "unscoped",
+      "to": "deploy/systemd/aramo-health-probe.timer"
+    },
+    {
+      "from": "deploy/monitoring/aramo-health-probe.sh",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
+      "from": "deploy/monitoring/aramo-health-probe.test.sh",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
+    {
+      "from": "deploy/monitoring/install.sh",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
       "from": "deploy/nginx/Dockerfile",
       "status": "unscoped",
       "to": "deploy/nginx/app-links/render-app-links.sh"
@@ -11962,6 +11997,21 @@
       "from": "deploy/singlebox-compose.test.sh",
       "status": "unscoped",
       "to": "deploy/systemd/singlebox-compose.sh"
+    },
+    {
+      "from": "deploy/systemd/aramo-health-probe.service",
+      "status": "unscoped",
+      "to": "deploy/monitoring/install.sh"
+    },
+    {
+      "from": "deploy/systemd/aramo-health-probe.service",
+      "status": "unscoped",
+      "to": "deploy/monitoring/monitoring.conf.example"
+    },
+    {
+      "from": "deploy/systemd/aramo-health-probe.service",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
     },
     {
       "from": "deploy/systemd/aramo-pg-backup.service",
@@ -28793,7 +28843,17 @@
       "to": "deploy/backup/aramo-env-snapshot.sh"
     },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "doc/04-risks.md" },
     {
@@ -28805,6 +28865,11 @@
       "from": "doc/runbooks/RELEASE-box.md",
       "status": "unscoped",
       "to": "doc/runbooks/RUNBOOK-backups.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
     },
     {
       "from": "doc/runbooks/RELEASE-box.md",
@@ -29367,6 +29432,256 @@
     },
     { "from": "doc/runbooks/run-layer.md", "status": "unscoped", "to": "tools/local-run-link.sh" },
     { "from": "doc/runbooks/run-layer.md", "status": "unscoped", "to": "tools/local-stack.sh" },
+    {
+      "from": "doc/runbooks/sign/README.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/shell/nav.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/abuse-reports-and-personal-review.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/abuse-reports-and-personal-review.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/sign-report.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/abuse-reports-and-personal-review.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/personal/personal-risk.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/abuse-reports-and-personal-review.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/abuse-report.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-deletion-replay.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-restore-test.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "deploy/backup/pg-restore.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/sign-artifacts.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/backup-restore-test.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/ops/validate-artifact-custody.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/doc4-sign.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/sign-artifacts.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/esign.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/hash-chain.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/evidence-verification-and-disputes.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/ports/evidence-manifest-signer.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/incident-response-and-rollback.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/incident-response-and-rollback.md",
+      "status": "unscoped",
+      "to": "deploy/systemd/aramo-singlebox.service"
+    },
+    {
+      "from": "doc/runbooks/sign/incident-response-and-rollback.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/singlebox-ops.md"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/ops/validate-artifact-custody.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/doc4-sign.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/sign-artifacts.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/kms-and-custody-incidents.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/variables.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/legal/sign-legal.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "apps/talent-intelligence-service/src/app/health.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/build-images.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.test.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/install.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/singlebox-ops.md"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "infrastructure-backups/monitoring.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "infrastructure-monitoring/lambda/watchdog.py"
+    },
+    {
+      "from": "doc/runbooks/sign/privacy-requests.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-privacy-requests.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/privacy-requests.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-deletion-replay.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/privacy-requests.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/privacy/privacy-request.model.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/purge-and-party-deletion.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/sign-artifacts.tf"
+    },
+    {
+      "from": "doc/runbooks/sign/purge-and-party-deletion.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/runbooks/sign/purge-and-party-deletion.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/retention/sign-purge.repository.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/stuck-envelopes.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/esign-expiry.worker.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/stuck-envelopes.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/signing-invitation.worker.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/stuck-envelopes.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/schema.prisma"
+    },
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
@@ -30128,6 +30443,36 @@
       "from": "infrastructure-lightsail/terraform.tfvars.example",
       "status": "unscoped",
       "to": "doc/runbooks/RUNBOOK-backups.md"
+    },
+    {
+      "from": "infrastructure-monitoring/backend.tf",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
+      "from": "infrastructure-monitoring/iam.tf",
+      "status": "unscoped",
+      "to": "infrastructure-backups/iam.tf"
+    },
+    {
+      "from": "infrastructure-monitoring/lambda/watchdog.py",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
+    {
+      "from": "infrastructure-monitoring/lambda/watchdog.py",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
+      "from": "infrastructure-monitoring/sns.tf",
+      "status": "unscoped",
+      "to": "deploy/monitoring/aramo-health-probe.sh"
+    },
+    {
+      "from": "infrastructure-monitoring/terraform.tfvars.example",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
     },
     {
       "from": "infrastructure/README.md",
@@ -37468,7 +37813,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 119,
+    "files": 125,
     "huskyPresent": false
   },
   "scripts": [
@@ -37626,6 +37971,8 @@
         { "kind": "prose", "path": "deploy/backup/aramo-restore-test.sh" },
         { "kind": "prose", "path": "deploy/backup/lib.sh" },
         { "kind": "prose", "path": "deploy/db-roles/aramo-domain-roles.sql" },
+        { "kind": "prose", "path": "deploy/monitoring/aramo-health-probe.sh" },
+        { "kind": "prose", "path": "deploy/monitoring/aramo-health-probe.test.sh" },
         { "kind": "prose", "path": "deploy/nginx/README.md" },
         { "kind": "prose", "path": "tools/ensure-intelligence-db.sh" }
       ]
@@ -37952,6 +38299,9 @@
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },
+        { "kind": "prose", "path": "deploy/monitoring/aramo-health-probe.sh" },
+        { "kind": "prose", "path": "deploy/monitoring/aramo-health-probe.test.sh" },
+        { "kind": "prose", "path": "deploy/monitoring/install.sh" },
         { "kind": "prose", "path": "deploy/nginx/Dockerfile" },
         { "kind": "prose", "path": "deploy/seed-prod.sh" },
         { "kind": "prose", "path": "deploy/seed-prod.test.sh" },

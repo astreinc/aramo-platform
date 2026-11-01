@@ -1,0 +1,13 @@
+# Aramo single box — health probe schedule: every 5 minutes, starting 2 minutes after
+# boot (the stack needs a moment to come up; an earlier run would report it as down).
+
+[Unit]
+Description=Aramo box health probe every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -11,7 +11,8 @@
 # executes them. It is a named step of the `static-governance` job and is pinned in
 # ci/scripts/verify-aggregate-gate.ts so it cannot silently stop gating.
 #
-# Auto-enrolling: every deploy/*.test.sh and tools/*.test.sh is discovered and run
+# Auto-enrolling: every deploy/*.test.sh, deploy/monitoring/*.test.sh and tools/*.test.sh
+# is discovered and run
 # (no hand-maintained list to forget). Fail-closed: zero suites found, or any suite
 # failing, fails the wall.
 set -uo pipefail
@@ -22,7 +23,7 @@ cd "$ROOT"
 suites=()
 while IFS= read -r t; do
   [ -n "$t" ] && suites+=("$t")
-done < <(ls deploy/*.test.sh tools/*.test.sh 2>/dev/null | sort)
+done < <(ls deploy/*.test.sh deploy/monitoring/*.test.sh tools/*.test.sh 2>/dev/null | sort)
 if [ "${#suites[@]}" -eq 0 ]; then
   echo "scripts:test — FAIL: no *.test.sh suites found (expected deploy/tools shell tests)"
   exit 1
