@@ -33,6 +33,10 @@ import { CCP_BUNDLES, TENANT_1, TENANT_2, addOperator, applyCcpA3Schema, revokeA
 
 import { generateTestKeyPair } from './test-keys.js';
 
+// Amendment A3 D1: a PLAN_VERSION_PUBLISH carries the content-checksum snapshot; the A3-era schema has no
+// PlanVersion table, so the request supplies the snapshot itself (the service reads the row only when absent).
+const A3_SNAPSHOT = 'a'.repeat(64);
+
 // CCP-A3 (PBD §5.1 row A3; brief: "per-role allowed/refused tests for every route, 6 roles +
 // super_admin refused") — every /platform/commercial/change-requests route, for each CCP
 // role and super_admin, through the REAL guard chain AND the REAL service on real Postgres
@@ -153,7 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
       read_only_auditor: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
       super_admin: [403, 'INSUFFICIENT_PERMISSIONS', null],
     });
-    const publish = { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' } };
+    const publish = { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201', target_content_checksum: A3_SNAPSHOT } };
     for (const role of ROLES) expect((await createAs(role, publish)).status, role).toBe(role === 'catalog_manager' ? 201 : 403);
     // CCP-A8 owns the full SUPPORT_EXTENSION payload (operation EXTEND | REMOVE); a REMOVE is
     // created here so no subscription row is needed (the overlay is checked at apply).
