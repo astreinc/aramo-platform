@@ -5907,6 +5907,58 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/messaging/sms/inbound/aws:
+    post:
+      operationId: receiveAwsInboundSms
+      summary: Inbound SMS replies (STOP / START) from AWS End User Messaging through Amazon SNS.
+      description: >
+        Remaining-Work Directive §3 B5 — no session. Amazon SNS posts the message as JSON with Content-Type
+        text/plain. Authenticity is the SNS message signature (SignatureVersion 1 or 2) checked with the
+        certificate at SigningCertURL (https, an Amazon SNS host only); TopicArn must equal
+        SIGN_SMS_AWS_INBOUND_TOPIC_ARN. A SubscriptionConfirmation is confirmed through its SubscribeURL (an
+        Amazon SNS host only). A Notification carrying the AWS two-way SMS payload records STOP / START in the
+        opt-out list. 404 unless SIGN_SMS_AWS_INBOUND_TOPIC_ARN is set, SIGN_SMS_PROVIDER includes a configured
+        aws provider and sign.sms_delivery is AVAILABLE.
+      security: []
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, type, keywords]
+                properties:
+                  received:
+                    type: boolean
+                  type:
+                    type: string
+                    enum: [Notification, SubscriptionConfirmation, UnsubscribeConfirmation]
+                  keywords:
+                    type: integer
+        '401':
+          description: The SNS message is malformed, its signature is invalid, the topic or the certificate URL is not trusted, or it is stale.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: The SNS signing certificate could not be fetched; SNS delivers again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   # ── Aramo Sign 1.14 — payment collection through Stripe Connect ──
   # (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.14, R-6; Amendment A1). Dark:
   # sign.payments is NOT_AVAILABLE and SIGN_STRIPE_CONNECT_* unset. Aramo never holds the

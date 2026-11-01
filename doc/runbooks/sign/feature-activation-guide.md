@@ -169,13 +169,13 @@ Professional $20, E Enterprise; B+ = B, P, E) next to what the code enforces tod
 | Access code | `sign.access_code` | No | None | All incl. F / all | — | Sender UI not found (section 3.7) |
 | Personal → Business upgrade | — | — | — | — | — | REMOVED from the code (A5); not offered (section 3.8) |
 | Personal paid checkout | none (env only) | Stripe live | 1–3 weeks for Stripe live setup (estimate) | S (US only) | `SIGN_PERSONAL_PAID_CHECKOUT_ENABLED` | Stripe live, ToS v2.0 effective, Standard price |
-| Trusted timestamp | `sign.trusted_timestamp` | TSA | 2–6 weeks (estimate) | paid tiers / everyone | `SIGN_TSA_URL`, `SIGN_TSA_TIMEOUT_MS`, `SIGN_TSA_RETRY_INTERVAL_MS` | Commercial TSA contract; TSA must work without credentials (section 3.10) |
+| Trusted timestamp | `sign.trusted_timestamp` | TSA | 2–6 weeks (estimate) | paid tiers / everyone | `SIGN_TSA_URL`, `SIGN_TSA_TIMEOUT_MS`, `SIGN_TSA_RETRY_INTERVAL_MS`, optional `SIGN_TSA_USERNAME` / `_PASSWORD` / `_CLIENT_CERT` / `_CLIENT_KEY` | Commercial TSA contract (basic or client-certificate authentication supported, section 3.10) |
 | Document seal (AATL) | `sign.document_seal` | GlobalSign DSS (or CSC CA) | 4–8 weeks (estimate) | B+ / everyone | `SIGN_SEAL_*` (14 vars) | CA agreement, OV vetting, mTLS cert |
-| SMS delivery (US) | `sign.sms_delivery` | AWS End User Messaging | 4–7 weeks (documented steps) | B+ metered / no check | `SIGN_SMS_PROVIDER`, `SIGN_SMS_AWS_*`, `SIGN_MESSAGING_*` | 10DLC, sandbox exit, TCPA review; no plan check (OD-3) |
+| SMS delivery (US) | `sign.sms_delivery` | AWS End User Messaging | 4–7 weeks (documented steps) | B+ metered / no check | `SIGN_SMS_PROVIDER`, `SIGN_SMS_AWS_*` (incl. `SIGN_SMS_AWS_INBOUND_TOPIC_ARN`), `SIGN_MESSAGING_*` | 10DLC, sandbox exit, TCPA review; two-way SNS topic for STOP; no plan check (OD-3) |
 | SMS delivery (India) | `sign.sms_delivery` | MSG91 + DLT | 3–8 weeks (estimate; longer if an Indian entity is needed) | B+ metered / no check | `SIGN_SMS_PROVIDER`, `SIGN_SMS_MSG91_*` | Indian entity question; DLT |
-| WhatsApp delivery | `sign.whatsapp_delivery` | Meta Cloud API | 1–4 weeks (estimate) | B+ metered / no check | `SIGN_WHATSAPP_*`, `SIGN_MESSAGING_*` | Meta verification; **nginx route missing** |
+| WhatsApp delivery | `sign.whatsapp_delivery` | Meta Cloud API | 1–4 weeks (estimate) | B+ metered / no check | `SIGN_WHATSAPP_*`, `SIGN_MESSAGING_*` | Meta verification; nginx route added (B1, deploys with nginx) |
 | SMS one-time code | `sign.sms_otp` | Same as SMS | Same as SMS | B+ metered / no check | Same as SMS | Same as SMS; sender UI not found |
-| ID verification | `sign.id_verification` | Stripe Identity | Days to 2 weeks (estimate) | P, E metered / BUSINESS | `SIGN_ID_VERIFICATION_PROVIDER`, `SIGN_STRIPE_IDENTITY_*`, `SIGN_ID_VERIFICATION_MAX_ATTEMPTS` | BIPA/DPDP counsel; **nginx route missing**; sender UI not found |
+| ID verification | `sign.id_verification` | Stripe Identity | Days to 2 weeks (estimate) | P, E metered / BUSINESS | `SIGN_ID_VERIFICATION_PROVIDER`, `SIGN_STRIPE_IDENTITY_*`, `SIGN_ID_VERIFICATION_MAX_ATTEMPTS` | BIPA/DPDP counsel; nginx route added (B1, deploys with nginx); sender UI not found |
 | KBA | `sign.kba` | None selected | 6–12 weeks (estimate) | P, E metered / BUSINESS | `SIGN_KBA_PROVIDER` (no adapter) | No vendor, no adapter |
 | Payments | `sign.payments` | Stripe Connect | 1–3 weeks (estimate) | P, E / plan key or feature row | `SIGN_STRIPE_CONNECT_*` | Connect platform profile, counsel |
 | QES | `sign.qes` | QTSP (none selected) | 3–6 months (estimate) | E metered / BUSINESS | `SIGN_QES_PROVIDER`, `SIGN_QES_CSC_*` | No vendor; deferred (R-1); UI and callback page not found |
@@ -419,17 +419,21 @@ verification · Rollback/turn-off · Open decisions.
   | `SIGN_TSA_URL` | No | the vendor's RFC 3161 URL | http or https; **no credentials in the URL** (refused, `rfc3161-tsa.adapter.ts:106`) |
   | `SIGN_TSA_TIMEOUT_MS` | No | `5000` | 500..60000, else boot is refused (`:123-129`) |
   | `SIGN_TSA_RETRY_INTERVAL_MS` | No | `60000` | minimum 10000 (`trusted-timestamp-retry.worker.ts:9,21`) |
+  | `SIGN_TSA_USERNAME` / `SIGN_TSA_PASSWORD` | **Yes** | unset | optional HTTP basic credentials (both or neither); https URL only |
+  | `SIGN_TSA_CLIENT_CERT` / `SIGN_TSA_CLIENT_KEY` | **Yes** | unset | optional TLS client certificate and private key, PEM, **base64-encoded** (both or neither; the key must match); https URL only |
 
-  **Code gap to check before contracting:** the adapter sends an unauthenticated HTTP POST. A commercial
-  TSA that requires a username/password, an API key or a client certificate is **not supported** by the
-  current code. The vendor pack's proposed `SIGN_TSA_USERNAME`, `SIGN_TSA_PASSWORD`, `SIGN_TSA_CLIENT_CERT`,
-  `SIGN_TSA_CLIENT_KEY`, `SIGN_TSA_POLICY_OID` and `SIGN_TSA_TRUST_CHAIN` **do not exist**. Either pick a TSA
-  that accepts unauthenticated requests from Aramo, or plan a code PR.
+  TSA authentication (Remaining-Work Directive B4): unset = an unauthenticated POST (the behaviour
+  before B4). Basic credentials and a client certificate may be used alone or together; a partial,
+  invalid or http-only setting **refuses boot** (`tsaAuthFromEnv`, `rfc3161-tsa.adapter.ts`), even while the
+  key is NOT_AVAILABLE. An API-key header scheme is **not** supported (no TSA asking for one has been named);
+  the vendor pack's `SIGN_TSA_POLICY_OID` and `SIGN_TSA_TRUST_CHAIN` still do not exist (the token is
+  verified against the certificate the TSA returns).
 - **Webhooks/DNS/nginx.** None (outbound only). If the box has an outbound firewall allow-list, add the TSA
   host (confirm at flip time; none is documented in the release runbook).
-- **Engineering flip steps.** Step D first (TSA URL set while dark: the log line
-  "`SIGN_TSA_URL is set but sign.trusted_timestamp is not available`" confirms the setting parses,
-  `rfc3161-tsa.adapter.ts:132`) → Step B → Step C.
+- **Engineering flip steps.** Step D first (TSA URL and any credentials set while dark: the log line
+  "`SIGN_TSA_URL is set but sign.trusted_timestamp is not available`" confirms the settings parse,
+  `rfc3161-tsa.adapter.ts`) → Step B → Step C. The probe check `sign:tsa-seal` alerts when a timestamp is
+  still pending after 10 attempts (section 4.4).
 - **Production verification.** Complete a test envelope; the certificate shows the timestamp; the
   sign-service log has no "timestamp pending" retries for it; the TimeStampResp validates against the TSA
   chain (e.g. with `openssl ts -verify` on an exported token — confirm the export path at flip time).
@@ -521,6 +525,7 @@ verification · Rollback/turn-off · Open decisions.
   | `SIGN_SMS_AWS_REGION` | No | `us-east-1` (falls back to `AWS_REGION`) |
   | `SIGN_SMS_AWS_CONFIGURATION_SET` | No | optional |
   | `SIGN_SMS_AWS_ACCESS_KEY_ID` / `SIGN_SMS_AWS_SECRET_ACCESS_KEY` | **Yes** | optional dedicated IAM user; unset ⇒ the SDK default chain |
+  | `SIGN_SMS_AWS_INBOUND_TOPIC_ARN` | No | the SNS topic ARN of the number's two-way channel; unset ⇒ the inbound route answers 404 |
   | `SIGN_MESSAGING_QUIET_HOURS` | No | default `21-8`; `off` disables |
   | `SIGN_MESSAGING_DEFAULT_TIMEZONE` | No | default `UTC` |
   | `SIGN_MESSAGING_TENANT_HOURLY_LIMIT` / `SIGN_MESSAGING_TENANT_DAILY_LIMIT` | No | defaults `100` / `500` |
@@ -530,10 +535,19 @@ verification · Rollback/turn-off · Open decisions.
   (`messaging-adapters.ts:18-20`). Recreate both `sign-service` and `platform-admin` after changing it.
   Vendor pack name check: its `SIGN_SMS_AWS_REGION`, `SIGN_SMS_AWS_ORIGINATION_IDENTITY` and
   `SIGN_SMS_AWS_CONFIGURATION_SET` match the code.
-- **Webhooks/DNS/nginx.** None for AWS: there is no inbound SMS route in code. **Confirm at flip time** how a
-  recipient's STOP reply reaches Aramo's opt-out list: the code adds a vendor-reported opt-out to the list on
-  a failed send (service header step 6); AWS keeps its own opt-out list. Decide whether two-way SMS (an
-  inbound route) is needed.
+- **Webhooks/DNS/nginx.** Inbound STOP / START (Remaining-Work Directive B5): route
+  `POST /v1/sign/messaging/sms/inbound/aws` (`SignSmsInboundWebhookController`,
+  `apps/sign-service/src/app/messaging/sign-messaging.controller.ts`; nginx location
+  `/v1/sign/messaging/sms/inbound/`, session-less, raw body). It answers 404 unless
+  `SIGN_SMS_AWS_INBOUND_TOPIC_ARN` is set, `SIGN_SMS_PROVIDER` includes a configured `aws` and the launch key
+  is AVAILABLE. AWS setup: enable two-way SMS on the 10DLC number with an **Amazon SNS topic** as the
+  destination, subscribe `https://sign.aramo.ai/v1/sign/messaging/sms/inbound/aws` to it (protocol HTTPS) and
+  set the topic ARN in `SIGN_SMS_AWS_INBOUND_TOPIC_ARN`; sign-service verifies each SNS signature (certificate
+  from an `sns.<region>.amazonaws.com` https URL only) and confirms the subscription itself (log line
+  "`sms inbound: SNS subscription confirmed`"). A STOP / START reply updates the same opt-out list every send
+  checks (service header step 3). AWS also keeps its own opt-out list; a vendor-reported opt-out on a failed
+  send is still added (step 6). **Confirm at flip time** that the topic policy lets End User Messaging
+  publish to it (AWS console) — not verifiable from code.
 - **Engineering flip steps.** UI check: confirm the sender can choose SMS for a recipient (no sender control
   was found in `apps/sign-web/src/workspace`; the read route is `GET /v1/sign/sender/envelopes/:id/messaging`,
   `sign-messaging.controller.ts:46`). Resolve OD-3. Step D → Step B → Step C. Decide whether metering
@@ -568,11 +582,19 @@ verification · Rollback/turn-off · Open decisions.
   Template variables the code fills: `##sender##`, `##link##`, `##otp##`, `##minutes##`
   (`.env.prod.example`, MSG91 block). The DLT templates must use exactly these. MSG91 is off unless the auth
   key and at least one template id are set (`messaging-adapters.ts:306`).
-  **Name differences from the vendor pack:** the pack proposed `SIGN_SMS_MSG91_SENDER_ID`,
-  `SIGN_SMS_MSG91_DLT_ENTITY_ID`, `SIGN_SMS_MSG91_TEMPLATE_IDS` and `SIGN_SMS_ROUTING`; none exists. Routing is
-  automatic (+91 → MSG91, others → AWS). Confirm at flip time whether the header and entity id are set in the
-  MSG91 account (they are not passed by the code).
-- **Webhooks/DNS/nginx.** None in code (no MSG91 delivery-report route).
+  | `SIGN_SMS_MSG91_SENDER_ID` | No | optional: the DLT-registered 6-letter header, sent with every request |
+  | `SIGN_SMS_MSG91_DLT_ENTITY_ID` | No | optional: the DLT Principal Entity id (digits), sent with every request |
+
+  The header and entity id (Remaining-Work Directive B5) are sent as the Flow API body fields `sender` and
+  `DLT_PE_ID` (`MSG91_SENDER_FIELD` / `MSG91_DLT_ENTITY_FIELD`, `messaging-adapters.ts`); unset ⇒ the MSG91
+  account's own mapping applies; an invalid value leaves MSG91 off with an error log. **Confirm both field
+  names with MSG91 in writing at onboarding** (their public Flow API page does not list them); a different
+  name is a one-line change. **Name differences from the vendor pack:** `SIGN_SMS_MSG91_TEMPLATE_IDS` and
+  `SIGN_SMS_ROUTING` do not exist. Routing is automatic (+91 → MSG91, others → AWS).
+- **Webhooks/DNS/nginx.** None in code (no MSG91 delivery-report or inbound route). India opt-out is by the
+  TRAI DLT preference registry, not keyword replies to a 6-letter header (which cannot receive replies); MSG91
+  inbound needs a long code or virtual number and documents no request signature, so no MSG91 inbound route
+  was built (Remaining-Work Directive B5 gap).
 - **Engineering flip steps.** As 3.12.
 - **Production verification.** Send to an Indian test number: the DLT template arrives with the link; a +1
   number in the same envelope goes through AWS (if configured).
@@ -615,14 +637,14 @@ verification · Rollback/turn-off · Open decisions.
 - **Webhooks/DNS/nginx.** Webhook URL to register at Meta:
   `https://sign.aramo.ai/v1/sign/messaging/whatsapp/webhook` (route: `sign-messaging.controller.ts:127`; GET
   for the verify handshake, POST for events). It answers 404 unless the app secret, the verify token **and**
-  the launch key are all set (`:140`). **Blocking engineering gap:** nginx proxies only listed `/v1/sign/…`
-  prefixes on the Sign host and has **no location for `/v1/sign/messaging/`**; the request falls to the SPA
-  `location /` (`deploy/nginx/templates/aramo.conf.template:323`, `:523-526`). Add an exact or prefix location
-  for `/v1/sign/messaging/whatsapp/webhook` that proxies to `sign-service:3003` without rewriting the body
-  (the signature is over the raw body), then rebuild and recreate nginx (with sign-service running first).
-  Because the handshake needs the launch key, register the webhook at Meta **after** the flip release.
-- **Engineering flip steps.** nginx PR + UI check (no sender channel choice found in the workspace) → Step D →
-  Step B → Step C (SERVICES includes `nginx`) → register the webhook at Meta.
+  the launch key are all set. nginx: location `/v1/sign/messaging/whatsapp/webhook` on the Sign host
+  (`deploy/nginx/templates/aramo.conf.template`, Remaining-Work Directive B1) proxies to `sign-service:3003`
+  session-less with the body untouched (the signature is over the raw body), rate-limited in `sign_workspace`;
+  the release that carries it rebuilds and recreates nginx (with sign-service running first). Because the
+  handshake needs the launch key, register the webhook at Meta **after** the flip release.
+- **Engineering flip steps.** UI check (no sender channel choice found in the workspace) → Step D →
+  Step B → Step C (SERVICES includes `nginx` if the B1 nginx change is not yet deployed) → register the
+  webhook at Meta.
 - **Production verification.** Meta's "Verify and save" succeeds; a test envelope sends the template to a test
   WhatsApp number; delivered and read statuses update the delivery row; replying STOP suppresses the next
   send.
@@ -686,12 +708,11 @@ verification · Rollback/turn-off · Open decisions.
   `SIGN_IDV_STRIPE_PUBLISHABLE_KEY` (no publishable key is used), `SIGN_IDV_STRIPE_WEBHOOK_SECRET`.
 - **Webhooks/DNS/nginx.** Register at Stripe: `https://sign.aramo.ai/v1/sign/identity-verification/webhook/stripe`,
   events `identity.verification_session.verified`, `.requires_input`, `.canceled`
-  (`stripe-identity.adapter.ts:33-37`). **Blocking engineering gap:** nginx has **no location for
-  `/v1/sign/identity-verification/`** (only `/v1/sign/signing/` is proxied among these), so Stripe's events
-  would reach the SPA, not sign-service. Add a session-less location that proxies to `sign-service:3003`
-  without body rewriting (as `/v1/sign/payments/webhook/`, `aramo.conf.template:376-384`), rebuild and recreate
-  nginx.
-- **Engineering flip steps.** nginx PR; UI check (the signer screens exist, `apps/sign-web/src/guest/App.tsx:141-142,689`;
+  (`stripe-identity.adapter.ts:33-37`). nginx: location `/v1/sign/identity-verification/webhook/` on the Sign
+  host (Remaining-Work Directive B1) proxies to `sign-service:3003` session-less with the body untouched
+  (modelled on `/v1/sign/payments/webhook/`), rate-limited in `sign_workspace`; the release that carries it
+  rebuilds and recreates nginx.
+- **Engineering flip steps.** UI check (the signer screens exist, `apps/sign-web/src/guest/App.tsx:141-142,689`;
   no sender control to set `identity_verification_method` was found in the workspace) → Step D → Step B →
   Step C.
 - **Production verification.** Business test envelope with ID verification on a signer: the signer is sent to
@@ -861,6 +882,15 @@ verification · Rollback/turn-off · Open decisions.
   `sign.sms_message`; the ledger has one entry; the report row turns REPORTED; Stripe's meter shows 1 event;
   the upcoming invoice shows the charge; the Billing page "usage charges" panel matches.
 - **Rollback/turn-off.** Unset the flag + recreate (recorded entries stay; nothing more is reported).
+- **Split periods (Remaining-Work Directive B10, done).** A plan change inside a billing period ends the
+  subscription row and opens a new one on the same anchor; the period is now reconciled **once** over every
+  row with the same billing link (provider, account, provider subscription) and recorded on the latest row
+  (`periodSegments`, `libs/subscription/src/lib/usage/usage-reconciliation.ts`; reconciling through the
+  earlier row returns the same record). Each event keeps its own version's price, so a version change on
+  one row needs nothing more. **Still open (D4):** the Stripe invoice read that feeds the reconciliation;
+  how Stripe invoices a period whose metered price changed mid-period must be checked when the meters and
+  prices exist (a whole period billed at one price is reported as a mismatch, correctly). KBA usage
+  recording waits for a KBA vendor.
 - **Open decisions.** D4 (go-live list item 43); OD-4 (which features may go live unbilled).
 
 ### 3.22 ToS v2.0 release day (branch `feat/sign-tos-v2`, PR #1057)
@@ -966,11 +996,15 @@ Connect), the AATL CA, the TSA, the QTSP, the KBA vendor, the e-stamp aggregator
 ### 4.4 Monitoring and alerts
 
 The production probe ([`monitoring-and-alerts.md`](monitoring-and-alerts.md) §1.1) watches containers, disk,
-memory, HTTP, TLS, nginx 5xx and the Sign KMS, custody, purge, retention and privacy log patterns. It has
-**no pattern** for messaging, TSA, seal, identity verification, payments or metering failures. Before each
-vendor flip, add the relevant log patterns to the probe (`MON_RE_SIGN_*` in `deploy/monitoring/`) in the same
-PR as the flip, and set vendor-side alerts: AWS SMS spend limit, Stripe failed-webhook emails, Meta quality
-rating, GlobalSign certificate expiry, TSA availability.
+memory, HTTP, TLS, nginx 5xx and the Sign KMS, custody, purge, retention and privacy log patterns, and (Remaining-
+Work Directive B9) four vendor checks: `sign:webhooks` (WhatsApp, inbound SMS, Stripe Identity, Stripe Connect
+and Stripe billing webhook refusals and failures), `sign:messaging` (SMS / WhatsApp provider errors),
+`sign:tsa-seal` (a timestamp pending after 10 attempts, a seal failing for good) and `sign:metering` (usage
+reports that will never reach Stripe, the live-mode hold). They read lines sign-service writes only when the
+feature's provider is configured, so they stay at 0 while dark. The probe change reaches the box with the next
+`deploy/monitoring/install.sh` run (box install, Workstream C). Vendor-side alerts are still set at each flip:
+AWS SMS spend limit, Stripe failed-webhook emails, Meta quality rating, GlobalSign certificate expiry, TSA
+availability.
 
 ### 4.5 Abuse and review queue
 
@@ -1024,12 +1058,16 @@ decide whether Personal accounts may text at all (OD-3), and review the per-orga
 Each gap is a work item in the Feature Activation Readiness Directive (AR-n in brackets); OD-9 (the
 Personal → Business upgrade) was ruled by Amendment A5: not offered, and the code is removed (AR-9).
 
-1. [AR-1] nginx has no location for `/v1/sign/messaging/whatsapp/webhook` (3.14) or `/v1/sign/identity-verification/`
-   (3.16); webhooks would never reach sign-service.
+1. [AR-1, B1] Done: nginx locations for the WhatsApp (3.14), Stripe Identity (3.16) and inbound SMS (3.12)
+   webhooks.
 2. [AR-2, AR-3] No sender UI found for witness, delegate, access code, SMS/WhatsApp channel, SMS OTP or ID verification
    method; no signer UI for delegation; no QES screens or `/qes/callback` page.
-3. [AR-4] The TSA adapter cannot authenticate to a TSA (3.10).
+3. [AR-4, B4] Done: optional TSA basic credentials and client certificate (3.10).
 4. [AR-6] No console path to add a feature key to an existing plan (1.3, OD-1).
 5. [AR-7] Messaging has no plan or organization-type gate (OD-3).
 6. Live-mode holds in the billing command worker and the metering branch (4.1, 3.21).
-7. [AR-11] The production probe has no patterns for the new vendor features (4.4).
+7. [AR-11, B9] Done in code: probe checks for webhooks, messaging, TSA / seal and metering (4.4); reaches the
+   box with the next monitoring install.
+8. [B5] Done: inbound SMS STOP for AWS (through SNS) and the MSG91 DLT header and entity id (3.12, 3.13).
+   Open: no MSG91 inbound route (3.13); the MSG91 field names to confirm with MSG91.
+9. [B10] Done: split-period reconciliation (3.21). Open (D4): the Stripe invoice read; KBA usage call site.

@@ -2876,6 +2876,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/messaging/sms/inbound/aws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inbound SMS replies (STOP / START) from AWS End User Messaging through Amazon SNS.
+         * @description Remaining-Work Directive §3 B5 — no session. Amazon SNS posts the message as JSON with Content-Type text/plain. Authenticity is the SNS message signature (SignatureVersion 1 or 2) checked with the certificate at SigningCertURL (https, an Amazon SNS host only); TopicArn must equal SIGN_SMS_AWS_INBOUND_TOPIC_ARN. A SubscriptionConfirmation is confirmed through its SubscribeURL (an Amazon SNS host only). A Notification carrying the AWS two-way SMS payload records STOP / START in the opt-out list. 404 unless SIGN_SMS_AWS_INBOUND_TOPIC_ARN is set, SIGN_SMS_PROVIDER includes a configured aws provider and sign.sms_delivery is AVAILABLE.
+         */
+        post: operations["receiveAwsInboundSms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/payment/checkout": {
         parameters: {
             query?: never;
@@ -9851,6 +9871,55 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    receiveAwsInboundSms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/plain": string;
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        type: "Notification" | "SubscriptionConfirmation" | "UnsubscribeConfirmation";
+                        keywords: number;
+                    };
+                };
+            };
+            /** @description The SNS message is malformed, its signature is invalid, the topic or the certificate URL is not trusted, or it is stale. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The SNS signing certificate could not be fetched; SNS delivers again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     startSignerPaymentCheckout: {

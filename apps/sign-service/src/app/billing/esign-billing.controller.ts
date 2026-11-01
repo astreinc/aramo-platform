@@ -44,6 +44,7 @@ import { Inject } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
+import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
 import { ESIGN_READ_SCOPE, SenderContextService } from '../sender/sender-context.service.js';
 
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
@@ -507,15 +508,20 @@ export class EsignBillingController {
       evt = this.billing.verifyWebhook(raw, signature, Math.floor(Date.now() / 1000));
     } catch (e) {
       if (e instanceof BillingWebhookSignatureError) {
-        this.log.warn(`billing webhook rejected: ${e.reason}`);
+        logWebhookRejected(this.log, 'stripe_billing', e.reason);
         throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.reason } });
       }
       throw billingHttpError(e, requestId);
     }
     // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
-    const result = await this.run(requestId, () =>
-      this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY),
-    );
+    const result = await this.run(requestId, async () => {
+      try {
+        return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
+      } catch (e) {
+        logWebhookFailed(this.log, 'stripe_billing', e);
+        throw e;
+      }
+    });
     if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
       const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
       this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);

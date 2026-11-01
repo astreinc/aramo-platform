@@ -95,6 +95,11 @@ export class UsageProviderReportService {
     return out;
   }
 
+  /** The production probe's alert line for a usage report that will never reach the provider (§3 B9). */
+  private failedLine(ledger_entry_id: string, reason: string): void {
+    this.log.warn(`usage_report.failed ledger_entry=${ledger_entry_id} reason=${reason}`);
+  }
+
   private async deliver(ledger_entry_id: string, at: Date): Promise<'reported' | 'skipped' | 'failed' | 'deferred'> {
     const entry = await this.prisma.usageLedgerEntry.findUniqueOrThrow({ where: { id: ledger_entry_id } });
     const report = await this.prisma.usageProviderReport.findUniqueOrThrow({ where: { ledger_entry_id } });
@@ -111,10 +116,12 @@ export class UsageProviderReportService {
     }
     if (entry.occurred_at.getTime() < at.getTime() - USAGE_MAX_AGE_MS) {
       await finish({ state: 'FAILED', reason: 'OUTSIDE_PROVIDER_WINDOW' });
+      this.failedLine(ledger_entry_id, 'OUTSIDE_PROVIDER_WINDOW');
       return 'failed';
     }
     if (!isMeteredUnitKey(entry.unit_key)) {
       await finish({ state: 'FAILED', reason: 'UNKNOWN_UNIT' });
+      this.failedLine(ledger_entry_id, 'UNKNOWN_UNIT');
       return 'failed';
     }
     try {
@@ -133,10 +140,12 @@ export class UsageProviderReportService {
       if (!retryable) {
         this.log.warn(`usage report ${ledger_entry_id} refused by the provider: ${(e as Error).message}`);
         await finish({ state: 'FAILED', reason: 'PROVIDER_REFUSED', attempts });
+        this.failedLine(ledger_entry_id, 'PROVIDER_REFUSED');
         return 'failed';
       }
       if (attempts >= USAGE_REPORT_MAX_ATTEMPTS) {
         await finish({ state: 'FAILED', reason: 'PROVIDER_RETRIES_EXHAUSTED', attempts });
+        this.failedLine(ledger_entry_id, 'PROVIDER_RETRIES_EXHAUSTED');
         return 'failed';
       }
       await finish({ state: 'PENDING', reason: 'PROVIDER_UNAVAILABLE', attempts, next_attempt_at: new Date(at.getTime() + usageReportBackoffMs(attempts)) });

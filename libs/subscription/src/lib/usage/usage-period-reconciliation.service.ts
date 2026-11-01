@@ -5,7 +5,7 @@ import { billingPeriodAt } from '../billing-period.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { METERED_USAGE_OPTIONS, type MeteredUsageOptions, USAGE_PERIOD_CLOSE_GRACE_MS } from './metered-usage.service.js';
-import { aggregateLedger, normalizeUsageLines, reconcileUsageLines, type UsageDiscrepancy, type UsageLine } from './usage-reconciliation.js';
+import { aggregateLedger, normalizeUsageLines, periodSegments, reconcileUsageLines, type UsageDiscrepancy, type UsageLine } from './usage-reconciliation.js';
 
 // Sign usage metering — Amendment A3 billing: the idempotent billing-period reconciliation.
 //
@@ -24,6 +24,11 @@ import { aggregateLedger, normalizeUsageLines, reconcileUsageLines, type UsageDi
 // Idempotent: a re-run with the same digest, invoice ref and invoice lines returns the stored row
 // (replayed); anything different is refused RECONCILIATION_CONFLICT — a reconciliation is never
 // rewritten, and no path here can add a second charge to an invoice.
+//
+// A SPLIT period (a plan change inside it opened a new subscription row on the same anchor) is
+// reconciled once over every segment row with the same billing link, recorded on the latest
+// segment (periodSegments in usage-reconciliation.ts); reconciling it through an earlier segment
+// returns that same row. Each entry already carries its own version's price.
 //
 // The provider invoice lines are supplied by the caller: reading them from the provider needs the
 // provider meters and metered prices (open decision D4), so no job calls this yet.
@@ -70,6 +75,8 @@ export interface UsagePeriodReconciliationView {
   readonly outcome: 'MATCHED' | 'MISMATCH' | 'NOT_PROVIDER_BILLED';
   readonly discrepancies: readonly UsageDiscrepancy[];
   readonly replayed: boolean;
+  /** The subscription rows whose events this period covers (more than one = a split period). */
+  readonly segment_subscription_ids: readonly string[];
 }
 
 type Row = {
@@ -89,7 +96,7 @@ type Row = {
   discrepancies: unknown;
 };
 
-function viewOf(r: Row, replayed: boolean): UsagePeriodReconciliationView {
+function viewOf(r: Row, replayed: boolean, segment_subscription_ids: readonly string[]): UsagePeriodReconciliationView {
   return {
     id: r.id,
     subscription_id: r.subscription_id,
@@ -105,6 +112,7 @@ function viewOf(r: Row, replayed: boolean): UsagePeriodReconciliationView {
     outcome: r.outcome as UsagePeriodReconciliationView['outcome'],
     discrepancies: r.discrepancies as UsageDiscrepancy[],
     replayed,
+    segment_subscription_ids,
   };
 }
 
@@ -128,14 +136,37 @@ export class UsagePeriodReconciliationService {
 
   async reconcilePeriod(input: { subscription_id: string; period_start: Date; invoice: ProviderUsageInvoice | null; reconciled_by: string }): Promise<UsagePeriodReconciliationView> {
     const now = this.clock();
-    const sub = await this.prisma.tenantSubscription.findUnique({
-      where: { id: input.subscription_id },
-      select: { id: true, tenant_id: true, product_key: true, period_anchor: true, billing_provider: true, billing_account_ref: true },
-    });
-    if (sub === null) throw new UsageReconciliationError('SUBSCRIPTION_NOT_FOUND', 'subscription not found');
-    const period = billingPeriodAt(sub.period_anchor, input.period_start);
+    const segmentSelect = {
+      id: true,
+      tenant_id: true,
+      product_key: true,
+      composition_role: true,
+      period_anchor: true,
+      started_at: true,
+      ended_at: true,
+      billing_provider: true,
+      billing_account_ref: true,
+      billing_subscription_ref: true,
+    } as const;
+    const subject = await this.prisma.tenantSubscription.findUnique({ where: { id: input.subscription_id }, select: segmentSelect });
+    if (subject === null) throw new UsageReconciliationError('SUBSCRIPTION_NOT_FOUND', 'subscription not found');
+    const period = billingPeriodAt(subject.period_anchor, input.period_start);
     if (period.start.getTime() !== input.period_start.getTime()) throw new UsageReconciliationError('INVALID_PERIOD', 'period_start is not the start of a billing period of the subscription');
     if (now.getTime() < period.end.getTime() + USAGE_PERIOD_CLOSE_GRACE_MS) throw new UsageReconciliationError('PERIOD_OPEN', 'the billing period is not closed yet');
+
+    // B10 — the period's segments (a plan change inside the period split it across rows).
+    const periodRows = await this.prisma.tenantSubscription.findMany({
+      where: {
+        tenant_id: subject.tenant_id,
+        product_key: subject.product_key,
+        composition_role: subject.composition_role,
+        started_at: { lt: period.end },
+        OR: [{ ended_at: null }, { ended_at: { gt: period.start } }],
+      },
+      select: segmentSelect,
+    });
+    const segments = periodSegments(subject, periodRows, period, billingPeriodAt);
+    const sub = segments.owner_id === subject.id ? subject : (periodRows.find((c) => c.id === segments.owner_id) ?? subject);
 
     const providerBilled = sub.billing_provider === 'STRIPE' && sub.billing_account_ref !== null;
     if (providerBilled && input.invoice === null) throw new UsageReconciliationError('INVOICE_REQUIRED', 'a provider-billed period is reconciled against its invoice');
@@ -151,7 +182,7 @@ export class UsagePeriodReconciliationService {
     }
 
     const entries = await this.prisma.usageLedgerEntry.findMany({
-      where: { subscription_id: sub.id, period_start: period.start },
+      where: { subscription_id: { in: [...segments.segment_ids] }, period_start: period.start },
       select: { id: true, unit_key: true, quantity: true, amount_minor: true },
     });
     const ledger = aggregateLedger(entries);
@@ -169,7 +200,7 @@ export class UsagePeriodReconciliationService {
         existing.provider_invoice_ref === (input.invoice?.invoice_ref ?? null) &&
         sameLines(existing.provider_lines, providerLines);
       if (!same) throw new UsageReconciliationError('RECONCILIATION_CONFLICT', 'this billing period was already reconciled with different events or invoice totals');
-      return viewOf(existing, true);
+      return viewOf(existing, true, segments.segment_ids);
     };
 
     const prior = await replayOf();
@@ -198,7 +229,7 @@ export class UsagePeriodReconciliationService {
           reconciled_at: now,
         },
       })) as Row;
-      return viewOf(row, false);
+      return viewOf(row, false, segments.segment_ids);
     } catch (e) {
       if (isUniqueViolation(e)) {
         const raced = await replayOf();

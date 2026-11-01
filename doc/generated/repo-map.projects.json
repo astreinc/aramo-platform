@@ -2909,6 +2909,7 @@
       "paymentRecordPayloadErrors",
       "paymentStatusFlags",
       "paymentTermsErrors",
+      "periodSegments",
       "personalCheckoutDisclosure",
       "personalSignupMode",
       "planCreateAvailableKeys",
