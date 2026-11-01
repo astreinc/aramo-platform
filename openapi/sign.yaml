@@ -4116,6 +4116,143 @@ paths:
   # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
   # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
   # service runs with SIGN_PURGE_ENABLED=1.
+  /v1/sign/sender/reports/overview:
+    get:
+      operationId: getSenderReportsOverview
+      summary: Organization reports — volume, turnaround, completion rate, by sender and by template.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive v1.0 §1.13 (basic reports). Totals, completion rate, turnaround and the breakdowns describe envelopes SENT in the range; the volume series counts each sent / completed / declined / voided event in the period it happened. Read-only, organization-wide. Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days.
+          schema:
+            type: string
+            format: date
+        - name: period
+          in: query
+          required: false
+          description: Volume series granularity (UTC; weeks start Monday). A daily series covers at most 366 days.
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: month
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignReportsOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/reports/export:
+    get:
+      operationId: exportSenderReport
+      summary: One report table as CSV (summary, volume, senders or templates).
+      description: >
+        The same figures as the overview, as an RFC 4180 CSV attachment (text cells that a spreadsheet would read as a formula are prefixed with an apostrophe). Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days.
+          schema:
+            type: string
+            format: date
+        - name: period
+          in: query
+          required: false
+          description: Volume series granularity (UTC; weeks start Monday). A daily series covers at most 366 days.
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: month
+        - name: report
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary, volume, senders, templates]
+            default: summary
+      responses:
+        '200':
+          description: CSV attachment.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/reports/envelopes/export:
+    get:
+      operationId: exportSenderEnvelopeAudit
+      summary: Envelope audit export (CSV) — envelopes created in the range, with status and timestamps.
+      description: >
+        Columns envelope_id, subject, status, sender_id, sender_name, source_application, template_ref, created_at, sent_at, completed_at, declined_at, voided_at, recipients, signed, purge_state, purge_level, purge_executed_at. Never document contents, field values or recipient identities. A purged envelope's subject reads [purged] (metadata level and above) and a redacted envelope has no sender name. At most 10000 envelopes (400 VALIDATION_ERROR too_many_rows otherwise). Deleted drafts are excluded. Requires sign:report:read and a BUSINESS tenant (plans B+). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.reports capability is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: First day of the range (YYYY-MM-DD, UTC, inclusive). Default the first day of the month five months before `to`.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Last day of the range (YYYY-MM-DD, UTC, inclusive). Default today. A range covers at most 731 days.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: CSV attachment.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/sign/sender/retention-policy:
     get:
       operationId: getSenderRetentionPolicy
@@ -4634,6 +4771,99 @@ components:
     SignPurgeLevel:
       type: string
       enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
+    SignReportStats:
+      type: object
+      required: [sent, completed, declined, voided, expired, in_flight, completion_rate, turnaround_average_hours, turnaround_median_hours, turnaround_p90_hours]
+      properties:
+        sent:
+          type: integer
+        completed:
+          type: integer
+        declined:
+          type: integer
+        voided:
+          type: integer
+        expired:
+          type: integer
+        in_flight:
+          type: integer
+          description: Sent or in progress.
+        completion_rate:
+          type: [number, 'null']
+          description: Percent of the envelopes sent that completed (one decimal); null when none were sent.
+        turnaround_average_hours:
+          type: [number, 'null']
+        turnaround_median_hours:
+          type: [number, 'null']
+        turnaround_p90_hours:
+          type: [number, 'null']
+    SignReportsOverview:
+      type: object
+      required: [range, totals, volume, by_sender, by_template]
+      properties:
+        range:
+          type: object
+          required: [from, to, period, timezone]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+            period:
+              type: string
+              enum: [day, week, month]
+            timezone:
+              type: string
+              enum: [UTC]
+        totals:
+          $ref: '#/components/schemas/SignReportStats'
+        volume:
+          type: array
+          items:
+            type: object
+            required: [period_start, sent, completed, declined, voided]
+            properties:
+              period_start:
+                type: string
+                format: date
+              sent:
+                type: integer
+              completed:
+                type: integer
+              declined:
+                type: integer
+              voided:
+                type: integer
+        by_sender:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/SignReportStats'
+              - type: object
+                required: [sender_id, sender_name]
+                properties:
+                  sender_id:
+                    type: string
+                    format: uuid
+                  sender_name:
+                    type: [string, 'null']
+        by_template:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/SignReportStats'
+              - type: object
+                required: [template_ref, template_name]
+                properties:
+                  template_ref:
+                    type: [string, 'null']
+                    format: uuid
+                    description: null = envelopes not started from a template.
+                  template_name:
+                    type: [string, 'null']
+                    description: Reserved for the template library; null until it is wired.
     SignRetentionPolicy:
       type: object
       required: [retention_days, purge_level, updated_at]
@@ -5240,6 +5470,9 @@ components:
             templates:
               type: boolean
               description: DOC-TEMPLATE-LIB-1 T-5 — the session holds document_template:read (start envelopes from templates).
+            reports:
+              type: boolean
+              description: Feature-Parity §1.13 — the session holds sign:report:read in a BUSINESS tenant (organization reports).
         features:
           type: object
           description: >
@@ -5250,6 +5483,9 @@ components:
             in_person_signing:
               type: boolean
               description: Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available.
+            reports:
+              type: boolean
+              description: Feature-Parity §1.13 — the sign.reports capability is available for this BUSINESS tenant (always false for PERSONAL); while false every reports route answers ESIGN_FEATURE_NOT_AVAILABLE (403).
         can_send:
           type: boolean
         personal_sending_enabled:

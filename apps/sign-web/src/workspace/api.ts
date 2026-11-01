@@ -33,10 +33,13 @@ export interface SenderContext {
     billing?: boolean;
     // DOC-TEMPLATE-LIB-1 T-5 — document_template:read (start envelopes from templates).
     templates?: boolean;
+    // Feature-Parity §1.13 — sign:report:read (organization reports).
+    reports?: boolean;
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (absent = not available).
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — in_person_signing (hosted signing; mobile only this release).
-  features?: { templates?: boolean; in_person_signing?: boolean };
+  // Feature-Parity §1.13 — reports = the sign.reports capability (BUSINESS only; absent = not available).
+  features?: { templates?: boolean; in_person_signing?: boolean; reports?: boolean };
   can_send: boolean;
   // Aramo Sign Personal (Free) — true only while Personal sending is switched on for this
   // deployment; whether THIS account may send is still `can_send` (backend-decided).
@@ -617,6 +620,80 @@ export const senderApi = {
   }) => apiClient.post<FromTemplateResult>(`${BASE}/envelopes/from-template`, body),
 };
 
+// Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — organization reports.
+export type ReportPeriod = 'day' | 'week' | 'month';
+export interface ReportStats {
+  sent: number;
+  completed: number;
+  declined: number;
+  voided: number;
+  expired: number;
+  in_flight: number;
+  completion_rate: number | null;
+  turnaround_average_hours: number | null;
+  turnaround_median_hours: number | null;
+  turnaround_p90_hours: number | null;
+}
+export interface ReportsOverview {
+  range: { from: string; to: string; period: ReportPeriod; timezone: 'UTC' };
+  totals: ReportStats;
+  volume: { period_start: string; sent: number; completed: number; declined: number; voided: number }[];
+  by_sender: (ReportStats & { sender_id: string; sender_name: string | null })[];
+  by_template: (ReportStats & { template_ref: string | null; template_name: string | null })[];
+}
+export interface ReportQuery {
+  from?: string;
+  to?: string;
+  period?: ReportPeriod;
+}
+export type ReportExportKind = 'summary' | 'volume' | 'senders' | 'templates';
+
+function reportQs(q: ReportQuery & { report?: ReportExportKind }): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (typeof v === 'string' && v !== '') p.set(k, v);
+  const qs = p.toString();
+  return qs === '' ? '' : `?${qs}`;
+}
+
+export const reportsApi = {
+  overview: (q: ReportQuery = {}) => apiClient.get<ReportsOverview>(`${BASE}/reports/overview${reportQs(q)}`),
+  exportUrl: (kind: ReportExportKind, q: ReportQuery = {}) => `${BASE}/reports/export${reportQs({ ...q, report: kind })}`,
+  auditUrl: (q: ReportQuery = {}) => `${BASE}/reports/envelopes/export${reportQs({ from: q.from, to: q.to })}`,
+};
+
+// A CSV attachment (reports exports): same credentials, consumer header and one-shot refresh
+// as fetchSourcePdf; saved under the server's filename.
+export async function downloadCsv(url: string, fallbackName: string): Promise<void> {
+  const get = () => fetch(url, { credentials: 'include', headers: { 'X-Aramo-Consumer': getAuthConsumer() } });
+  let res = await get();
+  if (res.status === 401) {
+    const refreshed = await fetch(`/auth/${getAuthConsumer()}/refresh`, { method: 'POST', credentials: 'include' });
+    if (refreshed.ok) res = await get();
+  }
+  if (!res.ok) {
+    let code: string | undefined;
+    let message = `Could not export (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: { code?: string; message?: string } };
+      code = body.error?.code;
+      if (typeof body.error?.message === 'string') message = body.error.message;
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(res.status, message, code);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
+  const blobUrl = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+}
+
 // PDF bytes for the editor / preview. Binary, so it bypasses the JSON client but
 // keeps the same credentials + consumer header and the same one-shot refresh on 401.
 export async function fetchSourcePdf(envelopeId: string, documentId: string): Promise<ArrayBuffer> {
@@ -675,6 +752,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required') return 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'NO_BILLING_ACCOUNT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
     if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.';
+    // Feature-Parity §1.13 — the reports capability (or a Personal plan) refuses with its own key.
+    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['feature_key'] === 'sign.reports') return 'Reports aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';

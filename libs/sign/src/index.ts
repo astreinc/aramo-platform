@@ -15,6 +15,17 @@ export {
   type DocumentPageSize,
   DELETED_DRAFT_SUBJECT,
 } from './lib/sender-workspace.repository.js';
+// Feature-Parity Program §1.13 — read-only organization reports.
+export {
+  SignReportRepository,
+  type ReportPeriod,
+  type ReportGroup,
+  type ReportRange,
+  type CohortStats,
+  type GroupedCohortStats,
+  type VolumeBucket,
+  type AuditEnvelopeRow,
+} from './lib/sign-report.repository.js';
 export {
   EsignRepository,
   type CreateEnvelopeInput,
@@ -317,6 +328,8 @@ export {
   RETENTION_DAYS_MAX,
   PII_PAYLOAD_KEYS,
   PURGED_EVENT,
+  // Feature-Parity §1.13 — the reports' audit export masks a purged subject with it.
+  PURGED_TEXT,
   PURGE_QUEUED_EVENT,
   PURGE_DEQUEUED_EVENT,
   isPurgeLevel,

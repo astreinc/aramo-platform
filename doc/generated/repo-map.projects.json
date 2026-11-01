@@ -2206,6 +2206,7 @@
       "SignIdempotencyRepository",
       "SignIntegrationRepository",
       "SignPurgeRepository",
+      "SignReportRepository",
       "SignSavedSignatureRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
@@ -4118,6 +4119,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-reports.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7913,6 +7920,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-reports.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention-controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10364,6 +10377,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Reports.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -12946,6 +12965,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-reports.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention-purge.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13403,6 +13428,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-reports.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

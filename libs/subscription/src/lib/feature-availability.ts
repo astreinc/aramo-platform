@@ -24,6 +24,10 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.forms': 'NOT_AVAILABLE',
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (volume,
+  // turnaround, completion rate, by sender / template, CSV and envelope audit export). Built
+  // dark: flipping it to AVAILABLE is a PO authorization (R-8), never made in code review.
+  'sign.reports': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
 };
 

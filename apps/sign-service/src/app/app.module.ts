@@ -76,6 +76,8 @@ import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './documen
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
+import { EsignSenderReportsController } from './sender/esign-sender-reports.controller.js';
+import { SenderReportsService } from './sender/sender-reports.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
@@ -209,7 +211,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -230,6 +232,8 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignFeatureGate,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
+    // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
+    SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
     // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
     PersonalSendGate,
