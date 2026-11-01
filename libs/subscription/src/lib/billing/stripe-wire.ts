@@ -20,8 +20,16 @@ export function wireAccountRef(obj: Record<string, unknown>): string {
  * updatable in Checkout (the registered US address stays the billing address;
  * the country is still re-verified on every sync).
  */
-export function wireCheckoutAccountParams(account_ref: string | null, owner_email: string): Record<string, string> {
-  return account_ref !== null ? { customer: account_ref, 'customer_update[address]': 'never' } : { customer_email: owner_email };
+export function wireCheckoutAccountParams(account_ref: string | null, owner_email: string, collect_address = false): Record<string, string> {
+  if (account_ref === null) return { customer_email: owner_email };
+  // Sign Catalog v2 §4.3 — a collected address is saved on the reused billing account.
+  return { customer: account_ref, 'customer_update[address]': collect_address ? 'auto' : 'never' };
+}
+
+/** Sign Catalog v2 §4.3 — the checkout address-collection mode (Personal: always collected). */
+export function wireCheckoutAddressCollection(account_ref: string | null, collect_address = false): string | undefined {
+  if (collect_address) return 'required';
+  return account_ref !== null ? 'auto' : undefined;
 }
 
 /** Sign Signup A1 §2.6 — the Stripe path that creates (null) or updates the billing account. */

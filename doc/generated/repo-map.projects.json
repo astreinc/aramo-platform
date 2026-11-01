@@ -2670,6 +2670,7 @@
       "checkProviderPriceParity",
       "checkSupportExtension",
       "checkoutCutoverReport",
+      "checkoutTermsDocument",
       "classifyRevenueRow",
       "commercialAlertThresholds",
       "commercialAlertTypesOf",
@@ -2743,10 +2744,12 @@
       "paymentRecordPayloadErrors",
       "paymentStatusFlags",
       "paymentTermsErrors",
+      "personalCheckoutDisclosure",
       "personalSignupMode",
       "planCreateAvailableKeys",
       "planCreateContent",
       "planCreatePayloadErrors",
+      "planMatchesTenantKind",
       "planRowOf",
       "planVersionChecksum",
       "planVersionContentFromRows",
@@ -4160,6 +4163,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7907,6 +7916,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8332,6 +8347,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/personal-free.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-catalog-v2.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-personal-paid-checkout.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -10351,6 +10378,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PersonalPlan.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -11027,6 +11060,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13397,6 +13436,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

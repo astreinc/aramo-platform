@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Button } from '@aramo/fe-foundation';
 
+import { BUSINESS_FROM_PRICE, STANDARD_PERSONAL_OFFER, usd } from '../catalog';
+
 import { AddressAutocomplete, type AddressSuggestion } from './AddressAutocomplete';
 import {
   FIELD_STEP,
@@ -118,7 +120,8 @@ function AccountTypes({
       key: 'business',
       title: 'Business',
       tag: 'Paid plans',
-      desc: 'For your organization. Choose a plan after you set up.',
+      // Catalog v2 directive (fc755040…) §3 — Standard Business is the lowest Business price.
+      desc: `For your organization. Plans from ${BUSINESS_FROM_PRICE}; choose one after you set up.`,
     },
     ...(personalOpen
       ? [
@@ -126,7 +129,7 @@ function AccountTypes({
             key: 'personal' as const,
             title: 'Personal',
             tag: 'Free',
-            desc: 'For yourself, 5 documents a month. US and India only.',
+            desc: `For yourself: 5 documents a month free, or ${STANDARD_PERSONAL_OFFER.name} for ${usd(STANDARD_PERSONAL_OFFER.price_minor)}/month. US and India only.`,
           },
         ]
       : []),

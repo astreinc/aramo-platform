@@ -14,14 +14,16 @@ import type { SenderContextService } from '../app/sender/sender-context.service.
 //                 service is reached; the view needs Sign read OR billing authority.
 //   C7-S-HTTP-*   every refusal maps to a stable code and lower-case reason; the terms-not-approved
 //                 designed disabled state is 503 ESIGN_BILLING_UNAVAILABLE self_service_terms_not_approved.
-//   C7-S-BIZ-1    PERSONAL tenants are refused (assertBusiness) before the service is reached.
+//   C7-S-BIZ-1    a PERSONAL tenant is refused before the service is reached while Personal sending
+//                 is off; Sign Catalog v2 §4.3 (P-4): with it on, its owner cancels at period end
+//                 under the Personal Terms (tenant_kind PERSONAL). Upgrade stays BUSINESS-only.
 
 const auth = (scopes: string[], sub = 'u-owner'): AuthContextType => ({ sub, tenant_id: 't-1', scopes, consumer_type: 'sign' }) as unknown as AuthContextType;
 const OWNER = ['sign:billing:manage', 'sign:envelope:read'];
 // The scopes a sign_admin / tenant_admin carries in a Sign session: Sign authority, never billing (D-3).
 const NON_OWNER = ['sign:envelope:read', 'sign:envelope:send', 'tenant:admin:settings'];
 
-function setup(o: { business?: boolean } = {}) {
+function setup(o: { business?: boolean; personalOpen?: boolean } = {}) {
   const selfService = {
     view: vi.fn(async () => ({ product_key: 'sign', actions: { cancel: { available: false, reason: 'SELF_SERVICE_TERMS_NOT_APPROVED' } } })),
     cancel: vi.fn(async () => ({ request_id: 'r-1', action: 'CANCEL_AT_PERIOD_END', status: 'PENDING_PROVIDER', pending_provider: true, replayed: false, command: { id: 'c-1' } })),
@@ -33,6 +35,13 @@ function setup(o: { business?: boolean } = {}) {
     tenantOf: vi.fn(async () => ({ id: 't-1', kind: o.business === false ? 'PERSONAL' : 'BUSINESS', status: 'ACTIVE' })),
     assertBusiness: vi.fn(async () => {
       if (o.business === false) throw new AramoError('ESIGN_BILLING_CONFLICT', 'Paid plans are for business organizations', 409, { requestId: 'r', details: { reason: 'personal_tenant' } });
+    }),
+    personalAuthoringOpen: vi.fn(() => o.business === false && o.personalOpen === true),
+    assertCanAuthorTenant: vi.fn(async () => {
+      if (o.business === false && o.personalOpen !== true) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Personal sending is not enabled', 403, { requestId: 'r', details: { reason: 'personal_sending_not_enabled' } });
+      }
+      return { id: 't-1', kind: o.business === false ? 'PERSONAL' : 'BUSINESS', status: 'ACTIVE' };
     }),
   } as unknown as SenderContextService;
   const controller = new EsignBillingController(
@@ -69,7 +78,7 @@ describe('CCP-C7 sign-service self-service billing', () => {
   it('C7-S-OWNER-2 the owner reaches the service with the verified tenant, the Sign product and the acting user; the answer never reports the change as done (C-23)', async () => {
     const { controller, selfService } = setup();
     const out = await controller.selfServiceCancel(auth(OWNER), 'r');
-    expect(selfService.cancel).toHaveBeenCalledWith({ tenant_id: 't-1', product_key: 'sign', user_id: 'u-owner' });
+    expect(selfService.cancel).toHaveBeenCalledWith({ tenant_id: 't-1', product_key: 'sign', user_id: 'u-owner', tenant_kind: 'BUSINESS' });
     expect(out).toEqual({ request_id: 'r-1', action: 'CANCEL_AT_PERIOD_END', status: 'PENDING_PROVIDER', pending_provider: true, replayed: false });
     expect(await outcome(controller.selfServiceUpgrade(auth(OWNER), 'r', { plan_key: 'aramo-sign-standard-professional-v1' }))).toBe(
       'ESIGN_BILLING_CONFLICT:409:financial_treatment_undefined',
@@ -85,12 +94,27 @@ describe('CCP-C7 sign-service self-service billing', () => {
     expect(await controller.selfServiceView(auth(OWNER), 'r')).toMatchObject({ can_manage_billing: true, product_key: 'sign' });
     const personal = setup({ business: false });
     expect(await personal.controller.selfServiceView(auth(OWNER), 'r')).toMatchObject({ can_manage_billing: false });
+    // Sign Catalog v2 §4.3 — a bound PERSONAL tenant with Personal sending on: its owner manages
+    // billing, and the view reads the Personal Terms.
+    const open = setup({ business: false, personalOpen: true });
+    expect(await open.controller.selfServiceView(auth(OWNER), 'r')).toMatchObject({ can_manage_billing: true });
+    expect(open.selfService.view).toHaveBeenCalledWith('t-1', 'sign', 'PERSONAL');
   });
 
-  it('C7-S-BIZ-1 a PERSONAL tenant is refused before the service is reached', async () => {
+  it('C7-S-BIZ-1 a PERSONAL tenant is refused before the service is reached while Personal sending is off', async () => {
     const { controller, selfService } = setup({ business: false });
-    expect(await outcome(controller.selfServiceCancel(auth(OWNER), 'r'))).toMatch(/^ESIGN_BILLING_CONFLICT:409/);
+    expect(await outcome(controller.selfServiceCancel(auth(OWNER), 'r'))).toBe('INSUFFICIENT_PERMISSIONS:403:personal_sending_not_enabled');
     expect(selfService.cancel).not.toHaveBeenCalled();
+    expect(await outcome(controller.selfServiceUpgrade(auth(OWNER), 'r', { plan_key: 'aramo-sign-standard-personal-v1' }))).toMatch(/^ESIGN_BILLING_CONFLICT:409/);
+  });
+
+  it('C7-S-BIZ-2 (Sign Catalog v2 §4.3) a PERSONAL owner with Personal sending on cancels at period end under the Personal Terms', async () => {
+    const { controller, selfService } = setup({ business: false, personalOpen: true });
+    expect(await outcome(controller.selfServiceCancel(auth(OWNER), 'r'))).toBe('OK');
+    expect(selfService.cancel).toHaveBeenCalledWith({ tenant_id: 't-1', product_key: 'sign', user_id: 'u-owner', tenant_kind: 'PERSONAL' });
+    // Upgrade stays BUSINESS-only.
+    expect(await outcome(controller.selfServiceUpgrade(auth(OWNER), 'r', { plan_key: 'aramo-sign-standard-personal-v1' }))).toMatch(/^ESIGN_BILLING_CONFLICT:409/);
+    expect(selfService.upgrade).not.toHaveBeenCalled();
   });
 
   it('C7-S-HTTP-1 every refusal maps to a stable code and reason; the legal-terms disabled state is 503 self_service_terms_not_approved', () => {
@@ -121,7 +145,11 @@ describe('CCP-C7 sign-service self-service billing', () => {
       {} as SubscriptionLifecycleService,
       new StripeBillingProvider(),
       {} as EsignOwnerActivationService,
-      { assertBusiness: vi.fn(async () => undefined), tenantOf: vi.fn(async () => ({ kind: 'BUSINESS' })) } as unknown as SenderContextService,
+      {
+        assertBusiness: vi.fn(async () => undefined),
+        tenantOf: vi.fn(async () => ({ kind: 'BUSINESS' })),
+        assertCanAuthorTenant: vi.fn(async () => ({ kind: 'BUSINESS' })),
+      } as unknown as SenderContextService,
       {} as IdentityRepository,
     );
     expect(await outcome(controller.selfServiceCancel(auth(OWNER), 'r'))).toBe('ESIGN_BILLING_UNAVAILABLE:503:BILLING_UNAVAILABLE');

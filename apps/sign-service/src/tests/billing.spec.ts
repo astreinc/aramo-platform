@@ -47,6 +47,7 @@ function setup(over: Partial<Record<string, unknown>> = {}) {
     personalAuthoringOpen: vi.fn(() => false),
     assertCanAuthor: vi.fn(async () => undefined),
     assertBusiness: vi.fn(async () => undefined),
+    assertCanAuthorTenant: vi.fn(async () => ({ id: 't-1', kind: 'BUSINESS', status: 'ACTIVE' })),
   } as unknown as SenderContextService;
   const identity = { findUserById: vi.fn(async () => ({ id: 'u-owner', email: 'owner@astre.test' })) } as unknown as IdentityRepository;
   const controller = new EsignBillingController(lifecycle, new StripeBillingProvider(), owners, ctx, identity);
@@ -128,8 +129,9 @@ describe('EsignBillingController', () => {
       success_url: 'https://esign.example.test/sign/settings/billing?checkout=success',
       cancel_url: 'https://esign.example.test/sign/settings/billing?checkout=canceled',
       accept_terms: false,
+      tenant_kind: 'BUSINESS',
     });
-    (ctx.assertBusiness as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new AramoError('INSUFFICIENT_PERMISSIONS', 'personal', 403, { requestId: 'r' }));
+    (ctx.assertCanAuthorTenant as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new AramoError('INSUFFICIENT_PERMISSIONS', 'personal', 403, { requestId: 'r' }));
     await expect(controller.checkout(auth(['sign:billing:manage']), 'r', { plan_key: 'aramo-sign-business-v1' })).rejects.toMatchObject({ statusCode: 403 });
     await expect(controller.checkout(auth(['sign:billing:manage']), 'r', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });

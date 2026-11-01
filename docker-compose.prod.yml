@@ -580,6 +580,9 @@ services:
       - SIGN_PERSONAL_SIGNUP_MODE
       - SIGN_PERSONAL_ALLOWED_COUNTRIES
       - SIGN_PERSONAL_SEND_WORDING
+      # Sign Catalog v2 §4.3 (P-4) — the Personal paid (Standard) checkout. Dark unless
+      # exactly `1`: no upgrade offer, no purchasable Personal plan, checkout refused 403.
+      - SIGN_PERSONAL_PAID_CHECKOUT_ENABLED
       - SIGN_SMS_PROVIDER
       - SIGN_GEOIP_DB_PATH=${SIGN_GEOIP_DB_PATH:-/geoip/GeoLite2-Country.mmdb}
       - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}

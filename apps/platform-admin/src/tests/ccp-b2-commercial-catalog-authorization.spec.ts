@@ -70,7 +70,7 @@ const SUMMARY = { id: VID, plan_id: PLAN, version_number: 2, status: 'DRAFT', co
 const PLANROW = { id: PLAN, key: 'aramo-sign-standard-business-v1', product_key: 'sign', name: 'Standard Business', status: 'ACTIVE', sales_model: 'SELF_SERVICE', sellable: true, display_order: 20 };
 
 const svcMock = {
-  readCatalog: vi.fn(async () => ({ products: [{ product_key: 'sign', plans: [{ ...PLANROW, versions: [SUMMARY] }] }], publish_chain: null })),
+  readCatalog: vi.fn(async () => ({ products: [{ product_key: 'sign', plans: [{ ...PLANROW, versions: [SUMMARY] }] }], publish_chain: null, plan_create: { available_keys: [], pending: [] } })),
   readVersion: vi.fn(async () => ({ version: SUMMARY, plan: PLANROW, content: { format: 1 }, pinned_tenants: [] })),
   createDraft: vi.fn(async () => SUMMARY),
   updateDraft: vi.fn(async () => SUMMARY),

@@ -4,6 +4,8 @@ import { ApiError } from '@aramo/fe-foundation';
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type Money } from '../api';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
+import { ComingSoon } from './ComingSoon';
+
 // Aramo Sign launch — the organization's plan, usage and self-service billing.
 // Everything shown is the backend's view (GET /v1/sign/billing/*). The
 // subscription opens only when the backend has verified the payment with the
@@ -17,6 +19,9 @@ import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 // storage is metered against the plan; terms are offered only once approved.
 // A1 review: a plan entitlement that is not yet built (templates, forms, AI
 // assist summary) is never advertised — only `available` capabilities show.
+// Catalog v2 directive (fc755040…): prices are per organization; no comparison
+// (strikethrough) price is ever shown (P-2); unbuilt features appear only in the
+// separate "Coming soon" card (P-1).
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   TRIALING: ['Trial', 'blue'],
@@ -171,8 +176,8 @@ function PlanCard({
             <strong>Contact sales</strong>
           ) : plan.price !== null ? (
             <>
-              {plan.reference_price !== null ? <s className="sg-muted" style={{ marginRight: 6 }}>{money({ ...plan.reference_price, interval: plan.price.interval ?? null })}</s> : null}
               <strong>{money(plan.price)}</strong>
+              {plan.tenant_kind === 'BUSINESS' ? <span className="sg-muted"> per organization</span> : null}
               <div className="sg-muted">
                 {plan.commitment_months !== null ? `${plan.commitment_months}-month commitment, billed monthly` : 'Month to month'} · plus applicable tax
               </div>
@@ -381,6 +386,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
           </div>
         </>
       ) : null}
+      <ComingSoon />
     </div>
   );
 }

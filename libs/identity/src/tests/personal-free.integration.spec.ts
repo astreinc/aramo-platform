@@ -263,7 +263,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const t = await personalTenant();
     const user = uuidv7();
     await prisma.user.create({ data: { id: user, email, tenant_id: t } });
+    // Sign Catalog v2 §4.3 — no PROVISIONED signup yet: no declared residence.
+    expect(await signups.declaredResidenceOf(t)).toBeNull();
     await signups.completeProvisioning({ id: row.id, tenant_id: t, owner_user_id: user, now, sms_available: false });
+    expect(await signups.declaredResidenceOf(t)).toBe('IN'); // this fixture is an India signup
+    expect(await signups.declaredResidenceOf(uuidv7())).toBeNull();
     expect(await risk.riskStateOf(t)).toMatchObject({ state: 'review', step_up_required: true, phone_verified_at: null, reason: 'step_up_phone_unavailable' });
     expect(await signups.findValidInvite(invite.code, email, now)).toBeNull();
     const prov = await events(t, 'identity.personal.signup.provisioned');

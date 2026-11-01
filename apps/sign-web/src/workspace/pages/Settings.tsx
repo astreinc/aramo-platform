@@ -8,6 +8,7 @@ import { useWorkspace } from '../workspace';
 import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
+import { PersonalPlanPanel } from './PersonalPlan';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 import { RetentionSection } from './Retention';
 
@@ -46,7 +47,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const allowed = personalWs
-    ? ['personal', 'retention']
+    ? ['personal', 'billing', 'retention']
     : SECTIONS.map((s) => s.key)
         .filter((k) => k !== 'members' || ctx.permissions.members === true)
         .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
@@ -73,7 +74,8 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
         </nav>
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
-          {section === 'billing' ? <BillingPanel /> : null}
+          {/* Catalog v2 §4.3 — Personal accounts see their own plan and the Standard upgrade. */}
+          {section === 'billing' ? personalWs ? <PersonalPlanPanel /> : <BillingPanel /> : null}
           {section === 'domain' ? <DomainCard /> : null}
           {section === 'members' ? <UsersRolesSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}

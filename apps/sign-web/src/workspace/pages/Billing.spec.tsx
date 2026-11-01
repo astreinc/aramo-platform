@@ -94,7 +94,7 @@ describe('BillingPanel', () => {
     render(<BillingPanel />);
     expect(await screen.findByTestId('billing-none')).toBeInTheDocument();
     const business = await screen.findByTestId(`billing-plan-${BUSINESS.key}`);
-    expect(business).toHaveTextContent('$20/month');
+    expect(business).toHaveTextContent('$20/month per organization');
     expect(business).toHaveTextContent('12-month commitment, billed monthly · plus applicable tax');
     expect(business).toHaveTextContent('Unlimited E-Signs');
     expect(business).toHaveTextContent('10 GB storage');
@@ -108,6 +108,12 @@ describe('BillingPanel', () => {
     expect(business).not.toHaveTextContent('$30');
     // Free Personal is not offered to a business organization.
     expect(screen.queryByTestId(`billing-plan-${FREE.key}`)).toBeNull();
+    // Catalog v2 P-1 — unbuilt features only in the separate, unsold "Coming soon" card.
+    const soon = screen.getByTestId('plans-coming-soon');
+    expect(soon).toHaveTextContent('Not included in any plan yet');
+    expect(soon).toHaveTextContent('Templates');
+    expect(soon).toHaveTextContent('Bulk send & bulk sign');
+    expect(soon).toHaveTextContent('Recipient verification (SMS, ID, knowledge-based)');
     fireEvent.click(screen.getByTestId(`billing-subscribe-${BUSINESS.key}`));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/cs_1'));
     const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
@@ -125,13 +131,14 @@ describe('BillingPanel', () => {
     expect(screen.getByTestId(`billing-plan-${ENTERPRISE.key}`)).toHaveTextContent('Contact sales');
   });
 
-  it('a substantiated comparison price is shown struck through; approved terms must be ticked before Subscribe', async () => {
+  it('no comparison (strikethrough) price is ever shown, even when the backend sends one (catalog v2 P-2); approved terms must be ticked before Subscribe', async () => {
     catalogFor = () => ({ ...CATALOG, plans: [{ ...BUSINESS, reference_price: { amount_minor: 3000, currency: 'USD' } }], terms: { version: '1.0.0', url: 'https://aramo.ai/legal/terms' } });
     const fetch = stub([account()], (url) => (url.endsWith('/checkout') ? json({ url: 'https://checkout.stripe.test/x' }, 201) : undefined));
     vi.stubGlobal('fetch', fetch);
     render(<BillingPanel />);
     const card = await screen.findByTestId(`billing-plan-${BUSINESS.key}`);
-    expect(card.querySelector('s')).toHaveTextContent('$30/month');
+    expect(card.querySelector('s')).toBeNull();
+    expect(card).not.toHaveTextContent('$30');
     const btn = screen.getByTestId(`billing-subscribe-${BUSINESS.key}`);
     expect(btn).toBeDisabled();
     fireEvent.click(screen.getByTestId('billing-terms').querySelector('input')!);
