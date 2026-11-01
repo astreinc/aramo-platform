@@ -14,9 +14,11 @@ const T = '01900000-0000-7000-8000-0000000000aa';
 const U = '01900000-0000-7000-8000-000000000001';
 const CANONICAL = ['talent:read', 'sign:envelope:read', 'platform:tenant:read', 'tenant:admin:profile'];
 
-function build(over: { capabilities?: string[]; throws?: boolean; canonical?: string[] } = {}) {
+function build(over: { capabilities?: string[]; throws?: boolean; canonical?: string[]; custom?: string[] } = {}) {
   const getScopes = vi.fn().mockResolvedValue(over.canonical ?? CANONICAL);
-  const roles = { getScopesByUserTenantAndSite: getScopes } as unknown as RoleService;
+  // Sign Feature-Parity §1.21 — custom Sign role scopes (read for the `sign` consumer only).
+  const getCustom = vi.fn().mockResolvedValue(over.custom ?? []);
+  const roles = { getScopesByUserTenantAndSite: getScopes, getSignCustomRoleScopes: getCustom } as unknown as RoleService;
   const versions = { getCurrentVersion: vi.fn().mockResolvedValue(1) } as unknown as AuthorizationVersionService;
   const cache = new InMemoryScopeCache();
   const caps = { current: new Set(over.capabilities ?? ['core', 'ats', 'portal']) };
@@ -26,13 +28,26 @@ function build(over: { capabilities?: string[]; throws?: boolean; canonical?: st
   });
   const entitlements = { getCapabilities } as unknown as TenantEntitlementReader;
   const resolver = new IdentityEffectiveAuthorizationResolver(roles, versions, cache, { portalScopes: ['portal:profile:read'], scopeCacheTtlSeconds: 300 }, entitlements);
-  return { resolver, getScopes, getCapabilities, caps, cache };
+  return { resolver, getScopes, getCustom, getCapabilities, caps, cache };
 }
 const input = (consumer_type: EffectiveAuthorizationInput['consumer_type']): EffectiveAuthorizationInput => ({
   tenant_id: T, principal_id: U, consumer_type, actor_kind: 'user', token_authz_version: 1,
 });
 
 describe('IdentityEffectiveAuthorizationResolver — consumer isolation (IC-2 PR-6)', () => {
+  // Aramo Sign Feature-Parity §1.21 — custom Sign role scopes join ONLY the sign consumer's set.
+  it('sign: custom Sign role scopes are unioned (still under the esign capability); other consumers never read them', async () => {
+    const { resolver, getCustom } = build({ capabilities: ['core', 'sign', 'ats'], custom: ['sign:envelope:send', 'sign:envelope:read'] });
+    expect(await resolver.resolve(input('sign'))).toEqual({ status: 'ok', scopes: ['sign:envelope:read', 'tenant:admin:profile', 'sign:envelope:send'] });
+    expect(getCustom).toHaveBeenCalledWith({ user_id: U, tenant_id: T });
+    for (const c of ['recruiter', 'platform', 'org', 'ingestion'] as const) await resolver.resolve(input(c));
+    expect(getCustom).toHaveBeenCalledTimes(1);
+  });
+  it('sign: an unreadable custom-role store fails closed (unresolvable)', async () => {
+    const { resolver, getCustom } = build({ capabilities: ['core', 'sign'] });
+    getCustom.mockRejectedValueOnce(new Error('db down'));
+    expect(await resolver.resolve(input('sign'))).toEqual({ status: 'unresolvable' });
+  });
   it('recruiter: esign:* and platform:* are dropped; the entitlement store is NOT consulted', async () => {
     const { resolver, getCapabilities } = build();
     const r = await resolver.resolve(input('recruiter'));

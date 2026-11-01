@@ -435,6 +435,9 @@ export const ERROR_CODES = [
   'ESIGN_WEBHOOKS_UNAVAILABLE',
   // DOC-TEMPLATE-LIB-1 T-5 — the plan capability is not launched (libs/subscription feature availability) (403).
   'ESIGN_FEATURE_NOT_AVAILABLE',
+  // Sign Feature-Parity §1.21 — a custom Sign role write that conflicts with the organization's
+  // state: details.reason = name_taken | custom_role_in_use | custom_role_limit. HTTP 409.
+  'SIGN_CUSTOM_ROLE_CONFLICT',
   'SIGNER_NOT_FOUND',
   // Multi-Signer Amendment §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   'SIGNER_NOT_YET_ELIGIBLE',

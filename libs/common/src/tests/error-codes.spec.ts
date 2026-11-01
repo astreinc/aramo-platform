@@ -167,6 +167,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_WEBHOOKS_UNAVAILABLE',
       // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (403).
       'ESIGN_FEATURE_NOT_AVAILABLE',
+      // Sign Feature-Parity §1.21 — custom Sign role conflict (409).
+      'SIGN_CUSTOM_ROLE_CONFLICT',
       'SIGNER_NOT_FOUND',
       'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',

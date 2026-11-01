@@ -19,6 +19,8 @@ export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding.
 export const SIGN_BRANDING_FEATURE = 'sign.branding';
+// Aramo Sign Feature-Parity §1.21 — organization-defined Sign roles (dark).
+export const SIGN_CUSTOM_ROLES_FEATURE = 'sign.custom_roles';
 
 @Injectable()
 export class SignFeatureGate {

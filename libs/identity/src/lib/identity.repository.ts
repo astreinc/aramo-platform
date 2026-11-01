@@ -997,6 +997,12 @@ export class IdentityRepository {
       }
       const removed_role_keys = [...new Set(doomed.filter((r) => r.role.is_active).map((r) => r.role.key))].sort();
       const after_role_keys = before_role_keys.filter((k) => !args.role_keys.includes(k));
+      // Sign Feature-Parity §1.21 — removing Sign access also removes the member's custom Sign
+      // roles in this tenant (otherwise their scopes would keep the Sign session alive).
+      const custom_roles_removed =
+        args.product === 'sign'
+          ? (await tx.signCustomRoleAssignment.deleteMany({ where: { tenant_id: args.tenant_id, membership_id: args.membership_id } })).count
+          : 0;
 
       let refresh_tokens_revoked = 0;
       let device_sessions_revoked = 0;
@@ -1011,7 +1017,7 @@ export class IdentityRepository {
            WHERE user_id = ${args.user_id}::uuid AND tenant_id = ${args.tenant_id}::uuid AND consumer_type = ANY(${[...args.refresh_consumers]}::text[]) AND revoked_at IS NULL`;
       }
 
-      const changed = doomed.length > 0 || refresh_tokens_revoked > 0 || device_sessions_revoked > 0;
+      const changed = doomed.length > 0 || custom_roles_removed > 0 || refresh_tokens_revoked > 0 || device_sessions_revoked > 0;
       if (changed) {
         await bumpPrincipalVersion(tx, { tenant_id: args.tenant_id, principal_id: args.user_id });
         await tx.identityAuditEvent.create({
@@ -1028,6 +1034,7 @@ export class IdentityRepository {
               removed_role_keys,
               before_role_keys,
               after_role_keys,
+              custom_roles_removed,
               refresh_tokens_revoked,
               device_sessions_revoked,
             },

@@ -11,6 +11,7 @@ import { InboxPage } from './pages/Inbox';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage } from './pages/WorkspacePages';
 import { TemplatesPage } from './pages/Templates';
+import { CustomRolesPage } from './pages/CustomRoles';
 import { LoginPage } from './routes/LoginPage';
 import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
 import { PersonalSignupPage } from './routes/PersonalSignupPage';
@@ -204,6 +205,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
             <Route path="templates/*" element={<TemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            {/* Sign Feature-Parity §1.21 — custom roles (dark: sign.custom_roles; the page shows the unavailable state). */}
+            <Route path="roles" element={<CustomRolesPage />} />
           </>
         ) : null}
         <Route path="*" element={<Navigate to={`/${expected}`} replace />} />

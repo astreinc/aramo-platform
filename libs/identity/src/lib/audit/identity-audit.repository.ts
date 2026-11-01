@@ -214,6 +214,15 @@ export const EVENT_TYPES = [
   // attempts after 180 days. GLOBAL (no tenant exists); subject_id = the run id;
   // the payload carries counts and cutoffs only (no email, phone or address).
   'identity.personal.signup.attempts_purged',
+  // Aramo Sign Feature-Parity §1.21 — custom Sign roles. Inserted IN THE SAME transaction
+  // as the role / assignment write (SignCustomRoleService). Tenant-scoped.
+  //   created / updated / deleted  subject = the custom role; payload { name, scope_keys[, before] }
+  //   assigned / unassigned        subject = the member's user id; payload { custom_role_id, membership_id, scope_keys }
+  'identity.sign_custom_role.created',
+  'identity.sign_custom_role.updated',
+  'identity.sign_custom_role.deleted',
+  'identity.sign_custom_role.assigned',
+  'identity.sign_custom_role.unassigned',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -323,6 +332,12 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
   'identity.personal.risk.send_location_signal',
+  // Sign Feature-Parity §1.21 — custom Sign role rows carry the organization's tenant id.
+  'identity.sign_custom_role.created',
+  'identity.sign_custom_role.updated',
+  'identity.sign_custom_role.deleted',
+  'identity.sign_custom_role.assigned',
+  'identity.sign_custom_role.unassigned',
 ]);
 
 export interface WriteAuditEventInput {

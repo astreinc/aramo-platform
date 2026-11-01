@@ -7,9 +7,12 @@ import { RoleService } from '../lib/role.service.js';
 const USER_ID = '01900000-0000-7000-8000-000000000002';
 const TENANT_ID = '01900000-0000-7000-8000-000000000001';
 
-function makePrisma(findMany: ReturnType<typeof vi.fn>): PrismaService {
+// Sign Feature-Parity §1.21 — the repository also reads custom Sign role assignments
+// (none unless a test passes them).
+function makePrisma(findMany: ReturnType<typeof vi.fn>, customFindMany: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue([])): PrismaService {
   return {
     userTenantMembershipRole: { findMany },
+    signCustomRoleAssignment: { findMany: customFindMany },
   } as unknown as PrismaService;
 }
 

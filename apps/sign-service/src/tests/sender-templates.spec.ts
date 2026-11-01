@@ -273,13 +273,20 @@ describe('sender context — templates permission + feature availability', () =>
   it('NOT_AVAILABLE (default) → features.templates false; permission follows document_template:read', async () => {
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry.
-    expect(v.features).toEqual({ templates: false, in_person_signing: true });
+    // Sign Feature-Parity §1.21 — sign.custom_roles ships NOT_AVAILABLE (dark).
+    expect(v.features).toEqual({ templates: false, in_person_signing: true, custom_roles: false });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {
     const v = await new SenderContextService(tenants as never, identity as never, new SignFeatureGate(AVAILABLE)).context(auth(['sign:envelope:read']), 'r');
     expect(v.features).toMatchObject({ templates: true });
     expect(v.permissions.templates).toBe(false);
+  });
+  it('Sign Feature-Parity §1.21 — features.custom_roles follows sign.custom_roles availability, BUSINESS only', async () => {
+    const on = new SignFeatureGate({ ...AVAILABLE, 'sign.custom_roles': 'AVAILABLE' });
+    expect((await new SenderContextService(tenants as never, identity as never, on).context(auth(SENDER_SCOPES), 'r')).features.custom_roles).toBe(true);
+    const personal = { ...tenants, findById: async () => ({ id: TENANT, name: 'Me', kind: 'PERSONAL', status: 'ACTIVE' }) };
+    expect((await new SenderContextService(personal as never, identity as never, on).context(auth(SENDER_SCOPES), 'r')).features.custom_roles).toBe(false);
   });
 });
 

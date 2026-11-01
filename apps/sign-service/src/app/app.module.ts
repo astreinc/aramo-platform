@@ -110,6 +110,9 @@ import { SignRetentionController } from './retention/sign-retention.controller.j
 import { SignBrandingService } from './branding/sign-branding.service.js';
 import { SignBrandingController } from './branding/sign-branding.controller.js';
 import { SignBrandingPublicController } from './branding/sign-branding-public.controller.js';
+// Aramo Sign Feature-Parity §1.21 — custom roles and permissions (dark: sign.custom_roles).
+import { SignCustomRolesController } from './custom-roles/sign-custom-roles.controller.js';
+import { SIGN_PLAN_FEATURE_READER, SignCustomRolesGate, SubscriptionPlanFeatureReader } from './custom-roles/sign-custom-roles.gate.js';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (in-app, public web) and the
 // staged deletion execution (OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1).
 import { SignPrivacyRequestController } from './privacy/sign-privacy-request.controller.js';
@@ -222,7 +225,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -243,6 +246,9 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignFeatureGate,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
+    // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
+    SignCustomRolesGate,
+    { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
     // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
     PersonalSendGate,

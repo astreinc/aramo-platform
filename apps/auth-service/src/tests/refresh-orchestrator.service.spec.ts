@@ -80,6 +80,8 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
       getScopesByUserTenantAndSite: vi
         .fn()
         .mockResolvedValue(['auth:session:read']),
+      // Sign Feature-Parity §1.21 — custom Sign role scopes (sign consumer only; none here).
+      getSignCustomRoleScopes: vi.fn().mockResolvedValue([]),
     } as unknown as RoleService,
     jwtIssuer: {
       sign: vi.fn().mockResolvedValue('signed.jwt'),

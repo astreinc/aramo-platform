@@ -2431,6 +2431,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.session.refreshed',
         'identity.session.reuse_detected',
         'identity.session.revoked',
+        // Sign Feature-Parity §1.21 — custom Sign role events.
+        'identity.sign_custom_role.assigned',
+        'identity.sign_custom_role.created',
+        'identity.sign_custom_role.deleted',
+        'identity.sign_custom_role.unassigned',
+        'identity.sign_custom_role.updated',
         'identity.site.created',
         'identity.site.deactivated',
         'identity.site.updated',
