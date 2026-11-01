@@ -27,6 +27,10 @@ export interface CheckoutSessionRequest {
   account_ref: string | null;
   success_url: string;
   cancel_url: string;
+  // Sign Catalog v2 §4.3 (P-4) — a PERSONAL checkout: the billing address is collected (and
+  // saved on the billing account) in the checkout, and the renewal disclosure is shown at submit.
+  collect_address?: boolean;
+  disclosure?: string;
 }
 
 // The provider's view of one subscription, as fetched from the provider (never

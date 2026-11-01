@@ -26,6 +26,7 @@ import {
   wireBalanceAdjustmentParams,
   wireBalanceAdjustmentState,
   wireCheckoutAccountParams,
+  wireCheckoutAddressCollection,
   wireCouponParams,
   wireDisputeState,
   wireInvoicePayment,
@@ -221,10 +222,12 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       success_url: req.success_url,
       cancel_url: req.cancel_url,
       client_reference_id: req.intent_id,
-      ...wireCheckoutAccountParams(req.account_ref, req.user_email),
+      ...wireCheckoutAccountParams(req.account_ref, req.user_email, req.collect_address === true),
       // A1 §2.6 — on Aramo's billing account the registered address is used (not
-      // re-collected or editable in Checkout).
-      billing_address_collection: req.account_ref !== null ? 'auto' : undefined,
+      // re-collected or editable in Checkout). Sign Catalog v2 §4.3 — a PERSONAL checkout
+      // collects it (no organization profile), so the US activation guard can read it.
+      billing_address_collection: wireCheckoutAddressCollection(req.account_ref, req.collect_address === true),
+      'custom_text[submit][message]': req.disclosure,
       'metadata[tenant_id]': req.tenant_id,
       'metadata[user_id]': req.user_id,
       'metadata[intent_id]': req.intent_id,

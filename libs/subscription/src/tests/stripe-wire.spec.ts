@@ -99,8 +99,30 @@ describe('Aramo → Stripe wire', () => {
     // A1 §2.6 — Checkout runs on Aramo's account; the address is not updatable there.
     expect(bodies.get('/v1/checkout/sessions')!.get('customer_update[address]')).toBe('never');
     expect(bodies.get('/v1/checkout/sessions')!.get('billing_address_collection')).toBe('auto');
+    expect(bodies.get('/v1/checkout/sessions')!.has('custom_text[submit][message]')).toBe(false);
     await p.createPortalSession('cus_9', 'https://e/settings');
     expect(bodies.get('/v1/billing_portal/sessions')!.get('customer')).toBe('cus_9');
+  });
+
+  it('Sign Catalog v2 §4.3 — a Personal checkout collects the address and shows the renewal disclosure', async () => {
+    process.env['STRIPE_SECRET_KEY'] = 'sk_test_local';
+    process.env['STRIPE_API_BASE'] = 'http://stripe.test';
+    const bodies: URLSearchParams[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      bodies.push(new URLSearchParams(String(init.body)));
+      return new Response(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/x' }), { status: 200 });
+    }));
+    const p = new StripeBillingProvider();
+    const req = { intent_id: 'i', tenant_id: 't', user_id: 'u', user_email: 'me@example.test', price_ref: 'price_P', success_url: 'https://e/ok', cancel_url: 'https://e/no', collect_address: true, disclosure: 'Renews monthly.' };
+    await p.createCheckoutSession({ ...req, account_ref: null });
+    expect(bodies[0]!.get('customer_email')).toBe('me@example.test');
+    expect(bodies[0]!.get('billing_address_collection')).toBe('required');
+    expect(bodies[0]!.get('custom_text[submit][message]')).toBe('Renews monthly.');
+    // A reused billing account: the collected address is saved on it.
+    await p.createCheckoutSession({ ...req, account_ref: 'cus_7' });
+    expect(bodies[1]!.get('customer')).toBe('cus_7');
+    expect(bodies[1]!.get('customer_update[address]')).toBe('auto');
+    expect(bodies[1]!.get('billing_address_collection')).toBe('required');
   });
 
   it('creates, then updates, the billing account from the organization profile (Sign Signup A1 §2.6)', async () => {

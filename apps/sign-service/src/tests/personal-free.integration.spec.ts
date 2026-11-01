@@ -254,10 +254,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(account.subscription).toMatchObject({ plan_key: 'aramo-sign-free-personal-v1', source: 'FREE', status: 'ACTIVE', sending: true, billing_managed: false });
     expect(account.allowance).toMatchObject({ subscribed: true, limit: 5, used: 0, remaining: 5, daily: { window: 'DAY', limit: 2, used: 0, remaining: 2, next_available_at: null } });
     expect(account.storage).toMatchObject({ limit: 15728640 });
-    expect(account).toMatchObject({ tenant_kind: 'PERSONAL', self_service_eligible: false, can_manage_billing: false });
+    // Sign Catalog v2 §4.3 (P-4) — a bound PERSONAL owner self-serves (the paid Standard plan).
+    expect(account).toMatchObject({ tenant_kind: 'PERSONAL', self_service_eligible: true, can_manage_billing: true });
     const row = await db.query(`SELECT billing_provider, billing_account_ref, billing_subscription_ref, activated_by FROM subscription."TenantSubscription" WHERE tenant_id = $1`, [p.id]);
     expect(row.rows).toEqual([{ billing_provider: null, billing_account_ref: null, billing_subscription_ref: null, activated_by: null }]);
-    await expect(billing.checkout(p.a, 'r', { plan_key: 'aramo-sign-standard-business-v1' })).rejects.toMatchObject({ context: { details: { reason: 'personal_sending_not_enabled' } } });
+    // Sign Catalog v2 §4.3 — Personal paid checkout is dark by default (SIGN_PERSONAL_PAID_CHECKOUT_ENABLED unset).
+    await expect(billing.checkout(p.a, 'r', { plan_key: 'aramo-sign-standard-business-v1' })).rejects.toMatchObject({ context: { details: { reason: 'personal_paid_checkout_not_enabled' } } });
     expect((await ctx.context(p.a, 'r'))).toMatchObject({ can_send: true, personal_sending_enabled: true });
   });
 

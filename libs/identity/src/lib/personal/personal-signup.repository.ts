@@ -348,6 +348,20 @@ export class PersonalSignupRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Sign Catalog v2 §4.3 (P-4) — the declared residence (ISO alpha-2, upper case) of the tenant's
+   * latest PROVISIONED signup; null when there is none (fail closed for the caller).
+   */
+  async declaredResidenceOf(tenant_id: string): Promise<string | null> {
+    const row = await this.prisma.personalSignupRequest.findFirst({
+      where: { tenant_id, status: 'PROVISIONED' },
+      orderBy: { provisioned_at: 'desc' },
+      select: { declared_residence: true },
+    });
+    const v = row?.declared_residence.trim().toUpperCase() ?? '';
+    return v === '' ? null : v;
+  }
+
   async markFailed(id: string, failure_code: string, now: Date): Promise<void> {
     await this.prisma.personalSignupRequest.updateMany({ where: { id, status: 'PROVISIONING' }, data: { status: 'FAILED', failure_code, updated_at: now } });
   }
