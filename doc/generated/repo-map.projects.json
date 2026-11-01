@@ -10678,6 +10678,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/RecipientChoices.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Reports.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
