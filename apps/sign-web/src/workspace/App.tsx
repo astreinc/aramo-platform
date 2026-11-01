@@ -9,7 +9,8 @@ import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizar
 import { BillingPanel } from './pages/Billing';
 import { InboxPage } from './pages/Inbox';
 import { SettingsPage } from './pages/Settings';
-import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage } from './pages/WorkspacePages';
+import { ActivityPage, ContactsPage, DocumentsPage } from './pages/WorkspacePages';
+import { ReportsRoute } from './pages/Reports';
 import { TemplatesPage } from './pages/Templates';
 import { CustomRolesPage } from './pages/CustomRoles';
 import { LoginPage } from './routes/LoginPage';
@@ -204,7 +205,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
           <>
             <Route path="templates/*" element={<TemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
-            <Route path="reports" element={<ReportsPage />} />
+            {/* Feature-Parity §1.13 — organization reports while sign.reports is available; the summary page otherwise. */}
+            <Route path="reports" element={<ReportsRoute />} />
             {/* Sign Feature-Parity §1.21 — custom roles (dark: sign.custom_roles; the page shows the unavailable state). */}
             <Route path="roles" element={<CustomRolesPage />} />
           </>

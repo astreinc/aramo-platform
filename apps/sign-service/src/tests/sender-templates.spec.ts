@@ -277,7 +277,7 @@ describe('sender context — templates permission + feature availability', () =>
     // Sign Feature-Parity §1.21 — sign.custom_roles ships NOT_AVAILABLE (dark).
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry;
     // Feature-Parity §1.17 / §1.9 — witness, delegate and access code stay dark (R-8).
-    expect(v.features).toEqual({ templates: false, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: false, custom_roles: false, payments: false, qes: false, india_estamp: false });
+    expect(v.features).toEqual({ templates: false, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: false, custom_roles: false, payments: false, qes: false, india_estamp: false, reports: false });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {

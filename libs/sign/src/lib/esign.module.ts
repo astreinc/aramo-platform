@@ -4,6 +4,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
 import { EsignService } from './esign.service.js';
 import { EsignSenderRepository } from './sender-workspace.repository.js';
+import { SignReportRepository } from './sign-report.repository.js';
 import { SignIntegrationRepository, SignWebhookRepository } from './integration.repository.js';
 import { RecipientInboxRepository } from './recipient-inbox.repository.js';
 import { EVIDENCE_MANIFEST_SIGNER_PORT, SoftwareEvidenceManifestSigner } from './ports/evidence-manifest-signer.port.js';
@@ -54,6 +55,8 @@ export class EsignModule {
         EsignService,
         // PX-1 — sender workspace reads + DRAFT authoring writes.
         EsignSenderRepository,
+        // Feature-Parity §1.13 — read-only organization reports.
+        SignReportRepository,
         // Sign Unified Product S-4 — application registry, installations, credentials.
         SignIntegrationRepository,
         // Sign Unified Product S-5 — webhook subscriptions + per-subscription delivery.
@@ -87,7 +90,7 @@ export class EsignModule {
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignReportRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
     };
   }
 }

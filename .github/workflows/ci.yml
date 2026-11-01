@@ -791,6 +791,17 @@ jobs:
           terraform fmt -check -recursive .
           terraform init -backend=false -input=false
           terraform validate
+      # Sign production monitoring (PO 2026-11-01): the off-box watchdog Lambda unit tests
+      # and fmt/validate of the infrastructure-monitoring/ root (init -backend=false: no
+      # state, no AWS). The on-box probe's shell tests run in scripts:test.
+      - name: monitoring:watchdog-lambda (unit)
+        run: python3 -m unittest discover -s infrastructure-monitoring/lambda -v
+      - name: monitoring:terraform fmt + validate (infrastructure-monitoring/)
+        working-directory: infrastructure-monitoring
+        run: |
+          terraform fmt -check -recursive .
+          terraform init -backend=false -input=false
+          terraform validate
 
   # ---------------------------------------------------------------------------
   # Terraform IaC gates — PATH-FILTERED to infrastructure/ on a PR (no-op when
@@ -960,7 +971,7 @@ jobs:
       - test-unit
       - tests-integration # stable fan-in over the affected/full integration matrix
       - migration-runner-pg # IC-1 — bounded migration apply (--until) proven on a real PostgreSQL
-      - backup-tooling # M-A8 §5 — encrypted backup tooling e2e + freshness Lambda + infrastructure-backups validate
+      - backup-tooling # M-A8 §5 — encrypted backup tooling e2e + freshness Lambda + infrastructure-backups validate (+ monitoring watchdog Lambda + infrastructure-monitoring validate)
       - lint-nx-boundaries
       - docker-build
       - terraform-fmt

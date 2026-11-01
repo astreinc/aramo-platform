@@ -36,6 +36,8 @@ export const SIGN_KBA_FEATURE = 'sign.kba';
 // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP; India e-stamp.
 export const SIGN_QES_FEATURE = 'sign.qes';
 export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
+// Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (plans B+).
+export const SIGN_REPORTS_FEATURE = 'sign.reports';
 
 @Injectable()
 export class SignFeatureGate {

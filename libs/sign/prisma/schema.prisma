@@ -93,6 +93,9 @@ model SignatureEnvelope {
   @@index([tenant_id, status])
   @@index([purge_state, purge_due_at], map: "SignatureEnvelope_purge_due_idx")
   @@index([tenant_id, created_by])
+  // Feature-Parity §1.13 reports (migration 20261101150000) — cohort / volume and audit range scans.
+  @@index([tenant_id, sent_at], map: "SignatureEnvelope_tenant_sent_at_idx")
+  @@index([tenant_id, created_at], map: "SignatureEnvelope_tenant_created_at_idx")
   @@schema("sign")
 }
 

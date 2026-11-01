@@ -108,6 +108,8 @@ import { RegulatedSigningService } from './regulated/regulated-signing.service.j
 import { EsignSenderRegulatedController } from './regulated/esign-sender-regulated.controller.js';
 import { EsignSignerQesController } from './regulated/esign-signer-qes.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
+import { EsignSenderReportsController } from './sender/esign-sender-reports.controller.js';
+import { SenderReportsService } from './sender/sender-reports.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
@@ -302,7 +304,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -328,6 +330,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
     SignCustomRolesGate,
     { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },
+    // Feature-Parity §1.13 — organization reports (dark behind sign.reports).
+    SenderReportsService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
     // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
     PersonalSendGate,
