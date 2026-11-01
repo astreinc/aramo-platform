@@ -235,6 +235,8 @@ model TenantSubscription {
   // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.
   usage_entries                      UsageLedgerEntry[]
   usage_reconciliations              UsagePeriodReconciliation[]
+  // Remaining-Work A3 — the renewal notices sent for this subscription's term boundaries.
+  renewal_notices                    RenewalNoticeDelivery[]
 
   // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
   // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
@@ -1295,5 +1297,40 @@ model UsagePeriodReconciliation {
 
   @@unique([subscription_id, product_key, period_start])
   @@index([tenant_id, period_start])
+  @@schema("subscription")
+}
+
+// Aramo Sign Remaining-Work Consolidated Directive (32e5e3e1) A3 — the Aramo renewal notice's delivery
+// evidence (migration 20261102100000_sign_renewal_notice). One row per (subscription, notice kind,
+// term end, channel), so a re-run never sends twice; no address or email body is stored. A trigger
+// refuses DELETE, identifying-column changes and any change out of SENT / SUPPRESSED.
+model RenewalNoticeDelivery {
+  id                  String             @id @db.Uuid
+  subscription_id     String             @db.Uuid
+  tenant_id           String             @db.Uuid
+  product_key         String
+  // CHECK: COMMITMENT_END (a later annual-term kind widens the CHECK additively).
+  notice_kind         String
+  term_end            DateTime           @db.Timestamptz(6)
+  lead_days           Int
+  // CHECK: EMAIL
+  channel             String             @default("EMAIL")
+  template_id         String
+  template_version    String
+  template_sha256     String
+  provider            String?
+  provider_message_id String?
+  // PENDING | SENT | FAILED | SUPPRESSED
+  status              String
+  error_code          String?
+  attempt_count       Int                @default(1)
+  created_at          DateTime           @default(now()) @db.Timestamptz(3)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(3)
+  sent_at             DateTime?          @db.Timestamptz(3)
+  subscription        TenantSubscription @relation(fields: [subscription_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([subscription_id, notice_kind, term_end, channel])
+  @@index([tenant_id])
+  @@index([status])
   @@schema("subscription")
 }

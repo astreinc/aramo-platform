@@ -521,6 +521,10 @@ services:
       # Sign Feature Parity D-2 — metered usage billing (UsageRecorder + usage reporting worker).
       # Unset ⇒ off: every metered feature call is refused and nothing is reported.
       - SIGN_USAGE_BILLING_ENABLED
+      # Remaining-Work A3 — the Aramo renewal notice job (commitment-end email). Unset ⇒ off.
+      # SIGN_RENEWAL_NOTICE_DAYS: days before the commitment end (default 30, 1 to 90).
+      - SIGN_RENEWAL_NOTICES_ENABLED
+      - SIGN_RENEWAL_NOTICE_DAYS
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - SIGN_KMS_KEY_ID
