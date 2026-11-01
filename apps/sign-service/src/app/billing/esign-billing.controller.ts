@@ -18,7 +18,7 @@ import { AramoError, AramoExceptionFilter, type ErrorCode, RequestId } from '@ar
 import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository } from '@aramo/identity';
+import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository, PersonalSignupRepository } from '@aramo/identity';
 import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/sign';
 import {
   BILLING_PROVIDER_PORT,
@@ -35,6 +35,8 @@ import {
   SubscriptionLifecycleService,
   TENANT_ACTIVATION_PENDING_MESSAGE,
   approvedLegalDocument,
+  checkoutTermsDocument,
+  FreePersonalPlanKey,
   type WebhookResult,
 } from '@aramo/subscription';
 import { Inject } from '@nestjs/common';
@@ -56,8 +58,16 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 //   POST self-service/cancel   CCP-C7: the owner's at-period-end cancel, a CCP-C1 durable command
 //                              (202, pending-provider until the applied provider state confirms it)
 //   POST self-service/upgrade  CCP-C7: gated; refused FINANCIAL_TREATMENT_UNDEFINED (DR-C7-1)
-//   Both POSTs are owner-only (sign:billing:manage) and BUSINESS-only, and refused with the stable
-//   reason `self_service_terms_not_approved` while the Sign terms are not APPROVED (PBD §10).
+//   Both POSTs are owner-only (sign:billing:manage); upgrade is BUSINESS-only. Each is refused with
+//   the stable reason `self_service_terms_not_approved` while the tenant's terms are not APPROVED
+//   (PBD §10).
+// Sign Catalog v2 §4.3 (P-4) — a PERSONAL owner (Personal sending switched on, bound tenant) buys
+// the Personal plan through the same checkout, portal and cancel; plans of the other tenant kind
+// are refused (PLAN_TENANT_KIND_MISMATCH). GET account adds `upgrade` (Free → Standard).
+// Dark unless SIGN_PERSONAL_PAID_CHECKOUT_ENABLED=1 (no offer, nothing purchasable, checkout 403
+// personal_paid_checkout_not_enabled), and only for a US resident — the declared residence of the
+// tenant's PROVISIONED Personal signup (none ⇒ not US): never a non-US Personal user at the provider
+// (409 personal_paid_us_only). Personal returns land on /personal/settings/billing.
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only. CCP-C1: the
 //                         verified event is recorded in the webhook inbox before it is
@@ -72,6 +82,21 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 // holds. The former `tenant:admin:settings` fallback is removed: organization
 // settings authority alone no longer manages the plan.
 export const BILLING_MANAGE_SCOPE = ESIGN_SCOPE.BILLING_MANAGE;
+
+/** Sign Catalog v2 §4.3 — SIGN_PERSONAL_PAID_CHECKOUT_ENABLED: only exactly `1` enables (dark default). */
+export function personalPaidCheckoutEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['SIGN_PERSONAL_PAID_CHECKOUT_ENABLED']?.trim() === '1';
+}
+
+/** Sign Catalog v2 §4.3 — the only residence a Personal paid plan is sold to. */
+export const PERSONAL_PAID_RESIDENCE = 'US';
+
+export type PersonalUpgradeReason = 'not_available_in_country' | 'billing_manage_required' | 'not_purchasable';
+
+/** The console page a checkout / portal returns to: the Personal settings for a PERSONAL tenant. */
+function billingReturnPath(tenant_kind: string): string {
+  return tenant_kind === 'PERSONAL' ? '/personal/settings/billing' : '/sign/settings/billing';
+}
 
 export function canManageBilling(scopes: readonly string[]): boolean {
   return scopes.includes(BILLING_MANAGE_SCOPE);
@@ -149,6 +174,9 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
         details: { reason: 'governed_subscription_open' },
       });
     }
+    if (e.reason === 'PLAN_TENANT_KIND_MISMATCH') {
+      return new AramoError('ESIGN_BILLING_CONFLICT', 'That plan isn’t available for this account', 409, { requestId, details: { reason: 'plan_tenant_kind_mismatch' } });
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }
@@ -204,7 +232,20 @@ export class EsignBillingController {
     @Optional() private readonly inbox?: BillingWebhookInboxService,
     // CCP-C7 — tenant self-service (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly selfService?: SelfServiceBillingService,
+    // Sign Catalog v2 §4.3 — the declared signup residence (unbound ⇒ no residence ⇒ not US).
+    @Optional() private readonly signups?: PersonalSignupRepository,
   ) {}
+
+  /** Sign Catalog v2 §4.3 — the tenant's declared Personal signup residence is the US (fail closed). */
+  private async personalUsResident(tenant_id: string): Promise<boolean> {
+    if (this.signups === undefined) return false;
+    try {
+      return (await this.signups.declaredResidenceOf(tenant_id)) === PERSONAL_PAID_RESIDENCE;
+    } catch (e) {
+      this.log.warn(`personal residence lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
 
   private selfServiceOf(requestId: string): SelfServiceBillingService {
     if (this.selfService === undefined) throw new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: 'BILLING_UNAVAILABLE' } });
@@ -227,15 +268,47 @@ export class EsignBillingController {
     }
   }
 
+  /**
+   * Sign Catalog v2 §4.3 — the Free → Standard offer for a PERSONAL tenant: non-null only while the
+   * tenant is on the Free plan (or has no plan); `available` when its owner may buy it now.
+   */
+  private async personalUpgrade(
+    tenant_id: string,
+    subscription: { plan_key: string; ended_at: Date | null } | null,
+    may_buy: boolean,
+  ): Promise<{ available: boolean; reason: PersonalUpgradeReason | null; plan_key: string; price_minor: number | null; commitment_months: number | null } | null> {
+    // Dark: no offer at all.
+    if (!personalPaidCheckoutEnabled()) return null;
+    if (subscription !== null && subscription.ended_at === null && subscription.plan_key !== FreePersonalPlanKey) return null;
+    const plan = (await this.lifecycle.catalog(SIGN_PRODUCT_KEY, tenant_id, 'PERSONAL')).find(
+      (p) => p.tenant_kind === 'PERSONAL' && p.sales_model === 'SELF_SERVICE' && p.key !== FreePersonalPlanKey && p.price !== null,
+    );
+    if (plan === undefined) return null;
+    const reason: PersonalUpgradeReason | null = !(await this.personalUsResident(tenant_id))
+      ? 'not_available_in_country'
+      : !may_buy
+        ? 'billing_manage_required'
+        : !plan.purchasable
+          ? 'not_purchasable'
+          : null;
+    return { available: reason === null, reason, plan_key: plan.key, price_minor: plan.price?.amount_minor ?? null, commitment_months: plan.commitment_months };
+  }
+
   @Get('plans')
   @BillingBoundary()
   plans(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, async () => {
       // A1 — the catalog for this tenant (eligibility evaluated), and the terms
       // a checkout must accept (null while no version is approved).
-      const terms = approvedLegalDocument('sign.terms_of_service');
+      // Sign Catalog v2 §4.3 — the tenant's kind selects the terms and what is purchasable.
+      const kind = await this.ctx.tenantKind(auth.tenant_id, requestId);
+      const terms = approvedLegalDocument(checkoutTermsDocument(kind));
+      const catalog = await this.lifecycle.catalog(SIGN_PRODUCT_KEY, auth.tenant_id, kind);
+      // Sign Catalog v2 §4.3 — a Personal plan is purchasable only while the flag is on, and only
+      // for a US resident.
+      const personalSellable = kind === 'PERSONAL' && personalPaidCheckoutEnabled() && (await this.personalUsResident(auth.tenant_id));
       return {
-        plans: await this.lifecycle.catalog(SIGN_PRODUCT_KEY, auth.tenant_id),
+        plans: catalog.map((p) => (p.tenant_kind === 'PERSONAL' && p.purchasable && !personalSellable ? { ...p, purchasable: false } : p)),
         terms: terms === null ? null : { version: terms.version, url: terms.url },
         sales_contact_url: salesContactUrl(),
       };
@@ -257,7 +330,8 @@ export class EsignBillingController {
       const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
       const kind = tenant.kind;
       // Personal Free v1.1 §4 — a bound PERSONAL tenant's FREE subscription (mode not off).
-      if (kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant)) await this.personal?.ensureFreeSubscription(tenant);
+      const personalOpen = kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant);
+      if (personalOpen) await this.personal?.ensureFreeSubscription(tenant);
       const view = await this.lifecycle.account(auth.tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
       // Heal path: the subscribing owner whose role grant did not land at the
       // webhook (e.g. a transient identity failure) receives it on their next read.
@@ -269,9 +343,10 @@ export class EsignBillingController {
         // state only (no flag, reason or contract detail; never an activation).
         pending_activation: await this.lifecycle.tenantActivationState(auth.tenant_id, SIGN_PRODUCT_KEY),
         tenant_kind: kind,
-        // PERSONAL commercial sending stays deferred (fixed boundary).
-        self_service_eligible: kind === 'BUSINESS',
-        can_manage_billing: can_manage && kind === 'BUSINESS',
+        // Sign Catalog v2 §4.3 — a bound PERSONAL tenant (Personal sending on) self-serves too.
+        self_service_eligible: kind === 'BUSINESS' || personalOpen,
+        can_manage_billing: can_manage && (kind === 'BUSINESS' || personalOpen),
+        upgrade: kind === 'PERSONAL' ? await this.personalUpgrade(auth.tenant_id, view.subscription, can_manage && personalOpen) : null,
       };
     });
   }
@@ -282,23 +357,41 @@ export class EsignBillingController {
   checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown }) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
-      // Paid checkout is Business-only whatever the Personal mode (no Stripe for Free Personal).
-      await this.ctx.assertBusiness(auth, requestId);
+      // Sign Catalog v2 §4.3 — BUSINESS, or a bound PERSONAL tenant while Personal sending is on
+      // (else personal_sending_not_enabled); the plan's tenant kind is checked by the lifecycle.
+      const tenant = await this.ctx.assertCanAuthorTenant(auth, requestId);
       if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
         throw new AramoError('VALIDATION_ERROR', 'plan_key is required', 400, { requestId });
       }
+      if (tenant.kind === 'PERSONAL') {
+        // Sign Catalog v2 §4.3 — dark unless enabled; then US residents only. Both before any
+        // provider call, so a non-US Personal user never reaches the provider.
+        if (!personalPaidCheckoutEnabled()) {
+          throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Paid plans for personal accounts aren’t available yet', 403, {
+            requestId,
+            details: { reason: 'personal_paid_checkout_not_enabled' },
+          });
+        }
+        if (!(await this.personalUsResident(auth.tenant_id))) {
+          throw new AramoError('ESIGN_BILLING_CONFLICT', 'Paid plans for personal accounts are available to US residents only', 409, {
+            requestId,
+            details: { reason: 'personal_paid_us_only' },
+          });
+        }
+      }
       const user = await this.identity.findUserById(auth.sub);
       if (user?.email == null) throw new AramoError('VALIDATION_ERROR', 'Your account has no email address', 400, { requestId });
-      const base = consoleBase();
+      const base = `${consoleBase()}${billingReturnPath(tenant.kind)}`;
       return this.lifecycle.startCheckout({
         tenant_id: auth.tenant_id,
         product_key: SIGN_PRODUCT_KEY,
         user_id: auth.sub,
         user_email: user.email,
         plan_key: body.plan_key,
-        success_url: `${base}/sign/settings/billing?checkout=success`,
-        cancel_url: `${base}/sign/settings/billing?checkout=canceled`,
+        success_url: `${base}?checkout=success`,
+        cancel_url: `${base}?checkout=canceled`,
         accept_terms: body.accept_terms === true,
+        tenant_kind: tenant.kind,
       });
     });
   }
@@ -309,7 +402,8 @@ export class EsignBillingController {
   portal(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
-      return this.lifecycle.portal(auth.tenant_id, SIGN_PRODUCT_KEY, `${consoleBase()}/sign/settings/billing`);
+      const kind = await this.ctx.tenantKind(auth.tenant_id, requestId);
+      return this.lifecycle.portal(auth.tenant_id, SIGN_PRODUCT_KEY, `${consoleBase()}${billingReturnPath(kind)}`);
     });
   }
 
@@ -325,8 +419,8 @@ export class EsignBillingController {
         });
       }
       const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
-      const view = await this.selfServiceOf(requestId).view(auth.tenant_id, SIGN_PRODUCT_KEY);
-      return { ...view, can_manage_billing: can_manage && tenant.kind === 'BUSINESS' };
+      const view = await this.selfServiceOf(requestId).view(auth.tenant_id, SIGN_PRODUCT_KEY, tenant.kind);
+      return { ...view, can_manage_billing: can_manage && (tenant.kind === 'BUSINESS' || this.ctx.personalAuthoringOpen(tenant)) };
     });
   }
 
@@ -336,8 +430,9 @@ export class EsignBillingController {
   selfServiceCancel(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.runSelfService(requestId, async () => {
       assertCanManageBilling(auth, requestId);
-      await this.ctx.assertBusiness(auth, requestId);
-      const r = await this.selfServiceOf(requestId).cancel({ tenant_id: auth.tenant_id, product_key: SIGN_PRODUCT_KEY, user_id: auth.sub });
+      // Sign Catalog v2 §4.3 — a PERSONAL owner cancels Standard at period end (back to Free).
+      const tenant = await this.ctx.assertCanAuthorTenant(auth, requestId);
+      const r = await this.selfServiceOf(requestId).cancel({ tenant_id: auth.tenant_id, product_key: SIGN_PRODUCT_KEY, user_id: auth.sub, tenant_kind: tenant.kind });
       // C-23: never reported as done on local commit; only the request and its pending state.
       return { request_id: r.request_id, action: r.action, status: r.status, pending_provider: r.pending_provider, replayed: r.replayed };
     });

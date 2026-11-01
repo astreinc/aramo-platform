@@ -24,7 +24,7 @@ import { SIGN_PRODUCT_KEY } from '../lib/product-registry.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 import { CCP_A5_COMPENSATING, CCP_A5_MIGRATION, publishedVersionOf } from './fixtures/ccp-a5.js';
-import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
+import { SIGN_CATALOG_V2_MIGRATION, applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { withoutDisabledTax } from './fixtures/ccp-c5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 
@@ -184,8 +184,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A5 — PlanVe
     liveBefore = await liveContents(pg);
     await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
     countsAfter = await rowCounts(pg);
-    // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema.
-    await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, CCP_A4_MIGRATION, CCP_A5_MIGRATION]);
+    // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema. Sign
+    // Catalog v2 is catalog data only and is skipped: these goldens assert the pre-v2 catalog.
+    await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, CCP_A4_MIGRATION, CCP_A5_MIGRATION], [SIGN_CATALOG_V2_MIGRATION]);
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     allowance = new AllowanceService(prisma);

@@ -152,7 +152,10 @@ export type BillingRefusal =
   | 'DOMAIN_VERIFICATION_REQUIRED'
   // CCP-A6 (Conversion Rule C-1, C-4) — the tenant holds an open governed (MANUAL) subscription
   // of the product; self-service checkout is refused (a conversion is a governed change request).
-  | 'GOVERNED_SUBSCRIPTION_OPEN';
+  | 'GOVERNED_SUBSCRIPTION_OPEN'
+  // Sign Catalog v2 §4.3 (P-4) — a PERSONAL plan is sold only to a PERSONAL tenant, and a
+  // BUSINESS plan never to one.
+  | 'PLAN_TENANT_KIND_MISMATCH';
 
 /** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
 export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
@@ -179,6 +182,40 @@ function assertCheckoutAllowed(open: { source: string; status: string; ended_at:
   if (open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') throw new BillingRefusedError('ALREADY_SUBSCRIBED');
   // C-1 / C-4 — a governed subscription is converted only through a governed change request (C-11).
   if (isGovernedSubscription(open)) throw new BillingRefusedError('GOVERNED_SUBSCRIPTION_OPEN', GOVERNED_SUBSCRIPTION_OPEN);
+}
+
+/**
+ * Sign Catalog v2 §4.3 (P-4) — the tenant kind a plan is sold to. Fail closed: a PERSONAL tenant
+ * buys only a plan marked PERSONAL; a BUSINESS tenant never buys one.
+ */
+export function planMatchesTenantKind(plan_tenant_kind: string | null, tenant_kind: string): boolean {
+  return tenant_kind === 'PERSONAL' ? plan_tenant_kind === 'PERSONAL' : plan_tenant_kind !== 'PERSONAL';
+}
+
+/** Sign Catalog v2 §4.3 — the terms a checkout accepts: the Personal Terms for a PERSONAL tenant. */
+export function checkoutTermsDocument(tenant_kind: string): 'sign.terms_of_service' | 'sign.personal_terms_of_service' {
+  return tenant_kind === 'PERSONAL' ? 'sign.personal_terms_of_service' : 'sign.terms_of_service';
+}
+
+function formatMinor(amount_minor: number, currency: string): string {
+  return currency.toUpperCase() === 'USD' ? `$${(amount_minor / 100).toFixed(2)}` : `${(amount_minor / 100).toFixed(2)} ${currency.toUpperCase()}`;
+}
+
+/**
+ * Sign Catalog v2 §4.3 — the automatic-renewal disclosure shown at the provider checkout's submit
+ * button for a Personal plan: the price, the commitment, renewal and how cancellation works. It
+ * states the self-service rules as built (DR-C2-1: no early cancellation inside the commitment;
+ * an at-period-end cancel from the last commitment month; month to month afterwards).
+ */
+export function personalCheckoutDisclosure(terms: { list_price_minor: number | null; currency: string | null; billing_interval: string | null; commitment_months: number | null }): string | null {
+  if (terms.list_price_minor === null || terms.currency === null) return null;
+  const interval = (terms.billing_interval ?? 'MONTH').toUpperCase() === 'YEAR' ? 'year' : 'month';
+  const price = `${formatMinor(terms.list_price_minor, terms.currency)} per ${interval}, charged each ${interval} until you cancel.`;
+  const commitment =
+    terms.commitment_months !== null
+      ? ` This plan has a ${terms.commitment_months}-month commitment: it renews automatically each ${interval}, and you can cancel online from the last month of the commitment so it ends at the end of that month. After the commitment, you can cancel any time and it ends at the end of the current ${interval}.`
+      : ` It renews automatically each ${interval}; you can cancel online any time and it ends at the end of the current ${interval}.`;
+  return `${price}${commitment} No refunds for partial periods. When it ends, your account returns to the Free plan.`;
 }
 
 /** Fail closed: only an explicit US billing country may activate. */
@@ -366,7 +403,7 @@ export class SubscriptionLifecycleService {
    * The public plan catalog (the pre-catalog operator plan is excluded).
    * With a tenant, eligibility and purchasability are evaluated for it.
    */
-  async catalog(product_key: ProductKey, tenant_id: string | null = null): Promise<CatalogPlanView[]> {
+  async catalog(product_key: ProductKey, tenant_id: string | null = null, tenant_kind: string | null = null): Promise<CatalogPlanView[]> {
     const prices = this.prices();
     const plans = await this.prisma.plan.findMany({
       // Public catalog only: operator / legacy plans are never presented.
@@ -413,7 +450,9 @@ export class SubscriptionLifecycleService {
           available: isFeatureAvailable(c.capacity_key),
         })),
         features: terms.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
-        purchasable: plan.sellable && plan.status === 'ACTIVE' && this.billing.isConfigured() && price.ok && eligible,
+        // Sign Catalog v2 §4.3 — with the tenant's kind, only a plan of that kind is purchasable.
+        purchasable:
+          plan.sellable && plan.status === 'ACTIVE' && this.billing.isConfigured() && price.ok && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind)),
       });
     }
     return out;
@@ -519,9 +558,13 @@ export class SubscriptionLifecycleService {
     success_url: string;
     cancel_url: string;
     accept_terms?: boolean;
+    // Sign Catalog v2 §4.3 (P-4) — the tenant's kind (identity); BUSINESS when omitted.
+    tenant_kind?: string;
     at?: Date;
   }): Promise<{ url: string }> {
     const at = input.at ?? new Date();
+    const tenant_kind = input.tenant_kind ?? 'BUSINESS';
+    const personal = tenant_kind === 'PERSONAL';
     const product_key = assertProductKey(input.product_key);
     if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const plan = await this.prisma.plan.findUnique({ where: { key: input.plan_key } });
@@ -531,6 +574,7 @@ export class SubscriptionLifecycleService {
     if (plan === null || version === null || plan.product_key !== product_key || !plan.sellable || plan.status !== 'ACTIVE' || plan.sales_model !== 'SELF_SERVICE') {
       throw new BillingRefusedError('PLAN_NOT_SELLABLE');
     }
+    if (!planMatchesTenantKind(plan.tenant_kind, tenant_kind)) throw new BillingRefusedError('PLAN_TENANT_KIND_MISMATCH');
     if (!(await this.eligible(input.tenant_id, planVersionTerms(version).plan.eligibility))) throw new BillingRefusedError('PLAN_NOT_ELIGIBLE');
     // CCP-A5 (D3) — the version's pinned price, else the env (cutover); a pin/env disagreement fails closed.
     const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices());
@@ -540,7 +584,8 @@ export class SubscriptionLifecycleService {
     const price = effective.ref;
     // A1 — terms evidence. No live charging without approved terms; an approved
     // version must be affirmatively accepted.
-    const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
+    // Sign Catalog v2 §4.3 — a PERSONAL tenant accepts the Personal Terms.
+    const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind), this.legal);
     if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
     // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The
@@ -556,8 +601,12 @@ export class SubscriptionLifecycleService {
     if ((await releaseFor(early, this.prisma)) === null) assertCheckoutAllowed(early);
     // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
     // P3 §4 — then an AUTHORITATIVE domain claim; both before any side effect.
-    const profile = await this.lockedBillingProfile(input.tenant_id);
-    const account_ref = await this.ensureBillingAccount(input.tenant_id, product_key, profile);
+    // Sign Catalog v2 §4.3 — a PERSONAL tenant has no organization profile or domain: its billing
+    // address is collected in the provider checkout (the US activation guard still applies), and a
+    // prior billing account of the tenant is reused.
+    const account_ref = personal
+      ? await this.existingBillingAccount(input.tenant_id, product_key)
+      : await this.ensureBillingAccount(input.tenant_id, product_key, await this.lockedBillingProfile(input.tenant_id));
     const intent_id = uuidv7();
     await this.prisma.$transaction(async (tx) => {
       // CCP-A6 (C-2) — the C-1 / C-5 decision under the shared billing lock, in the transaction
@@ -606,6 +655,7 @@ export class SubscriptionLifecycleService {
       account_ref,
       success_url: input.success_url,
       cancel_url: input.cancel_url,
+      ...(personal ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined } : {}),
     });
     await this.prisma.checkoutIntent.update({ where: { id: intent_id }, data: { provider_session_ref: session.session_ref } });
     return { url: session.url };
@@ -639,15 +689,7 @@ export class SubscriptionLifecycleService {
    */
   private async ensureBillingAccount(tenant_id: string, product_key: ProductKey, profile: OrganizationBillingProfile): Promise<string> {
     const provider = this.billing.provider;
-    const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id } });
-    let existing: string | null = mapped !== null && mapped.provider === provider ? mapped.account_ref : null;
-    if (existing === null) {
-      const prior = await this.prisma.tenantSubscription.findFirst({
-        where: { tenant_id, product_key, billing_provider: provider, billing_account_ref: { not: null } },
-        orderBy: { started_at: 'desc' },
-      });
-      existing = prior?.billing_account_ref ?? null;
-    }
+    const existing = await this.existingBillingAccount(tenant_id, product_key);
     const account_ref = await this.billing.upsertBillingAccount(existing, {
       tenant_id,
       legal_name: profile.legal_name,
@@ -660,6 +702,18 @@ export class SubscriptionLifecycleService {
       update: { provider, account_ref },
     });
     return account_ref;
+  }
+
+  /** The tenant's mapped provider billing account, else its latest subscription's (null: none yet). */
+  private async existingBillingAccount(tenant_id: string, product_key: ProductKey): Promise<string | null> {
+    const provider = this.billing.provider;
+    const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id } });
+    if (mapped !== null && mapped.provider === provider) return mapped.account_ref;
+    const prior = await this.prisma.tenantSubscription.findFirst({
+      where: { tenant_id, product_key, billing_provider: provider, billing_account_ref: { not: null } },
+      orderBy: { started_at: 'desc' },
+    });
+    return prior?.billing_account_ref ?? null;
   }
 
   async portal(tenant_id: string, product_key: ProductKey, return_url: string): Promise<{ url: string }> {
@@ -857,7 +911,9 @@ export class SubscriptionLifecycleService {
       return { outcome: 'IGNORED', detail: 'checkout intent tenant does not match', tenant_id };
     }
     // P3 §4 — the domain claim lives in identity; read it before the billing transaction.
-    const domainOk = await this.domainAuthoritative(tenant_id);
+    // Sign Catalog v2 §4.3 — a PERSONAL plan's tenant has no organization domain: no domain hold.
+    const planKind = existing !== null ? (await this.prisma.plan.findUnique({ where: { id: existing.plan_id }, select: { tenant_kind: true } }))?.tenant_kind : intent?.plan.tenant_kind;
+    const domainOk = planKind === 'PERSONAL' || (await this.domainAuthoritative(tenant_id));
 
     return this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, tenant_id);

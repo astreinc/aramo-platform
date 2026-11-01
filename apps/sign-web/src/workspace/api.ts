@@ -421,6 +421,10 @@ export interface BillingAccount {
   tenant_kind: string;
   self_service_eligible: boolean;
   can_manage_billing: boolean;
+  // Catalog v2 directive (fc755040…) §4.3 — the in-place Personal upgrade (Free → Standard), when
+  // the backend offers one. Absent on older backends; null when the feature is off or no upgrade
+  // applies; `reason` says why it isn't available (e.g. not_available_in_country).
+  upgrade?: { available: boolean; plan_key: string; price_minor: number | null; commitment_months: number | null; reason?: string | null } | null;
 }
 
 export const billingApi = {
@@ -656,6 +660,9 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
       const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
       return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can manage the plan in Settings → Plan & billing.`;
     }
+    // Catalog v2 (fc755040…) §4.3 — checkout / portal refusals with a stable reason.
+    const billing = billingRefusalMessage(e.details?.['reason']);
+    if (billing !== null) return billing;
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
     // CCP-A6 (Conversion Rule C-1) — a governed (Aramo-managed) subscription is changed only by Aramo.
@@ -686,6 +693,14 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+function billingRefusalMessage(reason: unknown): string | null {
+  if (reason === 'TERMS_NOT_ACCEPTED') return 'Check “I agree” to accept the terms before you continue.';
+  if (reason === 'PORTAL_NOT_CONFIGURED') return 'Billing management will be available soon; contact support@aramo.ai.';
+  if (reason === 'personal_paid_checkout_not_enabled') return 'Upgrading to Standard isn’t available yet.';
+  if (reason === 'personal_paid_us_only') return 'Standard is available to US residents for now.';
+  return null;
 }
 
 function closeRefusalMessage(reason: unknown): string | null {
