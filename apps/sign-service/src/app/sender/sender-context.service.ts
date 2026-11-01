@@ -78,6 +78,15 @@ export interface SenderContextView {
   personal_account_owner: boolean;
 }
 
+// A Personal account's workspace label, shown wherever the Sign apps name the
+// "organization": the owner's own name, never the tenant's stored handle (which
+// carries an id fragment for uniqueness, e.g. "Jane Doe (Personal 88df9551)").
+// Display only — the stored tenant name is unchanged.
+export function personalWorkspaceLabel(display_name: string | null | undefined): string {
+  const name = (display_name ?? '').trim();
+  return name.length > 0 ? `${name} — Personal` : 'Personal';
+}
+
 @Injectable()
 export class SenderContextService {
   constructor(
@@ -188,7 +197,11 @@ export class SenderContextService {
     const personal_account_owner = !business && tenant.kind === 'PERSONAL' && roleKeys.includes('tenant_owner');
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null, identity_provider: await this.identityProviderOf(auth.sub, auth.tenant_id) },
-      tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
+      tenant: {
+        id: tenant.id,
+        name: tenant.kind === 'PERSONAL' ? personalWorkspaceLabel(user?.display_name) : ((await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name),
+        kind: tenant.kind,
+      },
       workspace: business ? 'sign' : 'personal',
       permissions,
       features: {

@@ -106,6 +106,21 @@ export type CallbackResult =
       reason: string;
     };
 
+// The PreSignUp trigger (infrastructure/cognito-triggers/pre-signup/v2) refuses an
+// external identity whose provider has not verified its email — e.g. a Microsoft
+// account with no mailbox (`xms_edov` false). Cognito returns that refusal to the
+// callback as `error_description` "PreSignUp failed with error Your sign-in
+// provider has not verified your email address.". It is surfaced as its own
+// VALIDATION_ERROR reason so the sign-in page can say what happened instead of
+// "Sign-in was canceled". Classification only: the trigger's decision, the error
+// code and the HTTP status are unchanged.
+export const IDP_EMAIL_UNVERIFIED_REASON = 'idp_email_unverified';
+const UNVERIFIED_EMAIL_REFUSAL = /not verified your email/i;
+
+export function cognitoErrorReason(description: string | undefined): string {
+  return description !== undefined && UNVERIFIED_EMAIL_REFUSAL.test(description) ? IDP_EMAIL_UNVERIFIED_REASON : 'cognito_error';
+}
+
 @Injectable()
 export class SessionOrchestratorService {
   private readonly logger = new Logger(SessionOrchestratorService.name);
@@ -124,7 +139,7 @@ export class SessionOrchestratorService {
     if (input.cognitoError !== undefined) {
       return {
         kind: 'validation_error',
-        reason: 'cognito_error',
+        reason: cognitoErrorReason(input.cognitoErrorDescription),
         cognitoError: input.cognitoError,
         cognitoErrorDescription: input.cognitoErrorDescription,
       };
