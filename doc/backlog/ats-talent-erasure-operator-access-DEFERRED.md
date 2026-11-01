@@ -26,9 +26,11 @@ node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT
 ```
 
 The database already has the S2 safety gate: an erasure can only start through
-`consent.s2_begin_talent_erasure_run(uuid, uuid, uuid, uuid[])` (SECURITY DEFINER, owned by
-`aramo_erasure_definer`), which records who authorized which erasure and why. EXECUTE on it is
-granted only to the NOLOGIN role `aramo_erasure_operator`, which has **no members** today.
+the S2 SECURITY DEFINER entry point in the `consent` schema (owned by the S2 definer role),
+which records who authorized which erasure and why. EXECUTE on it is granted only to the
+NOLOGIN S2 operator role, which has **no members** today. (The exact identifiers are confined
+by `apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts` to the S2 migration, the
+erasure service, its proof spec and `doc/runbooks/talent-rtbf-erasure.md`; see those.)
 
 ## 2. The gap
 
@@ -52,7 +54,7 @@ fingerprint, not a person. Today only the PO holds the designated key, so "who r
   - `aramo_ats_rw`: ATS data. **No USAGE on `sign`**, so signed contracts are out of reach; Sign data
     is erased only through Sign's own erasure contract (`apps/api/src/sign/sign-talent-erasure.client.ts`
     → `apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts`).
-  - `aramo_erasure_operator`: the S2 entry point.
+  - the S2 operator role (named in `doc/runbooks/talent-rtbf-erasure.md`): the S2 entry point.
 - NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS, owns nothing.
 - **Recommended credential model: Option B (temporary password per run)**, instead of the rollout
   plan's permanent password in `/opt/aramo/.env`:
@@ -85,7 +87,7 @@ Never give support staff the shared `ubuntu` key.
 3. Under Option B: cannot log in at rest; can log in only while the wrapper has it open; the login
    is disabled again after the run, including when the run fails.
 4. As `aramo_erasure_cli`: SELECT on any `sign` table is denied; `has_function_privilege` on
-   `consent.s2_begin_talent_erasure_run(...)` EXECUTE is true; DISABLE / DROP TRIGGER is refused;
+   the S2 entry point EXECUTE is true; DISABLE / DROP TRIGGER is refused;
    `SET session_replication_role` is refused.
 5. A dry run against a test talent succeeds and writes nothing. A live run is **only** performed
    once S2 activation is separately authorized.
