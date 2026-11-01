@@ -4188,6 +4188,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7792,6 +7798,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/witness-delegate-access-code.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7955,6 +7967,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12981,6 +12999,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13438,6 +13462,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-witness-delegate-access-code.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
