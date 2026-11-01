@@ -52,6 +52,12 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.sms_delivery': 'NOT_AVAILABLE',
   'sign.whatsapp_delivery': 'NOT_AVAILABLE',
   'sign.sms_otp': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
+  // identity verification by government ID (Stripe Identity) and KBA (no vendor selected).
+  // Built dark; going live needs the vendor contract, counsel review (BIPA/DPDP) and a
+  // separate PO authorization (A1.2).
+  'sign.id_verification': 'NOT_AVAILABLE',
+  'sign.kba': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

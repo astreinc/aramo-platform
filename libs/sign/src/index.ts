@@ -420,3 +420,71 @@ export {
   type RecipientMessagingRow,
   type SuppressedReason,
 } from './lib/messaging/sign-messaging.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + Amendment A1 — recipient
+// identity verification (government ID via Stripe Identity; KBA port, disabled). DARK.
+export {
+  IDENTITY_VERIFICATION_PORT,
+  DisabledIdentityVerificationAdapter,
+  IdentityVerificationUnavailableError,
+  IdentityVerificationWebhookSignatureError,
+  type IdentityVerificationPort,
+  type IdentityVerificationProviderKey,
+  type IdentityVerificationOutcome,
+  type IdentityVerificationResult,
+  type IdentityVerificationWebhookEvent,
+  type IdentityVerificationWebhookRejection,
+  type StartIdentityVerificationInput,
+  type StartedIdentityVerification,
+} from './lib/identity-verification/identity-verification.port.js';
+export {
+  StripeIdentityAdapter,
+  STRIPE_IDENTITY_API_VERSION,
+  stripeIdentityResult,
+  verifyStripeIdentitySignature,
+} from './lib/identity-verification/stripe-identity.adapter.js';
+export {
+  KBA_PORT,
+  DisabledKbaAdapter,
+  KbaUnavailableError,
+  kbaProviderFromEnv,
+  type KbaPort,
+  type KbaQuestion,
+  type KbaSubject,
+  type KbaOutcome,
+  type StartedKbaQuiz,
+} from './lib/identity-verification/kba.port.js';
+// Consolidation (feature-parity PR): SIGN_USAGE_RECORDER_PORT is exported once, from
+// ./lib/ports/usage-recorder.port.js (same token value); the identity-verification
+// recorder shape is exported as SignUsageMeterRecorderPort until the usage-metering model
+// unifies the two (held for the Lead ruling on MP-A2 N-1).
+export {
+  SIGN_ID_VERIFICATION_ATTEMPT_METER,
+  SIGN_KBA_ATTEMPT_METER,
+  NoopSignUsageRecorder,
+  type SignUsageEvent,
+  type SignUsageRecorderPort as SignUsageMeterRecorderPort,
+} from './lib/identity-verification/usage-recorder.port.js';
+export { nameTokens, verifiedNameMatches } from './lib/identity-verification/name-match.js';
+export {
+  IDENTITY_VERIFICATION_METHODS,
+  IDENTITY_VERIFICATION_STARTED_EVENT,
+  IDENTITY_VERIFIED_EVENT,
+  IDENTITY_VERIFICATION_FAILED_EVENT,
+  IDENTITY_VERIFICATION_CANCELLED_EVENT,
+  IDENTITY_VERIFICATION_LOCKED_EVENT,
+  ID_VERIFICATION_MAX_ATTEMPTS_DEFAULT,
+  SignerIdentityVerificationLockedError,
+  SignerIdentityVerificationRequiredError,
+  assertIdentityVerificationCleared,
+  idVerificationMaxAttempts,
+  identityVerificationProviderFromEnv,
+  type IdentityVerificationMethod,
+} from './lib/identity-verification/identity-gate.js';
+export {
+  IdentityVerificationService,
+  identityVerificationReturnUrl,
+  type IdentityVerificationState,
+  type IdentityVerificationStatusView,
+  type IdentityVerificationStartView,
+  type IdentityWebhookOutcome,
+} from './lib/identity-verification/identity-verification.service.js';

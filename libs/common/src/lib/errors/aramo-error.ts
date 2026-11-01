@@ -364,6 +364,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // Sign Feature-Parity §1.9 — the per-recipient access code.
   SIGNER_ACCESS_CODE_REQUIRED: 403,
   SIGNER_ACCESS_CODE_LOCKED: 423,
+  // Feature-Parity §1.9 — recipient identity verification.
+  SIGNER_IDENTITY_VERIFICATION_REQUIRED: 403,
+  SIGNER_IDENTITY_VERIFICATION_LOCKED: 423,
+  ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE: 503,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

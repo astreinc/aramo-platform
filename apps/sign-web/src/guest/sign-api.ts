@@ -118,9 +118,24 @@ export interface SignerBranding {
   logo_url: string | null;
 }
 
+// Feature-Parity §1.9 — the identity check the sender may require before the document opens.
+export interface IdentityVerificationStatus {
+  method: 'ID_VERIFICATION' | 'KBA' | null;
+  state: 'NOT_REQUIRED' | 'REQUIRED' | 'PENDING' | 'VERIFIED' | 'LOCKED';
+  attempts_remaining: number | null;
+  last_failure: string | null;
+  verification_url?: string | null;
+}
+
 export const signApi = {
   branding(token: string): Promise<SignerBranding | null> {
     return post<{ branding: SignerBranding | null }>('branding', { token }).then((r) => r.branding ?? null);
+  },
+  identityStatus(token: string): Promise<IdentityVerificationStatus> {
+    return post<IdentityVerificationStatus>('identity-verification/status', { token });
+  },
+  identityStart(token: string): Promise<IdentityVerificationStatus> {
+    return post<IdentityVerificationStatus>('identity-verification/start', { token });
   },
   exchange(token: string): Promise<SignerSession> {
     return post<SignerSession>('exchange', { token });

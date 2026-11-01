@@ -29,6 +29,13 @@ import {
   SignTalentErasureRepository,
   SignRetentionRepository,
   WEBHOOK_DELIVERY_PORT,
+  IDENTITY_VERIFICATION_PORT,
+  IdentityVerificationService,
+  KBA_PORT,
+  NoopSignUsageRecorder,
+  SIGN_USAGE_RECORDER_PORT,
+  identityVerificationProviderFromEnv,
+  kbaProviderFromEnv,
 } from '@aramo/sign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
@@ -40,6 +47,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { AuthorizationResolverModule, IdentityCoreModule } from '@aramo/identity';
 
 import { EsignProviderController, EsignSignerController } from './esign-http.controller.js';
+import { SignIdentityVerificationController } from './identity-verification/sign-identity-verification.controller.js';
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
@@ -181,7 +189,7 @@ import { SignRecipientVerificationController, SignSenderMessagingController, Sig
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService, SignMessagingRepository, SignMessagingService, SIGNER_LINK_MESSAGING_PORT, IdentityVerificationService],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -245,6 +253,14 @@ import { SignRecipientVerificationController, SignSenderMessagingController, Sig
         { provide: OUTBOUND_MESSAGING_PORT, useFactory: () => outboundMessagingFromEnv(process.env) },
         SignMessagingService,
         { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
+        // Feature-Parity §1.9 + A1 — recipient identity verification, DARK: the provider is
+        // disabled unless SIGN_ID_VERIFICATION_PROVIDER=stripe_identity (SIGN_STRIPE_IDENTITY_*);
+        // KBA has no vendor (disabled adapter); metering is a no-op until the usage-metering
+        // model binds SIGN_USAGE_RECORDER_PORT. Inside the module so the purge redacts too.
+        { provide: IDENTITY_VERIFICATION_PORT, useFactory: () => identityVerificationProviderFromEnv(process.env) },
+        { provide: KBA_PORT, useFactory: () => kbaProviderFromEnv(process.env) },
+        { provide: SIGN_USAGE_RECORDER_PORT, useClass: NoopSignUsageRecorder },
+        IdentityVerificationService,
       ],
     }),
   ],
@@ -253,7 +269,7 @@ import { SignRecipientVerificationController, SignSenderMessagingController, Sig
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,

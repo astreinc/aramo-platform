@@ -377,6 +377,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMERCIAL_CATALOG_CONFLICT',
       'SIGNER_ACCESS_CODE_REQUIRED',
       'SIGNER_ACCESS_CODE_LOCKED',
+      // Feature-Parity §1.9 — recipient identity verification (403 / 423 / 503).
+      'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
+      'SIGNER_IDENTITY_VERIFICATION_LOCKED',
+      'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
     ]);
   });
 });

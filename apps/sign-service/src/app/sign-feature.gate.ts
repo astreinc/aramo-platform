@@ -29,6 +29,10 @@ export const SIGN_ACCESS_CODE_FEATURE = 'sign.access_code';
 export const SIGN_SMS_DELIVERY_FEATURE = 'sign.sms_delivery';
 export const SIGN_WHATSAPP_DELIVERY_FEATURE = 'sign.whatsapp_delivery';
 export const SIGN_SMS_OTP_FEATURE = 'sign.sms_otp';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + A1 — recipient identity
+// verification (government ID; KBA). Dark until the PO flips them (A1.2).
+export const SIGN_ID_VERIFICATION_FEATURE = 'sign.id_verification';
+export const SIGN_KBA_FEATURE = 'sign.kba';
 
 @Injectable()
 export class SignFeatureGate {

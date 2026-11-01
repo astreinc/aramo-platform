@@ -72,6 +72,9 @@ export interface SenderRecipientInput {
   // §1.9 — the access code as a salted hash (never the code). undefined keeps the
   // stored value of an existing recipient (none for a new one); null clears it.
   access_code_hash?: string | null;
+  // Feature-Parity §1.9 — the recipient's identity-verification method: a value sets it,
+  // null clears it, omitted keeps it (a new recipient starts without one).
+  identity_verification_method?: 'ID_VERIFICATION' | 'KBA' | null;
 }
 
 export interface SenderFieldInput {
@@ -697,7 +700,7 @@ export class EsignSenderRepository {
       const extra = (r: SenderRecipientInput) => recipientExtraData(r, ids);
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {
-          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r), ...extra(r) } });
+          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r), ...extra(r), ...identityVerificationData(r) } });
         } else {
           await tx.signer.create({
             data: {
@@ -710,7 +713,7 @@ export class EsignSenderRepository {
               signer_role: null,
               status: 'PENDING',
               ...recipientKindData(r),
-              ...extra(r),
+              ...extra(r), ...identityVerificationData(r),
             },
           });
         }
@@ -817,4 +820,11 @@ function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; c
     copy_delivery: kind === 'RECEIVES_COPY' ? (r.copy_delivery ?? null) : null,
     bound_user_id: kind === 'RECEIVES_COPY' ? null : (r.bound_user_id ?? null),
   };
+}
+
+// Feature-Parity §1.9 — the identity-verification column a PUT recipients item writes:
+// omitted keeps the stored method; a copy recipient never carries one (DB CHECK).
+function identityVerificationData(r: SenderRecipientInput): { identity_verification_method?: string | null } {
+  if (r.recipient_kind === 'RECEIVES_COPY') return { identity_verification_method: null };
+  return r.identity_verification_method === undefined ? {} : { identity_verification_method: r.identity_verification_method };
 }

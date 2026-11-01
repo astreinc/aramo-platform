@@ -35,6 +35,7 @@ import { type CreateEnvelopeRequest } from '@aramo/documents-contracts';
 import { NativeAramoSignatureProvider, assertNotPurged } from './native-aramo-signature.provider.js';
 import { SIGN_DELEGATE_SIGNING_FEATURE, SignFeatureGate } from './sign-feature.gate.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
+import { identityVerificationHttpError } from './identity-verification/identity-verification-http-error.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -96,6 +97,9 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof DisclosureVersionInvalidError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId });
   // M-A5 §3.4 — a hosted session's disclosure needs the signer's confirmed name.
   if (e instanceof AttestedNameRequiredError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId, details: { reason: 'attested_name_required', field: 'attested_name' } });
+  // Feature-Parity §1.9 — identity verification required / locked / unavailable.
+  const idv = identityVerificationHttpError(e, requestId);
+  if (idv !== null) return idv;
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
 

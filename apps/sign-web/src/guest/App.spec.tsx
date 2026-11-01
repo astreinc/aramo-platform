@@ -206,6 +206,41 @@ describe('signer app', () => {
     expect(document.querySelectorAll('a')).toHaveLength(0);
   });
 
+  // Feature-Parity §1.9 — a recipient the sender asked to verify sees the identity check first,
+  // opens the vendor's page in a new tab, and continues to the document once it has passed.
+  it('identity check required → verify in a new tab → Continue opens the document', async () => {
+    let verified = false;
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    const calls = transport({
+      document: () => (verified ? json(VIEW) : json({ error: { code: 'SIGNER_IDENTITY_VERIFICATION_REQUIRED', details: { reason: 'identity_verification_required' } } }, 403)),
+      'identity-verification/start': () => json({ method: 'ID_VERIFICATION', state: 'PENDING', attempts_remaining: 2, last_failure: null, verification_url: 'https://verify.example/vs_1' }),
+      'identity-verification/status': () => {
+        verified = true;
+        return json({ method: 'ID_VERIFICATION', state: 'VERIFIED', attempts_remaining: 2, last_failure: null });
+      },
+    });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review document' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
+    expect(await screen.findByRole('heading', { name: 'Verify your identity to open this document' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify my identity' }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('https://verify.example/vs_1', '_blank', 'noopener'));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('sg-workspace');
+    expect(calls.filter((c) => c.path.startsWith('identity-verification/')).every((c) => c.body['token'] === 'tok-123')).toBe(true);
+  });
+
+  it('identity verification locked → its own end screen', async () => {
+    transport({ document: () => json({ error: { code: 'SIGNER_IDENTITY_VERIFICATION_LOCKED', details: { reason: 'name_mismatch' } } }, 423) });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review document' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
+    expect(await screen.findByRole('heading', { name: "We couldn't verify your identity" })).toBeInTheDocument();
+  });
+
   it('opened without a token → Invalid link, no network call, never a sign-in page', () => {
     window.history.pushState({}, '', '/s/');
     const calls = transport();

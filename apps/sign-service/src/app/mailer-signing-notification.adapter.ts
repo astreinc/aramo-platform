@@ -154,6 +154,21 @@ function renderBase(n: SigningNotification): Rendered {
         action: url ? { label: 'View in Aramo Sign', url } : undefined,
       };
     }
+    case 'IDENTITY_VERIFICATION_FAILED': {
+      // Feature-Parity §1.9 — sender only. No document data is ever included.
+      const url = safeUrl(n.console_url);
+      const who = n.signer_name ?? 'A recipient';
+      return {
+        subject: `Identity check not passed: ${doc}`,
+        lines: [
+          n.verification_failure === 'name_mismatch'
+            ? `${who} could not open "${doc}": the name on the ID they used does not match the name you entered for them.`
+            : `${who} could not open "${doc}": they used every identity-check attempt.`,
+          'They can no longer sign this envelope. Check the recipient details, then void it and send it again.',
+        ],
+        action: url ? { label: 'View in Aramo Sign', url } : undefined,
+      };
+    }
     case 'SIGNATURE_EXPIRED': {
       if (sender) {
         const url = safeUrl(n.console_url);

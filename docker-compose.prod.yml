@@ -54,7 +54,6 @@
 # redundant belt, never load-bearing. The named volumes below are therefore
 # addressed as `aramo-singlebox_<volume>` (E16b).
 name: aramo-singlebox
-
 # Bounded container logs (M-A7 §1, R-16): docker's json-file driver keeps
 # everything forever by default. Every service rotates at 10 MB and keeps 5 files
 # (at most 50 MB per container); nginx's access log is redacted at the source
@@ -581,6 +580,14 @@ services:
       # Feature-Parity directive §5 — the Personal → Business upgrade. Unset = dark:
       # v1/sign/account/upgrade answers 404 and sign-web hides the upgrade card.
       - SIGN_PERSONAL_UPGRADE_ENABLED
+      # Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — recipient identity verification.
+      # Unset = dark: the provider is disabled and every start is refused (503). Stripe Identity
+      # uses its OWN keys (never the billing STRIPE_* keys). KBA has no vendor (disabled).
+      - SIGN_ID_VERIFICATION_PROVIDER
+      - SIGN_STRIPE_IDENTITY_SECRET_KEY
+      - SIGN_STRIPE_IDENTITY_WEBHOOK_SECRET
+      - SIGN_ID_VERIFICATION_MAX_ATTEMPTS
+      - SIGN_KBA_PROVIDER
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as
