@@ -81,9 +81,12 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
   // APPROVED 2026-11-01 (counsel and the Architect, relayed by the PO). The public
   // text is the approved file with the approved defined removal (counsel/fact
   // notes, notes-for-counsel section, internal metadata rows, the drafting-
-  // conventions paragraph; removal record in Aramo/documents). Its placeholders and
-  // empty clauses await counsel (open-questions list in Aramo/documents); the
-  // publication-readiness spec blocks scheduling it until they are resolved. It replaces the 0.1.1 DRAFT above and, for Personal accounts,
+  // conventions paragraph; removal record in Aramo/documents), plus the PO
+  // business-policy selections of 2026-11-01 (B4.3 7 / B4.4 30 / B7.5 90 calendar
+  // days; B5.1 automatic renewal — wording pending counsel confirmation). B5.3 and
+  // B9.1 await counsel, and the effective-date row is set at activation; the
+  // publication-readiness spec blocks scheduling it until they are resolved.
+  // It replaces the 0.1.1 DRAFT above and, for Personal accounts,
   // sign.personal_terms_of_service 1.0 (see effectivePersonalLegalDocument).
   // effective_from is null on purpose (PO 2026-11-01): NOT yet effective — never
   // offered, owed or served — until the release-day change sets the ship instant
@@ -93,7 +96,7 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     version: '2.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo-sign/terms-of-service-2.0.md',
-    sha256: 'beb749494fb146f8ea8416d6f0cf0691e08cec8c8a4242cdfdc4b8ee54f58b9b',
+    sha256: '108337daf20fdc0e98f55c9c556752b07651f8f2ee7d5d13913f9df810324d58',
     url: 'https://sign.aramo.ai/legal/terms-of-service/2.0',
     effective_from: null,
   },
