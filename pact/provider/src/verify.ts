@@ -134,10 +134,6 @@ const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(
 );
 // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
 const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
-// Feature-Parity §1.21 — Sign custom roles (additive: two identity tables). The booted
-// auth-service resolves a membership's custom-role scopes when it builds a token, so the
-// tables must exist even when no custom role is defined.
-const IDENTITY_SIGN_CUSTOM_ROLES_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql');
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -207,7 +203,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_CARDINALITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_TENANT_KIND_MIGRATION, 'utf8')),
-        ...splitDdl(readFileSync(IDENTITY_SIGN_CUSTOM_ROLES_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_NATIVE_DEVICE_SESSIONS_MIGRATION, 'utf8')),
@@ -316,6 +311,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           getScopesByUserTenantAndSite: async () => ['auth:session:read', 'sign:envelope:read'],
           // M-A1 — the native mint/refresh paths stamp the site axis (tenant-wide here).
           findActiveMembershipSite: async () => null,
+          // Feature-Parity §1.21 — the sign consumer also adds custom-role scopes; the pact
+          // principal holds no custom Sign role.
+          getSignCustomRoleScopes: async () => [],
         })
         // M-A1 — the sign-mobile pact. Cognito is a fake behind the exchange port;
         // the ID token is checked by the real verifier against the fake's local
