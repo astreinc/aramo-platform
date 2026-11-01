@@ -48,6 +48,7 @@ import {
   type Me,
 } from './commercial-model';
 import { deadlineOf, policyOf, withdrawActionable, type DeadlineSources } from './deadline';
+import { PlanVersionApprovalTerms } from './PlanVersionApprovalTerms';
 import './commercial.css';
 
 // CCP-UI-V12 additions (CCP-UI v1.1 AM-3, AM-5, AM-6, AM-8; v1.2 §17.1 D-1, D-4, §17.2; W-3):
@@ -405,6 +406,8 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
             </div>
           ) : null}
         </div>
+        {/* Amendments A3 D1 / A4 D2 — a publish shows the terms (add-on unit prices included) and the fingerprint approved. */}
+        {r.action_type === 'PLAN_VERSION_PUBLISH' ? <PlanVersionApprovalTerms payload={r.payload} /> : null}
         {ownRestricted ? <div className="pw-ccp-caps">{YOUR_DETAILS}</div> : null}
         <dl className="pc-dr-facts" data-testid="cr-reason-block">
           <dt>Reason</dt>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  NEEDS_CATALOG_MANAGER,
+  NOT_SOLD,
+  parseUnitPriceInput,
+  unitPriceFields,
+  unitPriceText,
   LOCK_TEXT_PUBLISHED,
   LOCK_TEXT_VIEW_ONLY,
   draftDiff,
@@ -14,7 +19,7 @@ import {
   storageGb,
   versionActions,
 } from './catalog-model';
-import { ENTERPRISE, TEAM, TERMS } from './catalog-test-data';
+import { ENTERPRISE, TEAM, TERMS, v } from './catalog-test-data';
 
 // CCP-B2 — the pure Catalog view model (handoff §5.4).
 
@@ -106,5 +111,42 @@ describe('CCP-B2 catalog model', () => {
     expect(parseFieldInput('envelopes', '1.5')).toEqual({ ok: false });
     expect(parseFieldInput('storage', '10')).toEqual({ ok: true, value: 10 * 1024 ** 3 });
     expect(parseFieldInput('storage', '-1')).toEqual({ ok: false });
+  });
+});
+
+// Sign Feature Parity Amendments A3 (D1) / A4 (D2) — the add-on unit-price model of the editor.
+describe('A4 D2 add-on unit prices', () => {
+  const UNITS = [
+    { unit_key: 'sign.sms_message', name: 'SMS delivery', quantity_label: 'message' },
+    { unit_key: 'sign.id_verification', name: 'ID verification', quantity_label: 'verification' },
+  ];
+  const priced = { ...TERMS, unit_prices: [{ unit_key: 'sign.sms_message', unit_price_minor: 5 }] };
+
+  it('A4-U-1 parses dollars to cents (at most 2 decimals, at most $100,000); empty = not sold', () => {
+    expect(parseUnitPriceInput('0.05')).toEqual({ ok: true, value: 5 });
+    expect(parseUnitPriceInput('1.5')).toEqual({ ok: true, value: 150 });
+    expect(parseUnitPriceInput(' 2 ')).toEqual({ ok: true, value: 200 });
+    expect(parseUnitPriceInput('')).toEqual({ ok: true, value: null });
+    expect(parseUnitPriceInput('100000')).toEqual({ ok: true, value: 10_000_000 });
+    for (const bad of ['-1', '0.055', 'abc', '1e3', '100000.01', '$1']) expect(parseUnitPriceInput(bad), bad).toEqual({ ok: false });
+  });
+
+  it('A4-U-2 the fields are editable only on a DRAFT for the catalog manager; a published version is read-only with the immutability reason', () => {
+    const draft = v({ id: 'd', version_number: 3, status: 'DRAFT', terms: priced });
+    const pub = v({ id: 'p', version_number: 2, status: 'PUBLISHED', terms: priced });
+    expect(unitPriceFields(UNITS, draft, true)).toEqual([
+      { unit_key: 'sign.sms_message', label: 'SMS delivery', per: 'per message', value: '0.05', placeholder: NOT_SOLD, editable: true, readOnly: false, title: undefined },
+      { unit_key: 'sign.id_verification', label: 'ID verification', per: 'per verification', value: '', placeholder: NOT_SOLD, editable: true, readOnly: false, title: undefined },
+    ]);
+    expect(unitPriceFields(UNITS, draft, false).every((f) => f.readOnly && f.title === NEEDS_CATALOG_MANAGER)).toBe(true);
+    expect(unitPriceFields(UNITS, pub, true).every((f) => f.readOnly && f.title === LOCK_TEXT_PUBLISHED)).toBe(true);
+    expect(unitPriceFields(UNITS, draft, true, { 'sign.sms_message': '0.07' })[0]?.value).toBe('0.07');
+  });
+
+  it('A4-U-3 the draft diff lists every add-on priced on either side (Finance and the Owner see a price change)', () => {
+    const rows = draftDiff(TERMS, priced, 'dialog', UNITS);
+    expect(rows.slice(4)).toEqual([{ field: 'Add-on · SMS delivery', before: NOT_SOLD, after: '$0.05', changed: true }]);
+    expect(draftDiff(TERMS, TERMS, 'dialog', UNITS)).toHaveLength(4);
+    expect(unitPriceText(150)).toBe('$1.50');
   });
 });

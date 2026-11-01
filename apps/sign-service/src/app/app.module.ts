@@ -37,7 +37,6 @@ import {
   IDENTITY_VERIFICATION_PORT,
   IdentityVerificationService,
   KBA_PORT,
-  NoopSignUsageRecorder,
   SIGN_USAGE_RECORDER_PORT,
   identityVerificationProviderFromEnv,
   kbaProviderFromEnv,
@@ -85,6 +84,8 @@ import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
 import { EsignBillingCommandWorker } from './billing/esign-billing-command.worker.js';
+import { SignMeteringUsageRecorder } from './billing/sign-metering-usage-recorder.js';
+import { SignUsageReportWorker } from './billing/sign-usage-report.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
@@ -286,11 +287,12 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
         // Feature-Parity §1.9 + A1 — recipient identity verification, DARK: the provider is
         // disabled unless SIGN_ID_VERIFICATION_PROVIDER=stripe_identity (SIGN_STRIPE_IDENTITY_*);
-        // KBA has no vendor (disabled adapter); metering is a no-op until the usage-metering
-        // model binds SIGN_USAGE_RECORDER_PORT. Inside the module so the purge redacts too.
+        // KBA has no vendor (disabled adapter). Inside the module so the purge redacts too.
+        // Sign usage metering (A3): the ONE usage port, bound to the metering ledger — it records
+        // only while SIGN_USAGE_BILLING_ENABLED=1 (dark otherwise).
         { provide: IDENTITY_VERIFICATION_PORT, useFactory: () => identityVerificationProviderFromEnv(process.env) },
         { provide: KBA_PORT, useFactory: () => kbaProviderFromEnv(process.env) },
-        { provide: SIGN_USAGE_RECORDER_PORT, useClass: NoopSignUsageRecorder },
+        { provide: SIGN_USAGE_RECORDER_PORT, useClass: SignMeteringUsageRecorder },
         IdentityVerificationService,
         // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES (QTSP) and India e-stamp ports.
         // Env unset (the default) ⇒ disabled adapters; no vendor is contracted.
@@ -314,6 +316,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     EsignBillingReconcileWorker,
     // CCP-C1 — Stripe command outbox + webhook inbox worker (SIGN_BILLING_COMMANDS_ENABLED=1; off by default).
     EsignBillingCommandWorker,
+    // Sign Feature Parity D-2 (A1) — metered usage reporting (SIGN_USAGE_BILLING_ENABLED=1; off by default).
+    SignUsageReportWorker,
     AramoSignStorageGate,
     SignTokenService,
     SignApiGuard,

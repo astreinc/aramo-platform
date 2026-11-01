@@ -196,6 +196,84 @@ describe('CCP-B2 Catalog screen', () => {
     expect(patch?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), list_price_minor: 7200 });
   });
 
+  // Sign Feature Parity Amendment A4 (D2): add-on unit prices are draft content edited by the catalog role only.
+  const UNITS = [
+    { unit_key: 'sign.sms_message', name: 'SMS delivery', quantity_label: 'message' },
+    { unit_key: 'sign.id_verification', name: 'ID verification', quantity_label: 'verification' },
+  ];
+  const PRICED: Catalog = {
+    ...CATALOG,
+    metered_units: [{ product_key: 'sign', units: UNITS }],
+    products: [
+      {
+        product_key: 'sign',
+        plans: [
+          {
+            ...TEAM,
+            versions: TEAM.versions.map((x) => (x.status === 'PUBLISHED' ? { ...x, terms: { ...x.terms, unit_prices: [{ unit_key: 'sign.sms_message', unit_price_minor: 36 }] } } : x)),
+          },
+        ],
+      },
+    ],
+  };
+
+  it('A4-W-1 a catalog manager prices an add-on on a DRAFT; the PATCH carries the read checksum and only that unit price (cents); the diff shows the change', async () => {
+    mockApi('catalog_manager', PRICED);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+    await screen.findByText('Sign Team v3');
+    const box = screen.getByTestId('unit-prices');
+    const sms = within(box).getByLabelText('SMS delivery unit price');
+    expect(sms).toBeEnabled();
+    expect(sms).toHaveValue('');
+    expect(screen.getByText('Add-on · SMS delivery')).toBeInTheDocument();
+    fireEvent.change(sms, { target: { value: '0.05' } });
+    fireEvent.blur(sms);
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+    const patch = calls.find((c) => c.method === 'PATCH');
+    expect(new URL(patch!.url, 'http://x').pathname).toBe('/platform/commercial/catalog/versions/team-3');
+    expect(patch?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), unit_prices: { 'sign.sms_message': 5 } });
+  });
+
+  it('A4-W-2 an invalid add-on price is flagged and never sent; clearing a price sends null (not sold)', async () => {
+    mockApi('catalog_manager', PRICED);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+    await screen.findByText('Sign Team v3');
+    const id = within(screen.getByTestId('unit-prices')).getByLabelText('ID verification unit price');
+    fireEvent.change(id, { target: { value: '1.505' } });
+    fireEvent.blur(id);
+    expect(id).toHaveAttribute('aria-invalid', 'true');
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    fireEvent.change(id, { target: { value: '' } });
+    fireEvent.blur(id);
+    await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+    expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), unit_prices: { 'sign.id_verification': null } });
+  });
+
+  it('A4-W-3 a PUBLISHED version shows its approved add-on prices read-only, even for a catalog manager', async () => {
+    mockApi('catalog_manager', PRICED);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
+    await screen.findByText('Sign Team v2');
+    const sms = within(screen.getByTestId('unit-prices')).getByLabelText('SMS delivery unit price');
+    expect(sms).toHaveValue('0.36');
+    expect(sms).toBeDisabled();
+    fireEvent.blur(sms);
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  for (const role of ['finance_admin', 'platform_owner', 'commercial_ops']) {
+    it(`A4-W-4 ${role} cannot edit add-on prices on a DRAFT (view only)`, async () => {
+      mockApi(role, PRICED);
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+      await screen.findByText('Sign Team v3');
+      for (const input of within(screen.getByTestId('unit-prices')).getAllByRole('textbox')) {
+        expect(input).toBeDisabled();
+        fireEvent.change(input, { target: { value: '9' } });
+        fireEvent.blur(input);
+      }
+      expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    });
+  }
+
   it('B2-W-PRODUCTS ATS, Portal and Intelligence have no plans: the dashed entitlement-only card', async () => {
     mockApi('read_only_auditor');
     renderAt('/commercial/catalog?product=portal');

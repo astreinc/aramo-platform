@@ -24,6 +24,7 @@ import {
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
   CommercialPayloadError,
+  PLAN_TARGET_CHECKSUM_KEY,
   POLICY_TARGET_CHECKSUM_KEY,
   type CommercialActionType,
   type CommercialChangeRequestKind,
@@ -378,7 +379,15 @@ export class CommercialChangeRequestService {
     // CCP-B5 (pre-execution C-3): every POLICY_ACTIVATE carries the NC-5 snapshot of its
     // target's content; filled from the target row when the client omits it (re-verified
     // inside the create transaction, validateGovernanceTarget).
-    const payload = input.action_type === 'POLICY_ACTIVATE' ? await this.withPolicyTargetSnapshot(validated) : validated;
+    // Amendment A3 D1: every new PLAN_VERSION_PUBLISH carries the snapshot of the version's content
+    // checksum (the fingerprint Finance and the Owner approve, unit prices included); the catalog
+    // apply refuses a version whose content changed after it (VERSION_CONTENT_CHANGED).
+    const payload =
+      input.action_type === 'POLICY_ACTIVATE'
+        ? await this.withPolicyTargetSnapshot(validated)
+        : input.action_type === 'PLAN_VERSION_PUBLISH'
+          ? await this.withPlanVersionTargetSnapshot(validated)
+          : validated;
     const checksum = payloadChecksum(payload);
     const fingerprint = { action_type: input.action_type, kind, tenant_id, product_key, payload_checksum: checksum, reason: input.reason, requested_by: actor.user_id };
 
@@ -922,6 +931,13 @@ export class CommercialChangeRequestService {
     if (payload[POLICY_TARGET_CHECKSUM_KEY] !== undefined) return payload;
     const row = await this.prisma.commercialPolicyVersion.findUnique({ where: { id: payload['policy_version_id'] as string }, select: { content_checksum: true } });
     return row === null ? payload : { ...payload, [POLICY_TARGET_CHECKSUM_KEY]: row.content_checksum };
+  }
+
+  /** Amendment A3 D1: fills the content-checksum snapshot of a PLAN_VERSION_PUBLISH payload when it is absent. */
+  private async withPlanVersionTargetSnapshot(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (payload[PLAN_TARGET_CHECKSUM_KEY] !== undefined) return payload;
+    const row = await this.prisma.planVersion.findUnique({ where: { id: payload['plan_version_id'] as string }, select: { content_checksum: true } });
+    return row === null ? payload : { ...payload, [PLAN_TARGET_CHECKSUM_KEY]: row.content_checksum };
   }
 
   /** CCP-A9: the target checks of a governance request, inside the create transaction. */

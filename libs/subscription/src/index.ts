@@ -451,6 +451,7 @@ export {
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
   COMMERCIAL_TERMINAL_STATES,
+  PLAN_TARGET_CHECKSUM_KEY,
   POLICY_TARGET_CHECKSUM_KEY,
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
@@ -760,6 +761,10 @@ export {
   planVersionChecksum,
   planVersionContentFromRows,
   planVersionTerms,
+  MAX_UNIT_PRICE_MINOR,
+  unitPriceOf,
+  withUnitPrices,
+  type PlanVersionUnitPriceTerm,
   type LivePlanRows,
   type PlanVersionAllowance,
   type PlanVersionAllowanceWindow,
@@ -923,6 +928,71 @@ export {
   type CommercialAlertScanTally,
   type CommercialAlertSourceState,
 } from './lib/observability/commercial-alert.service.js';
+
+// Sign usage / metered billing (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §3 item 2,
+// §5 D-2; Amendment A1 §A1.1) — the metered-unit registry, the UsageRecorder port every metered
+// feature calls (bound to MeteredUsageService under USAGE_RECORDER), the period aggregation and the
+// provider reporting outbox (Stripe Billing Meter Events) behind SIGN_USAGE_BILLING_ENABLED.
+export {
+  METERED_UNIT_KEYS,
+  SIGN_USAGE_BILLING_FLAG,
+  isMeteredUnitKey,
+  meterEventNameOf,
+  productOfMeteredUnit,
+  usageBillingEnabled,
+  type MeteredUnitKey,
+} from './lib/usage/metered-units.js';
+export {
+  USAGE_RECORDER,
+  type UsageCheckInput,
+  type UsageCheckResult,
+  type UsageRecordInput,
+  type UsageRecordResult,
+  type UsageRecorder,
+  type UsageRefusal,
+  type UsageRefusalReason,
+} from './lib/usage/usage-recorder.port.js';
+export {
+  METERED_USAGE_OPTIONS,
+  MeteredUsageService,
+  USAGE_MAX_AGE_MS,
+  USAGE_MAX_FUTURE_MS,
+  USAGE_MAX_QUANTITY,
+  USAGE_PERIOD_CLOSE_GRACE_MS,
+  planVersionEffectiveAt,
+  validateRecordInput,
+  validateUsageInput,
+  type MeteredUsageOptions,
+  type UsageSummary,
+  type UsageSummaryUnit,
+} from './lib/usage/metered-usage.service.js';
+export {
+  USAGE_REPORT_BATCH,
+  USAGE_REPORT_LEASE_MS,
+  USAGE_REPORT_MAX_ATTEMPTS,
+  UsageProviderReportService,
+  usageReportBackoffMs,
+  type UsageReportHold,
+  type UsageReportTick,
+} from './lib/usage/usage-provider-report.service.js';
+export { USAGE_METER_REPORT_PORT, type MeterEventReport, type UsageMeterReportPort } from './lib/billing/usage-meter.port.js';
+// Amendment A3 — the idempotent billing-period reconciliation (ledger totals against the provider invoice).
+export {
+  aggregateLedger,
+  normalizeUsageLines,
+  reconcileUsageLines,
+  type LedgerAggregate,
+  type UsageDiscrepancy,
+  type UsageLine,
+  type UsageReconciliationResult,
+} from './lib/usage/usage-reconciliation.js';
+export {
+  UsagePeriodReconciliationService,
+  UsageReconciliationError,
+  type ProviderUsageInvoice,
+  type UsagePeriodReconciliationView,
+  type UsageReconciliationRefusal,
+} from './lib/usage/usage-period-reconciliation.service.js';
 // Aramo Sign Feature-Parity 1.1 — whether the Sign plan includes templates (P-6: Free never).
 export {
   SignTemplateEntitlementService,

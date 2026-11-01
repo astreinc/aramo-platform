@@ -5,6 +5,7 @@ import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, typ
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 import { ComingSoon } from './ComingSoon';
+import { UsageCharges } from './UsageCharges';
 
 // Aramo Sign launch — the organization's plan, usage and self-service billing.
 // Everything shown is the backend's view (GET /v1/sign/billing/*). The
@@ -355,6 +356,8 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
           {!account.self_service_eligible ? <p className="sg-help">Plans for personal accounts aren’t available yet.</p> : null}
         </div>
       </section>
+
+      <UsageCharges />
 
       {canBuy && plans.length > 0 ? (
         <>
