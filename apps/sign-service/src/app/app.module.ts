@@ -20,6 +20,8 @@ import {
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
   SignPurgeRepository,
+  SignBrandingRepository,
+  SIGN_BRANDING_PORT,
   SignTalentErasureRepository,
   SignRetentionRepository,
   WEBHOOK_DELIVERY_PORT,
@@ -103,6 +105,11 @@ import { SignRetentionService } from './retention/sign-retention.service.js';
 import { SignRetentionWorker } from './retention/sign-retention.worker.js';
 import { SignPurgeService, SignPurgeWorker } from './retention/sign-purge.service.js';
 import { SignRetentionController } from './retention/sign-retention.controller.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (DARK while `sign.branding` is NOT_AVAILABLE; applied only for an entitled plan).
+import { SignBrandingService } from './branding/sign-branding.service.js';
+import { SignBrandingController } from './branding/sign-branding.controller.js';
+import { SignBrandingPublicController } from './branding/sign-branding-public.controller.js';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (in-app, public web) and the
 // staged deletion execution (OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1).
 import { SignPrivacyRequestController } from './privacy/sign-privacy-request.controller.js';
@@ -153,7 +160,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE, SignPurgeRepository, SignPurgeService, SignBrandingRepository, SignBrandingService],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         // SX-1 item 4 — production refuses to boot without an asymmetric KMS
@@ -179,6 +186,12 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SignPurgeRepository,
         SignPurgeService,
         SignPurgeWorker,
+        // Feature-Parity §1.10 — branding store + the applied-branding service (signing pages,
+        // emails via the mailer adapter, the certificate via SIGN_BRANDING_PORT). DARK.
+        SignFeatureGate,
+        SignBrandingRepository,
+        SignBrandingService,
+        { provide: SIGN_BRANDING_PORT, useExisting: SignBrandingService },
         { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
@@ -209,7 +222,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,

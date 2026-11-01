@@ -243,6 +243,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/signing/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The sending organization's branding for the signer page.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — token-authorized (the signing capability token is the only authority; no tenant id is returned). branding is null — the default Aramo look — unless the `sign.branding` feature is available and the sending organization's plan includes it (dark in this release). A token that no longer signs also answers null.
+         */
+        post: operations["getSignerBranding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/brand-logo/{logoId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An organization's branding logo (PNG or JPEG).
+         * @description Feature-Parity §1.10 — public, for the signing page and the notification emails. The id is random per upload (an old id stops working when the logo is replaced or removed). Served only while the organization's branding applies; otherwise 404.
+         */
+        get: operations["getSignBrandLogo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/executed": {
         parameters: {
             query?: never;
@@ -2055,6 +2095,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/branding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's Sign branding (logo, colours, sender display name).
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10. Requires sign:envelope:read. available reports the `sign.branding` launch availability (false in this release: every value is then null); entitled reports whether the organization's plan includes branding; can_edit is true only when both hold and the caller holds sign:settings:manage.
+         */
+        get: operations["getSenderBranding"];
+        /**
+         * Set the sender display name and brand colours (null or omitted = the Aramo default).
+         * @description Requires sign:settings:manage. 403 ESIGN_FEATURE_NOT_AVAILABLE while the feature is not available (details.reason feature_not_available) or when the plan does not include branding (plan_not_entitled). The logo is unchanged.
+         */
+        put: operations["setSenderBranding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/branding/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload or replace the organization's logo (PNG or JPEG, at most 256 KB, 16 to 4096 pixels a side).
+         * @description Requires sign:settings:manage; the same availability and plan refusals as PUT branding. The type is checked from the bytes and must match content_type; SVG and other types are refused (400 details.reason logo_type_unsupported, logo_type_mismatch, logo_too_large, logo_dimensions_invalid, logo_encoding_invalid or logo_empty).
+         */
+        put: operations["setSenderBrandingLogo"];
+        post?: never;
+        /**
+         * Remove the organization's logo (the Aramo default is shown).
+         * @description Requires sign:settings:manage; the same availability and plan refusals as PUT branding.
+         */
+        delete: operations["deleteSenderBrandingLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/retention-policy": {
         parameters: {
             query?: never;
@@ -2249,6 +2337,41 @@ export interface components {
     schemas: {
         /** @enum {string} */
         SignPurgeLevel: "DOCUMENTS" | "DOCUMENTS_AND_METADATA" | "DOCUMENTS_AND_METADATA_AND_REDACT";
+        SignBranding: {
+            /** @description The `sign.branding` launch availability (false = dark; every value null). */
+            available: boolean;
+            /** @description The organization's plan includes branding. */
+            entitled: boolean;
+            can_edit: boolean;
+            /** @description Shown to recipients as "<display name> via Aramo Sign"; null = the organization name is not added. */
+            display_name: string | null;
+            primary_color: string | null;
+            accent_color: string | null;
+            logo: {
+                /** @description The public logo path (GET /v1/sign/signing/brand-logo/{logoId}). */
+                url: string;
+                /** @enum {string} */
+                content_type: "image/png" | "image/jpeg";
+                byte_size: number;
+                width: number;
+                height: number;
+            } | null;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
+        SignBrandingInput: {
+            /** @description 1 to 80 printable Latin-1 characters; null or omitted = none. */
+            display_name?: string | null;
+            primary_color?: string | null;
+            accent_color?: string | null;
+        };
+        SignSignerBranding: {
+            display_name: string | null;
+            primary_color: string | null;
+            accent_color: string | null;
+            /** @description The public logo path (same origin), or null. */
+            logo_url: string | null;
+        };
         SignRetentionPolicy: {
             /** @description null = keep forever (the default). */
             retention_days: number | null;
@@ -3788,6 +3911,59 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getSignerBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The branding, or null for the default look. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        branding: components["schemas"]["SignSignerBranding"] | null;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getSignBrandLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                logoId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The logo image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getSignerExecutedCopy: {
@@ -7005,6 +7181,109 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getSenderBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignBranding"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    setSenderBranding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignBrandingInput"];
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignBranding"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    setSenderBrandingLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    content_type: "image/png" | "image/jpeg";
+                    /** @description The image bytes, standard base64. */
+                    data_base64: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignBranding"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    deleteSenderBrandingLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignBranding"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
         };
     };
     getSenderRetentionPolicy: {

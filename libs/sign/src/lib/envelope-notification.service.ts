@@ -223,7 +223,9 @@ export class EnvelopeNotificationService {
   private async deliver(tenant_id: string, envelope_id: string, signer_id: string | null, n: SigningNotification): Promise<void> {
     if (this.notifier === undefined) return;
     try {
-      const result = await this.notifier.notify(n);
+      // Feature-Parity §1.10 — every notification names its sending tenant, so the mailer can
+      // apply that organization's branding (unchanged output while branding is dark).
+      const result = await this.notifier.notify(n.tenant_id !== undefined ? n : { ...n, tenant_id });
       await this.recordDispatch(tenant_id, envelope_id, signer_id, n.kind, result.delivered ? { ok: true } : { ok: false, error: 'provider reported not delivered' });
     } catch (err) {
       const message = (err as Error).message ?? 'delivery failed';

@@ -2115,6 +2115,10 @@
       "ABUSE_REPORT_REASONS",
       "AbuseReportService",
       "AttestedNameRequiredError",
+      "BRANDING_DISPLAY_NAME_MAX",
+      "BRANDING_LOGO_MAX_BYTES",
+      "BRANDING_LOGO_MAX_PIXELS",
+      "BRANDING_LOGO_MIN_PIXELS",
       "CHECKBOX_GROUP_RULES",
       "COPY_DELIVERIES",
       "COPY_DELIVERY_ISSUED_EVENT",
@@ -2193,6 +2197,7 @@
       "SIGNING_RECIPIENT_WHERE",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
+      "SIGN_BRANDING_PORT",
       "SIGN_ENVELOPE_PURGE_EVENT_TYPE",
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
@@ -2201,6 +2206,7 @@
       "SenderFieldPassthroughRefusedError",
       "SessionIssueRefusedError",
       "SignArtifactCustodyRepository",
+      "SignBrandingRepository",
       "SignContactDuplicateError",
       "SignContactRepository",
       "SignIdempotencyRepository",
@@ -2250,13 +2256,18 @@
       "listDisclosures",
       "mayActNow",
       "nextReminderAt",
+      "normalizeBrandColor",
+      "normalizeDisplayName",
       "purgeStateFor",
+      "readableTextOn",
       "recipientKindOf",
       "reminderHistory",
       "signBaseUrl",
       "signingRecipients",
       "signingSessionExpiresAt",
+      "sniffBrandingImage",
       "toLifecycleEvent",
+      "validateBrandingLogo",
       "verifyEventChain",
       "verifyKmsEvidenceSignatureWithPublicKey",
       "weighReport"
@@ -7850,6 +7861,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -9080,6 +9097,12 @@
         "status": "excluded"
       },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/certificate-branding.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
@@ -12841,6 +12864,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13364,6 +13393,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

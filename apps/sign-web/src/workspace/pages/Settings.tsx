@@ -2,10 +2,12 @@ import { NavLink, Navigate, useLocation, useParams } from 'react-router-dom';
 import { logout, ssoEntryHref } from '@aramo/fe-foundation';
 
 import { orgLinkWithReturn } from '../org-link';
-import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
+import { Btn, Check, Field, Icon, LinkBtn, Sel } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
+// Feature-Parity §1.10 — Settings → Branding (dark until `sign.branding` is offered).
+import { BrandingSection } from './Branding';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
 import { PrivacyRequestsSection } from './PrivacyRequests';
@@ -21,7 +23,8 @@ function useOrgLink(): (orgUrl: string) => string {
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
 // to Organization administration (the single shared authority for the tenant
 // profile and users), and (Aramo Sign launch) Plan & billing. Nothing here pretends to persist: Sign-only notification
-// and branding storage do not exist yet, so those controls ship as labelled seams.
+// storage does not exist yet, so those controls ship as labelled seams. Branding (Feature-Parity §1.10) is
+// backend-held and reports whether it is offered (Branding.tsx).
 
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
@@ -159,53 +162,6 @@ function PersonalSection() {
       {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
       {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>
-  );
-}
-
-function BrandingSection() {
-  const { ctx } = useWorkspace();
-  const orgLink = useOrgLink();
-  return (
-    <div className="sg-grid sg-grid--2" style={{ alignItems: 'start' }}>
-      <section className="sg-card">
-        <div className="sg-card__head">
-          Branding <span className="sg-card__end sg-tag sg-tag--warn">Proposed</span>
-        </div>
-        <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
-          <Field label="Organization name shown to recipients" htmlFor="b-name">
-            <TextIn id="b-name" value={ctx.tenant.name} disabled readOnly />
-          </Field>
-          <Field label="Accent color" htmlFor="b-accent">
-            <Sel id="b-accent" disabled value="blue" onChange={() => undefined}>
-              <option value="blue">Aramo blue</option>
-            </Sel>
-          </Field>
-          <Field label="Button style" htmlFor="b-btn">
-            <Sel id="b-btn" disabled value="rounded" onChange={() => undefined}>
-              <option value="rounded">Rounded</option>
-            </Sel>
-          </Field>
-          <p className="sg-help">
-            Custom signing branding is a proposed capability: there is no Sign branding store yet, so recipients see the Aramo Sign brand.
-          </p>
-        </div>
-      </section>
-      <section className="sg-card">
-        <div className="sg-card__head">Organization profile</div>
-        <div className="sg-card__body">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="sg-brand__mark">{ctx.tenant.name.charAt(0).toUpperCase()}</span>
-            <strong>{ctx.tenant.name}</strong>
-          </div>
-          <p className="sg-help">The organization name and logo come from Organization administration, shared by every Aramo app.</p>
-          {ctx.organization_url !== null ? (
-            <a className="sg-btn sg-btn--sm" href={orgLink(ctx.organization_url)}>
-              Open organization profile <Icon name="ext" size={12} />
-            </a>
-          ) : null}
-        </div>
-      </section>
-    </div>
   );
 }
 

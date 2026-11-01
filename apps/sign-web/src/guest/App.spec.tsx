@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { App, reportHrefForToken } from './App.js';
+import { App, reportHrefForToken, safeBranding } from './App.js';
 import { fieldBox } from './field-geometry.js';
 
 // The page renderer (pdfjs) cannot load under jsdom; this stand-in renders each
@@ -307,5 +307,51 @@ describe('M-A7 §5.2 — Report action on the guest signing page', () => {
     expect(reportHrefForToken('short')).toBeNull();
     expect(reportHrefForToken('bad/token/with/slashes')).toBeNull();
     expect(reportHrefForToken(TOKEN)).toBe(`/report#token=${TOKEN}`);
+  });
+});
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — the sending organization's
+// branding on the signer page (dark by default: the server answers null).
+describe('signer page branding', () => {
+  const LOGO = '/v1/sign/signing/brand-logo/019000a0-0000-4000-8000-0000000000aa';
+
+  it('default look when the server answers null (feature dark)', async () => {
+    transport({ branding: () => json({ branding: null }) });
+    render(<App />);
+    await screen.findByRole('button', { name: 'Review document' });
+    expect(screen.queryByTestId('sg-brand-logo')).toBeNull();
+    expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('');
+  });
+
+  it('shows the logo and applies the brand colours when the server returns branding', async () => {
+    const calls = transport({ branding: () => json({ branding: { display_name: 'Acme Staffing', primary_color: '#0A7F3F', accent_color: '#FFB000', logo_url: LOGO } }) });
+    render(<App />);
+    expect(await screen.findByTestId('sg-brand-logo')).toHaveAttribute('src', LOGO);
+    expect(screen.getByTestId('sg-brand-logo')).toHaveAttribute('alt', 'Acme Staffing');
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('#0A7F3F'));
+    expect(document.documentElement.style.getPropertyValue('--sg-accent-hover')).toBe('#FFB000');
+    expect(calls.find((c) => c.path === 'branding')?.body).toEqual({ token: 'tok-123' });
+    cleanup();
+    expect(document.documentElement.style.getPropertyValue('--sg-accent')).toBe('');
+  });
+
+  it('a branding failure keeps the default look and the page works', async () => {
+    transport({ branding: () => json({ error: { code: 'INTERNAL' } }, 500) });
+    render(<App />);
+    await screen.findByRole('button', { name: 'Review document' });
+    expect(screen.queryByTestId('sg-brand-logo')).toBeNull();
+  });
+
+  it('safeBranding drops malformed colours and any logo address that is not the same-origin logo route', () => {
+    expect(safeBranding(null)).toBeNull();
+    expect(
+      safeBranding({ display_name: '  ', primary_color: 'red;background:url(x)', accent_color: '#12345', logo_url: 'https://evil.example/x.png' }),
+    ).toEqual({ display_name: null, primary_color: null, accent_color: null, logo_url: null });
+    expect(safeBranding({ display_name: 'Acme', primary_color: '#0A7F3F', accent_color: null, logo_url: LOGO })).toEqual({
+      display_name: 'Acme',
+      primary_color: '#0A7F3F',
+      accent_color: null,
+      logo_url: LOGO,
+    });
   });
 });

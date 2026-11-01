@@ -17,6 +17,8 @@ export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding.
+export const SIGN_BRANDING_FEATURE = 'sign.branding';
 
 @Injectable()
 export class SignFeatureGate {

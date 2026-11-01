@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its thirty-eight tables', async () => {
+  it('creates the sign schema with its thirty-nine tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -114,6 +114,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignTenantRetentionPolicyEvent',
         'SignatureEventRedaction',
         'SignEnvelopePartyDeletion',
+        // Feature-Parity §1.10 — per-organization branding (logo, colours, display name).
+        'SignTenantBranding',
       ].sort(),
     );
   });
