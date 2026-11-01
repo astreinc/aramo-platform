@@ -1,0 +1,26 @@
+# Aramo single box — health probe (Sign production monitoring, PO 2026-11-01).
+# Oneshot, fired every 5 minutes by aramo-health-probe.timer. Checks containers, disk,
+# memory, the front-door routes through the local nginx, TLS expiry, nginx 5xx, Sign
+# log signals (KMS, custody, purge, retention, privacy) and the backup heartbeat; sends
+# SNS email on a change and CloudWatch metrics every run.
+#
+# /etc/aramo/monitoring.conf (root:root 0600): see deploy/monitoring/monitoring.conf.example
+# (MON_SNS_TOPIC_ARN + the aramo-prod-monitoring-publisher access key; publish-only).
+#
+# Install (operator, after `terraform apply` of infrastructure-monitoring/ from the Mac):
+#   sudo deploy/monitoring/install.sh
+# Logs: journalctl -u aramo-health-probe.service ; last results: /var/lib/aramo-monitoring/last-status.tsv
+# Runbook: doc/runbooks/sign/monitoring-and-alerts.md
+
+[Unit]
+Description=Aramo box health probe → SNS alerts + CloudWatch metrics
+Requires=docker.service
+After=docker.service aramo-singlebox.service
+
+[Service]
+Type=oneshot
+UMask=0077
+EnvironmentFile=-/etc/aramo/monitoring.conf
+ExecStart=/opt/aramo/deploy/monitoring/aramo-health-probe.sh
+TimeoutStartSec=240
+Nice=10

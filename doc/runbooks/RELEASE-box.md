@@ -1,6 +1,6 @@
-# Aramo — Box Deploy Runbook v2.5
+# Aramo — Box Deploy Runbook v2.6
 
-**Status:** Canonical operational runbook — v2.2
+**Status:** Canonical operational runbook — v2.6
 **Scope:** Planned-window deploys to the single prod box (`/opt/aramo`), build-on-box model
 **Operating model:** `origin/main` = continuously integrated; production = deliberately released on
 planned windows. The box is NOT expected to track every head — deploy a *known* commit in a managed
@@ -10,6 +10,34 @@ window.
 *[v2.1 INVERSION, per PO ruling: the repo-tracked file is now the source of truth — matching the six
 sibling runbooks already in `doc/runbooks/`. OneDrive is the mirror. This reverses v2.0's
 declaration.]*
+
+**Changelog v2.5 → v2.6** (2026-11-01, Sign production operations)
+- **Per-service database logins (CP-10 / Sign Domain Isolation LC-4).** Every application service connects
+  with its own login, never the `POSTGRES_*` owner: `docker-compose.prod.yml` builds each service's
+  `DATABASE_URL` from its own pair — api and talent-intake-worker `ATS_DB_USER`/`ATS_DB_PASSWORD`
+  (`aramo_api`), auth-service `AUTH_DB_*` (`aramo_auth`), sign-service `SIGN_DB_*` (`aramo_sign`),
+  platform-admin `PLATFORM_DB_*` (`aramo_platform`); talent-intelligence-service uses
+  `INTELLIGENCE_DATABASE_URL` (`aramo_intelligence`, own database). Each pair is a required interpolation
+  (`${…:?}`): compose refuses to start a service whose pair is missing from the sourced `.env`. `POSTGRES_*`
+  stays the migration / seed / backup owner only. Example names: `.env.prod.example`.
+- **`migrate-prod.sh` re-runs `deploy/db-roles/aramo-domain-roles.sql`** (`apply_domain_roles`) as the owner
+  after the zero-pending gate and before the Talent Intelligence step, so a table a migration just created is
+  granted to the group roles before new code meets it. STEP 3's gate now includes its success line.
+  (The SQL file's own header still says "Nothing in the deploy or migration tooling runs it" — stale since
+  CP-10; the script is the source of truth.)
+- **Container topology corrected** to the current `docker-compose.prod.yml`: the Sign service is compose
+  service `sign-service`, container `aramo-prod-sign` (formerly `esign-service`); 6 governed images; 10
+  containers (table under "How to use"). `talent-intake-worker` runs the api image: an api rebuild must
+  recreate it too.
+- **`deploy/build-images.sh` takes the full 40-hex SHA** (argument or `AUTHORIZED_SHA`): exit 2 = not a 40-hex
+  SHA, 3 = `HEAD` ≠ SHA, 4 = dirty tree. It builds all 6 images `--no-cache`, stamps `GIT_REVISION`, and
+  bakes the public Turnstile site key from `.env` into the nginx image.
+- **STEP 4 read-back fixed:** the postgres container has no `DATABASE_URL`; queries use
+  `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"` (the same defect the STEP 2 history records).
+- **STEP 7 adds** the per-service login check and the monitoring probe (`doc/runbooks/sign/monitoring-and-alerts.md`).
+- **STEP 8 is now deterministic:** the image revision label written by `build-images.sh` is compared with
+  TARGET_SHA for every recreated container (the "future" provenance marker already exists).
+- Rollback-floor pin loop covers all 6 images.
 
 **Changelog v2.4 → v2.5**
 - **STEP 2 encrypted only (M-A8 §1.2.3–§1.2.4).** The pre-deploy backup is
@@ -76,17 +104,33 @@ assumed; everything is verified.
 
 ```
 ═══ FILL IN BEFORE RUNNING ═══
-TARGET_SHA   = <exact commit to deploy, e.g. bb1954e>   ← what main should be at
-SERVICES     = <which to rebuild/recreate, e.g. api auth-service>   ← NOT nginx unless a UI/SPA
-                 change requires it (the SPA is baked into the nginx image — see note in STEP 4).
-                 ← If SERVICES includes nginx it MUST also include esign-service (nginx resolves the
-                   esign upstream at config-load; recreating nginx without esign-service crash-loops
-                   the front door — see HARD STOPS). Prod topology = 5 containers.
+TARGET_SHA   = <exact 40-hex commit to deploy>   ← what main should be at; build-images.sh refuses a short SHA
+SERVICES     = <compose services to recreate, e.g. api talent-intake-worker auth-service>   ← NOT nginx
+                 unless a UI/SPA change requires it (the SPAs are baked into the nginx image — STEP 5 note).
+                 ← api ⇒ also talent-intake-worker (same image, ARAMO_API_IMAGE).
+                 ← If SERVICES includes nginx, sign-service must be built AND running first (nginx resolves
+                   the sign-service upstream at config-load; recreating nginx without it crash-loops the
+                   front door — see HARD STOPS).
 RUN_MIGRATE  = <yes/no>   ← yes if this batch includes new DB migrations
 RUN_SEED     = <yes/no>   ← yes if this batch needs seed backfills/assertions
 NOTES        = <anything special for THIS deploy, or "none">   ← e.g. the specific proof to run
 ═════════════════════════════
 ```
+
+Production topology (`docker-compose.prod.yml`; verify with `docker ps` in PRE-FLIGHT):
+
+| Compose service | Container | Image (built by `deploy/build-images.sh`) | DB login |
+|---|---|---|---|
+| `nginx` | `aramo-prod-nginx` | `aramo/nginx:local` (SPAs baked in) | — |
+| `api` | `aramo-prod-api` | `aramo/api:local` | `ATS_DB_*` (`aramo_api`) |
+| `talent-intake-worker` | `aramo-prod-talent-intake-worker` | `aramo/api:local` (same image) | `ATS_DB_*` |
+| `auth-service` | `aramo-prod-auth` | `aramo/auth-service:local` | `AUTH_DB_*` (`aramo_auth`) |
+| `platform-admin` | `aramo-prod-platform-admin` | `aramo/platform-admin:local` | `PLATFORM_DB_*` (`aramo_platform`) |
+| `sign-service` | `aramo-prod-sign` | `aramo/sign-service:local` | `SIGN_DB_*` (`aramo_sign`) |
+| `talent-intelligence-service` | `aramo-prod-intelligence` | `aramo/talent-intelligence-service:local` | `INTELLIGENCE_DB_*` (`aramo_intelligence`, own DB) |
+| `postgres` | `aramo-prod-postgres` | `pgvector/pgvector:pg17` | owner `POSTGRES_*` |
+| `redis` | `aramo-prod-redis` | `redis:7` | — |
+| `certbot` | `aramo-prod-certbot` | `certbot/dns-route53:v3.1.0` | — |
 
 ---
 
@@ -180,7 +224,11 @@ bash deploy/migrate-prod.sh
 ```
 **GATE (pending-set, orphan-immune):** applies the expected migration(s) OR reports them
 already-applied — **both are fine** (a prior interrupted run may have applied them). The gate
-passes iff **zero on-disk migrations remain unapplied** (`db:sync:local pending — 0 …`). It does
+passes iff **zero on-disk migrations remain unapplied** (`db:sync:local pending — 0 …`) **and** the
+per-domain grants converge: `[migrate] OK — per-domain role grants converged (postcondition passed).`
+(`apply_domain_roles` re-runs `deploy/db-roles/aramo-domain-roles.sql`, which also re-checks that no ATS
+role can touch a `sign` table and that the Sign role has full privilege on every one), followed by the
+Talent Intelligence gate and `[migrate] Safe to build + recreate containers.` It does
 NOT compare recorded-vs-on-disk counts, so an orphan ledger row (a migration deleted from disk but
 still recorded — e.g. a retired net-zero pair) can never false-FATAL the deploy; only a genuinely
 unapplied on-disk migration blocks. On ERROR, **STOP** — do NOT build/recreate on a half-migrated DB.
@@ -214,7 +262,7 @@ bash deploy/seed-prod.sh
 **GATE:** passes including any post-seed assertions. On error, **STOP and report.**
 Verify the data directly (read-only), e.g.:
 ```
-docker exec aramo-prod-postgres sh -c 'psql "$DATABASE_URL" -c "SELECT name,slug,identity_provider,is_active FROM identity.\"Tenant\";"'
+docker exec aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT name,slug,identity_provider,is_active FROM identity.\"Tenant\";"'
 ```
 Confirm the expected backfilled values are present. If a required value is NULL, **STOP** (seed
 didn't take — the feature depending on it won't work).
@@ -228,8 +276,13 @@ finish or run it backgrounded and poll, but DO confirm the actual exit status be
 # T2-F1-H2: the governed build guard resolves the repo root, validates the
 # authorized SHA against a CLEAN checkout, and stamps every image with
 # --build-arg GIT_REVISION (an unstamped governed image crash-loops at api boot).
-AUTHORIZED_SHA=<exact 40-hex governed release head>
+# The SHA argument is REQUIRED and must be the full 40-hex commit:
+#   exit 2 = missing / not 40-hex, exit 3 = HEAD != SHA, exit 4 = dirty tree.
+# Builds 6 images, all --no-cache: api, auth-service, platform-admin, sign-service,
+# talent-intelligence-service, nginx (SERVICES only limits what STEP 6 recreates).
+AUTHORIZED_SHA="$(git rev-parse HEAD)"   # after STEP 1 proved HEAD = TARGET_SHA
 deploy/build-images.sh "$AUTHORIZED_SHA"
+# last line on success: [build] OK — 6 images stamped <sha> from /opt/aramo
 ```
 **PIN THE ROLLBACK FLOOR FIRST (before a `--no-cache` build):** `build-images.sh` tags images
 only `:local`, so a `--no-cache` rebuild overwrites the `:local` tag of the currently-running
@@ -238,7 +291,7 @@ would fall back to a weeks-old tag). Before building, pin the running images to 
 SHA so they survive the rebuild:
 ```
 CURRENT_SHA=$(git rev-parse --short HEAD)   # run BEFORE STEP 1's checkout, or use the pre-flight HEAD
-for svc in api auth-service platform-admin nginx; do
+for svc in api auth-service platform-admin sign-service talent-intelligence-service nginx; do
   docker tag "aramo/$svc:local" "aramo/$svc:$CURRENT_SHA" 2>/dev/null || true
 done
 docker images 'aramo/*' | grep "$CURRENT_SHA"   # confirm the prior images are now SHA-pinned
@@ -265,18 +318,34 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E '<SERVICES pattern>
 ```
 **GATE:** each recreated service is `Up (healthy)`. If any is `Restarting`/`unhealthy`/bouncing
 `Up X seconds`, **STOP**, capture `docker logs --tail 40 <container>`, and consider ROLLBACK (below).
+(`aramo-prod-talent-intake-worker` reports `unhealthy` by design — it inherits the api image's TCP
+healthcheck but serves no port; for it the gate is `Up` without restarts.)
+
+Per-service logins in use (read-only; one row per login, no secrets printed):
+```
+docker exec aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT usename, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1 ORDER BY 1;"'
+```
+Expect `aramo_api`, `aramo_auth`, `aramo_platform`, `aramo_sign` (plus the owner for this query). A service
+connecting as the owner, or a missing login, is a STOP: the `.env` pair or the role grant is wrong.
+
+Monitoring (once installed, `doc/runbooks/sign/monitoring-and-alerts.md`): run the probe once and confirm no
+FAIL rows — `sudo sh -c 'set -a; . /etc/aramo/monitoring.conf; set +a; deploy/monitoring/aramo-health-probe.sh --dry-run'`.
+Recreated containers have new ids, so the probe does not report the release as restarts.
 
 ### STEP 8 — VERIFY RUNNING CODE = TARGET_SHA (provenance — "healthy ≠ new code")
-Container health does NOT prove the running code is current. Confirm the recreated image actually
-contains TARGET_SHA's code:
-- **Build-on-box model (now):** the rebuild in STEP 5 ran against the STEP-1-verified tree, so the
-  primary proof is: box HEAD = TARGET_SHA (STEP 1) AND the rebuild happened after the pull AND a
-  spot-check that a known new symbol/file from this batch is present in the recreated container's
-  `/app/dist`. Report how you confirmed.
-- **Future (registry / build-off-box era):** once the SHA-provenance marker is added (backlog,
-  paired with ECR), this becomes a deterministic one-liner:
-  `docker exec <svc> cat /app/VERSION` → must equal TARGET_SHA. Replace this step with that check
-  when the marker lands.
+Container health does NOT prove the running code is current. Every governed image carries the SHA it
+was built from (`deploy/build-images.sh` passes `GIT_REVISION`; each `apps/<service>/Dockerfile` and
+`deploy/nginx/Dockerfile` set the label `org.opencontainers.image.revision`, and the five Node images also
+set `ARAMO_RELEASE_REVISION`). Check every recreated container:
+```
+for c in aramo-prod-api aramo-prod-talent-intake-worker aramo-prod-auth aramo-prod-platform-admin \
+         aramo-prod-sign aramo-prod-intelligence aramo-prod-nginx; do
+  printf '%-34s %s\n' "$c" "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$c")"
+done
+```
+**GATE:** each container in SERVICES shows TARGET_SHA (40-hex). `unknown` = an image not built by
+`build-images.sh`; another SHA = not recreated. Also spot-check one symbol/file this batch added inside
+the container's `/app/dist`, and report how you confirmed.
 
 **Do NOT declare success on container-health alone.**
 
@@ -316,8 +385,9 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 ---
 
 ## HARD STOPS / GUARDRAILS (always)
-- **Any window that rebuilds or recreates an application container** (`api`, `auth-service`,
-  `platform-admin`, or any service whose image bakes the SPA) **IS a release — run THIS procedure,
+- **Any window that rebuilds or recreates an application container** (`api`, `talent-intake-worker`,
+  `auth-service`, `platform-admin`, `sign-service`, `talent-intelligence-service`, or `nginx`, whose image
+  bakes the SPAs) **IS a release — run THIS procedure,
   STEP 2 (backup) and STEP 3 (migrate) included — regardless of what the window is called or what
   motivated it.** An infra-labelled window (a Terraform apply, a compose edit, an image bump, a
   front-door cutover) is still a release the moment it recreates app containers. (E22: the 2026-07-28
@@ -333,14 +403,17 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 - **STOP at any failed gate** and report the exact output. Never proceed past a failure "to see if
   it works."
 - Recreate **ONLY** the listed services — never postgres/redis unless NOTES explicitly says so.
-- **nginx ⊥ esign-service coupling — recreating nginx REQUIRES esign-service built + running first.**
-  The nginx image bakes the `sign.aramo.ai` block with `proxy_pass http://esign-service:3003`; nginx
-  resolves that upstream at config-load, so a recreate with `esign-service` absent fails
-  `[emerg] host not found in upstream "esign-service"` and crash-loops the front door (DOWN).
-  `build-images.sh` builds esign-service (5 images); before cutting nginx to the new image, confirm
-  `aramo-prod-esign` is Up on `aramo-singlebox_default`. Recovery if it bounces: pin the new nginx to
+- **nginx ⊥ sign-service coupling — recreating nginx REQUIRES sign-service built + running first.**
+  The nginx image bakes the `sign.aramo.ai` block with `proxy_pass http://sign-service:3003`; nginx
+  resolves that upstream at config-load, so a recreate with `sign-service` absent fails
+  `[emerg] host not found in upstream "sign-service"` and crash-loops the front door (DOWN).
+- **Per-service logins:** never point a service at the `POSTGRES_*` owner to "get it working"; a missing
+  grant is fixed by re-running `deploy/migrate-prod.sh` (it converges the grants) or escalated.
+  `build-images.sh` builds sign-service (6 images in all); before cutting nginx to the new image, confirm
+  `aramo-prod-sign` is Up on `aramo-singlebox_default`. Recovery if it bounces: pin the new nginx to
   `aramo/nginx:<sha>`, restore `:local` from the rollback-floor image, recreate nginx (front door
-  back in seconds), bring esign up, then cut nginx forward.
+  back in seconds), bring sign-service up, then cut nginx forward. (Service renamed from `esign-service`;
+  the v2.4 entry above keeps the name it had then.)
 - `migrate`/`seed` reporting **already-applied is FINE** (a prior interrupted run may have done
   them); only ERRORS stop you.
 
@@ -359,13 +432,12 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 ---
 
 ## Backlog upgrade path (not now)
-- **SHA-provenance marker** — stamp the commit SHA into the image at build (`/app/VERSION`). Makes
-  STEP 8 a deterministic one-liner. **Pairs with ECR/build-off-box; same trigger: second-tenant
-  onboarding.** Not valuable while building on the box (use `git log -1` + clean-tree check instead).
+- ~~SHA-provenance marker~~ — **done** (T2-F1-H2): the image label `org.opencontainers.image.revision`
+  and `ARAMO_RELEASE_REVISION`; STEP 8 uses it (v2.6).
 - **ECR / build-off-box** — CI builds + publishes SHA-tagged images; box pulls instead of builds.
   Eliminates the build-on-box risks (stale-code, GC'd-rollback-layers, prod build strain). Backlog,
   second-tenant trigger.
 
 ---
 
-*End — Aramo Box Deploy Runbook v2.1.*
+*End — Aramo Box Deploy Runbook v2.6.*
