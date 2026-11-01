@@ -454,6 +454,67 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED).
+  /v1/sign/signing/branding:
+    post:
+      operationId: getSignerBranding
+      summary: The sending organization's branding for the signer page.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — token-authorized (the
+        signing capability token is the only authority; no tenant id is returned). branding is
+        null — the default Aramo look — unless the `sign.branding` feature is available and the
+        sending organization's plan includes it (dark in this release). A token that no longer
+        signs also answers null.
+      tags: [sender]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, maxLength: 512 }
+      responses:
+        '200':
+          description: The branding, or null for the default look.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branding]
+                properties:
+                  branding:
+                    oneOf:
+                      - $ref: '#/components/schemas/SignSignerBranding'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/sign/signing/brand-logo/{logoId}:
+    get:
+      operationId: getSignBrandLogo
+      summary: An organization's branding logo (PNG or JPEG).
+      description: >-
+        Feature-Parity §1.10 — public, for the signing page and the notification emails. The id
+        is random per upload (an old id stops working when the logo is replaced or removed).
+        Served only while the organization's branding applies; otherwise 404.
+      tags: [sender]
+      security: []
+      parameters:
+        - name: logoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The logo image.
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/signing/executed:
     post:
       operationId: getSignerExecutedCopy
@@ -4116,6 +4177,120 @@ paths:
   # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
   # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
   # service runs with SIGN_PURGE_ENABLED=1.
+  /v1/sign/sender/branding:
+    get:
+      operationId: getSenderBranding
+      summary: The organization's Sign branding (logo, colours, sender display name).
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10. Requires sign:envelope:read.
+        available reports the `sign.branding` launch availability (false in this release: every
+        value is then null); entitled reports whether the organization's plan includes branding;
+        can_edit is true only when both hold and the caller holds sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: setSenderBranding
+      summary: Set the sender display name and brand colours (null or omitted = the Aramo default).
+      description: >-
+        Requires sign:settings:manage. 403 ESIGN_FEATURE_NOT_AVAILABLE while the feature is not
+        available (details.reason feature_not_available) or when the plan does not include
+        branding (plan_not_entitled). The logo is unchanged.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignBrandingInput'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/branding/logo:
+    put:
+      operationId: setSenderBrandingLogo
+      summary: Upload or replace the organization's logo (PNG or JPEG, at most 256 KB, 16 to 4096 pixels a side).
+      description: >-
+        Requires sign:settings:manage; the same availability and plan refusals as PUT branding.
+        The type is checked from the bytes and must match content_type; SVG and other types are
+        refused (400 details.reason logo_type_unsupported, logo_type_mismatch, logo_too_large,
+        logo_dimensions_invalid, logo_encoding_invalid or logo_empty).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, data_base64]
+              properties:
+                content_type:
+                  type: string
+                  enum: [image/png, image/jpeg]
+                data_base64:
+                  type: string
+                  maxLength: 349528
+                  description: The image bytes, standard base64.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    delete:
+      operationId: deleteSenderBrandingLogo
+      summary: Remove the organization's logo (the Aramo default is shown).
+      description: Requires sign:settings:manage; the same availability and plan refusals as PUT branding.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignBranding'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/sign/sender/retention-policy:
     get:
       operationId: getSenderRetentionPolicy
@@ -4634,6 +4809,69 @@ components:
     SignPurgeLevel:
       type: string
       enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
+    SignBranding:
+      type: object
+      required: [available, entitled, can_edit, display_name, primary_color, accent_color, logo, updated_at]
+      properties:
+        available:
+          type: boolean
+          description: The `sign.branding` launch availability (false = dark; every value null).
+        entitled:
+          type: boolean
+          description: The organization's plan includes branding.
+        can_edit:
+          type: boolean
+        display_name:
+          type: [string, 'null']
+          maxLength: 80
+          description: Shown to recipients as "<display name> via Aramo Sign"; null = the organization name is not added.
+        primary_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-F]{6}$'
+        accent_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-F]{6}$'
+        logo:
+          oneOf:
+            - type: object
+              required: [url, content_type, byte_size, width, height]
+              properties:
+                url:
+                  type: string
+                  description: The public logo path (GET /v1/sign/signing/brand-logo/{logoId}).
+                content_type:
+                  type: string
+                  enum: [image/png, image/jpeg]
+                byte_size: { type: integer }
+                width: { type: integer }
+                height: { type: integer }
+            - type: 'null'
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+    SignBrandingInput:
+      type: object
+      properties:
+        display_name:
+          type: [string, 'null']
+          maxLength: 80
+          description: 1 to 80 printable Latin-1 characters; null or omitted = none.
+        primary_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        accent_color:
+          type: [string, 'null']
+          pattern: '^#[0-9A-Fa-f]{6}$'
+    SignSignerBranding:
+      type: object
+      required: [display_name, primary_color, accent_color, logo_url]
+      properties:
+        display_name: { type: [string, 'null'] }
+        primary_color: { type: [string, 'null'], pattern: '^#[0-9A-F]{6}$' }
+        accent_color: { type: [string, 'null'], pattern: '^#[0-9A-F]{6}$' }
+        logo_url:
+          type: [string, 'null']
+          description: The public logo path (same origin), or null.
     SignRetentionPolicy:
       type: object
       required: [retention_days, purge_level, updated_at]

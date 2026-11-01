@@ -25,6 +25,10 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+  // (logo, colours, sender display name on signing pages, emails and the certificate). Built
+  // DARK: flipping it to AVAILABLE is a separate PO authorization (R-8).
+  'sign.branding': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

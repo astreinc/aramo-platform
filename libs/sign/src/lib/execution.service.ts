@@ -4,8 +4,10 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   DOCUMENT_RENDERING_PORT,
   type DocumentRenderingPort,
+  type LetterheadModel,
   type PreparedField,
   type RenderBlock,
+  type RenderModel,
 } from '@aramo/documents-rendering';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -32,6 +34,7 @@ import {
   type ExecutedArtifactRecordedPayload,
 } from './domain/executed-artifact-integrity.js';
 import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
+import { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './ports/sign-branding.port.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -109,7 +112,20 @@ export class ExecutionService implements ExecutionProducerPort {
     @Optional() @Inject(SENDER_DIRECTORY_PORT) private readonly users?: SenderDirectoryPort,
     // SX-2 item 7 — custody upload to the Sign artifact bucket (unbound/dark = no-op).
     @Optional() @Inject(EXECUTED_ARTIFACT_CUSTODY_PORT) private readonly custody?: ExecutedArtifactCustodyPort,
+    // Feature-Parity §1.10 — the organization's branding on the certificate (unbound / null =
+    // the Aramo default; dark until `sign.branding` is AVAILABLE and the plan includes it).
+    @Optional() @Inject(SIGN_BRANDING_PORT) private readonly branding?: SignBrandingPort,
   ) {}
+
+  // Feature-Parity §1.10 — never fails a completion: any error reads as "no branding".
+  private async certificateBranding(tenant_id: string): Promise<CertificateBranding | null> {
+    if (this.branding === undefined) return null;
+    try {
+      return await this.branding.certificateBranding(tenant_id);
+    } catch {
+      return null;
+    }
+  }
 
   // M-A5 §3.6 — for each signer who signed in a HOSTED session, the host's display
   // name (the session that completed carries host_user_id).
@@ -272,7 +288,7 @@ export class ExecutionService implements ExecutionProducerPort {
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
     ];
 
-    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results);
+    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results, await this.certificateBranding(tenant_id));
     if (!certificate.inserted) return results;
 
     await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.byte_size);
@@ -370,6 +386,35 @@ export class ExecutionService implements ExecutionProducerPort {
     return { inserted: outcome.kind === 'inserted', result: outcome.result };
   }
 
+  // Feature-Parity §1.10 — the certificate, with the organization's letterhead when branded.
+  // No branding ⇒ exactly the model rendered before this feature. A branded render that
+  // fails (e.g. an image the PDF engine refuses) falls back to the unbranded certificate.
+  private async renderCertificate(blocks: RenderBlock[], branding: CertificateBranding | null) {
+    const base: RenderModel = { render_schema_version: 'v1', title: 'Execution Certificate', blocks };
+    if (branding === null) return this.rendering.renderGenerated(base);
+    const name = branding.display_name !== null && branding.display_name.trim().length > 0 ? branding.display_name.trim() : null;
+    let branded: RenderModel;
+    if (branding.logo !== null) {
+      const letterhead: LetterheadModel = {
+        image_bytes: branding.logo.bytes,
+        image_format: branding.logo.format,
+        image_sha256: branding.logo.sha256,
+        name,
+        ...(branding.primary_color !== null ? { rule_color: branding.primary_color } : {}),
+      };
+      branded = { ...base, letterhead };
+    } else if (name !== null) {
+      branded = { ...base, blocks: [{ type: 'TEXT', text: `Organization: ${name}` }, ...blocks] };
+    } else {
+      return this.rendering.renderGenerated(base);
+    }
+    try {
+      return await this.rendering.renderGenerated(branded);
+    } catch {
+      return this.rendering.renderGenerated(base);
+    }
+  }
+
   // SX-1 items 1 and 3 — the certificate cites the ledger's event-chain hash, which
   // grows, so it is rendered, inserted and recorded under the envelope row lock in
   // one transaction (with the DOC-4 outbox event). A writer that finds a kept
@@ -381,6 +426,7 @@ export class ExecutionService implements ExecutionProducerPort {
     envelope_id: string,
     blocksFor: (chainHash: string) => RenderBlock[],
     results: ExecutedProductionResult[],
+    branding: CertificateBranding | null = null,
   ): Promise<{ inserted: boolean; byte_size: number }> {
     // Set inside the transaction closure once the certificate is rendered.
     const attemptedRef: { sha: string | null } = { sha: null };
@@ -394,7 +440,7 @@ export class ExecutionService implements ExecutionProducerPort {
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { event_hash: true },
         });
-        const certificate = await this.rendering.renderGenerated({ render_schema_version: 'v1', title: 'Execution Certificate', blocks: blocksFor(terminal?.event_hash ?? '') });
+        const certificate = await this.renderCertificate(blocksFor(terminal?.event_hash ?? ''), branding);
         attemptedRef.sha = certificate.sha256;
         const id = randomUUID();
         const byte_size = certificate.bytes.byteLength;

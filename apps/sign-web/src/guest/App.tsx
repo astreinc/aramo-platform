@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
-import { SignApiError, signApi, type SignField, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
+import { SignApiError, signApi, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
 import { FILLED_MARK, completionProblem, incompleteMessage, isBox, isChecked, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
@@ -162,6 +162,52 @@ export function base64ToBlobUrl(b64: string, type: string): string {
   return URL.createObjectURL(new Blob([bytes], { type }));
 }
 
+// ── Branding (Feature-Parity §1.10): the sending organization's logo, colours and name, or
+// the Aramo Sign look (null). Fetched once per page; any failure keeps the default look. ──
+const SignerBrandingContext = createContext<SignerBranding | null>(null);
+
+const HEX = /^#[0-9A-Fa-f]{6}$/;
+const SAME_ORIGIN_LOGO = /^\/v1\/sign\/signing\/brand-logo\/[0-9a-fA-F-]{36}$/;
+
+/** The branding to apply: only well-formed colours and a same-origin logo path survive. */
+export function safeBranding(b: SignerBranding | null | undefined): SignerBranding | null {
+  if (b == null) return null;
+  return {
+    display_name: typeof b.display_name === 'string' && b.display_name.trim() !== '' ? b.display_name.trim() : null,
+    primary_color: typeof b.primary_color === 'string' && HEX.test(b.primary_color) ? b.primary_color : null,
+    accent_color: typeof b.accent_color === 'string' && HEX.test(b.accent_color) ? b.accent_color : null,
+    logo_url: typeof b.logo_url === 'string' && SAME_ORIGIN_LOGO.test(b.logo_url) ? b.logo_url : null,
+  };
+}
+
+function useSignerBranding(token: string): SignerBranding | null {
+  const [branding, setBranding] = useState<SignerBranding | null>(null);
+  useEffect(() => {
+    if (token.length === 0) return;
+    let live = true;
+    signApi
+      .branding(token)
+      .then((b) => {
+        if (live) setBranding(safeBranding(b));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token]);
+  useEffect(() => {
+    const root = document.documentElement.style;
+    if (branding?.primary_color == null) return;
+    root.setProperty('--sg-accent', branding.primary_color);
+    root.setProperty('--sg-accent-hover', branding.accent_color ?? branding.primary_color);
+    return () => {
+      root.removeProperty('--sg-accent');
+      root.removeProperty('--sg-accent-hover');
+    };
+  }, [branding]);
+  return branding;
+}
+
 // ── Header: brand + security note; in the workspace also the subject, progress,
 // Help and Decline. Never any navigation into an Aramo app. ──
 export function Header({
@@ -177,15 +223,20 @@ export function Header({
   readonly reportToken?: string;
 }) {
   const [help, setHelp] = useState(false);
+  const brand = useContext(SignerBrandingContext);
   return (
     <header className="sg-head">
-      <span className="sg-mark" aria-hidden="true">
-        S
-      </span>
+      {brand?.logo_url ? (
+        <img className="sg-logo" src={brand.logo_url} alt={brand.display_name ?? 'Sender logo'} data-testid="sg-brand-logo" />
+      ) : (
+        <span className="sg-mark" aria-hidden="true">
+          {brand?.display_name ? brand.display_name.charAt(0).toUpperCase() : 'S'}
+        </span>
+      )}
       <span className="sg-head__text">
-        <span className="sg-head__title">{title ?? 'Aramo Sign'}</span>
+        <span className="sg-head__title">{title ?? brand?.display_name ?? 'Aramo Sign'}</span>
         <span className="sg-head__sub">
-          <LockIcon /> Secured by Aramo Sign{progress ? ` · ${progress}` : ''}
+          <LockIcon /> {brand?.display_name && title ? `${brand.display_name} · ` : ''}Secured by Aramo Sign{progress ? ` · ${progress}` : ''}
         </span>
       </span>
       <span className="sg-head__grow" />
@@ -449,6 +500,15 @@ export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' 
 
 export function App(): JSX.Element {
   const [token] = useState<string>(tokenFromLocation);
+  const branding = useSignerBranding(token);
+  return (
+    <SignerBrandingContext.Provider value={branding}>
+      <SignerApp token={token} />
+    </SignerBrandingContext.Provider>
+  );
+}
+
+function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});

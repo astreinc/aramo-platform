@@ -329,3 +329,27 @@ export {
   type PurgeObjectsReport,
   type ExecuteOutcome,
 } from './lib/retention/sign-purge.repository.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (storage, validation and the certificate branding port).
+export {
+  SignBrandingRepository,
+  type StoredBranding,
+  type StoredBrandingLogo,
+  type BrandingLogoBytes,
+  type BrandingSettingsInput,
+} from './lib/branding/sign-branding.repository.js';
+export {
+  BRANDING_DISPLAY_NAME_MAX,
+  BRANDING_LOGO_MAX_BYTES,
+  BRANDING_LOGO_MAX_PIXELS,
+  BRANDING_LOGO_MIN_PIXELS,
+  normalizeBrandColor,
+  normalizeDisplayName,
+  readableTextOn,
+  sniffBrandingImage,
+  validateBrandingLogo,
+  type BrandingLogoType,
+  type LogoRejection,
+  type SniffedImage,
+} from './lib/branding/branding-validation.js';
+export { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './lib/ports/sign-branding.port.js';

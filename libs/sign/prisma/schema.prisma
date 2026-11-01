@@ -975,3 +975,27 @@ model SignEnvelopePartyDeletion {
   @@index([tenant_id], map: "SignEnvelopePartyDeletion_tenant_idx")
   @@schema("sign")
 }
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
+// (logo, colours, sender display name) for the signing pages, the notification emails and the
+// execution certificate. One row per tenant. The logo is a validated PNG or JPEG (≤ 256 KiB)
+// held in the row; logo_id is a fresh random id per upload (the public, unguessable logo
+// address). Applied only while `sign.branding` is AVAILABLE and the tenant's plan includes it.
+// CHECKs: colours #RRGGBB, content type PNG|JPEG, logo columns all set or all null.
+model SignTenantBranding {
+  tenant_id         String   @id @db.Uuid
+  display_name      String?
+  primary_color     String?
+  accent_color      String?
+  logo_id           String?  @unique(map: "SignTenantBranding_logo_id_key") @db.Uuid
+  logo_bytes        Bytes?
+  logo_content_type String?
+  logo_sha256       String?
+  logo_byte_size    Int?
+  logo_width        Int?
+  logo_height       Int?
+  updated_by        String   @db.Uuid
+  updated_at        DateTime @default(now()) @db.Timestamptz
+
+  @@schema("sign")
+}

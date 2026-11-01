@@ -108,7 +108,20 @@ export interface ExecutedCopy {
   certificate_base64: string | null;
 }
 
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — the sending organization's
+// branding for this page, or null for the Aramo Sign look (dark until the feature is offered).
+export interface SignerBranding {
+  display_name: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
+  // A same-origin path (/v1/sign/signing/brand-logo/<id>), or null.
+  logo_url: string | null;
+}
+
 export const signApi = {
+  branding(token: string): Promise<SignerBranding | null> {
+    return post<{ branding: SignerBranding | null }>('branding', { token }).then((r) => r.branding ?? null);
+  },
   exchange(token: string): Promise<SignerSession> {
     return post<SignerSession>('exchange', { token });
   },

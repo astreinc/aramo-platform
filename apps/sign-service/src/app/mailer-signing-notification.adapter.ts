@@ -1,6 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
-import { type SigningNotification, type SigningNotificationPort, type SigningNotificationResult } from '@aramo/sign';
+import { readableTextOn, type SigningNotification, type SigningNotificationPort, type SigningNotificationResult } from '@aramo/sign';
+
+import { SignBrandingService, emailLogoUrl, type EffectiveBranding } from './branding/sign-branding.service.js';
 
 // DOC-3 §298 / Aramo Sign launch — binds the E-Sign SigningNotificationPort to the
 // generic MailerPort (SES / stub by env). E-Sign imports no provider SDK.
@@ -22,7 +24,7 @@ function safeUrl(u: string | undefined): string | null {
   return /^https?:\/\//i.test(u) ? u : null;
 }
 
-interface Rendered {
+export interface Rendered {
   subject: string;
   lines: string[];
   action?: { label: string; url: string };
@@ -171,9 +173,71 @@ function renderBase(n: SigningNotification): Rendered {
   }
 }
 
+// Feature-Parity §1.10 — the sending organization's branding in the email: its logo above the
+// greeting, its primary colour on the action button, and "<display name> via Aramo Sign" as
+// the sign-off. Every value is validated at write (colours #RRGGBB, Latin-1 display name) and
+// escaped here. Without branding the email is exactly the default Aramo Sign email.
+export interface EmailBranding {
+  display_name: string | null;
+  primary_color: string | null;
+  logo_url: string | null;
+}
+
+export function emailBrandingOf(b: EffectiveBranding | null, env: NodeJS.ProcessEnv = process.env): EmailBranding | null {
+  if (b === null) return null;
+  const logo_url = emailLogoUrl(b, env);
+  if (b.display_name === null && b.primary_color === null && logo_url === null) return null;
+  return { display_name: b.display_name, primary_color: b.primary_color, logo_url };
+}
+
+export function renderEmail(input: SigningNotification, r: Rendered, brand: EmailBranding | null = null): { html: string; text: string } {
+  const signOff = brand?.display_name ? `${brand.display_name} via ${BRAND}` : BRAND;
+  const logo = brand?.logo_url ? safeUrl(brand.logo_url) : null;
+  const actionStyle =
+    brand?.primary_color != null
+      ? ` style="display:inline-block;padding:10px 18px;border-radius:6px;background:${esc(brand.primary_color)};color:${readableTextOn(brand.primary_color)};text-decoration:none;font-weight:600"`
+      : '';
+  const html = [
+    logo !== null ? `<p><img src="${esc(logo)}" alt="${esc(brand?.display_name ?? '')}" style="max-height:48px;max-width:200px"></p>` : '',
+    `<p>Hello ${esc(input.to_name)},</p>`,
+    ...r.lines.map((l) => `<p>${esc(l)}</p>`),
+    r.action ? `<p><a href="${esc(r.action.url)}"${actionStyle}>${esc(r.action.label)}</a></p>` : '',
+    r.footnote ? `<p style="color:#5c6770;font-size:13px">${esc(r.footnote)}</p>` : '',
+    r.report
+      ? `<p style="color:#5c6770;font-size:13px">Not expecting this, or don’t know the sender? <a href="${esc(r.report.url)}">${esc(r.report.label)}</a></p>`
+      : '',
+    `<p style="color:#5c6770;font-size:13px">— ${esc(signOff)}</p>`,
+  ].join('');
+  const text = [
+    `Hello ${input.to_name},`,
+    ...r.lines,
+    r.action ? `${r.action.label}: ${r.action.url}` : '',
+    r.footnote ?? '',
+    r.report ? `Not expecting this, or don’t know the sender? ${r.report.label}: ${r.report.url}` : '',
+    `— ${signOff}`,
+  ]
+    .filter((l) => l.length > 0)
+    .join('\n\n');
+  return { html, text };
+}
+
 @Injectable()
 export class MailerSigningNotificationAdapter implements SigningNotificationPort {
-  constructor(@Inject(MAILER_PORT) private readonly mailer: MailerPort) {}
+  constructor(
+    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
+    // Feature-Parity §1.10 — absent, or branding not applied ⇒ the default Aramo Sign email.
+    @Optional() private readonly branding?: SignBrandingService,
+  ) {}
+
+  // Never lets branding fail a delivery: any error reads as "no branding".
+  private async brandingFor(input: SigningNotification): Promise<EmailBranding | null> {
+    if (this.branding === undefined || input.tenant_id === undefined || !this.branding.available()) return null;
+    try {
+      return emailBrandingOf(await this.branding.effective(input.tenant_id));
+    } catch {
+      return null;
+    }
+  }
 
   // Amendment M-A7 §5.2 (R-11) — every signing request and reminder carries
   // "Report this email", for Business and Personal senders alike (as the Aramo
@@ -184,26 +248,7 @@ export class MailerSigningNotificationAdapter implements SigningNotificationPort
 
   async notify(input: SigningNotification): Promise<SigningNotificationResult> {
     const r = renderSigningNotification(input, { report_url: this.reportUrl(input) });
-    const html = [
-      `<p>Hello ${esc(input.to_name)},</p>`,
-      ...r.lines.map((l) => `<p>${esc(l)}</p>`),
-      r.action ? `<p><a href="${esc(r.action.url)}">${esc(r.action.label)}</a></p>` : '',
-      r.footnote ? `<p style="color:#5c6770;font-size:13px">${esc(r.footnote)}</p>` : '',
-      r.report
-        ? `<p style="color:#5c6770;font-size:13px">Not expecting this, or don’t know the sender? <a href="${esc(r.report.url)}">${esc(r.report.label)}</a></p>`
-        : '',
-      `<p style="color:#5c6770;font-size:13px">— ${BRAND}</p>`,
-    ].join('');
-    const text = [
-      `Hello ${input.to_name},`,
-      ...r.lines,
-      r.action ? `${r.action.label}: ${r.action.url}` : '',
-      r.footnote ?? '',
-      r.report ? `Not expecting this, or don’t know the sender? ${r.report.label}: ${r.report.url}` : '',
-      `— ${BRAND}`,
-    ]
-      .filter((l) => l.length > 0)
-      .join('\n\n');
+    const { html, text } = renderEmail(input, r, await this.brandingFor(input));
     const sent = await this.mailer.send({ to: input.to_email, subject: r.subject, html, text });
     return { delivered: true, provider_message_id: sent.message_id };
   }
