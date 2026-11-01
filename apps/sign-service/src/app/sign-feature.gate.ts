@@ -17,6 +17,9 @@ export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
+// Feature-Parity §1.16 / §1.19 (Amendment A1) — QES through a QTSP; India e-stamp.
+export const SIGN_QES_FEATURE = 'sign.qes';
+export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
 
 @Injectable()
 export class SignFeatureGate {

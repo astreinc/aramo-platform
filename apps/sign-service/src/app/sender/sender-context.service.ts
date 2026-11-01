@@ -4,7 +4,7 @@ import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
-import { SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import { SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_INDIA_ESTAMP_FEATURE, SIGN_QES_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -54,7 +54,8 @@ export interface SenderContextView {
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (sign.templates).
   // M-A5 §3.7 — sign.in_person_signing (hosted signing).
-  features: { templates: boolean; in_person_signing: boolean };
+  // Feature-Parity §1.16 / §1.19 (Amendment A1) — qes, india_estamp (false until flipped).
+  features: { templates: boolean; in_person_signing: boolean; qes: boolean; india_estamp: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
@@ -194,6 +195,8 @@ export class SenderContextService {
       features: {
         templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE),
         in_person_signing: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
+        qes: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_QES_FEATURE),
+        india_estamp: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_INDIA_ESTAMP_FEATURE),
       },
       can_send: (business || personalOpen) && permissions.create && permissions.send,
       personal_sending_enabled: personalOpen,

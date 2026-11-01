@@ -49,6 +49,7 @@ import {
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
 import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
+import { assertQesSatisfied } from './regulated/qes-guard.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
@@ -530,6 +531,9 @@ export class EsignService {
       const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
       const violation = evaluateSignerFieldRules(mine);
       if (violation !== null) throw new SignatureFieldIncompleteError(ctx.signer_id, violation.reason, violation.group_key);
+      // Feature-Parity §1.16 (Amendment A1) — a signer who must sign with QES completes
+      // only after the QTSP signature is recorded (SIGNED).
+      await assertQesSatisfied(tx, ctx.tenant_id, ctx.signer_id);
       // M-A6 §2.2 — the server fills every SIGNER_PROFILE name of this signer, in
       // the completing transaction (the value the executed PDF then prints).
       const names = mine.filter(isServerFilledName);

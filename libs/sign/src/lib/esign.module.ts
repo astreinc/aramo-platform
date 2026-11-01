@@ -14,6 +14,8 @@ import { SignSavedSignatureRepository } from './sign-saved-signature.repository.
 import { SignContactRepository } from './sign-contact.repository.js';
 import { SIGNER_ATTESTED_NAME_PORT } from './ports/signer-attested-name.port.js';
 import { PrismaSignerAttestedNameAdapter } from './prisma-signer-attested-name.adapter.js';
+import { QesWorkflowService } from './regulated/qes-workflow.service.js';
+import { EstampWorkflowService } from './regulated/estamp-workflow.service.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
 // (apps/sign-service) supplies the EvidenceManifestSignerPort via forRoot:
@@ -66,10 +68,15 @@ export class EsignModule {
         // M-A6 §2.2 × M-A5 §3.4 — a HOSTED signer's SIGNER_PROFILE name is the name
         // they attested at disclosure (SignerDisclosureAcceptance.attested_name).
         { provide: SIGNER_ATTESTED_NAME_PORT, useClass: PrismaSignerAttestedNameAdapter },
+        // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp workflows.
+        // Their vendor ports (QES_SIGNING_PORT, ESTAMP_PORT) come from extraProviders;
+        // unbound, both are disabled.
+        QesWorkflowService,
+        EstampWorkflowService,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, QesWorkflowService, EstampWorkflowService, ...(opts?.extraExports ?? [])],
     };
   }
 }

@@ -16,6 +16,8 @@ import {
   SENDER_DIRECTORY_PORT,
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
+  QES_SIGNING_PORT,
+  ESTAMP_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
@@ -75,6 +77,11 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
 import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './document-templates-http.adapter.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
+import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
+import { estampAdapterFromEnv } from './regulated/estamp-adapter.js';
+import { RegulatedSigningService } from './regulated/regulated-signing.service.js';
+import { EsignSenderRegulatedController } from './regulated/esign-sender-regulated.controller.js';
+import { EsignSignerQesController } from './regulated/esign-signer-qes.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
@@ -201,6 +208,10 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SigningInvitationWorker,
         // A1 — kept artifacts (signed copies, certificates) count toward storage.
         { provide: STORAGE_ACCOUNTING_PORT, useClass: AramoSignStorageGate },
+        // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES (QTSP) and India e-stamp ports.
+        // Env unset (the default) ⇒ disabled adapters; no vendor is contracted.
+        { provide: QES_SIGNING_PORT, useFactory: () => qesSigningAdapterFromEnv(process.env) },
+        { provide: ESTAMP_PORT, useFactory: () => estampAdapterFromEnv(process.env) },
       ],
     }),
   ],
@@ -209,7 +220,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -228,6 +239,8 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     RecipientInboxService,
     // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
     SignFeatureGate,
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES and India e-stamp (dark).
+    RegulatedSigningService,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
     // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending

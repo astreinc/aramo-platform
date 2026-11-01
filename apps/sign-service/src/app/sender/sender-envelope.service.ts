@@ -40,6 +40,8 @@ import {
   type SignerNameMode,
   SenderFieldPassthroughRefusedError,
   SignPurgeRepository,
+  QesWorkflowService,
+  EstampWorkflowService,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -138,7 +140,15 @@ export class SenderEnvelopeService {
     @Optional() private readonly features?: SignFeatureGate,
     // Retention and Purge directive (ebd41d99) W5 — the "Deleted" folder.
     @Optional() private readonly purges?: SignPurgeRepository,
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — the QES and e-stamp send guards.
+    @Optional() private readonly qes?: QesWorkflowService,
+    @Optional() private readonly estamp?: EstampWorkflowService,
   ) {}
+
+  /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
+  async assertMayChangeEnvelope(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+    await this.assertMayChange(auth, envelope_id, requestId);
+  }
 
   /** Throws ENVELOPE_NOT_FOUND unless the caller can see the envelope (owner or read-all). */
   async assertVisible(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
@@ -986,6 +996,10 @@ export class SenderEnvelopeService {
     }
     const ready = this.readiness(d);
     if (!ready.ok) throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ready.problems });
+    // Feature-Parity §1.16 / §1.19 (Amendment A1) — a QES signer needs a configured QTSP,
+    // and a live e-stamp order must be attached, its certificate first.
+    await this.qes?.assertSendable(auth.tenant_id, envelope_id);
+    await this.estamp?.assertSendable(auth.tenant_id, envelope_id);
     // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
     if (tenant.kind === 'PERSONAL') {
       if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });

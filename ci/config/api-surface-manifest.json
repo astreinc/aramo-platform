@@ -98,6 +98,8 @@
     "apps/sign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/sign-service/src/app/retention/sign-retention.controller.ts": "AP",
     "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts": "AP",
+    "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts": "AP",
+    "apps/sign-service/src/app/regulated/esign-signer-qes.controller.ts": "SS",
     "apps/sign-service/src/app/integrations/integration-admin.controller.ts": "AP",
     "apps/sign-service/src/app/integrations/sign-api.controller.ts": "XP",
     "apps/sign-service/src/app/inbox/recipient-inbox.controller.ts": "AP",

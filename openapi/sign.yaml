@@ -384,6 +384,112 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: Disclosure not yet accepted for this signer.
+  /v1/sign/signing/qes/status:
+    post:
+      operationId: getSignerQesStatus
+      summary: The signer's qualified-signature (QES) state (Feature-Parity §1.16, Amendment A1).
+      description: >-
+        Token-authorized like every signer route; the tenant is resolved server-side. qes is null when this
+        signer signs at the standard level. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is
+        not available (today, always: no QTSP is contracted). Aramo is not a QTSP: the QTSP proofs the signer's
+        identity, holds the key and signs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignerTokenRequest'
+      responses:
+        '200':
+          description: The signer's QES state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [qes]
+                properties:
+                  qes:
+                    oneOf:
+                      - $ref: '#/components/schemas/QesSignatureView'
+                      - type: 'null'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/signing/qes/begin:
+    post:
+      operationId: beginSignerQes
+      summary: Start the QTSP identity-proofing step of a QES signer (Feature-Parity §1.16).
+      description: >-
+        Moves the signer's QES row to IDENTITY_PROOFING_PENDING and returns the QTSP URL to send the signer to
+        (OAuth 2.0 authorization, CSC API v2 shape). Restartable after FAILED. Refused (403
+        ESIGN_FEATURE_NOT_AVAILABLE) while sign.qes is not available or no QTSP is configured
+        (details.reason provider_not_configured); 409 ENVELOPE_ILLEGAL_TRANSITION when QES is not required for
+        this signer (details.reason qes_not_required), already signed, or the envelope is not signable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignerTokenRequest'
+      responses:
+        '200':
+          description: The next QTSP step.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QesStepResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/signing/qes/complete:
+    post:
+      operationId: completeSignerQes
+      summary: Hand the QTSP redirect (code, state) back to Aramo (Feature-Parity §1.16).
+      description: >-
+        After identity proofing the row becomes AUTHORIZED (the QTSP's credential and certificate chain are
+        recorded) and redirect_url is the QTSP step where the signer authorizes signing exactly one digest; after
+        that step the QTSP signs and the row becomes SIGNED (signature and certificate-chain evidence recorded,
+        ledger QES_SIGNED). No OAuth code or token is stored. A QTSP refusal moves the row to FAILED (409,
+        details.reason qes_provider_refused); a state that does not match is refused (qes_state_mismatch).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code, state]
+              properties:
+                token:
+                  type: string
+                code:
+                  type: string
+                  maxLength: 2048
+                state:
+                  type: string
+                  maxLength: 256
+      responses:
+        '200':
+          description: The resulting state, and the next QTSP step when there is one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QesStepResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/signing/source:
     post:
       operationId: getSignerDocumentSource
@@ -1809,6 +1915,197 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/qes:
+    get:
+      operationId: getSenderEnvelopeQes
+      summary: The envelope's QES signers and their state (Feature-Parity §1.16, Amendment A1).
+      description: >-
+        Requires sign:envelope:read and envelope visibility. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while
+        sign.qes is not available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: One item per signer who must sign with QES.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QesSignatureView'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/signers/{signerId}/signature-level:
+    put:
+      operationId: setSenderSignerSignatureLevel
+      summary: Set one signer's signature level on a DRAFT — STANDARD or QES (Feature-Parity §1.16).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership (S-1). DRAFT only; the signer
+        must be a remote SIGNER (not in-person, not a copy recipient: details.reason qes_requires_remote_signer).
+        QES needs a configured QTSP (403 ESIGN_FEATURE_NOT_AVAILABLE, details.reason provider_not_configured).
+        Appends QES_LEVEL_SET to the ledger. Replacing the recipients clears the level. Refused with
+        ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.qes is not available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+        - name: signerId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signature_level]
+              properties:
+                signature_level:
+                  type: string
+                  enum: [STANDARD, QES]
+      responses:
+        '200':
+          description: The envelope's QES signers after the change.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QesSignatureView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/estamp:
+    get:
+      operationId: getSenderEnvelopeEstamp
+      summary: The envelope's India e-stamp order (Feature-Parity §1.19, Amendment A1).
+      description: >-
+        Requires sign:envelope:read and envelope visibility. order is the live (not FAILED) order, else the most
+        recent one, else null. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.india_estamp is not
+        available (today, always).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: The e-stamp order, or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstampOrderResponse'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: requestSenderEnvelopeEstamp
+      summary: Order Indian e-stamp paper for a DRAFT envelope (Feature-Parity §1.19).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership. DRAFT only; one live order
+        per envelope (details.reason estamp_order_exists). The sender supplies the state, the article and the
+        stamp duty; Aramo does not compute duty. Amounts are paise (INR). Ledger ESTAMP_REQUESTED then
+        ESTAMP_ORDERED (or ESTAMP_FAILED). Needs a configured aggregator (403 ESIGN_FEATURE_NOT_AVAILABLE,
+        details.reason provider_not_configured — today, always). Refused while sign.india_estamp is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstampRequest'
+      responses:
+        '201':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [order]
+                properties:
+                  order:
+                    $ref: '#/components/schemas/EstampOrderView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/estamp/refresh:
+    post:
+      operationId: refreshSenderEnvelopeEstamp
+      summary: Fetch the issued e-stamp certificate and place it first in the DRAFT (Feature-Parity §1.19).
+      description: >-
+        Requires sign:envelope:create, a Business workspace and envelope ownership. While the aggregator is still
+        working the order is returned unchanged. Once issued, the certificate PDF passes the safe-PDF checks,
+        counts against the storage allocation, is stored as an OWNED source document placed FIRST (ordinal 0)
+        in front of the documents to sign, and the order becomes ATTACHED (ledger ESTAMP_ISSUED,
+        ESTAMP_ATTACHED). Sending refuses an envelope whose live order is not attached first (409,
+        details.reason estamp_not_attached / estamp_not_first). Refused while sign.india_estamp is not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RegulatedEnvelopeId'
+      responses:
+        '200':
+          description: The e-stamp order, or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstampOrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/envelopes/from-template:
     post:
       operationId: createSenderEnvelopeFromTemplate
@@ -4454,6 +4751,14 @@ components:
       bearerFormat: opaque (sgt_…)
       description: A short-lived Sign API access token from /v1/sign/oauth/token (never a session token).
   parameters:
+    RegulatedEnvelopeId:
+      name: id
+      in: path
+      required: true
+      description: The envelope id (UUID).
+      schema:
+        type: string
+        format: uuid
     DocumentId:
       name: documentId
       in: path
@@ -5250,6 +5555,12 @@ components:
             in_person_signing:
               type: boolean
               description: Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available.
+            qes:
+              type: boolean
+              description: Feature-Parity §1.16 (Amendment A1) — the sign.qes capability (signing through a QTSP) is available. False until the PO authorizes it.
+            india_estamp:
+              type: boolean
+              description: Feature-Parity §1.19 (Amendment A1) — the sign.india_estamp capability is available. False until the PO authorizes it.
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -5303,6 +5614,169 @@ components:
           type: string
         default_message:
           type: string
+    SignerTokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    QesSignatureView:
+      type: object
+      description: >-
+        Feature-Parity §1.16 (Amendment A1) — one signer's qualified electronic signature through a Qualified Trust
+        Service Provider. Aramo is not a QTSP; the certificate and signature are the QTSP's evidence.
+      required: [signer_id, signature_level, state]
+      properties:
+        signer_id:
+          type: string
+          format: uuid
+        signature_level:
+          type: string
+          enum: [QES]
+        state:
+          type: string
+          enum: [REQUIRED, IDENTITY_PROOFING_PENDING, AUTHORIZED, SIGNED, FAILED]
+        provider:
+          type: [string, 'null']
+        certificate:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                subject:
+                  type: string
+                issuer:
+                  type: string
+                serial_number:
+                  type: string
+                valid_from:
+                  type: string
+                  format: date-time
+                valid_to:
+                  type: string
+                  format: date-time
+                fingerprint_sha256:
+                  type: string
+        certificate_chain_sha256:
+          type: [string, 'null']
+        signature_sha256:
+          type: [string, 'null']
+        qtsp_reference:
+          type: [string, 'null']
+        failure_reason:
+          type: [string, 'null']
+        identity_started_at:
+          type: [string, 'null']
+          format: date-time
+        authorized_at:
+          type: [string, 'null']
+          format: date-time
+        signed_at:
+          type: [string, 'null']
+          format: date-time
+    QesStepResult:
+      type: object
+      required: [state, redirect_url]
+      properties:
+        state:
+          type: string
+          enum: [REQUIRED, IDENTITY_PROOFING_PENDING, AUTHORIZED, SIGNED, FAILED]
+        redirect_url:
+          type: [string, 'null']
+          description: The QTSP page to send the signer to next; null when the flow is finished.
+    EstampRequest:
+      type: object
+      description: Feature-Parity §1.19 (Amendment A1) — Indian e-stamp paper for the envelope. Amounts are paise (INR × 100).
+      required: [state_code, article_code, stamp_duty_amount_paise, first_party, second_party, purchaser]
+      properties:
+        state_code:
+          type: string
+          pattern: '^IN-[A-Z]{2}$'
+          description: ISO 3166-2:IN code of the stamping state, e.g. IN-KA.
+        article_code:
+          type: string
+          maxLength: 120
+          description: The article of that state's stamp act, as the aggregator names it.
+        stamp_duty_amount_paise:
+          type: integer
+          minimum: 1
+        consideration_amount_paise:
+          type: [integer, 'null']
+          minimum: 0
+        first_party:
+          type: string
+          maxLength: 200
+        second_party:
+          type: string
+          maxLength: 200
+        purchaser:
+          type: string
+          maxLength: 200
+        description:
+          type: [string, 'null']
+          maxLength: 500
+    EstampOrderView:
+      type: object
+      required: [id, state, provider, state_code, article_code, stamp_duty_amount_paise, currency, first_party, second_party, purchaser, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [REQUESTED, ORDERED, ISSUED, ATTACHED, FAILED]
+        provider:
+          type: string
+        provider_order_ref:
+          type: [string, 'null']
+        state_code:
+          type: string
+        article_code:
+          type: string
+        stamp_duty_amount_paise:
+          type: integer
+        consideration_amount_paise:
+          type: [integer, 'null']
+        currency:
+          type: string
+          enum: [INR]
+        first_party:
+          type: string
+        second_party:
+          type: string
+        purchaser:
+          type: string
+        description:
+          type: [string, 'null']
+        certificate_number:
+          type: [string, 'null']
+        certificate_issued_at:
+          type: [string, 'null']
+          format: date-time
+        certificate_sha256:
+          type: [string, 'null']
+        attached_document_id:
+          type: [string, 'null']
+          format: uuid
+        failure_reason:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        ordered_at:
+          type: [string, 'null']
+          format: date-time
+        attached_at:
+          type: [string, 'null']
+          format: date-time
+    EstampOrderResponse:
+      type: object
+      required: [order]
+      properties:
+        order:
+          oneOf:
+            - $ref: '#/components/schemas/EstampOrderView'
+            - type: 'null'
     SenderTemplateRoleBinding:
       type: object
       required: [role_key, name, email]

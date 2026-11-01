@@ -25,6 +25,12 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.16 / §1.19 under Amendment
+  // A1 — ports and workflows are built, but no QTSP or e-stamp aggregator is contracted.
+  // Aramo is not a QTSP (R-1); neither is marketed or sold (R-2). Flipping either needs a
+  // vendor contract, counsel review and a separate PO authorization (A1 §A1.2).
+  'sign.qes': 'NOT_AVAILABLE',
+  'sign.india_estamp': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */
