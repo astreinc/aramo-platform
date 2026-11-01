@@ -10,6 +10,8 @@ describe('Sign S-2 — authentication zones of the one Sign application', () => 
     ['/s/abc', '', 'guest-sign'],
     ['/s/abc/', '?x=1', 'guest-sign'],
     ['/d/abc', '', 'guest-download'],
+    ['/qes/callback', '?code=c&state=s', 'guest-sign'],
+    ['/qes/callbackx', '', 'workspace'],
     ['/', '?token=abc', 'guest-sign'],
     ['/', '', 'workspace'],
     ['/sign/envelopes', '', 'workspace'],

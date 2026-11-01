@@ -61,6 +61,28 @@ export interface SignDocumentMeta {
 export interface SignerDocumentView {
   documents: SignDocumentMeta[];
   fields: SignField[];
+  // Consolidated Directive B3 — the sender allowed delegation and this signer may hand it off.
+  can_delegate?: boolean;
+}
+
+// Feature-Parity §1.16 — the signer's qualified-signature step (null = not required).
+export interface QesStatus {
+  signature_level: 'QES';
+  state: 'REQUIRED' | 'IDENTITY_PROOFING_PENDING' | 'AUTHORIZED' | 'SIGNED' | 'FAILED';
+  provider: string | null;
+  failure_reason: string | null;
+}
+export interface QesStep {
+  state: QesStatus['state'];
+  redirect_url: string | null;
+}
+
+// Feature-Parity §1.9 — the SMS code the sender may require before the document opens.
+export interface SmsCodeStatus {
+  required: boolean;
+  verified: boolean;
+  locked: boolean;
+  phone: string | null;
 }
 
 /** A failed signer call. `code` is the server's error code, or NETWORK. */
@@ -179,6 +201,30 @@ export const signApi = {
   // Feature-Parity §1.9 — the access code the sender set for this recipient (never stored here).
   accessCode(token: string, access_code: string): Promise<{ verified: true }> {
     return post<{ verified: true }>('access-code', { token, access_code });
+  },
+  // B3 / Feature-Parity §1.17 — hand this signature to another person; this link then stops working.
+  delegate(token: string, input: { name: string; email: string; reason?: string }): Promise<{ delegated: true }> {
+    return post<{ delegated: true }>('delegate', { token, ...input });
+  },
+  // B3 / Feature-Parity §1.16 — the qualified signature through the sender's trust service provider.
+  qesStatus(token: string): Promise<{ qes: QesStatus | null }> {
+    return post<{ qes: QesStatus | null }>('qes/status', { token });
+  },
+  qesBegin(token: string): Promise<QesStep> {
+    return post<QesStep>('qes/begin', { token });
+  },
+  qesComplete(token: string, code: string, state: string): Promise<QesStep> {
+    return post<QesStep>('qes/complete', { token, code, state });
+  },
+  // Feature-Parity §1.9 — the SMS code (sender-set): status, send, verify.
+  smsCodeStatus(token: string): Promise<SmsCodeStatus> {
+    return post<SmsCodeStatus>('verification', { token });
+  },
+  smsCodeSend(token: string): Promise<{ sent: boolean; verified: boolean; phone: string | null }> {
+    return post<{ sent: boolean; verified: boolean; phone: string | null }>('verification/sms-otp/send', { token });
+  },
+  smsCodeVerify(token: string, code: string): Promise<{ verified: true }> {
+    return post<{ verified: true }>('verification/sms-otp/verify', { token, code });
   },
   // Sign 1.14 — pay a PAYMENT field on Stripe's hosted Checkout page (the organization's
   // own Stripe account), then confirm on return. The server is the only authority.

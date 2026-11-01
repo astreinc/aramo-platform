@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
-import { SignApiError, signApi, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
+import { SignApiError, signApi, type QesStatus, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
 import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isPayment, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
@@ -37,6 +37,9 @@ type Screen =
   | 'locked'
   | 'identity'
   | 'idlocked'
+  | 'smscode'
+  | 'smslocked'
+  | 'delegated'
   | 'network'
   | 'error';
 
@@ -100,15 +103,28 @@ function paymentReturn(): { field_id: string } | null {
 }
 
 function storedPaymentToken(): string {
+  return storedToken(PAYMENT_TOKEN_KEY);
+}
+
+function storedToken(key: string): string {
   try {
-    return window.sessionStorage.getItem(PAYMENT_TOKEN_KEY) ?? '';
+    return window.sessionStorage.getItem(key) ?? '';
   } catch {
     return '';
   }
 }
 
+// Consolidated Directive B3 (Feature-Parity §1.16) — the trust service provider returns the
+// signer to /qes/callback?code=…&state=… (the redirect URI sign-service registers). The
+// signing token never goes to the provider: it is kept in this tab while the signer is away,
+// and the signer comes back to the document at /s/qes-return.
+export const QES_CALLBACK_PATH = '/qes/callback';
+const QES_RETURN_PATH = '/s/qes-return';
+const QES_TOKEN_KEY = 'aramo-sign-qes-token';
+
 function tokenFromLocation(): string {
   if (window.location.pathname === PAYMENT_RETURN_PATH) return storedPaymentToken();
+  if (window.location.pathname === QES_RETURN_PATH || window.location.pathname === QES_CALLBACK_PATH) return storedToken(QES_TOKEN_KEY);
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -140,6 +156,9 @@ function screenForError(e: unknown): Screen {
     // Feature-Parity §1.9 — the sender asked this recipient to verify their identity.
     if (e.code === 'SIGNER_IDENTITY_VERIFICATION_REQUIRED') return 'identity';
     if (e.code === 'SIGNER_IDENTITY_VERIFICATION_LOCKED') return 'idlocked';
+    // Feature-Parity §1.9 — the sender asked for a code sent by SMS before the document opens.
+    if (e.reason === 'recipient_verification_required') return 'smscode';
+    if (e.reason === 'recipient_verification_locked' || e.reason === 'otp_locked') return 'smslocked';
     if (e.code === 'NETWORK') return 'network';
   }
   return 'error';
@@ -555,6 +574,228 @@ function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Pro
   );
 }
 
+// Feature-Parity §1.9 — the recipient asks for a code by SMS and enters it before anything of
+// the document is shown. The code is checked by the server and never kept here.
+function SmsCodeCard({ token, onVerified, onLocked }: { readonly token: string; readonly onVerified: () => void; readonly onLocked: () => void }) {
+  const [phone, setPhone] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    signApi
+      .smsCodeStatus(token)
+      .then((s) => {
+        if (live) setPhone(s.phone);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token]);
+  const send = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const r = await signApi.smsCodeSend(token);
+      if (r.verified) return onVerified();
+      setSent(true);
+      if (r.phone !== null) setPhone(r.phone);
+    } catch (e) {
+      const reason = e instanceof SignApiError ? e.reason : undefined;
+      if (reason === 'otp_locked') return onLocked();
+      setMessage(
+        reason === 'otp_resend_cooldown'
+          ? 'Wait a minute before asking for another code.'
+          : reason === 'otp_daily_limit'
+            ? 'You have asked for too many codes today. Try again tomorrow, or contact the sender.'
+            : reason === 'otp_opted_out'
+              ? 'This number has stopped text messages from Aramo Sign. Contact the sender.'
+              : "The code couldn't be sent. Try again in a moment.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const verify = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await signApi.smsCodeVerify(token, code.trim());
+      onVerified();
+    } catch (e) {
+      const reason = e instanceof SignApiError ? e.reason : undefined;
+      if (reason === 'otp_locked') return onLocked();
+      setMessage(
+        reason === 'otp_mismatch'
+          ? "That code isn't right. Check it and try again."
+          : reason === 'otp_expired'
+            ? 'This code has expired. Send a new one.'
+            : reason === 'otp_code_locked'
+              ? 'Too many incorrect codes. Send a new code.'
+              : reason === 'otp_not_requested'
+                ? 'Send a code first.'
+                : "That didn't go through. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <main className="sg-center">
+      <div className="sg-card" data-testid="sg-sms-code">
+        <h1>Enter the code we text you</h1>
+        <p className="sg-muted">
+          The sender asked us to confirm your phone before you open this document. We&apos;ll text a code to {phone ?? 'your phone'}.
+        </p>
+        {sent ? (
+          <label className="sg-label">
+            Code
+            <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label="Code" autoComplete="one-time-code" inputMode="numeric" />
+          </label>
+        ) : null}
+        {message !== null ? (
+          <p className="sg-error" role="alert">
+            {message}
+          </p>
+        ) : null}
+        {sent ? (
+          <>
+            <Btn className="sg-btn--block" disabled={code.trim().length === 0 || busy} onClick={() => void verify()}>
+              Continue
+            </Btn>
+            <Btn variant="quiet" className="sg-btn--block" disabled={busy} onClick={() => void send()}>
+              Send a new code
+            </Btn>
+          </>
+        ) : (
+          <Btn className="sg-btn--block" disabled={busy} onClick={() => void send()}>
+            Text me a code
+          </Btn>
+        )}
+      </div>
+    </main>
+  );
+}
+
+// Consolidated Directive B3 (Feature-Parity §1.17) — the signer hands their part to another
+// person (the sender allowed it). The delegate gets their own link; this one stops working.
+function DelegateDialog({ onDelegate, onClose }: { readonly onDelegate: (input: { name: string; email: string; reason?: string }) => Promise<string | null>; readonly onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ok = name.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  return (
+    <Dialog title="Ask someone else to sign" onClose={onClose}>
+      <p className="sg-muted">
+        They&apos;ll get an email with their own link and sign in their own name. Your link stops working, and the sender can see the hand-off.
+      </p>
+      <label className="sg-label">
+        Their full name
+        <TextIn value={name} onChange={(e) => setName(e.target.value)} aria-label="Their full name" />
+      </label>
+      <label className="sg-label">
+        Their email
+        <TextIn type="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Their email" />
+      </label>
+      <label className="sg-label">
+        Reason (optional)
+        <TextBox value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} rows={2} aria-label="Reason (optional)" />
+      </label>
+      {error !== null ? (
+        <p className="sg-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="sg-dialog__foot">
+        <Btn variant="secondary" onClick={onClose}>
+          Cancel
+        </Btn>
+        <Btn
+          disabled={!ok || busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            void onDelegate({ name: name.trim(), email: email.trim(), ...(reason.trim() !== '' ? { reason: reason.trim() } : {}) })
+              .then(setError)
+              .finally(() => setBusy(false));
+          }}
+        >
+          Send to them
+        </Btn>
+      </div>
+    </Dialog>
+  );
+}
+
+const QES_FAILED = 'The qualified signature was not completed. Go back to the document and try again, or contact the sender.';
+
+function safeRedirect(url: string | null): string | null {
+  return url !== null && /^https:\/\//.test(url) ? url : null;
+}
+
+/**
+ * Consolidated Directive B3 — the page the trust service provider returns the signer to
+ * (/qes/callback?code=…&state=…). It finishes the step with the token kept in this tab:
+ * after the identity step the provider is opened again to sign; once signed, the signer goes
+ * back to the document to finish.
+ */
+export function QesCallback({ token }: { readonly token: string }): JSX.Element {
+  const [message, setMessage] = useState<string | null>(null);
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const code = q.get('code');
+    const state = q.get('state');
+    if (token.length === 0) {
+      setMessage('This page has expired. Open the signing link from your email again.');
+      return;
+    }
+    if (q.get('error') !== null || code === null || state === null) {
+      setMessage(QES_FAILED);
+      return;
+    }
+    signApi
+      .qesComplete(token, code, state)
+      .then((r) => {
+        const next = safeRedirect(r.redirect_url);
+        if (next !== null) window.location.assign(next);
+        else if (r.state === 'SIGNED') window.location.replace(QES_RETURN_PATH);
+        else setMessage(QES_FAILED);
+      })
+      .catch(() => setMessage(QES_FAILED));
+  }, [token]);
+  return (
+    <>
+      <Header />
+      <main className="sg-center" data-testid="sg-qes-callback">
+        <div className="sg-card">
+          {message === null ? (
+            <p className="sg-muted" aria-busy="true">
+              Finishing your qualified signature…
+            </p>
+          ) : (
+            <>
+              <h1>Qualified signature</h1>
+              <p role="alert">{message}</p>
+              {token.length > 0 ? (
+                <Btn className="sg-btn--block" onClick={() => window.location.replace(QES_RETURN_PATH)}>
+                  Back to the document
+                </Btn>
+              ) : null}
+            </>
+          )}
+        </div>
+      </main>
+    </>
+  );
+}
+
 // ── End-state screens: plain language, no link into any Aramo app ──
 export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
   return (
@@ -573,7 +814,7 @@ export function App(): JSX.Element {
   const branding = useSignerBranding(token);
   return (
     <SignerBrandingContext.Provider value={branding}>
-      <SignerApp token={token} />
+      {window.location.pathname === QES_CALLBACK_PATH ? <QesCallback token={token} /> : <SignerApp token={token} />}
     </SignerBrandingContext.Provider>
   );
 }
@@ -599,6 +840,10 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [allSigned, setAllSigned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
+  // B3 — the qualified-signature step (null = not required) and the delegation hand-off.
+  const [qes, setQes] = useState<QesStatus | null>(null);
+  const [delegateOpen, setDelegateOpen] = useState(false);
+  const [delegatedTo, setDelegatedTo] = useState('');
   // Sign 1.14 — the workspace loader, for the payment return (declared below).
   const loadWorkspaceRef = useRef<() => Promise<void>>(async () => undefined);
 
@@ -609,6 +854,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     if (token.length === 0) return;
     setScreen('loading');
     const back = paymentReturn();
+    const qesBack = window.location.pathname === QES_RETURN_PATH;
     signApi
       .exchange(token)
       .then(() => signApi.disclosureText(token))
@@ -616,6 +862,16 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
         setDisclosure(d);
         // Sign 1.14 — back from Stripe: confirm the payment (the server reads it from
         // Stripe), then return to the document (the disclosure was already accepted).
+        // B3 — back from the trust service provider: return to Review & finish.
+        if (qesBack) {
+          try {
+            await loadWorkspaceRef.current();
+            setScreen('review');
+            return;
+          } catch {
+            // Fall back to the start of the signing flow.
+          }
+        }
         if (back !== null) {
           try {
             const r = await signApi.confirmPayment(token, back.field_id);
@@ -669,6 +925,8 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       return next;
     });
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
+    // B3 — refused while sign.qes is not available: then no qualified signature is asked for.
+    setQes(await signApi.qesStatus(token).then((r) => r.qes ?? null, () => null));
     setScreen('workspace');
   };
 
@@ -863,6 +1121,58 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     }
   };
 
+  // B3 — send the signer to the trust service provider (the token stays in this tab).
+  const startQes = async () => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await signApi.qesBegin(token);
+      const next = safeRedirect(r.redirect_url);
+      if (next === null) {
+        setNotice(QES_FAILED);
+        return;
+      }
+      try {
+        window.sessionStorage.setItem(QES_TOKEN_KEY, token);
+      } catch {
+        setNotice('Your browser blocked the signing page. Allow site storage for this page and try again.');
+        return;
+      }
+      window.location.assign(next);
+    } catch (e) {
+      const s = screenForError(e);
+      if (e instanceof SignApiError && (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' || e.status === 503)) setNotice('Qualified signatures are not available right now. Contact the sender.');
+      else if (s === 'error' || s === 'network') setNotice("The signing page couldn't be opened. Try again in a moment.");
+      else setScreen(s);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // B3 — hand the signature to someone else. Returns the message to show, or null when done.
+  const delegate = async (input: { name: string; email: string; reason?: string }): Promise<string | null> => {
+    try {
+      await signApi.delegate(token, input);
+      setDelegatedTo(input.name);
+      setDelegateOpen(false);
+      setScreen('delegated');
+      return null;
+    } catch (e) {
+      if (e instanceof SignApiError) {
+        if (e.reason === 'delegate_invalid') return "Enter the person's name and a valid email.";
+        if (e.reason === 'delegate_email_on_envelope') return 'That person is already on this document.';
+        if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION' || e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return "This document can't be handed off now.";
+      }
+      const s = screenForError(e);
+      if (s !== 'error' && s !== 'network') {
+        setDelegateOpen(false);
+        setScreen(s);
+        return null;
+      }
+      return "That didn't go through. Try again.";
+    }
+  };
+
   const submitAccessCode = async (code: string): Promise<'ok' | 'incorrect'> => {
     try {
       await signApi.accessCode(token, code);
@@ -937,6 +1247,31 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       <>
         <Header reportToken={token} />
         <AccessCodeCard onSubmit={submitAccessCode} />
+      </>
+    );
+  if (screen === 'smscode')
+    return (
+      <>
+        <Header reportToken={token} />
+        <SmsCodeCard token={token} onVerified={open} onLocked={() => setScreen('smslocked')} />
+      </>
+    );
+  if (screen === 'smslocked')
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="error" title="Too many incorrect codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
+      </>
+    );
+  if (screen === 'delegated')
+    return (
+      <>
+        <Header />
+        <EndState
+          tone="ok"
+          title={`Sent to ${delegatedTo}`}
+          body={`${delegatedTo} will get an email with their own link to sign. This link no longer works for you.`}
+        />
       </>
     );
   if (screen === 'locked')
@@ -1080,6 +1415,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const doc = docs.find((d) => d.document_id === activeDoc) ?? docs[0];
   const url = doc ? docUrls[doc.document_id] : undefined;
   const allDone = problem === null;
+  const qesPending = qes !== null && qes.state !== 'SIGNED';
 
   return (
     <>
@@ -1103,6 +1439,28 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 {problem}
               </p>
             ) : null}
+            {qesPending ? (
+              <div className="sg-qes" data-testid="sg-qes">
+                <h2>Qualified electronic signature</h2>
+                <p className="sg-muted">
+                  The sender asked for a qualified signature. You&apos;ll confirm who you are and sign with {qes?.provider ?? 'a trust service provider'}, then come back here to
+                  finish.
+                </p>
+                {qes?.state === 'FAILED' ? (
+                  <p className="sg-error" role="alert">
+                    The last attempt didn&apos;t finish. You can try again.
+                  </p>
+                ) : null}
+                {notice ? (
+                  <p className="sg-error" role="alert">
+                    {notice}
+                  </p>
+                ) : null}
+                <Btn disabled={busy} onClick={() => void startQes()}>
+                  {qes?.state === 'FAILED' ? 'Try again' : 'Continue to sign'}
+                </Btn>
+              </div>
+            ) : null}
             {finishError ? (
               <p className="sg-error" role="alert">
                 Finishing didn&apos;t go through. Your entries are kept — try again.
@@ -1112,7 +1470,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
               <Btn variant="secondary" onClick={() => setScreen('workspace')}>
                 Back to document
               </Btn>
-              <Btn disabled={busy || !allDone} onClick={() => void finish()}>
+              <Btn disabled={busy || !allDone || qesPending} onClick={() => void finish()}>
                 {busy ? 'Finishing…' : finishError ? 'Try again' : 'Finish signing'}
               </Btn>
             </div>
@@ -1228,6 +1586,11 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 );
               })}
             </ul>
+            {view?.can_delegate === true ? (
+              <Btn variant="quiet" disabled={busy} onClick={() => setDelegateOpen(true)} data-testid="sg-delegate">
+                Ask someone else to sign
+              </Btn>
+            ) : null}
           </aside>
           <div className="sg-bar">
             <div className="sg-progress" aria-hidden="true">
@@ -1275,6 +1638,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
         />
       ) : null}
       {declineOpen ? <DeclineDialog onDecline={decline} onClose={() => setDeclineOpen(false)} /> : null}
+      {delegateOpen ? <DelegateDialog onDelegate={delegate} onClose={() => setDelegateOpen(false)} /> : null}
     </>
   );
 }
