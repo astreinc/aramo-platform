@@ -15,13 +15,12 @@
 //   upcoming    effective_from > now   (served with an "Upcoming" banner)
 //   effective   the latest effective_from <= now (ties: the later catalog entry)
 //   superseded  an earlier one, retained for historical access
-// An approved but unscheduled version is not served: it is either absent from this
-// catalog or (ToS v2.0) listed with effective_from null, which nothing here serves,
-// links or counts. The same rule as effectiveLegalDocument() in the registry.
+// An approved but unscheduled version (effective_from null) is not served, linked or
+// counted. The same rule as effectiveLegalDocument() in the registry.
 //
 // ToS v2.0 — `terms-of-service` (sign.terms_of_service 2.0, the combined Business +
-// Personal terms) is listed with effective_from null until release day, when the
-// same instant is set here and in the registry (legal.spec.tsx keeps them equal).
+// Personal terms) takes effect at the same instant here and in the registry
+// (legal.spec.tsx and the subscription publication-readiness spec keep them equal).
 // Once it is in force it SUCCEEDS `personal-terms`: the Personal Terms 1.0 page stays
 // published (history) with a "no longer in effect" banner, and is no longer linked as
 // a current document.
@@ -41,8 +40,8 @@ export interface LegalCatalogEntry {
 }
 
 export const LEGAL_CATALOG: readonly LegalCatalogEntry[] = [
-  // ToS v2.0 — NOT yet in effect (effective_from null until the release-day change).
-  { slug: 'terms-of-service', key: 'sign.terms_of_service', version: '2.0', title: 'Aramo Sign Terms of Service', audience: 'all', effective_from: null },
+  // ToS v2.0 — effective 2026-11-01 23:00 EST (the same instant as the registry).
+  { slug: 'terms-of-service', key: 'sign.terms_of_service', version: '2.0', title: 'Aramo Sign Terms of Service', audience: 'all', effective_from: '2026-11-01T23:00:00-05:00' },
   { slug: 'personal-terms', key: 'sign.personal_terms_of_service', version: '1.0', title: 'Aramo Sign Personal Terms of Service', audience: 'personal', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'privacy', key: 'aramo.privacy_notice', version: '1.0', title: 'Aramo Privacy Notice', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'acceptable-use', key: 'aramo.acceptable_use_policy', version: '1.0', title: 'Aramo Acceptable Use Policy', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },

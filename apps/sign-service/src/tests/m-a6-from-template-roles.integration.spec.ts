@@ -21,6 +21,8 @@ import { AppModule } from '../app/app.module.js';
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../app/document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../app/sign-feature.gate.js';
 
+import { acceptTosV20 } from './fixtures/tos-v20-acceptance.js';
+
 // Amendment M-A6 (LOCKED) §3.5–§3.6 — from-template with role binding, END TO END over
 // HTTP (real AppModule, real sign migrations, real RBAC). The Documents side (apps/api)
 // is a separate service: its signed template-library channel is replaced by a fake that
@@ -127,6 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
     await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1,$2,$3, now())`, [m, userId, tenant]);
     await db.query(`INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id) SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'sign_sender'`, [m]);
     await db.query(`INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at) VALUES (gen_random_uuid(),$1,$2,1, now())`, [tenant, userId]);
+    await acceptTosV20(db, tenant, userId, email);
   }
 
   beforeAll(async () => {

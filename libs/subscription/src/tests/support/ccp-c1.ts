@@ -14,6 +14,7 @@ import { CapacityService } from '../../lib/capacity.service.js';
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 
 import { type A6Harness, FakeBilling, a6Harness } from './ccp-a6.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './legal-registry.js';
 
 // CCP-C1 — ONE shared harness for the C1 specs (CLAUDE.md: one shared test helper): the A6
 // harness (change requests, apply, lifecycle) plus a fake Stripe that ALSO implements the command
@@ -125,7 +126,7 @@ export interface C1Harness extends Omit<A6Harness, 'billing' | 'lifecycle'> {
 export function c1Harness(prisma: PrismaService, now: () => Date): C1Harness {
   const base = a6Harness(prisma, now);
   const billing = new FakeStripe();
-  const lifecycle = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, billing);
+  const lifecycle = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, base.orgProfile, billing);
   const commands = new BillingCommandService(prisma, billing, lifecycle, billing);
   const inbox = new BillingWebhookInboxService(prisma, billing, lifecycle);
   return { ...base, billing, lifecycle, commands, inbox };

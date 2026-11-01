@@ -8,7 +8,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '@aramo/identity';
-import { PERSONAL_LEGAL_DOCUMENT_KEYS, effectivePersonalLegalDocument } from '@aramo/subscription';
+import { LEGAL_DOCUMENT_TITLES, PERSONAL_LEGAL_DOCUMENT_KEYS, effectivePersonalLegalDocument } from '@aramo/subscription';
 import cookieParser from 'cookie-parser';
 import { SignJWT, exportSPKI, generateKeyPair, type KeyLike } from 'jose';
 import { Client } from 'pg';
@@ -38,6 +38,10 @@ const AUDIENCE = 'aramo-sign-legal-test';
 const OWNER_SCOPES = [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE];
 // ToS v2.0 — the document in effect per key (the Personal Terms 1.0 while v2.0 is not effective).
 const CURRENT = PERSONAL_LEGAL_DOCUMENT_KEYS.map((key) => effectivePersonalLegalDocument(key)!);
+// ToS v2.0 takes effect 2026-11-01 23:00 EST; the service reads the wall clock, so the expectations
+// follow whichever side of that instant the run is on (decided once, at load).
+const TOS_V20_LIVE = Date.now() >= Date.parse('2026-11-01T23:00:00-05:00');
+const pendingView = (d: (typeof CURRENT)[number]) => ({ key: d.key, version: d.version, url: d.url, title: LEGAL_DOCUMENT_TITLES[d.key] });
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — v1/sign/legal (real Postgres 17)', () => {
   let container: StartedPostgreSqlContainer;
@@ -163,11 +167,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const o = await owner('PERSONAL');
     const res = await status(o);
     expect(res.status).toBe(200);
-    expect(res.body.pending).toEqual([
-      { key: 'sign.personal_terms_of_service', version: '1.0', url: 'https://sign.aramo.ai/legal/personal-terms/1.0', title: 'Aramo Sign Personal Terms of Service' },
-      { key: 'aramo.privacy_notice', version: '1.0', url: 'https://sign.aramo.ai/legal/privacy/1.0', title: 'Aramo Privacy Notice' },
-      { key: 'aramo.acceptable_use_policy', version: '1.0', url: 'https://sign.aramo.ai/legal/acceptable-use/1.0', title: 'Aramo Acceptable Use Policy' },
-    ]);
+    expect(res.body.pending).toEqual(
+      TOS_V20_LIVE
+        ? CURRENT.map(pendingView)
+        : [
+            { key: 'sign.personal_terms_of_service', version: '1.0', url: 'https://sign.aramo.ai/legal/personal-terms/1.0', title: 'Aramo Sign Personal Terms of Service' },
+            { key: 'aramo.privacy_notice', version: '1.0', url: 'https://sign.aramo.ai/legal/privacy/1.0', title: 'Aramo Privacy Notice' },
+            { key: 'aramo.acceptable_use_policy', version: '1.0', url: 'https://sign.aramo.ai/legal/acceptable-use/1.0', title: 'Aramo Acceptable Use Policy' },
+          ],
+    );
 
     const items = CURRENT.map((d) => ({ key: d.key, version: d.version }));
     const ok = await accept(o, items);
@@ -177,7 +185,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const rows = await rowsOf(o);
     expect(rows).toHaveLength(3);
     for (const r of rows) {
-      expect(r).toMatchObject({ version: '1.0', context: 'IN_APP', context_ref: `in_app:${o.tenant}:${o.user}`, ip: '198.51.100.7', user_agent: 'LegalTest/1.0' });
+      expect(r).toMatchObject({ version: CURRENT.find((d) => d.key === r.document_key)!.version, context: 'IN_APP', context_ref: `in_app:${o.tenant}:${o.user}`, ip: '198.51.100.7', user_agent: 'LegalTest/1.0' });
       expect(r.sha256).toBe(CURRENT.find((d) => d.key === r.document_key)!.sha256);
     }
     // Idempotent: a repeat records nothing new.
@@ -199,12 +207,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await status(o)).body.pending).toHaveLength(3);
   });
 
-  it('Business: nothing pending, and accept is refused', async () => {
+  it('Business: before ToS v2.0 nothing is pending and accept is refused; from 23:00 EST the Terms are owed and accepted per user', async () => {
     const o = await owner('BUSINESS');
-    expect((await status(o)).body).toEqual({ pending: [] });
-    const res = await accept(o, CURRENT.map((d) => ({ key: d.key, version: d.version })));
-    expect(res.status).toBe(400);
-    expect(res.body.error.details.reason).toBe('legal_acceptance_not_applicable');
-    expect(await rowsOf(o)).toHaveLength(0);
+    if (!TOS_V20_LIVE) {
+      expect((await status(o)).body).toEqual({ pending: [] });
+      const res = await accept(o, CURRENT.map((d) => ({ key: d.key, version: d.version })));
+      expect(res.status).toBe(400);
+      expect(res.body.error.details.reason).toBe('legal_acceptance_not_applicable');
+      expect(await rowsOf(o)).toHaveLength(0);
+      return;
+    }
+    const v20 = CURRENT.find((d) => d.key === 'sign.terms_of_service')!;
+    expect((await status(o)).body).toEqual({ pending: [pendingView(v20)] });
+    const ok = await accept(o, [{ key: v20.key, version: v20.version }]);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ pending: [] });
+    const rows = await rowsOf(o);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ document_key: 'sign.terms_of_service', version: '2.0', sha256: v20.sha256, context: 'IN_APP' });
   });
 });

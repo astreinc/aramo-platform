@@ -20,6 +20,7 @@ import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile } from '../fixtures/organization-billing-profile.fake.js';
 
 import { CCP_BUNDLES, PLATFORM_TENANT } from './ccp-a3-database.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './legal-registry.js';
 
 // CCP-A6 — ONE shared harness for the A6 specs (CLAUDE.md: one shared test helper): the real
 // change-request, apply and lifecycle services on one Prisma client, a fake billing provider,
@@ -111,7 +112,7 @@ export function a6Harness(prisma: PrismaService, now: () => Date, fault?: Commer
   const billing = new FakeBilling();
   const orgProfile = new FakeOrganizationBillingProfile();
   const allowance = new AllowanceService(prisma);
-  const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, undefined, orgProfile);
+  const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, orgProfile);
   const supportExtensions = new SupportExtensionService(prisma, audit, policies, operators, changeRequests, apply, now);
   return { changeRequests, apply, catalog, versions, lifecycle, billing, orgProfile, allowance, supportExtensions, policyApply };
 }

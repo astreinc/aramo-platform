@@ -5,7 +5,7 @@
 | Structure | **Part A** applies to everyone. **Part B** applies to Business accounts. **Part C** applies to Personal accounts. **Part D** holds country-specific terms. Where Part C or Part D conflicts with Part A for an individual, Part C or D controls. |
 | Related documents | Aramo Privacy Notice (`aramo.privacy_notice`) · Aramo Acceptable Use Policy (`aramo.acceptable_use_policy`) · Electronic Signature Consent Disclosure for signers (`sign.esign_consent_disclosure`) · Data Processing Addendum for Business accounts *(to be drafted)* |
 | Operator | **Astre Consulting Services Inc**, a Virginia corporation, 2909 Gettysburg Sq, Vienna, VA 22181, USA ("Aramo", "we", "us") |
-| Effective date | [Date of publication] |
+| Effective date | November 1, 2026 |
 
 
 ---
@@ -378,14 +378,18 @@ B4.4 Billing disputes must be raised within **30 calendar days** of the charge.
 
 ## B5. Renewal, cancellation and price changes
 
-B5.1 **Renewal.** At the end of each 12-month commitment, the subscription automatically renews for
-another 12-month period unless the Subscriber cancels through the online billing settings at least
-5 business days before the renewal date. Aramo will provide renewal notices as required by applicable
-law.
+B5.1 **Renewal.** Each Business subscription begins with a 12-month commitment, billed monthly. When
+the commitment ends, the subscription continues from month to month until the Subscriber cancels it
+through the online billing settings. A cancellation takes effect at the end of the current monthly
+billing period. Aramo will provide renewal notices as required by applicable law.
 
 B5.2 **Cancellation.** Cancellation takes effect at the end of the current commitment period.
 
-B5.3 **Refunds.**
+B5.3 **Refunds.** Except as required by applicable law or expressly stated in an applicable order,
+subscription fees are nonrefundable. Cancellation does not entitle the Subscriber to a refund for
+the unused portion of a commitment period. Aramo may issue refunds or billing credits to correct
+billing errors or resolve service-related issues. This section does not limit any non-waivable
+rights under applicable law.
 
 B5.4 **Price changes** take effect at the next renewal, with at least **30 days'** notice.
 
@@ -429,7 +433,13 @@ B8.3 We may suspend an application or credential that threatens the Service or o
 
 ## B9. Warranties, liability and indemnities (Business)
 
-B9.1 **Warranty.**
+B9.1 **Warranty.** Aramo will provide the Service with reasonable care and skill, materially
+consistent with its published documentation. Except for this express warranty and to the extent
+permitted by applicable law, the Service is provided "as is" and "as available." Aramo disclaims all
+other warranties, express or implied, including warranties of merchantability, fitness for a
+particular purpose and non-infringement. Aramo does not warrant uninterrupted or error-free
+operation or guarantee that any electronically signed document will be enforceable in every
+jurisdiction.
 
 B9.2 **Cap.** To the extent the law allows, each party's total liability under these Terms is limited
 to the **fees the Subscriber paid for the Service in the 12 months before the claim**.

@@ -106,13 +106,10 @@ describe('legal publication readiness — blocks scheduling an unfinished text',
     }
   });
 
-  it('ToS v2.0 after the PO business-policy selections (2026-11-01): exactly the effective-date placeholder and the two counsel clauses remain', () => {
-    const v20 = unscheduledApproved.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
-    expect(publicationBlockers(textOf(v20)).map((b) => `${b.rule}: ${b.text.trim()}`)).toEqual([
-      'placeholder: | Effective date | [Date of publication] |',
-      'empty-clause: B5.3 **Refunds.**',
-      'empty-clause: B9.1 **Warranty.**',
-    ]);
+  it('ToS v2.0 (counsel-approved B5.1/B5.3/B9.1, effective date set): scheduled, with zero blockers', () => {
+    const v20 = scheduled.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
+    expect(v20.effective_from).toBe('2026-11-01T23:00:00-05:00');
+    expect(publicationBlockers(textOf(v20))).toEqual([]);
   });
 });
 

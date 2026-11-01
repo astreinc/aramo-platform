@@ -35,6 +35,10 @@ const SLUGS: Record<string, string> = {
   'aramo.acceptable_use_policy': 'acceptable-use',
 };
 
+// These registry checks describe the state before ToS v2.0 takes effect (2026-11-01 23:00 EST);
+// an injected clock keeps them independent of wall time.
+const PRE_V20 = new Date('2026-11-01T22:59:59.999-05:00');
+
 describe('legal document registry', () => {
   it.each(LEGAL_DOCUMENTS.map((d) => [`${d.key}@${d.version}`, d] as const))('%s: the pinned sha256 is the file on disk', (_k, d) => {
     const text = readFileSync(resolve(ROOT, d.path));
@@ -49,13 +53,13 @@ describe('legal document registry', () => {
       expect(d.status).toBe('DRAFT');
       expect(d.url).toBeNull();
       expect(readFileSync(resolve(ROOT, d.path), 'utf8')).toContain('DRAFT — LEGAL-PENDING');
-      expect(approvedLegalDocument(d.key)).toBeNull();
+      expect(approvedLegalDocument(d.key, LEGAL_DOCUMENTS, PRE_V20)).toBeNull();
     }
   });
 
   it('the three Personal documents are APPROVED 1.0 at their stable Sign-host URL, with no draft markers in the text', () => {
     for (const key of PERSONAL_LEGAL_DOCUMENT_KEYS) {
-      const d = effectivePersonalLegalDocument(key);
+      const d = effectivePersonalLegalDocument(key, LEGAL_DOCUMENTS, PRE_V20);
       expect(d).not.toBeNull();
       expect(d!.version).toBe('1.0');
       expect(d!.url).toBe(`https://sign.aramo.ai/legal/${SLUGS[d!.key]}/1.0`);
@@ -79,9 +83,9 @@ describe('legal document registry', () => {
   it('an approved version (with a published URL) is offered and referenced exactly', () => {
     const approved: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0', effective_from: '2026-01-01T00:00:00Z' };
     const reg = [...LEGAL_DOCUMENTS, approved];
-    expect(approvedLegalDocument('sign.terms_of_service', reg)).toBe(approved);
+    expect(approvedLegalDocument('sign.terms_of_service', reg, PRE_V20)).toBe(approved);
     expect(legalRef(approved)).toBe(`sign.terms_of_service@1.0.0#${approved.sha256}`);
-    expect(approvedLegalDocument('sign.terms_of_service', [{ ...approved, url: null }])).toBeNull();
+    expect(approvedLegalDocument('sign.terms_of_service', [{ ...approved, url: null }], PRE_V20)).toBeNull();
   });
 });
 
@@ -102,19 +106,21 @@ describe('E-5 effective-version resolver', () => {
     expect(v10.version).toBe('1.0');
   });
 
-  it('the real registry registers no 1.1 and no upcoming version: every APPROVED entry is effective now', () => {
+  it('the real registry registers no 1.1; every APPROVED entry is effective (ToS v2.0 from 2026-11-01 23:00 EST; injected clock)', () => {
     expect(LEGAL_DOCUMENTS.some((d) => d.version === '1.1')).toBe(false);
+    const before = new Date('2026-11-01T22:59:59.999-05:00');
+    const at = new Date('2026-11-01T23:00:00-05:00');
     for (const d of LEGAL_DOCUMENTS) {
       if (d.status === 'DRAFT') {
         expect(d.effective_from).toBeNull();
-        expect(legalVersionStatus(d).state).toBe('draft');
+        expect(legalVersionStatus(d, LEGAL_DOCUMENTS, at).state).toBe('draft');
       } else if (d.key === 'sign.terms_of_service' && d.version === '2.0') {
-        // ToS v2.0 — registered dark: approved, not effective until the release-day change.
-        expect(d.effective_from).toBeNull();
-        expect(legalVersionStatus(d).state).toBe('approved_not_effective');
+        expect(d.effective_from).toBe('2026-11-01T23:00:00-05:00');
+        expect(legalVersionStatus(d, LEGAL_DOCUMENTS, before).state).toBe('upcoming');
+        expect(legalVersionStatus(d, LEGAL_DOCUMENTS, at).state).toBe('effective');
       } else {
         expect(d.effective_from).toBe('2026-10-21T00:00:00Z');
-        expect(legalVersionStatus(d).state).toBe('effective');
+        expect(legalVersionStatus(d, LEGAL_DOCUMENTS, at).state).toBe('effective');
       }
     }
   });
@@ -189,19 +195,31 @@ describe('E-5 effective-version resolver', () => {
   });
 });
 
-// ToS v2.0 (PO 2026-11-01) — the combined Business + Personal terms, registered dark.
+// ToS v2.0 (PO 2026-11-01) — the combined Business + Personal terms, effective 2026-11-01 23:00 EST.
+// Every assertion uses an injected clock (never wall time).
 describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
   const v20 = LEGAL_DOCUMENTS.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
-  const scheduled: LegalDocumentVersion = { ...v20, effective_from: '2026-11-02T00:00:00Z' };
-  const reg = LEGAL_DOCUMENTS.map((d) => (d === v20 ? scheduled : d));
-  const before = new Date('2026-11-01T23:59:59.999Z');
-  const after = new Date('2026-11-02T00:00:00Z');
+  const reg = LEGAL_DOCUMENTS;
+  const scheduled = v20;
+  const before = new Date('2026-11-01T22:59:59.999-05:00');
+  const after = new Date('2026-11-01T23:00:00-05:00');
 
-  it('is APPROVED at its stable Sign-host URL, pinned to the cleaned public text, and NOT effective (effective_from null)', () => {
-    expect(v20).toMatchObject({ status: 'APPROVED', path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', effective_from: null });
-    expect(v20.sha256).toBe('108337daf20fdc0e98f55c9c556752b07651f8f2ee7d5d13913f9df810324d58');
-    expect(effectiveLegalDocument('sign.terms_of_service')).toBeNull();
-    expect(approvedLegalDocument('sign.terms_of_service')).toBeNull();
+  it('is APPROVED at its stable Sign-host URL, pinned to the public text, effective at 2026-11-01 23:00 EST', () => {
+    expect(v20).toMatchObject({ status: 'APPROVED', path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', effective_from: '2026-11-01T23:00:00-05:00' });
+    expect(v20.sha256).toBe('86564c5dbe755867ad59b3005fad72d153690daa6b9cc784dee0a9f9fdc5375e');
+    expect(effectiveLegalDocument('sign.terms_of_service', LEGAL_DOCUMENTS, before)).toBeNull();
+    expect(approvedLegalDocument('sign.terms_of_service', LEGAL_DOCUMENTS, before)).toBeNull();
+    expect(effectiveLegalDocument('sign.terms_of_service', LEGAL_DOCUMENTS, after)).toBe(v20);
+    expect(approvedLegalDocument('sign.terms_of_service', LEGAL_DOCUMENTS, after)).toBe(v20);
+  });
+
+  it('the public text carries the counsel-approved B5.1, B5.3, B9.1 and the effective date', () => {
+    const text = readFileSync(resolve(ROOT, v20.path), 'utf8');
+    expect(text).toContain('| Effective date | November 1, 2026 |');
+    expect(text).toContain('B5.1 **Renewal.** Each Business subscription begins with a 12-month commitment, billed monthly.');
+    expect(text).toContain('B5.3 **Refunds.** Except as required by applicable law');
+    expect(text).toContain('B9.1 **Warranty.** Aramo will provide the Service with reasonable care and skill');
+    expect(text).not.toContain('automatically renews for');
   });
 
   it('the public text carries no counsel/fact notes and no notes-for-counsel section', () => {
@@ -234,9 +252,9 @@ describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
     expect(reg.find((d) => d.key === 'sign.personal_terms_of_service' && d.version === '1.0')!.url).toBe('https://sign.aramo.ai/legal/personal-terms/1.0');
   });
 
-  it('dark before release day: with the shipped registry every terms lookup is exactly as before v2.0 was registered', () => {
+  it('before 23:00 EST: with the shipped registry every terms lookup is exactly as before v2.0 was registered', () => {
     const without20 = LEGAL_DOCUMENTS.filter((d) => d !== v20);
-    for (const now of [new Date('2026-11-01T00:00:00Z'), new Date('2030-01-01T00:00:00Z')]) {
+    for (const now of [new Date('2026-11-01T00:00:00Z'), before]) {
       for (const kind of ['BUSINESS', 'PERSONAL']) {
         const key = checkoutTermsDocument(kind, LEGAL_DOCUMENTS, now);
         expect(key).toBe(checkoutTermsDocument(kind, without20, now));
@@ -251,7 +269,9 @@ describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
     const all = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
     expect(approvedLegalDocument('sign.terms_of_service', all)!.version).toBe('2.0');
     const only011 = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' && d.version === '0.1.1' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
-    expect(approvedLegalDocument('sign.terms_of_service', only011)!.version).toBe('0.1.1');
+    expect(approvedLegalDocument('sign.terms_of_service', only011, PRE_V20)!.version).toBe('0.1.1');
+    // From 2026-11-01 23:00 EST the real 2.0 is in force, so fixtures use the pre-v2.0 registry (tests/support/legal-registry.ts).
+    expect(approvedLegalDocument('sign.terms_of_service', only011, new Date('2026-11-01T23:00:00-05:00'))!.version).toBe('2.0');
   });
 
   it('a key without a predecessor never falls back', () => {

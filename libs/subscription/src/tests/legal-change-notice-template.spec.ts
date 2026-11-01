@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   LEGAL_CHANGE_NOTICE_TEMPLATE,
@@ -81,8 +81,14 @@ describe('legal change notice — what may be announced', () => {
     expect(refusal(() => notice({ version: '1.0' }))).toBe('version_is_current');
     expect(refusal(() => notice({ version: '1.2' }))).toBe('no_change_summary');
   });
-  it('refuses a document with no APPROVED published version', () => {
-    expect(refusal(() => describeLegalChange('sign.terms_of_service', '0.2.0'))).toBe('no_current_version');
+  it('refuses a document with no APPROVED published version (sign.terms_of_service before ToS v2.0 takes effect)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T22:59:59.999-05:00'));
+    try {
+      expect(refusal(() => describeLegalChange('sign.terms_of_service', '0.2.0'))).toBe('no_current_version');
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('a Personal-only document concerns Personal accounts; the rest concern everyone', () => {
     expect(legalChangeAudience('sign.personal_terms_of_service')).toBe('PERSONAL');
@@ -169,12 +175,19 @@ describe('in-service notice — upcoming changes', () => {
     expect(upcomingLegalNotices(s, 'PERSONAL', NOW)).toHaveLength(1);
   });
   it('skips entries that do not describe a real change', () => {
-    const s = src([
-      { key: 'sign.terms_of_service', version: '0.2.0', effective_date: '2026-12-31' },
-      { key: 'aramo.privacy_notice', version: '1.0', effective_date: '2026-12-31' },
-      { key: 'aramo.privacy_notice', version: '1.1', effective_date: 'soon' },
-    ]);
-    expect(upcomingLegalNotices(s, 'PERSONAL', NOW)).toEqual([]);
+    // At NOW (before ToS v2.0 takes effect) sign.terms_of_service has no current version.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const s = src([
+        { key: 'sign.terms_of_service', version: '0.2.0', effective_date: '2026-12-31' },
+        { key: 'aramo.privacy_notice', version: '1.0', effective_date: '2026-12-31' },
+        { key: 'aramo.privacy_notice', version: '1.1', effective_date: 'soon' },
+      ]);
+      expect(upcomingLegalNotices(s, 'PERSONAL', NOW)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('follows the registry it is given (a newer approved version moves the "current" link)', () => {
     const reg: LegalDocumentVersion[] = [

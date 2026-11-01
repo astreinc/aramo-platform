@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { checkoutTermsDocument, personalCheckoutDisclosure, planMatchesTenantKind } from '../lib/billing/subscription-lifecycle.service.js';
+import { LEGAL_DOCUMENTS } from '../lib/legal/legal-documents.js';
 
 // Sign Catalog v2 §4.3 (P-4) — the pure checkout rules: Personal-only eligibility in both
 // directions (fail closed on an unmarked plan for a PERSONAL tenant), the terms document per
@@ -16,9 +17,13 @@ describe('Sign Catalog v2 — Personal checkout rules', () => {
     expect(planMatchesTenantKind('PERSONAL', 'BUSINESS')).toBe(false);
   });
 
-  it('the checkout terms: the Personal Terms for a PERSONAL tenant, the Sign Terms otherwise', () => {
-    expect(checkoutTermsDocument('PERSONAL')).toBe('sign.personal_terms_of_service');
-    expect(checkoutTermsDocument('BUSINESS')).toBe('sign.terms_of_service');
+  it('the checkout terms: the Personal Terms for a PERSONAL tenant until ToS v2.0 takes effect (2026-11-01 23:00 EST), then the Sign Terms; the Sign Terms otherwise', () => {
+    const before = new Date('2026-11-01T22:59:59.999-05:00');
+    const at = new Date('2026-11-01T23:00:00-05:00');
+    expect(checkoutTermsDocument('PERSONAL', LEGAL_DOCUMENTS, before)).toBe('sign.personal_terms_of_service');
+    expect(checkoutTermsDocument('PERSONAL', LEGAL_DOCUMENTS, at)).toBe('sign.terms_of_service');
+    expect(checkoutTermsDocument('BUSINESS', LEGAL_DOCUMENTS, before)).toBe('sign.terms_of_service');
+    expect(checkoutTermsDocument('BUSINESS', LEGAL_DOCUMENTS, at)).toBe('sign.terms_of_service');
   });
 
   it('the disclosure states the price, the commitment, renewal, cancellation and the return to Free', () => {

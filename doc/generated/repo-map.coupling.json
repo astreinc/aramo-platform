@@ -29584,6 +29584,11 @@
     {
       "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
       "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
     },
     {

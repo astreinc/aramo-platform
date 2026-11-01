@@ -17,6 +17,7 @@ import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 import { SIGN_CATALOG_V2_MIGRATION, applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 import { withoutDisabledTax } from './fixtures/ccp-c5.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // CCP-A4 (PBD §5.1 A4 row) — MP-A2 N-8 (deterministic backfill counts) and N-13 (Sign
 // allowance semantics preserved), proved ACROSS the A4 migration on real Postgres 17.
@@ -97,7 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — Sign a
     await prisma.$connect();
     const allowance = new AllowanceService(prisma);
     const capacity = new CapacityService(prisma);
-    const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity);
+    const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     // The adapter: the ONLY code that differs between the capture run and this run.
     // CCP-A4: each call now names the product explicitly (SIGN_PRODUCT_KEY).
     const P = SIGN_PRODUCT_KEY;

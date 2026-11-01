@@ -17,6 +17,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Sign Catalog v2 §4.3 (P-4) — the Personal paid checkout on real Postgres 17: Personal-only
 // eligibility (both directions), Free → Standard in place (the FREE row ends on the provider's
@@ -122,7 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     // A Personal tenant has no organization profile or domain claim: both would refuse or hold.
     orgProfile.refused = 'organization_profile_incomplete';
     orgProfile.authoritative = false;
-    svc = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma), undefined, undefined, orgProfile);
+    svc = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, orgProfile);
     free = new FreePersonalSubscriptionService(prisma);
   });
 

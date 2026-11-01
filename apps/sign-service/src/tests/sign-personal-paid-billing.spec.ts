@@ -122,11 +122,20 @@ describe('Sign Catalog v2 — Personal paid billing (sign-service)', () => {
     expect(((await setup({ kind: 'BUSINESS', plan_key: null }).controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
   });
 
-  it('PP-5 GET plans: the catalog is evaluated for the tenant kind and carries the Personal Terms', async () => {
-    const { controller, lifecycle } = setup();
-    const out = (await controller.plans(auth(OWNER), 'r')) as { terms: { version: string; url: string } | null };
-    expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL');
-    expect(out.terms).toEqual({ version: '1.0', url: 'https://sign.aramo.ai/legal/personal-terms/1.0' });
+  it('PP-5 GET plans: the catalog is evaluated for the tenant kind and carries the Personal Terms (until ToS v2.0 takes effect, then v2.0)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-01T22:59:59.999-05:00'));
+      const { controller, lifecycle } = setup();
+      const out = (await controller.plans(auth(OWNER), 'r')) as { terms: { version: string; url: string } | null };
+      expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL');
+      expect(out.terms).toEqual({ version: '1.0', url: 'https://sign.aramo.ai/legal/personal-terms/1.0' });
+      vi.setSystemTime(new Date('2026-11-01T23:00:00-05:00'));
+      const after = (await setup().controller.plans(auth(OWNER), 'r')) as { terms: { version: string; url: string } | null };
+      expect(after.terms).toEqual({ version: '2.0', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   const code = (p: Promise<unknown>) => p.then(() => 'OK', (e: AramoError) => `${e.code}:${e.statusCode}:${String(e.context.details?.['reason'] ?? '')}`);

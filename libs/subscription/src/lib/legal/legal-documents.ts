@@ -78,27 +78,23 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     effective_from: null,
   },
   // Aramo Sign Terms of Service v2.0 — the combined Business + Personal terms,
-  // APPROVED 2026-11-01 (counsel and the Architect, relayed by the PO). The public
-  // text is the approved file with the approved defined removal (counsel/fact
-  // notes, notes-for-counsel section, internal metadata rows, the drafting-
-  // conventions paragraph; removal record in Aramo/documents), plus the PO
-  // business-policy selections of 2026-11-01 (B4.3 7 / B4.4 30 / B7.5 90 calendar
-  // days; B5.1 automatic renewal — wording pending counsel confirmation). B5.3 and
-  // B9.1 await counsel, and the effective-date row is set at activation; the
-  // publication-readiness spec blocks scheduling it until they are resolved.
-  // It replaces the 0.1.1 DRAFT above and, for Personal accounts,
-  // sign.personal_terms_of_service 1.0 (see effectivePersonalLegalDocument).
-  // effective_from is null on purpose (PO 2026-11-01): NOT yet effective — never
-  // offered, owed or served — until the release-day change sets the ship instant
-  // here AND in sign-web's legal catalog (a sign-web spec keeps the two equal).
+  // APPROVED 2026-11-01. The public text is the approved file with the approved
+  // defined removal (counsel/fact notes, notes-for-counsel section, internal metadata
+  // rows, the drafting-conventions paragraph), the PO business-policy selections
+  // (B4.3 7 / B4.4 30 / B7.5 90 calendar days) and the counsel-approved B5.1
+  // (month-to-month), B5.3 and B9.1 (relayed by the PO 2026-11-01 18:08 EST); the
+  // provenance chain is in the removal record (Aramo/documents). Effective at
+  // 2026-11-01 23:00 EST (the same instant in sign-web's legal catalog): before it,
+  // v2.0 is "upcoming"; from it, v2.0 replaces the 0.1.1 DRAFT above and, for
+  // Personal accounts, sign.personal_terms_of_service 1.0 (effectivePersonalLegalDocument).
   {
     key: 'sign.terms_of_service',
     version: '2.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo-sign/terms-of-service-2.0.md',
-    sha256: '108337daf20fdc0e98f55c9c556752b07651f8f2ee7d5d13913f9df810324d58',
+    sha256: '86564c5dbe755867ad59b3005fad72d153690daa6b9cc784dee0a9f9fdc5375e',
     url: 'https://sign.aramo.ai/legal/terms-of-service/2.0',
-    effective_from: null,
+    effective_from: '2026-11-01T23:00:00-05:00',
   },
   // Aramo Sign Personal (Free) — APPROVED 1.0 (PO, 2026-10-21).
   {

@@ -10,6 +10,7 @@ import { CommercialPolicyRepository } from '../../lib/commercial/commercial-poli
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 
 import { type C1Harness, c1Harness } from './ccp-c1.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './legal-registry.js';
 
 // CCP-C2 — ONE shared harness for the C2 specs (CLAUDE.md: one shared test helper): the C1 harness
 // (change requests, A6 apply, the fake Stripe with the command port and its no-transaction probe)
@@ -28,7 +29,7 @@ export function c2Harness(prisma: PrismaService, now: () => Date): C2Harness {
   const policies = new CommercialPolicyRepository(prisma);
   const operators = new CommercialOperatorRepository(prisma, audit, policies);
   const ledger = new CommercialConversionLedger(audit);
-  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, base.billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, base.billing, ledger);
+  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, base.billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, base.orgProfile, base.billing, ledger);
   const commands = new BillingCommandService(prisma, base.billing, lifecycle, base.billing);
   const inbox = new BillingWebhookInboxService(prisma, base.billing, lifecycle);
   const conversions = new CommercialConversionService(prisma, audit, operators, base.changeRequests, ledger, commands, lifecycle, now);

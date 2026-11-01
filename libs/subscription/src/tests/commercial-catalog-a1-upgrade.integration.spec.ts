@@ -14,6 +14,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // A1 review — ordered migration replay of the UPGRADE path: a database that
 // applied the ORIGINAL 20261019100000 (which seeded the superseded
@@ -98,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   });
 
   it('the public catalog is exactly the four approved plans', async () => {
-    const svc = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma));
+    const svc = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     expect((await svc.catalog('sign')).map((p) => p.key)).toEqual(FOUR);
   });
 

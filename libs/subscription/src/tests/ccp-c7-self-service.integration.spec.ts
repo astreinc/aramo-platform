@@ -8,7 +8,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { SELF_SERVICE_PRODUCTS, SelfServiceBillingService, SelfServiceRefusedError } from '../lib/billing/self-service-billing.service.js';
-import { LEGAL_DOCUMENTS, type LegalDocumentVersion, legalRef } from '../lib/legal/legal-documents.js';
+import { type LegalDocumentVersion, legalRef } from '../lib/legal/legal-documents.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PRODUCT_KEYS } from '../lib/product-registry.js';
 
@@ -17,6 +17,7 @@ import { ISOLATION_TEST_PRODUCT_KEY, registerIsolationTestProduct } from './fixt
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C2Harness, c2Harness } from './support/ccp-c2.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // CCP-C7 (PBD §5.2 row C7, §10; Charter :95, :99; Conversion Rule C-15, C-22, C-23; MP-A2 N-12;
 // decisions DR-C2-1, TD-C1-2, T8) — tenant self-service visibility and the owner's cancel / upgrade
@@ -40,7 +41,7 @@ const ISO = ISOLATION_TEST_PRODUCT_KEY;
 const ISO_PLAN = '019a0000-5150-7000-8000-0000000c7002';
 
 /** TEST ONLY — the shipped Sign ToS entry marked APPROVED, to exercise the path behind the gate. */
-const APPROVED_TERMS: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS.map((d) =>
+const APPROVED_TERMS: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS_BEFORE_TOS_V20.map((d) =>
   // ToS v2.0 — only the 0.1.1 entry (the registry also holds 2.0, unscheduled; left as shipped).
   d.key === 'sign.terms_of_service' && d.version === '0.1.1' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d,
 );
@@ -77,7 +78,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C7 multi-prod
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS}=price_business`;
     h = c2Harness(prisma, () => now);
     h.billing.attachProbe(probe);
-    shipped = new SelfServiceBillingService(prisma, h.commands, h.lifecycle);
+    shipped = new SelfServiceBillingService(prisma, h.commands, h.lifecycle, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     approved = new SelfServiceBillingService(prisma, h.commands, h.lifecycle, APPROVED_TERMS);
     OPS = await addOperator(pg, ['commercial_ops']);
     FA = await addOperator(pg, ['finance_admin']);

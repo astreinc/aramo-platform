@@ -18,6 +18,7 @@ import { FakeOrganizationBillingProfile, US_PROFILE } from './fixtures/organizat
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
 // owner-attributed activation, replacement of an operator subscription, status +
@@ -134,7 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     billing = new FakeBilling();
     allowance = new AllowanceService(prisma);
     orgProfile = new FakeOrganizationBillingProfile();
-    svc = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, undefined, orgProfile);
+    svc = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, orgProfile);
   });
 
   const checkout = (tenant_id = t, user_id = 'owner-1') =>
@@ -298,7 +299,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_country_not_supported');
     orgProfile.refused = 'organization_profile_incomplete';
     expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete');
-    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
+    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     expect(await reasonOf(unbound.startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'o', user_email: 'e', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'x', cancel_url: 'y' }))).toBe(
       'ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete',
     );
@@ -479,7 +480,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('P3 guard: an unbound profile port fails closed at activation', async () => {
     await checkout();
     const sub = billing.complete('active');
-    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
+    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     expect(await unbound.syncSubscription(sub.subscription_ref, 'sign', AT)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
     expect(await subRows(t)).toEqual([]);
   });

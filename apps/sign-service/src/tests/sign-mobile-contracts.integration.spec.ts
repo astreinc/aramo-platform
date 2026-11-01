@@ -18,6 +18,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../app/app.module.js';
 
+import { acceptTosV20 } from './fixtures/tos-v20-acceptance.js';
+
 // Aramo Sign Mobile — the envelope contracts END TO END over HTTP (real AppModule,
 // real migrations, real RBAC, RS256 browser and native tokens):
 //   M-A3 §6  ETag on detail; If-Match required for native tokens (428), enforced
@@ -84,6 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile envel
     await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1,$2,$3, now())`, [m, userId, tenant]);
     await db.query(`INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id) SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'sign_sender'`, [m]);
     await db.query(`INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at) VALUES (gen_random_uuid(),$1,$2,1, now())`, [tenant, userId]);
+    await acceptTosV20(db, tenant, userId, email);
   }
 
   // A SENT envelope of ANN with one signer and a live emailed link.

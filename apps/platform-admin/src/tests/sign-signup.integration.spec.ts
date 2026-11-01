@@ -69,8 +69,12 @@ const SUBSCRIPTION_MIGRATIONS = [
   'libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql',
 ].map((p) => resolve(__dirname, '../../../..', p));
 const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0', effective_from: '2026-01-01T00:00:00Z' };
+// ToS v2.0 â€” the shipped registry as before ToS v2.0 was registered (it takes effect 2026-11-01
+// 23:00 EST), so these signup cases do not depend on the wall clock; ToS v2.0 itself is covered
+// by the unit specs with an injected clock.
+const SHIPPED_BEFORE_TOS_V20 = LEGAL_DOCUMENTS.filter((d) => !(d.key === 'sign.terms_of_service' && d.version === '2.0'));
 // Mutable per test: the registry array the signup service holds.
-const registryDocs: LegalDocumentVersion[] = [...LEGAL_DOCUMENTS];
+const registryDocs: LegalDocumentVersion[] = [...SHIPPED_BEFORE_TOS_V20];
 const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.splice(0, registryDocs.length, ...docs);
 
 // ROLES-1 PR-2 â€” row 0x2b0 is tenant_admin (formerly org_admin); sign_owner is retired.
@@ -164,7 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   }, 60_000);
 
   beforeEach(() => {
-    useRegistry(LEGAL_DOCUMENTS);
+    useRegistry(SHIPPED_BEFORE_TOS_V20);
     module.get(SignupBudget).reset();
     process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '1';
   });
@@ -372,7 +376,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   });
 
   it('terms: an approved version must be accepted at start and is recorded for the new tenant', async () => {
-    useRegistry([...LEGAL_DOCUMENTS, APPROVED_TERMS]);
+    useRegistry([...SHIPPED_BEFORE_TOS_V20, APPROVED_TERMS]);
     expect((await http().get('/v1/signup/sign/terms')).body).toEqual({ terms: { version: '1.0.0', url: APPROVED_TERMS.url } });
     const c = company();
     const refused = await http().post('/v1/signup/sign/start').send(c);
