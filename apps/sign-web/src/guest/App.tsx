@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SignApiError, signApi, type SignField, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
-import { FILLED_MARK, completionProblem, incompleteMessage, isBox, isChecked, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isPayment, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -44,6 +44,7 @@ const FIELD_LABEL: Record<string, string> = {
   TEXT: 'Text',
   CHECKBOX: 'Checkbox',
   ACKNOWLEDGEMENT: 'Acknowledgement',
+  PAYMENT: 'Payment',
 };
 const ACTION_LABEL: Record<string, string> = {
   SIGNATURE: 'Sign',
@@ -53,6 +54,7 @@ const ACTION_LABEL: Record<string, string> = {
   TEXT: 'Enter text',
   CHECKBOX: 'Check',
   ACKNOWLEDGEMENT: 'Acknowledge',
+  PAYMENT: 'Pay',
 };
 
 // M-A6 — a check box shows its caption; a server-filled name says where it is from.
@@ -82,7 +84,27 @@ function ReportLink({ token, className }: { readonly token?: string; readonly cl
   );
 }
 
+// Sign 1.14 — Stripe returns the payer to /s/payment-return?field=…&payment=success|cancel.
+// The signing token never goes to Stripe: it is kept in this tab while the payer is away.
+const PAYMENT_RETURN_PATH = '/s/payment-return';
+const PAYMENT_TOKEN_KEY = 'aramo-sign-payment-token';
+
+function paymentReturn(): { field_id: string } | null {
+  if (window.location.pathname !== PAYMENT_RETURN_PATH) return null;
+  const field_id = new URLSearchParams(window.location.search).get('field');
+  return field_id !== null && field_id.length > 0 ? { field_id } : null;
+}
+
+function storedPaymentToken(): string {
+  try {
+    return window.sessionStorage.getItem(PAYMENT_TOKEN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 function tokenFromLocation(): string {
+  if (window.location.pathname === PAYMENT_RETURN_PATH) return storedPaymentToken();
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
@@ -469,6 +491,8 @@ export function App(): JSX.Element {
   const [allSigned, setAllSigned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
+  // Sign 1.14 — the workspace loader, for the payment return (declared below).
+  const loadWorkspaceRef = useRef<() => Promise<void>>(async () => undefined);
 
   const fail = useCallback((e: unknown) => setScreen(screenForError(e)), []);
   const onRenderError = useCallback(() => setRenderFailed(true), []);
@@ -476,11 +500,24 @@ export function App(): JSX.Element {
   const open = useCallback(() => {
     if (token.length === 0) return;
     setScreen('loading');
+    const back = paymentReturn();
     signApi
       .exchange(token)
       .then(() => signApi.disclosureText(token))
-      .then((d) => {
+      .then(async (d) => {
         setDisclosure(d);
+        // Sign 1.14 — back from Stripe: confirm the payment (the server reads it from
+        // Stripe), then return to the document (the disclosure was already accepted).
+        if (back !== null) {
+          try {
+            const r = await signApi.confirmPayment(token, back.field_id);
+            await loadWorkspaceRef.current();
+            if (r.status !== 'PAID') setNotice('The payment was not completed. You can pay again from the payment field.');
+            return;
+          } catch {
+            // Fall back to the start of the signing flow.
+          }
+        }
         setScreen('landing');
       })
       .catch(fail);
@@ -526,6 +563,8 @@ export function App(): JSX.Element {
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
     setScreen('workspace');
   };
+
+  loadWorkspaceRef.current = loadWorkspace;
 
   const acceptAndContinue = async () => {
     setBusy(true);
@@ -583,6 +622,12 @@ export function App(): JSX.Element {
     const done = filled[f.field_id] !== undefined;
     // M-A6 §2.2 — the server fills this name; the page never sends one.
     if (isServerName(f)) return;
+    // Sign 1.14 — a payment is made on Stripe's hosted page (never on this page).
+    if (isPayment(f)) {
+      if (done) return;
+      void pay(f);
+      return;
+    }
     if (t === 'SIGNATURE' || t === 'INITIALS') {
       const a = adopted[t];
       if (a && !done) void fill(f, a.value, a.method);
@@ -605,9 +650,41 @@ export function App(): JSX.Element {
     }
     await fill(f, 'true');
   };
-  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f);
+  // Sign 1.14 — send the payer to Stripe's hosted Checkout (the organization's own Stripe
+  // account). The token stays in this tab for the return; it is never sent to Stripe.
+  const pay = async (f: SignField) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await signApi.startPayment(token, f.field_id);
+      if (r.status === 'PAID') {
+        await loadWorkspace();
+        return;
+      }
+      try {
+        window.sessionStorage.setItem(PAYMENT_TOKEN_KEY, token);
+      } catch {
+        setNotice('Your browser blocked the payment page. Allow site storage for this page and try again.');
+        return;
+      }
+      window.location.assign(r.checkout_url);
+    } catch (e) {
+      const s = screenForError(e);
+      if (e instanceof SignApiError && (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' || e.reason === 'payments_account_not_ready')) {
+        setNotice('The sender cannot take payments right now. Contact the sender.');
+      } else if (s === 'error' || s === 'network') setNotice('The payment page could not be opened. Try again in a moment.');
+      else setScreen(s);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f) && !isPayment(f);
   const statusOf = (f: SignField): string => {
     if (isServerName(f)) return 'From the signing request';
+    if (isPayment(f)) {
+      const amount = f.payment ? formatAmount(f.payment.amount_minor, f.payment.currency) : '';
+      return filled[f.field_id] !== undefined ? `Paid ${amount}` : `Payment required · ${amount}`;
+    }
     if (isBox(f)) return isChecked(filled[f.field_id]) ? 'Checked' : 'Not checked';
     return filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped';
   };

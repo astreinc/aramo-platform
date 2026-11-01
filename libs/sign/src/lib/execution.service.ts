@@ -23,6 +23,7 @@ import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from 
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { signingRecipients } from './domain/recipients.js';
+import { formatPaymentAmount } from './payments/sign-payment.repository.js';
 import {
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
   EXECUTED_DOCUMENT_RECORDED,
@@ -88,6 +89,22 @@ function checkboxLines(
         ? `${f.field_type === 'ACKNOWLEDGEMENT' ? 'Acknowledgement' : 'Checkbox'} "${f.label}"`
         : f.field_type === 'ACKNOWLEDGEMENT' ? `Acknowledgement (page ${f.page_number + 1})` : `Checkbox (page ${f.page_number + 1})`;
       return `${name}: ${f.filled_at !== null && f.value === 'true' ? 'checked' : 'not checked'}`;
+    });
+}
+
+// Sign 1.14 — one certificate line per payment of a signer: amount, status and the Stripe
+// payment reference (collected on the sender's connected account; Aramo holds no funds).
+function paymentLines(
+  payments: ReadonlyArray<{ signer_id: string; amount_minor: number; currency: string; status: string; payment_ref: string | null; paid_at: Date | null; amount_refunded_minor: number }>,
+  signer_id: string,
+): string[] {
+  return payments
+    .filter((p) => p.signer_id === signer_id)
+    .map((p) => {
+      const amount = formatPaymentAmount(p.amount_minor, p.currency);
+      if (p.paid_at === null || p.payment_ref === null) return `Payment: ${amount} — ${p.status.toLowerCase()}`;
+      const refunded = p.amount_refunded_minor > 0 ? ` (refunded ${formatPaymentAmount(p.amount_refunded_minor, p.currency)})` : '';
+      return `Payment: ${amount} — paid ${p.paid_at.toISOString()} via Stripe, payment ${p.payment_ref}${refunded}`;
     });
 }
 
@@ -244,6 +261,8 @@ export class ExecutionService implements ExecutionProducerPort {
     if (priorCertificate !== null) return results;
 
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
+    // Sign 1.14 — each signer's payment (status and Stripe reference) on the certificate.
+    const payments = await this.prisma.signPayment.findMany({ where: { tenant_id, envelope_id }, orderBy: { created_at: 'asc' } });
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
@@ -267,6 +286,7 @@ export class ExecutionService implements ExecutionProducerPort {
           : []),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        ...paymentLines(payments, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },

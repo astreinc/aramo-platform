@@ -5,6 +5,7 @@ import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantR
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -54,7 +55,8 @@ export interface SenderContextView {
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (sign.templates).
   // M-A5 §3.7 — sign.in_person_signing (hosted signing).
-  features: { templates: boolean; in_person_signing: boolean };
+  // Sign 1.14 — payments: sign.payments available, Connect configured and the plan entitled.
+  features: { templates: boolean; in_person_signing: boolean; payments: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
@@ -91,6 +93,8 @@ export class SenderContextService {
     @Optional() private readonly personal?: PersonalSendGate,
     // Sign Mobile B-11 — the provider recorded for the user's sign-in link.
     @Optional() private readonly idps?: IdentityProviderPolicyService,
+    // Sign 1.14 — payment availability (absent ⇒ payments off).
+    @Optional() private readonly payments?: SignPaymentsGate,
   ) {}
 
   // Sign Mobile B-11 (directive §4) — "Signed in with Google/Microsoft". The source
@@ -194,6 +198,7 @@ export class SenderContextService {
       features: {
         templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE),
         in_person_signing: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
+        payments: this.payments === undefined ? false : await this.payments.available(tenant.id).catch(() => false),
       },
       can_send: (business || personalOpen) && permissions.create && permissions.send,
       personal_sending_enabled: personalOpen,

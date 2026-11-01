@@ -375,7 +375,16 @@ paths:
                           description: M-A6 §2.2 — SIGNER_NAME only; null for engine name fields, which the signer types.
                         server_filled:
                           type: boolean
-                          description: M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client.
+                          description: >-
+                            M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client.
+                            Sign 1.14 — also true for a PAYMENT field, which is filled (with its receipt line) only
+                            when the payment succeeds; the signer pays it through /v1/sign/signing/payment/checkout.
+                        payment:
+                          type: [object, 'null']
+                          description: Sign 1.14 — the amount to pay for a PAYMENT field (null for every other type).
+                          properties:
+                            amount_minor: { type: integer }
+                            currency: { type: string, enum: [USD] }
                   message:
                     type: [string, 'null']
                     maxLength: 1000
@@ -4432,6 +4441,375 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  # ── Aramo Sign 1.14 — payment collection through Stripe Connect ──
+  # (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.14, R-6; Amendment A1). Dark:
+  # sign.payments is NOT_AVAILABLE and SIGN_STRIPE_CONNECT_* unset. Aramo never holds the
+  # funds: each payment is a direct charge on the organization's own connected Stripe account,
+  # paid on Stripe's hosted Checkout page (no card data reaches Aramo).
+  /v1/sign/signing/payment/checkout:
+    post:
+      operationId: startSignerPaymentCheckout
+      security: []
+      summary: Start (or resume) the payment of one of the signer's PAYMENT fields.
+      description: >-
+        Token-authorized and disclosure-gated, with the same guards as filling a field (live session,
+        the signer's turn, a signable envelope). Returns the URL of Stripe's hosted Checkout page on the
+        sending organization's connected account (a direct charge), or status PAID when the field is
+        already paid. The signing token is never sent to Stripe: Stripe returns the payer to
+        /s/payment-return. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason) while payments
+        are not available, 409 details.reason payments_account_not_ready while the organization's
+        account cannot take charges, 503 ESIGN_PAYMENTS_UNAVAILABLE when Stripe cannot be reached.
+      tags: [sender]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, field_id]
+              properties:
+                token: { type: string }
+                field_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The checkout to send the payer to, or PAID.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [CHECKOUT, PAID]
+                  checkout_url:
+                    type: string
+                    format: uri
+                    description: Present when status is CHECKOUT (a Stripe-hosted page).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ESIGN_FEATURE_NOT_AVAILABLE — payments are not available (details.reason).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: SIGNER_NOT_FOUND — not one of this signer's PAYMENT fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/payment/confirm:
+    post:
+      operationId: confirmSignerPayment
+      security: []
+      summary: After the payer returns from Stripe, read the checkout through and record a paid payment.
+      description: >-
+        Token-authorized. The browser never asserts a payment: the server reads the checkout from
+        Stripe and records it only when Stripe reports it paid (the Connect webhook records it too).
+        Once PAID, the PAYMENT field is filled with the receipt line and the signer can complete.
+      tags: [sender]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, field_id]
+              properties:
+                token: { type: string }
+                field_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The payment's status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [PENDING, PAID, EXPIRED, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ESIGN_FEATURE_NOT_AVAILABLE — payments are not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/payments/webhook/stripe:
+    post:
+      operationId: receiveStripeConnectWebhook
+      summary: Stripe Connect webhook receiver (payments collected for organizations).
+      description: >
+        No session. A Connect endpoint SEPARATE from the Aramo billing webhook, with its own signing
+        secret (SIGN_STRIPE_CONNECT_WEBHOOK_SECRET). Authenticity is the Stripe-Signature header
+        (HMAC-SHA256 over the raw body, 300 second tolerance). Handles account.updated,
+        account.application.deauthorized, checkout.session.completed / async_payment_succeeded /
+        async_payment_failed / expired, charge.refunded and refund.created / updated / failed. Each
+        event is processed at most once; a processing failure returns 5xx so Stripe redelivers.
+        404 while payments are not configured (dark).
+      tags: [sender]
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE, FAILED]
+        '401':
+          description: The signature is missing, stale or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/payments/account:
+    get:
+      operationId: getSenderPaymentAccount
+      summary: The organization's payment availability and connected Stripe account.
+      description: >-
+        Requires sign:envelope:read. available is true only while sign.payments is available, Stripe
+        Connect is configured and the plan is Standard Professional or Enterprise; unavailable_reason
+        names the first refusal. can_manage is true for sign:settings:manage (Sign Admin).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/payments/account/onboarding-link:
+    post:
+      operationId: createSenderPaymentOnboardingLink
+      summary: Create the organization's Stripe Standard account (first time) and return Stripe's hosted onboarding link.
+      description: >-
+        Requires sign:settings:manage. The account is a Stripe Standard account owned by the
+        organization (its funds, payouts and refunds stay with it). The link expires; Stripe returns
+        the admin to Settings → Payments. 403 ESIGN_FEATURE_NOT_AVAILABLE while payments are not available.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: The Stripe-hosted onboarding link.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expires_at]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/sender/payments/account/refresh:
+    post:
+      operationId: refreshSenderPaymentAccount
+      summary: Re-read the connected account from Stripe (charges enabled, details submitted).
+      description: Requires sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/sender/payments/account/disconnect:
+    post:
+      operationId: disconnectSenderPaymentAccount
+      summary: Stop collecting payments through the connected account.
+      description: >-
+        Requires sign:settings:manage. Aramo stops using the account; the Stripe account itself, its
+        balance and history stay the organization's. Earlier payments can still be refunded.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPaymentAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/payments:
+    get:
+      operationId: listSenderEnvelopePayments
+      summary: The payments collected on an envelope, with their refunds.
+      description: Requires sign:envelope:read and visibility of the envelope. can_refund is true for sign:settings:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, can_refund]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignEnvelopePayment'
+                  can_refund:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/payments/{paymentId}/refund:
+    post:
+      operationId: refundSenderEnvelopePayment
+      summary: Refund a payment (in full or in part) through Stripe, on the account that collected it.
+      description: >-
+        Requires sign:settings:manage and visibility of the envelope. amount_minor omitted refunds
+        everything still refundable. The refund is a Stripe refund on the organization's connected
+        account; a refusal by Stripe answers 400 details.reason payment_provider_refused, an amount
+        above what remains 409 details.reason refund_amount_invalid. Every request and result is a
+        ledger event on the envelope.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount_minor:
+                  type: [integer, 'null']
+                  minimum: 1
+                reason:
+                  type: [string, 'null']
+                  maxLength: 500
+      responses:
+        '200':
+          description: The payment after the refund request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignEnvelopePayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: ESIGN_PAYMENTS_UNAVAILABLE — Stripe could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     senderSession:
@@ -4631,6 +5009,98 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    # Aramo Sign 1.14 — payment collection (Stripe Connect).
+    SignPaymentAccount:
+      type: object
+      required: [available, unavailable_reason, account, application_fee_minor, can_manage]
+      properties:
+        available:
+          type: boolean
+        unavailable_reason:
+          type: [string, 'null']
+          enum: [feature_not_available, payments_not_configured, plan_not_entitled, null]
+        account:
+          type: [object, 'null']
+          required: [status, charges_enabled, details_submitted, payouts_enabled, live, connected_at, disconnected_at]
+          properties:
+            status:
+              type: string
+              enum: [CONNECTED, DISCONNECTED]
+            charges_enabled:
+              type: boolean
+            details_submitted:
+              type: boolean
+            payouts_enabled:
+              type: boolean
+            live:
+              type: boolean
+              description: False while the Connect platform key is a test key.
+            connected_at:
+              type: string
+              format: date-time
+            disconnected_at:
+              type: [string, 'null']
+              format: date-time
+        application_fee_minor:
+          type: integer
+          minimum: 0
+          description: Aramo's fee per payment in cents (default 0).
+        can_manage:
+          type: boolean
+    SignEnvelopePayment:
+      type: object
+      required: [id, signer_id, field_id, amount_minor, currency, status, amount_refunded_minor, refundable_minor, payment_ref, paid_at, live, refunds]
+      properties:
+        id:
+          type: string
+          format: uuid
+        signer_id:
+          type: string
+          format: uuid
+        field_id:
+          type: string
+          format: uuid
+        amount_minor:
+          type: integer
+        currency:
+          type: string
+          enum: [USD]
+        status:
+          type: string
+          enum: [PENDING, PAID, FAILED, PARTIALLY_REFUNDED, REFUNDED]
+        amount_refunded_minor:
+          type: integer
+        refundable_minor:
+          type: integer
+        payment_ref:
+          type: [string, 'null']
+          description: The Stripe payment reference (on the organization's connected account).
+        paid_at:
+          type: [string, 'null']
+          format: date-time
+        live:
+          type: boolean
+        refunds:
+          type: array
+          items:
+            type: object
+            required: [id, amount_minor, status, refund_ref, reason, created_at]
+            properties:
+              id:
+                type: string
+                format: uuid
+              amount_minor:
+                type: integer
+              status:
+                type: string
+                enum: [REQUESTED, PENDING, SUCCEEDED, FAILED, CANCELED]
+              refund_ref:
+                type: [string, 'null']
+              reason:
+                type: [string, 'null']
+              created_at:
+                type: string
+                format: date-time
     SignPurgeLevel:
       type: string
       enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
@@ -5250,6 +5720,11 @@ components:
             in_person_signing:
               type: boolean
               description: Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available.
+            payments:
+              type: boolean
+              description: >-
+                Sign 1.14 — payment collection is available: sign.payments is available, Stripe Connect is
+                configured and the plan is Standard Professional or Enterprise.
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -5953,7 +6428,7 @@ components:
           format: uuid
         field_type:
           type: string
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT, PAYMENT]
         page_number:
           type: integer
           minimum: 0
@@ -5969,6 +6444,13 @@ components:
           type: boolean
         filled:
           type: boolean
+        payment_amount_minor:
+          type: [integer, 'null']
+          description: Sign 1.14 — PAYMENT only; the amount in cents.
+        payment_currency:
+          type: [string, 'null']
+          enum: [USD, null]
+          description: Sign 1.14 — PAYMENT only.
         name_mode:
           type: [string, 'null']
           enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
@@ -6043,8 +6525,10 @@ components:
           type: string
           description: >-
             M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the
-            service-to-service and Sign API paths keep all seven engine types).
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX]
+            service-to-service and Sign API paths keep all seven engine types). Sign 1.14 — PAYMENT
+            is accepted only while payments are available to the organization (403
+            ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient.
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX, PAYMENT]
         page_number:
           type: integer
           minimum: 0
@@ -6086,6 +6570,15 @@ components:
           type: [integer, 'null']
           minimum: 1
           description: M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE).
+        payment_amount_minor:
+          type: [integer, 'null']
+          minimum: 50
+          maximum: 99999999
+          description: Sign 1.14 — PAYMENT only (required for it); the amount in cents.
+        payment_currency:
+          type: [string, 'null']
+          enum: [USD, null]
+          description: Sign 1.14 — PAYMENT only; USD (the default and the only currency).
     SenderUploadedDocument:
       type: object
       required: [id, envelope_id, title, ordinal, byte_size, page_count, pages, revision]

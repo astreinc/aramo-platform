@@ -144,6 +144,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_WEBHOOKS_UNAVAILABLE: 503,
   // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (sign.templates).
   ESIGN_FEATURE_NOT_AVAILABLE: 403,
+  // Aramo Sign 1.14 — Stripe Connect not reachable (network, rate limit, 5xx).
+  ESIGN_PAYMENTS_UNAVAILABLE: 503,
   SIGNER_NOT_FOUND: 404,
   SIGNER_NOT_YET_ELIGIBLE: 409,
   SIGNING_SESSION_INVALID: 401,

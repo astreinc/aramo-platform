@@ -10,6 +10,7 @@ import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 import { RetentionSection } from './Retention';
+import { PaymentsSection } from './Payments';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -36,6 +37,8 @@ const SECTIONS = [
   { key: 'security', label: 'Signing security' },
   // Retention and Purge directive (DocuSign parity) — keep forever, or purge after N days.
   { key: 'retention', label: 'Document retention' },
+  // Aramo Sign 1.14 — payment collection through the organization's own Stripe account.
+  { key: 'payments', label: 'Payments' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'audit', label: 'Envelope audit' },
 ] as const;
@@ -49,7 +52,9 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
     ? ['personal', 'retention']
     : SECTIONS.map((s) => s.key)
         .filter((k) => k !== 'members' || ctx.permissions.members === true)
-        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
+        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
+        // Sign 1.14 — shown only while payments are available to this organization.
+        .filter((k) => k !== 'payments' || ctx.features?.payments === true);
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   const orgLink = useOrgLink();
@@ -79,6 +84,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'retention' ? <RetentionSection /> : null}
+          {section === 'payments' ? <PaymentsSection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
           {section === 'audit' ? <AuditSection /> : null}
         </div>

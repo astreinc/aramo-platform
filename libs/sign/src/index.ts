@@ -31,6 +31,7 @@ export {
   type SignerDocumentMeta,
   type SignerDocumentView,
   type SignerSourceDescriptor,
+  type SignerPaymentField,
   ENVELOPE_TTL_DAYS_DEFAULT,
   envelopeExpiresAt,
 } from './lib/esign.service.js';
@@ -85,7 +86,9 @@ export {
   CHECKBOX_GROUP_RULES,
   SIGNER_NAME_MODES,
   evaluateSignerFieldRules,
+  isPaymentField,
   isServerFilledName,
+  PAYMENT_FIELD_TYPE,
   type CheckboxGroupRule,
   type SignerNameMode,
   type FieldRuleRow,
@@ -329,3 +332,37 @@ export {
   type PurgeObjectsReport,
   type ExecuteOutcome,
 } from './lib/retention/sign-purge.repository.js';
+
+// Aramo Sign 1.14 (Feature-Parity directive §1.14, R-6) — payment collection through Stripe
+// Connect: the vendor-neutral port and the payment records. Dark until enabled.
+export {
+  SIGN_PAYMENT_PROVIDER_PORT,
+  PaymentProviderRefusedError,
+  PaymentProviderUnavailableError,
+  PaymentWebhookSignatureError,
+  type PaymentProviderPort,
+  type PaymentAccountState,
+  type PaymentCheckoutRequest,
+  type PaymentCheckoutState,
+  type PaymentRefundRequest,
+  type PaymentRefundState,
+  type PaymentChargeState,
+  type VerifiedPaymentEvent,
+} from './lib/ports/payment-provider.port.js';
+export {
+  SignPaymentRepository,
+  SignPaymentStateError,
+  PAYMENT_CHECKOUT_STARTED,
+  PAYMENT_SUCCEEDED,
+  PAYMENT_FAILED,
+  PAYMENT_REFUND_REQUESTED,
+  PAYMENT_REFUNDED,
+  PAYMENT_REFUND_FAILED,
+  PAYMENT_LEDGER_EVENT_TYPES,
+  formatPaymentAmount,
+  paymentReceiptText,
+  type SignPaymentStatus,
+  type SignPaymentAccountRow,
+  type SignPaymentRow,
+  type SignPaymentRefundRow,
+} from './lib/payments/sign-payment.repository.js';

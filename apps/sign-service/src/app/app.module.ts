@@ -15,6 +15,7 @@ import {
   OutboxService,
   SENDER_DIRECTORY_PORT,
   SIGNING_NOTIFICATION_PORT,
+  SIGN_PAYMENT_PROVIDER_PORT,
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
@@ -110,6 +111,12 @@ import { SignPrivacyPublicController } from './privacy/sign-privacy-public.contr
 import { PrivacyWebBudget, SignPrivacyRequestService } from './privacy/sign-privacy-request.service.js';
 import { SignPrivacyExecutionService } from './privacy/sign-privacy-execution.service.js';
 import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.worker.js';
+// Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
+import { SignPaymentService } from './payments/sign-payment.service.js';
+import { SIGN_PAYMENTS_PLAN_SOURCE, SignPaymentsGate, SubscriptionPlanSource } from './payments/sign-payments.gate.js';
+import { SignPaymentsPublicController } from './payments/sign-payments-public.controller.js';
+import { SignPaymentsSenderController } from './payments/sign-payments-sender.controller.js';
+import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.provider.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -209,7 +216,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignPaymentsSenderController, SignPaymentsPublicController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -273,6 +280,13 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignPrivacyRequestService,
     SignPrivacyExecutionService,
     SignPrivacyExecutionWorker,
+    // Aramo Sign 1.14 — payments (Stripe Connect adapter of the vendor-neutral port; inert
+    // unless SIGN_STRIPE_CONNECT_ENABLED=1 with both SIGN_STRIPE_CONNECT_* keys, and
+    // sign.payments AVAILABLE, and the plan entitled).
+    { provide: SIGN_PAYMENT_PROVIDER_PORT, useClass: StripeConnectPaymentProvider },
+    { provide: SIGN_PAYMENTS_PLAN_SOURCE, useClass: SubscriptionPlanSource },
+    SignPaymentsGate,
+    SignPaymentService,
     // M-A8 §3.5 — the identity retirement port and the dependency inspector are
     // identity-owned (IdentityCoreModule); sign-service no longer binds a Cognito adapter.
   ],

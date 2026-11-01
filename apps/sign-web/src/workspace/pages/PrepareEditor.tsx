@@ -31,6 +31,9 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
   TEXT: { label: 'Text', glyph: 'T', w: 220, h: 22 },
   CHECKBOX: { label: 'Checkbox', glyph: '☑', w: 14, h: 14 },
   ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓', w: 400, h: 26 },
+  // Sign 1.14 — a payment (placed through the API for now): shown locked here and sent back
+  // with its amount on save.
+  PAYMENT: { label: 'Payment', glyph: '$', w: 160, h: 26 },
 };
 const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
 // PX-V1 §15 — the sender authoring types; the rest are shown but not placeable.

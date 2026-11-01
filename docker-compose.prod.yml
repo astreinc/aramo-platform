@@ -572,6 +572,13 @@ services:
       # the worker never runs and every retention write is refused (403 purge_not_enabled).
       - SIGN_PURGE_ENABLED
       - SIGN_PURGE_INTERVAL_MS
+      # Aramo Sign 1.14 — payment collection through Stripe Connect (directive §1.14, R-6).
+      # SEPARATE from Aramo's own billing keys (STRIPE_*). Unset = off (dark): payments are
+      # also gated by sign.payments (NOT_AVAILABLE) and the plan (Professional, Enterprise).
+      - SIGN_STRIPE_CONNECT_ENABLED
+      - SIGN_STRIPE_CONNECT_SECRET_KEY
+      - SIGN_STRIPE_CONNECT_WEBHOOK_SECRET
+      - SIGN_STRIPE_CONNECT_APPLICATION_FEE_AMOUNT
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as

@@ -117,13 +117,15 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
       .map((f) => relative(REPO, f))
       .sort();
     expect(readers).toEqual(['libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
-    // And no other code anywhere in libs/ or apps/ talks to the provider API host.
+    // And no other code anywhere in libs/ or apps/ talks to the provider API host — except the
+    // Sign 1.14 Stripe Connect settings (a SEPARATE Connect platform account, its own
+    // SIGN_STRIPE_CONNECT_* keys; under apps/sign-service, so C5-G-2 scans it for tax parameters).
     const hosts = ['libs', 'apps']
       .flatMap((r) => sources(resolve(REPO, r)))
       .filter((f) => /api\.stripe\.com/.test(readFileSync(f, 'utf8')))
       .map((f) => relative(REPO, f))
       .sort();
-    expect(hosts).toEqual(['libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
+    expect(hosts).toEqual(['apps/sign-service/src/app/payments/sign-payments.config.ts', 'libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
   });
 
   it('C5-G-2 no billing source names a provider tax parameter or endpoint (calculation, collection, rates, ids or behaviour)', () => {

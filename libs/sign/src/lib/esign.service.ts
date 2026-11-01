@@ -48,7 +48,7 @@ import {
 } from './domain/recipients.js';
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
-import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
+import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isPaymentField, isServerFilledName } from './domain/field-rules.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
@@ -128,7 +128,19 @@ export interface SignerFieldView {
   name_mode: string | null;
   // M-A6 §2.2 — true when the server fills the value (a SIGNER_PROFILE name):
   // the signer page shows it read-only and never sends a value for it.
+  // Sign 1.14 — also true for a PAYMENT field (filled when the payment succeeds).
   server_filled: boolean;
+  // Sign 1.14 — the amount to pay for a PAYMENT field (null for every other type).
+  payment: { amount_minor: number; currency: string } | null;
+}
+
+// Sign 1.14 — the signer's PAYMENT field, checked under the envelope row lock.
+export interface SignerPaymentField {
+  field_id: string;
+  amount_minor: number;
+  currency: string;
+  filled: boolean;
+  subject: string;
 }
 
 export interface SignerDocumentMeta {
@@ -430,6 +442,8 @@ export class EsignService {
       // M-A6 §2.2 — a SIGNER_PROFILE name is the server's to fill; any client
       // value is refused. §2.3 — check boxes take 'true' or 'false' (unchecking).
       if (isServerFilledName(field)) throw new SignatureFieldValueRefusedError(fieldId, 'signer_profile_name_server_filled');
+      // Sign 1.14 — a PAYMENT field is filled only by a succeeded payment.
+      if (isPaymentField(field)) throw new SignatureFieldValueRefusedError(fieldId, 'payment_field_server_filled');
       if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
         throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
       }
@@ -456,7 +470,10 @@ export class EsignService {
       d.fields
         .filter((f) => f.signer_id === ctx.signer_id || f.signer_id === null)
         .map((f): SignerFieldView => {
-          const serverFilled = f.signer_id === ctx.signer_id && isServerFilledName(f);
+          const serverFilled = f.signer_id === ctx.signer_id && (isServerFilledName(f) || isPaymentField(f));
+          const payment = isPaymentField(f) && f.payment_amount_minor !== null && f.payment_currency !== null
+            ? { amount_minor: f.payment_amount_minor, currency: f.payment_currency }
+            : null;
           return {
           field_id: f.id,
           document_id: d.id,
@@ -470,19 +487,36 @@ export class EsignService {
           // PX-2 — restores the signer's own progress after a reload. The value is
           // returned ONLY for this session's own fields (capability token + accepted
           // disclosure), so the page shows the signer's actual entries in place.
-          filled: serverFilled || f.filled_at !== null,
-          value: serverFilled ? profileName : f.signer_id === ctx.signer_id ? (f.value ?? null) : null,
+          filled: (serverFilled && !isPaymentField(f)) || f.filled_at !== null,
+          value: serverFilled && !isPaymentField(f) ? profileName : f.signer_id === ctx.signer_id ? (f.value ?? null) : null,
           label: f.label ?? null,
           group_key: f.group_key ?? null,
           group_rule: f.group_rule ?? null,
           min_selected: f.min_selected ?? null,
           name_mode: f.name_mode ?? null,
           server_filled: serverFilled,
+          payment,
           };
         }),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);
     return { documents, fields, message: full.message ?? null };
+  }
+
+  // Sign 1.14 — the signer's own PAYMENT field, for starting a payment. The same guards
+  // as filling a field (signable envelope under the row lock, live session, the signer's
+  // turn, disclosure accepted), so a payment can only start where a signature could.
+  async signerPaymentField(ctx: SessionContext, fieldId: string): Promise<SignerPaymentField> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      await this.assertEligible(tx, ctx);
+      if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+      const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
+      if (field === null || !isPaymentField(field) || field.payment_amount_minor === null || field.payment_currency === null) throw new SignerNotFoundError(ctx.signer_id);
+      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { subject: true } });
+      return { field_id: field.id, amount_minor: field.payment_amount_minor, currency: field.payment_currency, filled: field.filled_at !== null, subject: env.subject };
+    });
   }
 
   // Sign Mobile M-A3 §3 — the sender message for the signer consent screen. Read

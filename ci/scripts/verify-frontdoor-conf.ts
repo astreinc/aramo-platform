@@ -90,6 +90,8 @@ const SIGN_LIMITS = new Map<string, string>([
   ['/v1/domain-verification/delegate', 'domain_delegate'],
   ['/v1/sign/sender/', 'sign_workspace'],
   ['/v1/sign/billing/', 'sign_workspace'],
+  // Aramo Sign 1.14 — the Stripe Connect webhook (payments collected for organizations).
+  ['/v1/sign/payments/webhook/', 'sign_workspace'],
   ['/v1/sign/inbox', 'sign_workspace'],
   ['/v1/sign/legal/', 'sign_workspace'],
   ['/v1/sign/account/', 'sign_workspace'],
@@ -227,6 +229,8 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
     ['/v1/sign/signing/', 'sign-service:3003'],
     ['/v1/sign/sender/', 'sign-service:3003'],
     ['/v1/sign/billing/', 'sign-service:3003'],
+    // Aramo Sign 1.14 — the Stripe Connect webhook (session-less; signature-verified).
+    ['/v1/sign/payments/webhook/', 'sign-service:3003'],
     ['/v1/sign/inbox', 'sign-service:3003'],
     // Personal Free v1.1 §6.4 — "Report this email".
     ['/v1/sign/report', 'sign-service:3003'],

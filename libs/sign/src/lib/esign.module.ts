@@ -14,6 +14,7 @@ import { SignSavedSignatureRepository } from './sign-saved-signature.repository.
 import { SignContactRepository } from './sign-contact.repository.js';
 import { SIGNER_ATTESTED_NAME_PORT } from './ports/signer-attested-name.port.js';
 import { PrismaSignerAttestedNameAdapter } from './prisma-signer-attested-name.adapter.js';
+import { SignPaymentRepository } from './payments/sign-payment.repository.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
 // (apps/sign-service) supplies the EvidenceManifestSignerPort via forRoot:
@@ -66,10 +67,12 @@ export class EsignModule {
         // M-A6 §2.2 × M-A5 §3.4 — a HOSTED signer's SIGNER_PROFILE name is the name
         // they attested at disclosure (SignerDisclosureAcceptance.attested_name).
         { provide: SIGNER_ATTESTED_NAME_PORT, useClass: PrismaSignerAttestedNameAdapter },
+        // Sign 1.14 — payment collection records (Stripe Connect; dark until enabled).
+        SignPaymentRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, SignPaymentRepository, ...(opts?.extraExports ?? [])],
     };
   }
 }

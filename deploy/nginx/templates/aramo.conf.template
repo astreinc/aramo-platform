@@ -373,6 +373,14 @@ server {
     client_max_body_size 1m;
     proxy_pass http://sign-service:3003;
   }
+  # Aramo Sign 1.14 — the Stripe Connect webhook (payments collected for organizations).
+  # Session-less: sign-service verifies the Connect endpoint signature over the raw body
+  # (so no body rewriting here). Dark (404) unless SIGN_STRIPE_CONNECT_* are configured.
+  location /v1/sign/payments/webhook/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
+    client_max_body_size 1m;
+    proxy_pass http://sign-service:3003;
+  }
   # Workspace — the recipient inbox ("Waiting for me", S-7): GET /v1/sign/inbox
   # plus /claim and /:id/sign. Authenticated (Aramo SSO); the prefix has no
   # trailing slash so the bare list path matches too.

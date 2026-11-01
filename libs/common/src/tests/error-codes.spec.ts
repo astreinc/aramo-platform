@@ -167,6 +167,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_WEBHOOKS_UNAVAILABLE',
       // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (403).
       'ESIGN_FEATURE_NOT_AVAILABLE',
+      // Aramo Sign 1.14 — the payment provider could not be reached (503).
+      'ESIGN_PAYMENTS_UNAVAILABLE',
       'SIGNER_NOT_FOUND',
       'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',
