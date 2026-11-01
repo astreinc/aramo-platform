@@ -15,7 +15,7 @@ import {
 } from '../app/sender/sender-reports.service.js';
 
 // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED, 2bd74ca5) §1.13 — basic reports.
-//   - plan capability sign.reports in BOTH states (production registry = NOT_AVAILABLE, dark);
+//   - plan capability sign.reports in BOTH states (production registry = AVAILABLE since PO 2026-11-01; dark via a test registry);
 //   - sign:report:read and a BUSINESS tenant (plans B+) before any database read;
 //   - tenant_id only from the auth context;
 //   - the audit export never leaks purged / redacted data, never carries recipient identities;
@@ -53,15 +53,20 @@ function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'
   return { svc, repo, context, identity };
 }
 
-describe('plan capability sign.reports — NOT_AVAILABLE (the production registry)', () => {
-  it('the production registry keeps sign.reports NOT_AVAILABLE and leaves sign.advanced_analytics untouched', () => {
-    expect(FEATURE_AVAILABILITY['sign.reports']).toBe('NOT_AVAILABLE');
+// PO authorization (R-8) 2026-11-01: sign.reports is AVAILABLE in the production registry; the
+// dark path is exercised with a test registry that has it NOT_AVAILABLE.
+const DARK = { ...FEATURE_AVAILABILITY, 'sign.reports': 'NOT_AVAILABLE' as const };
+
+describe('plan capability sign.reports — NOT_AVAILABLE (test registry)', () => {
+  it('the production registry has sign.reports AVAILABLE (PO 2026-11-01) and leaves sign.advanced_analytics untouched', () => {
+    expect(FEATURE_AVAILABILITY['sign.reports']).toBe('AVAILABLE');
     expect(FEATURE_AVAILABILITY['sign.advanced_analytics']).toBe('NOT_AVAILABLE');
-    expect(new SignFeatureGate().isAvailable(SIGN_REPORTS_FEATURE)).toBe(false);
+    expect(new SignFeatureGate().isAvailable(SIGN_REPORTS_FEATURE)).toBe(true);
+    expect(new SignFeatureGate(DARK).isAvailable(SIGN_REPORTS_FEATURE)).toBe(false);
   });
 
   it('refuses overview / export / audit export with ESIGN_FEATURE_NOT_AVAILABLE (403) before any read', async () => {
-    const h = harness();
+    const h = harness({ registry: DARK });
     await expect(h.svc.overview(auth(), {}, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', statusCode: 403 });
     await expect(h.svc.exportCsv(auth(), {}, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
     await expect(h.svc.auditExport(auth(), {}, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });

@@ -136,12 +136,13 @@ describe('CCP PLAN_CREATE payload (PC-3)', () => {
 });
 
 describe('CCP PLAN_CREATE only AVAILABLE capabilities (PC-4)', () => {
+  // sign.templates became AVAILABLE (PO authorization 2026-11-01); sign.branding is the dark key here.
   it('PC-U-9 a NOT_AVAILABLE feature is refused even when disabled, with the stable code and the key named', () => {
-    const e = errs(withP({ features: [{ feature_key: 'sign.templates', enabled: false }] }));
-    expect(e).toEqual(['PLAN_CREATE_FEATURE_NOT_AVAILABLE: features[0].feature_key sign.templates is not an available capability (feature-availability.ts)']);
+    const e = errs(withP({ features: [{ feature_key: 'sign.branding', enabled: false }] }));
+    expect(e).toEqual(['PLAN_CREATE_FEATURE_NOT_AVAILABLE: features[0].feature_key sign.branding is not an available capability (feature-availability.ts)']);
     // Surfaced as a refused payload with the code (validatePayload → the create route's 400 codes).
     try {
-      validatePayload('PLAN_CREATE', withP({ features: [{ feature_key: 'sign.templates', enabled: true }] }));
+      validatePayload('PLAN_CREATE', withP({ features: [{ feature_key: 'sign.branding', enabled: true }] }));
       expect.unreachable();
     } catch (x) {
       expect(x).toBeInstanceOf(CommercialPayloadError);
@@ -152,18 +153,18 @@ describe('CCP PLAN_CREATE only AVAILABLE capabilities (PC-4)', () => {
   it('PC-U-10 unknown keys, NOT_AVAILABLE allowances / capacities and another product’s keys are refused', () => {
     expect(errs(withP({ features: [{ feature_key: 'sign.unknown_thing', enabled: true }] })).join('|')).toMatch(/PLAN_CREATE_FEATURE_NOT_AVAILABLE: .*sign.unknown_thing/);
     expect(errs(withP({ allowances: [{ allowance_key: 'sign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY' }] })).join('|')).toMatch(/PLAN_CREATE_FEATURE_NOT_AVAILABLE: .*sign.forms/);
-    expect(errs(withP({ capacities: [{ capacity_key: 'sign.templates', limit_quantity: 1, unlimited: false }] })).join('|')).toMatch(/PLAN_CREATE_FEATURE_NOT_AVAILABLE: .*sign.templates/);
+    expect(errs(withP({ capacities: [{ capacity_key: 'sign.branding', limit_quantity: 1, unlimited: false }] })).join('|')).toMatch(/PLAN_CREATE_FEATURE_NOT_AVAILABLE: .*sign.branding/);
     expect(errs(withP({ features: [{ feature_key: 'ats.reports', enabled: true }] })).join('|')).toMatch(/ats.reports is not a sign capability/);
     expect(errs(withP({ features: [{ feature_key: 'esign.team_collaboration', enabled: true }] })).join('|')).toMatch(/is not a sign capability/);
   });
 
   it('PC-U-11 availability is read from the registry: flipping a key to AVAILABLE admits it; the console list is exactly the AVAILABLE sign keys', () => {
-    const flipped = { ...FEATURE_AVAILABILITY, 'sign.templates': 'AVAILABLE' as const };
-    expect(planCreatePayloadErrors(withP({ features: [{ feature_key: 'sign.templates', enabled: true }] }), flipped)).toEqual([]);
+    const flipped = { ...FEATURE_AVAILABILITY, 'sign.branding': 'AVAILABLE' as const };
+    expect(planCreatePayloadErrors(withP({ features: [{ feature_key: 'sign.branding', enabled: true }] }), flipped)).toEqual([]);
     const available = Object.entries(FEATURE_AVAILABILITY).filter(([, v]) => v === 'AVAILABLE').map(([k]) => k).sort();
     expect(planCreateAvailableKeys('sign')).toEqual(available);
-    expect(planCreateAvailableKeys('sign')).not.toContain('sign.templates');
-    expect(planCreateAvailableKeys('sign', flipped)).toContain('sign.templates');
+    expect(planCreateAvailableKeys('sign')).not.toContain('sign.branding');
+    expect(planCreateAvailableKeys('sign', flipped)).toContain('sign.branding');
   });
 });
 

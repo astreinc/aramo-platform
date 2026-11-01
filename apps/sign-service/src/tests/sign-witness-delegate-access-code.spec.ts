@@ -64,16 +64,21 @@ function envelopeService(kind = 'BUSINESS', features?: SignFeatureGate, detail: 
 
 const signer = (name: string, extra: Record<string, unknown> = {}) => ({ name, email: `${name.toLowerCase()}@x.test`, ...extra });
 
+// PO authorization (R-8) 2026-11-01: sign.access_code is AVAILABLE in production; witness and
+// delegate stay dark. DARK exercises all three off.
+const DARK = new SignFeatureGate({ ...FEATURE_AVAILABILITY, 'sign.access_code': 'NOT_AVAILABLE' });
+
 describe('launch availability — dark until the PO flips it (R-8)', () => {
-  it('the production registry keeps sign.witness_signing, sign.delegate_signing and sign.access_code NOT_AVAILABLE', () => {
+  it('the production registry keeps sign.witness_signing and sign.delegate_signing NOT_AVAILABLE; sign.access_code is AVAILABLE (PO 2026-11-01)', () => {
     expect(FEATURE_AVAILABILITY['sign.witness_signing']).toBe('NOT_AVAILABLE');
     expect(FEATURE_AVAILABILITY['sign.delegate_signing']).toBe('NOT_AVAILABLE');
-    expect(FEATURE_AVAILABILITY['sign.access_code']).toBe('NOT_AVAILABLE');
+    expect(FEATURE_AVAILABILITY['sign.access_code']).toBe('AVAILABLE');
   });
 
-  it('the sender context reports all three unavailable (production registry)', async () => {
+  it('the sender context reports witness and delegate unavailable and the access code available (production registry)', async () => {
     const view = await contextService('BUSINESS').context(AUTH, 'r');
-    expect(view.features).toMatchObject({ witness_signing: false, delegate_signing: false, access_code: false });
+    expect(view.features).toMatchObject({ witness_signing: false, delegate_signing: false, access_code: true });
+    expect((await contextService('BUSINESS', DARK).context(AUTH, 'r')).features).toMatchObject({ access_code: false });
   });
 
   it('when available: witness and delegate for a BUSINESS tenant only (B+); the access code for every plan', async () => {
@@ -82,7 +87,7 @@ describe('launch availability — dark until the PO flips it (R-8)', () => {
   });
 
   it('dark: a WITNESS, an access code and allow_delegation=true are refused 403 before any write; allow_delegation=false is accepted', async () => {
-    const { svc, repo } = envelopeService();
+    const { svc, repo } = envelopeService('BUSINESS', DARK);
     const refused = { code: 'ESIGN_FEATURE_NOT_AVAILABLE', statusCode: 403 };
     await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: [signer('A'), signer('W', { recipient_kind: 'WITNESS', witness_for_index: 0 })] }, 'r')).rejects.toMatchObject({
       ...refused,

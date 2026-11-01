@@ -158,7 +158,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       { allowance_key: 'sign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: false },
     ]));
     expect(free.capacities).toEqual(expect.arrayContaining([
-      { capacity_key: 'sign.templates', limit: 1, unlimited: false, available: false },
+      { capacity_key: 'sign.templates', limit: 1, unlimited: false, available: true }, // AVAILABLE: PO 2026-11-01
       { capacity_key: STORAGE, limit: 15 * 1024 * 1024, unlimited: false, available: true },
     ]));
     expect(free.features.every((f) => !f.enabled)).toBe(true);
@@ -173,7 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
         { allowance_key: 'sign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY', available: false },
       ]));
       expect(p.capacities).toEqual(expect.arrayContaining([
-        { capacity_key: 'sign.templates', limit: null, unlimited: true, available: false },
+        { capacity_key: 'sign.templates', limit: null, unlimited: true, available: true }, // AVAILABLE: PO 2026-11-01
         { capacity_key: STORAGE, limit: storage, unlimited: false, available: true },
       ]));
       // The approved ENTITLEMENT is kept; launch AVAILABILITY is separate (AI

@@ -198,7 +198,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP PLAN_CREATE g
   it('PC-I-3 a NOT_AVAILABLE capability is refused at creation (400 invalid_payload with the stable code); nothing is recorded', async () => {
     const before = (await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest"`)).rows[0].n;
     try {
-      await create(payload({ features: [{ feature_key: 'sign.templates', enabled: true }] }));
+      await create(payload({ features: [{ feature_key: 'sign.branding', enabled: true }] }));
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(CommercialChangeRequestError);

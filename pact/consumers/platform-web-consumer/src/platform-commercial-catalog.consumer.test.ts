@@ -449,8 +449,8 @@ describe('platform-web → POST /platform/commercial/change-requests PLAN_CREATE
   it('a capability that is not available is refused (400 invalid_payload, PLAN_CREATE_FEATURE_NOT_AVAILABLE)', async () => {
     const body = {
       action_type: 'PLAN_CREATE',
-      payload: { ...NEW_PLAN, plan_key: 'aramo-sign-pact-templates-v1', features: [{ feature_key: 'sign.templates', enabled: true }] },
-      reason: 'Templates tier\n\nEvidence: none',
+      payload: { ...NEW_PLAN, plan_key: 'aramo-sign-pact-branding-v1', features: [{ feature_key: 'sign.branding', enabled: true }] },
+      reason: 'Branding tier\n\nEvidence: none',
       idempotency_key: 'pact-plan-create-0003',
     };
     await provider

@@ -18,16 +18,18 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
   // Available wherever Sign sending is available unless the PO restricts it.
   'sign.in_person_signing': 'AVAILABLE',
-  // Not built: the console shows templates as a future capability (PX-V1 §15);
-  // there is no forms feature; no AI summary exists for Sign.
-  'sign.templates': 'NOT_AVAILABLE',
+  // Feature-Parity §1.1 + Amendment A2 — templates adopted from platform defaults. AVAILABLE:
+  // PO authorization (R-8) 2026-11-01. Entitlement: any paid plan (Standard included as coded).
+  'sign.templates': 'AVAILABLE',
+  // Not built: there is no forms feature; no AI summary exists for Sign.
   'sign.forms': 'NOT_AVAILABLE',
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
   // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (volume,
   // turnaround, completion rate, by sender / template, CSV and envelope audit export). Built
   // dark: flipping it to AVAILABLE is a PO authorization (R-8), never made in code review.
-  'sign.reports': 'NOT_AVAILABLE',
+  // AVAILABLE: PO authorization (R-8) 2026-11-01.
+  'sign.reports': 'AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
   // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.10 — per-organization branding
   // (logo, colours, sender display name on signing pages, emails and the certificate). Built
@@ -47,7 +49,8 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // AVAILABLE is a separate PO authorization.
   'sign.witness_signing': 'NOT_AVAILABLE',
   'sign.delegate_signing': 'NOT_AVAILABLE',
-  'sign.access_code': 'NOT_AVAILABLE',
+  // access_code AVAILABLE: PO authorization (R-8) 2026-11-01 (signer path; no sender UI yet).
+  'sign.access_code': 'AVAILABLE',
   // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)
   // — built dark: SMS and WhatsApp delivery of the signing link and SMS one-time-code
   // recipient verification. Each moves to AVAILABLE only with a separate PO authorization
