@@ -1,3 +1,4 @@
+
 # Aramo — Single-Box Directive 1: the runnable PROD stack.
 #
 # The D5 dev stack + a production front-door, composed so it comes up with one
@@ -46,7 +47,6 @@
 # credentials are its own per-domain login (ATS_/AUTH_/SIGN_/PLATFORM_DB_*, Sign
 # Domain Isolation LC-4); POSTGRES_* configures the postgres service and stays the
 # migration/seed/backup owner only. See .env.prod.example for the full env surface.
-
 # Pin the compose PROJECT NAME (E17) — the FIRST top-level key. Without it, an
 # invocation with no `-p`/COMPOSE_PROJECT_NAME defaults the project to the
 # working-directory name, which collides a second parallel stack (and its
@@ -578,6 +578,9 @@ services:
       - SIGN_TSA_URL
       - SIGN_TSA_TIMEOUT_MS
       - SIGN_TSA_RETRY_INTERVAL_MS
+      # Feature-Parity directive §5 — the Personal → Business upgrade. Unset = dark:
+      # v1/sign/account/upgrade answers 404 and sign-web hides the upgrade card.
+      - SIGN_PERSONAL_UPGRADE_ENABLED
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as

@@ -22,6 +22,7 @@ import { OrganizationRegionService } from './organization-region.service.js';
 import { DomainClaimService } from './domain-claim/domain-claim.service.js';
 import { GEO_IP_PORT, MaxmindGeoIpAdapter } from './personal/geo-ip.port.js';
 import { PersonalRiskService } from './personal/personal-risk.service.js';
+import { PersonalUpgradeRepository } from './personal/personal-upgrade.repository.js';
 import { PrivacyRequestService } from './privacy/privacy-request.service.js';
 import { PrivacySubjectService } from './privacy/privacy-subject.service.js';
 import { IdentityDependencyInspector } from './privacy/identity-dependency-inspector.service.js';
@@ -106,6 +107,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
     // adapters are chosen from env at bootstrap and open nothing until first use.
     PersonalRiskService,
     PersonalSignupRepository,
+    // Feature-Parity §5 — the in-place Personal → Business upgrade (identity half).
+    PersonalUpgradeRepository,
     // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability.
     PrivacyRequestService,
     PrivacySubjectService,
@@ -156,6 +159,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
   exports: [
     SignupRequestRepository,
     PersonalRiskService,
+    PersonalUpgradeRepository,
     PrivacyRequestService,
     PrivacySubjectService,
     SignCustomRoleService,

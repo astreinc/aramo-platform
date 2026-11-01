@@ -263,6 +263,9 @@ export function summarizeDetail(
       return 'Issued a personal pilot invite';
     case 'identity.personal.signup.attempts_purged':
       return 'Deleted expired and refused personal signup attempts';
+    // Feature-Parity §5 — the Personal → Business upgrade.
+    case 'identity.tenant.upgraded_to_business':
+      return 'Upgraded the personal account to a business organization';
     // ORG-UX-1 §8.10 — P3 verification delegation (previously unsummarized).
     case 'identity.domain.verification.delegation.issued':
       return 'Asked someone else to verify the email domain';

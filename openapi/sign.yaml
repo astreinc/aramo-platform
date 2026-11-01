@@ -3280,6 +3280,80 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/account/upgrade:
+    get:
+      operationId: getSignPersonalUpgradeStatus
+      summary: Whether the signed-in owner's Personal account can be upgraded to a Business organization.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless
+        SIGN_PERSONAL_UPGRADE_ENABLED=1. eligible is true only for the owner (tenant_owner) of an
+        ACTIVE PERSONAL account in good standing (risk state clear) whose open subscription, if
+        any, is the FREE Personal plan, while APPROVED Business terms are in effect; otherwise
+        reason names the first rule that fails. terms is the Business terms version the upgrade
+        accepts (null while none is approved). Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPersonalUpgradeStatus'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: upgradeSignPersonalAccount
+      summary: Upgrade the signed-in owner's Personal account to a Business organization, in place.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless
+        SIGN_PERSONAL_UPGRADE_ENABLED=1. Irreversible. The same tenant becomes a BUSINESS
+        organization: its envelopes, evidence, custody and retention setting are unchanged. The
+        Business terms acceptance is recorded, the FREE Personal subscription ends (the owner then
+        chooses a Business plan on the Billing page), the organization name and US organization
+        details are written with the signer's authority attestation, the owner receives
+        tenant_admin beside tenant_owner, and the change is audited
+        (identity.tenant.upgraded_to_business). Requires confirm = UPGRADE (else details.reason =
+        upgrade_confirmation_required), accept_terms = true (terms_not_accepted) and
+        organization.authority_attested = true (authority_attestation_required). Refused with 403
+        and details.reason not_personal_account, not_account_owner, personal_account_not_active,
+        personal_account_not_in_good_standing, business_terms_not_available or
+        personal_paid_subscription_upgrade_unsupported; 409 TENANT_ALREADY_EXISTS
+        (organization_name_taken) when another organization uses the name. Requires a Sign session
+        of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignPersonalUpgradeRequest'
+      responses:
+        '200':
+          description: The account is now a Business organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignPersonalUpgradeResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/me/privacy-requests:
     get:
       operationId: listMyPrivacyRequests
@@ -5778,6 +5852,109 @@ components:
           type: [string, 'null']
         privacy_contact:
           type: string
+    SignPersonalUpgradeStatus:
+      type: object
+      required: [eligible, reason, current_name, terms, subscription]
+      properties:
+        eligible:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [not_personal_account, not_account_owner, personal_account_not_active, personal_account_not_in_good_standing, business_terms_not_available, personal_paid_subscription_upgrade_unsupported, null]
+        current_name:
+          type: string
+        terms:
+          type: [object, 'null']
+          required: [key, version, url]
+          properties:
+            key:
+              type: string
+            version:
+              type: string
+            url:
+              type: string
+              format: uri
+        subscription:
+          type: [object, 'null']
+          required: [plan_key, source]
+          properties:
+            plan_key:
+              type: string
+            source:
+              type: string
+    SignPersonalUpgradeRequest:
+      type: object
+      required: [confirm, organization_name, organization, accept_terms]
+      properties:
+        confirm:
+          type: string
+          enum: [UPGRADE]
+        organization_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        accept_terms:
+          type: boolean
+          enum: [true]
+        organization:
+          type: object
+          description: US organization details (Sign Signup Amendment A1; US only).
+          required: [legal_name, address_line1, city, state_province, postal_code, primary_contact_email, primary_contact_name, signer_title, authority_attested]
+          properties:
+            legal_name:
+              type: string
+              maxLength: 200
+            address_line1:
+              type: string
+              maxLength: 200
+            address_line2:
+              type: [string, 'null']
+              maxLength: 200
+            city:
+              type: string
+              maxLength: 100
+            state_province:
+              type: string
+              description: US state or DC (two-letter code).
+            postal_code:
+              type: string
+            country_code:
+              type: string
+              enum: [US]
+            primary_contact_email:
+              type: string
+              format: email
+            primary_contact_name:
+              type: string
+              maxLength: 100
+            signer_title:
+              type: string
+              maxLength: 100
+            primary_contact_phone:
+              type: [string, 'null']
+            tax_id:
+              type: [string, 'null']
+            registration_number:
+              type: [string, 'null']
+              maxLength: 50
+            authority_attested:
+              type: boolean
+              enum: [true]
+    SignPersonalUpgradeResult:
+      type: object
+      required: [state, kind, organization_name, upgraded_at]
+      properties:
+        state:
+          type: string
+          enum: [upgraded]
+        kind:
+          type: string
+          enum: [BUSINESS]
+        organization_name:
+          type: string
+        upgraded_at:
+          type: string
+          format: date-time
     SignAccountClosed:
       type: object
       required: [state, closed_at]

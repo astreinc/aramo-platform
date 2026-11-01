@@ -91,6 +91,8 @@ import { PersonalLegalStatusService } from './legal/personal-legal-status.servic
 import { LegalChangeBannerService } from './legal/legal-change-banner.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
+import { PersonalUpgradeController } from './account/personal-upgrade.controller.js';
+import { PersonalUpgradeService } from './account/personal-upgrade.service.js';
 // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
 import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
@@ -233,7 +235,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -272,6 +274,8 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new RegistryUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
+    // Feature-Parity §5 — the Personal → Business upgrade (dark: SIGN_PERSONAL_UPGRADE_ENABLED).
+    PersonalUpgradeService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)
     // and the account-close purge of saved signatures and contacts.
     SavedSignatureService,

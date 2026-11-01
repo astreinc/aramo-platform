@@ -10668,6 +10668,11 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
+      "from": "apps/sign-service/src/app/account/personal-upgrade.service.ts",
+      "status": "production",
+      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
+    },
+    {
       "excludedBy": "src/sign-negative-control/**",
       "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
       "status": "excluded",
@@ -10690,6 +10695,18 @@
       "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/m-a8-identity-dependency-inspector.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11214,6 +11231,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/signup/sign-signup.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -12964,6 +12986,81 @@
       "from": "doc/backlog/sign-personal-sms-provider-selection.md",
       "status": "unscoped",
       "to": "libs/identity/src/lib/personal/sms-verification.port.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/personal-signup.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/account/sign-account.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custody/sign-artifact-storage.config.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/legal/personal-legal-status.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/personal-send.gate.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/sign-report.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-context.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/audit/identity-audit.repository.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/util/tenant-kind.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/free-personal-subscription.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-to-business-upgrade-recon.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
     },
     {
       "from": "doc/backlog/talent-lifecycle-am5-verified-inbound-application-DEFERRED.md",
@@ -31566,6 +31663,11 @@
       "to": "apps/platform-admin/src/app/platform/cognito/cognito-admin.service.ts"
     },
     {
+      "from": "libs/identity/src/lib/personal/personal-upgrade.repository.ts",
+      "status": "production",
+      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
+    },
+    {
       "from": "libs/identity/src/lib/prisma/prisma.service.ts",
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
@@ -33794,6 +33896,12 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

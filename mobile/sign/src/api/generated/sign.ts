@@ -1627,6 +1627,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/account/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the signed-in owner's Personal account can be upgraded to a Business organization.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless SIGN_PERSONAL_UPGRADE_ENABLED=1. eligible is true only for the owner (tenant_owner) of an ACTIVE PERSONAL account in good standing (risk state clear) whose open subscription, if any, is the FREE Personal plan, while APPROVED Business terms are in effect; otherwise reason names the first rule that fails. terms is the Business terms version the upgrade accepts (null while none is approved). Requires a Sign session of a tenant entitled to `sign`.
+         */
+        get: operations["getSignPersonalUpgradeStatus"];
+        put?: never;
+        /**
+         * Upgrade the signed-in owner's Personal account to a Business organization, in place.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless SIGN_PERSONAL_UPGRADE_ENABLED=1. Irreversible. The same tenant becomes a BUSINESS organization: its envelopes, evidence, custody and retention setting are unchanged. The Business terms acceptance is recorded, the FREE Personal subscription ends (the owner then chooses a Business plan on the Billing page), the organization name and US organization details are written with the signer's authority attestation, the owner receives tenant_admin beside tenant_owner, and the change is audited (identity.tenant.upgraded_to_business). Requires confirm = UPGRADE (else details.reason = upgrade_confirmation_required), accept_terms = true (terms_not_accepted) and organization.authority_attested = true (authority_attestation_required). Refused with 403 and details.reason not_personal_account, not_account_owner, personal_account_not_active, personal_account_not_in_good_standing, business_terms_not_available or personal_paid_subscription_upgrade_unsupported; 409 TENANT_ALREADY_EXISTS (organization_name_taken) when another organization uses the name. Requires a Sign session of a tenant entitled to `sign`.
+         */
+        post: operations["upgradeSignPersonalAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/me/privacy-requests": {
         parameters: {
             query?: never;
@@ -2704,6 +2728,59 @@ export interface components {
             }[];
             organization_decides: string | null;
             privacy_contact: string;
+        };
+        SignPersonalUpgradeStatus: {
+            eligible: boolean;
+            /** @enum {string|null} */
+            reason: "not_personal_account" | "not_account_owner" | "personal_account_not_active" | "personal_account_not_in_good_standing" | "business_terms_not_available" | "personal_paid_subscription_upgrade_unsupported" | null;
+            current_name: string;
+            terms: {
+                key: string;
+                version: string;
+                /** Format: uri */
+                url: string;
+            } | null;
+            subscription: {
+                plan_key: string;
+                source: string;
+            } | null;
+        };
+        SignPersonalUpgradeRequest: {
+            /** @enum {string} */
+            confirm: "UPGRADE";
+            organization_name: string;
+            /** @enum {boolean} */
+            accept_terms: true;
+            /** @description US organization details (Sign Signup Amendment A1; US only). */
+            organization: {
+                legal_name: string;
+                address_line1: string;
+                address_line2?: string | null;
+                city: string;
+                /** @description US state or DC (two-letter code). */
+                state_province: string;
+                postal_code: string;
+                /** @enum {string} */
+                country_code?: "US";
+                /** Format: email */
+                primary_contact_email: string;
+                primary_contact_name: string;
+                signer_title: string;
+                primary_contact_phone?: string | null;
+                tax_id?: string | null;
+                registration_number?: string | null;
+                /** @enum {boolean} */
+                authority_attested: true;
+            };
+        };
+        SignPersonalUpgradeResult: {
+            /** @enum {string} */
+            state: "upgraded";
+            /** @enum {string} */
+            kind: "BUSINESS";
+            organization_name: string;
+            /** Format: date-time */
+            upgraded_at: string;
         };
         SignAccountClosed: {
             /** @enum {string} */
@@ -6457,6 +6534,58 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getSignPersonalUpgradeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPersonalUpgradeStatus"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    upgradeSignPersonalAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignPersonalUpgradeRequest"];
+            };
+        };
+        responses: {
+            /** @description The account is now a Business organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPersonalUpgradeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listMyPrivacyRequests: {
