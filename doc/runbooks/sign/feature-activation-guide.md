@@ -5,7 +5,7 @@
 | Version | v1.0, 2026-11-01 |
 | Audience | The PO (decides, signs vendor contracts, arranges counsel, authorizes each flip) and the Claude Code session that does the engineering part of each flip |
 | Code baseline | `origin/main` `394ffcc0` (PR #1056, the consolidated feature build). Usage metering is read from branch `feat/sign-usage-metering` (`0d9944c7`); ToS v2.0 from branch `feat/sign-tos-v2` (PR #1057). Neither branch is on `main` yet. |
-| Governing | `Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED.md` (SHA-256 `2bd74ca5…`) and its Amendments A1 (vendor features), A2 (templates platform-only), A3 (metering D1/D3), A4 (metering D2), all in OneDrive `Aramo/locked/` |
+| Governing | `Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED.md` (SHA-256 `2bd74ca5…`) and its Amendments A1 (vendor features), A2 (templates platform-only), A3 (metering D1/D3), A4 (metering D2), A5 (Personal stays Personal), all in OneDrive `Aramo/locked/` |
 | Readiness work | `Aramo/documents/Aramo-Sign-Feature-Activation-Readiness-Directive-v0_1-DRAFT.md` (filed to `Aramo/locked/` as v1.0 LOCKED once approved). It builds the missing pieces listed in §7 (screens, nginx routes, console entitlement, plan limits, TSA login) so each feature is ready to switch on when its external prerequisites are done. Its item ids (AR-n) are referenced in each feature section below. |
 | References | Vendor pack `Aramo/documents/Aramo-Sign-Vendor-Onboarding-Pack-20261101.md`; go-live list `Aramo/documents/Aramo-Sign-GoLive-Todo.md`; release runbook [`../RELEASE-box.md`](../RELEASE-box.md) |
 
@@ -364,7 +364,7 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 3.8 Personal → Business upgrade
 
-> **Status:** NOT OFFERED — PO ruling 2026-11-01: "Personal stays as Personal only." `SIGN_PERSONAL_UPGRADE_ENABLED` stays unset; the dark code is removed by readiness item AR-9. A sole proprietor uses the Personal Standard plan; a business signs up as Business with a work email. Do not switch this on.
+> **Status:** NOT OFFERED — LOCKED by `Aramo-Sign-Feature-Parity-Program-Directive-Amendment-A5-Personal-Stays-Personal-v1_0-LOCKED.md` (PO 2026-11-01): Personal stays Personal, no Personal → Business upgrade. Businesses sign up as Business (work email) on Business Standard, Business Professional or Enterprise. `SIGN_PERSONAL_UPGRADE_ENABLED` stays unset; the dark code is removed by readiness item AR-9. A sole proprietor uses the Personal Standard plan; a business signs up as Business with a work email. Do not switch this on.
 
 - **What it does.** The owner of a Personal account turns it into a Business organization in place; the
   tenant id, envelopes, evidence and custody stay; the Free subscription ends; the owner then picks a
