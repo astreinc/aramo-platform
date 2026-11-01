@@ -15,10 +15,18 @@
 //   upcoming    effective_from > now   (served with an "Upcoming" banner)
 //   effective   the latest effective_from <= now (ties: the later catalog entry)
 //   superseded  an earlier one, retained for historical access
-// An approved but unscheduled version is not in this catalog at all (not served).
-// The same rule as effectiveLegalDocument() in the registry.
+// An approved but unscheduled version is not served: it is either absent from this
+// catalog or (ToS v2.0) listed with effective_from null, which nothing here serves,
+// links or counts. The same rule as effectiveLegalDocument() in the registry.
+//
+// ToS v2.0 — `terms-of-service` (sign.terms_of_service 2.0, the combined Business +
+// Personal terms) is listed with effective_from null until release day, when the
+// same instant is set here and in the registry (legal.spec.tsx keeps them equal).
+// Once it is in force it SUCCEEDS `personal-terms`: the Personal Terms 1.0 page stays
+// published (history) with a "no longer in effect" banner, and is no longer linked as
+// a current document.
 
-export type LegalSlug = 'personal-terms' | 'privacy' | 'acceptable-use';
+export type LegalSlug = 'terms-of-service' | 'personal-terms' | 'privacy' | 'acceptable-use';
 
 export interface LegalCatalogEntry {
   slug: LegalSlug;
@@ -27,11 +35,14 @@ export interface LegalCatalogEntry {
   title: string;
   // Who it binds: `personal` = Personal accounts only; `all` = every Aramo Sign account.
   audience: 'personal' | 'all';
-  // When this version takes effect: ISO 8601 date-time with an explicit offset.
-  effective_from: string;
+  // When this version takes effect: ISO 8601 date-time with an explicit offset; null =
+  // registered but not yet scheduled (never served, linked or counted).
+  effective_from: string | null;
 }
 
 export const LEGAL_CATALOG: readonly LegalCatalogEntry[] = [
+  // ToS v2.0 — NOT yet in effect (effective_from null until the release-day change).
+  { slug: 'terms-of-service', key: 'sign.terms_of_service', version: '2.0', title: 'Aramo Sign Terms of Service', audience: 'all', effective_from: null },
   { slug: 'personal-terms', key: 'sign.personal_terms_of_service', version: '1.0', title: 'Aramo Sign Personal Terms of Service', audience: 'personal', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'privacy', key: 'aramo.privacy_notice', version: '1.0', title: 'Aramo Privacy Notice', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'acceptable-use', key: 'aramo.acceptable_use_policy', version: '1.0', title: 'Aramo Acceptable Use Policy', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },
@@ -54,7 +65,8 @@ export function effectiveTime(effective_from: string | null): number | null {
 }
 
 /** "2026-11-25 00:00 UTC" / "2026-11-25 00:00 UTC-05:00" — the instant as it was authored. */
-export function formatEffective(effective_from: string): string {
+export function formatEffective(effective_from: string | null): string {
+  if (effective_from === null) return '';
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})[^Z+-]*(Z|[+-]\d{2}:\d{2})$/.exec(effective_from);
   if (m === null) return effective_from;
   return `${m[1]} ${m[2]} UTC${m[3] === 'Z' ? '' : m[3]}`;
@@ -77,6 +89,20 @@ function inForce(slug: string, catalog: readonly LegalCatalogEntry[], now: Date)
     .map((x) => x.d);
 }
 
+/** ToS v2.0 — a document retired by another once that one is in force (the slug that succeeds it). */
+export const LEGAL_SUCCESSOR: Readonly<Partial<Record<LegalSlug, LegalSlug>>> = { 'personal-terms': 'terms-of-service' };
+
+/** The successor of a slug, when it is in force at `now` (null otherwise). */
+export function successorInForce(slug: string, catalog: readonly LegalCatalogEntry[] = LEGAL_CATALOG, now: Date = new Date()): LegalCatalogEntry | null {
+  const next = LEGAL_SUCCESSOR[slug as LegalSlug];
+  return next === undefined ? null : currentLegal(next, catalog, now);
+}
+
+/** The slugs (catalog order) that are current documents at `now`: in force and not retired by a successor. */
+export function currentSlugs(catalog: readonly LegalCatalogEntry[] = LEGAL_CATALOG, now: Date = new Date()): LegalSlug[] {
+  return [...new Set(catalog.map((d) => d.slug))].filter((s) => currentLegal(s, catalog, now) !== null && successorInForce(s, catalog, now) === null);
+}
+
 /** The version of a document in effect at `now` (null while none is). */
 export function currentLegal(slug: string, catalog: readonly LegalCatalogEntry[] = LEGAL_CATALOG, now: Date = new Date()): LegalCatalogEntry | null {
   const order = inForce(slug, catalog, now);
@@ -88,14 +114,18 @@ export function legalEntryStatus(d: LegalCatalogEntry, catalog: readonly LegalCa
   if (t === null || t > now.getTime()) return { state: 'upcoming', superseded_by: null };
   const order = inForce(d.slug, catalog, now);
   const i = order.findIndex((x) => x.version === d.version);
-  if (i === order.length - 1) return { state: 'effective', superseded_by: null };
+  if (i === order.length - 1) {
+    const successor = successorInForce(d.slug, catalog, now);
+    return successor === null ? { state: 'effective', superseded_by: null } : { state: 'superseded', superseded_by: successor };
+  }
   return { state: 'superseded', superseded_by: order[i + 1]! };
 }
 
 /** One exact version, or — with no version — the version in effect at `now`. */
 export function findLegal(slug: string, version?: string, catalog: readonly LegalCatalogEntry[] = LEGAL_CATALOG, now: Date = new Date()): LegalCatalogEntry | null {
   if (version === undefined) return currentLegal(slug, catalog, now);
-  return catalog.find((d) => d.slug === slug && d.version === version) ?? null;
+  // An unscheduled version (effective_from null) is never served.
+  return catalog.find((d) => d.slug === slug && d.version === version && effectiveTime(d.effective_from) !== null) ?? null;
 }
 
 /** The stable path of a version (the version in effect when no version is given). */
@@ -106,9 +136,8 @@ export function legalPath(slug: LegalSlug, version?: string, catalog: readonly L
 
 /** The version in effect of every document, optionally limited to those binding Business accounts too. */
 export function footerLegalLinks(personal: boolean, catalog: readonly LegalCatalogEntry[] = LEGAL_CATALOG, now: Date = new Date()): { label: string; href: string }[] {
-  const label: Record<LegalSlug, string> = { 'personal-terms': 'Terms', privacy: 'Privacy', 'acceptable-use': 'Acceptable Use' };
-  const slugs = [...new Set(catalog.map((d) => d.slug))];
-  return slugs
+  const label: Record<LegalSlug, string> = { 'terms-of-service': 'Terms', 'personal-terms': 'Terms', privacy: 'Privacy', 'acceptable-use': 'Acceptable Use' };
+  return currentSlugs(catalog, now)
     .map((s) => currentLegal(s, catalog, now))
     .filter((d): d is LegalCatalogEntry => d !== null)
     .filter((d) => personal || d.audience === 'all')

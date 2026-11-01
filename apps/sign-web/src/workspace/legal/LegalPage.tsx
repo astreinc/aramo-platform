@@ -10,11 +10,13 @@ import {
   SUBPROCESSOR_LISTS,
   THIRD_PARTY_NOTICES_PATH,
   currentLegal,
+  currentSlugs,
   currentSubprocessors,
   findLegal,
   formatEffective,
   legalEntryStatus,
   legalPath,
+  successorInForce,
   upcomingSubprocessors,
   type LegalCatalogEntry,
   type SubprocessorList,
@@ -74,7 +76,7 @@ export function Shell({ title, children, testId }: { title: string; children: Re
 function LegalFooter() {
   const { catalog, now } = useContext(LegalEnvContext);
   const at = now();
-  const slugs = [...new Set(catalog.map((d) => d.slug))];
+  const slugs = currentSlugs(catalog, at);
   return (
     <footer className="sg-legal__foot" aria-label="Legal">
       {slugs.map((s) => {
@@ -124,8 +126,8 @@ function CurrentDocuments({ slugs, testId }: { slugs: readonly string[]; testId:
 // Aramo-Sign-Mobile-Amendment-M-A7 §5.1 (R-8) — /legal: every published document
 // in effect now, plus the subprocessor list and the third-party notices.
 export function LegalIndexPage() {
-  const { catalog } = useContext(LegalEnvContext);
-  const slugs = [...new Set(catalog.map((d) => d.slug))];
+  const { catalog, now } = useContext(LegalEnvContext);
+  const slugs = currentSlugs(catalog, now());
   return (
     <Shell title="Legal" testId="legal-index">
       <h1 className="sg-h1">Aramo Sign legal documents</h1>
@@ -146,6 +148,26 @@ export function LegalIndexPage() {
 // agreement with the operator; no Business terms text is published here (a draft
 // is never presented as approved).
 export function TermsIndexPage() {
+  const { catalog, now } = useContext(LegalEnvContext);
+  // ToS v2.0 — once the combined Terms of Service are in force they bind Personal and Business accounts.
+  const combined = currentLegal('terms-of-service', catalog, now()) !== null;
+  if (combined) {
+    return (
+      <Shell title="Terms" testId="legal-terms-index">
+        <h1 className="sg-h1">Aramo Sign terms</h1>
+        <div className="sg-legal__doc">
+          <h2>Personal and Business accounts</h2>
+          <p>Every Aramo Sign account is used under these terms, together with the Acceptable Use Policy:</p>
+          <CurrentDocuments slugs={['terms-of-service', 'acceptable-use']} testId="legal-terms-combined" />
+          <h2>Everyone, including people who sign</h2>
+          <CurrentDocuments slugs={['privacy', 'acceptable-use']} testId="legal-terms-all" />
+          <p>
+            All published documents: <a href={LEGAL_INDEX_PATH}>Legal</a>.
+          </p>
+        </div>
+      </Shell>
+    );
+  }
   return (
     <Shell title="Terms" testId="legal-terms-index">
       <h1 className="sg-h1">Aramo Sign terms</h1>
@@ -178,7 +200,8 @@ export function LegalDocumentPage() {
   const text = doc === null ? undefined : texts[`${doc.slug}@${doc.version}`];
   if (doc === null || text === undefined) return <LegalNotFound />;
   const status = legalEntryStatus(doc, catalog, at);
-  const current = currentLegal(doc.slug, catalog, at);
+  // ToS v2.0 — a retired document's current version is its successor's.
+  const current = successorInForce(doc.slug, catalog, at) ?? currentLegal(doc.slug, catalog, at);
   const stable = legalPath(doc.slug, doc.version, catalog, at);
   const currentLink =
     current === null ? null : (
@@ -205,7 +228,7 @@ export function LegalDocumentPage() {
         {status.state !== 'effective' && current !== null ? (
           <>
             {' '}
-            · This is not the current version. <a href={legalPath(doc.slug, undefined, catalog, at)}>Read the current version</a>.
+            · This is not the current version. <a href={legalPath(current.slug, undefined, catalog, at)}>Read the current version</a>.
           </>
         ) : null}
       </p>

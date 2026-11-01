@@ -180,8 +180,10 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
   if (expected !== actual) return <Navigate to={`/${actual}`} replace />;
   const shell = (
     <ConsoleShell scopes={scopes}>
-      {/* Personal — the current legal documents must be accepted before sending. */}
-      {expected === 'personal' ? <LegalAcceptanceGate /> : null}
+      {/* The current legal documents must be accepted before using the workspace (Personal:
+          the Personal documents; ToS v2.0 — Business: the Aramo Sign Terms of Service). The
+          backend decides what is pending (nothing for Business until v2.0 is effective). */}
+      <LegalAcceptanceGate />
       {/* Privacy Notice 1.1 E-6 — a dismissible notice of an upcoming legal-document version (every account). */}
       <LegalChangeNotice />
       <Routes>

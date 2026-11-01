@@ -1719,8 +1719,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The Personal legal documents the signed-in user still has to accept.
-         * @description Aramo Sign Personal (Free). For the signed-in user of a PERSONAL tenant: every current APPROVED version of the Personal Terms of Service, the Aramo Privacy Notice and the Aramo Acceptable Use Policy that this user has not accepted (at signup or in the workspace) for that exact version and text. A BUSINESS tenant always has nothing pending. Sending from a Personal account is refused (details.reason = legal_acceptance_required) while anything is pending. Requires a Sign session of a tenant entitled to `sign`.
+         * The legal documents the signed-in user still has to accept.
+         * @description Aramo Sign Personal (Free). For the signed-in user of a PERSONAL tenant: every current APPROVED version of the Personal Terms of Service, the Aramo Privacy Notice and the Aramo Acceptable Use Policy that this user has not accepted (at signup or in the workspace) for that exact version and text. ToS v2.0: once the Aramo Sign Terms of Service (`sign.terms_of_service`) 2.0 is in effect it replaces the Personal Terms for PERSONAL tenants, and a user of a BUSINESS tenant owes it too until accepted (before then a BUSINESS tenant has nothing pending). Sending is refused (details.reason = legal_acceptance_required) while anything is pending. Requires a Sign session of a tenant entitled to `sign`.
          */
         get: operations["getSignLegalStatus"];
         put?: never;
@@ -1741,8 +1741,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept the current versions of the Personal legal documents.
-         * @description Aramo Sign Personal (Free). Each item must name a Personal legal document and its CURRENT approved version exactly; otherwise the whole request is refused (details.reason = legal_version_not_current) and nothing is recorded. Records one acceptance per user, document and version (idempotent) with the version, the text SHA-256, the time, the client address and the user agent. Refused for a BUSINESS tenant (details.reason = legal_acceptance_not_applicable). Answers the documents still pending.
+         * Accept the current versions of the legal documents owed.
+         * @description Aramo Sign Personal (Free). Each item must name a legal document owed by the tenant's kind and its CURRENT approved version exactly; otherwise the whole request is refused (details.reason = legal_version_not_current) and nothing is recorded. Records one acceptance per user, document and version (idempotent) with the version, the text SHA-256, the time, the client address and the user agent. For a BUSINESS tenant it is refused (details.reason = legal_acceptance_not_applicable) while no Business document is in effect (ToS v2.0: the Aramo Sign Terms of Service once in effect). Answers the documents still pending.
          */
         post: operations["acceptSignLegalDocuments"];
         delete?: never;
@@ -3369,10 +3369,10 @@ export interface components {
             url: string;
         };
         SignLegalStatus: {
-            /** @description Current approved Personal legal documents the user has not accepted (empty for a BUSINESS tenant). */
+            /** @description Current approved legal documents the user has not accepted (a BUSINESS tenant only ever owes the Aramo Sign Terms of Service in effect). */
             pending: {
                 /** @enum {string} */
-                key: "sign.personal_terms_of_service" | "aramo.privacy_notice" | "aramo.acceptable_use_policy";
+                key: "sign.terms_of_service" | "sign.personal_terms_of_service" | "aramo.privacy_notice" | "aramo.acceptable_use_policy";
                 version: string;
                 /**
                  * Format: uri

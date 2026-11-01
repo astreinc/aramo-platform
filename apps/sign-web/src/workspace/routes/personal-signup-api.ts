@@ -132,6 +132,7 @@ export function codeFailureMessage(err: PersonalSignupError): { message: string;
 }
 
 const DOC_LABELS: Record<string, string> = {
+  'sign.terms_of_service': 'Aramo Sign Terms of Service',
   'sign.personal_terms_of_service': 'Aramo Sign Personal Terms of Service',
   'aramo.privacy_notice': 'Aramo Privacy Notice',
   'aramo.acceptable_use_policy': 'Aramo Acceptable Use Policy',

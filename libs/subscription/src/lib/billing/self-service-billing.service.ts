@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { COMMERCIAL_TERMINAL_STATES } from '../commercial/commercial-change-request.js';
-import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, type LegalDocumentKey, type LegalDocumentVersion, approvedLegalDocument, legalRef } from '../legal/legal-documents.js';
+import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, type LegalDocumentKey, type LegalDocumentVersion, approvedLegalDocument, effectiveLegalDocument, legalRef } from '../legal/legal-documents.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type ProductKey, assertProductKey, isProductKey, openBaseSubscription } from '../product-registry.js';
 
@@ -87,8 +87,12 @@ export const SELF_SERVICE_PRODUCTS: Readonly<Record<ProductKey, SelfServiceProdu
 };
 
 /** The terms document for the tenant's kind (a PERSONAL tenant without its own entry: none, fail closed). */
-function termsDocumentFor(e: SelfServiceProductEntry, tenant_kind: string): LegalDocumentKey | null {
-  return tenant_kind === 'PERSONAL' ? (e.personal_terms_document ?? null) : e.terms_document;
+// ToS v2.0 — once the product's terms document has an effective version (the combined
+// Business + Personal terms), it governs PERSONAL tenants too; until then the Personal entry does.
+function termsDocumentFor(e: SelfServiceProductEntry, tenant_kind: string, registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, now: Date = new Date()): LegalDocumentKey | null {
+  if (tenant_kind !== 'PERSONAL') return e.terms_document;
+  if (e.personal_terms_document !== undefined && effectiveLegalDocument(e.terms_document, registry, now) !== null) return e.terms_document;
+  return e.personal_terms_document ?? null;
 }
 /** Injection token for a test-only fixture registry (never bound in a shipped module). */
 export const SELF_SERVICE_PRODUCT_REGISTRY = 'SELF_SERVICE_PRODUCT_REGISTRY';
@@ -169,7 +173,7 @@ export class SelfServiceBillingService {
   }
 
   private terms(e: SelfServiceProductEntry, tenant_kind: string): LegalDocumentVersion | null {
-    const key = termsDocumentFor(e, tenant_kind);
+    const key = termsDocumentFor(e, tenant_kind, this.legal);
     return key === null ? null : approvedLegalDocument(key, this.legal);
   }
 
@@ -241,7 +245,7 @@ export class SelfServiceBillingService {
     const product = assertProductKey(product_key);
     const e = this.entry(product);
     const terms = this.terms(e, tenant_kind);
-    const document_key = termsDocumentFor(e, tenant_kind) ?? e.terms_document;
+    const document_key = termsDocumentFor(e, tenant_kind, this.legal) ?? e.terms_document;
     const row = await this.prisma.tenantSubscription.findFirst({
       where: { ...openBaseSubscription(tenant_id, product), source: 'SELF_SERVICE' },
       include: { plan: { select: { key: true } } },

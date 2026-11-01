@@ -1200,6 +1200,10 @@ export class SenderEnvelopeService {
         },
         requestId,
       );
+    } else {
+      // ToS v2.0 — a Business user who owes the Terms in effect is refused until they accept
+      // them in the workspace (nothing is owed while no Business document is effective).
+      await this.personal?.assertLegalAccepted(tenant, auth.sub, requestId);
     }
     const rev = await this.repo.updateDraft({
       tenant_id: auth.tenant_id,

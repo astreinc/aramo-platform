@@ -12,6 +12,9 @@ export type LegalStatus = components['schemas']['SignLegalStatus'];
 export type PendingLegal = LegalStatus['pending'][number];
 export type AccountStatus = components['schemas']['SignAccountStatus'];
 
+/** The legal status query (the Account screen and the post-sign-in acceptance gate share it). */
+export const LEGAL_STATUS_KEY = ['sign', 'legal', 'status'] as const;
+
 export async function loadLegalStatus(workspace: WorkspaceClient): Promise<LegalStatus> {
   return workspace.call('/v1/sign/legal/status', 'get', {});
 }

@@ -7,14 +7,18 @@ import { describe, expect, it } from 'vitest';
 import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_TITLES,
+  BUSINESS_LEGAL_DOCUMENT_KEYS,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
+  PERSONAL_LEGAL_PREDECESSORS,
   approvedLegalDocument,
   effectiveLegalDocument,
+  effectivePersonalLegalDocument,
   legalEffectiveFrom,
   legalRef,
   legalVersionStatus,
   type LegalDocumentVersion,
 } from '../lib/legal/legal-documents.js';
+import { checkoutTermsDocument } from '../lib/billing/subscription-lifecycle.service.js';
 
 // Commercial Plans Amendment A1 §3 — legal texts are versioned and pinned: a text
 // change without a new version fails here; a draft is never offered for acceptance.
@@ -23,7 +27,9 @@ import {
 
 const ROOT = resolve(__dirname, '../../../..');
 const BUSINESS_KEYS = ['sign.terms_of_service', 'sign.privacy_policy', 'sign.esign_consent_disclosure', 'sign.retention_policy'] as const;
-const SLUGS: Record<(typeof PERSONAL_LEGAL_DOCUMENT_KEYS)[number], string> = {
+// ToS v2.0 — the Personal terms key is sign.terms_of_service; until v2.0 is effective it resolves
+// to the Personal Terms 1.0 (sign.personal_terms_of_service).
+const SLUGS: Record<string, string> = {
   'sign.personal_terms_of_service': 'personal-terms',
   'aramo.privacy_notice': 'privacy',
   'aramo.acceptable_use_policy': 'acceptable-use',
@@ -36,7 +42,8 @@ describe('legal document registry', () => {
   });
 
   it('every Business document is a DRAFT marked legal-pending in its own text, never offered', () => {
-    const business = LEGAL_DOCUMENTS.filter((d) => (BUSINESS_KEYS as readonly string[]).includes(d.key));
+    // ToS v2.0 (APPROVED, not yet effective) is asserted in its own block below.
+    const business = LEGAL_DOCUMENTS.filter((d) => (BUSINESS_KEYS as readonly string[]).includes(d.key) && !(d.key === 'sign.terms_of_service' && d.version === '2.0'));
     expect(business).toHaveLength(4);
     for (const d of business) {
       expect(d.status).toBe('DRAFT');
@@ -48,14 +55,14 @@ describe('legal document registry', () => {
 
   it('the three Personal documents are APPROVED 1.0 at their stable Sign-host URL, with no draft markers in the text', () => {
     for (const key of PERSONAL_LEGAL_DOCUMENT_KEYS) {
-      const d = approvedLegalDocument(key);
+      const d = effectivePersonalLegalDocument(key);
       expect(d).not.toBeNull();
       expect(d!.version).toBe('1.0');
-      expect(d!.url).toBe(`https://sign.aramo.ai/legal/${SLUGS[key]}/1.0`);
+      expect(d!.url).toBe(`https://sign.aramo.ai/legal/${SLUGS[d!.key]}/1.0`);
       const text = readFileSync(resolve(ROOT, d!.path), 'utf8');
       for (const marker of ['LEGAL_PENDING', 'LEGAL-PENDING', 'DRAFT', 'Reviewer checklist', '[Counsel', '[Legal']) expect(text).not.toContain(marker);
       expect(text).toContain('| Version | 1.0 |');
-      expect(LEGAL_DOCUMENT_TITLES[key].length).toBeGreaterThan(0);
+      expect(LEGAL_DOCUMENT_TITLES[d!.key].length).toBeGreaterThan(0);
     }
   });
 
@@ -101,6 +108,10 @@ describe('E-5 effective-version resolver', () => {
       if (d.status === 'DRAFT') {
         expect(d.effective_from).toBeNull();
         expect(legalVersionStatus(d).state).toBe('draft');
+      } else if (d.key === 'sign.terms_of_service' && d.version === '2.0') {
+        // ToS v2.0 — registered dark: approved, not effective until the release-day change.
+        expect(d.effective_from).toBeNull();
+        expect(legalVersionStatus(d).state).toBe('approved_not_effective');
       } else {
         expect(d.effective_from).toBe('2026-10-21T00:00:00Z');
         expect(legalVersionStatus(d).state).toBe('effective');
@@ -175,5 +186,58 @@ describe('E-5 effective-version resolver', () => {
   it('before any version is effective nothing is current', () => {
     expect(effectiveLegalDocument('aramo.privacy_notice', reg, at('2026-10-20T23:59:59Z'))).toBeNull();
     expect(state(v10, '2026-10-20T23:59:59Z')).toBe('upcoming');
+  });
+});
+
+// ToS v2.0 (PO 2026-11-01) — the combined Business + Personal terms, registered dark.
+describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
+  const v20 = LEGAL_DOCUMENTS.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
+  const scheduled: LegalDocumentVersion = { ...v20, effective_from: '2026-11-02T00:00:00Z' };
+  const reg = LEGAL_DOCUMENTS.map((d) => (d === v20 ? scheduled : d));
+  const before = new Date('2026-11-01T23:59:59.999Z');
+  const after = new Date('2026-11-02T00:00:00Z');
+
+  it('is APPROVED at its stable Sign-host URL, pinned to the cleaned public text, and NOT effective (effective_from null)', () => {
+    expect(v20).toMatchObject({ status: 'APPROVED', path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', effective_from: null });
+    expect(v20.sha256).toBe('3409e44d177a0fb21ec12730d062bfe144d1879be49cf90002abf8b64f447db9');
+    expect(effectiveLegalDocument('sign.terms_of_service')).toBeNull();
+    expect(approvedLegalDocument('sign.terms_of_service')).toBeNull();
+  });
+
+  it('the public text carries no counsel/fact notes and no notes-for-counsel section', () => {
+    const text = readFileSync(resolve(ROOT, v20.path), 'utf8');
+    // The "Drafting conventions" blockquote (it describes the markers) was outside the approved
+    // removal and is kept verbatim; every other line is checked.
+    const body = text
+      .split('\n')
+      .filter((l) => !l.startsWith('> '))
+      .join('\n');
+    for (const marker of ['`[COUNSEL: ', '`[COUNSEL/PO: ', '`[FACT: ', '## Notes for counsel', 'Document key (proposed)', 'Prepared by']) expect(body).not.toContain(marker);
+    expect(text.startsWith('# Aramo Sign — Terms of Service (combined Business and Personal)\n')).toBe(true);
+  });
+
+  it('Business accounts accept sign.terms_of_service; Personal accounts too, with the Personal Terms as its predecessor', () => {
+    expect([...BUSINESS_LEGAL_DOCUMENT_KEYS]).toEqual(['sign.terms_of_service']);
+    expect([...PERSONAL_LEGAL_DOCUMENT_KEYS]).toEqual(['sign.terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy']);
+    expect(PERSONAL_LEGAL_PREDECESSORS).toEqual({ 'sign.terms_of_service': 'sign.personal_terms_of_service' });
+  });
+
+  it('while v2.0 is not effective: Personal accounts keep the Personal Terms 1.0; Business accounts owe nothing', () => {
+    expect(effectivePersonalLegalDocument('sign.terms_of_service', reg, before)).toMatchObject({ key: 'sign.personal_terms_of_service', version: '1.0' });
+    expect(effectiveLegalDocument('sign.terms_of_service', reg, before)).toBeNull();
+    expect(checkoutTermsDocument('PERSONAL', reg, before)).toBe('sign.personal_terms_of_service');
+    expect(checkoutTermsDocument('BUSINESS', reg, before)).toBe('sign.terms_of_service');
+  });
+
+  it('once v2.0 is effective it applies to both kinds and the Personal Terms 1.0 are no longer offered (history kept)', () => {
+    expect(effectivePersonalLegalDocument('sign.terms_of_service', reg, after)).toBe(scheduled);
+    expect(effectiveLegalDocument('sign.terms_of_service', reg, after)).toBe(scheduled);
+    expect(checkoutTermsDocument('PERSONAL', reg, after)).toBe('sign.terms_of_service');
+    // The 1.0 entry stays in the registry with its URL (acceptances keep pointing at it).
+    expect(reg.find((d) => d.key === 'sign.personal_terms_of_service' && d.version === '1.0')!.url).toBe('https://sign.aramo.ai/legal/personal-terms/1.0');
+  });
+
+  it('a key without a predecessor never falls back', () => {
+    expect(effectivePersonalLegalDocument('sign.privacy_policy', reg, after)).toBeNull();
   });
 });

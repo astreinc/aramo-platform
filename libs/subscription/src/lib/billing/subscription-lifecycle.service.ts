@@ -7,7 +7,7 @@ import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
-import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
+import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import { PIN_REASON_PROVIDER_PLAN_CHANGE, planVersionTerms } from '../plan-version.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -192,9 +192,18 @@ export function planMatchesTenantKind(plan_tenant_kind: string | null, tenant_ki
   return tenant_kind === 'PERSONAL' ? plan_tenant_kind === 'PERSONAL' : plan_tenant_kind !== 'PERSONAL';
 }
 
-/** Sign Catalog v2 §4.3 — the terms a checkout accepts: the Personal Terms for a PERSONAL tenant. */
-export function checkoutTermsDocument(tenant_kind: string): 'sign.terms_of_service' | 'sign.personal_terms_of_service' {
-  return tenant_kind === 'PERSONAL' ? 'sign.personal_terms_of_service' : 'sign.terms_of_service';
+/**
+ * Sign Catalog v2 §4.3 — the terms a checkout accepts: the Personal Terms for a PERSONAL tenant.
+ * ToS v2.0 — once `sign.terms_of_service` has an effective version (the combined Business +
+ * Personal terms), a PERSONAL tenant accepts it instead (the Personal Terms are retired).
+ */
+export function checkoutTermsDocument(
+  tenant_kind: string,
+  registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS,
+  now: Date = new Date(),
+): 'sign.terms_of_service' | 'sign.personal_terms_of_service' {
+  if (tenant_kind !== 'PERSONAL') return 'sign.terms_of_service';
+  return effectiveLegalDocument('sign.terms_of_service', registry, now) !== null ? 'sign.terms_of_service' : 'sign.personal_terms_of_service';
 }
 
 function formatMinor(amount_minor: number, currency: string): string {
@@ -585,7 +594,7 @@ export class SubscriptionLifecycleService {
     // A1 — terms evidence. No live charging without approved terms; an approved
     // version must be affirmatively accepted.
     // Sign Catalog v2 §4.3 — a PERSONAL tenant accepts the Personal Terms.
-    const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind), this.legal);
+    const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind, this.legal), this.legal);
     if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
     // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The

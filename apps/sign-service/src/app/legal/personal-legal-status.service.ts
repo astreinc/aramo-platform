@@ -6,9 +6,11 @@ import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LEGAL_DOCUMENT_TITLES,
+  BUSINESS_LEGAL_DOCUMENT_KEYS,
   LegalAcceptanceService,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
   effectiveLegalDocument,
+  effectivePersonalLegalDocument,
   systemLegalClock,
   type LegalClock,
   type LegalDocumentVersion,
@@ -20,10 +22,18 @@ import {
 // owed before its effective_from) has no acceptance by this user in this tenant
 // for that exact version and text (sha256) — whether it was accepted at signup
 // (context SIGNUP) or later in the workspace (context IN_APP). Business tenants
-// accept no Personal documents: always nothing pending.
+// accept no Personal documents.
 //
-// Inert for sending on its own: the Personal send gate consults pending() and
-// refuses with legalAcceptanceRequired() while anything is pending.
+// ToS v2.0 (PO 2026-11-01) — beside the Personal path, a Business path: a user of a
+// non-PERSONAL tenant owes the currently EFFECTIVE Aramo Sign Terms of Service
+// (BUSINESS_LEGAL_DOCUMENT_KEYS) until they accept it, and is blocked at their next
+// sign-in to the workspace until then. While no Business document is effective
+// (v2.0 is registered with effective_from null until release day) nothing is pending.
+// For a Personal account the terms key is `sign.terms_of_service`, resolved with
+// effectivePersonalLegalDocument(): the Personal Terms 1.0 apply until v2.0 is effective.
+//
+// Inert for sending on its own: the send path consults pendingFor() and refuses
+// with legalAcceptanceRequired() while anything is pending.
 
 export interface PendingLegalDocument {
   key: string;
@@ -67,13 +77,28 @@ export class PersonalLegalStatusService {
   current(now: Date = this.clock()): LegalDocumentVersion[] {
     const docs: LegalDocumentVersion[] = [];
     for (const key of PERSONAL_LEGAL_DOCUMENT_KEYS) {
+      const d = effectivePersonalLegalDocument(key, this.legal, now);
+      if (d !== null) docs.push(d);
+    }
+    return docs;
+  }
+
+  /** ToS v2.0 — the Business documents in effect now (none while v2.0 is not effective). */
+  currentBusiness(now: Date = this.clock()): LegalDocumentVersion[] {
+    const docs: LegalDocumentVersion[] = [];
+    for (const key of BUSINESS_LEGAL_DOCUMENT_KEYS) {
       const d = effectiveLegalDocument(key, this.legal, now);
       if (d !== null) docs.push(d);
     }
     return docs;
   }
 
-  /** The documents this user must still accept (empty for a non-PERSONAL tenant). */
+  /** The documents in effect now for a tenant kind (PERSONAL, else the Business path). */
+  private currentFor(kind: string, now: Date): LegalDocumentVersion[] {
+    return kind === 'PERSONAL' ? this.current(now) : this.currentBusiness(now);
+  }
+
+  /** The documents this user must still accept (Personal or Business documents by tenant kind). */
   async pending(tenant_id: string, user_id: string): Promise<PendingLegalDocument[]> {
     const tenant = await this.tenants.findById(tenant_id);
     if (tenant === null) return [];
@@ -82,8 +107,7 @@ export class PersonalLegalStatusService {
 
   /** pending() for an already-loaded tenant (the send path has it in hand). */
   async pendingFor(tenant: Pick<TenantDto, 'id' | 'kind'>, user_id: string, now: Date = this.clock()): Promise<PendingLegalDocument[]> {
-    if (tenant.kind !== 'PERSONAL') return [];
-    const docs = this.current(now);
+    const docs = this.currentFor(tenant.kind, now);
     if (docs.length === 0) return [];
     const accepted = await this.acceptances.acceptedBy({ tenant_id: tenant.id, user_id, keys: docs.map((d) => d.key) });
     const done = new Set(accepted.map((a) => `${a.document_key}@${a.version}#${a.sha256}`));
@@ -94,7 +118,8 @@ export class PersonalLegalStatusService {
 
   /**
    * Record the user's acceptance of the currently EFFECTIVE versions. Every item must
-   * name a Personal document and its current approved version exactly; anything
+   * name a document owed by the tenant's kind (Personal, or ToS v2.0 Business) and its
+   * current approved version exactly; anything
    * else refuses the whole request (nothing recorded). Idempotent per version.
    */
   async accept(
@@ -106,14 +131,16 @@ export class PersonalLegalStatusService {
     now: Date = this.clock(),
   ): Promise<PendingLegalDocument[]> {
     const tenant = await this.tenants.findById(tenant_id);
-    if (tenant === null || tenant.kind !== 'PERSONAL') {
+    // ToS v2.0 — a Business user accepts the Business documents in effect; with none in
+    // effect there is nothing to accept (refused, as before, for every non-PERSONAL tenant).
+    if (tenant === null || (tenant.kind !== 'PERSONAL' && this.currentBusiness(now).length === 0)) {
       throw new AramoError('VALIDATION_ERROR', 'There is nothing to accept for this account', 400, {
         requestId,
         details: { reason: 'legal_acceptance_not_applicable' },
       });
     }
     const wanted = parseItems(items, requestId);
-    const current = new Map(this.current(now).map((d) => [d.key as string, d] as const));
+    const current = new Map(this.currentFor(tenant.kind, now).map((d) => [d.key as string, d] as const));
     const docs: LegalDocumentVersion[] = [];
     for (const it of wanted) {
       const d = current.get(it.key);

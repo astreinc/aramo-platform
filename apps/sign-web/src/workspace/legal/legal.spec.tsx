@@ -94,10 +94,12 @@ describe('legal texts — build-time integrity against the registry', () => {
     expect(entry).toBeDefined();
     expect(entry!.status).toBe('APPROVED');
     expect(entry!.key).toBe(d.key);
-    expect(entry!.url).toBe(`${PUBLIC_SIGN_ORIGIN}${legalPath(d.slug, d.version)}`);
-    // E-5 — the catalog serves a version from the same instant the registry makes it effective.
+    expect(entry!.url).toBe(`${PUBLIC_SIGN_ORIGIN}/legal/${d.slug}/${d.version}`);
+    if (d.effective_from !== null) expect(entry!.url).toBe(`${PUBLIC_SIGN_ORIGIN}${legalPath(d.slug, d.version)}`);
+    // E-5 — the catalog serves a version from the same instant the registry makes it effective
+    // (ToS v2.0: both null until the release-day change sets the same instant in both).
     expect(d.effective_from).toBe(entry!.effective_from);
-    expect(effectiveTime(d.effective_from)).not.toBeNull();
+    if (d.effective_from !== null) expect(effectiveTime(d.effective_from)).not.toBeNull();
     expect(sha256(bundled!.text)).toBe(entry!.sha256);
     // And the bundle is the file on disk, byte for byte.
     expect(bundled!.text).toBe(readFileSync(resolve(ROOT, bundled!.path), 'utf8'));
@@ -105,7 +107,10 @@ describe('legal texts — build-time integrity against the registry', () => {
 
   it('every APPROVED, scheduled registry entry is published here, and nothing else is', () => {
     const approved = registry().filter((r) => r.status === 'APPROVED' && r.url !== null && r.effective_from !== null);
-    expect(approved.map((r) => `${r.key}@${r.version}`).sort()).toEqual(LEGAL_CATALOG.map((d) => `${d.key}@${d.version}`).sort());
+    const scheduledCatalog = LEGAL_CATALOG.filter((d) => d.effective_from !== null);
+    expect(approved.map((r) => `${r.key}@${r.version}`).sort()).toEqual(scheduledCatalog.map((d) => `${d.key}@${d.version}`).sort());
+    // ToS v2.0 — the only unscheduled catalog entry: APPROVED, published URL, effective_from null in both.
+    expect(LEGAL_CATALOG.filter((d) => d.effective_from === null).map((d) => `${d.key}@${d.version}`)).toEqual(['sign.terms_of_service@2.0']);
     expect(Object.keys(LEGAL_TEXTS).sort()).toEqual(LEGAL_CATALOG.map((d) => `${d.slug}@${d.version}`).sort());
   });
 
@@ -460,5 +465,56 @@ describe('M-A7 §5.1 — public /legal, /legal/terms and /help', () => {
     expect(screen.getByTestId('help-identity-support')).toHaveAttribute('href', 'mailto:support@aramo.ai');
     expect(screen.getByTestId('help-identity-privacy')).toHaveAttribute('href', 'mailto:privacy@aramo.ai');
     expect(screen.getByTestId('legal-footer-identity')).toHaveTextContent(ARAMO_SIGN_IDENTITY.legalEntity);
+  });
+});
+
+// ToS v2.0 (PO 2026-11-01) — the combined Terms of Service: bundled and listed, NOT served until
+// the release-day change sets its effective_from; then it succeeds the Personal Terms 1.0.
+describe('ToS v2.0 — terms-of-service', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const T20 = LEGAL_CATALOG.find((d) => d.slug === 'terms-of-service')!;
+  const LIVE: LegalCatalogEntry = { ...T20, effective_from: '2026-11-02T00:00:00Z' };
+  const LIVE_CATALOG = LEGAL_CATALOG.map((d) => (d === T20 ? LIVE : d));
+  const AFTER = new Date('2026-11-02T12:00:00Z');
+
+  it('the real catalog: not served, not linked, not current; the Personal Terms 1.0 stay current', async () => {
+    expect(T20).toMatchObject({ key: 'sign.terms_of_service', version: '2.0', audience: 'all', effective_from: null });
+    expect(currentLegal('terms-of-service')).toBeNull();
+    expect(footerLegalLinks(true).map((l) => l.href)).toEqual(['/legal/personal-terms/1.0', '/legal/privacy/1.0', '/legal/acceptable-use/1.0']);
+    at('/legal/terms-of-service/2.0');
+    expect(await screen.findByTestId('legal-not-found')).toBeInTheDocument();
+    cleanupRender();
+    at('/legal/terms-of-service');
+    expect(await screen.findByTestId('legal-not-found')).toBeInTheDocument();
+  });
+
+  it('once effective: served at its stable URL; Personal and Business footers link it; the Personal Terms are no longer linked', () => {
+    expect(currentLegal('terms-of-service', LIVE_CATALOG, AFTER)).toBe(LIVE);
+    expect(footerLegalLinks(true, LIVE_CATALOG, AFTER)).toEqual([
+      { label: 'Terms', href: '/legal/terms-of-service/2.0' },
+      { label: 'Privacy', href: '/legal/privacy/1.0' },
+      { label: 'Acceptable Use', href: '/legal/acceptable-use/1.0' },
+    ]);
+    expect(footerLegalLinks(false, LIVE_CATALOG, AFTER).map((l) => l.label)).toEqual(['Terms', 'Privacy', 'Acceptable Use']);
+    const p10 = LIVE_CATALOG.find((d) => d.slug === 'personal-terms')!;
+    expect(legalEntryStatus(p10, LIVE_CATALOG, AFTER)).toEqual({ state: 'superseded', superseded_by: LIVE });
+  });
+
+  it('once effective: the v2.0 page renders; the Personal Terms 1.0 page stays published with a no-longer-in-effect banner', async () => {
+    atWith('/legal/terms-of-service/2.0', { catalog: LIVE_CATALOG, now: () => AFTER });
+    const page = await screen.findByTestId('legal-document');
+    expect(within(page).getByRole('heading', { level: 1, name: 'Aramo Sign — Terms of Service (combined Business and Personal)' })).toBeInTheDocument();
+    expect(screen.getByTestId('legal-meta')).toHaveTextContent('Version 2.0 · Permanent link: https://sign.aramo.ai/legal/terms-of-service/2.0');
+    cleanupRender();
+    atWith('/legal/personal-terms/1.0', { catalog: LIVE_CATALOG, now: () => AFTER });
+    expect(await screen.findByTestId('legal-superseded')).toHaveTextContent('No longer in effect since 2026-11-02 00:00 UTC; the current version is 2.0.');
+    expect(screen.getByTestId('legal-current-link')).toHaveAttribute('href', '/legal/terms-of-service/2.0');
+  });
+
+  it('once effective: /legal/terms names one set of terms for Personal and Business accounts', async () => {
+    atWith('/legal/terms', { catalog: LIVE_CATALOG, now: () => AFTER });
+    const list = await screen.findByTestId('legal-terms-combined');
+    expect(within(list).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/legal/terms-of-service/2.0', '/legal/acceptable-use/1.0']);
+    expect(screen.queryByTestId('legal-terms-personal')).toBeNull();
   });
 });

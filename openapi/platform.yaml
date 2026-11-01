@@ -4619,7 +4619,9 @@ paths:
       description: |
         The Personal Terms of Service, Privacy Notice and Acceptable Use Policy
         (`sign.personal_terms_of_service`, `aramo.privacy_notice`,
-        `aramo.acceptable_use_policy`) at their APPROVED versions, or `documents:
+        `aramo.acceptable_use_policy`) at their APPROVED versions — ToS v2.0: once the
+        Aramo Sign Terms of Service (`sign.terms_of_service`) 2.0 is in effect it is
+        presented instead of the Personal Terms — or `documents:
         null` while any of them is not APPROVED (then `complete` is refused with
         `legal_documents_not_approved`). A 404 means Personal signup is off.
       security: []
@@ -11407,7 +11409,7 @@ components:
       properties:
         key:
           type: string
-          enum: [sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
+          enum: [sign.terms_of_service, sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
         version:
           type: string
         url:

@@ -76,6 +76,17 @@ describe('Sign workspace App', () => {
     expect(screen.getByTestId('new-envelope')).toHaveAttribute('href', '/sign/envelopes/new');
   });
 
+  it('ToS v2.0 — a BUSINESS user who owes the Terms in effect is blocked by the acceptance dialog after sign-in', async () => {
+    const base = stubFetch(ctx());
+    const pending = [{ key: 'sign.terms_of_service', version: '2.0', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', title: 'Aramo Sign Terms of Service' }];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/v1/sign/legal/status') ? json({ pending }) : base(input)));
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/');
+    expect(await screen.findByTestId('legal-accept-dialog')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Aramo Sign Terms of Service' })).toHaveAttribute('href', 'https://sign.aramo.ai/legal/terms-of-service/2.0');
+    expect(screen.getByTestId('legal-accept-submit')).toBeDisabled();
+  });
+
   it('a PERSONAL account landing on /sign is redirected to /personal, with sending disabled', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx({ workspace: 'personal', can_send: false, tenant: { id: 't1', name: 'Priya Nair', kind: 'PERSONAL' }, organization_url: null })));
     renderAt('/sign/reports');

@@ -4,6 +4,8 @@
 // The texts are DATA files of the repo (doc/legal is no Nx project): a raw text
 // import, not a code dependency across a project boundary.
 // eslint-disable-next-line @nx/enforce-module-boundaries -- raw legal text (doc/legal), not code
+import termsOfService20 from '../../../../../doc/legal/aramo-sign/terms-of-service-2.0.md?raw';
+// eslint-disable-next-line @nx/enforce-module-boundaries -- raw legal text (doc/legal), not code
 import personalTerms10 from '../../../../../doc/legal/aramo-sign/personal-terms-of-service.md?raw';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- raw legal text (doc/legal), not code
 import privacy10 from '../../../../../doc/legal/aramo/privacy-notice.md?raw';
@@ -16,6 +18,8 @@ export interface LegalText {
 }
 
 export const LEGAL_TEXTS: Readonly<Record<string, LegalText>> = {
+  // ToS v2.0 — bundled now; served only once its catalog entry has an effective_from.
+  'terms-of-service@2.0': { path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', text: termsOfService20 },
   'personal-terms@1.0': { path: 'doc/legal/aramo-sign/personal-terms-of-service.md', text: personalTerms10 },
   'privacy@1.0': { path: 'doc/legal/aramo/privacy-notice.md', text: privacy10 },
   'acceptable-use@1.0': { path: 'doc/legal/aramo/acceptable-use-policy.md', text: acceptableUse10 },

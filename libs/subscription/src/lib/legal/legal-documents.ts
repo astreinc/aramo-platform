@@ -77,6 +77,24 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     url: null,
     effective_from: null,
   },
+  // Aramo Sign Terms of Service v2.0 — the combined Business + Personal terms,
+  // APPROVED 2026-11-01 (counsel and the Architect, relayed by the PO). The public
+  // text is the approved file with the PO-approved defined removal (counsel/fact
+  // notes, notes-for-counsel section, internal metadata rows; removal record in
+  // Aramo/documents). It replaces the 0.1.1 DRAFT above and, for Personal accounts,
+  // sign.personal_terms_of_service 1.0 (see effectivePersonalLegalDocument).
+  // effective_from is null on purpose (PO 2026-11-01): NOT yet effective — never
+  // offered, owed or served — until the release-day change sets the ship instant
+  // here AND in sign-web's legal catalog (a sign-web spec keeps the two equal).
+  {
+    key: 'sign.terms_of_service',
+    version: '2.0',
+    status: 'APPROVED',
+    path: 'doc/legal/aramo-sign/terms-of-service-2.0.md',
+    sha256: '3409e44d177a0fb21ec12730d062bfe144d1879be49cf90002abf8b64f447db9',
+    url: 'https://sign.aramo.ai/legal/terms-of-service/2.0',
+    effective_from: null,
+  },
   // Aramo Sign Personal (Free) — APPROVED 1.0 (PO, 2026-10-21).
   {
     key: 'sign.personal_terms_of_service',
@@ -110,8 +128,26 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
   },
 ];
 
-/** The documents a Personal account accepts (signup and in-app re-acceptance), in display order. */
-export const PERSONAL_LEGAL_DOCUMENT_KEYS = ['sign.personal_terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy'] as const satisfies readonly LegalDocumentKey[];
+/**
+ * The documents a Personal account accepts (signup and in-app re-acceptance), in display order.
+ * ToS v2.0 — the terms are `sign.terms_of_service` (combined Business + Personal). Resolve each
+ * key with effectivePersonalLegalDocument(): until `sign.terms_of_service` has an effective
+ * version, the Personal Terms 1.0 (`sign.personal_terms_of_service`) still apply in its place.
+ */
+export const PERSONAL_LEGAL_DOCUMENT_KEYS = ['sign.terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy'] as const satisfies readonly LegalDocumentKey[];
+
+/** ToS v2.0 — the documents a Business account's users accept (signup and next sign-in), in display order. */
+export const BUSINESS_LEGAL_DOCUMENT_KEYS = ['sign.terms_of_service'] as const satisfies readonly LegalDocumentKey[];
+
+/**
+ * ToS v2.0 — retiring the Personal Terms without deleting them. For a Personal account a key
+ * here falls back to its predecessor while the key itself has no effective version. Once
+ * `sign.terms_of_service` 2.0 is effective, `sign.personal_terms_of_service` 1.0 is no longer
+ * offered or owed to anyone; its registry entry, published URL and acceptances stay as history.
+ */
+export const PERSONAL_LEGAL_PREDECESSORS: Readonly<Partial<Record<LegalDocumentKey, LegalDocumentKey>>> = {
+  'sign.terms_of_service': 'sign.personal_terms_of_service',
+};
 
 /** Display titles (the documents' own headings). */
 export const LEGAL_DOCUMENT_TITLES: Readonly<Record<LegalDocumentKey, string>> = {
@@ -193,6 +229,17 @@ export function effectiveLegalDocument(key: LegalDocumentKey, registry: readonly
  */
 export function approvedLegalDocument(key: LegalDocumentKey, registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, now: Date = new Date()): LegalDocumentVersion | null {
   return effectiveLegalDocument(key, registry, now);
+}
+
+/**
+ * ToS v2.0 — the version of a document that applies now to a PERSONAL account: the key's own
+ * effective version, else (while it has none) its predecessor's (PERSONAL_LEGAL_PREDECESSORS).
+ */
+export function effectivePersonalLegalDocument(key: LegalDocumentKey, registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, now: Date = new Date()): LegalDocumentVersion | null {
+  const own = effectiveLegalDocument(key, registry, now);
+  if (own !== null) return own;
+  const predecessor = PERSONAL_LEGAL_PREDECESSORS[key];
+  return predecessor === undefined ? null : effectiveLegalDocument(predecessor, registry, now);
 }
 
 /** The state of one registry version at `now` (see the table above). */

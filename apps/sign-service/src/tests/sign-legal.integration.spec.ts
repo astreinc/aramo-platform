@@ -8,7 +8,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '@aramo/identity';
-import { LEGAL_DOCUMENTS, PERSONAL_LEGAL_DOCUMENT_KEYS } from '@aramo/subscription';
+import { PERSONAL_LEGAL_DOCUMENT_KEYS, effectivePersonalLegalDocument } from '@aramo/subscription';
 import cookieParser from 'cookie-parser';
 import { SignJWT, exportSPKI, generateKeyPair, type KeyLike } from 'jose';
 import { Client } from 'pg';
@@ -36,7 +36,8 @@ const migrationsOf = (lib: string): string[] => {
 
 const AUDIENCE = 'aramo-sign-legal-test';
 const OWNER_SCOPES = [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE];
-const CURRENT = PERSONAL_LEGAL_DOCUMENT_KEYS.map((key) => LEGAL_DOCUMENTS.find((d) => d.key === key && d.status === 'APPROVED')!);
+// ToS v2.0 — the document in effect per key (the Personal Terms 1.0 while v2.0 is not effective).
+const CURRENT = PERSONAL_LEGAL_DOCUMENT_KEYS.map((key) => effectivePersonalLegalDocument(key)!);
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — v1/sign/legal (real Postgres 17)', () => {
   let container: StartedPostgreSqlContainer;
