@@ -2099,6 +2099,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/billing/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign Feature Parity D-2 — the organization's metered usage this billing period.
+         * @description Requires sign:envelope:read or sign:billing:manage. Read only. Per-unit usage (SMS and WhatsApp delivery, SMS one-time passcodes, ID verification, knowledge-based checks, qualified signatures, e-stamps) recorded in the usage ledger for the current billing period of the organization's open Sign subscription, priced at the unit prices of its pinned plan version. Amounts are minor units of currency. A unit_price_minor of null means the unit is not sold on the current plan version. While metered billing is off (SIGN_USAGE_BILLING_ENABLED unset, the default) it answers enabled false and period null. period is null when the organization has no open Sign subscription.
+         */
+        get: operations["getBillingUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/billing/webhook/stripe": {
         parameters: {
             query?: never;
@@ -3316,6 +3336,28 @@ export interface components {
             available: boolean;
             /** @enum {string|null} */
             reason: "PRODUCT_NOT_SELF_SERVICE" | "SELF_SERVICE_TERMS_NOT_APPROVED" | "GOVERNED_SUBSCRIPTION_OPEN" | "ACTIVATION_PENDING" | "CONVERSION_IN_PROGRESS" | "NO_SELF_SERVICE_SUBSCRIPTION" | "PROVIDER_CHANGE_PENDING" | "ALREADY_CANCELING" | "PLAN_NOT_AVAILABLE" | "FINANCIAL_TREATMENT_UNDEFINED" | null;
+        };
+        BillingUsage: {
+            enabled: boolean;
+            period: {
+                /** Format: date-time */
+                start: string;
+                /** Format: date-time */
+                end: string;
+                /** @enum {string} */
+                currency: "USD";
+                units: {
+                    /** @enum {string} */
+                    unit_key: "sign.sms_message" | "sign.whatsapp_message" | "sign.sms_otp" | "sign.id_verification" | "sign.kba" | "sign.qes_signature" | "sign.india_estamp";
+                    name: string;
+                    /** @enum {string} */
+                    quantity_label: "message" | "verification" | "signature" | "stamp";
+                    quantity: number;
+                    unit_price_minor: number | null;
+                    amount_minor: number;
+                }[];
+                total_amount_minor: number;
+            } | null;
         };
         /** @description CCP-C7 — the self-service state of one registered product (v1 registry, sign only). */
         SelfServiceBilling: {
@@ -8374,6 +8416,29 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             409: components["responses"]["BillingConflict"];
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    getBillingUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingUsage"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
             503: components["responses"]["BillingUnavailable"];
         };
     };
