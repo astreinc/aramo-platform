@@ -30,6 +30,7 @@ import { PersonalSignupRepository } from './personal/personal-signup.repository.
 import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
 import { RoleService } from './role.service.js';
+import { SignCustomRoleService } from './sign-custom-role/sign-custom-role.service.js';
 import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
 import { TenantRepository } from './tenant.repository.js';
@@ -108,6 +109,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
     // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability.
     PrivacyRequestService,
     PrivacySubjectService,
+    // Aramo Sign Feature-Parity §1.21 — custom Sign roles (tenant-owned, sign:* only).
+    SignCustomRoleService,
     // M-A8 §3.2 / §3.5 — dependency inspection + the identity-owned retirement port (the
     // one AWS adapter, chosen from AUTH_COGNITO_TENANT_USER_POOL_ID; opens nothing until use).
     IdentityDependencyInspector,
@@ -155,6 +158,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     PersonalRiskService,
     PrivacyRequestService,
     PrivacySubjectService,
+    SignCustomRoleService,
     IdentityDependencyInspector,
     IDENTITY_RETIREMENT_PORT,
     PersonalSignupRepository,

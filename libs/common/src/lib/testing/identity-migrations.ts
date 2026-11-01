@@ -148,6 +148,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // PrivacyRequestEvent (append-only), PrivacyRequestEmailProof. New tables + guard triggers only;
   // no existing table or returned shape changes, so no pact verify-api registration.
   'libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql',
+  // Aramo Sign Feature-Parity §1.21 — custom Sign roles: SignCustomRole + SignCustomRoleAssignment
+  // (new tables) and a new (id, tenant_id) unique index on UserTenantMembership. No existing
+  // returned shape changes, so no pact verify-api registration.
+  'libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

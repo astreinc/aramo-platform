@@ -1138,11 +1138,16 @@
       "SEE_ALL_ROLE_KEYS",
       "SEND_LOCATION_YOUNG_ACCOUNT_DAYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_CUSTOM_ROLES_PER_TENANT_MAX",
+      "SIGN_CUSTOM_ROLE_COMPOSABLE_SCOPES",
+      "SIGN_CUSTOM_ROLE_DESCRIPTION_MAX",
+      "SIGN_CUSTOM_ROLE_NAME_MAX",
       "SIGN_NATIVE_SESSION_CONSUMER",
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SMS_VERIFICATION_PORT",
+      "SignCustomRoleService",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
@@ -1170,8 +1175,10 @@
       "bumpPrincipalVersion",
       "bumpPrincipalsWithRoleVersion",
       "canonicalEmailForDuplicates",
+      "checkCustomRoleScopes",
       "checkPersonalOtp",
       "cognitoCreateUserAttributes",
+      "composableScopesOf",
       "decisionForPoints",
       "decodeCursor",
       "decryptPrivacyEmail",
@@ -1195,6 +1202,7 @@
       "hashPersonalOtp",
       "identityRetirementFromEnv",
       "initialRiskState",
+      "isComposableSignScope",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
       "isHolderIndexViolation",
@@ -1211,6 +1219,7 @@
       "mayResendPersonalOtp",
       "mmdbVersion",
       "normalizeClaimDomain",
+      "normalizeCustomRoleText",
       "normalizeE164",
       "normalizeEmail",
       "normalizeIdp",
@@ -1230,6 +1239,7 @@
       "retiredEmailTombstone",
       "robotCheckAdapterFromEnv",
       "safeGeoLookup",
+      "scopesActorLacks",
       "sendLocation",
       "signEntryActivated",
       "signEntryUrl",
@@ -4887,6 +4897,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6895,6 +6911,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/sign-custom-role.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/tenant-profile.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -7845,6 +7867,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10969,6 +10997,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13364,6 +13398,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

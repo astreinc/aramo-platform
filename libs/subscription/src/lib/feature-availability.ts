@@ -25,6 +25,10 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
+  // Aramo Sign Feature-Parity §1.21 — organization-defined Sign roles (Professional,
+  // Enterprise). Built DARK: every custom-role route refuses with ESIGN_FEATURE_NOT_AVAILABLE
+  // until the PO authorizes the flip (R-8).
+  'sign.custom_roles': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

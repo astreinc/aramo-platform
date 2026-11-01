@@ -90,6 +90,8 @@ function makeDeps(over: {
   const findActiveMembershipSite = vi.fn().mockResolvedValue(over.site ?? null);
   const getScopesByUserAndTenant = vi.fn().mockResolvedValue(['auth:session:read']);
   const getScopesByUserTenantAndSite = vi.fn().mockResolvedValue(['talent:read']);
+  // Sign Feature-Parity §1.21 — custom Sign role scopes (read for the `sign` consumer only).
+  const getSignCustomRoleScopes = vi.fn().mockResolvedValue([]);
   const writeGlobalEvent = vi.fn().mockResolvedValue(undefined);
 
   // IC-4 PR-9 (J-9) — owner first-session activation collaborators.
@@ -113,6 +115,7 @@ function makeDeps(over: {
     findActiveMembershipSite,
     getScopesByUserAndTenant,
     getScopesByUserTenantAndSite,
+    getSignCustomRoleScopes,
   } as unknown as RoleService;
   const audit = { writeGlobalEvent } as unknown as IdentityAuditService;
   // HF-AUTH-1 — the adapter stamps the current authorization version into the
@@ -128,7 +131,7 @@ function makeDeps(over: {
   return {
     identity, tenant, role, audit, authzVersions, entitlements, getCapabilities,
     resolveUser, findUserByEmail, linkExternalIdentity, activate, getTenantsByUser,
-    findActiveMembershipSite, getScopesByUserAndTenant, getScopesByUserTenantAndSite, writeGlobalEvent,
+    findActiveMembershipSite, getScopesByUserAndTenant, getScopesByUserTenantAndSite, getSignCustomRoleScopes, writeGlobalEvent,
     findMembership, findRoleKeysForMembership, transitionTenantStatus,
   };
 }
@@ -532,6 +535,28 @@ describe('M-A8 §2.4 — Sign refresh requires Sign authority in the tenant', ()
     const d = makeDeps({ capabilities: ['core', 'sign'], site: SITE_ID });
     d.getScopesByUserTenantAndSite.mockResolvedValue(['talent:read']);
     expect(await adapter(d).resolveScopes(signRefresh)).toEqual({ kind: 'denied', reason: 'sign_access_removed' });
+  });
+  // Aramo Sign Feature-Parity §1.21 — custom Sign roles count as Sign authority for the
+  // `sign` consumer only (same site rule); removing them ends the Sign session on refresh.
+  it('custom Sign role scopes alone keep a sign refresh alive; their removal denies it; other consumers never read them', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign', 'ats'] });
+    d.getScopesByUserAndTenant.mockResolvedValue(['talent:read']);
+    d.getSignCustomRoleScopes.mockResolvedValue(['sign:envelope:read']);
+    const r = await adapter(d).resolveScopes(signRefresh);
+    expect(r).toMatchObject({ kind: 'resolved', scopes: ['talent:read', 'sign:envelope:read'] });
+    expect(d.getSignCustomRoleScopes).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
+    d.getSignCustomRoleScopes.mockResolvedValue([]);
+    expect(await adapter(d).resolveScopes(signRefresh)).toEqual({ kind: 'denied', reason: 'sign_access_removed' });
+    d.getSignCustomRoleScopes.mockClear();
+    await adapter(d).resolveScopes({ ...REFRESH, consumer: 'recruiter' });
+    expect(d.getSignCustomRoleScopes).not.toHaveBeenCalled();
+  });
+  it('custom Sign role scopes follow the site-scoped membership', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign'], site: SITE_ID });
+    d.getScopesByUserTenantAndSite.mockResolvedValue(['talent:read']);
+    d.getSignCustomRoleScopes.mockResolvedValue(['sign:envelope:read']);
+    expect((await adapter(d).resolveScopes(signRefresh)).kind).toBe('resolved');
+    expect(d.getSignCustomRoleScopes).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID, site_id: SITE_ID });
   });
   it('other consumers are unaffected (an ATS refresh needs no `sign:` scope)', async () => {
     const d = makeDeps({ capabilities: ['core', 'ats'] });

@@ -4116,6 +4116,216 @@ paths:
   # Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge. Every write
   # answers 403 ESIGN_FEATURE_NOT_AVAILABLE (details.reason purge_not_enabled) unless the
   # service runs with SIGN_PURGE_ENABLED=1.
+  # Aramo Sign Feature-Parity Program Directive v1.0 (LOCKED) §1.21 — custom roles and permissions.
+  # DARK: every route answers 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.custom_roles is NOT_AVAILABLE,
+  # for a plan without the feature (details.reason not_in_plan); a PERSONAL tenant gets 403
+  # INSUFFICIENT_PERMISSIONS (custom_roles_business_only).
+  /v1/sign/sender/custom-roles:
+    get:
+      operationId: listSignCustomRoles
+      summary: The organization's custom Sign roles and the Sign permissions a custom role may be composed of.
+      description: Requires sign:member:manage. permissions[].grantable is true only for the permissions the caller holds (a custom role can never hold a permission its creator lacks).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleList'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSignCustomRole
+      summary: Create a custom Sign role from existing Sign permissions.
+      description: >
+        Requires sign:member:manage. scope_keys must be non-empty composable Sign permissions (never billing, platform or
+        ATS permissions — 400 scope_not_composable) that the caller holds (403 INSUFFICIENT_PERMISSIONS scope_exceeds_actor).
+        409 SIGN_CUSTOM_ROLE_CONFLICT name_taken | custom_role_limit. Audited (identity.sign_custom_role.created).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignCustomRoleInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/custom-roles/members:
+    get:
+      operationId: listSignCustomRoleMembers
+      summary: The organization's active members, their built-in Sign and organization roles, and the custom roles they hold.
+      description: Requires sign:member:manage.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleMembers'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/custom-roles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: updateSignCustomRole
+      summary: Change a custom Sign role's name, description or permissions.
+      description: >
+        Requires sign:member:manage and every permission the role grants today and after the change (403 scope_exceeds_actor).
+        A permission change takes effect for every holder on their next request. Audited (identity.sign_custom_role.updated).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignCustomRolePatch'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignCustomRoleEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: deleteSignCustomRole
+      summary: Delete a custom Sign role.
+      description: >
+        Requires sign:member:manage and every permission the role grants. Refused while the role is assigned to any member
+        (409 SIGN_CUSTOM_ROLE_CONFLICT custom_role_in_use, details.assigned_count). Audited (identity.sign_custom_role.deleted).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/custom-roles/{id}/members/{user_id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: assignSignCustomRole
+      summary: Give an active organization member a custom Sign role (idempotent).
+      description: Requires sign:member:manage and every permission the role grants. assigned is false when the member already held it. Audited (identity.sign_custom_role.assigned).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assigned]
+                properties:
+                  assigned:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: unassignSignCustomRole
+      summary: Remove a custom Sign role from a member (idempotent).
+      description: Requires sign:member:manage and every permission the role grants. Takes effect on the member's next request. Audited (identity.sign_custom_role.unassigned).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unassigned]
+                properties:
+                  unassigned:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/sender/retention-policy:
     get:
       operationId: getSenderRetentionPolicy
@@ -4631,6 +4841,128 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    # Sign Feature-Parity §1.21 — custom Sign roles.
+    SignCustomRoleScopeKey:
+      type: string
+      description: A composable Sign permission (every sign:* permission except sign:billing:manage).
+      enum:
+        - sign:envelope:read
+        - sign:envelope:read:all
+        - sign:envelope:create
+        - sign:envelope:send
+        - sign:envelope:manage:all
+        - sign:contact:read
+        - sign:report:read
+        - sign:member:manage
+        - sign:settings:manage
+        - sign:integration:manage
+    SignCustomRole:
+      type: object
+      required: [id, name, description, scope_keys, member_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignCustomRoleScopeKey'
+        member_count:
+          type: integer
+          description: Active members holding the role.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SignCustomRoleEnvelope:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/SignCustomRole'
+    SignCustomRoleList:
+      type: object
+      required: [permissions, roles]
+      properties:
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [key, grantable]
+            properties:
+              key:
+                $ref: '#/components/schemas/SignCustomRoleScopeKey'
+              grantable:
+                type: boolean
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignCustomRole'
+    SignCustomRoleInput:
+      type: object
+      required: [name, scope_keys]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    SignCustomRolePatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        scope_keys:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    SignCustomRoleMembers:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items:
+            type: object
+            required: [user_id, email, display_name, role_keys, custom_role_ids]
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              email:
+                type: [string, 'null']
+              display_name:
+                type: [string, 'null']
+              role_keys:
+                type: array
+                items:
+                  type: string
+              custom_role_ids:
+                type: array
+                items:
+                  type: string
+                  format: uuid
     SignPurgeLevel:
       type: string
       enum: [DOCUMENTS, DOCUMENTS_AND_METADATA, DOCUMENTS_AND_METADATA_AND_REDACT]
@@ -5250,6 +5582,9 @@ components:
             in_person_signing:
               type: boolean
               description: Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available.
+            custom_roles:
+              type: boolean
+              description: Sign Feature-Parity §1.21 — the sign.custom_roles capability is available (launch availability) and the tenant is an organization. The plan entitlement is checked by every custom-role route.
         can_send:
           type: boolean
         personal_sending_enabled:
