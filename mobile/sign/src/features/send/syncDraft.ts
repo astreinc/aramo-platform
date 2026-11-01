@@ -18,8 +18,9 @@ import {
   type SendDraftPayload,
   type ServerEnvelope,
 } from './draftModel';
-import { emailKey, recipientsToWire, wireOrder } from './recipientRoles';
+import { emailKey, recipientsToWire, takesMessaging, wireOrder } from './recipientRoles';
 import {
+  messagingToWire,
   revisionMismatch,
   type FieldWire,
   type SenderApi,
@@ -220,13 +221,23 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
   if (p.dirty.meta) {
     const subject = effectiveSubject(p).trim();
     const message = p.message.trim();
+    // Feature-Parity §1.17 — allow_delegation goes only when it changed here.
+    const delegation =
+      p.allowDelegation !== undefined && p.allowDelegation !== (p.serverAllowDelegation ?? false)
+        ? { allow_delegation: p.allowDelegation }
+        : {};
     const v = await api.update(envelopeId, p.etag as string, {
       ...(subject ? { subject } : {}),
       routing_mode: p.routingMode,
       message: message.length > 0 ? message : null,
+      ...delegation,
     });
     server = v.env;
-    await save({ etag: v.etag, dirty: { ...p.dirty, meta: false } });
+    await save({
+      etag: v.etag,
+      serverAllowDelegation: v.env.allowDelegation,
+      dirty: { ...p.dirty, meta: false },
+    });
   }
 
   // 4. Recipients: the signing recipients in signing order (list position), then the
@@ -245,12 +256,34 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
       throw new SendFlowError('recipients_out_of_sync');
     }
     server = v.env;
-    const idOf = new Map(ordered.map((r, i) => [r.key, sent[i]!.id]));
-    // The server drops the fields of removed recipients, so the fields are re-sent.
+    const byKey = new Map(ordered.map((r, i) => [r.key, sent[i]!]));
+    // The server drops the fields of removed recipients, so the fields are re-sent. A
+    // saved access code or identity check is no longer pending (the code is forgotten).
     await save({
       etag: v.etag,
-      recipients: p.recipients.map((r) => ({ ...r, serverId: idOf.get(r.key) ?? r.serverId })),
+      recipients: p.recipients.map((r) => {
+        const s = byKey.get(r.key);
+        const { accessCode: _code, identityDirty: _idv, ...rest } = r;
+        return {
+          ...rest,
+          serverId: s?.id ?? r.serverId,
+          accessCodeSet: s ? s.accessCodeSet : r.accessCodeSet === true,
+        };
+      }),
       dirty: { ...p.dirty, recipients: false, fields: true },
+    });
+  }
+
+  // 4b. Text delivery and the SMS code (Feature-Parity §1.7–§1.9): one PUT per changed
+  // recipient, after the recipients exist on the server. No If-Match: this route does not
+  // change the envelope's revision.
+  for (const r of p.recipients) {
+    if (r.messagingDirty !== true) continue;
+    if (!r.serverId) throw new SendFlowError('recipients_out_of_sync');
+    const m = r.messaging && takesMessaging(r) ? r.messaging : { channel: null, smsOtp: false, phone: '' };
+    await api.putMessaging(envelopeId, r.serverId, messagingToWire(m));
+    await save({
+      recipients: p.recipients.map((x) => (x.key === r.key ? { ...x, messagingDirty: false } : x)),
     });
   }
 

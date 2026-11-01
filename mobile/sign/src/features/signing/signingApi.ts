@@ -26,6 +26,11 @@ export interface SignerView {
   readonly documents: SigningDocument[];
   readonly fields: SigningField[];
   readonly message: string | null;
+  /**
+   * Consolidated Directive v1.0 B3 — the sender allowed delegation and this recipient may
+   * still hand the envelope to someone else (the server re-checks on the delegate call).
+   */
+  readonly canDelegate: boolean;
 }
 
 export type SigningFailure =
@@ -104,6 +109,7 @@ export async function acceptAndLoad(
     })),
     fields: (v.fields ?? []) as SigningField[],
     message: v.message ?? null,
+    canDelegate: v.can_delegate === true,
   };
 }
 
@@ -158,4 +164,58 @@ export type ExecutedCopy = SuccessJson<Operation<'/v1/sign/signing/executed', 'p
 export async function loadExecutedCopy(session: GuestSigningSession): Promise<ExecutedCopy> {
   const r = await session.post('/v1/sign/signing/executed', {});
   return r;
+}
+
+// ── B3 (Feature-Parity §1.17) — delegate signing ────────────────────────────────
+
+export const DELEGATE_REASON_MAX = 500;
+const DELEGATE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export interface DelegateInput {
+  readonly name: string;
+  readonly email: string;
+  readonly reason?: string;
+}
+
+/** A name and a valid email (the server checks again). */
+export function validDelegate(input: DelegateInput): boolean {
+  const email = input.email.trim();
+  return input.name.trim().length > 0 && email.length <= 254 && DELEGATE_EMAIL_RE.test(email);
+}
+
+/**
+ * Hand this signature to another person. This link stops working and the delegate is
+ * emailed their own link.
+ */
+export async function delegateSigning(
+  session: GuestSigningSession,
+  input: DelegateInput,
+): Promise<void> {
+  const reason = input.reason?.trim().slice(0, DELEGATE_REASON_MAX);
+  await session.post('/v1/sign/signing/delegate', {
+    name: input.name.trim(),
+    email: input.email.trim(),
+    ...(reason ? { reason } : {}),
+  });
+}
+
+export const DELEGATE_COPY = {
+  invalid: 'Enter a name and a valid email.',
+  onEnvelope: 'That person is already on this document.',
+  refused: 'This document can’t be handed off now.',
+  failed: 'Couldn’t send. Check your connection and try again.',
+} as const;
+
+/** The message for a refused hand-off, or null when the refusal ends the session. */
+export function delegateRefusalCopy(e: unknown): string | null {
+  if (!isApiError(e) || e.isNetwork) return DELEGATE_COPY.failed;
+  if (e.reason === 'delegate_invalid') return DELEGATE_COPY.invalid;
+  if (e.reason === 'delegate_email_on_envelope') return DELEGATE_COPY.onEnvelope;
+  if (e.status === 409 || e.status === 403) return DELEGATE_COPY.refused;
+  if (e.status === 400) return DELEGATE_COPY.invalid;
+  return classifySigningError(e) === 'ended' ? null : DELEGATE_COPY.failed;
+}
+
+export function delegatedCopy(name: string): string {
+  return `Sent to ${name.trim()}. This link no longer works for you.`;
 }
