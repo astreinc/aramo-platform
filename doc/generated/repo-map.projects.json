@@ -8362,6 +8362,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-usage-metering.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/subscription-lifecycle.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -10383,6 +10389,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/UsageCharges.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
