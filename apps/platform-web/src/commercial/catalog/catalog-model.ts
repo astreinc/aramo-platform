@@ -1,6 +1,6 @@
 import type { PillSpec } from '../../components';
 
-import type { CatalogOpenRequest, CatalogPlan, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
+import type { CatalogMeteredUnit, CatalogOpenRequest, CatalogPlan, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
 
 // CCP-B2 — the pure view model of the Catalog screen (handoff §5.4; Commercial Control Plane
 // v1.0.dc.html "// catalog"): every label, line and enabled/disabled decision is computed here
@@ -241,14 +241,86 @@ function priceDiffText(t: CatalogVersionTerms): string {
  * card: Price / Envelopes / Seats / Storage) or 'dialog' (the publish dialog: "Envelopes per
  * month"). Seats have no backing term, so their row is "—" on both sides (never changed).
  */
-export function draftDiff(before: CatalogVersionTerms, after: CatalogVersionTerms, labels: 'editor' | 'dialog'): DiffRowModel[] {
+export function draftDiff(before: CatalogVersionTerms, after: CatalogVersionTerms, labels: 'editor' | 'dialog', units: readonly CatalogMeteredUnit[] = []): DiffRowModel[] {
   const rows: [string, string, string][] = [
     ['Price', priceDiffText(before), priceDiffText(after)],
     [labels === 'dialog' ? 'Envelopes per month' : 'Envelopes', envelopesText(before), envelopesText(after)],
     ['Seats', '—', '—'],
     ['Storage', storageText(before), storageText(after)],
+    // A4 D2 — every add-on unit priced on either side (a published price change is visible to the approvers).
+    ...unitPriceDiff(before, after, units),
   ];
   return rows.map(([field, b, a]) => ({ field, before: b, after: a, changed: b !== a }));
+}
+
+// ── Sign Feature Parity A3 (D1) / A4 (D2): add-on unit prices ─────────────────────────────
+
+export const NOT_SOLD = 'Not sold';
+export const UNIT_PRICES_INTRO =
+  'Pay-per-use add-ons, billed monthly on the period invoice. A unit without a price is not sold on this version. Prices publish only with the version (Finance → Owner).';
+
+/** The display name of a unit (registry name, else the key). */
+export function unitName(unit_key: string, units: readonly CatalogMeteredUnit[]): string {
+  return units.find((u) => u.unit_key === unit_key)?.name ?? unit_key;
+}
+
+/** A unit price in dollars with at least 2 decimals (5 → "$0.05"; 150 → "$1.50"). */
+export function unitPriceText(minor: number | null | undefined): string {
+  return minor === null || minor === undefined ? NOT_SOLD : `$${(minor / 100).toFixed(2)}`;
+}
+
+export function unitPriceOfTerms(t: CatalogVersionTerms, unit_key: string): number | null {
+  return t.unit_prices?.find((u) => u.unit_key === unit_key)?.unit_price_minor ?? null;
+}
+
+function unitPriceDiff(before: CatalogVersionTerms, after: CatalogVersionTerms, units: readonly CatalogMeteredUnit[]): [string, string, string][] {
+  const keys = [...new Set([...(before.unit_prices ?? []), ...(after.unit_prices ?? [])].map((u) => u.unit_key))].sort();
+  return keys.map((k) => [`Add-on · ${unitName(k, units)}`, unitPriceText(unitPriceOfTerms(before, k)), unitPriceText(unitPriceOfTerms(after, k))]);
+}
+
+export interface UnitPriceField {
+  readonly unit_key: string;
+  readonly label: string;
+  readonly per: string;
+  readonly value: string;
+  readonly placeholder: string;
+  readonly editable: boolean;
+  readonly readOnly: boolean;
+  readonly title: string | undefined;
+}
+
+/**
+ * The add-on unit-price rows of the editor: every registry unit of the product. Editable only on a
+ * DRAFT seen by a catalog manager; a PUBLISHED or RETIRED version's prices are read-only (immutable,
+ * a change is a new draft).
+ */
+export function unitPriceFields(units: readonly CatalogMeteredUnit[], v: CatalogVersion, canDraft: boolean, overrides: Readonly<Record<string, string>> = {}): UnitPriceField[] {
+  const editable = v.status === 'DRAFT' && canDraft;
+  return units.map((u) => {
+    const minor = unitPriceOfTerms(v.terms, u.unit_key);
+    const over = overrides[u.unit_key];
+    return {
+      unit_key: u.unit_key,
+      label: u.name,
+      per: `per ${u.quantity_label}`,
+      value: over !== undefined ? over : minor === null ? '' : (minor / 100).toFixed(2),
+      placeholder: NOT_SOLD,
+      editable,
+      readOnly: !editable,
+      title: editable ? undefined : v.status === 'DRAFT' ? NEEDS_CATALOG_MANAGER : LOCK_TEXT_PUBLISHED,
+    };
+  });
+}
+
+/** "0.05" → 5 cents; "" → null (not sold). At most 2 decimals, at most $100,000.00. */
+export function parseUnitPriceInput(raw: string): { ok: true; value: number | null } | { ok: false } {
+  const t = raw.trim();
+  if (t === '') return { ok: true, value: null };
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return { ok: false };
+  const [whole, frac = ''] = t.split('.');
+  const minor = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
+  if (!Number.isSafeInteger(minor) || minor > 10_000_000) return { ok: false };
+  return { ok: true, value: minor };
 }
 
 export function pinnedLine(v: CatalogVersion, tenantNames: readonly string[] | null): string {

@@ -5,7 +5,7 @@ import { USAGE_METER_REPORT_PORT, type UsageMeterReportPort } from '../billing/u
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { METERED_USAGE_OPTIONS, type MeteredUsageOptions, USAGE_MAX_AGE_MS } from './metered-usage.service.js';
-import { usageBillingEnabled } from './metered-units.js';
+import { isMeteredUnitKey, meterEventNameOf, usageBillingEnabled } from './metered-units.js';
 
 // Sign usage / metered billing (Feature Parity D-2, A1) — delivers recorded usage to the billing
 // provider's metered prices. Each UsageLedgerEntry has one UsageProviderReport row (PENDING at
@@ -13,13 +13,17 @@ import { usageBillingEnabled } from './metered-units.js';
 //   - claims due PENDING rows with a lease (a conditional UPDATE: concurrent ticks never send the
 //     same row twice, and a crashed tick's row becomes due again when the lease ends);
 //   - per row, OUTSIDE any transaction, reports one meter event keyed by the ledger entry id (the
-//     provider de-duplicates on it, so a resend after a lost response never counts twice);
+//     provider de-duplicates on it, so a resend after a lost response never counts twice) under the
+//     unit's deterministic meter event name (meterEventNameOf). The provider aggregates the
+//     period's meter events into the ONE consolidated period invoice (Amendment A3): nothing here
+//     charges a payment method per event;
 //   - records the outcome: REPORTED; SKIPPED NOT_PROVIDER_BILLED (the subscription is not billed
 //     by the provider, e.g. an Aramo-managed MANUAL subscription invoiced outside it: its usage is
 //     in the period summary); FAILED OUTSIDE_PROVIDER_WINDOW (older than the provider accepts),
 //     PROVIDER_REFUSED (a 4xx) or PROVIDER_RETRIES_EXHAUSTED; PENDING with a reason and a later
-//     attempt for METER_NOT_CONFIGURED (the version's price has no provider meter) and transient
-//     provider errors (exponential backoff).
+//     attempt for transient provider errors (exponential backoff). The provider's meters and metered
+//     prices are set up outside Aramo (open decision D4) BEFORE the flag is turned on: an event
+//     name with no meter is a provider 4xx (FAILED PROVIDER_REFUSED, visible to reconciliation).
 // HELD (nothing claimed, nothing sent) while SIGN_USAGE_BILLING_ENABLED is not '1', while no
 // provider key is configured, and for a live-mode key (live billing is not authorized; as the
 // CCP-C1 command outbox). The ledger is never changed here.
@@ -27,7 +31,6 @@ import { usageBillingEnabled } from './metered-units.js';
 export const USAGE_REPORT_BATCH = 50;
 export const USAGE_REPORT_LEASE_MS = 5 * 60 * 1000;
 export const USAGE_REPORT_MAX_ATTEMPTS = 10;
-const METER_RECHECK_MS = 60 * 60 * 1000;
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000;
 
 export type UsageReportHold = 'DISABLED' | 'NOT_CONFIGURED' | 'LIVE_MODE';
@@ -110,17 +113,13 @@ export class UsageProviderReportService {
       await finish({ state: 'FAILED', reason: 'OUTSIDE_PROVIDER_WINDOW' });
       return 'failed';
     }
-    const price = await this.prisma.planVersionUnitPrice.findUnique({
-      where: { plan_version_id_unit_key: { plan_version_id: entry.plan_version_id, unit_key: entry.unit_key } },
-      select: { provider: true, provider_meter_event: true },
-    });
-    if (price?.provider !== 'STRIPE' || price.provider_meter_event === null) {
-      await finish({ state: 'PENDING', reason: 'METER_NOT_CONFIGURED', next_attempt_at: new Date(at.getTime() + METER_RECHECK_MS) });
-      return 'deferred';
+    if (!isMeteredUnitKey(entry.unit_key)) {
+      await finish({ state: 'FAILED', reason: 'UNKNOWN_UNIT' });
+      return 'failed';
     }
     try {
       const r = await this.port.reportMeterEvent({
-        event_name: price.provider_meter_event,
+        event_name: meterEventNameOf(entry.unit_key),
         account_ref: sub.billing_account_ref,
         value: entry.quantity,
         identifier: entry.id,

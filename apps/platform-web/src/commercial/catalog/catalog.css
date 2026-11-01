@@ -406,3 +406,13 @@
   padding: 12px 20px 16px;
   border-top: 1px solid var(--pw-rule);
 }
+
+/* Sign Feature Parity A4 (D2) — the add-on unit prices of a version. */
+.pc-addons {
+  margin-top: 16px;
+}
+.pc-addons__intro {
+  margin: 4px 0 8px;
+  font-size: var(--pw-fs-12-5);
+  color: var(--pw-muted);
+}

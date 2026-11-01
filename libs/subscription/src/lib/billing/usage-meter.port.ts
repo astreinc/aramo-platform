@@ -10,7 +10,7 @@
 export const USAGE_METER_REPORT_PORT = 'USAGE_METER_REPORT_PORT';
 
 export interface MeterEventReport {
-  /** The provider meter's event name (PlanVersionUnitPrice.provider_meter_event). */
+  /** The provider meter event name (meterEventNameOf(unit_key)). */
   readonly event_name: string;
   /** The tenant's provider billing account (TenantSubscription.billing_account_ref). */
   readonly account_ref: string;

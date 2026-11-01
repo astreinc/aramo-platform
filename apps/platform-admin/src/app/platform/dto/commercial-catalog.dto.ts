@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
 
 /**
  * The 8-4-4-4-12 hex SHAPE of a uuid, without the RFC 9562 version/variant check: the CCP-A5
@@ -17,6 +17,16 @@ export class CreateCatalogDraftDto {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
+/** A4 D2 — the unit-price edit map: metered unit key → minor units (0..10,000,000) or null (not sold). */
+export const UNIT_PRICE_EDIT_KEY = /^[a-z]+\.[a-z][a-z0-9_]{1,62}$/;
+export const MAX_UNIT_PRICE_EDITS = 20;
+export function isUnitPriceEditMap(v: unknown): v is Record<string, number | null> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const entries = Object.entries(v);
+  if (entries.length === 0 || entries.length > MAX_UNIT_PRICE_EDITS) return false;
+  return entries.every(([k, p]) => UNIT_PRICE_EDIT_KEY.test(k) && (p === null || (typeof p === 'number' && Number.isSafeInteger(p) && p >= 0 && p <= 10_000_000)));
+}
+
 export class UpdateCatalogDraftDto {
   @IsString() @Matches(/^[0-9a-f]{64}$/) expected_content_checksum!: string;
   /** Minor units (USD cents). */
@@ -25,6 +35,11 @@ export class UpdateCatalogDraftDto {
   @IsOptional() @IsInt() @Min(0) @Max(100_000_000) envelopes_per_month?: number | null;
   /** Binary bytes; null = unlimited. */
   @IsOptional() @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) storage_bytes?: number | null;
+  /** A4 D2 — add-on unit prices: unit key → minor units (USD cents), or null to stop selling the unit. */
+  @IsOptional()
+  @IsObject()
+  @ValidateBy({ name: 'isUnitPriceEditMap', validator: { validate: (v: unknown) => isUnitPriceEditMap(v), defaultMessage: () => 'unit_prices must map 1..20 metered unit keys to an integer 0..10000000 or null' } })
+  unit_prices?: Record<string, number | null>;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
@@ -40,6 +55,8 @@ export interface CatalogVersionTermsDto {
   storage_bytes: number | null;
   storage_unlimited: boolean;
   storage_present: boolean;
+  /** A3 D1 / A4 D2 — the add-on unit prices on the version (empty = no add-on sold). */
+  unit_prices: { unit_key: string; unit_price_minor: number }[];
 }
 
 export interface CatalogOpenRequestDto {
@@ -103,6 +120,8 @@ export interface CatalogResponseDto {
     available_keys: { product_key: string; keys: string[] }[];
     pending: CatalogPendingPlanCreateDto[];
   };
+  /** A4 D2 — the add-on (metered) units a draft of each product can price. */
+  metered_units: { product_key: string; units: { unit_key: string; name: string; quantity_label: string }[] }[];
 }
 
 export interface CatalogVersionDetailDto {

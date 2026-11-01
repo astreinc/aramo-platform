@@ -4,7 +4,9 @@ import { BillingProviderUnavailableError } from '../lib/billing/billing-provider
 import { StripeBillingProvider } from '../lib/billing/stripe-billing.provider.js';
 import { WIRE_METER_EVENTS_PATH, wireMeterEventParams, wireMeterEventRef } from '../lib/billing/stripe-wire.js';
 import { ProductContextError } from '../lib/product-registry.js';
-import { METERED_UNIT_KEYS, isMeteredUnitKey, productOfMeteredUnit, usageBillingEnabled } from '../lib/usage/metered-units.js';
+import { CommercialPayloadError, PLAN_TARGET_CHECKSUM_KEY, validatePayload } from '../lib/commercial/commercial-change-request.js';
+import { METERED_UNIT_KEYS, isMeteredUnitKey, meterEventNameOf, productOfMeteredUnit, usageBillingEnabled } from '../lib/usage/metered-units.js';
+import { aggregateLedger, normalizeUsageLines, reconcileUsageLines } from '../lib/usage/usage-reconciliation.js';
 import { USAGE_MAX_AGE_MS, USAGE_MAX_FUTURE_MS, validateRecordInput, validateUsageInput } from '../lib/usage/metered-usage.service.js';
 import { usageReportBackoffMs } from '../lib/usage/usage-provider-report.service.js';
 
@@ -120,5 +122,55 @@ describe('usage report backoff', () => {
     expect(usageReportBackoffMs(2)).toBe(120_000);
     expect(usageReportBackoffMs(5)).toBe(16 * 60_000);
     expect(usageReportBackoffMs(20)).toBe(6 * 3_600_000);
+  });
+});
+
+describe('A3 provider meter event names', () => {
+  it('maps every unit to a deterministic, distinct meter event name', () => {
+    expect(meterEventNameOf('sign.sms_message')).toBe('aramo_sign_sms_message');
+    const names = METERED_UNIT_KEYS.map(meterEventNameOf);
+    expect(new Set(names).size).toBe(METERED_UNIT_KEYS.length);
+    for (const n of names) expect(n).toMatch(/^aramo_sign_[a-z0-9_]+$/);
+  });
+});
+
+describe('A3 D1 the PLAN_VERSION_PUBLISH approval fingerprint', () => {
+  const V = '0190dddd-0000-7000-8000-0000000000b1';
+  it('accepts the content-checksum snapshot (and a pre-A3 request without it); refuses a malformed one or an unknown key', () => {
+    expect(validatePayload('PLAN_VERSION_PUBLISH', { plan_version_id: V, [PLAN_TARGET_CHECKSUM_KEY]: 'a'.repeat(64) })).toMatchObject({ [PLAN_TARGET_CHECKSUM_KEY]: 'a'.repeat(64) });
+    expect(validatePayload('PLAN_VERSION_PUBLISH', { plan_version_id: V })).toEqual({ plan_version_id: V });
+    expect(() => validatePayload('PLAN_VERSION_PUBLISH', { plan_version_id: V, [PLAN_TARGET_CHECKSUM_KEY]: 'nope' })).toThrow(CommercialPayloadError);
+    expect(() => validatePayload('PLAN_VERSION_PUBLISH', { plan_version_id: V, unit_prices: {} })).toThrow(CommercialPayloadError);
+  });
+});
+
+describe('A3 billing-period reconciliation (pure)', () => {
+  const e = (id: string, unit_key: string, quantity: number, amount: number) => ({ id, unit_key, quantity, amount_minor: BigInt(amount) });
+  const entries = [e('03', 'sign.id_verification', 1, 150), e('01', 'sign.sms_message', 100, 500), e('02', 'sign.sms_message', 100, 500), ...Array.from({ length: 9 }, (_, i) => e(`1${i}`, 'sign.id_verification', 1, 150))];
+
+  it('aggregates the ledger per unit (the A3 example: 200 SMS × 5 + 10 ID checks × 150 = 2500) with an order-independent digest', () => {
+    const a = aggregateLedger(entries);
+    expect(a.lines).toEqual([
+      { unit_key: 'sign.id_verification', quantity: 10, amount_minor: 1500 },
+      { unit_key: 'sign.sms_message', quantity: 200, amount_minor: 1000 },
+    ]);
+    expect(a).toMatchObject({ entry_count: 12, quantity_total: 210, amount_minor: 2500 });
+    expect(aggregateLedger([...entries].reverse()).digest).toBe(a.digest);
+    expect(aggregateLedger(entries.slice(1)).digest).not.toBe(a.digest);
+    expect(aggregateLedger([]).lines).toEqual([]);
+  });
+
+  it('MATCHED only when every unit quantity and amount agree; a double-counted, missing or extra unit is a MISMATCH', () => {
+    const ledger = aggregateLedger(entries).lines;
+    expect(reconcileUsageLines(ledger, [...ledger].reverse())).toEqual({ outcome: 'MATCHED', discrepancies: [] });
+    // The provider split one unit across two invoice lines: summed first.
+    expect(reconcileUsageLines(ledger, [{ unit_key: 'sign.sms_message', quantity: 150, amount_minor: 750 }, { unit_key: 'sign.sms_message', quantity: 50, amount_minor: 250 }, ledger[0]!]).outcome).toBe('MATCHED');
+    const doubled = reconcileUsageLines(ledger, [ledger[0]!, { unit_key: 'sign.sms_message', quantity: 400, amount_minor: 2000 }]);
+    expect(doubled).toEqual({ outcome: 'MISMATCH', discrepancies: [{ unit_key: 'sign.sms_message', ledger_quantity: 200, provider_quantity: 400, ledger_amount_minor: 1000, provider_amount_minor: 2000 }] });
+    expect(reconcileUsageLines(ledger, [ledger[1]!]).discrepancies.map((d) => d.unit_key)).toEqual(['sign.id_verification']);
+    expect(reconcileUsageLines(ledger, [...ledger, { unit_key: 'sign.kba', quantity: 1, amount_minor: 0 }]).discrepancies.map((d) => d.unit_key)).toEqual(['sign.kba']);
+    // Same quantity, different amount (a provider price that differs from the approved price).
+    expect(reconcileUsageLines(ledger, [ledger[0]!, { unit_key: 'sign.sms_message', quantity: 200, amount_minor: 7200 }]).outcome).toBe('MISMATCH');
+    expect(() => normalizeUsageLines([{ unit_key: 'sign.kba', quantity: -1, amount_minor: 0 }])).toThrow();
   });
 });

@@ -58,6 +58,7 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   USAGE_TREATMENT_UNDEFINED: 'The new terms drop or redefine an allowance; no usage treatment is defined for that.',
   VERSION_NOT_FOUND: 'The plan version does not exist.',
   VERSION_NOT_DRAFT: 'Only a draft plan version can be published.',
+  VERSION_CONTENT_CHANGED: 'The plan version changed after this request was approved; request publish again so Finance and an Owner approve the current terms.',
   VERSION_NOT_PUBLISHED: 'Only a published plan version can be retired.',
   PRODUCT_NOT_REGISTERED: 'The plan version belongs to a product outside the product registry.',
   PRICE_PIN_CONFLICT: 'The plan version is already pinned to a different provider price.',

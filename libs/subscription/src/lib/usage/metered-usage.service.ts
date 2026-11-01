@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { subscriptionSends } from '../allowance.service.js';
 import { billingPeriodAt } from '../billing-period.js';
+import { planVersionTerms, unitPriceOf } from '../plan-version.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { openBaseSubscription, type ProductKey } from '../product-registry.js';
 
@@ -18,21 +19,30 @@ import type {
 } from './usage-recorder.port.js';
 
 // Sign usage / metered billing (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §3 item 2,
-// §5 D-2; Amendment A1 §A1.1) — the UsageRecorder implementation, the period aggregation and the
-// tenant-visible usage view.
+// §5 D-2; Amendment A1 §A1.1; Amendment A3 D1/D3) — the UsageRecorder implementation, the period
+// aggregation and the tenant-visible usage view.
 //
-//   check / record   the fail-closed gate and the append-only, idempotent ledger write (see
-//                    usage-recorder.port.ts for the caller contract). The price, the plan version
-//                    and the billing period come from the tenant's OPEN BASE subscription of the
-//                    unit's product and its PINNED version (grandfathering, MP-A2 N-18); the
-//                    caller never supplies a price. The ledger INSERT trigger re-checks that the
-//                    unit is sold on that version at exactly that price.
+//   check / record   the fail-closed gate and the append-only, idempotent billable-event write
+//                    (UsageLedgerEntry, A3 D3; see usage-recorder.port.ts for the caller contract).
+//                    PRICING (A3 "use the approved plan version effective for each usage event"):
+//                    the tenant's OPEN BASE subscription of the unit's product; the plan version
+//                    EFFECTIVE AT occurred_at, resolved deterministically = the from-version of the
+//                    first SubscriptionVersionPinEvent recorded after occurred_at, else the current
+//                    pin; the unit price = that version's approved content.unit_prices entry (A3
+//                    D1). The entry records plan_version_id, plan_version_checksum (the approved
+//                    fingerprint) and unit_price_minor; the ledger INSERT trigger re-derives all
+//                    three. The caller never supplies a price.
+//                    PERIOD: the billing period containing occurred_at. A period closes
+//                    USAGE_PERIOD_CLOSE_GRACE_MS after its end (the provider finalizes the period
+//                    invoice then): a later event for it is refused PERIOD_CLOSED, so a closed
+//                    period's ledger — and its reconciliation — never changes.
 //   periodSummary    the period aggregation: the tenant's usage per unit in one billing period
-//                    (sum of quantity and of the snapshotted amounts) plus every unit sold on the
+//                    (sum of quantity and of the recorded amounts) plus every unit sold on the
 //                    pinned version. Read only, derived from the ledger.
 //   provider report  each new entry gets a PENDING UsageProviderReport row in the same
 //                    transaction; UsageProviderReportService delivers it (behind the flag).
 //
+// Never an envelope count: AllowanceUsage stays the sole envelope authority (A3 D3).
 // Built dark: SIGN_USAGE_BILLING_ENABLED unset ⇒ check and record refuse USAGE_BILLING_DISABLED,
 // and no unit is priced on any version until a priced version is published (PLAN_VERSION_PUBLISH).
 
@@ -43,6 +53,8 @@ export const USAGE_MAX_AGE_MS = 35 * 24 * 60 * 60 * 1000;
 /** Clock skew tolerated for an occurred_at in the future. */
 export const USAGE_MAX_FUTURE_MS = 5 * 60 * 1000;
 export const USAGE_MAX_QUANTITY = 100_000;
+/** A billing period closes this long after its end (the provider's invoice finalization grace). */
+export const USAGE_PERIOD_CLOSE_GRACE_MS = 60 * 60 * 1000;
 
 export interface UsageSummaryUnit {
   readonly unit_key: string;
@@ -51,6 +63,7 @@ export interface UsageSummaryUnit {
   readonly quantity: number;
   /** The unit price on the pinned version; null = not sold on it (usage may still show if it was sold earlier). */
   readonly unit_price_minor: number | null;
+  /** The accumulated charge of the period (sum of the recorded event amounts, each at its own approved price). */
   readonly amount_minor: number;
 }
 
@@ -106,9 +119,26 @@ export function validateRecordInput(input: UsageRecordInput, now: Date): UsageRe
 interface Priced {
   subscription_id: string;
   plan_version_id: string;
+  plan_version_checksum: string;
   period_anchor: Date;
   unit_price_minor: number;
   currency: string;
+}
+
+type Db = Tx | PrismaService;
+
+/**
+ * A3 — the plan version effective for a subscription at `at`: the from-version of the first pin
+ * change recorded after `at` (the version the subscription was on until then), else the current pin.
+ * The ledger INSERT trigger applies the same rule.
+ */
+export async function planVersionEffectiveAt(db: Db, sub: { id: string; plan_version_id: string }, at: Date): Promise<string> {
+  const later = await db.subscriptionVersionPinEvent.findFirst({
+    where: { subscription_id: sub.id, recorded_at: { gt: at } },
+    orderBy: [{ recorded_at: 'asc' }, { id: 'asc' }],
+    select: { from_plan_version_id: true },
+  });
+  return later?.from_plan_version_id ?? sub.plan_version_id;
 }
 
 /** Test seam: the env the flag is read from and the clock (production binds neither). */
@@ -141,13 +171,14 @@ export class MeteredUsageService implements UsageRecorder {
    * version, or the refusal. A PAST_DUE row past its grace still bills while a support extension
    * overlay covers `at` (as the allowance gate sends).
    */
-  private async priced(db: Tx | PrismaService, tenant_id: string, unit: MeteredUnitKey, at: Date): Promise<Priced | UsageRefusal> {
+  private async priced(db: Db, tenant_id: string, unit: MeteredUnitKey, at: Date): Promise<Priced | UsageRefusal> {
     const product = productOfMeteredUnit(unit);
     const sub = await db.tenantSubscription.findFirst({
       where: openBaseSubscription(tenant_id, product),
       select: { id: true, status: true, grace_until: true, period_anchor: true, plan_version_id: true },
     });
     if (sub === null) return refusal('NOT_SUBSCRIBED', 'the organization has no open subscription for this product');
+    if (at.getTime() < sub.period_anchor.getTime()) return refusal('NOT_SUBSCRIBED', 'the usage happened before the subscription started');
     if (!subscriptionSends(sub, at)) {
       const overlay =
         sub.status === 'PAST_DUE'
@@ -155,14 +186,22 @@ export class MeteredUsageService implements UsageRecorder {
           : null;
       if (overlay === null) return refusal('NOT_SUBSCRIBED', 'the organization subscription is not in a billable state');
     }
-    const price = await db.planVersionUnitPrice.findUnique({
-      where: { plan_version_id_unit_key: { plan_version_id: sub.plan_version_id, unit_key: unit } },
-      select: { unit_price_minor: true, currency: true },
-    });
-    if (price === null || price.unit_price_minor === null || price.currency === null) {
+    const version_id = await planVersionEffectiveAt(db, sub, at);
+    const version = await db.planVersion.findUnique({ where: { id: version_id }, select: { id: true, status: true, content: true, content_checksum: true } });
+    if (version === null || (version.status !== 'PUBLISHED' && version.status !== 'RETIRED')) {
       return refusal('UNIT_NOT_SOLD', `${unit} is not sold on the organization's plan`);
     }
-    return { subscription_id: sub.id, plan_version_id: sub.plan_version_id, period_anchor: sub.period_anchor, unit_price_minor: price.unit_price_minor, currency: price.currency };
+    // Checksum-verified (fail closed): the price is read only from the approved content.
+    const price = unitPriceOf(planVersionTerms(version), unit);
+    if (price === null) return refusal('UNIT_NOT_SOLD', `${unit} is not sold on the organization's plan`);
+    return {
+      subscription_id: sub.id,
+      plan_version_id: version.id,
+      plan_version_checksum: version.content_checksum,
+      period_anchor: sub.period_anchor,
+      unit_price_minor: price.unit_price_minor,
+      currency: price.currency,
+    };
   }
 
   async check(input: UsageCheckInput): Promise<UsageCheckResult> {
@@ -190,6 +229,9 @@ export class MeteredUsageService implements UsageRecorder {
         const p = await this.priced(tx, input.tenant_id, unit, occurred_at);
         if ('ok' in p) return p;
         const period = billingPeriodAt(p.period_anchor, occurred_at);
+        if (period.end.getTime() + USAGE_PERIOD_CLOSE_GRACE_MS <= now.getTime()) {
+          return refusal('PERIOD_CLOSED', 'the billing period of this usage is closed (its invoice is final)');
+        }
         const id = uuidv7();
         const amount = input.quantity * p.unit_price_minor;
         await tx.usageLedgerEntry.create({
@@ -205,6 +247,7 @@ export class MeteredUsageService implements UsageRecorder {
             source_ref: input.source_ref,
             subscription_id: p.subscription_id,
             plan_version_id: p.plan_version_id,
+            plan_version_checksum: p.plan_version_checksum,
             period_start: period.start,
             period_end: period.end,
             unit_price_minor: p.unit_price_minor,
@@ -271,9 +314,10 @@ export class MeteredUsageService implements UsageRecorder {
     });
     if (sub === null) return null;
     const period = billingPeriodAt(sub.period_anchor, at);
-    const [units, prices, usage] = await Promise.all([
+    const version = await this.prisma.planVersion.findUniqueOrThrow({ where: { id: sub.plan_version_id }, select: { id: true, content: true, content_checksum: true } });
+    const prices = planVersionTerms(version).unit_prices ?? [];
+    const [units, usage] = await Promise.all([
       this.prisma.meteredUnit.findMany({ where: { product_key }, select: { unit_key: true, name: true, quantity_label: true } }),
-      this.prisma.planVersionUnitPrice.findMany({ where: { plan_version_id: sub.plan_version_id }, select: { unit_key: true, unit_price_minor: true } }),
       this.prisma.usageLedgerEntry.groupBy({
         by: ['unit_key'],
         where: { tenant_id, product_key, period_start: period.start },

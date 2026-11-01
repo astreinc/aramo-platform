@@ -33877,7 +33877,7 @@
       "to": "doc/ccp/slices/CCP-C8PR-pre-execution.md"
     },
     {
-      "from": "libs/subscription/prisma/migrations/20261101200000_sign_usage_metering/migration.sql",
+      "from": "libs/subscription/prisma/migrations/20261101300000_sign_usage_metering/migration.sql",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/sign-usage-metering-compensating.sql"
     },

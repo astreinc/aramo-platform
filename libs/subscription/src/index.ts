@@ -448,6 +448,7 @@ export {
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
   COMMERCIAL_TERMINAL_STATES,
+  PLAN_TARGET_CHECKSUM_KEY,
   POLICY_TARGET_CHECKSUM_KEY,
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
@@ -757,6 +758,10 @@ export {
   planVersionChecksum,
   planVersionContentFromRows,
   planVersionTerms,
+  MAX_UNIT_PRICE_MINOR,
+  unitPriceOf,
+  withUnitPrices,
+  type PlanVersionUnitPriceTerm,
   type LivePlanRows,
   type PlanVersionAllowance,
   type PlanVersionAllowanceWindow,
@@ -929,6 +934,7 @@ export {
   METERED_UNIT_KEYS,
   SIGN_USAGE_BILLING_FLAG,
   isMeteredUnitKey,
+  meterEventNameOf,
   productOfMeteredUnit,
   usageBillingEnabled,
   type MeteredUnitKey,
@@ -949,6 +955,8 @@ export {
   USAGE_MAX_AGE_MS,
   USAGE_MAX_FUTURE_MS,
   USAGE_MAX_QUANTITY,
+  USAGE_PERIOD_CLOSE_GRACE_MS,
+  planVersionEffectiveAt,
   validateRecordInput,
   validateUsageInput,
   type MeteredUsageOptions,
@@ -965,6 +973,23 @@ export {
   type UsageReportTick,
 } from './lib/usage/usage-provider-report.service.js';
 export { USAGE_METER_REPORT_PORT, type MeterEventReport, type UsageMeterReportPort } from './lib/billing/usage-meter.port.js';
+// Amendment A3 — the idempotent billing-period reconciliation (ledger totals against the provider invoice).
+export {
+  aggregateLedger,
+  normalizeUsageLines,
+  reconcileUsageLines,
+  type LedgerAggregate,
+  type UsageDiscrepancy,
+  type UsageLine,
+  type UsageReconciliationResult,
+} from './lib/usage/usage-reconciliation.js';
+export {
+  UsagePeriodReconciliationService,
+  UsageReconciliationError,
+  type ProviderUsageInvoice,
+  type UsagePeriodReconciliationView,
+  type UsageReconciliationRefusal,
+} from './lib/usage/usage-period-reconciliation.service.js';
 // Aramo Sign Feature-Parity 1.1 — whether the Sign plan includes templates (P-6: Free never).
 export {
   SignTemplateEntitlementService,

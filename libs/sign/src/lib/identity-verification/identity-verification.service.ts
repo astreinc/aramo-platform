@@ -8,6 +8,7 @@ import { EsignService, type SessionContext } from '../esign.service.js';
 import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '../sign-base-url.js';
 import { LIVE_SESSION_STATUSES } from '../domain/envelope-lifecycle.js';
 import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from '../envelope-notification.service.js';
+import { SIGN_ID_VERIFICATION_ATTEMPT_METER, SIGN_USAGE_RECORDER_PORT, type SignUsageRecorderPort } from '../ports/usage-recorder.port.js';
 
 import {
   IDENTITY_VERIFICATION_PORT,
@@ -15,7 +16,6 @@ import {
   IdentityVerificationUnavailableError,
 } from './identity-verification.port.js';
 import { KBA_PORT, type KbaPort } from './kba.port.js';
-import { SIGN_ID_VERIFICATION_ATTEMPT_METER, SIGN_USAGE_RECORDER_PORT, type SignUsageRecorderPort } from './usage-recorder.port.js';
 import { verifiedNameMatches } from './name-match.js';
 import {
   IDENTITY_VERIFICATION_CANCELLED_EVENT,
@@ -244,7 +244,7 @@ export class IdentityVerificationService {
     });
     // One metered unit per vendor session (idempotent on the attempt id). Never blocks the recipient.
     await this.usage
-      ?.record({ tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, meter_key: SIGN_ID_VERIFICATION_ATTEMPT_METER, quantity: 1, idempotency_key: `sign-idv:${created.id}`, occurred_at: now })
+      ?.record({ tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, unit: SIGN_ID_VERIFICATION_ATTEMPT_METER, quantity: 1, idempotency_key: `sign-idv:${created.id}`, occurred_at: now })
       .catch((err: unknown) => this.logger.warn(`identity verification usage not recorded — attempt ${created.id}: ${(err as Error).message}`));
 
     const rowsAfter = await this.attempts(ctx, req.method);

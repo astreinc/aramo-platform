@@ -31,9 +31,15 @@
 //     IDEMPOTENCY_CONFLICT.
 //   - source_ref: 1..300 characters, an opaque Aramo reference (e.g. sign:envelope:<uuid>). NEVER
 //     a phone number, an email address, a name or any other personal data.
-//   - occurred_at (optional, default now): within the last 35 days and at most 5 minutes ahead.
-//   - The price is never supplied by the caller: it is the unit price on the tenant's PINNED plan
-//     version (catalog data). A unit with no price there is refused UNIT_NOT_SOLD.
+//   - occurred_at (optional, default now): within the last 35 days and at most 5 minutes ahead, and
+//     in a billing period that is not yet closed (a period closes one hour after its end, when the
+//     provider finalizes its invoice): otherwise PERIOD_CLOSED.
+//   - The price is never supplied by the caller (Amendment A3): it is the approved unit price in
+//     the content of the plan version EFFECTIVE AT occurred_at (the subscription's pin at that
+//     time). A unit with no price there is refused UNIT_NOT_SOLD — every unit until a version
+//     carrying unit prices is published through PLAN_VERSION_PUBLISH (Finance → Owner).
+//   - Billing is monthly: each event is metered here and reported to the provider, which adds the
+//     period's usage to ONE consolidated invoice. No per-event charge, no prepaid wallet.
 //   - While SIGN_USAGE_BILLING_ENABLED is not '1', check() and record() refuse
 //     USAGE_BILLING_DISABLED (built dark).
 
@@ -45,6 +51,7 @@ export type UsageRefusalReason =
   | 'INVALID_INPUT'
   | 'NOT_SUBSCRIBED'
   | 'UNIT_NOT_SOLD'
+  | 'PERIOD_CLOSED'
   | 'IDEMPOTENCY_CONFLICT';
 
 export interface UsageCheckInput {
