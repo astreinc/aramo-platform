@@ -7693,6 +7693,12 @@
       { "project": "settings", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/envelope-contracts.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -9091,6 +9097,12 @@
         "status": "excluded"
       },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
@@ -12732,6 +12744,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13369,6 +13387,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
