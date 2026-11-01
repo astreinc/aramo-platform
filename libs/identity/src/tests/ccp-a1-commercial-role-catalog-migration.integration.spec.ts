@@ -190,6 +190,8 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
       'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql',
       // M-A7 WS-4: privacy requests (unrelated to CCP).
       'libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql',
+      // Feature-Parity §1.21: Sign custom roles (unrelated to CCP).
+      'libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql',
     ]);
     for (const dep of [
       'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',
