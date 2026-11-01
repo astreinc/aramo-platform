@@ -16,6 +16,7 @@ import {
   SENDER_DIRECTORY_PORT,
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
+  TRUSTED_TIMESTAMP_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
@@ -51,6 +52,10 @@ import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 import { EsignExpiryWorker } from './esign-expiry.worker.js';
 import { SigningInvitationWorker } from './signing-invitation.worker.js';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted timestamps
+// (dark: SIGN_TSA_URL unset or sign.trusted_timestamp NOT_AVAILABLE ⇒ no adapter, no worker).
+import { trustedTimestampFromEnv } from './trusted-timestamp/rfc3161-tsa.adapter.js';
+import { TrustedTimestampRetryWorker } from './trusted-timestamp/trusted-timestamp-retry.worker.js';
 import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adapter.js';
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
@@ -201,6 +206,9 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SigningInvitationWorker,
         // A1 — kept artifacts (signed copies, certificates) count toward storage.
         { provide: STORAGE_ACCOUNTING_PORT, useClass: AramoSignStorageGate },
+        // Feature-Parity §1.18 — the RFC 3161 TSA (null = off) and its "timestamp pending" retry job.
+        { provide: TRUSTED_TIMESTAMP_PORT, useFactory: () => trustedTimestampFromEnv(process.env) },
+        TrustedTimestampRetryWorker,
       ],
     }),
   ],

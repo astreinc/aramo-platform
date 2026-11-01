@@ -277,6 +277,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   async getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const signed = await this.service.evidenceManifest(tenant_id, envelope_id);
+    // Feature-Parity §1.18 — the RFC 3161 timestamps, only when any were recorded.
+    const timestamps = await this.service.trustedTimestampsFor(tenant_id, envelope_id);
     return {
       envelope_id,
       status: env.status,
@@ -284,6 +286,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       signature: signed.signature,
       signature_algorithm: signed.signature_algorithm,
       completed_at: signed.manifest.completed_at,
+      ...(timestamps.length > 0 ? { trusted_timestamps: timestamps } : {}),
     };
   }
 

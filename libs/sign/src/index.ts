@@ -329,3 +329,25 @@ export {
   type PurgeObjectsReport,
   type ExecuteOutcome,
 } from './lib/retention/sign-purge.repository.js';
+// Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps.
+export {
+  TRUSTED_TIMESTAMP_PORT,
+  type TrustedTimestampPort,
+  type TrustedTimestampToken,
+} from './lib/ports/trusted-timestamp.port.js';
+export {
+  TrustedTimestampService,
+  type TrustedTimestampStatus,
+  type TrustedTimestampSubjectKind,
+  type TrustedTimestampView,
+} from './lib/trusted-timestamp/trusted-timestamp.service.js';
+export {
+  OID_SHA256,
+  Rfc3161Error,
+  buildTimeStampRequest,
+  nonceValue,
+  verifyTimeStampResponse,
+  type TimeStampRequestInput,
+  type VerifiedTimeStamp,
+  type VerifyExpectations,
+} from './lib/trusted-timestamp/rfc3161.js';

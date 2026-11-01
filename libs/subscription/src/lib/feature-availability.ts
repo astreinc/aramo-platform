@@ -25,6 +25,10 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   'sign.ai_assist_summary': 'NOT_AVAILABLE',
   'sign.advanced_analytics': 'NOT_AVAILABLE',
   'sign.custom_domain': 'NOT_AVAILABLE',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.18 — RFC 3161 trusted
+  // timestamps. Built dark: sign-service binds a TSA only when this is AVAILABLE and
+  // SIGN_TSA_URL is set. Flipping it is a PO decision (R-8), after the TSA contract (D-3).
+  'sign.trusted_timestamp': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

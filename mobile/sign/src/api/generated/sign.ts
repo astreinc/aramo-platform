@@ -3208,6 +3208,31 @@ export interface components {
             signature_algorithm?: string | null;
             /** Format: date-time */
             completed_at?: string | null;
+            /** @description Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps on each executed document's SHA-256 and on the completed evidence manifest. Present only when at least one was recorded (the feature is off by default). */
+            trusted_timestamps?: components["schemas"]["TrustedTimestampEvidence"][];
+        };
+        /** @description One RFC 3161 timestamp. PENDING means requested but not yet granted by the time-stamping authority; it is retried in the background and never blocks completion. */
+        TrustedTimestampEvidence: {
+            /** @enum {string} */
+            subject_kind: "EXECUTED_DOCUMENT" | "EVIDENCE_MANIFEST";
+            /** Format: uuid */
+            envelope_document_id: string | null;
+            message_imprint_sha256: string;
+            /** @enum {string} */
+            hash_algorithm: "SHA-256";
+            /** @enum {string} */
+            status: "PENDING" | "GRANTED";
+            /** Format: date-time */
+            gen_time: string | null;
+            tsa_name: string | null;
+            tsa_url: string;
+            serial_number: string | null;
+            policy_oid: string | null;
+            tsa_certificate_sha256: string | null;
+            /** @description The DER TimeStampToken (CMS SignedData), base64. */
+            token_der_base64: string | null;
+            /** @description EVIDENCE_MANIFEST only — the exact manifest JSON whose SHA-256 was time-stamped. */
+            subject_canonical: string | null;
         };
     };
     responses: {

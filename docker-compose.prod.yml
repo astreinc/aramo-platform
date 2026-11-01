@@ -572,6 +572,12 @@ services:
       # the worker never runs and every retention write is refused (403 purge_not_enabled).
       - SIGN_PURGE_ENABLED
       - SIGN_PURGE_INTERVAL_MS
+      # Feature-Parity Directive v1.0 §1.18 — RFC 3161 trusted timestamps. Unset SIGN_TSA_URL = dark
+      # (no TSA request, no row, no certificate line); also off while sign.trusted_timestamp is
+      # NOT_AVAILABLE. A TSA failure never blocks completion ("timestamp pending", retried).
+      - SIGN_TSA_URL
+      - SIGN_TSA_TIMEOUT_MS
+      - SIGN_TSA_RETRY_INTERVAL_MS
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as

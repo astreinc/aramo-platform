@@ -10,6 +10,7 @@ export {
   type ProviderSignerSummary,
   type EnvelopeSummary,
   type EvidenceSummary,
+  type TrustedTimestampEvidence,
   type SignatureActor,
   signatureActor,
 } from './lib/signature-provider.port.js';
