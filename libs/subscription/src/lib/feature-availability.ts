@@ -61,6 +61,11 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // Feature-Parity directive §1.14 — payment collection through Stripe Connect (plans P, E).
   // Built dark (Amendment A1); AVAILABLE only with a separate PO authorization (R-8).
   'sign.payments': 'NOT_AVAILABLE',
+  // Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (AATL). Built dark;
+  // AVAILABLE only with a separate PO authorization after the CA subscriber agreement,
+  // production account and counsel review (Amendment A1 §A1.2). R-2: never marketed
+  // as an advanced or qualified signature.
+  'sign.document_seal': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

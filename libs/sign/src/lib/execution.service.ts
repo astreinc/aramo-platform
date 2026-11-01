@@ -39,6 +39,7 @@ import {
 import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
 import { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './ports/sign-branding.port.js';
 import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
+import { DocumentSealService, type DocumentSealSummary } from './document-seal/document-seal.service.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -135,6 +136,15 @@ function paymentLines(
     });
 }
 
+// Feature-Parity §1.15 — the certificate line of a document seal. A pending seal is
+// recorded in the evidence ledger when it is applied.
+export function sealLine(envelope_document_id: string, seal: DocumentSealSummary): string {
+  if (seal.status === 'SEALED' && seal.sealed_sha256 !== null) {
+    return `Doc ${envelope_document_id} — document seal: ${seal.seal_level ?? 'PAdES'} by ${seal.signer_subject ?? 'unknown'}; sealed copy ${seal.sealed_sha256.slice(0, 16)}… (the executed document is unchanged inside the sealed copy)`;
+  }
+  return `Doc ${envelope_document_id} — document seal: pending; when applied it is recorded in the evidence ledger`;
+}
+
 @Injectable()
 export class ExecutionService implements ExecutionProducerPort {
   constructor(
@@ -159,6 +169,8 @@ export class ExecutionService implements ExecutionProducerPort {
     // Feature-Parity §1.18 — RFC 3161 timestamps of the executed documents (off unless a
     // TSA adapter is bound; never blocks completion).
     @Optional() private readonly timestamps?: TrustedTimestampService,
+    // Feature-Parity §1.15 — the PAdES document seal (dark: unbound or no provider = no seal).
+    @Optional() private readonly sealer?: DocumentSealService,
   ) {}
 
   // Feature-Parity §1.10 — never fails a completion: any error reads as "no branding".
@@ -229,6 +241,8 @@ export class ExecutionService implements ExecutionProducerPort {
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const results: ExecutedProductionResult[] = [];
+    // Feature-Parity §1.15 — only documents executed by THIS produce are sealed.
+    const inserted: string[] = [];
     // PX-2 — each signer's Signature ID is the hash of their SIGNER_SIGNED entry
     // in the append-only, hash-chained ledger. The stamp prints its first 15
     // characters; the execution certificate prints it in full beside the signer,
@@ -332,7 +346,10 @@ export class ExecutionService implements ExecutionProducerPort {
         executed_sha256: rendered.sha256,
         bytes: rendered.bytes,
       });
-      if (kept.inserted) await this.recordKept(tenant_id, `esign:executed:${doc.id}`, kept.result.byte_size);
+      if (kept.inserted) {
+        inserted.push(doc.id);
+        await this.recordKept(tenant_id, `esign:executed:${doc.id}`, kept.result.byte_size);
+      }
       results.push(kept.result);
     }
 
@@ -351,6 +368,11 @@ export class ExecutionService implements ExecutionProducerPort {
           results.map((r) => ({ envelope_document_id: r.envelope_document_id, executed_sha256: r.executed_sha256 })),
         )
       : null;
+    // Feature-Parity §1.15 — seal the newly executed documents after they are kept and
+    // before the certificate and custody. Never throws; a failed seal stays PENDING for
+    // the seal job and completion continues with the unsealed executed document.
+    const seals = new Map<string, DocumentSealSummary>();
+    for (const s of (await this.sealer?.sealProduced(tenant_id, envelope_id, inserted).catch(() => [])) ?? []) seals.set(s.envelope_document_id, s);
 
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
     // Feature-Parity §1.9 — when each recipient with an access code entered it (the ledger).
@@ -379,6 +401,12 @@ export class ExecutionService implements ExecutionProducerPort {
         type: 'TEXT',
         text: `Doc ${r.envelope_document_id} — source ${r.source_sha256.slice(0, 16)}… executed ${r.executed_sha256.slice(0, 16)}…`,
       })),
+      // Feature-Parity §1.15 — the document seal, only when the seal is enabled.
+      ...results.flatMap((r): RenderBlock[] => {
+        const seal = seals.get(r.envelope_document_id);
+        if (seal === undefined) return [];
+        return [{ type: 'TEXT', text: sealLine(r.envelope_document_id, seal) }];
+      }),
       { type: 'HEADING', text: 'Signers' },
       // M-A5 §1.2 — copy recipients are not signers and are not listed here.
       ...signingRecipients(full.signers).flatMap((s): RenderBlock[] => [

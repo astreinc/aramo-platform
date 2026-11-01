@@ -386,6 +386,44 @@ model ExecutedDocument {
   @@schema("sign")
 }
 
+/// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal of one executed
+/// document. The ExecutedDocument row is never changed: the seal is an incremental
+/// update, so the sealed PDF is executed_bytes || seal_tail and executed_sha256 stays
+/// the SHA-256 of its prefix. PENDING / FAILED rows are retried by the seal job; once
+/// SEALED the seal columns are write-once (DB trigger). seal_tail is NULLed by purge.
+model ExecutedDocumentSeal {
+  id                        String    @id @db.Uuid
+  tenant_id                 String    @db.Uuid
+  envelope_id               String    @db.Uuid
+  executed_document_id      String    @db.Uuid
+  envelope_document_id      String    @db.Uuid
+  executed_sha256           String
+  // PENDING | SEALED | FAILED (retries exhausted)
+  status                    String
+  attempts                  Int       @default(0)
+  next_attempt_at           DateTime? @db.Timestamptz
+  // Error class only (no message text, no document content).
+  last_error                String?
+  provider                  String?
+  // PAdES-B-B | PAdES-B-T
+  seal_level                String?
+  sealed_sha256             String?
+  sealed_byte_size          Int?
+  signer_certificate_sha256 String?
+  signer_subject            String?
+  signing_time              DateTime? @db.Timestamptz
+  seal_tail                 Bytes?
+  sealed_at                 DateTime? @db.Timestamptz
+  purged_at                 DateTime? @db.Timestamptz
+  created_at                DateTime  @default(now()) @db.Timestamptz
+
+  @@unique([executed_document_id])
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@index([status, next_attempt_at])
+  @@schema("sign")
+}
+
 /// DOC-4 (R-4-6) — the human-readable execution certificate PDF produced at
 /// completion (one per envelope). Held transiently in esign until the Documents
 /// write-back stores the permanent EXECUTION_CERTIFICATE artifact.

@@ -2128,11 +2128,16 @@
       "DEFAULT_SIGN_BASE_URL",
       "DELETED_DRAFT_SUBJECT",
       "DISCLOSURE_V2_TEXT",
+      "DOCUMENT_SEAL_SIGNING_PROVIDER",
+      "DOCUMENT_SEAL_TIMESTAMP_SOURCE",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
       "DelegationRefusedError",
       "DisclosureNotAcceptedError",
       "DisclosureVersionInvalidError",
+      "DocumentSealCmsError",
+      "DocumentSealPdfError",
+      "DocumentSealService",
       "ENVELOPE_NOTIFICATION_SERVICE",
       "ENVELOPE_TTL_DAYS_DEFAULT",
       "ESIGN_LIFECYCLE_EVENT_VERSION",
@@ -2144,6 +2149,7 @@
       "EXECUTED_ARTIFACT_CUSTODY_PORT",
       "EXECUTED_ARTIFACT_INTEGRITY_CONFLICT",
       "EXECUTED_DOCUMENT_RECORDED",
+      "EXECUTED_DOCUMENT_SEALED",
       "EXECUTION_CERTIFICATE_RECORDED",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
@@ -2169,6 +2175,7 @@
       "LocalEventPublisher",
       "MAX_ACCESS_CODE_ATTEMPTS",
       "MAX_COPY_RECIPIENTS",
+      "MAX_SEAL_ATTEMPTS",
       "OutboxDeliveryService",
       "OutboxService",
       "PII_PAYLOAD_KEYS",
@@ -2235,6 +2242,7 @@
       "backoffMs",
       "canonicalEvidenceManifestBytes",
       "canonicalSignEventType",
+      "certificateFacts",
       "computeEventHash",
       "contactEmailKey",
       "copyRecipients",
@@ -2268,7 +2276,10 @@
       "purgeStateFor",
       "recipientKindOf",
       "reminderHistory",
+      "sealPdf",
+      "sealedPdfBytes",
       "signBaseUrl",
+      "signatureFromVendorCms",
       "signingRecipients",
       "signingSessionExpiresAt",
       "toLifecycleEvent",
@@ -7715,6 +7726,12 @@
       { "project": "settings", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/envelope-contracts.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -9143,6 +9160,12 @@
         "status": "excluded"
       },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/document-seal.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
@@ -12796,6 +12819,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13439,6 +13468,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/document-seal-remote-signing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
