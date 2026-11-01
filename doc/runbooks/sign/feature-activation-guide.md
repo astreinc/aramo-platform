@@ -934,6 +934,40 @@ Go-live list items 11–12.
    authorization. Confirm at flip time which flows (checkout, portal, webhook) work with a live key as-is.
 7. **Tax.** Stripe Tax is not enabled and has no setting (CCP-C5, `.env.prod.example:392-393`).
 8. **Test** buy, cancel, refund and reconcile in live mode with a real card (go-live list item 12).
+9. **Checkout disclosure (Remaining-Work A1).** Business and Personal checkouts show the renewal disclosure at
+   the Stripe submit button (`custom_text[submit][message]`, built by `businessCheckoutDisclosure` /
+   `personalCheckoutDisclosure` in `subscription-lifecycle.service.ts`); the Business plan cards and the
+   required Terms checkbox on Settings → Billing say the same. No setting; verify it on the first live
+   checkout.
+10. **Renewal notices (Remaining-Work A3).** Two layers:
+    - **Primary — the Aramo renewal notice (sign-service job).** Once an hour, one email to the subscribing
+      owner (else the tenant owner) of each open self-service subscription whose 12-month commitment ends
+      within `SIGN_RENEWAL_NOTICE_DAYS` (default 30, 1 to 90): the commitment end date, that it then
+      continues month to month at the monthly price plus tax, how to cancel (link to the workspace billing
+      settings) and when a cancellation takes effect. One notice per subscription and commitment end
+      (evidence in `subscription."RenewalNoticeDelivery"`, migration `20261102100000_sign_renewal_notice`;
+      a refused send is retried up to 5 times; an unrecorded outcome is never resent). Dark unless
+      `SIGN_RENEWAL_NOTICES_ENABLED=1` (sign-service; `docker-compose.prod.yml` passthrough,
+      `.env.prod.example`). Needs the mailer (`MAILER_PROVIDER=ses`) and counsel's approval of the email
+      wording (`renderRenewalNotice`, `libs/subscription/src/lib/billing/renewal-notice.ts`) before the
+      flip. A later annual-term schedule (A2) adds a notice kind and reuses the job and table.
+    - **Interim — Stripe's own email.** Stripe Dashboard → Settings → Billing → Subscriptions and emails →
+      "Send emails about upcoming renewals" ON (live mode), with the reminder lead time set; record a
+      screenshot in `Aramo/documents/`. Confirm in the dashboard which billing intervals Stripe sends these
+      reminders for (record it with the screenshot); counsel confirms it is sufficient while the Aramo job
+      is dark. Stripe's email does not mention the commitment end; the Aramo job does.
+11. **Cancel (Remaining-Work A4).** Settings → Billing → "Cancel subscription" (Business `/sign/settings/billing`,
+    Personal `/personal/settings/billing`; the mobile account screen links there as "Manage billing or
+    cancel") uses the existing self-service cancel (`POST /v1/sign/billing/self-service/cancel`, at period
+    end, CCP-C1 command). It is offered only when the backend allows it: never inside the commitment
+    before its last month (DR-C2-1), and only while the Sign Terms have an APPROVED version. Its
+    confirmation states the end date (end of the current monthly period), no further charge, and the data
+    rule (Business: 90 calendar days to download completed documents and evidence, ToS B7.5; Personal:
+    back to Free). The command worker (`SIGN_BILLING_COMMANDS_ENABLED=1`) must run for the cancel to reach
+    Stripe. **Undo:** "Keep my subscription" opens the Stripe billing portal, which must allow renewing a
+    subscription set to cancel; configure `STRIPE_PORTAL_CONFIGURATION` so cancellation is at period end
+    (never immediate) and renewing is allowed, and record a screenshot in `Aramo/documents/`. The link is
+    labelled "Manage billing or cancel".
 
 Stripe Identity and Stripe Connect use **their own** keys and webhooks (3.16, 3.18); they never reuse
 `STRIPE_*`.
@@ -1033,3 +1067,8 @@ Personal → Business upgrade) was ruled by Amendment A5: not offered, and the c
 5. [AR-7] Messaging has no plan or organization-type gate (OD-3).
 6. Live-mode holds in the billing command worker and the metering branch (4.1, 3.21).
 7. [AR-11] The production probe has no patterns for the new vendor features (4.4).
+8. [A4] No in-product resume of a scheduled cancel: the provider adapter has no "resume" command, so
+   "Keep my subscription" goes through the Stripe billing portal. After such a renewal, a second in-product
+   cancel of the same subscription replays the first (recorded) request instead of issuing a new command
+   (`SelfServiceBillingRequest` is unique per subscription and action); the owner cancels again through the
+   portal. Fix together with A2.

@@ -86,6 +86,7 @@ import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.w
 import { EsignBillingCommandWorker } from './billing/esign-billing-command.worker.js';
 import { SignMeteringUsageRecorder } from './billing/sign-metering-usage-recorder.js';
 import { SignUsageReportWorker } from './billing/sign-usage-report.worker.js';
+import { SignRenewalNoticeRecipients, SignRenewalNoticeWorker } from './billing/sign-renewal-notice.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
@@ -316,6 +317,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     EsignBillingCommandWorker,
     // Sign Feature Parity D-2 (A1) — metered usage reporting (SIGN_USAGE_BILLING_ENABLED=1; off by default).
     SignUsageReportWorker,
+    // Remaining-Work A3 — the Aramo renewal notice (SIGN_RENEWAL_NOTICES_ENABLED=1; off by default).
+    SignRenewalNoticeRecipients,
+    SignRenewalNoticeWorker,
     AramoSignStorageGate,
     SignTokenService,
     SignApiGuard,

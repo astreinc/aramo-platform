@@ -50,7 +50,7 @@ class FakeBilling implements BillingProviderPort {
     return this.live ? 'live' : 'test';
   }
   subs = new Map<string, ProviderSubscriptionState>();
-  checkouts: { intent_id: string; tenant_id: string; account_ref: string | null }[] = [];
+  checkouts: { intent_id: string; tenant_id: string; account_ref: string | null; disclosure?: string; collect_address?: boolean }[] = [];
   failRetrieve = false;
   accounts: { account_ref: string | null; details: unknown; result: string }[] = [];
   isConfigured() {
@@ -152,6 +152,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
 
   it('checkout → paid → a SELF_SERVICE subscription opens, attributed to the subscribing owner', async () => {
     expect((await checkout()).url).toMatch(/^https:\/\/checkout\.test\//);
+    // Remaining-Work A1 — the Business checkout shows the renewal disclosure at submit (no address collection).
+    expect(billing.checkouts[0]!.disclosure).toBe(
+      'Your plan starts with a 12-month commitment, billed monthly. After that it continues month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.',
+    );
+    expect(billing.checkouts[0]!.collect_address).toBeUndefined();
     expect((await svc.account(t, 'sign', KEY, AT)).allowance.subscribed).toBe(false);
     const sub = billing.complete('active');
     const res = await svc.handleEvent({ id: 'evt_a1', type: 'checkout.session.completed', created: AT, subscription_ref: sub.subscription_ref }, 'sign', AT);

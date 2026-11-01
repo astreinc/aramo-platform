@@ -4,6 +4,7 @@
 // Personal plan and usage, default signature and initials, biometric confirmation and unlock, push
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
 // legal re-acceptance, Delete account / Request deletion (M-A7 §3.3), About, Sign out.
+// Remaining-Work A4 — "Manage billing or cancel" opens the web billing settings (owners of a billed plan).
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
@@ -37,6 +38,7 @@ import {
   revokeSession,
   type NativeSession,
 } from '../../features/account/devices';
+import { billingSettingsLink, MANAGE_BILLING_LABEL } from '../../features/account/billing';
 import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
 import { isPersonalAccountOwner } from '../../features/account/privacy';
 import { PrivacyRequestsSection } from '../../features/account/PrivacyRequestsSection';
@@ -149,6 +151,8 @@ export function AccountScreen() {
   const provider = user?.identity_provider ?? null;
   const signedInWith = signedInWithLabel(provider);
   const allowance = allowanceModel(billing.data ?? null);
+  // Remaining-Work A4 — cancel lives in the web billing settings; the app links there.
+  const billingLink = billingSettingsLink(billing.data);
   const pending = legal.data?.pending ?? [];
 
   async function togglePref(key: PreferenceKey, value: boolean): Promise<void> {
@@ -277,6 +281,24 @@ export function AccountScreen() {
             last
           />
         </Card>
+
+        {billingLink !== null ? (
+          <>
+            <SectionTitle>Subscription</SectionTitle>
+            <Card style={styles.card}>
+              <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>
+                Update payment details, see invoices or cancel your subscription in the billing settings on the web.
+              </Text>
+              <Button
+                testID="account-manage-billing"
+                title={MANAGE_BILLING_LABEL}
+                variant="text"
+                onPress={() => open(billingLink)}
+                style={{ alignSelf: 'flex-start' }}
+              />
+            </Card>
+          </>
+        ) : null}
 
         {personal && allowance ? (
           <>

@@ -29,6 +29,7 @@ export interface CheckoutSessionRequest {
   cancel_url: string;
   // Sign Catalog v2 §4.3 (P-4) — a PERSONAL checkout: the billing address is collected (and
   // saved on the billing account) in the checkout, and the renewal disclosure is shown at submit.
+  // Remaining-Work A1 — a Business checkout carries its renewal disclosure too (no address collection).
   collect_address?: boolean;
   disclosure?: string;
 }

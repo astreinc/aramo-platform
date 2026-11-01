@@ -264,6 +264,8 @@ export {
   billingCountrySupported,
   checkoutTermsDocument,
   personalCheckoutDisclosure,
+  businessCheckoutDisclosure,
+  CHECKOUT_SUBMIT_MESSAGE_MAX,
   planMatchesTenantKind,
   PAST_DUE_GRACE_DAYS_DEFAULT,
   mapProviderStatus,
@@ -998,3 +1000,19 @@ export {
   SignTemplateEntitlementService,
   type SignTemplateEntitlement,
 } from './lib/sign-template-entitlement.service.js';
+// Remaining-Work Consolidated Directive (32e5e3e1) A3 — the Aramo renewal notice (dark unless
+// SIGN_RENEWAL_NOTICES_ENABLED=1; the sign-service worker runs it).
+export {
+  RenewalNoticeRepository,
+  RenewalNoticeService,
+  RENEWAL_NOTICE_DEFAULT_DAYS,
+  RENEWAL_NOTICE_MAX_ATTEMPTS,
+  RENEWAL_NOTICE_TEMPLATE,
+  billingSettingsUrl,
+  renderRenewalNotice,
+  renewalNoticeLeadDays,
+  renewalNoticesEnabled,
+  type RenewalNoticeMailer,
+  type RenewalNoticeRecipientPort,
+  type RenewalNoticeRunCounts,
+} from './lib/billing/renewal-notice.js';
