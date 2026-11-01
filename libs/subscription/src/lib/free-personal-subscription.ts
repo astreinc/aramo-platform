@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
-import { takeBillingLock } from './billing/governed-subscription.js';
 import { currentPublishedVersion } from './plan-version.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from './product-registry.js';
@@ -85,52 +84,4 @@ export class FreePersonalSubscriptionService {
     }
     return { ok: true, opened: true, subscription_id: id, source: FREE_SUBSCRIPTION_SOURCE };
   }
-
-  /** The tenant's open BASE subscription for the product (id, source, plan), or null. */
-  async openBaseOf(tenant_id: string, product_key: ProductKey): Promise<OpenBaseSubscription | null> {
-    const row = await this.prisma.tenantSubscription.findFirst({
-      where: openBaseSubscription(tenant_id, assertProductKey(product_key)),
-      select: { id: true, source: true, status: true, billing_provider: true, plan: { select: { key: true, tenant_kind: true } } },
-    });
-    return row === null
-      ? null
-      : { id: row.id, source: row.source, status: row.status, billing_provider: row.billing_provider, plan_key: row.plan.key, plan_tenant_kind: row.plan.tenant_kind };
-  }
-
-  /**
-   * Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5 — the Personal → Business
-   * upgrade ends the FREE subscription (status CANCELED, ended_at now) under the tenant's
-   * billing lock. Only a FREE row is ended here (never provider-billed: no billing
-   * provider is called); any other open row is refused ('not_free') and left unchanged.
-   * No open row → nothing to end. If the identity half of the upgrade then fails, the
-   * tenant is still PERSONAL and ensure() reopens the FREE subscription on its next read.
-   */
-  async endForBusinessUpgrade(input: { tenant_id: string; product_key: ProductKey; at?: Date }): Promise<EndFreeResult> {
-    const product_key = assertProductKey(input.product_key);
-    const at = input.at ?? new Date();
-    return this.prisma.$transaction(async (tx) => {
-      await takeBillingLock(tx, input.tenant_id);
-      const open = await tx.tenantSubscription.findFirst({
-        where: openBaseSubscription(input.tenant_id, product_key),
-        select: { id: true, source: true, plan: { select: { key: true } } },
-      });
-      if (open === null) return { ended: null } as const;
-      if (open.source !== FREE_SUBSCRIPTION_SOURCE) return { refused: 'not_free', subscription_id: open.id, source: open.source } as const;
-      await tx.tenantSubscription.update({ where: { id: open.id }, data: { ended_at: at, status: 'CANCELED' } });
-      return { ended: { id: open.id, plan_key: open.plan.key, source: open.source } } as const;
-    });
-  }
 }
-
-export interface OpenBaseSubscription {
-  id: string;
-  source: string;
-  status: string;
-  billing_provider: string | null;
-  plan_key: string;
-  plan_tenant_kind: string | null;
-}
-
-export type EndFreeResult =
-  | { readonly ended: { readonly id: string; readonly plan_key: string; readonly source: string } | null }
-  | { readonly refused: 'not_free'; readonly subscription_id: string; readonly source: string };

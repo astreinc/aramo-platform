@@ -10668,11 +10668,6 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
-      "from": "apps/sign-service/src/app/account/personal-upgrade.service.ts",
-      "status": "production",
-      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
-    },
-    {
       "excludedBy": "src/sign-negative-control/**",
       "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
       "status": "excluded",
@@ -10695,18 +10690,6 @@
       "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/m-a8-identity-dependency-inspector.spec.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
-      "status": "excluded",
-      "to": "doc/legal/aramo-sign/terms-of-service.md"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
-      "status": "excluded",
-      "to": "doc/legal/aramo-sign/terms-of-service.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11236,11 +11219,6 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/signup/sign-signup.controller.ts"
-    },
-    {
-      "from": "ci/config/api-surface-manifest.json",
-      "status": "unscoped",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -29738,16 +29716,6 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
-    },
-    {
-      "from": "doc/runbooks/sign/feature-activation-guide.md",
-      "status": "unscoped",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
-    },
-    {
-      "from": "doc/runbooks/sign/feature-activation-guide.md",
-      "status": "unscoped",
       "to": "apps/sign-service/src/app/app.module.ts"
     },
     {
@@ -32403,11 +32371,6 @@
       "to": "apps/platform-admin/src/app/platform/cognito/cognito-admin.service.ts"
     },
     {
-      "from": "libs/identity/src/lib/personal/personal-upgrade.repository.ts",
-      "status": "production",
-      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
-    },
-    {
       "from": "libs/identity/src/lib/prisma/prisma.service.ts",
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
@@ -34675,12 +34638,6 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
-      "status": "excluded",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

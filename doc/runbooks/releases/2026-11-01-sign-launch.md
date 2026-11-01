@@ -31,7 +31,7 @@ for the running images (`:rollback-06372585`); the previous floor `:rollback-689
 
 Merged since `06372585`: #1045 (backlog doc), #1047 (Cognito invite username fix), #1048 (monitoring,
 runbooks, RELEASE-box v2.6), #1049 (Sign reports), #1050 (CCP PLAN_CREATE), #1056 (Sign feature
-parity: templates, branding, custom roles, Personal → Business upgrade, witness/delegate/access code,
+parity: templates, branding, custom roles, Personal → Business upgrade (removed again by Amendment A5), witness/delegate/access code,
 RFC 3161 timestamps, SMS/WhatsApp/OTP, ID verification/KBA, payments, AATL seal, QES/e-stamp ports,
 sign-in UX fixes), #1057 (ToS v2.0 registered dark + acceptance gate; usage metering A3/A4).
 
@@ -75,7 +75,7 @@ list must match exactly — any extra pending migration = STOP and report):
 ### Environment — NO `.env` changes tonight
 
 This release adds many optional env vars (SMS/WhatsApp, Stripe Connect/Identity, seal, TSA, QES,
-e-stamp, `SIGN_USAGE_BILLING_ENABLED`, `SIGN_PERSONAL_UPGRADE_ENABLED`, messaging limits). **Leave them
+e-stamp, `SIGN_USAGE_BILLING_ENABLED`, messaging limits). **Leave them
 all unset.** None is a required (`:?`) interpolation; unset = feature off. Do not edit `.env`.
 (`env:passthrough-check` must still pass in STEP 0.)
 

@@ -167,7 +167,7 @@ Professional $20, E Enterprise; B+ = B, P, E) next to what the code enforces tod
 | Witness signing | `sign.witness_signing` | No | None | B+ / BUSINESS | — | Sender UI not found (section 3.5) |
 | Delegate signing | `sign.delegate_signing` | No | None | B+ / BUSINESS | — | Sender and signer UI not found (section 3.6) |
 | Access code | `sign.access_code` | No | None | All incl. F / all | — | Sender UI not found (section 3.7) |
-| Personal → Business upgrade | none (env only) | No | None | Personal owners | `SIGN_PERSONAL_UPGRADE_ENABLED` | ToS v2.0 must be effective |
+| Personal → Business upgrade | — | — | — | — | — | REMOVED from the code (A5); not offered (section 3.8) |
 | Personal paid checkout | none (env only) | Stripe live | 1–3 weeks for Stripe live setup (estimate) | S (US only) | `SIGN_PERSONAL_PAID_CHECKOUT_ENABLED` | Stripe live, ToS v2.0 effective, Standard price |
 | Trusted timestamp | `sign.trusted_timestamp` | TSA | 2–6 weeks (estimate) | paid tiers / everyone | `SIGN_TSA_URL`, `SIGN_TSA_TIMEOUT_MS`, `SIGN_TSA_RETRY_INTERVAL_MS` | Commercial TSA contract; TSA must work without credentials (section 3.10) |
 | Document seal (AATL) | `sign.document_seal` | GlobalSign DSS (or CSC CA) | 4–8 weeks (estimate) | B+ / everyone | `SIGN_SEAL_*` (14 vars) | CA agreement, OV vetting, mTLS cert |
@@ -364,34 +364,7 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 3.8 Personal → Business upgrade
 
-> **Status:** NOT OFFERED — LOCKED by `Aramo-Sign-Feature-Parity-Program-Directive-Amendment-A5-Personal-Stays-Personal-v1_0-LOCKED.md` (PO 2026-11-01): Personal stays Personal, no Personal → Business upgrade. Businesses sign up as Business (work email) on Business Standard, Business Professional or Enterprise. `SIGN_PERSONAL_UPGRADE_ENABLED` stays unset; the dark code is removed by readiness item AR-9. A sole proprietor uses the Personal Standard plan; a business signs up as Business with a work email. Do not switch this on.
-
-- **What it does.** The owner of a Personal account turns it into a Business organization in place; the
-  tenant id, envelopes, evidence and custody stay; the Free subscription ends; the owner then picks a
-  Business plan on Billing. Irreversible (`apps/sign-service/src/app/account/personal-upgrade.service.ts`
-  header comment). Routes `GET/POST /v1/sign/account/upgrade`
-  (`apps/sign-service/src/app/account/personal-upgrade.controller.ts:28`).
-- **Launch key.** None. Env only.
-- **Plan entitlement.** Personal owner, account active and in good standing, US organization details;
-  refused while the account has an open subscription that is not Free
-  (`personal_paid_subscription_upgrade_unsupported`) and while **no APPROVED, effective Business terms**
-  exist (`business_terms_not_available`, `personal-upgrade.service.ts:70`, `:280`).
-- **External prerequisites.** ToS v2.0 effective (section 3.22). Business plans purchasable (Stripe; 4.1),
-  or the upgraded organization cannot buy a plan afterwards.
-- **Legal/counsel.** Counsel confirms the upgrade acceptance flow (Business terms accepted in-app) and the
-  US-only rule.
-- **Secrets & settings.** `SIGN_PERSONAL_UPGRADE_ENABLED=1` (sign-service; not secret;
-  `docker-compose.prod.yml:582`; `.env.prod.example:512-516`). Only exactly `1` enables
-  (`personal-upgrade.service.ts:79`). Unset: routes answer 404 and sign-web hides the card.
-- **Webhooks/DNS/nginx.** None (`/v1/sign/account/` is proxied).
-- **Engineering flip steps.** After ToS v2.0 is effective: Step D (set the variable, recreate
-  `sign-service`).
-- **Production verification.** With a test Personal account in good standing: Settings shows "Upgrade to
-  Business"; complete it; the workspace becomes `/sign`; old envelopes still open; Billing offers Business
-  plans. `GET /v1/sign/account/upgrade` on a Business tenant answers 403 `not_personal_account`.
-- **Rollback/turn-off.** Unset the variable + recreate. Upgrades already done are not reversed.
-- **Open decisions.** Whether a paid Personal (Standard) subscriber should be able to upgrade (today
-  refused).
+> **Status:** REMOVED from the code (A5). LOCKED by `Aramo-Sign-Feature-Parity-Program-Directive-Amendment-A5-Personal-Stays-Personal-v1_0-LOCKED.md` (PO 2026-11-01): Personal stays Personal, no Personal → Business upgrade. The dark upgrade code (routes, service, identity repository, audit event, sign-web card, env variable) was removed by readiness item AR-9; there is nothing to switch on. A sole proprietor uses the Personal Standard plan (3.9); a business signs up separately as Business (work email) on Business Standard, Business Professional or Enterprise. Plan changes within an account kind (Personal Free → Standard, Business plan upgrades and downgrades) are unaffected.
 
 ### 3.9 Personal paid checkout (Standard, $10)
 
@@ -898,8 +871,7 @@ verification · Rollback/turn-off · Open decisions.
   (`libs/subscription/src/lib/legal/legal-documents.ts:93-98` on the branch;
   `apps/sign-web/src/workspace/legal/catalog.ts:45` on the branch).
 - **Why it matters for other features.** Business sign-up currently has no approved terms in production
-  (go-live list item 1). The Personal → Business upgrade (3.8) and the Personal paid checkout (3.9) both need
-  v2.0 effective.
+  (go-live list item 1). The Personal paid checkout (3.9) needs v2.0 effective.
 - **External prerequisites (counsel).** Answers to the blocking questions in
   `Aramo/documents/Aramo-Sign-Terms-v2_0-Counsel-Open-Questions-20261101.md`:
   - Q1 the effective-date wording (`[Date of publication]`);
@@ -940,7 +912,7 @@ verification · Rollback/turn-off · Open decisions.
 
 ### 4.1 Stripe live (Aramo's own billing)
 
-Needed by: Personal paid checkout (3.9), Business plan purchase after an upgrade (3.8), usage billing (3.21).
+Needed by: Personal paid checkout (3.9), Business plan purchase, usage billing (3.21).
 Go-live list items 11–12.
 
 1. **Keys (sign-service; `docker-compose.prod.yml:512-514`).** `STRIPE_SECRET_KEY` (**secret**, live
@@ -1012,13 +984,12 @@ decide whether Personal accounts may text at all (OD-3), and review the per-orga
 ## 5. Recommended order of activation
 
 1. **Deploy the feature build** (`main` ≥ `394ffcc0`) with everything dark (go-live list item 4).
-2. **ToS v2.0 effective** (3.22) — unblocks Business terms, the upgrade and the paid Personal plan.
+2. **ToS v2.0 effective** (3.22) — unblocks Business terms and the paid Personal plan.
 3. **No-vendor features**, each with a PO authorization and, where noted, a UI or entitlement step:
    1. Reports (3.2) — no blockers.
    2. Templates (3.1) — after OD-2.
    3. Access code (3.7), witness (3.5), delegate (3.6) — after the sender UI check.
-   4. Personal → Business upgrade (3.8) — after step 2.
-   5. Branding (3.3) and custom roles (3.4) — after OD-1.
+   4. Branding (3.3) and custom roles (3.4) — after OD-1.
 4. **Stripe live** (4.1), then **Personal paid checkout** (3.9).
 5. **Trusted timestamp** (3.10) — as soon as a commercial TSA that fits the code is contracted (2–6 weeks).
 6. **Vendor features by lead time** — start every contract now (vendor pack "Do first this week": items 4–7):
@@ -1051,7 +1022,7 @@ decide whether Personal accounts may text at all (OD-3), and review the per-orga
 ## 7. Engineering gaps found while writing this guide (fix before the related flip)
 
 Each gap is a work item in the Feature Activation Readiness Directive (AR-n in brackets); OD-9 (the
-Personal → Business upgrade does not require a work email) was added there as well.
+Personal → Business upgrade) was ruled by Amendment A5: not offered, and the code is removed (AR-9).
 
 1. [AR-1] nginx has no location for `/v1/sign/messaging/whatsapp/webhook` (3.14) or `/v1/sign/identity-verification/`
    (3.16); webhooks would never reach sign-service.

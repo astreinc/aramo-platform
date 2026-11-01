@@ -1,3 +1,5 @@
+> **Withdrawn by Amendment A5** (`Aramo-Sign-Feature-Parity-Program-Directive-Amendment-A5-Personal-Stays-Personal-v1_0-LOCKED.md`, PO 2026-11-01): Personal stays Personal; the upgrade code has been removed. Historical record only.
+
 # Aramo Sign — Personal → Business upgrade: recon
 
 Governing: `Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED.md` (SHA-256
