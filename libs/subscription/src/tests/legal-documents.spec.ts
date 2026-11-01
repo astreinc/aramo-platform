@@ -234,6 +234,26 @@ describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
     expect(reg.find((d) => d.key === 'sign.personal_terms_of_service' && d.version === '1.0')!.url).toBe('https://sign.aramo.ai/legal/personal-terms/1.0');
   });
 
+  it('dark before release day: with the shipped registry every terms lookup is exactly as before v2.0 was registered', () => {
+    const without20 = LEGAL_DOCUMENTS.filter((d) => d !== v20);
+    for (const now of [new Date('2026-11-01T00:00:00Z'), new Date('2030-01-01T00:00:00Z')]) {
+      for (const kind of ['BUSINESS', 'PERSONAL']) {
+        const key = checkoutTermsDocument(kind, LEGAL_DOCUMENTS, now);
+        expect(key).toBe(checkoutTermsDocument(kind, without20, now));
+        expect(approvedLegalDocument(key, LEGAL_DOCUMENTS, now)).toBe(approvedLegalDocument(key, without20, now));
+      }
+      // Business: no terms are offered, recorded or required (sign-up, checkout, self-service).
+      expect(approvedLegalDocument('sign.terms_of_service', LEGAL_DOCUMENTS, now)).toBeNull();
+    }
+  });
+
+  it('a TEST fixture that schedules EVERY sign.terms_of_service entry also schedules 2.0 (ties go to the later entry) — fixtures flip 0.1.1 only', () => {
+    const all = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
+    expect(approvedLegalDocument('sign.terms_of_service', all)!.version).toBe('2.0');
+    const only011 = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' && d.version === '0.1.1' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
+    expect(approvedLegalDocument('sign.terms_of_service', only011)!.version).toBe('0.1.1');
+  });
+
   it('a key without a predecessor never falls back', () => {
     expect(effectivePersonalLegalDocument('sign.privacy_policy', reg, after)).toBeNull();
   });
