@@ -33885,6 +33885,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
+      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
       "to": "doc/ccp/slices/CCP-C5-acceptance.md"
     },
     {
