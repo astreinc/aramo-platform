@@ -572,6 +572,23 @@ services:
       # the worker never runs and every retention write is refused (403 purge_not_enabled).
       - SIGN_PURGE_ENABLED
       - SIGN_PURGE_INTERVAL_MS
+      # Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (vendor-neutral remote
+      # hash-signing adapter; SIGN_SEAL_PROVIDER picks the vendor profile). Unset = dark.
+      # Also off while sign.document_seal is NOT_AVAILABLE; an invalid setting refuses boot.
+      - SIGN_SEAL_PROVIDER
+      - SIGN_SEAL_ENDPOINT
+      - SIGN_SEAL_AUTH_TYPE
+      - SIGN_SEAL_AUTH_API_KEY
+      - SIGN_SEAL_AUTH_API_SECRET
+      - SIGN_SEAL_AUTH_CLIENT_ID
+      - SIGN_SEAL_AUTH_CLIENT_SECRET
+      - SIGN_SEAL_AUTH_TOKEN_URL
+      - SIGN_SEAL_AUTH_MTLS_CERT
+      - SIGN_SEAL_AUTH_MTLS_KEY
+      - SIGN_SEAL_CERT_CREDENTIAL_ID
+      - SIGN_SEAL_CERT_SUBJECT_DN
+      - SIGN_SEAL_CERT_CHAIN
+      - SIGN_SEAL_RETRY_INTERVAL_MS
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as

@@ -60,6 +60,25 @@ export {
   type ExecutedProductionResult,
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
+// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (dark unless a provider is bound).
+export {
+  DOCUMENT_SEAL_SIGNING_PROVIDER,
+  DOCUMENT_SEAL_TIMESTAMP_SOURCE,
+  type DocumentSealIdentity,
+  type DocumentSealSigningProvider,
+  type DocumentSealTimestampSource,
+} from './lib/ports/document-seal.port.js';
+export {
+  DocumentSealService,
+  EXECUTED_DOCUMENT_SEALED,
+  MAX_SEAL_ATTEMPTS,
+  sealedPdfBytes,
+  type DocumentSealStatus,
+  type DocumentSealSummary,
+  type ExecutedDocumentSealedPayload,
+} from './lib/document-seal/document-seal.service.js';
+export { sealPdf, DocumentSealPdfError, type PadesLevel, type PadesSealResult } from './lib/document-seal/pades.js';
+export { certificateFacts, DocumentSealCmsError, signatureFromVendorCms } from './lib/document-seal/cms.js';
 export {
   EXECUTED_ARTIFACT_CUSTODY_PORT,
   EXECUTED_ARTIFACT_CUSTODY_EVENT_TYPE,

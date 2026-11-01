@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { CommonModule, RequestIdMiddleware } from '@aramo/common';
 import {
+  DOCUMENT_SEAL_SIGNING_PROVIDER,
   DOCUMENT_SOURCE_PROVIDER_PORT,
   DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
@@ -46,6 +47,10 @@ import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-docume
 import { SignArtifactStore } from './custody/sign-artifact-store.js';
 import { ExecutedArtifactCustodyService } from './custody/executed-artifact-custody.service.js';
 import { SignArtifactReconcileWorker } from './custody/sign-artifact-reconcile.worker.js';
+// Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (vendor-neutral remote
+// hash-signing adapter; dark unless SIGN_SEAL_PROVIDER is set AND sign.document_seal is AVAILABLE).
+import { documentSealProviderFromEnv } from './document-seal/remote-hash-signing.provider.js';
+import { DocumentSealRetryWorker } from './document-seal/document-seal-retry.worker.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
@@ -174,6 +179,12 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         SignArtifactCustodyRepository,
         { provide: EXECUTED_ARTIFACT_CUSTODY_PORT, useClass: ExecutedArtifactCustodyService },
         SignArtifactReconcileWorker,
+        // Feature-Parity §1.15 — the document seal signing provider (null = off). Built at
+        // boot: an invalid SIGN_SEAL_* setting refuses to boot. B-T: the §1.18 RFC 3161
+        // TrustedTimestampPort binds to DOCUMENT_SEAL_TIMESTAMP_SOURCE once it is on main;
+        // until then the seal is PAdES B-B.
+        { provide: DOCUMENT_SEAL_SIGNING_PROVIDER, useFactory: () => documentSealProviderFromEnv(process.env) },
+        DocumentSealRetryWorker,
         // Retention and Purge directive (ebd41d99) — DocuSign-parity retention and purge.
         // DARK unless SIGN_PURGE_ENABLED=1 (writes refused, worker not scheduled).
         SignPurgeRepository,
