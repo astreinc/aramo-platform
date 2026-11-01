@@ -396,6 +396,7 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   CREDIT: 'Account credit',
   DISCOUNT: 'Discount',
   CONVERSION: 'Conversion',
+  PLAN_CREATE: 'Create plan', // CCP PLAN_CREATE (catalog row 17)
 };
 
 /** The Detail cell: a short reading of the structured payload (the record holds no free text). */

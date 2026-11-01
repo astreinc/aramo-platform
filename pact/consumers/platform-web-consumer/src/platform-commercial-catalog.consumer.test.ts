@@ -155,6 +155,12 @@ describe('platform-web → GET /platform/commercial/catalog (CCP-B2)', () => {
             policy_version_number: integer(1),
             approval_expiry_hours: integer(72),
           },
+          // CCP PLAN_CREATE (catalog row 17): the AVAILABLE capability keys a new plan may name, and the
+          // pending creations (any number, so typed as an array only).
+          plan_create: {
+            available_keys: eachLike({ product_key: 'sign', keys: eachLike(like('sign.envelopes')) }),
+            pending: like([]),
+          },
         });
       })
       .executeTest(async (mock) => {
@@ -360,6 +366,106 @@ describe('platform-web → POST /platform/commercial/change-requests (PLAN_VERSI
           idempotency_key: 'pact-b2-publish-0001',
         });
         expect(res.status).toBe(201);
+      });
+  });
+});
+
+// ── CCP PLAN_CREATE (catalog row 17): the "New plan" request on the change-request route ──
+// Byte-aligned with catalogApi.requestPlanCreate (apps/platform-web/src/commercial/catalog/catalog-api.ts).
+
+const NEW_PLAN = {
+  plan_key: 'aramo-sign-pact-new-v1',
+  product_key: 'sign',
+  tenant_kind: 'BUSINESS',
+  sales_model: 'SELF_SERVICE',
+  name: 'Pact Starter',
+  description: null,
+  list_price_minor: 900,
+  currency: 'USD',
+  billing_interval: 'MONTH',
+  commitment_months: null,
+  eligibility: null,
+  support_tier: 'BASIC',
+  display_order: 50,
+  allowances: [{ allowance_key: 'sign.envelopes', included_quantity: 50, unlimited: false, period: 'MONTHLY' }],
+  allowance_windows: [],
+  capacities: [],
+  features: [
+    { feature_key: 'sign.in_person_signing', enabled: false },
+    { feature_key: 'sign.team_collaboration', enabled: true },
+  ],
+};
+
+describe('platform-web → POST /platform/commercial/change-requests PLAN_CREATE (CCP PLAN_CREATE)', () => {
+  it('catalog_manager requests a new plan (201, Finance → Owner, no tenant or product on the request)', async () => {
+    const body = { action_type: 'PLAN_CREATE', payload: NEW_PLAN, reason: 'Entry tier\n\nEvidence: PRICING-2026-11', idempotency_key: 'pact-plan-create-0001' };
+    await provider
+      .addInteraction()
+      .given('the Sign catalog holds its published v1 versions')
+      .uponReceiving('a plan creation request by a catalog manager')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('catalog_manager')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: like({
+            id: uuid('ccb20000-0000-7000-8000-0000000000e2'),
+            action_type: 'PLAN_CREATE',
+            state: 'DRAFT',
+            tenant_id: null,
+            product_key: null,
+            required_chain: { rule: 'FINANCE_THEN_OWNER', basis: like({}), steps: [like({ step_index: 0, role_key: 'finance_admin' }), like({ step_index: 1, role_key: 'platform_owner' })] },
+            policy_version_id: POLICY_V1,
+            requested_by: OP.catalog_manager,
+          }),
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('catalog_manager'), body);
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('a taken plan key is refused (409 plan_key_taken)', async () => {
+    const body = { action_type: 'PLAN_CREATE', payload: { ...NEW_PLAN, plan_key: 'aramo-sign-standard-business-v1' }, reason: 'Duplicate\n\nEvidence: none', idempotency_key: 'pact-plan-create-0002' };
+    await provider
+      .addInteraction()
+      .given('the Sign catalog holds its published v1 versions')
+      .uponReceiving('a plan creation request naming an existing plan key')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('catalog_manager')).jsonBody(body);
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', like({ reason: 'plan_key_taken' })));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('catalog_manager'), body);
+        expect(res.status).toBe(409);
+        expect(errReason(res.body)).toBe('plan_key_taken');
+      });
+  });
+
+  it('a capability that is not available is refused (400 invalid_payload, PLAN_CREATE_FEATURE_NOT_AVAILABLE)', async () => {
+    const body = {
+      action_type: 'PLAN_CREATE',
+      payload: { ...NEW_PLAN, plan_key: 'aramo-sign-pact-templates-v1', features: [{ feature_key: 'sign.templates', enabled: true }] },
+      reason: 'Templates tier\n\nEvidence: none',
+      idempotency_key: 'pact-plan-create-0003',
+    };
+    await provider
+      .addInteraction()
+      .given('the Sign catalog holds its published v1 versions')
+      .uponReceiving('a plan creation request naming a capability that is not available')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('catalog_manager')).jsonBody(body);
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody(errorBody('VALIDATION_ERROR', like({ reason: 'invalid_payload', codes: ['PLAN_CREATE_FEATURE_NOT_AVAILABLE'] })));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('catalog_manager'), body);
+        expect(res.status).toBe(400);
       });
   });
 });

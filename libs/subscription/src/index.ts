@@ -787,7 +787,9 @@ export {
   type CatalogActionType,
   type CatalogChainPreview,
   type CatalogOpenRequest,
+  type CatalogPendingPlanCreate,
   type CatalogPinnedTenant,
+  type CatalogPlanCreateView,
   type CatalogPlanView as CommercialCatalogPlanView,
   type CatalogProductView,
   type CatalogVersionDetail,
@@ -797,6 +799,25 @@ export {
   type CreateDraftInput as CatalogCreateDraftInput,
   type UpdateDraftInput as CatalogUpdateDraftInput,
 } from './lib/commercial/commercial-catalog.service.js';
+// CCP PLAN_CREATE (catalog row 17) — the pure plan-creation model.
+export {
+  PLAN_CREATE_ALLOWANCE_PERIOD,
+  PLAN_CREATE_BILLING_INTERVAL,
+  PLAN_CREATE_CURRENCY,
+  PLAN_CREATE_LIMITS,
+  PLAN_CREATE_MAX_DISPLAY_ORDER,
+  PLAN_CREATE_OPEN,
+  PLAN_CREATE_PAYLOAD_KEYS,
+  PLAN_CREATE_SALES_MODELS,
+  PLAN_CREATE_TENANT_KINDS,
+  PLAN_KEY_PATTERN,
+  PLAN_KEY_TAKEN,
+  planCreateAvailableKeys,
+  planCreateContent,
+  planCreatePayloadErrors,
+  planRowOf,
+  type PlanCreatePayload,
+} from './lib/commercial/commercial-plan-create.js';
 export {
   BILLING_PRICE_PROVIDER,
   checkProviderPriceParity,

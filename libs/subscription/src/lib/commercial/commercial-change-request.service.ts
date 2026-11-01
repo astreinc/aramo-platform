@@ -49,6 +49,7 @@ import { refundPolicyRefBindingError } from './refund-execution-gate.js';
 import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
 import { type PaymentRecordPayload, type PaymentTermsBlock } from './commercial-payment-terms.js';
 import { PaymentRecordRefusedError, initialReceiptFor, resolvePaymentRecordChain, resolvePaymentRecordInTx } from './commercial-payment-record.js';
+import { PLAN_CREATE_OPEN, PLAN_KEY_TAKEN } from './commercial-plan-create.js';
 import {
   PLATFORM_OWNER_ROLE_KEY,
   RoleChangeApplyError,
@@ -138,7 +139,9 @@ export type CommercialChangeRequestErrorCode =
   | 'ALREADY_APPLIED'
   // CCP-C8-PR (PAYMENT_RECORD amendment PR-5…PR-9, §4.2, K-1) — a payment refusal at creation
   // (details.refusal: one of PAYMENT_REFUSAL_CODES); audited by one COMMERCIAL_PAYMENT_REFUSED event.
-  | 'PAYMENT_REFUSED';
+  | 'PAYMENT_REFUSED'
+  // CCP PLAN_CREATE (PC-6) — the plan key is taken, or another open PLAN_CREATE names it (details.reason).
+  | 'PLAN_KEY_TAKEN';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -275,6 +278,8 @@ export class CommercialChangeRequestCursorError extends Error {
 }
 
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
+/** CCP PLAN_CREATE (PC-6) — the per-plan-key lock shared by create and apply (commercial-catalog-apply.service.ts). */
+export const PLAN_CREATE_KEY_LOCK_SQL = `SELECT pg_advisory_xact_lock(hashtextextended('ccp:plan_create:' || $1::text, 0))`;
 const ELIGIBLE_FOR_ME_SCAN = 500;
 /** CCP-ACC-1 — how long a withdrawal waits on the apply's locks before refusing APPLY_IN_PROGRESS. */
 export const WITHDRAW_LOCK_TIMEOUT_MS = 3_000;
@@ -440,6 +445,9 @@ export class CommercialChangeRequestService {
           }
           await this.validateGovernanceTarget(tx, input.action_type, payload, ctx);
         }
+        // CCP PLAN_CREATE (PC-6) — under a per-key lock: refused if the plan key exists or another open
+        // PLAN_CREATE names it. The apply re-checks under the same lock; Plan_key_key is the backstop.
+        if (input.action_type === 'PLAN_CREATE') await this.assertPlanKeyFree(tx, String((payload as Record<string, unknown>)['plan_key']));
         // CCP-C8-PR — PAYMENT_RECORD: the PR-3 chain resolved ONCE here (live roles + roster) and the
         // PR-5…PR-9 / §4.2 checks under the billing lock. A SUBSCRIPTION_OPEN recording a PREPAID contract
         // needs its applied INITIAL receipt first (K-1; re-checked and linked at apply, PR-7).
@@ -556,6 +564,25 @@ export class CommercialChangeRequestService {
     } catch (e) {
       if (e instanceof PaymentRecordRefusedError) return e;
       throw e;
+    }
+  }
+
+  /** CCP PLAN_CREATE (PC-6) — the create-time duplicate-key refusal, inside the create transaction. */
+  private async assertPlanKeyFree(tx: Tx, plan_key: string): Promise<void> {
+    await tx.$executeRawUnsafe(PLAN_CREATE_KEY_LOCK_SQL, plan_key);
+    const plan = await tx.plan.findUnique({ where: { key: plan_key }, select: { id: true } });
+    if (plan !== null) throw new CommercialChangeRequestError('PLAN_KEY_TAKEN', `a plan with key ${plan_key} already exists`, { reason: PLAN_KEY_TAKEN, plan_key, plan_id: plan.id });
+    // Open = COMMERCIAL_OPEN_STATES, except a PENDING_APPROVAL past its expiry (lazily expired: it can
+    // never be approved, so it holds no key).
+    const now = this.now();
+    const open = (
+      await tx.commercialChangeRequest.findMany({
+        where: { action_type: 'PLAN_CREATE', state: { in: [...COMMERCIAL_OPEN_STATES] }, payload: { path: ['plan_key'], equals: plan_key } },
+        select: { id: true, state: true, expires_at: true },
+      })
+    ).find((r) => !(r.state === 'PENDING_APPROVAL' && r.expires_at !== null && r.expires_at.getTime() <= now.getTime()));
+    if (open !== undefined) {
+      throw new CommercialChangeRequestError('PLAN_KEY_TAKEN', `an open plan creation request already names key ${plan_key}`, { reason: PLAN_CREATE_OPEN, plan_key, open_request_id: open.id, open_state: open.state });
     }
   }
 

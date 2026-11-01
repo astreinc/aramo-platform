@@ -236,6 +236,85 @@ describe('CCP-B2 Catalog screen', () => {
     expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
   });
 
+  // CCP PLAN_CREATE (catalog row 17) — "New plan…" creates a PLAN_CREATE change request and submits it;
+  // the console never creates a plan. Only AVAILABLE capabilities are offered.
+  const WITH_CREATE: Catalog = {
+    ...CATALOG,
+    plan_create: {
+      available_keys: [{ product_key: 'sign', keys: ['sign.envelopes', 'sign.in_person_signing', 'sign.storage_bytes', 'sign.team_collaboration'] }],
+      pending: [
+        { id: '019a0000-0000-7000-8000-00000000c0c1', plan_key: 'aramo-sign-pro-v2', name: 'Pro', product_key: 'sign', tenant_kind: 'BUSINESS', sales_model: 'SELF_SERVICE', state: 'APPROVED', requested_by: '01900000-0000-7000-8000-0000000ac001', expires_at: null },
+      ],
+    },
+  };
+
+  it('PC-W-NEW a catalog manager requests a new plan: New plan… → POST change-requests (PLAN_CREATE, the whole plan, only available features) → POST submit; no catalog write', async () => {
+    mockApi('catalog_manager', WITH_CREATE);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
+    fireEvent.click(await screen.findByRole('button', { name: 'New plan…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New plan · Aramo Sign' });
+    expect(within(dialog).getByTestId('chain-preview')).toHaveTextContent('Finance → Owner');
+    const features = within(dialog).getByRole('group', { name: 'Features' });
+    expect(within(features).getAllByRole('checkbox')).toHaveLength(2);
+    expect(features).not.toHaveTextContent(/templates/i);
+    const commit = within(dialog).getByRole('button', { name: 'Submit for approval' });
+    fireEvent.change(within(dialog).getByLabelText('Plan key'), { target: { value: 'aramo-sign-starter-v1' } });
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Starter' } });
+    fireEvent.change(within(dialog).getByLabelText('Price per month (USD)'), { target: { value: '9' } });
+    fireEvent.change(within(dialog).getByLabelText('Envelopes per month'), { target: { value: '50' } });
+    fireEvent.click(within(features).getByLabelText('Team collaboration'));
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Entry tier' } });
+    expect(commit).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('Evidence'), { target: { value: 'PRICING-2026-11' } });
+    expect(commit).toBeEnabled();
+    fireEvent.click(commit);
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/submit'))).toBe(true));
+    const create = calls.find((c) => c.method === 'POST' && c.url.endsWith('/platform/commercial/change-requests'));
+    expect(create?.body).toMatchObject({
+      action_type: 'PLAN_CREATE',
+      payload: {
+        plan_key: 'aramo-sign-starter-v1',
+        product_key: 'sign',
+        sales_model: 'SELF_SERVICE',
+        name: 'Starter',
+        list_price_minor: 900,
+        allowances: [{ allowance_key: 'sign.envelopes', included_quantity: 50, unlimited: false, period: 'MONTHLY' }],
+        features: [
+          { feature_key: 'sign.in_person_signing', enabled: false },
+          { feature_key: 'sign.team_collaboration', enabled: true },
+        ],
+      },
+      reason: 'Entry tier\n\nEvidence: PRICING-2026-11',
+    });
+    expect(create).not.toHaveProperty('body.tenant_id');
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${new URL(c.url, 'http://x').pathname}`)).toEqual([
+      'POST /platform/commercial/change-requests',
+      'POST /platform/commercial/change-requests/019a0000-0000-7000-8000-00000000c001/submit',
+    ]);
+  });
+
+  it('PC-W-PENDING the pending creation is listed; its requester applies the approved request through the apply route; other roles see New plan… disabled', async () => {
+    mockApi('catalog_manager', WITH_CREATE);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
+    const pending = await screen.findByTestId('pending-plan-creates');
+    expect(pending).toHaveTextContent('Pro (aramo-sign-pro-v2) · approved, waiting to be applied');
+    fireEvent.click(within(pending).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/apply'))).toBe(true));
+    expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${new URL(c.url, 'http://x').pathname}`)).toEqual([
+      'POST /platform/commercial/change-requests/019a0000-0000-7000-8000-00000000c0c1/apply',
+    ]);
+  });
+
+  it('PC-W-ROLE a finance admin sees New plan… disabled with the reason, and no Apply action', async () => {
+    mockApi('finance_admin', WITH_CREATE);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
+    const btn = await screen.findByRole('button', { name: 'New plan…' });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', 'Needs the Catalog manager role.');
+    // Apply is the requester's (TD-B2-3) and needs the requester scope; without it no Apply is offered.
+    expect(within(await screen.findByTestId('pending-plan-creates')).queryByRole('button', { name: 'Apply' })).toBeNull();
+  });
+
   it('B2-W-LOAD a failed read shows the error with Try again, which reloads the catalog', async () => {
     mockApi('read_only_auditor');
     failCatalog = true;
