@@ -199,7 +199,7 @@ describe('ToS v2.0 — sign.terms_of_service 2.0', () => {
 
   it('is APPROVED at its stable Sign-host URL, pinned to the cleaned public text, and NOT effective (effective_from null)', () => {
     expect(v20).toMatchObject({ status: 'APPROVED', path: 'doc/legal/aramo-sign/terms-of-service-2.0.md', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', effective_from: null });
-    expect(v20.sha256).toBe('beb749494fb146f8ea8416d6f0cf0691e08cec8c8a4242cdfdc4b8ee54f58b9b');
+    expect(v20.sha256).toBe('108337daf20fdc0e98f55c9c556752b07651f8f2ee7d5d13913f9df810324d58');
     expect(effectiveLegalDocument('sign.terms_of_service')).toBeNull();
     expect(approvedLegalDocument('sign.terms_of_service')).toBeNull();
   });

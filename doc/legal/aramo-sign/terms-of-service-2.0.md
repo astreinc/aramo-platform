@@ -372,18 +372,16 @@ B4.2 By completing checkout, the Subscriber authorizes the recurring charges sho
 applicable taxes.
 
 B4.3 **Failed payments.** If a payment fails, we may stop new sending after a grace period of
-**[7] days** until payment is made (section B7.3).
+**7 calendar days** until payment is made (section B7.3).
 
-B4.4 Billing disputes must be raised within **[30] days** of the charge.
+B4.4 Billing disputes must be raised within **30 calendar days** of the charge.
 
 ## B5. Renewal, cancellation and price changes
 
-B5.1 **Renewal.**
-
-If it does:
-- we will remind the Subscriber before renewal as the law requires;
-- the Subscriber can cancel online from the billing settings at least **[5 business days]** before
-  the renewal date.
+B5.1 **Renewal.** At the end of each 12-month commitment, the subscription automatically renews for
+another 12-month period unless the Subscriber cancels through the online billing settings at least
+5 business days before the renewal date. Aramo will provide renewal notices as required by applicable
+law.
 
 B5.2 **Cancellation.** Cancellation takes effect at the end of the current commitment period.
 
@@ -415,7 +413,7 @@ B7.4 **Effect of suspension or termination:**
   fails.
 
 B7.5 **Export after termination.** The Subscriber can download completed documents and evidence for
-**[90] days** after termination. After that period we may close the account and purge its data under
+**90 calendar days** after termination. After that period we may close the account and purge its data under
 section A6, except records we must keep by law.
 
 ## B8. API and integrations

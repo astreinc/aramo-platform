@@ -105,6 +105,15 @@ describe('legal publication readiness — blocks scheduling an unfinished text',
       expect(Array.isArray(blockers)).toBe(true);
     }
   });
+
+  it('ToS v2.0 after the PO business-policy selections (2026-11-01): exactly the effective-date placeholder and the two counsel clauses remain', () => {
+    const v20 = unscheduledApproved.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
+    expect(publicationBlockers(textOf(v20)).map((b) => `${b.rule}: ${b.text.trim()}`)).toEqual([
+      'placeholder: | Effective date | [Date of publication] |',
+      'empty-clause: B5.3 **Refunds.**',
+      'empty-clause: B9.1 **Warranty.**',
+    ]);
+  });
 });
 
 // Lead Architect ruling (2026-11-01) item 5 — at publication the legal text and BOTH registries
