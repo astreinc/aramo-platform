@@ -199,9 +199,19 @@ export class EnvelopeNotificationService {
     });
   }
 
+  // Feature-Parity §1.9 — the sender hears that a recipient failed identity verification
+  // (a document in another name, or every attempt used). The recipient is locked out; the
+  // sender can correct the recipient and send again. Console envelopes only, like every notice.
+  async identityVerificationFailed(tenant_id: string, envelope_id: string, signer_id: string, failure: 'name_mismatch' | 'attempts_exhausted'): Promise<void> {
+    const env = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    const signer = env.signers.find((s) => s.id === signer_id);
+    if (signer === undefined) return;
+    await this.toSender(env, { kind: 'IDENTITY_VERIFICATION_FAILED', signer_name: signer.name, verification_failure: failure });
+  }
+
   private async toSender(
     env: EnvelopeFull,
-    n: Pick<SigningNotification, 'kind' | 'reason' | 'signer_name' | 'signed_count' | 'signer_count' | 'next_signer_name'>,
+    n: Pick<SigningNotification, 'kind' | 'reason' | 'signer_name' | 'signed_count' | 'signer_count' | 'next_signer_name' | 'verification_failure'>,
   ): Promise<void> {
     // Sender notifications are a Sign-console feature (OWNED documents, or — DOC-TEMPLATE-
     // LIB-1 T-5 — a console envelope started from a template, whose document is CORE_REF).

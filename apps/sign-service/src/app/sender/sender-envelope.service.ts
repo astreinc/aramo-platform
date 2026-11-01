@@ -40,12 +40,14 @@ import {
   type SignerNameMode,
   SenderFieldPassthroughRefusedError,
   SignPurgeRepository,
+  IDENTITY_VERIFICATION_METHODS,
+  type IdentityVerificationMethod,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
-import { SIGN_IN_PERSON_SIGNING_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
+import { SIGN_ID_VERIFICATION_FEATURE, SIGN_IN_PERSON_SIGNING_FEATURE, SIGN_KBA_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
@@ -403,6 +405,10 @@ export class SenderEnvelopeService {
         reminder_available_at: reminderAvailableAt(s),
         // Amendment M-A6 §3.5 — the template role this recipient was bound to (from-template), else null.
         role_key: s.signer_role ?? null,
+        // Feature-Parity §1.9 — the recipient's identity-verification method (null = none) and
+        // whether verification locked them out (failed name match or every attempt used).
+        identity_verification_method: s.identity_verification_method ?? null,
+        identity_verification_locked: s.identity_verification_locked_at !== null,
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -814,7 +820,15 @@ export class SenderEnvelopeService {
     }
     const seen = new Set<string>();
     let verifiedEmail: string | null | undefined;
-    const recipients: Array<{ id?: string; name: string; email: string | null; recipient_kind: RecipientKind; copy_delivery: CopyDelivery | null; bound_user_id: string | null }> = [];
+    const recipients: Array<{
+      id?: string;
+      name: string;
+      email: string | null;
+      recipient_kind: RecipientKind;
+      copy_delivery: CopyDelivery | null;
+      bound_user_id: string | null;
+      identity_verification_method?: IdentityVerificationMethod | null;
+    }> = [];
     for (const [i, r] of (body.recipients as unknown[]).entries()) {
       const o = (r ?? {}) as Record<string, unknown>;
       const name = typeof o['name'] === 'string' ? o['name'].trim() : '';
@@ -860,7 +874,17 @@ export class SenderEnvelopeService {
         bound = auth.sub;
       }
       const id = typeof o['id'] === 'string' && o['id'].length > 0 ? o['id'] : undefined;
-      recipients.push({ ...(id !== undefined ? { id } : {}), name, email, recipient_kind: kind, copy_delivery: kind === 'RECEIVES_COPY' ? (cdRaw as CopyDelivery) : null, bound_user_id: bound });
+      // Feature-Parity §1.9 — a value sets the method, null clears it, omitted keeps it.
+      const idv = await this.identityVerificationMethodOf(auth, o, kind, i, requestId);
+      recipients.push({
+        ...(id !== undefined ? { id } : {}),
+        name,
+        email,
+        recipient_kind: kind,
+        copy_delivery: kind === 'RECEIVES_COPY' ? (cdRaw as CopyDelivery) : null,
+        bound_user_id: bound,
+        ...(idv !== undefined ? { identity_verification_method: idv } : {}),
+      });
     }
     const signingCount = recipients.filter((r) => r.recipient_kind !== 'RECEIVES_COPY').length;
     if (signingCount > MAX_SIGNERS) {
@@ -871,6 +895,33 @@ export class SenderEnvelopeService {
     }
     await this.repo.replaceDraftRecipients({ tenant_id: auth.tenant_id, envelope_id, recipients, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
+  }
+
+  // Feature-Parity §1.9 + A1 — government-ID verification and KBA are Professional and
+  // Enterprise metered features (§1.9 "Plans"), DARK until the PO flips sign.id_verification /
+  // sign.kba to AVAILABLE. Setting a method is refused 403 while the feature is not available
+  // or for a Personal account; clearing (null) is always allowed. Link signers only.
+  private async identityVerificationMethodOf(
+    auth: AuthContextType,
+    o: Record<string, unknown>,
+    kind: RecipientKind,
+    i: number,
+    requestId: string,
+  ): Promise<IdentityVerificationMethod | null | undefined> {
+    const raw = o['identity_verification_method'];
+    if (raw === undefined || raw === null) return raw;
+    if (typeof raw !== 'string' || !(IDENTITY_VERIFICATION_METHODS as readonly string[]).includes(raw)) {
+      throw bad(requestId, `recipient ${i + 1}: identity_verification_method must be ID_VERIFICATION, KBA or null`, { index: i, field: 'identity_verification_method', reason: 'invalid_identity_verification_method' });
+    }
+    if (kind === 'RECEIVES_COPY' || kind === 'IN_PERSON_SIGNER') {
+      throw bad(requestId, `recipient ${i + 1}: only a signer who signs from a link can be asked to verify their identity`, { index: i, field: 'identity_verification_method', reason: 'identity_verification_not_link_signer' });
+    }
+    const feature_key = raw === 'KBA' ? SIGN_KBA_FEATURE : SIGN_ID_VERIFICATION_FEATURE;
+    (this.features ?? new SignFeatureGate()).assertAvailable(feature_key, requestId);
+    if ((await this.context.tenantKind(auth.tenant_id, requestId)) !== 'BUSINESS') {
+      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Identity verification is available on Business plans', 403, { requestId, details: { feature_key, reason: 'plan_not_eligible' } });
+    }
+    return raw as IdentityVerificationMethod;
   }
 
   async replaceFields(auth: AuthContextType, envelope_id: string, body: { fields?: unknown }, requestId: string, ifMatch?: string) {

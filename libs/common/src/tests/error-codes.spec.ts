@@ -373,6 +373,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PLATFORM_LAST_OWNER',
       'USAGE_ROLLUP_NOT_RECONCILED',
       'COMMERCIAL_CATALOG_CONFLICT',
+      // Feature-Parity §1.9 — recipient identity verification (403 / 423 / 503).
+      'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
+      'SIGNER_IDENTITY_VERIFICATION_LOCKED',
+      'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
     ]);
   });
 });

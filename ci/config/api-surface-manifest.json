@@ -233,6 +233,21 @@
       "method": "POST",
       "path": "/v1/sign/billing/webhook/stripe",
       "class": "XP"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/identity-verification/status",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/identity-verification/start",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/identity-verification/webhook/stripe",
+      "class": "XP"
     }
   ],
   "transitionalUndocumented": [

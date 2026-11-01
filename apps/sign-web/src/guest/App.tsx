@@ -33,6 +33,8 @@ type Screen =
   | 'expired'
   | 'ended'
   | 'notyet'
+  | 'identity'
+  | 'idlocked'
   | 'network'
   | 'error';
 
@@ -108,6 +110,9 @@ function screenForError(e: unknown): Screen {
     if (e.code === 'ENVELOPE_ALREADY_EXECUTED') return 'ended';
     // Multi-Signer §4 — signing in order: an earlier signer has not signed yet.
     if (e.code === 'SIGNER_NOT_YET_ELIGIBLE') return 'notyet';
+    // Feature-Parity §1.9 — the sender asked this recipient to verify their identity.
+    if (e.code === 'SIGNER_IDENTITY_VERIFICATION_REQUIRED') return 'identity';
+    if (e.code === 'SIGNER_IDENTITY_VERIFICATION_LOCKED') return 'idlocked';
     if (e.code === 'NETWORK') return 'network';
   }
   return 'error';
@@ -527,6 +532,47 @@ export function App(): JSX.Element {
     setScreen('workspace');
   };
 
+  // Feature-Parity §1.9 — open the verification vendor's page in a new tab; on return the
+  // recipient continues here and the document opens once the check has passed.
+  const [idMessage, setIdMessage] = useState<string | null>(null);
+  const startIdentityCheck = async () => {
+    setBusy(true);
+    setIdMessage(null);
+    try {
+      const r = await signApi.identityStart(token);
+      if (r.state === 'VERIFIED') return await loadWorkspace();
+      if (typeof r.verification_url === 'string' && r.verification_url.length > 0) {
+        window.open(r.verification_url, '_blank', 'noopener');
+        setIdMessage('Finish the check in the new tab, then come back and select Continue.');
+      } else setIdMessage('Your check is being processed. Select Continue in a moment.');
+    } catch (e) {
+      if (e instanceof SignApiError && e.code === 'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE') setIdMessage('Identity checks are not available right now. Try again later.');
+      else fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const continueAfterIdentityCheck = async () => {
+    setBusy(true);
+    setIdMessage(null);
+    try {
+      const r = await signApi.identityStatus(token);
+      if (r.state === 'VERIFIED') await loadWorkspace();
+      else if (r.state === 'LOCKED') setScreen('idlocked');
+      else if (r.state === 'PENDING') setIdMessage('Your check is not finished yet. Complete it in the other tab, or wait a moment and try again.');
+      else
+        setIdMessage(
+          r.last_failure !== null
+            ? `That check did not pass (${r.last_failure.replace(/_/g, ' ')}). ${r.attempts_remaining ?? 0} attempt(s) left.`
+            : 'Start the identity check to continue.',
+        );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const acceptAndContinue = async () => {
     setBusy(true);
     try {
@@ -693,6 +739,35 @@ export function App(): JSX.Element {
           title="It's not your turn to sign yet"
           body="This document is signed in a set order, and someone before you hasn't signed yet. We'll email you a new link as soon as it's your turn."
         />
+      </>
+    );
+  if (screen === 'idlocked')
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="muted" title="We couldn't verify your identity" body="The sender has been told and may send you a new request. You can close this page." />
+      </>
+    );
+  if (screen === 'identity')
+    return (
+      <>
+        <Header reportToken={token} />
+        <main className="sg-center">
+          <div className="sg-card" data-testid="sg-identity">
+            <div className="sg-eyebrow">Identity check</div>
+            <h1>Verify your identity to open this document</h1>
+            <p className="sg-muted">
+              The sender asked you to confirm who you are with a photo ID. Our verification partner checks the ID; Aramo Sign keeps only the result, never the ID itself.
+            </p>
+            {idMessage !== null && <p role="status">{idMessage}</p>}
+            <Btn className="sg-btn--block" onClick={() => void startIdentityCheck()} disabled={busy}>
+              Verify my identity
+            </Btn>
+            <Btn variant="quiet" className="sg-btn--block" onClick={() => void continueAfterIdentityCheck()} disabled={busy}>
+              Continue
+            </Btn>
+          </div>
+        </main>
       </>
     );
   if (screen === 'declined')

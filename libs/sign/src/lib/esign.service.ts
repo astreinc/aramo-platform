@@ -50,6 +50,7 @@ import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
 import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
+import { assertIdentityVerificationCleared } from './identity-verification/identity-gate.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -425,6 +426,8 @@ export class EsignService {
       await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+      // Feature-Parity §1.9 — a recipient the sender asked to verify has verified.
+      await assertIdentityVerificationCleared(tx, ctx);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
       // M-A6 §2.2 — a SIGNER_PROFILE name is the server's to fill; any client
@@ -446,6 +449,7 @@ export class EsignService {
   async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
     await this.assertEligible(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+    await assertIdentityVerificationCleared(this.prisma, ctx);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
     // M-A6 §2.4 — the server-filled name, resolved only when a field needs it.
@@ -499,6 +503,7 @@ export class EsignService {
   async resolveSignerSource(ctx: SessionContext, documentId: string): Promise<SignerSourceDescriptor> {
     await this.assertEligible(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+    await assertIdentityVerificationCleared(this.prisma, ctx);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const doc = full.documents.find((d) => d.id === documentId);
     if (doc === undefined) throw new SigningSessionInvalidError('document not in session');
@@ -525,6 +530,8 @@ export class EsignService {
       const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+      // Feature-Parity §1.9 — a recipient the sender asked to verify has verified.
+      await assertIdentityVerificationCleared(tx, ctx);
       // M-A6 §2.3 — required fields filled, required check boxes checked, and the
       // check-box group rules (SELECT_ONE, min_selected) hold.
       const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });

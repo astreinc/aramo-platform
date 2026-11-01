@@ -359,6 +359,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   USAGE_ROLLUP_NOT_RECONCILED: 409,
   // CCP-B2 — catalog draft writes (a published version is never edited).
   COMMERCIAL_CATALOG_CONFLICT: 409,
+  // Feature-Parity §1.9 — recipient identity verification.
+  SIGNER_IDENTITY_VERIFICATION_REQUIRED: 403,
+  SIGNER_IDENTITY_VERIFICATION_LOCKED: 423,
+  ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE: 503,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

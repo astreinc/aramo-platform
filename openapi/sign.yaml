@@ -306,7 +306,11 @@ paths:
       description: >-
         PX-V1 F3 — token-authorized, disclosure-gated. Tenant is resolved
         server-side from the capability token; the response carries no tenant id
-        and no source bytes.
+        and no source bytes. Feature-Parity §1.9 — when the sender requires an
+        identity check, this route (and source, fill and complete) answers 403
+        SIGNER_IDENTITY_VERIFICATION_REQUIRED (details.method) until the recipient
+        has verified, and 423 SIGNER_IDENTITY_VERIFICATION_LOCKED once verification
+        locked them out.
       requestBody:
         required: true
         content:
@@ -744,6 +748,153 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: The envelope is no longer open (ENVELOPE_ILLEGAL_TRANSITION), or it is not this signer's turn (SIGNER_NOT_YET_ELIGIBLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/identity-verification/status:
+    post:
+      operationId: getSignerIdentityVerificationStatus
+      security: []
+      summary: Where the recipient stands with the identity check the sender requires.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized (tenant
+        resolved server-side). NOT_REQUIRED when the sender asked for no identity check. A vendor session the
+        recipient has finished is settled first (its result is read from the vendor). No document data is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The recipient's identity-verification state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignerIdentityVerificationStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/identity-verification/start:
+    post:
+      operationId: startSignerIdentityVerification
+      security: []
+      summary: Open (or resume) the vendor's identity check for this recipient.
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1 — token-authorized. Returns the
+        vendor's hosted verification page (verification_url), which the signer app opens in a new tab; the URL is never
+        stored. An open session is resumed rather than started again. Each new vendor session is one metered attempt;
+        a recipient who uses every attempt (SIGN_ID_VERIFICATION_MAX_ATTEMPTS, default 3) is locked (423) and the sender
+        is told. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification is not available, and 503
+        ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE when no vendor is configured (details.reason provider_not_configured,
+        kba_vendor_not_selected).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The recipient's state and, while a session is open, the vendor's hosted page.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SignerIdentityVerificationStatus'
+                  - type: object
+                    required: [verification_url]
+                    properties:
+                      verification_url:
+                        type: [string, 'null']
+                        format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The feature is not available (ESIGN_FEATURE_NOT_AVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The envelope is no longer open (ENVELOPE_ALREADY_EXECUTED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: Identity verification locked this recipient out (SIGNER_IDENTITY_VERIFICATION_LOCKED; details.reason).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: No identity-verification vendor is configured or reachable (ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/identity-verification/webhook/stripe:
+    post:
+      operationId: receiveStripeIdentityWebhook
+      summary: Stripe Identity webhook receiver.
+      description: >
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 and Amendment A1. No session. Authenticity is the
+        Stripe-Signature header (HMAC-SHA256 over the raw body with SIGN_STRIPE_IDENTITY_WEBHOOK_SECRET, 300 second
+        tolerance). Only the verification session id is taken from the event; the result is re-read from Stripe and
+        recorded once. A vendor read failure returns 5xx so Stripe redelivers. Refused 401 while no webhook secret is set.
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [IGNORED, UNKNOWN_SESSION, PENDING, ALREADY_SETTLED, SETTLED]
+        '401':
+          description: The signature is missing, stale or invalid, or no webhook secret is configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The vendor could not be read; Stripe redelivers.
           content:
             application/json:
               schema:
@@ -1280,6 +1431,15 @@ paths:
                         description: >-
                           M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the
                           recipient email equals the caller's verified account email. Omitted or false clears it.
+                      identity_verification_method:
+                        type: [string, 'null']
+                        enum: [ID_VERIFICATION, KBA, null]
+                        description: >-
+                          Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — require an identity check before this
+                          recipient sees the envelope. A value sets it, null clears it, omitted keeps it. Link signers only (400
+                          identity_verification_not_link_signer; 400 invalid_identity_verification_method). Refused 403
+                          ESIGN_FEATURE_NOT_AVAILABLE while sign.id_verification / sign.kba is not available or for a Personal
+                          account (details.reason plan_not_eligible).
       responses:
         '200':
           description: OK.
@@ -5739,6 +5899,34 @@ components:
         role_key:
           type: [string, 'null']
           description: Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise.
+        identity_verification_method:
+          type: [string, 'null']
+          enum: [ID_VERIFICATION, KBA, null]
+          description: >-
+            Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the identity check the sender requires before
+            this recipient sees the envelope (government ID or knowledge-based questions); null when none.
+        identity_verification_locked:
+          type: boolean
+          description: §1.9 — true when identity verification locked this recipient out (a document in another name, or every attempt used).
+    SignerIdentityVerificationStatus:
+      type: object
+      description: >-
+        Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient's identity-verification state.
+        Outcome only: no document data, image or verified name is ever returned or stored (R-5).
+      required: [method, state, attempts_remaining, last_failure]
+      properties:
+        method:
+          type: [string, 'null']
+          enum: [ID_VERIFICATION, KBA, null]
+        state:
+          type: string
+          enum: [NOT_REQUIRED, REQUIRED, PENDING, VERIFIED, LOCKED]
+        attempts_remaining:
+          type: [integer, 'null']
+          minimum: 0
+        last_failure:
+          type: [string, 'null']
+          description: The last attempt's failure reason (for example name_mismatch or document_expired).
     SenderExecutedDocuments:
       type: object
       required: [envelope_id, documents, certificate]

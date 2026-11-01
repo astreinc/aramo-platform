@@ -1080,6 +1080,14 @@ export const ERROR_CODES = [
   // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
   // | contract_priced | term_missing. HTTP 409.
   'COMMERCIAL_CATALOG_CONFLICT',
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — recipient identity
+  // verification. REQUIRED (403): the recipient must verify their identity before the envelope
+  // is shown (details.method ID_VERIFICATION | KBA). LOCKED (423): verification locked the
+  // recipient out (details.reason name_mismatch | attempts_exhausted | locked). UNAVAILABLE (503):
+  // no verification vendor is configured or it could not be reached (details.reason).
+  'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
+  'SIGNER_IDENTITY_VERIFICATION_LOCKED',
+  'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

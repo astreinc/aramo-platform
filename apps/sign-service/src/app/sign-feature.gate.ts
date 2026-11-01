@@ -17,6 +17,10 @@ export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
 // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
 export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 + A1 — recipient identity
+// verification (government ID; KBA). Dark until the PO flips them (A1.2).
+export const SIGN_ID_VERIFICATION_FEATURE = 'sign.id_verification';
+export const SIGN_KBA_FEATURE = 'sign.kba';
 
 @Injectable()
 export class SignFeatureGate {

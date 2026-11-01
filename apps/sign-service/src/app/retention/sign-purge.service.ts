@@ -1,5 +1,5 @@
-import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
-import { SignPurgeRepository, type PurgeLevel, type QueueOutcome } from '@aramo/sign';
+import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown, Optional } from '@nestjs/common';
+import { IdentityVerificationService, SignPurgeRepository, type PurgeLevel, type QueueOutcome } from '@aramo/sign';
 
 import { SignArtifactStore } from '../custody/sign-artifact-store.js';
 
@@ -48,6 +48,9 @@ export class SignPurgeService {
   constructor(
     private readonly purge: SignPurgeRepository,
     private readonly store: SignArtifactStore,
+    // Feature-Parity §1.9 / R-5 — a purged envelope's identity-verification sessions are
+    // redacted at the vendor too (best-effort; unbound in unit specs).
+    @Optional() private readonly identity?: IdentityVerificationService,
   ) {}
 
   get enabled(): boolean {
@@ -78,7 +81,12 @@ export class SignPurgeService {
           continue;
         }
         const out = await this.purge.execute(due.tenant_id, due.envelope_id, { deleted: objects.deleted.length, locked: [] }, now);
-        if (out.status === 'executed') report.executed += 1;
+        if (out.status === 'executed') {
+          report.executed += 1;
+          await this.identity?.redactEnvelope(due.tenant_id, due.envelope_id, now).catch((err: unknown) => {
+            this.log.warn(`sign_purge.identity_redaction_failed envelope_id=${due.envelope_id} error=${errText(err)}`);
+          });
+        }
         else if (out.status === 'held') report.held += 1;
       } catch (err) {
         report.failed += 1;

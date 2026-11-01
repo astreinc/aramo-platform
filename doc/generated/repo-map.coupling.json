@@ -33020,6 +33020,11 @@
       "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
     },
     {
+      "from": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts",
+      "status": "production",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
       "from": "libs/sign/src/lib/signing-token.ts",
       "status": "production",
       "to": "libs/portal-identity/src/lib/portal-login-token.ts"
@@ -33784,6 +33789,12 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C5-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

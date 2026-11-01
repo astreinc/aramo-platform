@@ -123,7 +123,14 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
       .filter((f) => /api\.stripe\.com/.test(readFileSync(f, 'utf8')))
       .map((f) => relative(REPO, f))
       .sort();
-    expect(hosts).toEqual(['libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
+    // Sign Feature-Parity §1.9 / A1 — Stripe Identity (recipient ID verification) is the one
+    // non-billing client of the host. It uses its own key (SIGN_STRIPE_IDENTITY_SECRET_KEY, never
+    // STRIPE_SECRET_KEY) and calls only /v1/identity/ endpoints, so it can make no tax call.
+    const IDENTITY = 'libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts';
+    expect(hosts).toEqual([IDENTITY, 'libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts', 'libs/subscription/src/lib/billing/stripe-billing.provider.ts']);
+    const identitySrc = readFileSync(resolve(REPO, IDENTITY), 'utf8');
+    expect(identitySrc).not.toMatch(/STRIPE_SECRET_KEY['"]|\btax/i);
+    expect([...identitySrc.matchAll(/['`](\/v1\/[a-z_/]+)/g)].map((m) => m[1]).every((p) => p?.startsWith('/v1/identity/'))).toBe(true);
   });
 
   it('C5-G-2 no billing source names a provider tax parameter or endpoint (calculation, collection, rates, ids or behaviour)', () => {

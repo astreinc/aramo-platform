@@ -127,6 +127,26 @@ export class ExecutionService implements ExecutionProducerPort {
     return out;
   }
 
+  // Feature-Parity §1.9 — one certificate line per recipient who passed identity verification:
+  // the method, the vendor, when, the document's issuing country and the vendor reference.
+  // Never any document data (R-5).
+  private async identityChecks(tenant_id: string, envelope_id: string): Promise<Map<string, string>> {
+    const rows = await this.prisma.signRecipientIdentityVerification.findMany({
+      where: { tenant_id, envelope_id, status: 'VERIFIED' },
+      select: { signer_id: true, method: true, provider: true, vendor_reference: true, document_country: true, completed_at: true },
+      orderBy: { completed_at: 'asc' },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      const how = r.method === 'KBA' ? 'knowledge-based questions' : 'government ID';
+      const vendor = r.provider === 'STRIPE_IDENTITY' ? 'Stripe Identity' : r.provider;
+      const at = r.completed_at !== null ? ` at ${r.completed_at.toISOString()}` : '';
+      const country = r.document_country !== null ? `, document issued in ${r.document_country}` : '';
+      out.set(r.signer_id, `Identity verified by ${how} (${vendor})${at}${country}. Name matched. Reference: ${r.vendor_reference ?? 'none'}`);
+    }
+    return out;
+  }
+
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const results: ExecutedProductionResult[] = [];
@@ -244,6 +264,7 @@ export class ExecutionService implements ExecutionProducerPort {
     if (priorCertificate !== null) return results;
 
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
+    const identityChecks = await this.identityChecks(tenant_id, envelope_id);
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
@@ -265,6 +286,8 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(hostedBy.has(s.id)
           ? [{ type: 'TEXT', text: `Signed in person. Hosted by ${hostedBy.get(s.id) ?? ''}. Signer identity was not independently verified.` } as RenderBlock]
           : []),
+        // Feature-Parity §1.9 — the recipient's identity verification (outcome only, R-5).
+        ...(identityChecks.has(s.id) ? [{ type: 'TEXT', text: identityChecks.get(s.id) ?? '' } as RenderBlock] : []),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
