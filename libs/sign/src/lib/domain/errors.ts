@@ -150,8 +150,55 @@ export class DisclosureVersionInvalidError extends Error {
 // Multi-Signer Amendment §4 — in a SEQUENTIAL envelope only the lowest-ordered unsigned
 // signer may act. Enforced by the signing engine (not just by withholding invitations).
 export class SignerNotYetEligibleError extends Error {
-  constructor(public readonly signerId: string) {
-    super(`Signer ${signerId} is not yet eligible to sign: an earlier signer has not signed`);
+  // Feature-Parity directive §1.17 — reason 'witness_signer_not_signed' when a WITNESS
+  // acts before the signer it witnesses has signed (undefined: the sequential turn rule).
+  constructor(public readonly signerId: string, public readonly reason?: 'witness_signer_not_signed') {
+    super(
+      reason === 'witness_signer_not_signed'
+        ? `Signer ${signerId} is a witness: the signer they witness has not signed yet`
+        : `Signer ${signerId} is not yet eligible to sign: an earlier signer has not signed`,
+    );
     this.name = 'SignerNotYetEligibleError';
+  }
+}
+
+// Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient has an
+// access code and this session has not entered it (reason access_code_required), or
+// the code entered was wrong (access_code_incorrect, with the attempts left).
+// Mapped to SIGNER_ACCESS_CODE_REQUIRED (403).
+export class SignerAccessCodeRequiredError extends Error {
+  constructor(
+    public readonly signerId: string,
+    public readonly reason: 'access_code_required' | 'access_code_incorrect' = 'access_code_required',
+    public readonly attemptsRemaining?: number,
+  ) {
+    super(reason === 'access_code_incorrect' ? 'The access code is not correct' : 'Enter the access code the sender gave you');
+    this.name = 'SignerAccessCodeRequiredError';
+  }
+}
+
+// §1.9 — too many wrong access codes: the recipient is locked out of the envelope.
+// Mapped to SIGNER_ACCESS_CODE_LOCKED (423).
+export class SignerAccessCodeLockedError extends Error {
+  constructor(public readonly signerId: string) {
+    super('Too many incorrect access codes. Contact the sender.');
+    this.name = 'SignerAccessCodeLockedError';
+  }
+}
+
+// §1.17 — a delegation the engine refuses, with a stable reason. Mapped to
+// ENVELOPE_ILLEGAL_TRANSITION (409) / VALIDATION_ERROR (400) at the HTTP boundary.
+export type DelegationRefusal =
+  | 'delegation_not_allowed'
+  | 'not_delegable_recipient'
+  | 'already_delegated'
+  | 'signer_not_awaiting'
+  | 'delegate_email_on_envelope'
+  | 'delegate_invalid';
+
+export class DelegationRefusedError extends Error {
+  constructor(public readonly reason: DelegationRefusal) {
+    super(`delegation refused: ${reason}`);
+    this.name = 'DelegationRefusedError';
   }
 }

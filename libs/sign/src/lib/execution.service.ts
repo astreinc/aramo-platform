@@ -22,7 +22,8 @@ import {
 import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from './envelope-notification.service.js';
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
-import { signingRecipients } from './domain/recipients.js';
+import { isWitness, signingRecipients } from './domain/recipients.js';
+import { ACCESS_CODE_VERIFIED_EVENT } from './domain/access-code.js';
 import {
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
   EXECUTED_DOCUMENT_RECORDED,
@@ -244,6 +245,16 @@ export class ExecutionService implements ExecutionProducerPort {
     if (priorCertificate !== null) return results;
 
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
+    // Feature-Parity §1.9 — when each recipient with an access code entered it (the ledger).
+    const codeVerified = new Map<string, Date>();
+    for (const e of await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: ACCESS_CODE_VERIFIED_EVENT },
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      select: { signer_id: true, occurred_at: true },
+    })) {
+      if (e.signer_id !== null) codeVerified.set(e.signer_id, e.occurred_at);
+    }
+    const signerNameById = new Map(full.signers.map((s) => [s.id, s.name]));
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
@@ -264,6 +275,18 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(signatureIds.has(s.id) ? [{ type: 'TEXT', text: `Signature ID: ${signatureIds.get(s.id) ?? ''}` } as RenderBlock] : []),
         ...(hostedBy.has(s.id)
           ? [{ type: 'TEXT', text: `Signed in person. Hosted by ${hostedBy.get(s.id) ?? ''}. Signer identity was not independently verified.` } as RenderBlock]
+          : []),
+        // Feature-Parity §1.17 — a witness and the signer it attested for.
+        ...(isWitness(s) && s.witness_for_signer_id !== null
+          ? [{ type: 'TEXT', text: `Witness for ${signerNameById.get(s.witness_for_signer_id) ?? 'a signer'}${s.signed_at ? `. Attested ${s.signed_at.toISOString()}` : ''}.` } as RenderBlock]
+          : []),
+        // §1.17 — a delegated signature names the original recipient.
+        ...(s.delegated_at !== null
+          ? [{ type: 'TEXT', text: `Delegated by ${s.delegated_from_name ?? 'the original recipient'} <${maskEmail(s.delegated_from_email)}> at ${s.delegated_at.toISOString()}.` } as RenderBlock]
+          : []),
+        // §1.9 — recipient authentication by access code.
+        ...(s.access_code_hash !== null
+          ? [{ type: 'TEXT', text: codeVerified.has(s.id) ? `Recipient authentication: access code, verified ${codeVerified.get(s.id)?.toISOString() ?? ''}.` : 'Recipient authentication: access code (not entered).' } as RenderBlock]
           : []),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),

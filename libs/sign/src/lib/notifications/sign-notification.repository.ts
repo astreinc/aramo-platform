@@ -82,7 +82,7 @@ export interface FanoutEnvelope {
   source_application: string;
   origin_actor_kind: string;
   has_owned_document: boolean;
-  signers: Array<{ id: string; name: string; email: string | null; status: string; signing_order: number; signed_at: Date | null; recipient_kind: string }>;
+  signers: Array<{ id: string; name: string; email: string | null; status: string; signing_order: number; signed_at: Date | null; recipient_kind: string; witness_for_signer_id?: string | null }>;
 }
 
 export interface OutboxRow {
@@ -323,7 +323,7 @@ export class SignNotificationRepository {
         source_application: true,
         origin_actor_kind: true,
         documents: { select: { source_mode: true } },
-        signers: { select: { id: true, name: true, email: true, status: true, signing_order: true, signed_at: true, recipient_kind: true }, orderBy: { signing_order: 'asc' } },
+        signers: { select: { id: true, name: true, email: true, status: true, signing_order: true, signed_at: true, recipient_kind: true, witness_for_signer_id: true }, orderBy: { signing_order: 'asc' } },
       },
     });
     if (env === null) return null;

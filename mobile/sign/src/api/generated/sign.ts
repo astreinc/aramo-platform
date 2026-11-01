@@ -363,6 +363,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/signing/access-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the access code the sender set for this recipient.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9. Token-authorized. A recipient with an access code enters it once per signing session before anything of the envelope is shown. The code is stored only as a salted hash and is never logged, echoed or written to the ledger. A wrong code is counted (ACCESS_CODE_FAILED ledger event; 403 SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_incorrect, details.attempts_remaining); the fifth wrong code locks the recipient out of the envelope and revokes their sessions (ACCESS_CODE_LOCKED; 423 SIGNER_ACCESS_CODE_LOCKED). Success is recorded (ACCESS_CODE_VERIFIED) and printed on the certificate of completion. A recipient without an access code verifies trivially.
+         */
+        post: operations["verifySigningAccessCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/signing/delegate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hand this signature to another person.
+         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.17. Token-authorized; refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available. Only a SIGNER who has not signed, on their turn and past any access code, of an envelope whose sender allowed delegation (allow_delegation), once per recipient. The recipient slot keeps its fields (values cleared) and now names the delegate; the original recipient is kept on the record and printed on the certificate; every session of the original recipient is revoked (this link stops working); SIGNER_DELEGATED is appended to the ledger (email hashes only); and the delegate receives a new signing link by email. 409 ENVELOPE_ILLEGAL_TRANSITION details.reason delegation_not_allowed | not_delegable_recipient | already_delegated | signer_not_awaiting; 400 VALIDATION_ERROR details.reason delegate_invalid | delegate_email_on_envelope.
+         */
+        post: operations["delegateSigning"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/context": {
         parameters: {
             query?: never;
@@ -2587,6 +2627,12 @@ export interface components {
                 templates?: boolean;
                 /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available. */
                 in_person_signing?: boolean;
+                /** @description Feature-Parity §1.17 — sign.witness_signing is available and the tenant is a BUSINESS tenant (B+ plans). */
+                witness_signing?: boolean;
+                /** @description Feature-Parity §1.17 — sign.delegate_signing is available and the tenant is a BUSINESS tenant (B+ plans). */
+                delegate_signing?: boolean;
+                /** @description Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available. */
+                access_code?: boolean;
             };
             can_send: boolean;
             /** @description True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off). */
@@ -2790,10 +2836,10 @@ export interface components {
         /** @enum {string} */
         SenderRecipientStatus: "PENDING" | "VIEWED" | "SIGNED" | "DECLINED";
         /**
-         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks completion).
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks completion). Feature-Parity §1.17 — WITNESS signs (attests) through an emailed link for one other signer, only after that signer has signed.
          * @enum {string}
          */
-        SenderRecipientKind: "SIGNER" | "IN_PERSON_SIGNER" | "RECEIVES_COPY";
+        SenderRecipientKind: "SIGNER" | "IN_PERSON_SIGNER" | "RECEIVES_COPY" | "WITNESS";
         /**
          * @description M-A5 §2.1 — when a copy recipient receives their copy.
          * @enum {string}
@@ -2856,6 +2902,22 @@ export interface components {
              * @description Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
              */
             reminder_available_at: string | null;
+            /**
+             * Format: uuid
+             * @description Feature-Parity §1.17 — for a WITNESS, the recipient it attests for; null otherwise.
+             */
+            witness_for_signer_id?: string | null;
+            /** @description Feature-Parity §1.9 — an access code is set for this recipient (the code itself is never returned). */
+            access_code_set?: boolean;
+            /** @description Feature-Parity §1.9 — the recipient is locked out after too many wrong access codes. */
+            access_code_locked?: boolean;
+            /** @description Feature-Parity §1.17 — the original recipient when this signature was delegated (the row now names the delegate). */
+            delegated_from?: {
+                name: string | null;
+                email: string | null;
+                /** Format: date-time */
+                delegated_at: string;
+            } | null;
             /** @description Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise. */
             role_key?: string | null;
         };
@@ -2955,6 +3017,8 @@ export interface components {
             routing_mode?: "PARALLEL" | "SEQUENTIAL";
             /** @description When signing in order and the envelope is open, the signer whose turn it is. */
             next_signer_id?: string | null;
+            /** @description Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send). */
+            allow_delegation?: boolean;
             /** @description Sign Mobile M-A3 §6 — raised by every change to the envelope or its children; the ETag is "{id}.{revision}". */
             revision?: number;
             /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (settable in DRAFT, immutable after send). */
@@ -3634,6 +3698,33 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /** @description Feature-Parity §1.9 — the recipient has an access code and this session has not entered it (SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_required). The same refusal applies to every signer route (disclosure-text, document, source, disclosure, fill, complete, decline, delegate) until POST /v1/sign/signing/access-code succeeds for the session. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not this signer's turn (SIGNER_NOT_YET_ELIGIBLE; details.reason witness_signer_not_signed for a witness whose signer has not signed), or the envelope is no longer signable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The recipient is locked out after too many wrong access codes (SIGNER_ACCESS_CODE_LOCKED). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getSignerDocumentView: {
@@ -4044,6 +4135,118 @@ export interface operations {
             };
         };
     };
+    verifySigningAccessCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    access_code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The session may now view and sign. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        verified: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description The access code is not correct (SIGNER_ACCESS_CODE_REQUIRED, details.reason access_code_incorrect, details.attempts_remaining). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED / ENVELOPE_ILLEGAL_TRANSITION). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many wrong access codes (SIGNER_ACCESS_CODE_LOCKED). */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delegateSigning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    name: string;
+                    /** Format: email */
+                    email: string;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Delegated. The delegate is emailed a signing link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        delegated: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Delegate signing is not available (ESIGN_FEATURE_NOT_AVAILABLE), or the access code was not entered (SIGNER_ACCESS_CODE_REQUIRED). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The signature cannot be delegated (ENVELOPE_ILLEGAL_TRANSITION with details.reason), or it is not this signer's turn (SIGNER_NOT_YET_ELIGIBLE). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getSenderContext: {
         parameters: {
             query?: never;
@@ -4234,6 +4437,8 @@ export interface operations {
                     routing_mode?: "PARALLEL" | "SEQUENTIAL";
                     /** @description The sender message shown to signers (invitation email and consent screen). 400 message_too_long. */
                     message?: string | null;
+                    /** @description Feature-Parity §1.17 — allow a signer to hand their signature to another person (DRAFT only; fixed at send). true is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.delegate_signing is not available or for a PERSONAL account (details.reason plan_not_eligible). */
+                    allow_delegation?: boolean;
                 };
             };
         };
@@ -4504,6 +4709,10 @@ export interface operations {
                         copy_delivery?: components["schemas"]["SenderCopyDelivery"] | null;
                         /** @description M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the recipient email equals the caller's verified account email. Omitted or false clears it. */
                         assign_to_me?: boolean;
+                        /** @description Feature-Parity §1.17 — required for a WITNESS (400 witness_for_required / witness_for_invalid), refused for any other kind (400 witness_for_not_allowed): the position in this list of the SIGNER or IN_PERSON_SIGNER the witness attests for. One witness per signer (400 witness_duplicate). A witness is invited and may sign only after that signer has signed; when signing in order it must come after them (checked at send). WITNESS is refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.witness_signing is not available or for a PERSONAL account. */
+                        witness_for_index?: number | null;
+                        /** @description Feature-Parity §1.9 — the access code the recipient must enter before viewing (SIGNER and WITNESS only: 400 access_code_not_allowed; 4 to 32 printable characters: 400 access_code_invalid). Stored only as a salted hash and never returned. Omitted keeps the stored code of an existing recipient; null clears it. Refused 403 ESIGN_FEATURE_NOT_AVAILABLE while sign.access_code is not available. */
+                        access_code?: string | null;
                     }[];
                 };
             };

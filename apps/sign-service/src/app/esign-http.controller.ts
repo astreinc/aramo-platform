@@ -26,10 +26,14 @@ import {
   SignerNotFoundError,
   SigningSessionExpiredError,
   SigningSessionInvalidError,
+  SignerAccessCodeLockedError,
+  SignerAccessCodeRequiredError,
+  DelegationRefusedError,
 } from '@aramo/sign';
 import { type CreateEnvelopeRequest } from '@aramo/documents-contracts';
 
 import { NativeAramoSignatureProvider, assertNotPurged } from './native-aramo-signature.provider.js';
+import { SIGN_DELEGATE_SIGNING_FEATURE, SignFeatureGate } from './sign-feature.gate.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -68,7 +72,25 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
   if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
   // Multi-Signer §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
-  if (e instanceof SignerNotYetEligibleError) return new AramoError('SIGNER_NOT_YET_ELIGIBLE', e.message, 409, { requestId });
+  // Feature-Parity §1.17 — details.reason witness_signer_not_signed for a witness acting early.
+  if (e instanceof SignerNotYetEligibleError) {
+    return new AramoError('SIGNER_NOT_YET_ELIGIBLE', e.message, 409, { requestId, ...(e.reason !== undefined ? { details: { reason: e.reason } } : {}) });
+  }
+  // Feature-Parity §1.9 — the recipient's access code (never echoed).
+  if (e instanceof SignerAccessCodeRequiredError) {
+    return new AramoError('SIGNER_ACCESS_CODE_REQUIRED', e.message, 403, {
+      requestId,
+      details: { reason: e.reason, ...(e.attemptsRemaining !== undefined ? { attempts_remaining: e.attemptsRemaining } : {}) },
+    });
+  }
+  if (e instanceof SignerAccessCodeLockedError) return new AramoError('SIGNER_ACCESS_CODE_LOCKED', e.message, 423, { requestId, details: { reason: 'access_code_locked' } });
+  // Feature-Parity §1.17 — a refused delegation, with a stable details.reason.
+  if (e instanceof DelegationRefusedError) {
+    if (e.reason === 'delegate_invalid' || e.reason === 'delegate_email_on_envelope') {
+      return new AramoError('VALIDATION_ERROR', e.reason === 'delegate_invalid' ? 'Enter the name and a valid email of the person to delegate to' : 'That person is already a recipient of this envelope', 400, { requestId, details: { reason: e.reason } });
+    }
+    return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This signature cannot be delegated', 409, { requestId, details: { reason: e.reason } });
+  }
   // Aramo Sign launch (A-7) — unknown disclosure version or mismatching text hash.
   if (e instanceof DisclosureVersionInvalidError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId });
   // M-A5 §3.4 — a hosted session's disclosure needs the signer's confirmed name.
@@ -229,7 +251,50 @@ export class EsignSignerController {
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sourceProvider: DocumentSourceProviderPort,
     @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
     @Optional() private readonly invitations?: SigningInvitationService,
+    // Feature-Parity §1.17 — delegate signing is refused while sign.delegate_signing is not available.
+    @Optional() private readonly features?: SignFeatureGate,
   ) {}
+
+  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.9 — the recipient enters
+  // the access code the sender set, before anything of the envelope is shown. Token-
+  // authorized; the code is never logged or echoed. Wrong codes are counted and the
+  // fifth locks the recipient out (423 SIGNER_ACCESS_CODE_LOCKED). A recipient without
+  // an access code verifies trivially.
+  @Post('access-code')
+  @HttpCode(HttpStatus.OK)
+  async accessCode(@Body() body: { token: string; access_code: string }, @Req() req: Request, @RequestId() requestId: string, @Headers('user-agent') userAgent?: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    validate(typeof body?.access_code === 'string' && body.access_code.length > 0 && body.access_code.length <= 256, 'access_code is required', requestId);
+    try {
+      return await this.service.verifyRecipientAccessCode(body.token, body.access_code, { ip_address: req.ip, user_agent: userAgent });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // Feature-Parity §1.17 — delegate signing. A signer whose envelope allows delegation
+  // hands their signature to another person before signing. The signer's link stops
+  // working; the delegate receives their own signing link by email.
+  @Post('delegate')
+  @HttpCode(HttpStatus.OK)
+  async delegate(@Body() body: { token: string; name: string; email: string; reason?: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    validate(typeof body?.name === 'string' && body.name.trim().length > 0, 'name is required', requestId);
+    validate(typeof body?.email === 'string' && body.email.trim().length > 0, 'email is required', requestId);
+    validate(body?.reason === undefined || (typeof body.reason === 'string' && body.reason.length <= 500), 'reason must be text of at most 500 characters', requestId);
+    (this.features ?? new SignFeatureGate()).assertAvailable(SIGN_DELEGATE_SIGNING_FEATURE, requestId);
+    try {
+      const ctx = await this.service.resolveSession(body.token);
+      await this.service.delegateSigner(ctx, { name: body.name, email: body.email, ...(body.reason !== undefined ? { reason: body.reason } : {}) });
+      // After commit: issue the delegate's link and email it (durable; the worker retries).
+      await this.invitations?.dispatch({ tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }).catch((err: unknown) => {
+        this.logger.warn(`delegate invitation deferred to the worker — envelope ${ctx.envelope_id}: ${(err as Error).message}`);
+      });
+      return { delegated: true };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
 
   // Aramo Sign launch (A-7) — the CURRENT server-held disclosure the signer must
   // accept: version, exact text and its sha256. Token-authorized like every signer

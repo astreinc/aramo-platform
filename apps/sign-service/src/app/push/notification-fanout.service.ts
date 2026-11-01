@@ -6,6 +6,7 @@ import {
   currentTurnOf,
   isLinkSigner,
   signingRecipients,
+  witnessReady,
   type FanoutEnvelope,
   type NotificationDraft,
   type NotificationOwner,
@@ -210,7 +211,8 @@ export class NotificationFanoutService {
       // M-A5 §1.3 — signing recipients only, by the shared current-turn rule.
       const open = signingRecipients(env.signers).filter((s) => PENDING_SIGNER.has(s.status));
       const now = env.routing_mode === 'SEQUENTIAL' ? open.slice(0, 1) : open;
-      targets = now.filter(isLinkSigner).map((s) => s.id);
+      // Feature-Parity §1.17 — a witness is told only once its signer has signed.
+      targets = now.filter((s) => isLinkSigner(s) && witnessReady(env.signers, s)).map((s) => s.id);
     }
     return this.claimedDrafts(row, env, type, targets);
   }

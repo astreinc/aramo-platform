@@ -33,6 +33,8 @@ type Screen =
   | 'expired'
   | 'ended'
   | 'notyet'
+  | 'accesscode'
+  | 'locked'
   | 'network'
   | 'error';
 
@@ -108,6 +110,9 @@ function screenForError(e: unknown): Screen {
     if (e.code === 'ENVELOPE_ALREADY_EXECUTED') return 'ended';
     // Multi-Signer §4 — signing in order: an earlier signer has not signed yet.
     if (e.code === 'SIGNER_NOT_YET_ELIGIBLE') return 'notyet';
+    // Feature-Parity §1.9 — the sender set an access code for this recipient.
+    if (e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'accesscode';
+    if (e.code === 'SIGNER_ACCESS_CODE_LOCKED') return 'locked';
     if (e.code === 'NETWORK') return 'network';
   }
   return 'error';
@@ -434,6 +439,44 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
   );
 }
 
+// Feature-Parity §1.9 — the recipient enters the access code the sender gave them
+// before anything of the document is shown. The code is sent once and never kept.
+function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Promise<'ok' | 'incorrect'> }) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [wrong, setWrong] = useState(false);
+  return (
+    <main className="sg-center">
+      <div className="sg-card" data-testid="sg-access-code">
+        <h1>Enter the access code</h1>
+        <p className="sg-muted">The sender protected this document with an access code. They will have given it to you separately.</p>
+        <label className="sg-label">
+          Access code
+          <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label="Access code" autoComplete="off" />
+        </label>
+        {wrong ? (
+          <p className="sg-error" role="alert">
+            That code isn&apos;t right. Check it and try again.
+          </p>
+        ) : null}
+        <Btn
+          className="sg-btn--block"
+          disabled={code.trim().length === 0 || busy}
+          onClick={() => {
+            setBusy(true);
+            void onSubmit(code).then((r) => {
+              setWrong(r === 'incorrect');
+              setBusy(false);
+            });
+          }}
+        >
+          Continue
+        </Btn>
+      </div>
+    </main>
+  );
+}
+
 // ── End-state screens: plain language, no link into any Aramo app ──
 export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
   return (
@@ -638,6 +681,18 @@ export function App(): JSX.Element {
     }
   };
 
+  const submitAccessCode = async (code: string): Promise<'ok' | 'incorrect'> => {
+    try {
+      await signApi.accessCode(token, code);
+      open();
+      return 'ok';
+    } catch (e) {
+      if (e instanceof SignApiError && e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'incorrect';
+      fail(e);
+      return 'ok';
+    }
+  };
+
   const decline = async (reason: string) => {
     try {
       await signApi.decline(token, reason);
@@ -693,6 +748,20 @@ export function App(): JSX.Element {
           title="It's not your turn to sign yet"
           body="This document is signed in a set order, and someone before you hasn't signed yet. We'll email you a new link as soon as it's your turn."
         />
+      </>
+    );
+  if (screen === 'accesscode')
+    return (
+      <>
+        <Header reportToken={token} />
+        <AccessCodeCard onSubmit={submitAccessCode} />
+      </>
+    );
+  if (screen === 'locked')
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="error" title="Too many incorrect access codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
       </>
     );
   if (screen === 'declined')

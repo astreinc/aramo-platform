@@ -140,4 +140,8 @@ export const signApi = {
   decline(token: string, reason: string): Promise<void> {
     return post<void>('decline', { token, reason });
   },
+  // Feature-Parity §1.9 — the access code the sender set for this recipient (never stored here).
+  accessCode(token: string, access_code: string): Promise<{ verified: true }> {
+    return post<{ verified: true }>('access-code', { token, access_code });
+  },
 };

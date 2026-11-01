@@ -175,6 +175,37 @@ describe('signer app', () => {
     expect(document.querySelectorAll('a')).toHaveLength(0);
   });
 
+  // Feature-Parity §1.9 — the per-recipient access code.
+  it('access code: asked before anything is shown; a wrong code says so; the right code opens the document', async () => {
+    let verified = false;
+    const calls = transport({
+      exchange: () => (verified ? json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1' }) : json({ error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_required' } } }, 403)),
+      'access-code': () => {
+        const last = calls[calls.length - 1]!;
+        if (last.body['access_code'] !== 'Blue-42') return json({ error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_incorrect', attempts_remaining: 4 } } }, 403);
+        verified = true;
+        return json({ verified: true });
+      },
+    });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Enter the access code' })).toBeInTheDocument();
+    expect(calls.some((c) => c.path === 'disclosure-text' || c.path === 'document')).toBe(false);
+    fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'wrong' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code isn't right");
+    fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'Blue-42' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Review document' })).toBeInTheDocument();
+    expect(calls.filter((c) => c.path === 'access-code').map((c) => c.body['access_code'])).toEqual(['wrong', 'Blue-42']);
+  });
+
+  it('access code locked → its own screen with no navigation', async () => {
+    transport({ exchange: () => json({ error: { code: 'SIGNER_ACCESS_CODE_LOCKED' } }, 423) });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Too many incorrect access codes' })).toBeInTheDocument();
+    expect(document.querySelectorAll('a')).toHaveLength(0);
+  });
+
   it('opened without a token → Invalid link, no network call, never a sign-in page', () => {
     window.history.pushState({}, '', '/s/');
     const calls = transport();

@@ -231,6 +231,16 @@
     },
     {
       "method": "POST",
+      "path": "/v1/sign/signing/access-code",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/signing/delegate",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
       "path": "/v1/sign/billing/webhook/stripe",
       "class": "XP"
     }
