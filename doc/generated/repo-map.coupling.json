@@ -32134,6 +32134,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -32158,6 +32164,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
@@ -32173,6 +32185,12 @@
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
