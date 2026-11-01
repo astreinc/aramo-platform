@@ -227,6 +227,22 @@ export function personalCheckoutDisclosure(terms: { list_price_minor: number | n
   return `${price}${commitment} No refunds for partial periods. When it ends, your account returns to the Free plan.`;
 }
 
+/** Stripe Checkout's limit on `custom_text[submit][message]` (characters). */
+export const CHECKOUT_SUBMIT_MESSAGE_MAX = 1200;
+
+/**
+ * Remaining-Work Consolidated Directive (32e5e3e1) A1 — the renewal disclosure shown at the provider
+ * checkout's submit button for a Business plan. It states the model in force (ToS v2.0 B5.1, Lead
+ * Q4 ruling): a commitment billed monthly, then month to month until cancelled in the billing
+ * settings, a cancellation taking effect at the end of the current monthly period. Only a monthly
+ * plan has approved wording; any other interval shows none (null).
+ */
+export function businessCheckoutDisclosure(terms: { billing_interval: string | null; commitment_months: number | null }): string | null {
+  if ((terms.billing_interval ?? 'MONTH').toUpperCase() !== 'MONTH') return null;
+  const start = terms.commitment_months !== null ? `Your plan starts with a ${terms.commitment_months}-month commitment, billed monthly. After that it continues` : 'Your plan is billed monthly and continues';
+  return `${start} month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.`;
+}
+
 /** Fail closed: only an explicit US billing country may activate. */
 export function billingCountrySupported(account_country: string | null): boolean {
   return account_country?.trim().toUpperCase() === BILLING_COUNTRY_ALLOWED;
@@ -664,7 +680,10 @@ export class SubscriptionLifecycleService {
       account_ref,
       success_url: input.success_url,
       cancel_url: input.cancel_url,
-      ...(personal ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined } : {}),
+      // Remaining-Work A1 — a Business checkout shows its renewal disclosure at submit too.
+      ...(personal
+        ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }
+        : { disclosure: businessCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }),
     });
     await this.prisma.checkoutIntent.update({ where: { id: intent_id }, data: { provider_session_ref: session.session_ref } });
     return { url: session.url };

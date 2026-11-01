@@ -4,6 +4,7 @@ import { ApiError } from '@aramo/fe-foundation';
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type Money } from '../api';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
+import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
 import { UsageCharges } from './UsageCharges';
 
@@ -126,6 +127,16 @@ function Usage({ a }: { a: BillingAccount }) {
   );
 }
 
+/**
+ * Remaining-Work Consolidated Directive (32e5e3e1) A1 — what happens after a Business plan's
+ * commitment and how a cancellation works (ToS v2.0 B5.1, month to month). The same sentence is
+ * shown at the Stripe checkout's submit button (businessCheckoutDisclosure, libs/subscription).
+ */
+export function businessRenewalText(commitment_months: number | null): string {
+  const start = commitment_months !== null ? `Your plan starts with a ${commitment_months}-month commitment, billed monthly. After that it continues` : 'Your plan is billed monthly and continues';
+  return `${start} month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.`;
+}
+
 function allowanceLine(p: BillingPlan, key: string, noun: string): string | null {
   const a = p.allowances.find((x) => x.allowance_key === key);
   if (a === undefined || a.available !== true) return null;
@@ -182,6 +193,11 @@ function PlanCard({
               <div className="sg-muted">
                 {plan.commitment_months !== null ? `${plan.commitment_months}-month commitment, billed monthly` : 'Month to month'} · plus applicable tax
               </div>
+              {plan.tenant_kind === 'BUSINESS' && plan.price.interval === 'MONTH' ? (
+                <p className="sg-help" style={{ margin: '6px 0 0' }} data-testid="billing-plan-renewal">
+                  {businessRenewalText(plan.commitment_months)}
+                </p>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -347,10 +363,13 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
           {account.can_manage_billing && sub?.billing_managed === true ? (
             <div>
               <Btn disabled={busy} onClick={() => act(billingApi.portal)} data-testid="billing-manage">
-                Manage billing
+                Manage billing or cancel
               </Btn>
-              <p className="sg-help">Update your payment method or download invoices on the Stripe billing page.</p>
+              <p className="sg-help">Update your payment method, download invoices or cancel on the Stripe billing page.</p>
             </div>
+          ) : null}
+          {account.can_manage_billing && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
+            <CancelSubscription personal={false} busy={busy} onKeep={() => act(billingApi.portal)} onChanged={reload} />
           ) : null}
           {!account.can_manage_billing ? <p className="sg-help">Only an organization admin can change the plan.</p> : null}
           {!account.self_service_eligible ? <p className="sg-help">Plans for personal accounts aren’t available yet.</p> : null}
@@ -369,7 +388,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
                 <a href={catalog!.terms!.url} target="_blank" rel="noopener noreferrer">
                   Aramo Sign Terms of Service
                 </a>{' '}
-                (version {catalog!.terms!.version})
+                (version {catalog!.terms!.version}), including that my plan continues month to month after its commitment until I cancel.
               </span>
             </label>
           ) : null}

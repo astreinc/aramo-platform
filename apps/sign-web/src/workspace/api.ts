@@ -479,7 +479,8 @@ export const billingApi = {
   checkout: (plan_key: string, accept_terms?: boolean) =>
     apiClient.post<{ url: string }>(`${BILLING}/checkout`, accept_terms === undefined ? { plan_key } : { plan_key, accept_terms }),
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
-  // CCP-C7 — tenant self-service (backend only; no screen is pinned, so no UI calls these yet).
+  // CCP-C7 — tenant self-service. Remaining-Work A4: Settings → Billing → Cancel subscription uses
+  // selfService + selfServiceCancel (CancelSubscription.tsx); selfServiceUpgrade has no screen yet.
   selfService: () => apiClient.get<SelfServiceBilling>(`${BILLING}/self-service`),
   selfServiceCancel: () => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/cancel`, {}),
   selfServiceUpgrade: (plan_key: string) => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/upgrade`, { plan_key }),
@@ -812,7 +813,7 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     const billing = billingRefusalMessage(e.details?.['reason']);
     if (billing !== null) return billing;
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing or cancel to change it.';
     // CCP-A6 (Conversion Rule C-1) — a governed (Aramo-managed) subscription is changed only by Aramo.
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'governed_subscription_open') return 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
