@@ -6001,6 +6001,7 @@
     "libs/sign/src/tests/execution-stamping.integration.spec.ts",
     "libs/sign/src/tests/field-rules.spec.ts",
     "libs/sign/src/tests/hash-chain-jsonb-order.spec.ts",
+    "libs/sign/src/tests/identity-verification.spec.ts",
     "libs/sign/src/tests/lifecycle-event.spec.ts",
     "libs/sign/src/tests/multi-signer.integration.spec.ts",
     "libs/sign/src/tests/outbox-backoff.spec.ts",
