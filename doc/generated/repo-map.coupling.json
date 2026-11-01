@@ -12927,6 +12927,11 @@
     {
       "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
       "status": "unscoped",
+      "to": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts"
+    },
+    {
+      "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts"
     },
     {
