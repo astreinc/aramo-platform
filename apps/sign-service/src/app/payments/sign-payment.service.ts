@@ -20,6 +20,8 @@ import {
   type SignPaymentRow,
 } from '@aramo/sign';
 
+import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
+
 import { applicationFeeFor, signStripeConnectConfig } from './sign-payments.config.js';
 import { SignPaymentsGate, type PaymentsUnavailableReason } from './sign-payments.gate.js';
 
@@ -320,7 +322,10 @@ export class SignPaymentService {
     try {
       event = this.provider.verifyWebhook(rawBody, signature);
     } catch (e) {
-      if (e instanceof PaymentWebhookSignatureError) throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.message } });
+      if (e instanceof PaymentWebhookSignatureError) {
+        logWebhookRejected(this.logger, 'stripe_connect', e.message);
+        throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.message } });
+      }
       throw e;
     }
     if (!(await this.payments.receiveWebhookEvent(event.event_ref, event.event_type, event.account_ref))) return { received: true, outcome: 'DUPLICATE' };
@@ -332,6 +337,7 @@ export class SignPaymentService {
         this.logger.warn(`payment webhook ${event.event_ref} (${event.event_type}) refused: ${e.reason}`);
         outcome = 'FAILED';
       } else {
+        logWebhookFailed(this.logger, 'stripe_connect', e);
         await this.payments.finishWebhookEvent(event.event_ref, 'FAILED').catch(() => undefined);
         throw e;
       }

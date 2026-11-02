@@ -46,7 +46,8 @@ import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LegalAcceptanceService,
-  effectiveLegalDocument,
+  PERSONAL_LEGAL_DOCUMENT_KEYS,
+  effectivePersonalLegalDocument,
   type LegalDocumentVersion,
 } from '@aramo/subscription';
 
@@ -81,7 +82,10 @@ export const PERSONAL_SIGNUP_SYSTEM_ACTOR_ID = '01900000-0000-7000-8000-00000000
 export const PERSONAL_SIGNUP_AUDIT_SOURCE = 'sign.personal_signup';
 // Directive v1.1 §4 (correction A) — tenant_owner ONLY.
 export const PERSONAL_OWNER_ROLE_KEYS = ['tenant_owner'] as const;
-export const PERSONAL_LEGAL_KEYS = ['sign.personal_terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy'] as const;
+// ToS v2.0 — the same keys as the registry's PERSONAL_LEGAL_DOCUMENT_KEYS (one list; this name is
+// kept for its importers). The terms key is `sign.terms_of_service`: until v2.0 is effective,
+// effectivePersonalLegalDocument() resolves it to the Personal Terms 1.0.
+export const PERSONAL_LEGAL_KEYS = PERSONAL_LEGAL_DOCUMENT_KEYS;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_STARTS_PER_EMAIL_PER_DAY = 5;
@@ -196,9 +200,10 @@ export class PersonalSignupService {
   currentTerms(now: Date = new Date()): PersonalTermsDocument[] | null {
     const docs: PersonalTermsDocument[] = [];
     for (const key of PERSONAL_LEGAL_KEYS) {
-      const doc = effectiveLegalDocument(key, this.legal, now);
+      // ToS v2.0 — the document in effect for the key (its predecessor while it has none).
+      const doc = effectivePersonalLegalDocument(key, this.legal, now);
       if (doc === null || doc.url === null) return null;
-      docs.push({ key, version: doc.version, url: doc.url, sha256: doc.sha256 });
+      docs.push({ key: doc.key, version: doc.version, url: doc.url, sha256: doc.sha256 });
     }
     return docs;
   }

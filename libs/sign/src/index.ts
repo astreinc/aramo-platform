@@ -443,7 +443,16 @@ export {
   type OutboundMessagingPort,
   type OutboundSendResult,
 } from './lib/ports/outbound-messaging.port.js';
-export { SIGN_USAGE_RECORDER_PORT, type SignUsageRecord, type SignUsageRecorderPort, type SignUsageUnit } from './lib/ports/usage-recorder.port.js';
+export {
+  NoopSignUsageRecorder,
+  SIGN_ID_VERIFICATION_ATTEMPT_METER,
+  SIGN_KBA_ATTEMPT_METER,
+  SIGN_USAGE_RECORDER_PORT,
+  SIGN_USAGE_UNITS,
+  type SignUsageRecord,
+  type SignUsageRecorderPort,
+  type SignUsageUnit,
+} from './lib/ports/usage-recorder.port.js';
 export { SIGNER_LINK_MESSAGING_PORT, type SignerLinkMessage, type SignerLinkMessagingPort } from './lib/ports/signer-link-messaging.port.js';
 export * from './lib/messaging/messaging-rules.js';
 export {
@@ -488,17 +497,8 @@ export {
   type KbaOutcome,
   type StartedKbaQuiz,
 } from './lib/identity-verification/kba.port.js';
-// Consolidation (feature-parity PR): SIGN_USAGE_RECORDER_PORT is exported once, from
-// ./lib/ports/usage-recorder.port.js (same token value); the identity-verification
-// recorder shape is exported as SignUsageMeterRecorderPort until the usage-metering model
-// unifies the two (held for the Lead ruling on MP-A2 N-1).
-export {
-  SIGN_ID_VERIFICATION_ATTEMPT_METER,
-  SIGN_KBA_ATTEMPT_METER,
-  NoopSignUsageRecorder,
-  type SignUsageEvent,
-  type SignUsageRecorderPort as SignUsageMeterRecorderPort,
-} from './lib/identity-verification/usage-recorder.port.js';
+// Sign usage metering (Amendment A3): the identity-verification recorder shape was unified into
+// the ONE SIGN_USAGE_RECORDER_PORT above (./lib/ports/usage-recorder.port.js).
 export { nameTokens, verifiedNameMatches } from './lib/identity-verification/name-match.js';
 export {
   IDENTITY_VERIFICATION_METHODS,

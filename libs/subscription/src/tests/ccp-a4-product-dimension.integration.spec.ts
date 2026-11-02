@@ -26,6 +26,7 @@ import {
 import { CCP_A4_COMPENSATING, CCP_A4_MIGRATION, ISOLATION_TEST_PRODUCT_KEY, registerIsolationTestProduct } from './fixtures/ccp-a4.js';
 import { publishTestPlanV1, publishedVersionOf } from './fixtures/ccp-a5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // CCP-A4 (PBD §5.1 A4 row; MP-A2 N-6, N-7, N-9, N-11, N-12; PBD §7.1 A0-C7) on real Postgres 17:
 //   registry   the shipped registry is sign only, in the DB and in code, and REJECTS the test key
@@ -143,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
     capacity = new CapacityService(prisma);
     billing = new FakeBilling();
     const eligibility: PlanEligibilityPort = { isEligible: async () => eligibleAnswer };
-    lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, undefined, new FakeOrganizationBillingProfile());
+    lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, LEGAL_DOCUMENTS_BEFORE_TOS_V20, new FakeOrganizationBillingProfile());
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS_KEY}=price_business,${ISO_PLAN_KEY}=price_iso`;
     delete process.env['BILLING_PAST_DUE_GRACE_DAYS'];
   }, 240_000);

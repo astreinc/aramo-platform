@@ -34,6 +34,10 @@ import {
   revokeRole,
 } from './support/ccp-a3-database.js';
 
+// Amendment A3 D1: a PLAN_VERSION_PUBLISH carries the content-checksum snapshot; the A3-era schema has no
+// PlanVersion table, so the request supplies the snapshot itself (the service reads the row only when absent).
+const A3_SNAPSHOT = 'a'.repeat(64);
+
 // CCP-A3 (PBD §5.1 row A3, mandatory tests) on real Postgres 17: the identity RBAC chain,
 // the subscription chain, A2 and A3 applied as whole files. Test IDs are cited by
 // doc/ccp/slices/CCP-A3-acceptance.md.
@@ -68,7 +72,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
     return (await svc.create(as(OPS, 'commercial_ops'), { action_type: 'CREDIT', tenant_id: tenant, product_key: 'sign', payload: { amount_minor, currency: 'USD' }, reason: 'goodwill credit', idempotency_key: k }, ctx)).request;
   }
   async function publish(k = key()) {
-    return (await svc.create(as(CAT, 'catalog_manager'), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' }, reason: 'publish v2 of the plan', idempotency_key: k }, ctx)).request;
+    return (await svc.create(as(CAT, 'catalog_manager'), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201', target_content_checksum: A3_SNAPSHOT }, reason: 'publish v2 of the plan', idempotency_key: k }, ctx)).request;
   }
   const submit = (id: string, user = OPS, role = 'commercial_ops') => svc.submit(as(user, role), id, ctx);
   const approve = (id: string, user: string, step_index: number, role = 'finance_admin') => svc.approve(as(user, role), id, { step_index }, ctx);
@@ -186,7 +190,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
 
   it('A3-IDEM-2 concurrent creates with one key → exactly one row; both callers get the same id', async () => {
     const k = key();
-    const body = { action_type: 'PLAN_VERSION_PUBLISH' as const, payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' }, reason: 'r', idempotency_key: k };
+    const body = { action_type: 'PLAN_VERSION_PUBLISH' as const, payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201', target_content_checksum: A3_SNAPSHOT }, reason: 'r', idempotency_key: k };
     const res = await Promise.all([0, 1, 2, 3].map(() => svc.create(as(CAT, 'catalog_manager'), body, ctx)));
     expect(new Set(res.map((r) => r.request.id)).size).toBe(1);
     expect(res.filter((r) => !r.replayed)).toHaveLength(1);

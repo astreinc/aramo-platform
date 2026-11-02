@@ -62,6 +62,13 @@ type Row = {
 // A claimed retry holds the row for this long before another worker may take it.
 const CLAIM_LEASE_MS = 120_000;
 const MAX_ERROR_LENGTH = 300;
+/**
+ * A TSA failure never fails completion, so a PENDING timestamp is retried without end. From this
+ * attempt on, each failed retry also logs `trusted_timestamp.attempts_exceeded` (about four hours
+ * of retries with the outbox backoff) — the production probe's alert line (Remaining-Work
+ * Directive §3 B9). The row stays PENDING and is still retried.
+ */
+export const TRUSTED_TIMESTAMP_ALERT_ATTEMPTS = 10;
 
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2002';
@@ -252,6 +259,9 @@ export class TrustedTimestampService {
       const attempts = row.attempt_count + 1;
       const message = ((err as Error).message ?? 'unknown error').slice(0, MAX_ERROR_LENGTH);
       this.logger.warn(`trusted timestamp pending (attempt ${attempts}) for ${row.subject_kind} ${row.id}: ${message}`);
+      if (attempts >= TRUSTED_TIMESTAMP_ALERT_ATTEMPTS) {
+        this.logger.warn(`trusted_timestamp.attempts_exceeded timestamp=${row.id} subject=${row.subject_kind} attempts=${attempts}`);
+      }
       await this.prisma.signTrustedTimestamp
         .updateMany({
           where: { id: row.id, status: 'PENDING' },

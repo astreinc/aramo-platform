@@ -37,7 +37,6 @@ import {
   IDENTITY_VERIFICATION_PORT,
   IdentityVerificationService,
   KBA_PORT,
-  NoopSignUsageRecorder,
   SIGN_USAGE_RECORDER_PORT,
   identityVerificationProviderFromEnv,
   kbaProviderFromEnv,
@@ -85,6 +84,9 @@ import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
 import { EsignBillingCommandWorker } from './billing/esign-billing-command.worker.js';
+import { SignMeteringUsageRecorder } from './billing/sign-metering-usage-recorder.js';
+import { SignUsageReportWorker } from './billing/sign-usage-report.worker.js';
+import { SignRenewalNoticeRecipients, SignRenewalNoticeWorker } from './billing/sign-renewal-notice.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
@@ -118,8 +120,6 @@ import { PersonalLegalStatusService } from './legal/personal-legal-status.servic
 import { LegalChangeBannerService } from './legal/legal-change-banner.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
-import { PersonalUpgradeController } from './account/personal-upgrade.controller.js';
-import { PersonalUpgradeService } from './account/personal-upgrade.service.js';
 // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
 import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
@@ -161,7 +161,7 @@ import { outboundMessagingFromEnv } from './messaging/messaging-adapters.js';
 import { SignMessagingService } from './messaging/sign-messaging.service.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { SenderMessagingService } from './messaging/sender-messaging.service.js';
-import { SignRecipientVerificationController, SignSenderMessagingController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
+import { SignRecipientVerificationController, SignSenderMessagingController, SignSmsInboundWebhookController, SignWhatsAppWebhookController } from './messaging/sign-messaging.controller.js';
 // Aramo Sign 1.14 — payment collection through Stripe Connect (dark until enabled).
 import { SignPaymentService } from './payments/sign-payment.service.js';
 import { SIGN_PAYMENTS_PLAN_SOURCE, SignPaymentsGate, SubscriptionPlanSource } from './payments/sign-payments.gate.js';
@@ -286,11 +286,12 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
         { provide: SIGNER_LINK_MESSAGING_PORT, useExisting: SignMessagingService },
         // Feature-Parity §1.9 + A1 — recipient identity verification, DARK: the provider is
         // disabled unless SIGN_ID_VERIFICATION_PROVIDER=stripe_identity (SIGN_STRIPE_IDENTITY_*);
-        // KBA has no vendor (disabled adapter); metering is a no-op until the usage-metering
-        // model binds SIGN_USAGE_RECORDER_PORT. Inside the module so the purge redacts too.
+        // KBA has no vendor (disabled adapter). Inside the module so the purge redacts too.
+        // Sign usage metering (A3): the ONE usage port, bound to the metering ledger — it records
+        // only while SIGN_USAGE_BILLING_ENABLED=1 (dark otherwise).
         { provide: IDENTITY_VERIFICATION_PORT, useFactory: () => identityVerificationProviderFromEnv(process.env) },
         { provide: KBA_PORT, useFactory: () => kbaProviderFromEnv(process.env) },
-        { provide: SIGN_USAGE_RECORDER_PORT, useClass: NoopSignUsageRecorder },
+        { provide: SIGN_USAGE_RECORDER_PORT, useClass: SignMeteringUsageRecorder },
         IdentityVerificationService,
         // Feature-Parity §1.16 / §1.19 (Amendment A1) — QES (QTSP) and India e-stamp ports.
         // Env unset (the default) ⇒ disabled adapters; no vendor is contracted.
@@ -304,7 +305,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, PersonalUpgradeController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -314,6 +315,11 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     EsignBillingReconcileWorker,
     // CCP-C1 — Stripe command outbox + webhook inbox worker (SIGN_BILLING_COMMANDS_ENABLED=1; off by default).
     EsignBillingCommandWorker,
+    // Sign Feature Parity D-2 (A1) — metered usage reporting (SIGN_USAGE_BILLING_ENABLED=1; off by default).
+    SignUsageReportWorker,
+    // Remaining-Work A3 — the Aramo renewal notice (SIGN_RENEWAL_NOTICES_ENABLED=1; off by default).
+    SignRenewalNoticeRecipients,
+    SignRenewalNoticeWorker,
     AramoSignStorageGate,
     SignTokenService,
     SignApiGuard,
@@ -347,8 +353,6 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new RegistryUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
-    // Feature-Parity §5 — the Personal → Business upgrade (dark: SIGN_PERSONAL_UPGRADE_ENABLED).
-    PersonalUpgradeService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)
     // and the account-close purge of saved signatures and contacts.
     SavedSignatureService,

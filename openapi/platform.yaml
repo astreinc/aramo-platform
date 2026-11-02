@@ -4619,7 +4619,9 @@ paths:
       description: |
         The Personal Terms of Service, Privacy Notice and Acceptable Use Policy
         (`sign.personal_terms_of_service`, `aramo.privacy_notice`,
-        `aramo.acceptable_use_policy`) at their APPROVED versions, or `documents:
+        `aramo.acceptable_use_policy`) at their APPROVED versions — ToS v2.0: once the
+        Aramo Sign Terms of Service (`sign.terms_of_service`) 2.0 is in effect it is
+        presented instead of the Personal Terms — or `documents:
         null` while any of them is not APPROVED (then `complete` is refused with
         `legal_documents_not_approved`). A 404 means Personal signup is off.
       security: []
@@ -6232,7 +6234,7 @@ components:
         nothing is written), `apply_failed` (the transaction rolled back in full; the request is
         APPLY_FAILED and retryable; details.failure names the guard, e.g. STRIPE_OWNED,
         TARGET_STALE, PLAN_VERSION_NOT_PUBLISHED, USAGE_EXCEEDS_NEW_LIMIT, USAGE_CROSS_PERIOD,
-        RESERVATION_CONFLICT, FUTURE_EFFECTIVE_DATE, VERSION_NOT_DRAFT, VERSION_NOT_PUBLISHED,
+        RESERVATION_CONFLICT, FUTURE_EFFECTIVE_DATE, VERSION_NOT_DRAFT, VERSION_CONTENT_CHANGED, VERSION_NOT_PUBLISHED,
         PRICE_PIN_CONFLICT), `apply_expired` (Charter Amendment A1: the apply deadline passed; the
         request is APPLY_EXPIRED), `action_not_applicable` or `integrity`. Every body carries
         details.explanation (operator-facing).
@@ -9998,7 +10000,7 @@ components:
     CommercialCatalogVersionTerms:
       type: object
       additionalProperties: false
-      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present]
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices]
       properties:
         list_price_minor:
           type: [integer, 'null']
@@ -10025,6 +10027,24 @@ components:
           type: boolean
         storage_present:
           type: boolean
+        unit_prices:
+          type: array
+          description: >-
+            Sign Feature Parity Amendments A3 (D1) / A4 (D2) — the add-on unit prices in the
+            version's content (covered by content_checksum, the fingerprint Finance and the Owner
+            approve), sorted by unit_key. Empty = no add-on unit is sold on the version.
+          items:
+            type: object
+            additionalProperties: false
+            required: [unit_key, unit_price_minor]
+            properties:
+              unit_key:
+                type: string
+              unit_price_minor:
+                type: integer
+                minimum: 0
+                maximum: 10000000
+                description: Minor units (USD cents) per unit.
 
     CommercialCatalogOpenRequest:
       type: object
@@ -10111,7 +10131,7 @@ components:
     CommercialCatalog:
       type: object
       additionalProperties: false
-      required: [products, publish_chain, plan_create]
+      required: [products, publish_chain, plan_create, metered_units]
       properties:
         products:
           type: array
@@ -10202,6 +10222,33 @@ components:
                   expires_at:
                     type: [string, 'null']
                     format: date-time
+        metered_units:
+          type: array
+          description: >-
+            Sign Feature Parity Amendment A4 (D2) — the add-on (metered) units a DRAFT of each
+            product can price (the governed MeteredUnit registry). A unit without a price on a
+            version is not sold on it.
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_key, units]
+            properties:
+              product_key:
+                type: string
+                enum: [sign]
+              units:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [unit_key, name, quantity_label]
+                  properties:
+                    unit_key:
+                      type: string
+                    name:
+                      type: string
+                    quantity_label:
+                      type: string
 
     CommercialCatalogVersionDetail:
       type: object
@@ -10214,7 +10261,9 @@ components:
           $ref: '#/components/schemas/CommercialCatalogPlan'
         content:
           type: object
-          description: The version's format-1 content document (checksum-verified).
+          description: >-
+            The version's format-1 content document (checksum-verified). Carries the optional
+            `unit_prices` array (Amendment A3 D1) when an add-on unit is priced.
         pinned_tenants:
           type: array
           items:
@@ -10267,6 +10316,19 @@ components:
         storage_bytes:
           type: [integer, 'null']
           minimum: 0
+        unit_prices:
+          type: object
+          description: >-
+            Sign Feature Parity Amendment A4 (D2) — add-on unit prices on the DRAFT's content:
+            metered unit key → minor units (USD cents, 0..10000000), or null to stop selling the
+            unit on this version. Units not named keep their price. Published only through the
+            PLAN_VERSION_PUBLISH change request (Finance → Owner).
+          minProperties: 1
+          maxProperties: 20
+          additionalProperties:
+            type: [integer, 'null']
+            minimum: 0
+            maximum: 10000000
         note:
           type: string
           maxLength: 500
@@ -11407,7 +11469,7 @@ components:
       properties:
         key:
           type: string
-          enum: [sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
+          enum: [sign.terms_of_service, sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
         version:
           type: string
         url:

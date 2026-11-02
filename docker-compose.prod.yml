@@ -518,6 +518,13 @@ services:
       # CCP-C1 — the Stripe command outbox + webhook inbox worker (opt-in; unset ⇒ off).
       - SIGN_BILLING_COMMANDS_ENABLED
       - SIGN_BILLING_COMMANDS_INTERVAL_MS
+      # Sign Feature Parity D-2 — metered usage billing (UsageRecorder + usage reporting worker).
+      # Unset ⇒ off: every metered feature call is refused and nothing is reported.
+      - SIGN_USAGE_BILLING_ENABLED
+      # Remaining-Work A3 — the Aramo renewal notice job (commitment-end email). Unset ⇒ off.
+      # SIGN_RENEWAL_NOTICE_DAYS: days before the commitment end (default 30, 1 to 90).
+      - SIGN_RENEWAL_NOTICES_ENABLED
+      - SIGN_RENEWAL_NOTICE_DAYS
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - SIGN_KMS_KEY_ID
@@ -577,9 +584,11 @@ services:
       - SIGN_TSA_URL
       - SIGN_TSA_TIMEOUT_MS
       - SIGN_TSA_RETRY_INTERVAL_MS
-      # Feature-Parity directive §5 — the Personal → Business upgrade. Unset = dark:
-      # v1/sign/account/upgrade answers 404 and sign-web hides the upgrade card.
-      - SIGN_PERSONAL_UPGRADE_ENABLED
+      # Remaining-Work Directive §3 B4 — optional TSA authentication (secrets; unset = none).
+      - SIGN_TSA_USERNAME
+      - SIGN_TSA_PASSWORD
+      - SIGN_TSA_CLIENT_CERT
+      - SIGN_TSA_CLIENT_KEY
       # Feature-Parity directive (2bd74ca5) §1.9 + A1 (dc95b283) — recipient identity verification.
       # Unset = dark: the provider is disabled and every start is refused (503). Stripe Identity
       # uses its OWN keys (never the billing STRIPE_* keys). KBA has no vendor (disabled).
@@ -644,10 +653,14 @@ services:
       - SIGN_SMS_AWS_CONFIGURATION_SET
       - SIGN_SMS_AWS_ACCESS_KEY_ID
       - SIGN_SMS_AWS_SECRET_ACCESS_KEY
+      # Remaining-Work Directive §3 B5 — inbound STOP through SNS (unset = the route answers 404).
+      - SIGN_SMS_AWS_INBOUND_TOPIC_ARN
       - SIGN_SMS_MSG91_AUTH_KEY
       - SIGN_SMS_MSG91_TEMPLATE_INVITATION
       - SIGN_SMS_MSG91_TEMPLATE_REMINDER
       - SIGN_SMS_MSG91_TEMPLATE_OTP
+      - SIGN_SMS_MSG91_SENDER_ID
+      - SIGN_SMS_MSG91_DLT_ENTITY_ID
       - SIGN_WHATSAPP_PROVIDER
       - SIGN_WHATSAPP_PHONE_NUMBER_ID
       - SIGN_WHATSAPP_ACCESS_TOKEN

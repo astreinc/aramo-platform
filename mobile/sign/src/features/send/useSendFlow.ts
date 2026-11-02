@@ -10,17 +10,24 @@ import { createDocumentBytesStore } from './documentBytes';
 import { createSenderApi } from './senderApi';
 import { SendFlowController, type OpenParams, type SendFlowState } from './sendFlowController';
 
-export function useSendFlow(params: OpenParams): {
+export function useSendFlow(
+  params: OpenParams,
+  opts: {
+    /** A messaging feature is available (GET …/messaging is refused otherwise). */
+    readonly messaging?: boolean;
+  } = {},
+): {
   readonly controller: SendFlowController;
   readonly state: SendFlowState;
 } {
   const services = useServices();
-  const [controller] = useState(
-    () =>
-      new SendFlowController({
+  const [controller] = useState(() => {
+    const api = createSenderApi(services.workspace);
+    return new SendFlowController({
         drafts: services.drafts,
         bytes: createDocumentBytesStore(services.store),
-        api: createSenderApi(services.workspace),
+        api,
+        loadMessaging: (envelopeId) => api.messaging(envelopeId),
         fetchSource: (envelopeId, documentId) =>
           fetchSourcePdf(
             {
@@ -33,8 +40,12 @@ export function useSendFlow(params: OpenParams): {
           ),
         isOnline: () => onlineManager.isOnline(),
         newId: randomId,
-      }),
-  );
+      });
+  });
+  // Declared before the open effect, so a server draft opens with the current flags.
+  useEffect(() => {
+    controller.setMessagingEnabled(opts.messaging === true);
+  }, [controller, opts.messaging]);
   const state = useSyncExternalStore(
     controller.subscribe,
     () => controller.snapshot,

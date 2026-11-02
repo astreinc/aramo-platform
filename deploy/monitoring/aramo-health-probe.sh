@@ -97,6 +97,26 @@ MON_RE_SIGN_PURGE_R13='sign_purge\.alert_integration_copy_unconfirmed'
 MON_RE_SIGN_RETENTION='retention run failed|convenience-data purge failed'
 # privacy: privacy/sign-privacy-execution.service.ts + .worker.ts.
 MON_RE_SIGN_PRIVACY='privacy request [^ ]+ execution failed|privacy execution of [^ ]+ failed'
+# Remaining-Work Directive §3 B9 — the vendor paths and metering (one check each; every line
+# is written by sign-service only when the feature's provider is configured, so these stay at 0
+# while the features are dark).
+# webhooks: webhook-log.ts (sign_webhook.rejected / .failed: WhatsApp, inbound SMS, Stripe
+#      Identity, Stripe Connect, Stripe billing) + payments/sign-payment.service.ts. Only the
+#      reasons that mean a misconfigured secret, a replay or a wrong topic alert; a request with
+#      no signature at all (MISSING / MALFORMED / NO_SECRET) is internet noise and does not.
+MON_RE_SIGN_WEBHOOK='sign_webhook\.rejected source=[a-z_]+ reason=(BAD_SIGNATURE|STALE|WRONG_TOPIC|UNTRUSTED_CERT_URL|CERT_UNAVAILABLE)|sign_webhook\.failed |payment webhook [^ ]+ \([^)]*\) refused'
+# messaging: messaging/sign-messaging.service.ts (a provider send error, or the send flow
+#      failing) + messaging-adapters.ts (a provider asked for but left off at boot) +
+#      sign-messaging.controller.ts (the SNS subscription for inbound STOP removed).
+MON_RE_SIGN_MESSAGING='sign_messaging\.send_failed |signing-link message failed|SIGN_(SMS|WHATSAPP)_PROVIDER (includes [a-z0-9]+|is meta) but|SIGN_SMS_MSG91 configuration refused|SIGN_(SMS|WHATSAPP)_PROVIDER: unknown provider|sms inbound: SNS subscription removed'
+# tsa-seal: libs/sign trusted-timestamp.service.ts (attempts_exceeded) + trusted-timestamp-
+#      retry.worker.ts; libs/sign document-seal.service.ts (the final attempt) + document-seal-
+#      retry.worker.ts.
+MON_RE_SIGN_TSA_SEAL='trusted_timestamp\.attempts_exceeded|trusted timestamp retry tick failed|document_seal\.attempt_failed .* final|document_seal\.retry_failed'
+# metering: libs/subscription usage-provider-report.service.ts (usage_report.failed, the
+#      live-mode hold) + billing/sign-usage-report.worker.ts + the usage-record failures of
+#      sign-messaging.service.ts and libs/sign identity-verification.service.ts.
+MON_RE_SIGN_METERING='usage_report\.failed |usage report tick failed|usage reports not sent: the provider key is live-mode|usage not recorded for message|identity verification usage not recorded'
 
 TAB="$(printf '\t')"
 
@@ -350,6 +370,10 @@ METRIC_SIGN_KMS=0
 METRIC_SIGN_CUSTODY=0
 METRIC_SIGN_PURGE=0
 METRIC_SIGN_R13=0
+METRIC_SIGN_WEBHOOK=0
+METRIC_SIGN_MESSAGING=0
+METRIC_SIGN_TSA_SEAL=0
+METRIC_SIGN_METERING=0
 check_sign_logs() {
   local logs n
   logs="$(mktemp)"
@@ -370,6 +394,14 @@ check_sign_logs() {
   if [ "$n" -gt 0 ]; then mon_result sign:retention FAIL "$n matching log line(s)"; else mon_result sign:retention OK "0 matching log lines"; fi
   n="$(mon_count_matches "$MON_RE_SIGN_PRIVACY" <"$logs")"
   if [ "$n" -gt 0 ]; then mon_result sign:privacy FAIL "$n matching log line(s)"; else mon_result sign:privacy OK "0 matching log lines"; fi
+  METRIC_SIGN_WEBHOOK="$(mon_count_matches "$MON_RE_SIGN_WEBHOOK" <"$logs")"
+  METRIC_SIGN_MESSAGING="$(mon_count_matches "$MON_RE_SIGN_MESSAGING" <"$logs")"
+  METRIC_SIGN_TSA_SEAL="$(mon_count_matches "$MON_RE_SIGN_TSA_SEAL" <"$logs")"
+  METRIC_SIGN_METERING="$(mon_count_matches "$MON_RE_SIGN_METERING" <"$logs")"
+  for pair in "sign:webhooks $METRIC_SIGN_WEBHOOK" "sign:messaging $METRIC_SIGN_MESSAGING" "sign:tsa-seal $METRIC_SIGN_TSA_SEAL" "sign:metering $METRIC_SIGN_METERING"; do
+    set -- $pair
+    if [ "$2" -gt 0 ]; then mon_result "$1" FAIL "$2 matching log line(s) since the previous run"; else mon_result "$1" OK "0 matching log lines"; fi
+  done
   rm -f "$logs"
 }
 
@@ -407,7 +439,11 @@ publish_metrics() {
   data+="{\"MetricName\":\"SignKmsErrors\",\"Value\":${METRIC_SIGN_KMS},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
   data+="{\"MetricName\":\"SignCustodyErrors\",\"Value\":${METRIC_SIGN_CUSTODY},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
   data+="{\"MetricName\":\"SignPurgeErrors\",\"Value\":${METRIC_SIGN_PURGE},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
-  data+="{\"MetricName\":\"SignPurgeR13Alerts\",\"Value\":${METRIC_SIGN_R13},\"Unit\":\"Count\",\"Dimensions\":${dim}}"
+  data+="{\"MetricName\":\"SignPurgeR13Alerts\",\"Value\":${METRIC_SIGN_R13},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
+  data+="{\"MetricName\":\"SignWebhookErrors\",\"Value\":${METRIC_SIGN_WEBHOOK},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
+  data+="{\"MetricName\":\"SignMessagingErrors\",\"Value\":${METRIC_SIGN_MESSAGING},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
+  data+="{\"MetricName\":\"SignTimestampSealErrors\",\"Value\":${METRIC_SIGN_TSA_SEAL},\"Unit\":\"Count\",\"Dimensions\":${dim}},"
+  data+="{\"MetricName\":\"SignMeteringErrors\",\"Value\":${METRIC_SIGN_METERING},\"Unit\":\"Count\",\"Dimensions\":${dim}}"
   data+="]"
   mon_aws cloudwatch put-metric-data --namespace "$MON_METRIC_NAMESPACE" --metric-data "$data" >/dev/null
 }

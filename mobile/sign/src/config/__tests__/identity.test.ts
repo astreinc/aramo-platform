@@ -13,7 +13,7 @@ describe('M-A7 §5.1 — web links and identity', () => {
     expect(PRODUCTION_API_BASE_URL).toBe('https://sign.aramo.ai');
     expect(WEB_LINKS).toEqual({
       terms: 'https://sign.aramo.ai/legal/terms',
-      personalTerms: 'https://sign.aramo.ai/legal/personal-terms',
+      personalTerms: 'https://sign.aramo.ai/legal/terms-of-service',
       privacy: 'https://sign.aramo.ai/legal/privacy',
       help: 'https://sign.aramo.ai/help',
     });
@@ -21,7 +21,7 @@ describe('M-A7 §5.1 — web links and identity', () => {
     const app = readFileSync(resolve(REPO, 'apps/sign-web/src/workspace/App.tsx'), 'utf8');
     for (const route of ['/legal/terms', '/help', '/legal/:slug']) expect(app).toContain(`path="${route}"`);
     const catalog = readFileSync(resolve(REPO, 'apps/sign-web/src/workspace/legal/catalog.ts'), 'utf8');
-    expect(catalog).toContain("slug: 'personal-terms'");
+    expect(catalog).toContain("slug: 'terms-of-service'");
     expect(catalog).toContain("slug: 'privacy'");
   });
 

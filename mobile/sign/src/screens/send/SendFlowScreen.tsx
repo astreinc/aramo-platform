@@ -20,6 +20,7 @@ import { signKeys, useBillingAccount, useOnline, useSenderContext } from '../../
 import { hasContent } from '../../features/send/draftModel';
 import { SAVED_ON_DEVICE, SAVED_TO_DRAFTS, sentToast } from '../../features/send/sendCopy';
 import { templatesAvailable } from '../../features/send/templates';
+import { messagingOffered, sendFeaturesOf } from '../../features/send/sendFeatures';
 import { startSelfSign } from '../../features/send/selfSign';
 import { createSenderApi } from '../../features/send/senderApi';
 import { useSendFlow } from '../../features/send/useSendFlow';
@@ -51,11 +52,16 @@ export function SendFlowScreen({ navigation, route }: Props) {
   const params = route.params ?? {};
   const services = useServices();
   const selfIntent = FEATURES.selfSign && params.intent === 'self';
-  const { controller, state } = useSendFlow({
-    ...params,
-    intent: selfIntent ? 'self' : 'request',
-  });
   const context = useSenderContext();
+  // B2 — the per-recipient options the server reports available.
+  const features = useMemo(() => sendFeaturesOf(context.data), [context.data]);
+  const { controller, state } = useSendFlow(
+    {
+      ...params,
+      intent: selfIntent ? 'self' : 'request',
+    },
+    { messaging: messagingOffered(features) },
+  );
   const billing = useBillingAccount();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -236,6 +242,7 @@ export function SendFlowScreen({ navigation, route }: Props) {
         me={me}
         online={online}
         inPerson={inPerson}
+        features={features}
       />
     ) : state.step === 'review' ? (
       <ReviewStep

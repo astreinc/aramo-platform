@@ -7,7 +7,7 @@ import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
-import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
+import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import { PIN_REASON_PROVIDER_PLAN_CHANGE, planVersionTerms } from '../plan-version.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -192,9 +192,18 @@ export function planMatchesTenantKind(plan_tenant_kind: string | null, tenant_ki
   return tenant_kind === 'PERSONAL' ? plan_tenant_kind === 'PERSONAL' : plan_tenant_kind !== 'PERSONAL';
 }
 
-/** Sign Catalog v2 §4.3 — the terms a checkout accepts: the Personal Terms for a PERSONAL tenant. */
-export function checkoutTermsDocument(tenant_kind: string): 'sign.terms_of_service' | 'sign.personal_terms_of_service' {
-  return tenant_kind === 'PERSONAL' ? 'sign.personal_terms_of_service' : 'sign.terms_of_service';
+/**
+ * Sign Catalog v2 §4.3 — the terms a checkout accepts: the Personal Terms for a PERSONAL tenant.
+ * ToS v2.0 — once `sign.terms_of_service` has an effective version (the combined Business +
+ * Personal terms), a PERSONAL tenant accepts it instead (the Personal Terms are retired).
+ */
+export function checkoutTermsDocument(
+  tenant_kind: string,
+  registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS,
+  now: Date = new Date(),
+): 'sign.terms_of_service' | 'sign.personal_terms_of_service' {
+  if (tenant_kind !== 'PERSONAL') return 'sign.terms_of_service';
+  return effectiveLegalDocument('sign.terms_of_service', registry, now) !== null ? 'sign.terms_of_service' : 'sign.personal_terms_of_service';
 }
 
 function formatMinor(amount_minor: number, currency: string): string {
@@ -216,6 +225,22 @@ export function personalCheckoutDisclosure(terms: { list_price_minor: number | n
       ? ` This plan has a ${terms.commitment_months}-month commitment: it renews automatically each ${interval}, and you can cancel online from the last month of the commitment so it ends at the end of that month. After the commitment, you can cancel any time and it ends at the end of the current ${interval}.`
       : ` It renews automatically each ${interval}; you can cancel online any time and it ends at the end of the current ${interval}.`;
   return `${price}${commitment} No refunds for partial periods. When it ends, your account returns to the Free plan.`;
+}
+
+/** Stripe Checkout's limit on `custom_text[submit][message]` (characters). */
+export const CHECKOUT_SUBMIT_MESSAGE_MAX = 1200;
+
+/**
+ * Remaining-Work Consolidated Directive (32e5e3e1) A1 — the renewal disclosure shown at the provider
+ * checkout's submit button for a Business plan. It states the model in force (ToS v2.0 B5.1, Lead
+ * Q4 ruling): a commitment billed monthly, then month to month until cancelled in the billing
+ * settings, a cancellation taking effect at the end of the current monthly period. Only a monthly
+ * plan has approved wording; any other interval shows none (null).
+ */
+export function businessCheckoutDisclosure(terms: { billing_interval: string | null; commitment_months: number | null }): string | null {
+  if ((terms.billing_interval ?? 'MONTH').toUpperCase() !== 'MONTH') return null;
+  const start = terms.commitment_months !== null ? `Your plan starts with a ${terms.commitment_months}-month commitment, billed monthly. After that it continues` : 'Your plan is billed monthly and continues';
+  return `${start} month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.`;
 }
 
 /** Fail closed: only an explicit US billing country may activate. */
@@ -585,7 +610,7 @@ export class SubscriptionLifecycleService {
     // A1 — terms evidence. No live charging without approved terms; an approved
     // version must be affirmatively accepted.
     // Sign Catalog v2 §4.3 — a PERSONAL tenant accepts the Personal Terms.
-    const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind), this.legal);
+    const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind, this.legal), this.legal);
     if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
     // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The
@@ -655,7 +680,10 @@ export class SubscriptionLifecycleService {
       account_ref,
       success_url: input.success_url,
       cancel_url: input.cancel_url,
-      ...(personal ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined } : {}),
+      // Remaining-Work A1 — a Business checkout shows its renewal disclosure at submit too.
+      ...(personal
+        ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }
+        : { disclosure: businessCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }),
     });
     await this.prisma.checkoutIntent.update({ where: { id: intent_id }, data: { provider_session_ref: session.session_ref } });
     return { url: session.url };

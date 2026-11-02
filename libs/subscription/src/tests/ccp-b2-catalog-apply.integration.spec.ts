@@ -9,6 +9,7 @@ import { CommercialApplyFailedError } from '../lib/commercial/commercial-apply-r
 import { CommercialApplyRefusedError } from '../lib/commercial/commercial-approval-eligibility.js';
 import { type CommercialActionType } from '../lib/commercial/commercial-change-request.js';
 import { CommercialChangeRequestError } from '../lib/commercial/commercial-change-request.service.js';
+import { withUnitPrices } from '../lib/plan-version.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
@@ -174,6 +175,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B2-backend ca
     const audit = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED'`, [conflict])).rows;
     expect(audit).toHaveLength(1);
     expect(audit[0].payload).toMatchObject({ failure: 'PRICE_PIN_CONFLICT', attempt: 1 });
+  });
+
+  it('A3-D1-APPLY-1 the approved fingerprint covers the add-on unit prices: the request snapshots content_checksum; a unit-price change after approval is refused VERSION_CONTENT_CHANGED (nothing published); the approved content publishes with its prices', async () => {
+    const p = await testPlan();
+    const live = await h.versions.liveContent(p.plan_id);
+    const priced = withUnitPrices(live, new Map([['sign.sms_message', 5]]));
+    const v2 = (await h.versions.createDraft({ plan_id: p.plan_id, content: priced, created_by: 'b2-test' })).id;
+    const id = await approved('PLAN_VERSION_PUBLISH', { plan_version_id: v2 });
+    const sum = (await pg.query(`SELECT content_checksum FROM subscription."PlanVersion" WHERE id = $1`, [v2])).rows[0].content_checksum as string;
+    expect((await pg.query(`SELECT payload FROM subscription."CommercialChangeRequest" WHERE id = $1`, [id])).rows[0].payload).toEqual({ plan_version_id: v2, target_content_checksum: sum });
+    // The catalog manager changes the SMS price after Finance and the Owner approved.
+    await h.versions.updateDraft(v2, withUnitPrices(live, new Map([['sign.sms_message', 9]])));
+    expect(await outcome(applyAs(id))).toBe('FAILED:VERSION_CONTENT_CHANGED');
+    expect([await status(v2), await status(p.v1)]).toEqual(['DRAFT', 'PUBLISHED']);
+    // Restored to the approved terms, the same request applies and the published version carries the approved price.
+    await h.versions.updateDraft(v2, priced);
+    expect(await outcome(applyAs(id))).toBe('APPLIED');
+    const row = (await pg.query(`SELECT status, content FROM subscription."PlanVersion" WHERE id = $1`, [v2])).rows[0];
+    expect(row.status).toBe('PUBLISHED');
+    expect(row.content.unit_prices).toEqual([{ unit_key: 'sign.sms_message', unit_price_minor: 5, currency: 'USD' }]);
   });
 
   it('B2-FAULT-1 a fault after the catalog write rolls back the publish (v1 still PUBLISHED, v2 DRAFT, no pin); the retry applies', async () => {

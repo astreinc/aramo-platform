@@ -40,6 +40,12 @@ import {
   classifySigningError,
   declineSigning,
   DECLINE_REASON_MIN,
+  DELEGATE_COPY,
+  DELEGATE_REASON_MAX,
+  delegateRefusalCopy,
+  delegateSigning,
+  delegatedCopy,
+  validDelegate,
   loadSource,
   openSigning,
   SIGNING_COPY,
@@ -75,6 +81,8 @@ type Phase =
   | { kind: 'fields' }
   | { kind: 'signed'; completed: boolean; at: string }
   | { kind: 'declined' }
+  /** B3 — handed to someone else; this link no longer works. */
+  | { kind: 'delegated'; name: string }
   | { kind: 'ended'; message: string }
   | { kind: 'waiting'; message: string }
   | { kind: 'error'; message: string };
@@ -166,6 +174,11 @@ export function SigningFlow(props: SigningFlowProps) {
   const [textDraft, setTextDraft] = useState('');
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineError, setDeclineError] = useState<string | null>(null);
+  const [delegateOpen, setDelegateOpen] = useState(false);
+  const [delegateError, setDelegateError] = useState<string | null>(null);
+  const [delegateName, setDelegateName] = useState('');
+  const [delegateEmail, setDelegateEmail] = useState('');
+  const [delegateReason, setDelegateReason] = useState('');
   const [saved, setSaved] = useState<SavedMarks | null>(null);
   const [claimState, setClaimState] = useState<'idle' | 'busy' | 'done'>('idle');
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
@@ -375,6 +388,37 @@ export function SigningFlow(props: SigningFlowProps) {
     }
   }
 
+  // B3 (Feature-Parity §1.17) — hand this signature to another person.
+  async function delegate(): Promise<void> {
+    if (!session) return;
+    const input = { name: delegateName, email: delegateEmail, reason: delegateReason };
+    if (!validDelegate(input)) {
+      setDelegateError(DELEGATE_COPY.invalid);
+      return;
+    }
+    if (!online) {
+      setDelegateError('You’re offline. Connect to send.');
+      return;
+    }
+    setBusy(true);
+    setDelegateError(null);
+    try {
+      await delegateSigning(session, input);
+      // The link is revoked by the server: forget the token here too.
+      session.discard();
+      setDelegateOpen(false);
+      setPhase({ kind: 'delegated', name: input.name.trim() });
+    } catch (e) {
+      const msg = delegateRefusalCopy(e);
+      if (msg === null) {
+        setDelegateOpen(false);
+        fail(e);
+      } else setDelegateError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function claim(): Promise<void> {
     if (!onClaim) return;
     setClaimState('busy');
@@ -397,12 +441,15 @@ export function SigningFlow(props: SigningFlowProps) {
     phase.kind === 'ended' ||
     phase.kind === 'waiting' ||
     phase.kind === 'error' ||
-    phase.kind === 'declined'
+    phase.kind === 'declined' ||
+    phase.kind === 'delegated'
   ) {
     const title =
       phase.kind === 'waiting'
         ? phase.message
-        : phase.kind === 'declined'
+        : phase.kind === 'delegated'
+          ? 'Handed off'
+          : phase.kind === 'declined'
           ? 'You declined to sign'
           : phase.kind === 'ended'
             ? 'This link can’t be used'
@@ -410,7 +457,9 @@ export function SigningFlow(props: SigningFlowProps) {
     const body =
       phase.kind === 'waiting'
         ? 'It’s not your turn to sign yet. You’ll get an email when it is.'
-        : phase.kind === 'declined'
+        : phase.kind === 'delegated'
+          ? delegatedCopy(phase.name)
+          : phase.kind === 'declined'
           ? `${from} is told you declined, and the envelope stops for everyone.`
           : phase.message;
     return (
@@ -774,8 +823,55 @@ export function SigningFlow(props: SigningFlowProps) {
             style={{ minWidth: 132 }}
           />
         </View>
+        {view?.canDelegate ? (
+          <Button
+            testID="delegate-open"
+            title="Ask someone else to sign"
+            variant="text"
+            onPress={() => {
+              setDelegateError(null);
+              setDelegateOpen(true);
+            }}
+          />
+        ) : null}
         <Button title="Decline to sign" variant="text" onPress={() => setDeclineOpen(true)} />
       </View>
+      <Sheet visible={delegateOpen} onClose={() => setDelegateOpen(false)} title="Ask someone else to sign">
+        <Text style={{ color: t.color.textSecondary, fontSize: 14, lineHeight: 20 }}>
+          They get their own link by email. This link stops working for you.
+        </Text>
+        <TextField
+          label="Name"
+          testID="delegate-name"
+          value={delegateName}
+          onChangeText={setDelegateName}
+          autoCapitalize="words"
+        />
+        <TextField
+          label="Email"
+          testID="delegate-email"
+          value={delegateEmail}
+          onChangeText={setDelegateEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+        <TextField
+          label="Reason"
+          hint="(optional)"
+          testID="delegate-reason"
+          value={delegateReason}
+          onChangeText={setDelegateReason}
+          maxLength={DELEGATE_REASON_MAX}
+          error={delegateError}
+        />
+        <Button
+          testID="delegate-send"
+          title="Send"
+          busy={busy}
+          disabled={delegateName.trim().length === 0 || delegateEmail.trim().length === 0}
+          onPress={() => void delegate()}
+        />
+      </Sheet>
       <AdoptSignatureSheet
         visible={adoptFor !== null}
         target={adoptFor?.target ?? 'SIGNATURE'}

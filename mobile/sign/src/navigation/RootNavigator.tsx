@@ -7,6 +7,7 @@ import { ActivityIndicator, AppState, Modal, View } from 'react-native';
 
 import { useServices, useSession } from '../app/ServicesContext';
 import { biometricCapability, biometricUnlockPref, shouldRelock } from '../auth/biometric';
+import { LegalAcceptanceGate } from '../features/account/LegalAcceptanceGate';
 import { setPendingTarget } from '../links/pendingTarget';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { DocumentViewerScreen } from '../screens/documents/DocumentViewerScreen';
@@ -219,6 +220,8 @@ export function RootNavigator() {
           options={{ title: 'Review and sign', presentation: 'fullScreenModal' }}
         />
       </Stack.Navigator>
+      {/* ToS v2.0 — blocking acceptance of the current legal documents after sign-in (and unlock). */}
+      {snap.status === 'signedIn' && lock === 'open' ? <LegalAcceptanceGate /> : null}
       <Modal visible={relocked} animationType="none" onRequestClose={() => undefined}>
         <UnlockScreen onUnlocked={unlockResumed} />
       </Modal>

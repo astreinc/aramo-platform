@@ -44,7 +44,8 @@ describe('EsignSignerController F3 — source + document routes', () => {
     const controller = new EsignSignerController(service, {} as EsignRepository, port);
     const res = await controller.document({ token: 'tok' }, 'req-1');
 
-    expect(res).toBe(view);
+    // B3 — can_delegate is false unless the engine says so and delegate signing is available.
+    expect(res).toEqual({ ...view, can_delegate: false });
     expect(port.getSourcePdf).not.toHaveBeenCalled();
     expect(JSON.stringify(res)).not.toContain(TENANT);
   });

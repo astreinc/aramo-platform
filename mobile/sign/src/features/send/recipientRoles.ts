@@ -6,14 +6,21 @@
 //     (copy_delivery_required), and never any fields (copy_recipient_has_fields);
 //   - emails are distinct across all kinds; a missing email is never a duplicate;
 //   - email is optional for IN_PERSON_SIGNER only;
-//   - Assign to me applies to SIGNER only (assign_to_me_not_signer).
+//   - Assign to me applies to SIGNER only (assign_to_me_not_signer);
+//   - a WITNESS attests for one SIGNER or IN_PERSON_SIGNER, named by its position in the
+//     wire list (witness_for_index); one witness per signer (witness_duplicate);
+//   - the access code and the identity check apply to SIGNER and WITNESS only; text
+//     delivery and the SMS code apply to SIGNER only (their own route).
 // Copy recipients never take part in the signing order: the wire list is the signing
 // recipients in their order, then the copy recipients.
 import {
   MAX_COPY_RECIPIENTS,
   MAX_RECIPIENTS,
+  NO_MESSAGING,
+  hasMessaging,
   type CopyDelivery,
   type DraftRecipient,
+  type IdentityCheck,
   type RecipientKind,
 } from './draftModel';
 
@@ -21,6 +28,7 @@ export const ROLE_CHIPS: readonly { readonly kind: RecipientKind; readonly label
   { kind: 'SIGNER', label: 'Signs' },
   { kind: 'IN_PERSON_SIGNER', label: 'In person' },
   { kind: 'RECEIVES_COPY', label: 'Copy' },
+  { kind: 'WITNESS', label: 'Witness' },
 ];
 
 export const COPY_TIMING: readonly { readonly key: CopyDelivery; readonly label: string }[] = [
@@ -47,6 +55,51 @@ export function isCopy(r: Kinded): boolean {
 export function isInPerson(r: Kinded): boolean {
   return kindOf(r) === 'IN_PERSON_SIGNER';
 }
+export function isWitness(r: Kinded): boolean {
+  return kindOf(r) === 'WITNESS';
+}
+/** A recipient a witness can attest for. */
+export function isWitnessable(r: Kinded): boolean {
+  const k = kindOf(r);
+  return k === 'SIGNER' || k === 'IN_PERSON_SIGNER';
+}
+/** The access code and the identity check apply to these kinds (they sign from a link). */
+export function takesLinkChecks(r: Kinded): boolean {
+  const k = kindOf(r);
+  return k === 'SIGNER' || k === 'WITNESS';
+}
+/** Text delivery and the SMS code apply to a SIGNER only. */
+export function takesMessaging(r: Kinded): boolean {
+  return kindOf(r) === 'SIGNER';
+}
+
+/** The recipients a witness (`key`) may attest for. */
+export function witnessTargets(list: readonly DraftRecipient[], key: string): DraftRecipient[] {
+  return list.filter((r) => r.key !== key && isWitnessable(r));
+}
+
+/** Clear a witness's target when it is gone or can no longer be witnessed. */
+export function clearDanglingWitnesses(list: readonly DraftRecipient[]): DraftRecipient[] {
+  const ok = new Set(list.filter(isWitnessable).map((r) => r.key));
+  return list.map((r) =>
+    isWitness(r) && r.witnessForKey && !ok.has(r.witnessForKey) ? { ...r, witnessForKey: null } : r,
+  );
+}
+
+export const ACCESS_CODE_MIN = 4;
+export const ACCESS_CODE_MAX = 32;
+/** 4 to 32 printable characters, after trimming (the server's rule). */
+export function validAccessCode(code: string): boolean {
+  const c = code.trim();
+  return c.length >= ACCESS_CODE_MIN && c.length <= ACCESS_CODE_MAX && /^[\x20-\x7E]+$/.test(c);
+}
+
+const E164 = /^\+[1-9]\d{7,14}$/;
+/** E.164: a plus sign, a non-zero country digit, 8 to 15 digits in all. */
+export function validPhone(phone: string): boolean {
+  return E164.test(phone.trim());
+}
+export const PHONE_HINT = 'Use the international format, for example +14155550123';
 export function signingRecipients<T extends Kinded>(list: readonly T[]): T[] {
   return list.filter((r) => !isCopy(r));
 }
@@ -118,14 +171,24 @@ export function changeKind(
   }
   if (kind !== 'IN_PERSON_SIGNER' && emailKey(r.email) === null)
     return { ok: false, reason: 'email_required' };
+  const linkChecks = kind === 'SIGNER' || kind === 'WITNESS';
+  const hasCode = r.accessCode !== undefined ? r.accessCode !== null : r.accessCodeSet === true;
   const next: DraftRecipient = {
     ...r,
     kind,
     copyDelivery: kind === 'RECEIVES_COPY' ? (r.copyDelivery ?? DEFAULT_COPY_DELIVERY) : null,
+    witnessForKey: kind === 'WITNESS' ? (r.witnessForKey ?? null) : null,
+    // A kind that does not sign from a link keeps no access code or identity check, and
+    // only a SIGNER keeps text delivery (cleared on the server too).
+    ...(!linkChecks && hasCode ? { accessCode: null } : {}),
+    ...(!linkChecks && r.identityCheck ? { identityCheck: null, identityDirty: true } : {}),
+    ...(kind !== 'SIGNER' && hasMessaging(r.messaging)
+      ? { messaging: NO_MESSAGING, messagingDirty: true }
+      : {}),
   };
   return {
     ok: true,
-    recipients: list.map((x) => (x.key === key ? next : x)),
+    recipients: clearDanglingWitnesses(list.map((x) => (x.key === key ? next : x))),
     dropsFields: kind === 'RECEIVES_COPY',
   };
 }
@@ -142,13 +205,23 @@ export interface RecipientWire {
   readonly recipient_kind: RecipientKind;
   readonly copy_delivery?: CopyDelivery;
   readonly assign_to_me?: true;
+  /** WITNESS only: the position, in this wire list, of the recipient it attests for. */
+  readonly witness_for_index?: number | null;
+  /** Only when changed here: a code sets it, null removes it. */
+  readonly access_code?: string | null;
+  /** Only when changed here: a method sets it, null clears it. */
+  readonly identity_verification_method?: IdentityCheck | null;
 }
 
 /** The PUT …/recipients items, in wire order. */
 export function recipientsToWire(list: readonly DraftRecipient[]): RecipientWire[] {
-  return wireOrder(list).map((r) => {
+  const ordered = wireOrder(list);
+  const position = new Map(ordered.map((r, i) => [r.key, i]));
+  return ordered.map((r) => {
     const kind = kindOf(r);
     const email = emailKey(r.email) === null ? null : r.email.trim();
+    const witnessFor = r.witnessForKey ? position.get(r.witnessForKey) : undefined;
+    const code = r.accessCode;
     return {
       ...(r.serverId ? { id: r.serverId } : {}),
       name: r.name,
@@ -158,6 +231,13 @@ export function recipientsToWire(list: readonly DraftRecipient[]): RecipientWire
         ? { copy_delivery: r.copyDelivery ?? DEFAULT_COPY_DELIVERY }
         : {}),
       ...(kind === 'SIGNER' && r.assignToMe === true ? { assign_to_me: true as const } : {}),
+      ...(kind === 'WITNESS' ? { witness_for_index: witnessFor ?? null } : {}),
+      ...(code === null || (typeof code === 'string' && takesLinkChecks(r))
+        ? { access_code: code === null ? null : code.trim() }
+        : {}),
+      ...(r.identityDirty === true
+        ? { identity_verification_method: takesLinkChecks(r) ? (r.identityCheck ?? null) : null }
+        : {}),
     };
   });
 }
@@ -173,4 +253,15 @@ export const ROLE_COPY = {
   assign_to_me_not_signer: 'Only a signer can be assigned to you.',
   assign_to_me_email_mismatch:
     'You can assign a recipient to yourself only with your own verified account email.',
+  witness_for_required: 'Choose the signer each witness signs for.',
+  witness_for_invalid: 'A witness signs for a signer.',
+  witness_duplicate: 'A signer can have only one witness.',
+  witness_for_not_allowed: 'Only a witness signs for someone else.',
+  plan_not_eligible: 'This option is available on Business plans.',
+  access_code_invalid: `Access codes are ${ACCESS_CODE_MIN} to ${ACCESS_CODE_MAX} letters, numbers or symbols.`,
+  access_code_not_allowed: 'Only people who sign from a link can have an access code.',
+  identity_verification_not_link_signer: 'Only people who sign from a link can have an identity check.',
+  invalid_phone: PHONE_HINT,
+  recipient_kind_not_supported: 'Text messages and SMS codes are for signers only.',
+  messaging_provider_not_configured: 'Text messages can’t reach this number right now.',
 } as const;

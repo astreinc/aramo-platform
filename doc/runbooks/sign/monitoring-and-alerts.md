@@ -83,11 +83,19 @@ Choices, and why:
 | `sign:purge-r13` | `sign_purge.alert_integration_copy_unconfirmed` (R-13: an application envelope purged before its executed copy was confirmed delivered) | any |
 | `sign:retention` | retention or convenience-data purge failure | any |
 | `sign:privacy` | privacy-request execution failure | any |
+| `sign:webhooks` | a vendor webhook (WhatsApp, inbound SMS, Stripe Identity, Stripe Connect, Stripe billing) refused for a wrong signature, a stale timestamp, a wrong SNS topic or certificate, or failed while processing; a Connect payment event refused | any |
+| `sign:messaging` | an SMS / WhatsApp provider send error, the send flow failing, a provider asked for but left off at boot, or the inbound-SMS SNS subscription removed | any |
+| `sign:tsa-seal` | a trusted timestamp still pending after 10 attempts (`trusted_timestamp.attempts_exceeded`, repeated on every later failed retry), the timestamp retry job failing, a document seal failing for good (`document_seal.attempt_failed … final`) or its retry job failing | any |
+| `sign:metering` | a usage report that will never reach Stripe (`usage_report.failed`), the report job failing, reports held because the Stripe key is live-mode, or a delivered SMS / ID check whose usage could not be recorded | any |
 | `backup` | newest local heartbeat is FAILED, or the newest OK one is older than the limit; missing directory only fails when `MON_BACKUP_REQUIRED=1` | 26 h |
 
 The Sign patterns are the exact log strings of `apps/sign-service/src/app/kms-evidence-manifest-signer.ts`,
 `custody/executed-artifact-custody.service.ts`, `custody/sign-artifact-reconcile.worker.ts`,
-`retention/sign-purge.service.ts`, `retention/sign-retention.*.ts` and `privacy/sign-privacy-execution.*.ts`;
+`retention/sign-purge.service.ts`, `retention/sign-retention.*.ts`, `privacy/sign-privacy-execution.*.ts`,
+`webhook-log.ts`, `payments/sign-payment.service.ts`, `messaging/*.ts`, `trusted-timestamp/*.ts`,
+`billing/sign-usage-report.worker.ts`, and in the libraries `libs/sign/src/lib/trusted-timestamp/`,
+`libs/sign/src/lib/document-seal/`, `libs/sign/src/lib/identity-verification/` and
+`libs/subscription/src/lib/usage/usage-provider-report.service.ts`;
 `deploy/monitoring/aramo-health-probe.test.sh` pins them against sample lines. A log-message change in those
 files must update `MON_RE_SIGN_*` in the probe in the same PR.
 
@@ -147,6 +155,10 @@ For a confirmed production incident follow [incident-response-and-rollback.md](i
 | `sign:kms`, `sign:custody` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'KMS|sign_artifact_custody'` | [kms-and-custody-incidents.md](kms-and-custody-incidents.md) |
 | `sign:purge`, `sign:purge-r13`, `sign:retention` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'sign_purge|purge run|retention'` | [purge-and-party-deletion.md](purge-and-party-deletion.md) §4 |
 | `sign:privacy` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'privacy (request|execution)'` | [privacy-requests.md](privacy-requests.md) §5 |
+| `sign:webhooks` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'sign_webhook|payment webhook'` | `source=` names the vendor. BAD_SIGNATURE / STALE on every event ⇒ the secret in `.env` differs from the vendor dashboard (rotate both); WRONG_TOPIC ⇒ `SIGN_SMS_AWS_INBOUND_TOPIC_ARN`; `failed` ⇒ the vendor redelivers, read the stack in the same window. Activation guide §3.12–3.18 |
+| `sign:messaging` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'sign_messaging|SIGN_(SMS|WHATSAPP)|sms inbound'` | `error=` is the provider's code (AWS: spend limit, throttling, opted out; MSG91: `http_<n>`; Meta: `meta_<code>`). Vendor consoles: AWS End User Messaging, MSG91, Meta WhatsApp Manager. Activation guide §3.12–3.15 |
+| `sign:tsa-seal` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'trusted.timestamp|document_seal'` | TSA down or refusing (HTTP status in the pending line; credentials per guide §3.10); seal provider errors per guide §3.11. Completion is never blocked: pending timestamps keep retrying |
+| `sign:metering` | `docker logs --since 1h aramo-prod-sign 2>&1 | grep -E 'usage_report|usage report|usage not recorded'` | `reason=` per activation guide §3.21 (PROVIDER_REFUSED: a missing Stripe meter; PROVIDER_RETRIES_EXHAUSTED: Stripe unavailable; live-mode hold: needs its own authorization) |
 | `backup` | `sudo ls -lt /var/backups/aramo-r15/heartbeat | head`; `journalctl -u aramo-pg-backup.service -n 80` | `RUNBOOK-backups.md`; the daily freshness Lambda reports the same from S3 |
 
 ## 5. Known limits

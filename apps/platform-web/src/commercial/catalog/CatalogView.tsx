@@ -10,6 +10,7 @@ import {
   CATALOG_PRODUCTS,
   NO_PLANS_LINE,
   REQUEST_STATE_LABEL,
+  UNIT_PRICES_INTRO,
   STEP_LABEL,
   V1_LOCK_TITLE,
   chainLabelOf,
@@ -22,8 +23,10 @@ import {
   openRequestOf,
   openRequestSentence,
   parseFieldInput,
+  parseUnitPriceInput,
   pinnedLine,
   planRow,
+  unitPriceFields,
   versionActions,
   versionTitle,
   versionsAscending,
@@ -42,7 +45,9 @@ import './catalog.css';
 //     (price, envelopes per month, storage; saved when a field loses focus);
 //   - "Request publish…" / "Retire this version…" create a PLAN_VERSION_PUBLISH / PLAN_RETIRE change
 //     request and submit it (Finance → Owner). The console never publishes or retires;
-//   - a PUBLISHED or RETIRED version is read-only: no field is editable and no edit action exists.
+//   - a PUBLISHED or RETIRED version is read-only: no field is editable and no edit action exists;
+//   - Sign Feature Parity A4 (D2): the add-on unit prices (SMS, ID checks, …) are draft fields too,
+//     part of the version's content and its fingerprint, published only with the version.
 // Other roles see the view-only note; their buttons are disabled with the reason as a tooltip.
 // CCP PLAN_CREATE (catalog row 17): "New plan…" (catalog manager) creates a PLAN_CREATE change request
 // (Finance → Owner); the pending creations are listed under the plans, and the requester applies an
@@ -72,6 +77,8 @@ export function CatalogView({ session }: { readonly session: Session }) {
   const [tenantNames, setTenantNames] = useState<Record<string, readonly string[]>>({});
   const [inputs, setInputs] = useState<Partial<Record<EditorFieldKey, string>>>({});
   const [invalid, setInvalid] = useState<EditorFieldKey | null>(null);
+  const [unitInputs, setUnitInputs] = useState<Readonly<Record<string, string>>>({});
+  const [unitInvalid, setUnitInvalid] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -152,6 +159,8 @@ export function CatalogView({ session }: { readonly session: Session }) {
   useEffect(() => {
     setInputs({});
     setInvalid(null);
+    setUnitInputs({});
+    setUnitInvalid(null);
     setSaveError(null);
     setActionError(null);
   }, [versionId]);
@@ -198,6 +207,40 @@ export function CatalogView({ session }: { readonly session: Session }) {
         setInputs((m) => {
           const rest = { ...m };
           delete rest[key];
+          return rest;
+        });
+      } catch (e) {
+        setSaveError(errorText(e, 'The draft couldn’t be saved. Try again.'));
+      }
+    })();
+    saving.current = run;
+    await run;
+    if (saving.current === run) saving.current = null;
+  };
+
+  /** A4 D2 — saves one add-on unit price when it loses focus ("" = not sold). DRAFT + catalog manager only. */
+  const saveUnitPrice = async (unit_key: string): Promise<void> => {
+    if (!version || version.status !== 'DRAFT' || !canDraft) return;
+    const raw = unitInputs[unit_key];
+    if (raw === undefined) return;
+    const parsed = parseUnitPriceInput(raw);
+    if (!parsed.ok) {
+      setUnitInvalid(unit_key);
+      return;
+    }
+    setUnitInvalid(null);
+    const prior = saving.current;
+    const run = (async () => {
+      if (prior) await prior;
+      const current = latest.current;
+      if (!current || current.id !== version.id) return;
+      try {
+        await catalogApi.updateDraft(current.id, current.content_checksum, { unit_prices: { [unit_key]: parsed.value } });
+        setSaveError(null);
+        await load();
+        setUnitInputs((m) => {
+          const rest = { ...m };
+          delete rest[unit_key];
           return rest;
         });
       } catch (e) {
@@ -287,12 +330,13 @@ export function CatalogView({ session }: { readonly session: Session }) {
   const planCreate = catalog?.plan_create;
   const availableKeys = planCreate?.available_keys.find((k) => k.product_key === 'sign')?.keys ?? [];
   const pendingCreates = planCreate?.pending ?? [];
+  const meteredUnits = catalog?.metered_units?.find((m) => m.product_key === product)?.units ?? [];
 
   const dialogDiff: CommercialDiffRow[] = (() => {
     if (dialog === null) return [];
     if (dialog.kind === 'retire') return [{ field: versionTitle(dialog.plan, dialog.version), before: 'Published', after: 'Retired', changed: true }];
     const pub = lastPublished(dialog.plan, dialog.version);
-    return pub ? draftDiff(pub.terms, dialog.version.terms, 'dialog') : [];
+    return pub ? draftDiff(pub.terms, dialog.version.terms, 'dialog', meteredUnits) : [];
   })();
 
   return (
@@ -449,11 +493,38 @@ export function CatalogView({ session }: { readonly session: Session }) {
                       </label>
                     ))}
                   </div>
+                  {meteredUnits.length > 0 ? (
+                    <div className="pc-addons" data-testid="unit-prices">
+                      <div className="pc-caps pc-caps--16">Add-on unit prices (USD)</div>
+                      <p className="pc-addons__intro">{UNIT_PRICES_INTRO}</p>
+                      <div className="pc-fields">
+                        {unitPriceFields(meteredUnits, version, canDraft, unitInputs).map((f) => (
+                          <label key={f.unit_key} className="pc-field" title={f.title}>
+                            <span className="pc-field__label">{`${f.label} · ${f.per}`}</span>
+                            <Input
+                              unstyled
+                              type="text"
+                              inputMode="decimal"
+                              aria-label={`${f.label} unit price`}
+                              className={`pc-input${f.editable ? ' pc-input--editable' : ''}`}
+                              value={f.value}
+                              placeholder={f.placeholder}
+                              disabled={f.readOnly}
+                              readOnly={f.readOnly}
+                              aria-invalid={unitInvalid === f.unit_key || undefined}
+                              onChange={(e) => setUnitInputs((m) => ({ ...m, [f.unit_key]: e.target.value }))}
+                              onBlur={() => void saveUnitPrice(f.unit_key)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {version.status === 'DRAFT' && lastPublished(plan, version) ? (
                     <>
                       <div className="pc-caps pc-caps--16">{`Compared with published v${String(lastPublished(plan, version)?.version_number ?? '')}`}</div>
                       <div className="pc-diff" role="table" aria-label="Draft compared with the published version">
-                        {draftDiff((lastPublished(plan, version) as CatalogVersion).terms, version.terms, 'editor').map((d) => (
+                        {draftDiff((lastPublished(plan, version) as CatalogVersion).terms, version.terms, 'editor', meteredUnits).map((d) => (
                           <div key={d.field} role="row" className={`pc-diff__row${d.changed ? ' pc-diff__row--changed' : ''}`}>
                             <span role="cell" className="pc-diff__mark">
                               {d.changed ? '~' : ''}

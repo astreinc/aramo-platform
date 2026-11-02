@@ -223,11 +223,6 @@ export const EVENT_TYPES = [
   'identity.sign_custom_role.deleted',
   'identity.sign_custom_role.assigned',
   'identity.sign_custom_role.unassigned',
-  // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5 — the owner upgraded a
-  // Personal account to a Business organization IN PLACE (same tenant id). Inserted IN
-  // THE SAME transaction as the kind change (PersonalUpgradeRepository). Tenant-scoped;
-  // subject_id = the tenant; actor = the owner.
-  'identity.tenant.upgraded_to_business',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -343,8 +338,6 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.sign_custom_role.deleted',
   'identity.sign_custom_role.assigned',
   'identity.sign_custom_role.unassigned',
-  // Feature-Parity §5 — the Personal → Business upgrade (carries the tenant id).
-  'identity.tenant.upgraded_to_business',
 ]);
 
 export interface WriteAuditEventInput {

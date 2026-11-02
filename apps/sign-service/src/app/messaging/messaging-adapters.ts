@@ -24,7 +24,10 @@ import {
 //            SDK default chain). Sends to every number except +91.
 //     msg91  SIGN_SMS_MSG91_AUTH_KEY + the DLT template id of each purpose:
 //            SIGN_SMS_MSG91_TEMPLATE_INVITATION / _REMINDER / _OTP (a purpose without a
-//            template id is not sent). Sends to +91 numbers only.
+//            template id is not sent). Optional: SIGN_SMS_MSG91_SENDER_ID (the DLT-registered
+//            6-letter header) and SIGN_SMS_MSG91_DLT_ENTITY_ID (the DLT Principal Entity id),
+//            sent with every request; unset ⇒ the MSG91 account's own mapping applies.
+//            Sends to +91 numbers only.
 //   SIGN_WHATSAPP_PROVIDER   unset ⇒ no WhatsApp | log | meta
 //     meta   SIGN_WHATSAPP_PHONE_NUMBER_ID, SIGN_WHATSAPP_ACCESS_TOKEN,
 //            SIGN_WHATSAPP_TEMPLATE_INVITATION (approved template name; REMINDER falls back
@@ -153,6 +156,24 @@ export interface Msg91Config {
   auth_key: string;
   templates: Partial<Record<OutboundMessage['purpose'], string>>;
   base_url: string;
+  /** The DLT-registered header (TRAI: 6 characters). */
+  sender_id?: string;
+  /** The DLT Principal Entity id. */
+  dlt_entity_id?: string;
+}
+
+/**
+ * The Flow API request fields that carry the DLT header and Principal Entity id. Confirm both
+ * names with MSG91 at onboarding (Remaining-Work Directive §3 B5; activation guide §3.13).
+ */
+export const MSG91_SENDER_FIELD = 'sender';
+export const MSG91_DLT_ENTITY_FIELD = 'DLT_PE_ID';
+
+export class Msg91ConfigError extends Error {
+  constructor(message: string) {
+    super(`SIGN_SMS_MSG91 configuration refused: ${message}`);
+    this.name = 'Msg91ConfigError';
+  }
 }
 
 export function msg91ConfigFromEnv(env: NodeJS.ProcessEnv): Msg91Config | null {
@@ -164,7 +185,18 @@ export function msg91ConfigFromEnv(env: NodeJS.ProcessEnv): Msg91Config | null {
     if (t) templates[p] = t;
   }
   if (Object.keys(templates).length === 0) return null;
-  return { auth_key, templates, base_url: 'https://control.msg91.com/api/v5/flow' };
+  const sender_id = env['SIGN_SMS_MSG91_SENDER_ID']?.trim();
+  const dlt_entity_id = env['SIGN_SMS_MSG91_DLT_ENTITY_ID']?.trim();
+  // TRAI headers are 6 letters (transactional: alphabetic); entity ids are 19 digits today.
+  if (sender_id && !/^[A-Za-z]{6}$/.test(sender_id)) throw new Msg91ConfigError('SIGN_SMS_MSG91_SENDER_ID must be the 6-letter DLT header');
+  if (dlt_entity_id && !/^\d{10,25}$/.test(dlt_entity_id)) throw new Msg91ConfigError('SIGN_SMS_MSG91_DLT_ENTITY_ID must be the numeric DLT Principal Entity id');
+  return {
+    auth_key,
+    templates,
+    base_url: 'https://control.msg91.com/api/v5/flow',
+    ...(sender_id ? { sender_id: sender_id.toUpperCase() } : {}),
+    ...(dlt_entity_id ? { dlt_entity_id } : {}),
+  };
 }
 
 export class Msg91SmsAdapter implements ChannelAdapter {
@@ -189,7 +221,13 @@ export class Msg91SmsAdapter implements ChannelAdapter {
       const res = await this.fetchImpl(this.config.base_url, {
         method: 'POST',
         headers: { authkey: this.config.auth_key, 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ template_id, short_url: '0', recipients: [recipient] }),
+        body: JSON.stringify({
+          template_id,
+          short_url: '0',
+          ...(this.config.sender_id !== undefined ? { [MSG91_SENDER_FIELD]: this.config.sender_id } : {}),
+          ...(this.config.dlt_entity_id !== undefined ? { [MSG91_DLT_ENTITY_FIELD]: this.config.dlt_entity_id } : {}),
+          recipients: [recipient],
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as { type?: string; message?: string };
       if (!res.ok || body.type !== 'success') return { outcome: 'failed', provider: this.provider, error_code: `http_${res.status}` };
@@ -296,15 +334,28 @@ function wanted(raw: string | undefined): Set<string> {
   return new Set((raw ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => s !== '' && s !== 'disabled'));
 }
 
+/** The SMS providers SIGN_SMS_PROVIDER asks for (lower-case; unknown names included). */
+export function smsProvidersWanted(env: NodeJS.ProcessEnv): Set<string> {
+  return wanted(env['SIGN_SMS_PROVIDER']);
+}
+
 export function outboundMessagingFromEnv(env: NodeJS.ProcessEnv = process.env): OutboundMessagingPort {
   const sms: ChannelAdapter[] = [];
   const whatsapp: ChannelAdapter[] = [];
   const smsWanted = wanted(env['SIGN_SMS_PROVIDER']);
   if (smsWanted.has('log')) sms.push(new LogChannelAdapter('SMS'));
   if (smsWanted.has('msg91')) {
-    const cfg = msg91ConfigFromEnv(env);
-    if (cfg === null) log.error('SIGN_SMS_PROVIDER includes msg91 but SIGN_SMS_MSG91_AUTH_KEY and at least one SIGN_SMS_MSG91_TEMPLATE_* DLT template id are not set; MSG91 is off');
-    else sms.push(new Msg91SmsAdapter(cfg));
+    let cfg: Msg91Config | null = null;
+    let invalid = false;
+    try {
+      cfg = msg91ConfigFromEnv(env);
+    } catch (e) {
+      // An invalid header / entity id leaves MSG91 off (logged), never fatal — like an incomplete setting.
+      invalid = true;
+      log.error(`${(e as Error).message}; MSG91 is off`);
+    }
+    if (cfg !== null) sms.push(new Msg91SmsAdapter(cfg));
+    else if (!invalid) log.error('SIGN_SMS_PROVIDER includes msg91 but SIGN_SMS_MSG91_AUTH_KEY and at least one SIGN_SMS_MSG91_TEMPLATE_* DLT template id are not set; MSG91 is off');
   }
   if (smsWanted.has('aws')) {
     const cfg = awsSmsConfigFromEnv(env);

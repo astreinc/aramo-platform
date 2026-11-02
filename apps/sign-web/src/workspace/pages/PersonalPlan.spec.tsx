@@ -140,6 +140,7 @@ describe('PersonalPlanPanel', () => {
     expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('21 of 25 left this month');
     expect(screen.getByTestId('personal-allowance-chip')).not.toHaveTextContent('today');
     expect(screen.queryByTestId('personal-plan-upgrade')).toBeNull();
+    expect(screen.getByTestId('personal-plan-manage')).toHaveTextContent('Manage billing or cancel');
     fireEvent.click(screen.getByTestId('personal-plan-manage'));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://billing.stripe.test/p'));
   });
@@ -167,5 +168,12 @@ describe('PersonalPlanPanel', () => {
     fireEvent.click(await screen.findByTestId('personal-plan-manage'));
     expect(await screen.findByText('Billing management will be available soon; contact support@aramo.ai.')).toBeInTheDocument();
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('Remaining-Work A4 — a requested cancel says when Standard ends and that the account returns to Free', async () => {
+    vi.stubGlobal('fetch', stub([free({ ...STANDARD, subscription: { ...STANDARD.subscription!, cancel_at_period_end: true } })]));
+    render(<PersonalPlanPanel />);
+    expect(await screen.findByTestId('personal-plan-cancel')).toHaveTextContent('Standard ends on');
+    expect(screen.getByTestId('personal-plan-cancel')).toHaveTextContent('returns to the Free plan');
   });
 });

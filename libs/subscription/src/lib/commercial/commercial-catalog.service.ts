@@ -135,6 +135,13 @@ export interface CatalogView {
   publish_chain: CatalogChainPreview | null;
   /** CCP PLAN_CREATE — creation options and pending creations (same Finance → Owner chain as publish_chain). */
   plan_create: CatalogPlanCreateView;
+  /** A4 D2 — the add-on (metered) units a DRAFT of each product can price (the MeteredUnit registry). */
+  metered_units: CatalogMeteredUnitsView[];
+}
+
+export interface CatalogMeteredUnitsView {
+  product_key: ProductKey;
+  units: { unit_key: string; name: string; quantity_label: string }[];
 }
 
 export interface CatalogPinnedTenant {
@@ -189,7 +196,12 @@ export class CommercialCatalogService {
           versions: rows.filter((r) => r.plan_id === p.id).map((r) => summaryOf(r, pins.get(r.id) ?? 0, open.get(r.id) ?? [])),
         })),
     }));
-    return { products, publish_chain: await this.publishChain(), plan_create: await this.planCreateView(now) };
+    const units = await this.prisma.meteredUnit.findMany({ where: { product_key: { in: productKeys() } }, orderBy: { unit_key: 'asc' }, select: { unit_key: true, name: true, quantity_label: true, product_key: true } });
+    const metered_units = productKeys().map((product_key) => ({
+      product_key,
+      units: units.filter((u) => u.product_key === product_key).map((u) => ({ unit_key: u.unit_key, name: u.name, quantity_label: u.quantity_label })),
+    }));
+    return { products, publish_chain: await this.publishChain(), plan_create: await this.planCreateView(now), metered_units };
   }
 
   async readVersion(version_id: string, now: Date = new Date()): Promise<CatalogVersionDetail> {

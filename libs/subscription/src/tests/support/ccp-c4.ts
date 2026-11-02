@@ -22,6 +22,7 @@ import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 
 import { type C1Harness, FakeStripe, type ProviderFailure, c1Harness } from './ccp-c1.js';
 import { TEST_REFUND_POLICY_REF } from './ccp-dg.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './legal-registry.js';
 
 // CCP-C4 — ONE shared harness for the C4 specs (CLAUDE.md: one shared test helper): the C1 harness
 // (change requests, the fake Stripe with its no-transaction probe) with a fake that ALSO implements
@@ -218,7 +219,7 @@ export function c4Harness(prisma: PrismaService, now: () => Date): C4Harness {
   const refundGate = new RefundRemainderGate(billing);
   const changeRequests = new CommercialChangeRequestService(prisma, audit, policies, operators, now, refundGate);
   const conversionLedger = new CommercialConversionLedger(audit);
-  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, billing, conversionLedger, billing, adjustmentLedger);
+  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, billing, new CapacityService(prisma), undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20, base.orgProfile, billing, conversionLedger, billing, adjustmentLedger);
   const commands = new BillingCommandService(prisma, billing, lifecycle, billing, billing);
   const inbox = new BillingWebhookInboxService(prisma, billing, lifecycle);
   const adjustments = new CommercialBillingAdjustmentService(prisma, audit, operators, changeRequests, commands, now, lifecycle, billing, refundGate);

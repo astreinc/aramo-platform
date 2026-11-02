@@ -96,6 +96,10 @@ describe('BillingPanel', () => {
     const business = await screen.findByTestId(`billing-plan-${BUSINESS.key}`);
     expect(business).toHaveTextContent('$20/month per organization');
     expect(business).toHaveTextContent('12-month commitment, billed monthly · plus applicable tax');
+    // Remaining-Work A1 — before purchase: what happens after the commitment and how a cancellation works.
+    expect(screen.getAllByTestId('billing-plan-renewal')[0]).toHaveTextContent(
+      'Your plan starts with a 12-month commitment, billed monthly. After that it continues month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.',
+    );
     expect(business).toHaveTextContent('Unlimited E-Signs');
     expect(business).toHaveTextContent('10 GB storage');
     expect(business).toHaveTextContent('Team collaboration');
@@ -129,6 +133,7 @@ describe('BillingPanel', () => {
     expect(screen.getByTestId('billing-plan-ineligible')).toHaveTextContent('Aramo ATS subscription');
     expect(screen.queryByTestId(`billing-subscribe-${PRO.key}`)).toBeNull();
     expect(screen.getByTestId(`billing-plan-${ENTERPRISE.key}`)).toHaveTextContent('Contact sales');
+    expect(screen.getByTestId(`billing-plan-${ENTERPRISE.key}`).querySelector('[data-testid="billing-plan-renewal"]')).toBeNull();
   });
 
   it('no comparison (strikethrough) price is ever shown, even when the backend sends one (catalog v2 P-2); approved terms must be ticked before Subscribe', async () => {
@@ -141,6 +146,10 @@ describe('BillingPanel', () => {
     expect(card).not.toHaveTextContent('$30');
     const btn = screen.getByTestId(`billing-subscribe-${BUSINESS.key}`);
     expect(btn).toBeDisabled();
+    // Remaining-Work A1 — the required checkbox names the Terms and the month-to-month continuation.
+    expect(screen.getByTestId('billing-terms')).toHaveTextContent(
+      'I agree to the Aramo Sign Terms of Service (version 1.0.0), including that my plan continues month to month after its commitment until I cancel.',
+    );
     fireEvent.click(screen.getByTestId('billing-terms').querySelector('input')!);
     fireEvent.click(btn);
     await waitFor(() => expect(assign).toHaveBeenCalled());
@@ -158,8 +167,26 @@ describe('BillingPanel', () => {
     expect(screen.getByTestId('billing-commitment')).toHaveTextContent('12-month commitment, billed monthly');
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.queryByTestId(`billing-subscribe-${BUSINESS.key}`)).toBeNull();
+    expect(screen.getByTestId('billing-manage')).toHaveTextContent('Manage billing or cancel');
     fireEvent.click(screen.getByTestId('billing-manage'));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://billing.stripe.test/p'));
+  });
+
+  it('Remaining-Work A4 — the owner of a self-service plan gets Cancel subscription when the backend offers it', async () => {
+    const view = {
+      product_key: 'sign', terms: { state: 'APPROVED', document_key: 'sign.terms_of_service', version: '2.0', url: 'https://legal.test/t' },
+      subscription: { plan_key: PLAN.key, status: 'ACTIVE', current_period_end: '2027-10-18T12:00:00Z', cancel_at_period_end: false, commitment_end: '2027-10-18T12:00:00Z' },
+      pending_provider: false, pending_changes: [], actions: { cancel: { available: true, reason: null }, upgrade: { available: false, reason: null } }, can_manage_billing: true,
+    };
+    const fetch = stub([ACTIVE], (url) =>
+      url.endsWith('/v1/sign/billing/self-service') ? json(view) : url.endsWith('/v1/sign/billing/self-service/cancel') ? json({ request_id: 'r', action: 'CANCEL_AT_PERIOD_END', status: 'PENDING_PROVIDER', pending_provider: true, replayed: false }, 202) : undefined,
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(<BillingPanel />);
+    fireEvent.click(await screen.findByTestId('billing-cancel-open'));
+    expect(screen.getByTestId('billing-cancel-confirm')).toHaveTextContent('October 18, 2027');
+    fireEvent.click(screen.getByTestId('billing-cancel-submit'));
+    await waitFor(() => expect(fetch.mock.calls.some(([u, i]) => String(u).endsWith('/self-service/cancel') && (i as RequestInit | undefined)?.method === 'POST')).toBe(true));
   });
 
   it('a member without settings authority sees the plan but cannot buy or manage', async () => {

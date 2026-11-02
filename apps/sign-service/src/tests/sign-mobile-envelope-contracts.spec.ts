@@ -107,7 +107,7 @@ function envelope(over: Record<string, unknown> = {}) {
   };
 }
 
-function harness(opts: { env?: Record<string, unknown>; replay?: unknown; contacts?: unknown[]; recent?: unknown[]; history?: unknown[] } = {}) {
+function harness(opts: { env?: Record<string, unknown>; replay?: unknown; contacts?: unknown[]; recent?: unknown[]; history?: unknown[]; personal?: unknown } = {}) {
   const repo = {
     getEnvelopeDetail: vi.fn(async () => envelope(opts.env)),
     updateDraft: vi.fn(async (i: { expected_revision?: number }) => (i.expected_revision ?? 4) + 1),
@@ -137,7 +137,7 @@ function harness(opts: { env?: Record<string, unknown>; replay?: unknown; contac
   };
   const svc = new SenderEnvelopeService(
     repo as never, provider as never, ctx as never, { findUserById: vi.fn(async () => null) } as never,
-    {} as never, {} as never, { reserveUpload: vi.fn(), release: vi.fn() } as never, undefined, idem as never, contactStore as never,
+    {} as never, {} as never, { reserveUpload: vi.fn(), release: vi.fn() } as never, opts.personal as never, idem as never, contactStore as never,
   );
   return { svc, repo, provider, idem, contactStore };
 }
@@ -176,6 +176,22 @@ describe('SenderEnvelopeService — preconditions, message and detail fields', (
     expect(ready.repo.updateDraft).toHaveBeenNthCalledWith(2, expect.objectContaining({ execution_mode: 'SINGLE_SIGNATURE', expected_revision: 5 }));
     expect(ready.provider.sendEnvelope).toHaveBeenCalledWith(BROWSER.tenant_id, ENV, BROWSER.sub, undefined, { expected_revision: 6 });
     void repo;
+  });
+
+  it('ToS v2.0 — a Business sender who owes the Terms in effect is refused legal_acceptance_required before anything is sent', async () => {
+    const env = {
+      documents: [{ id: 'd1', title: 'a.pdf', ordinal: 0, content_type: 'application/pdf', byte_size: 1, source_sha256: 'x', fields: [{ id: 'f1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 1, y: 1, width: 1, height: 1, required: true, filled_at: null }] }],
+      signers: [{ id: 's1', name: 'Ann', email: 'ann@x.test', status: 'PENDING', signing_order: 1, viewed_at: null, signed_at: null, declined_at: null, decline_reason: null }],
+    };
+    const refused = Object.assign(new Error('Review and accept the updated terms to continue'), { statusCode: 403, reason: 'legal_acceptance_required' });
+    const owes = { assertLegalAccepted: vi.fn(async () => { throw refused; }) };
+    const blocked = harness({ env, personal: owes });
+    await expect(blocked.svc.send(BROWSER, ENV, {}, 'r')).rejects.toBe(refused);
+    expect(owes.assertLegalAccepted).toHaveBeenCalledWith(expect.objectContaining({ kind: 'BUSINESS' }), BROWSER.sub, 'r');
+    expect(blocked.provider.sendEnvelope).not.toHaveBeenCalled();
+    const clear = harness({ env, personal: { assertLegalAccepted: vi.fn(async () => undefined) } });
+    await clear.svc.send(BROWSER, ENV, {}, 'r');
+    expect(clear.provider.sendEnvelope).toHaveBeenCalledTimes(1);
   });
 
   it('detail reports revision, message and the two distinct expiry fields (C-14); expires_at is kept', async () => {

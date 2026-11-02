@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
-import type { SignTemplateEntitlement } from '@aramo/subscription';
+import { FEATURE_AVAILABILITY, type SignTemplateEntitlement } from '@aramo/subscription';
 import {
   ESIGN_S2S_SIGNATURE_HEADER,
   ESIGN_S2S_TIMESTAMP_HEADER,
@@ -16,7 +16,7 @@ import { SenderTemplatesService } from '../app/sender/sender-templates.service.j
 
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7.2–7.4.
 //   - plan capability gate (sign.templates) in BOTH states (production registry =
-//     NOT_AVAILABLE; a test registry = AVAILABLE)
+//     AVAILABLE since the PO authorization of 2026-11-01; DARK test registry = NOT_AVAILABLE)
 //   - the session must hold document_template:read (and sign:envelope:create for an
 //     envelope) BEFORE any Documents call
 //   - the envelope is a Sign console draft whose document is the CORE_REF revision
@@ -102,13 +102,17 @@ function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'
   return { svc, documents, repo, envelopes, context, entitlements };
 }
 
-describe('plan capability sign.templates — NOT_AVAILABLE (the production registry)', () => {
-  it('the production registry keeps sign.templates NOT_AVAILABLE (flipping it is a PO decision)', () => {
-    expect(new SignFeatureGate().isAvailable(SIGN_TEMPLATES_FEATURE)).toBe(false);
+// PO authorization (R-8) 2026-11-01: sign.templates is AVAILABLE in production; the dark path uses DARK.
+const DARK = { ...FEATURE_AVAILABILITY, 'sign.templates': 'NOT_AVAILABLE' as const };
+
+describe('plan capability sign.templates — NOT_AVAILABLE (test registry)', () => {
+  it('the production registry has sign.templates AVAILABLE (PO 2026-11-01)', () => {
+    expect(new SignFeatureGate().isAvailable(SIGN_TEMPLATES_FEATURE)).toBe(true);
+    expect(new SignFeatureGate(DARK).isAvailable(SIGN_TEMPLATES_FEATURE)).toBe(false);
   });
 
   it('refuses list / preview / from-template with ESIGN_FEATURE_NOT_AVAILABLE (403) and never calls Documents', async () => {
-    const h = harness();
+    const h = harness({ registry: DARK });
     const a = auth(SENDER_SCOPES);
     await expect(h.svc.list(a, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', statusCode: 403 });
     await expect(h.svc.preview(a, TEMPLATE, {}, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
@@ -157,7 +161,7 @@ describe('Feature-Parity 1.1 — the plan includes templates (sign.templates AVA
   });
 
   it('the launch gate is checked before the plan: NOT_AVAILABLE never reads the plan', async () => {
-    const h = harness();
+    const h = harness({ registry: DARK });
     await expect(h.svc.list(a(), 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
     expect(h.entitlements.of).not.toHaveBeenCalled();
   });
@@ -270,14 +274,15 @@ describe('sender context — templates permission + feature availability', () =>
     findOrganizationNameById: async () => 'Acme',
   };
   const identity = { findUserById: async () => ({ email: 'u@x.test', display_name: 'U' }), findMembership: async () => null, findRoleKeysForMembership: async () => [] };
-  it('NOT_AVAILABLE (default) → features.templates false; permission follows document_template:read', async () => {
+  it('production registry → features.templates true (PO 2026-11-01); permission follows document_template:read', async () => {
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry.
     // Feature-Parity (Amendment A1) — sign.qes and sign.india_estamp stay NOT_AVAILABLE.
     // Sign Feature-Parity §1.21 — sign.custom_roles ships NOT_AVAILABLE (dark).
     // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry;
-    // Feature-Parity §1.17 / §1.9 — witness, delegate and access code stay dark (R-8).
-    expect(v.features).toEqual({ templates: false, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: false, custom_roles: false, payments: false, qes: false, india_estamp: false, reports: false });
+    // Feature-Parity §1.17 / §1.9 — witness and delegate stay dark (R-8).
+    // PO authorization (R-8) 2026-11-01 — templates, access code and reports are AVAILABLE.
+    expect(v.features).toEqual({ templates: true, in_person_signing: true, witness_signing: false, delegate_signing: false, access_code: true, sms_delivery: false, whatsapp_delivery: false, sms_otp: false, id_verification: false, kba: false, custom_roles: false, payments: false, qes: false, india_estamp: false, reports: true });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {

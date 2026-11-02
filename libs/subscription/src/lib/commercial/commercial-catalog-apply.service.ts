@@ -16,7 +16,7 @@ import {
   recordApplyFailure,
 } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type B2CatalogApplyAction, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
+import { type B2CatalogApplyAction, PLAN_TARGET_CHECKSUM_KEY, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
 import { type PlanCreatePayload, planCreateContent, planRowOf } from './commercial-plan-create.js';
 import {
   COMMERCIAL_CLOCK,
@@ -239,6 +239,12 @@ export class CommercialCatalogApplyService {
     const base = { plan_id: version.plan_id, plan_key: head.plan.key, plan_version_id: version.id, version_number: version.version_number, content_checksum: version.content_checksum };
     if (action === 'PLAN_VERSION_PUBLISH') {
       if (version.status !== 'DRAFT') throw new ApplyFailure('VERSION_NOT_DRAFT', { plan_version_id: version.id, status: version.status });
+      // Amendment A3 D1: the approved fingerprint. A request carrying the snapshot publishes only
+      // the content Finance and the Owner approved (add-on unit prices included).
+      const approved = p[PLAN_TARGET_CHECKSUM_KEY];
+      if (typeof approved === 'string' && approved !== version.content_checksum) {
+        throw new ApplyFailure('VERSION_CONTENT_CHANGED', { plan_version_id: version.id, approved_checksum: approved, current_checksum: version.content_checksum });
+      }
       const prior = await currentPublishedVersion(tx, version.plan_id);
       const price = typeof p['provider_price_ref'] === 'string' ? p['provider_price_ref'] : null;
       if (price !== null) {

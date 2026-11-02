@@ -52,6 +52,8 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //      billingApi.selfService of apps/sign-web/src/workspace/api.ts)
 //  13. POST /v1/sign/billing/self-service/cancel            503 ESIGN_BILLING_UNAVAILABLE
 //      details.reason self_service_terms_not_approved (CCP-C7; billingApi.selfServiceCancel)
+//  13a. GET /v1/sign/billing/usage                          200 { enabled: false, period: null }
+//      (Sign Feature Parity D-2: metered billing off by default; billingApi.usage)
 // Aramo Sign Mobile (M-A3 §3/§5/§6) — the same contracts serve web and mobile:
 //  14. GET   /v1/sign/sender/envelopes/{id}                 200 EnvelopeDetail + ETag "{id}.{revision}"
 //  15. PATCH /v1/sign/sender/envelopes/{id} (If-Match)      200 sets the sender message
@@ -889,6 +891,30 @@ describe('sign-workspace → POST /v1/sign/billing/self-service/cancel (terms no
         expect(res.status).toBe(503);
         const out = (await res.json()) as { error: { details: { reason: string } } };
         expect(out.error.details.reason).toBe('self_service_terms_not_approved');
+      });
+  });
+});
+
+// Sign Feature Parity D-2 (A1) — the metered-usage read while metered billing is off (the shipped
+// default, SIGN_USAGE_BILLING_ENABLED unset): no period, nothing for the console to show
+// (billingApi.usage of apps/sign-web/src/workspace/api.ts).
+describe('sign-workspace → GET /v1/sign/billing/usage (metered billing off)', () => {
+  it('answers enabled false with no period', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a metered-usage read by the billing owner while metered billing is off')
+      .withRequest('GET', '/v1/sign/billing/usage', (b) => {
+        b.headers(headers);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ enabled: false, period: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/usage`, { headers });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ enabled: false, period: null });
       });
   });
 });

@@ -27,6 +27,7 @@ import { CCP_A5_COMPENSATING, CCP_A5_MIGRATION, publishedVersionOf } from './fix
 import { SIGN_CATALOG_V2_MIGRATION, applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { withoutDisabledTax } from './fixtures/ccp-c5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) on real Postgres 17:
 //   N-19   the v1 backfill over a POPULATED database (the A4 Sign corpus): one PUBLISHED v1 per plan
@@ -193,7 +194,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A5 — PlanVe
     capacity = new CapacityService(prisma);
     billing = new FakeBilling();
     const eligibility: PlanEligibilityPort = { isEligible: async () => true };
-    lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, undefined, new FakeOrganizationBillingProfile());
+    lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, LEGAL_DOCUMENTS_BEFORE_TOS_V20, new FakeOrganizationBillingProfile());
     repo = new PlanVersionRepository(prisma);
     // The A4 golden observation, replayed through the A5 code right after the migration (the
     // same adapter as the A4 equality spec; the observation mutates the corpus, so it runs first).
@@ -213,7 +214,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A5 — PlanVe
         throw new Error('unused');
       },
     };
-    const plainLifecycle = new SubscriptionLifecycleService(prisma, allowance, offline, capacity);
+    const plainLifecycle = new SubscriptionLifecycleService(prisma, allowance, offline, capacity, undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20);
     const ops: SignOps = {
       getStatus: (t, k, at) => allowance.getStatus(t, P, k, at),
       reserve: (i) => allowance.reserve({ ...i, product_key: P }),

@@ -19,6 +19,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION, publishTestPlanV1 } from './fixtures/ccp-a5.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1 — on real Postgres 17:
 // the canonical catalog exactly as approved; unlimited signing is explicit and
@@ -108,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   const eligibility: PlanEligibilityPort = { isEligible: async (t) => atsTenants.has(t) };
   const env = { ...process.env };
   const orgProfile = new FakeOrganizationBillingProfile();
-  const svc = (legal?: readonly LegalDocumentVersion[]) => new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, legal, orgProfile);
+  const svc = (legal: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS_BEFORE_TOS_V20) => new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, legal, orgProfile);
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -158,7 +159,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       { allowance_key: 'sign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: false },
     ]));
     expect(free.capacities).toEqual(expect.arrayContaining([
-      { capacity_key: 'sign.templates', limit: 1, unlimited: false, available: false },
+      { capacity_key: 'sign.templates', limit: 1, unlimited: false, available: true }, // AVAILABLE: PO 2026-11-01
       { capacity_key: STORAGE, limit: 15 * 1024 * 1024, unlimited: false, available: true },
     ]));
     expect(free.features.every((f) => !f.enabled)).toBe(true);
@@ -173,7 +174,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
         { allowance_key: 'sign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY', available: false },
       ]));
       expect(p.capacities).toEqual(expect.arrayContaining([
-        { capacity_key: 'sign.templates', limit: null, unlimited: true, available: false },
+        { capacity_key: 'sign.templates', limit: null, unlimited: true, available: true }, // AVAILABLE: PO 2026-11-01
         { capacity_key: STORAGE, limit: storage, unlimited: false, available: true },
       ]));
       // The approved ENTITLEMENT is kept; launch AVAILABILITY is separate (AI
@@ -214,7 +215,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect((await svc().catalog('sign', t)).find((p) => p.key === PRO)!.purchasable).toBe(false);
     expect(await reason(checkout(PRO))).toBe('PLAN_NOT_ELIGIBLE');
     // No eligibility binding at all: fail closed.
-    expect(await reason(new SubscriptionLifecycleService(prisma, allowance, billing, capacity).startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'o', user_email: 'e', plan_key: PRO, success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_ELIGIBLE');
+    expect(await reason(new SubscriptionLifecycleService(prisma, allowance, billing, capacity, undefined, LEGAL_DOCUMENTS_BEFORE_TOS_V20).startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'o', user_email: 'e', plan_key: PRO, success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_ELIGIBLE');
 
     atsTenants.add(t);
     expect((await svc().catalog('sign', t)).find((p) => p.key === PRO)!.purchasable).toBe(true);

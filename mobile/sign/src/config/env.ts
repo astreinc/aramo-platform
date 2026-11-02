@@ -70,13 +70,14 @@ export const env: AppEnv = resolveEnv(
  *   terms          /legal/terms     the published terms that apply (Personal Terms and
  *                                   the Acceptable Use Policy; Business = the
  *                                   organization's agreement — never a draft)
- *   personalTerms  /legal/personal-terms  the Personal (Free) Terms in effect
+ *   personalTerms  /legal/terms-of-service  the Aramo Sign Terms of Service in effect (ToS v2.0
+ *                                   replaces the Personal Terms 1.0 for Personal accounts)
  *   privacy        /legal/privacy   the Privacy Notice in effect
  *   help           /help            help, report guidance and the identity block
  */
 export const WEB_LINKS = {
   terms: `${PRODUCTION_API_BASE_URL}/legal/terms`,
-  personalTerms: `${PRODUCTION_API_BASE_URL}/legal/personal-terms`,
+  personalTerms: `${PRODUCTION_API_BASE_URL}/legal/terms-of-service`,
   privacy: `${PRODUCTION_API_BASE_URL}/legal/privacy`,
   help: `${PRODUCTION_API_BASE_URL}/help`,
 } as const;

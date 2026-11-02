@@ -17,6 +17,7 @@ export interface FakeEnvelope {
   subject: string;
   message: string | null;
   routing_mode: 'PARALLEL' | 'SEQUENTIAL';
+  allow_delegation: boolean;
   documents: { id: string; title: string }[];
   recipients: {
     id: string;
@@ -27,6 +28,9 @@ export interface FakeEnvelope {
     recipient_kind: string;
     copy_delivery: string | null;
     assigned_to_me: boolean;
+    witness_for_signer_id?: string | null;
+    access_code_set?: boolean;
+    identity_verification_method?: string | null;
   }[];
   fields: Record<string, unknown>[];
 }
@@ -45,6 +49,8 @@ export function fakeSenderServer(
   let seq = 0;
   const uploads = new Map<string, unknown>();
   let dropped = false;
+  /** B2 — per-signer messaging choices (PUT …/recipients/{signerId}/messaging). */
+  const messaging = new Map<string, Record<string, unknown>>();
 
   const etag = () => `"${ENV_ID}.${env!.revision}"`;
   const detail = () => ({
@@ -55,6 +61,7 @@ export function fakeSenderServer(
     revision: env!.revision,
     message: env!.message,
     routing_mode: env!.routing_mode,
+    allow_delegation: env!.allow_delegation,
     signing_link_valid_days: 7,
     envelope_expires_at: env!.status === 'DRAFT' ? null : '2026-11-24T10:00:00.000Z',
     documents: env!.documents,
@@ -82,6 +89,7 @@ export function fakeSenderServer(
         subject: String(r.body?.['subject'] ?? ''),
         message: null,
         routing_mode: 'PARALLEL',
+        allow_delegation: false,
         documents: [],
         recipients: [],
         fields: [],
@@ -123,6 +131,36 @@ export function fakeSenderServer(
         },
       };
     }
+    // B2 — messaging routes: no If-Match, and no new revision.
+    if (rest === '/messaging' && r.method === 'GET') {
+      return {
+        status: 200,
+        body: {
+          envelope_id: ENV_ID,
+          features: { sms_delivery: true, whatsapp_delivery: true, sms_otp: true },
+          recipients: [...messaging.entries()].map(([signer_id, m]) => ({ signer_id, ...m })),
+          deliveries: [],
+        },
+      };
+    }
+    const msg = /^\/recipients\/([^/]+)\/messaging$/.exec(rest);
+    if (msg && r.method === 'PUT') {
+      const id = msg[1]!;
+      const s = env.recipients.find((x) => x.id === id);
+      if (!s) return refuse(404, 'signer_not_found');
+      const channel = (r.body?.['delivery_channel'] as string | null) ?? null;
+      const otp = r.body?.['sms_otp_required'] === true;
+      if (channel === null && !otp) {
+        messaging.delete(id);
+        return { status: 200, body: { signer_id: id, delivery_channel: null, sms_otp_required: false } };
+      }
+      if (s.recipient_kind !== 'SIGNER') return refuse(400, 'recipient_kind_not_supported');
+      const phone = r.body?.['phone_e164'];
+      if (typeof phone !== 'string' || !/^\+[1-9]\d{7,14}$/.test(phone)) return refuse(400, 'invalid_phone');
+      const row = { delivery_channel: channel, sms_otp_required: otp, phone_e164: phone };
+      messaging.set(id, row);
+      return { status: 200, body: { signer_id: id, ...row } };
+    }
     const pre = precondition(r);
     if (rest === '/documents' && r.method === 'POST') {
       const key = r.headers['Idempotency-Key'];
@@ -153,6 +191,8 @@ export function fakeSenderServer(
       if (r.body?.['routing_mode'])
         env.routing_mode = r.body['routing_mode'] as FakeEnvelope['routing_mode'];
       if ('message' in (r.body ?? {})) env.message = (r.body?.['message'] as string | null) ?? null;
+      if (typeof r.body?.['allow_delegation'] === 'boolean')
+        env.allow_delegation = r.body['allow_delegation'] as boolean;
       env.revision += 1;
       return ok(detail());
     }
@@ -171,6 +211,9 @@ export function fakeSenderServer(
         recipient_kind?: string;
         copy_delivery?: string | null;
         assign_to_me?: boolean;
+        witness_for_index?: number | null;
+        access_code?: string | null;
+        identity_verification_method?: string | null;
       }[];
       for (const x of list) {
         const kind = x.recipient_kind ?? 'SIGNER';
@@ -182,9 +225,22 @@ export function fakeSenderServer(
         if (x.assign_to_me && kind !== 'SIGNER') return refuse(400, 'assign_to_me_not_signer');
         if (x.assign_to_me && (x.email ?? '').toLowerCase() !== accountEmail)
           return refuse(403, 'assign_to_me_email_mismatch');
+        if (kind === 'WITNESS' && typeof x.witness_for_index !== 'number')
+          return refuse(400, 'witness_for_required');
       }
+      const ids = list.map((x) => x.id ?? `sig-${++seq}`);
+      const before = new Map(env.recipients.map((x) => [x.id, x]));
       env.recipients = list.map((x, i) => ({
-        id: x.id ?? `sig-${++seq}`,
+        id: ids[i]!,
+        witness_for_signer_id:
+          typeof x.witness_for_index === 'number' ? (ids[x.witness_for_index] ?? null) : null,
+        // Omitted keeps the stored code; null clears it.
+        access_code_set:
+          x.access_code === undefined ? before.get(ids[i]!)?.access_code_set === true : x.access_code !== null,
+        identity_verification_method:
+          x.identity_verification_method === undefined
+            ? (before.get(ids[i]!)?.identity_verification_method ?? null)
+            : x.identity_verification_method,
         name: x.name,
         email: x.email ?? null,
         status: 'PENDING',
@@ -242,6 +298,7 @@ export function fakeSenderServer(
     get envelope() {
       return env;
     },
+    messaging,
     /** Someone else (the web editor) changes the draft. */
     editElsewhere(fn: (e: FakeEnvelope) => void) {
       fn(env!);

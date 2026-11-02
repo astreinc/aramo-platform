@@ -2446,8 +2446,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.team.membership.added',
         'identity.team.membership.removed',
         'identity.tenant.created',
-        // Feature-Parity — Personal → Business upgrade (the upgraded tenant's id).
-        'identity.tenant.upgraded_to_business',
         'identity.tenant_profile.updated',
         'identity.tenant_setting.updated',
         'identity.tenant_user.disabled',

@@ -28,6 +28,7 @@ import {
   BillingRefusedError,
   BillingWebhookSignatureError,
   ESIGN_ENVELOPE_ALLOWANCE,
+  MeteredUsageService,
   SIGN_PRODUCT_KEY,
   SelfServiceBillingService,
   SelfServiceRefusedError,
@@ -43,6 +44,7 @@ import { Inject } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
+import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
 import { ESIGN_READ_SCOPE, SenderContextService } from '../sender/sender-context.service.js';
 
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
@@ -68,6 +70,10 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 // personal_paid_checkout_not_enabled), and only for a US resident — the declared residence of the
 // tenant's PROVISIONED Personal signup (none ⇒ not US): never a non-US Personal user at the provider
 // (409 personal_paid_us_only). Personal returns land on /personal/settings/billing.
+//   GET  usage            Sign Feature Parity D-2 (A1): the current billing period's metered usage
+//                         (per-unit quantities and amounts on the pinned plan version) (Sign read OR
+//                         billing authority). Built dark: while SIGN_USAGE_BILLING_ENABLED is not '1'
+//                         it answers { enabled: false } and the console shows nothing.
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only. CCP-C1: the
 //                         verified event is recorded in the webhook inbox before it is
@@ -234,6 +240,8 @@ export class EsignBillingController {
     @Optional() private readonly selfService?: SelfServiceBillingService,
     // Sign Catalog v2 §4.3 — the declared signup residence (unbound ⇒ no residence ⇒ not US).
     @Optional() private readonly signups?: PersonalSignupRepository,
+    // Sign Feature Parity D-2 (A1) — metered usage (SubscriptionModule provides it; unbound only in unit specs).
+    @Optional() private readonly usage?: MeteredUsageService,
   ) {}
 
   /** Sign Catalog v2 §4.3 — the tenant's declared Personal signup residence is the US (fail closed). */
@@ -452,6 +460,40 @@ export class EsignBillingController {
     });
   }
 
+  @Get('usage')
+  @BillingBoundary()
+  usageView(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    return this.run(requestId, async () => {
+      if (!canManageBilling(auth.scopes) && !auth.scopes.includes(ESIGN_READ_SCOPE)) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing usage needs Sign access or billing authority', 403, {
+          requestId,
+          details: { reason: 'billing_read_scope_missing' },
+        });
+      }
+      // Dark: no period, no units, nothing for the console to show.
+      if (this.usage === undefined || !this.usage.enabled()) return { enabled: false, period: null };
+      const s = await this.usage.periodSummary(auth.tenant_id, SIGN_PRODUCT_KEY);
+      if (s === null) return { enabled: true, period: null };
+      return {
+        enabled: true,
+        period: {
+          start: s.period_start.toISOString(),
+          end: s.period_end.toISOString(),
+          currency: s.currency,
+          units: s.units.map((u) => ({
+            unit_key: u.unit_key,
+            name: u.name,
+            quantity_label: u.quantity_label,
+            quantity: u.quantity,
+            unit_price_minor: u.unit_price_minor,
+            amount_minor: u.amount_minor,
+          })),
+          total_amount_minor: s.total_amount_minor,
+        },
+      };
+    });
+  }
+
   @Post('webhook/stripe')
   @HttpCode(HttpStatus.OK)
   async stripeWebhook(
@@ -466,15 +508,20 @@ export class EsignBillingController {
       evt = this.billing.verifyWebhook(raw, signature, Math.floor(Date.now() / 1000));
     } catch (e) {
       if (e instanceof BillingWebhookSignatureError) {
-        this.log.warn(`billing webhook rejected: ${e.reason}`);
+        logWebhookRejected(this.log, 'stripe_billing', e.reason);
         throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.reason } });
       }
       throw billingHttpError(e, requestId);
     }
     // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
-    const result = await this.run(requestId, () =>
-      this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY),
-    );
+    const result = await this.run(requestId, async () => {
+      try {
+        return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
+      } catch (e) {
+        logWebhookFailed(this.log, 'stripe_billing', e);
+        throw e;
+      }
+    });
     if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
       const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
       this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);

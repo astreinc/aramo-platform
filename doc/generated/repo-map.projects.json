@@ -1040,7 +1040,6 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "BILLING_REGION_US",
-      "BUSINESS_OWNER_ROLE_KEYS",
       "CognitoIdentityRetirement",
       "CursorDecodeError",
       "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
@@ -1116,7 +1115,6 @@
       "PERSONAL_SIGNUP_TTL_MS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PERSONAL_UNBOUND_LAPSE_DAYS",
-      "PERSONAL_UPGRADE_AUDIT_SOURCE",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRIVACY_OUTCOME_TEXT_MAX",
@@ -1124,7 +1122,6 @@
       "PRODUCT_KEYS",
       "PersonalRiskService",
       "PersonalSignupRepository",
-      "PersonalUpgradeRepository",
       "PrismaService",
       "PrivacyRequestService",
       "PrivacySubjectService",
@@ -2285,6 +2282,7 @@
       "SIGN_PAYMENT_PROVIDER_PORT",
       "SIGN_REMINDER_LIMITS",
       "SIGN_USAGE_RECORDER_PORT",
+      "SIGN_USAGE_UNITS",
       "STORAGE_ACCOUNTING_PORT",
       "STRIPE_IDENTITY_API_VERSION",
       "SenderFieldPassthroughRefusedError",
@@ -2301,7 +2299,6 @@
       "SignPurgeRepository",
       "SignReportRepository",
       "SignSavedSignatureRepository",
-      "SignUsageMeterRecorderPort",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
       "SignatureFieldValueRefusedError",
@@ -2516,6 +2513,7 @@
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
       "BOOTSTRAP_TARGET_EMAIL",
+      "BUSINESS_LEGAL_DOCUMENT_KEYS",
       "BillingAdjustmentFailure",
       "BillingAdjustmentRefusedError",
       "BillingCommandError",
@@ -2544,6 +2542,7 @@
       "CCP_ALERT_RESOLVED_EVENT",
       "CCP_ALERT_SCAN_EVENT",
       "CCP_ALERT_THRESHOLD_MAX_MINUTES",
+      "CHECKOUT_SUBMIT_MESSAGE_MAX",
       "COMMERCIAL_A3_TRANSITIONS",
       "COMMERCIAL_A6_APPLY_TRANSITIONS",
       "COMMERCIAL_A8_EXCEPTION_TRANSITIONS",
@@ -2667,7 +2666,11 @@
       "LegalChangeNoticeRefusedError",
       "LegalChangeNoticeRepository",
       "LegalChangeNoticeService",
+      "MAX_UNIT_PRICE_MINOR",
+      "METERED_UNIT_KEYS",
+      "METERED_USAGE_OPTIONS",
       "MONETARY_ACTION_TYPES",
+      "MeteredUsageService",
       "OBLIGATION_PAYMENT_STATUSES",
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "OUTSTANDING_STATUSES",
@@ -2682,6 +2685,7 @@
       "PAYMENT_RECORD_SCOPE",
       "PAYMENT_REFUSAL_CODES",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
+      "PERSONAL_LEGAL_PREDECESSORS",
       "PIN_REASON_CHANGE_REQUEST",
       "PIN_REASON_PROVIDER_PLAN_CHANGE",
       "PLAN_CREATE_ALLOWANCE_PERIOD",
@@ -2696,6 +2700,7 @@
       "PLAN_ELIGIBILITY_PORT",
       "PLAN_KEY_PATTERN",
       "PLAN_KEY_TAKEN",
+      "PLAN_TARGET_CHECKSUM_KEY",
       "PLAN_VERSION_CONTENT_FORMAT",
       "PLAN_VERSION_ID_REQUIRED",
       "PLAN_VERSION_STATUSES",
@@ -2733,6 +2738,9 @@
       "REFUND_REPORT_STATES",
       "RENEWAL_HORIZON_DEFAULT_DAYS",
       "RENEWAL_HORIZON_MAX_DAYS",
+      "RENEWAL_NOTICE_DEFAULT_DAYS",
+      "RENEWAL_NOTICE_MAX_ATTEMPTS",
+      "RENEWAL_NOTICE_TEMPLATE",
       "RESIDUAL_AUTHORITY_SQL",
       "REVENUE_BASIS",
       "REVENUE_BEARING_STATUSES",
@@ -2744,12 +2752,15 @@
       "RefundRemainderRefusedError",
       "RefundReportQueryError",
       "RegistryUpcomingLegalChangeSource",
+      "RenewalNoticeRepository",
+      "RenewalNoticeService",
       "RoleChangeApplyError",
       "SELF_SERVICE_ACTIONS",
       "SELF_SERVICE_CANCEL_STEP",
       "SELF_SERVICE_PRODUCTS",
       "SELF_SERVICE_PRODUCT_REGISTRY",
       "SIGN_PRODUCT_KEY",
+      "SIGN_USAGE_BILLING_FLAG",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
       "STRIPE_READ_ADAPTER_METHODS",
@@ -2772,12 +2783,24 @@
       "TENANT_AMOUNT_KEYS",
       "UPCOMING_LEGAL_CHANGES",
       "UPCOMING_LEGAL_CHANGE_SOURCE",
+      "USAGE_MAX_AGE_MS",
+      "USAGE_MAX_FUTURE_MS",
+      "USAGE_MAX_QUANTITY",
+      "USAGE_METER_REPORT_PORT",
       "USAGE_METRICS",
       "USAGE_METRIC_SOURCES",
       "USAGE_PERIODS_DEFAULT_LIMIT",
       "USAGE_PERIODS_MAX_LIMIT",
+      "USAGE_PERIOD_CLOSE_GRACE_MS",
       "USAGE_RECONCILIATION_MISMATCH_LIMIT",
+      "USAGE_RECORDER",
+      "USAGE_REPORT_BATCH",
+      "USAGE_REPORT_LEASE_MS",
+      "USAGE_REPORT_MAX_ATTEMPTS",
       "USAGE_ROLLUP_LOCK_KEY",
+      "UsagePeriodReconciliationService",
+      "UsageProviderReportService",
+      "UsageReconciliationError",
       "UsageRollupService",
       "accountingPeriodOf",
       "activatePolicyVersionInTx",
@@ -2785,6 +2808,7 @@
       "addCalendarDays",
       "addMonthsClamped",
       "adjustmentOperationOf",
+      "aggregateLedger",
       "applyCatalogDraftEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
@@ -2797,8 +2821,10 @@
       "billingCountrySupported",
       "billingLockKey",
       "billingPeriodAt",
+      "billingSettingsUrl",
       "boundedExceptionChain",
       "buildAuditCsv",
+      "businessCheckoutDisclosure",
       "calendarDateIn",
       "calendarDaysUntil",
       "canTransition",
@@ -2831,6 +2857,7 @@
       "discountCouponRef",
       "discountEscalates",
       "effectiveLegalDocument",
+      "effectivePersonalLegalDocument",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
       "effectiveReleaseState",
@@ -2862,6 +2889,7 @@
       "isFinancialRequestAction",
       "isGovernedSubscription",
       "isIanaTimeZone",
+      "isMeteredUnitKey",
       "isPlatformLastOwnerViolation",
       "isProductKey",
       "isWithinPastDueGrace",
@@ -2870,7 +2898,9 @@
       "legalRef",
       "legalVersionStatus",
       "mapProviderStatus",
+      "meterEventNameOf",
       "monthKey",
+      "normalizeUsageLines",
       "obligationPaymentStatus",
       "openDevelopmentSubscription",
       "overlayCovers",
@@ -2887,6 +2917,7 @@
       "paymentRecordPayloadErrors",
       "paymentStatusFlags",
       "paymentTermsErrors",
+      "periodSegments",
       "personalCheckoutDisclosure",
       "personalSignupMode",
       "planCreateAvailableKeys",
@@ -2896,14 +2927,17 @@
       "planRowOf",
       "planVersionChecksum",
       "planVersionContentFromRows",
+      "planVersionEffectiveAt",
       "planVersionTerms",
       "policyRangeErrors",
       "postTerminationExportDays",
       "priceFigure",
       "productOfMeteredKey",
+      "productOfMeteredUnit",
       "projectApprovalNotes",
       "projectChangeRequestFinance",
       "readPlatformSubject",
+      "reconcileUsageLines",
       "refundBindingOf",
       "refundExecutionEnabled",
       "refundPolicyGate",
@@ -2912,6 +2946,9 @@
       "refundReservations",
       "refundableRemainder",
       "renderLegalChangeNotice",
+      "renderRenewalNotice",
+      "renewalNoticeLeadDays",
+      "renewalNoticesEnabled",
       "resolveLegalChangeNotice",
       "resolvePaymentRecordChain",
       "resolvePriceToVersion",
@@ -2931,13 +2968,19 @@
       "taxAvailability",
       "templateSha256",
       "thresholdOf",
+      "unitPriceOf",
       "unlinkedReceipts",
       "upcomingLegalNotices",
+      "usageBillingEnabled",
       "usageMetricOf",
       "usageMetricsOf",
+      "usageReportBackoffMs",
       "validateContractBlocks",
       "validatePayload",
+      "validateRecordInput",
+      "validateUsageInput",
       "verifyStripeSignature",
+      "withUnitPrices",
       "withholdAuditPayloadAmounts",
       "withholdChangeRequestAmounts",
       "withholdContractTerms",
@@ -8053,12 +8096,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8598,6 +8635,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/sign-personal-paid-checkout.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-renewal-notice.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-usage-metering.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -10611,13 +10660,13 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/sign-web/src/workspace/pages/AccountUpgrade.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/CancelSubscription.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -10653,7 +10702,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/RecipientChoices.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Reports.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/UsageCharges.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -11268,18 +11329,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -11371,6 +11420,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-renewal-notice.worker.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11895,6 +11950,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-renewal-notice.worker.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13230,6 +13291,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-metering-usage-recorder.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13703,6 +13770,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup-terms-v2.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -13764,19 +13837,13 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/fixtures/tos-v20-acceptance.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -13836,7 +13903,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-metering-usage-recorder.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-personal-paid-billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-renewal-notice.worker.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

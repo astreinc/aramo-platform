@@ -37,6 +37,7 @@ import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LegalAcceptanceService,
+  PERSONAL_LEGAL_PREDECESSORS,
   SubscriptionPrismaService,
   type LegalDocumentVersion,
 } from '@aramo/subscription';
@@ -92,9 +93,12 @@ const SUBSCRIPTION_MIGRATIONS = [
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
 const TENANT_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
 
-// Test-only APPROVED versions (independent of the real registry's contents).
-const APPROVED: LegalDocumentVersion[] = PERSONAL_LEGAL_KEYS.map((key, i) => ({
-  key: key as LegalDocumentVersion['key'],
+// Test-only APPROVED versions (independent of the real registry's contents). ToS v2.0 â€” the
+// pre-release state: the terms slot (sign.terms_of_service) has no effective version, so the
+// Personal Terms (its predecessor) are what a Personal signup accepts; Business signup, reading
+// the same registry, presents no terms â€” exactly as before v2.0 was registered.
+const APPROVED: LegalDocumentVersion[] = PERSONAL_LEGAL_KEYS.map((k) => PERSONAL_LEGAL_PREDECESSORS[k] ?? k).map((key, i) => ({
+  key,
   version: '1.0.0',
   status: 'APPROVED',
   path: `test/${key}.md`,
@@ -322,7 +326,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const p = await startedAndVerified();
     expect(p.next).toBe('terms');
     const terms = await http().get('/v1/signup/sign/personal/terms');
-    expect(terms.body.documents.map((d: { key: string }) => d.key)).toEqual([...PERSONAL_LEGAL_KEYS]);
+    expect(terms.body.documents.map((d: { key: string }) => d.key)).toEqual(APPROVED.map((d) => d.key));
     const done = await complete(p.signup_id);
     expect(done.status).toBe(200);
     expect(done.body).toEqual({ status: 'PROVISIONED', email: p.email, sign_in: { google: expect.stringContaining('idp=google') }, held: null });
@@ -343,7 +347,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const caps = (await sql.query(`SELECT capability::text FROM entitlement."TenantEntitlement" WHERE tenant_id = $1 ORDER BY 1`, [tenant!.id])).rows.map((r) => r.capability);
     expect(caps).toEqual(['core', 'sign']);
     const acc = (await sql.query(`SELECT document_key, version, context, context_ref FROM subscription."LegalAcceptance" WHERE tenant_id = $1 ORDER BY 1`, [tenant!.id])).rows;
-    expect(acc.map((a) => a.document_key)).toEqual([...PERSONAL_LEGAL_KEYS].sort());
+    expect(acc.map((a) => a.document_key)).toEqual(APPROVED.map((d) => d.key).sort());
     expect(acc.every((a) => a.context === 'SIGNUP' && a.context_ref === p.signup_id)).toBe(true);
     expect(await module.get(PersonalRiskService).riskStateOf(tenant!.id)).toMatchObject({ state: 'clear', step_up_required: false, phone_verified_at: null });
     expect(await db.identityAuditEvent.count({ where: { tenant_id: tenant!.id, event_type: 'identity.personal.signup.provisioned' } })).toBe(1);

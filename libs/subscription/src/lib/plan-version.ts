@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from './commercial/commercial-policy.js';
+import { METERED_UNIT_KEYS, isMeteredUnitKey } from './usage/metered-units.js';
 
 // CCP-A5 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A5; MP-A2 N-15…N-19) — the
 // versioned commercial content of a plan.
@@ -19,6 +20,15 @@ import { canonicalJson } from './commercial/commercial-policy.js';
 //                       read from the subscription's PINNED version (MP-A2 N-3(c), N-18), so a
 //                       later version never changes an existing subscriber (grandfathering).
 //                       A malformed or tampered row fails closed (PlanVersionContentError).
+//   unit_prices         Amendment A3 D1 (Aramo-Sign-Feature-Parity-Program-Directive-Amendment-A3-
+//                       Metering-D1-D3-Ruling-v1_0-LOCKED, ad0f4b61…) — the add-on (metered) unit
+//                       prices are part of the canonical content, so the content checksum (the
+//                       PLAN_VERSION_PUBLISH approval fingerprint) covers them and a published price
+//                       is immutable with its version. An OPTIONAL format-1 key: it is present only
+//                       when at least one unit is priced (never an empty array), sorted by unit_key,
+//                       one entry per unit. A document without it is byte-identical to the format-1
+//                       content written before A3, so every existing version keeps its checksum. A
+//                       unit absent from unit_prices is NOT SOLD on that version.
 
 export const PLAN_VERSION_CONTENT_FORMAT = 1;
 export const PLAN_VERSION_STATUSES = ['DRAFT', 'PUBLISHED', 'RETIRED'] as const;
@@ -70,6 +80,18 @@ export interface PlanVersionFeature {
   readonly enabled: boolean;
 }
 
+/** A3 D1 — the approved price of one add-on (metered) unit on a version. */
+export interface PlanVersionUnitPriceTerm {
+  /** One of METERED_UNIT_KEYS, in the plan's product namespace. */
+  readonly unit_key: string;
+  /** Minor units (USD cents) per one unit; 0..10,000,000. */
+  readonly unit_price_minor: number;
+  readonly currency: 'USD';
+}
+
+/** The upper bound of a unit price (minor units), mirrored by the usage-ledger CHECK. */
+export const MAX_UNIT_PRICE_MINOR = 10_000_000;
+
 export interface PlanVersionContent {
   readonly format: 1;
   readonly plan: PlanVersionPlanTerms;
@@ -77,6 +99,8 @@ export interface PlanVersionContent {
   readonly allowance_windows: readonly PlanVersionAllowanceWindow[];
   readonly capacities: readonly PlanVersionCapacity[];
   readonly features: readonly PlanVersionFeature[];
+  /** A3 D1 — absent = no add-on unit is sold on this version (never an empty array). */
+  readonly unit_prices?: readonly PlanVersionUnitPriceTerm[];
 }
 
 export class PlanVersionContentError extends Error {
@@ -213,7 +237,8 @@ const PLAN_KEYS = [
 /** Parse a stored content document strictly; any deviation from format 1 throws. */
 export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   if (!isObj(raw)) throw new PlanVersionContentError('content must be an object');
-  exactKeys(raw, ['format', 'plan', 'allowances', 'allowance_windows', 'capacities', 'features'], 'content');
+  const CONTENT_KEYS = ['format', 'plan', 'allowances', 'allowance_windows', 'capacities', 'features'];
+  exactKeys(raw, 'unit_prices' in raw ? [...CONTENT_KEYS, 'unit_prices'] : CONTENT_KEYS, 'content');
   if (raw['format'] !== PLAN_VERSION_CONTENT_FORMAT) throw new PlanVersionContentError(`content.format must be ${PLAN_VERSION_CONTENT_FORMAT}`);
   const p = raw['plan'];
   if (!isObj(p)) throw new PlanVersionContentError('content.plan must be an object');
@@ -263,7 +288,51 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   ] as const) {
     if (new Set(keys).size !== keys.length) throw new PlanVersionContentError(`content.${name} has a duplicate key`);
   }
-  return { format: 1, plan, allowances, allowance_windows, capacities, features };
+  const unit_prices = 'unit_prices' in raw ? parseUnitPrices(raw, plan.product_key) : undefined;
+  return unit_prices === undefined
+    ? { format: 1, plan, allowances, allowance_windows, capacities, features }
+    : { format: 1, plan, allowances, allowance_windows, capacities, features, unit_prices };
+}
+
+/** A3 D1 — the strict unit_prices parser: non-empty, sorted by unit_key, unique, registry units of the plan's product. */
+function parseUnitPrices(raw: Obj, product_key: string): PlanVersionUnitPriceTerm[] {
+  const rows = arr(raw, 'unit_prices');
+  if (rows.length === 0) throw new PlanVersionContentError('content.unit_prices must be omitted when no unit is priced (never empty)');
+  const out = rows.map((a, i) => {
+    const w = `content.unit_prices[${i}]`;
+    exactKeys(a, ['unit_key', 'unit_price_minor', 'currency'], w);
+    const unit_key = str(a, 'unit_key', w);
+    if (!isMeteredUnitKey(unit_key)) throw new PlanVersionContentError(`${w}.unit_key must be one of ${METERED_UNIT_KEYS.join(', ')}`);
+    if (unit_key.split('.', 1)[0] !== product_key) throw new PlanVersionContentError(`${w}.unit_key ${unit_key} is not a unit of product ${product_key}`);
+    const unit_price_minor = int(a, 'unit_price_minor', w);
+    if (unit_price_minor < 0 || unit_price_minor > MAX_UNIT_PRICE_MINOR) throw new PlanVersionContentError(`${w}.unit_price_minor must be 0..${MAX_UNIT_PRICE_MINOR}`);
+    if (a['currency'] !== 'USD') throw new PlanVersionContentError(`${w}.currency must be USD`);
+    return { unit_key, unit_price_minor, currency: 'USD' as const };
+  });
+  for (let i = 1; i < out.length; i += 1) {
+    if ((out[i - 1] as PlanVersionUnitPriceTerm).unit_key >= (out[i] as PlanVersionUnitPriceTerm).unit_key) {
+      throw new PlanVersionContentError('content.unit_prices must be sorted by unit_key with no duplicate');
+    }
+  }
+  return out;
+}
+
+/**
+ * A3 D1 — the canonical unit_prices of a content document from a unit → price map (null or
+ * absent = not sold): sorted by unit_key; the key is omitted when nothing is priced, so an
+ * unpriced document stays byte-identical to its pre-A3 form.
+ */
+export function withUnitPrices(content: PlanVersionContent, prices: ReadonlyMap<string, number>): PlanVersionContent {
+  const { unit_prices: _drop, ...rest } = content;
+  void _drop;
+  const sorted = [...prices.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  if (sorted.length === 0) return parsePlanVersionContent(rest);
+  return parsePlanVersionContent({ ...rest, unit_prices: sorted.map(([unit_key, unit_price_minor]) => ({ unit_key, unit_price_minor, currency: 'USD' })) });
+}
+
+/** A3 D1 — the approved price of `unit_key` on a version's terms, or null (not sold). */
+export function unitPriceOf(content: PlanVersionContent, unit_key: string): PlanVersionUnitPriceTerm | null {
+  return content.unit_prices?.find((u) => u.unit_key === unit_key) ?? null;
 }
 
 /**

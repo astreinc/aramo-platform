@@ -1,4 +1,5 @@
-import { type PlanVersionContent, parsePlanVersionContent } from '../plan-version.js';
+import { MAX_UNIT_PRICE_MINOR, type PlanVersionContent, PlanVersionContentError, parsePlanVersionContent, withUnitPrices } from '../plan-version.js';
+import { isMeteredUnitKey } from '../usage/metered-units.js';
 
 // CCP-B2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.3 row B2; MP-A2 N-15, N-16) — the
 // pure catalog model behind the platform console's Catalog screen.
@@ -13,6 +14,11 @@ import { type PlanVersionContent, parsePlanVersionContent } from '../plan-versio
 //                feature key, change the plan's identity (key, product, name) or the v1 locks
 //                (no invented terms; PBD §7.1). Seats have no key in the Sign plan model, so
 //                they are not editable (R-13).
+//   unit prices  Sign Feature Parity Amendment A4 (D2) with A3 (D1): the add-on (metered) unit
+//                prices of a DRAFT are edited here too, as part of the version's content, so the
+//                content fingerprint covers them and they publish only through the existing
+//                PLAN_VERSION_PUBLISH chain (Finance → Owner). A unit of the plan's product only;
+//                null removes the price (the unit is not sold on that version).
 
 /** The Sign envelope allowance the editor's "Envelopes per month" reads and edits. */
 export const CATALOG_ENVELOPE_ALLOWANCE_KEY = 'sign.envelopes';
@@ -51,6 +57,8 @@ export interface CatalogVersionTerms {
   readonly storage_bytes: number | null;
   readonly storage_unlimited: boolean;
   readonly storage_present: boolean;
+  /** A3 D1 / A4 D2 — the add-on unit prices on the version (sorted by unit_key; empty = none sold). */
+  readonly unit_prices: readonly { readonly unit_key: string; readonly unit_price_minor: number }[];
 }
 
 export interface CatalogDraftEdits {
@@ -60,6 +68,11 @@ export interface CatalogDraftEdits {
   readonly envelopes_per_month?: number | null;
   /** Binary bytes; a non-negative integer, or null for unlimited. */
   readonly storage_bytes?: number | null;
+  /**
+   * A4 D2 — add-on unit prices to set (minor units, 0..MAX_UNIT_PRICE_MINOR) or remove (null =
+   * not sold), keyed by metered unit key. Units not named keep their price.
+   */
+  readonly unit_prices?: Readonly<Record<string, number | null>>;
 }
 
 export function isContractPriced(content: PlanVersionContent): boolean {
@@ -89,6 +102,7 @@ export function catalogTermsOf(content: PlanVersionContent): CatalogVersionTerms
     storage_bytes: sto === undefined || sto.unlimited ? null : sto.limit_quantity,
     storage_unlimited: sto?.unlimited ?? false,
     storage_present: sto !== undefined,
+    unit_prices: (content.unit_prices ?? []).map((u) => ({ unit_key: u.unit_key, unit_price_minor: u.unit_price_minor })),
   };
 }
 
@@ -122,5 +136,32 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
     if (storage(content) === undefined) throw new CatalogDraftEditError('term_missing', `this version carries no ${CATALOG_STORAGE_CAPACITY_KEY} capacity`, { term: CATALOG_STORAGE_CAPACITY_KEY });
     capacities = capacities.map((c) => (c.capacity_key === CATALOG_STORAGE_CAPACITY_KEY ? { ...c, limit_quantity: v, unlimited: v === null } : c));
   }
-  return parsePlanVersionContent({ ...content, plan, allowances, capacities });
+  const edited = parsePlanVersionContent({ ...content, plan, allowances, capacities });
+  return edits.unit_prices === undefined ? edited : applyUnitPriceEdits(edited, edits.unit_prices);
+}
+
+/** A4 D2 — the unit-price edits of a DRAFT (fails closed: an unknown unit, another product's unit, a bad price). */
+function applyUnitPriceEdits(content: PlanVersionContent, edits: Readonly<Record<string, number | null>>): PlanVersionContent {
+  if (typeof edits !== 'object' || edits === null || Array.isArray(edits)) throw new CatalogDraftEditError('term_missing', 'unit_prices must be an object of unit key to price');
+  const prices = new Map<string, number>((content.unit_prices ?? []).map((u) => [u.unit_key, u.unit_price_minor]));
+  for (const [unit_key, price] of Object.entries(edits)) {
+    if (!isMeteredUnitKey(unit_key)) throw new CatalogDraftEditError('term_missing', `${unit_key} is not a metered add-on unit`, { term: unit_key });
+    if (unit_key.split('.', 1)[0] !== content.plan.product_key) {
+      throw new CatalogDraftEditError('term_missing', `${unit_key} is not an add-on of product ${content.plan.product_key}`, { term: unit_key });
+    }
+    if (price === null) {
+      prices.delete(unit_key);
+      continue;
+    }
+    if (!nonNegInt(price) || price > MAX_UNIT_PRICE_MINOR) {
+      throw new CatalogDraftEditError('term_missing', `the unit price of ${unit_key} must be an integer 0..${MAX_UNIT_PRICE_MINOR} (minor units)`, { term: unit_key });
+    }
+    prices.set(unit_key, price);
+  }
+  try {
+    return withUnitPrices(content, prices);
+  } catch (e) {
+    if (e instanceof PlanVersionContentError) throw new CatalogDraftEditError('term_missing', e.message);
+    throw e;
+  }
 }

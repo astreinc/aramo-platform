@@ -140,10 +140,8 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
     // The ONE allowed mention: the organization's own registration number in the tenant profile
     // (Sign Signup A1 §2.2), an identity column. It never reaches the billing-profile port or the
     // provider (C5-G-6 and C5-G-4 prove that).
-    // Feature-Parity §5 — the Personal → Business upgrade writes the same profile column.
     const ALLOWED: Record<string, string[]> = {
       'apps/platform-admin/src/app/signup/sign-signup.service.ts': ['tax_id: o.tax_id,'],
-      'apps/sign-service/src/app/account/personal-upgrade.service.ts': ['tax_id: o.tax_id,'],
     };
     const offenders: string[] = [];
     for (const f of BILLING_ROOTS.flatMap(sources)) {
@@ -264,6 +262,8 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
       }
     },
     readPaymentPicture: (p) => p.readPaymentPicture('in_c5'),
+    // Sign usage metering (Feature Parity D-2, A1/A3): one Billing Meter Event per ledger entry.
+    reportMeterEvent: (p) => p.reportMeterEvent({ event_name: 'aramo_sign_sms_message', account_ref: 'acct_c5', value: 1, identifier: 'entry-c5', occurred_at: new Date('2026-11-01T00:00:00Z') }),
   };
   const READ_CALLS: Record<string, (a: StripeBillingReadAdapter) => Promise<unknown>> = {
     retrieveSubscription: (a) => a.retrieveSubscription('sub_c5'),
@@ -271,7 +271,7 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     retrievePortalConfiguration: (a) => a.retrievePortalConfiguration('bpc_c5'),
   };
   // Methods that make no provider request (local state, or the inbound webhook check).
-  const PROVIDER_LOCAL = ['isConfigured', 'mode', 'verifyWebhook'];
+  const PROVIDER_LOCAL = ['isConfigured', 'meterReportingConfigured', 'mode', 'verifyWebhook'];
   const PRIVATE = ['secretKey', 'base', 'call', 'read'];
 
   it('C5-G-3 the guard exercises EVERY provider-calling method of both Stripe adapters (a new method fails here until it is covered)', () => {
@@ -292,8 +292,9 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     // plus (merge train TD-MERGE-43) the CCP-C4 / C4-P 22: executeAdjustment 7 (credit grant /
     // reverse 1 each, discount apply 2 (coupon + subscription), discount remove 1, refund 2 (invoice
     // re-verify + refund)), readAdjustmentEffect 12 (2 reads each for the 2 credit, 2 discount and
-    // refund operations: credit 1 + 1, discount 1 + 1, refund 2 + 2) and readPaymentPicture 3.
-    expect(recorded.length).toBe(36);
+    // refund operations: credit 1 + 1, discount 1 + 1, refund 2 + 2) and readPaymentPicture 3, plus
+    // (Sign usage metering) reportMeterEvent 1.
+    expect(recorded.length).toBe(37);
     for (const w of ['POST /v1/refunds', 'POST /v1/coupons', 'GET /v1/disputes', 'GET /v1/refunds']) expect(recorded.map((r) => `${r.method} ${r.path}`), w).toContain(w);
     expect(new Set(recorded.map((r) => `${r.method} ${r.path}`)).size).toBeGreaterThanOrEqual(9);
     for (const r of recorded) {

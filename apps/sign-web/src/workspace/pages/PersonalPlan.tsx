@@ -5,6 +5,7 @@ import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, usd } from '../catalog
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 import { checkoutReturn } from './Billing';
+import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
 import { AllowanceChip, BUSINESS_SIGNUP_URL } from './PersonalAllowance';
 
@@ -135,13 +136,21 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
               <span className="sg-muted"> · renews {fmtDate(allowance.period_end)}</span>
             </div>
           ) : null}
+          {!onFree && sub?.cancel_at_period_end === true && sub.current_period_end !== null ? (
+            <div className="sg-note" data-testid="personal-plan-cancel">
+              Cancellation requested; Standard ends on {fmtDate(sub.current_period_end)} and your account then returns to the Free plan.
+            </div>
+          ) : null}
           {!onFree && sub?.billing_managed === true ? (
             <div>
               <Btn disabled={busy} onClick={() => act(billingApi.portal)} data-testid="personal-plan-manage">
-                Manage billing
+                Manage billing or cancel
               </Btn>
-              <p className="sg-help">Update your payment method or download invoices on the Stripe billing page.</p>
+              <p className="sg-help">Update your payment method, download invoices or cancel on the Stripe billing page.</p>
             </div>
+          ) : null}
+          {!onFree && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
+            <CancelSubscription personal busy={busy} onKeep={() => act(billingApi.portal)} onChanged={reload} />
           ) : null}
         </div>
       </section>

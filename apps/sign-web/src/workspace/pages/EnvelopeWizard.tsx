@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { Input } from '@aramo/fe-foundation';
 
 import {
+  E164_RE,
   errorMessage,
   fileToBase64,
   isAllowanceLimit,
@@ -13,9 +14,13 @@ import {
   sendRefusalMessage,
   type ContactRow,
   type CopyDelivery,
+  type DeliveryChannel,
   type EnvelopeDetail,
+  type IdentityVerificationMethod,
   type RecipientKind,
+  type RecipientMessaging,
   type RoutingMode,
+  validAccessCode,
 } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
@@ -293,7 +298,33 @@ interface DraftRecipient {
   assign: boolean;
   // Amendment M-A6 §3.5 — the template role this recipient fills (from-template), if any.
   role_key?: string | null;
+  // Consolidated Directive B2 — the signer a WITNESS attests for (a recipient key).
+  witnessFor: string | null;
+  // B2 / §1.9 — the server has an access code for this recipient; `accessCode` is the
+  // pending change: undefined = keep, null = remove, a string = set (never stored here after save).
+  accessCodeSet: boolean;
+  accessCode?: string | null;
+  // B2 / §1.9 — the identity check (null = none).
+  idv: IdentityVerificationMethod | null;
+  // B2 / §1.7–§1.9 — the text-message choices; undefined = as saved on the server.
+  msg?: Msg;
 }
+
+// B2 — one recipient's text-message choices as the step edits them.
+interface Msg {
+  channel: DeliveryChannel | null;
+  otp: boolean;
+  phone: string;
+}
+const NO_MSG: Msg = { channel: null, otp: false, phone: '' };
+const sameMsg = (a: Msg, b: Msg) => a.channel === b.channel && a.otp === b.otp && (a.phone.trim() === b.phone.trim() || (a.channel === null && !a.otp));
+const msgOf = (m: RecipientMessaging | undefined): Msg => (m === undefined ? NO_MSG : { channel: m.delivery_channel, otp: m.sms_otp_required, phone: m.phone_e164 ?? '' });
+
+// B2 — who can carry each per-recipient choice (mirrors the server's checks).
+const signsByLink = (k: RecipientKind) => k === 'SIGNER' || k === 'WITNESS';
+const isSigning = (k: RecipientKind) => k === 'SIGNER' || k === 'IN_PERSON_SIGNER';
+const IDV_LABEL: Record<IdentityVerificationMethod, string> = { ID_VERIFICATION: 'Photo ID check', KBA: 'Identity questions (US)' };
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 
 // M-A5 §6.2 — the web Role select. In person is offered only once web hosting exists
 // (not in this release); an in-person signer added from the app is kept as it is.
@@ -306,6 +337,7 @@ const COPY_TIMING_LABEL: Record<CopyDelivery, string> = {
 function roleLabel(kind: RecipientKind | undefined): string {
   if (kind === 'RECEIVES_COPY') return 'Receives a copy';
   if (kind === 'IN_PERSON_SIGNER') return 'Signs in person';
+  if (kind === 'WITNESS') return 'Witness';
   return 'Needs to sign';
 }
 
@@ -327,8 +359,30 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     copy: r.copy_delivery ?? 'ON_COMPLETION',
     assign: r.assigned_to_me === true,
     role_key: r.role_key ?? null,
+    witnessFor: r.recipient_kind === 'WITNESS' ? (r.witness_for_signer_id ?? null) : null,
+    accessCodeSet: r.access_code_set === true,
+    idv: r.identity_verification_method ?? null,
   });
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
+  // Consolidated Directive B2 — each control shows only while the sender context reports it available.
+  const f = ctx.features ?? {};
+  const messagingOn = f.sms_delivery === true || f.whatsapp_delivery === true || f.sms_otp === true;
+  const [allowDelegation, setAllowDelegation] = useState(env.allow_delegation === true);
+  // The text-message choices saved on the server, by recipient id (read only when available).
+  const [msgSaved, setMsgSaved] = useState<Record<string, Msg>>({});
+  useEffect(() => {
+    if (!messagingOn) return;
+    senderApi
+      .messaging(env.id)
+      .then((r) => setMsgSaved(Object.fromEntries(r.recipients.map((m) => [m.signer_id, msgOf(m)]))))
+      .catch(() => setMsgSaved({}));
+  }, [env.id, messagingOn]);
+  const msgFor = (r: DraftRecipient): Msg => r.msg ?? (r.id !== undefined ? (msgSaved[r.id] ?? NO_MSG) : NO_MSG);
+  const msgDirty = (r: DraftRecipient): boolean => {
+    const was = r.id !== undefined ? (msgSaved[r.id] ?? NO_MSG) : NO_MSG;
+    const want = r.kind === 'SIGNER' ? msgFor(r) : NO_MSG;
+    return !sameMsg(want, was);
+  };
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -347,11 +401,30 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       // Past MAX_SIGNERS signers, a new person is added as a copy recipient.
       const signers = l.filter((r) => r.kind !== 'RECEIVES_COPY').length;
       const kind: RecipientKind = signers >= MAX_SIGNERS ? 'RECEIVES_COPY' : 'SIGNER';
-      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER' }];
+      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }];
     });
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
   const upd = (key: string, patch: Partial<DraftRecipient>) => setList((l) => l.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  // B2 — a role change keeps the per-recipient choices consistent with the new role: a witness
+  // names a signer; a recipient who no longer signs is no longer witnessed.
+  const setKind = (key: string, kind: RecipientKind) =>
+    setList((l) => {
+      const firstSigner = l.find((x) => x.key !== key && isSigning(x.kind))?.key ?? null;
+      return l.map((r) => {
+        if (r.key === key) {
+          return {
+            ...r,
+            kind,
+            ...(kind === 'RECEIVES_COPY' || kind === 'WITNESS' ? { assign: false } : {}),
+            witnessFor: kind === 'WITNESS' ? (r.witnessFor ?? firstSigner) : null,
+            ...(signsByLink(kind) ? {} : { accessCode: r.accessCodeSet ? null : undefined, idv: null }),
+          };
+        }
+        return !isSigning(kind) && r.witnessFor === key ? { ...r, witnessFor: null } : r;
+      });
+    });
+  const remove = (key: string) => setList((l) => l.filter((x) => x.key !== key).map((x) => (x.witnessFor === key ? { ...x, witnessFor: null } : x)));
   const move = (key: string, by: -1 | 1) =>
     setList((l) => {
       const i = l.findIndex((r) => r.key === key);
@@ -372,10 +445,15 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         r.email !== was.email ||
         r.kind !== was.kind ||
         (r.kind === 'RECEIVES_COPY' && r.copy !== was.copy) ||
-        (r.assign && isMine(r.email)) !== was.assign
+        (r.assign && isMine(r.email)) !== was.assign ||
+        r.witnessFor !== was.witnessFor ||
+        r.idv !== was.idv ||
+        r.accessCode !== undefined
       );
     });
   const routingDirty = routing !== (env.routing_mode ?? 'PARALLEL');
+  const delegationDirty = allowDelegation !== (env.allow_delegation === true);
+  const anyMsgDirty = list.some(msgDirty);
   const duplicate = (() => {
     const seen = new Set<string>();
     for (const r of list) {
@@ -387,9 +465,22 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return null;
   })();
 
+  // B2 — the first problem the server would refuse, said plainly before saving.
+  const choiceProblem = (): string | null => {
+    for (const [i, r] of list.entries()) {
+      const who = r.name.trim() || r.email.trim() || `Recipient ${i + 1}`;
+      if (r.kind === 'WITNESS' && (r.witnessFor === null || !list.some((x) => x.key === r.witnessFor && isSigning(x.kind)))) return `Choose the signer ${who} witnesses.`;
+      if (typeof r.accessCode === 'string' && !validAccessCode(r.accessCode)) return `The access code for ${who} must be 4 to 32 characters (letters, numbers or symbols).`;
+      const m = msgFor(r);
+      if (r.kind === 'SIGNER' && (m.channel !== null || m.otp) && !E164_RE.test(m.phone.trim()))
+        return `Enter the mobile number for ${who} in international format, for example +14155550123.`;
+    }
+    return null;
+  };
+
   const save = async (to: string) => {
     setError('');
-    if (!listDirty && !routingDirty) {
+    if (!listDirty && !routingDirty && !delegationDirty && !anyMsgDirty) {
       nav(to);
       return;
     }
@@ -397,11 +488,18 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       setError(`${duplicate} is on this envelope twice. Each signer needs their own email address.`);
       return;
     }
+    const problem = choiceProblem();
+    if (problem !== null) {
+      setError(problem);
+      return;
+    }
     setSaving(true);
     try {
       let d = env;
       if (routingDirty) d = await senderApi.setRouting(env.id, routing);
+      if (delegationDirty) d = await senderApi.setAllowDelegation(env.id, allowDelegation);
       if (listDirty) {
+        const index = new Map(list.map((r, i) => [r.key, i]));
         d = await senderApi.recipients(
           env.id,
           list.map((r) => ({
@@ -412,8 +510,26 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             copy_delivery: r.kind === 'RECEIVES_COPY' ? r.copy : null,
             // M-A5 §4.1 — only offered for the signed-in user's own email; the server re-checks it.
             ...(r.kind === 'SIGNER' && r.assign && isMine(r.email) ? { assign_to_me: true } : {}),
+            // B2 — a witness names its signer by list position.
+            ...(r.kind === 'WITNESS' ? { witness_for_index: r.witnessFor === null ? null : (index.get(r.witnessFor) ?? null) } : {}),
+            // B2 / §1.9 — sent only when changed: a string sets, null removes, omitted keeps.
+            ...(r.accessCode !== undefined ? { access_code: r.accessCode === null ? null : r.accessCode.trim() } : {}),
+            ...(r.idv !== (r.id !== undefined ? (env.recipients.find((x) => x.id === r.id)?.identity_verification_method ?? null) : null)
+              ? { identity_verification_method: signsByLink(r.kind) ? r.idv : null }
+              : {}),
           })),
         );
+      }
+      // B2 — text-message choices are saved per recipient once the recipient has a server id.
+      for (const r of list.filter(msgDirty)) {
+        const id = r.id ?? d.recipients.find((x) => (x.email ?? '').toLowerCase() === r.email.trim().toLowerCase())?.id;
+        if (id === undefined) continue;
+        const m = r.kind === 'SIGNER' ? msgFor(r) : NO_MSG;
+        await senderApi.setMessaging(env.id, id, {
+          delivery_channel: m.channel,
+          sms_otp_required: m.otp,
+          ...(m.channel !== null || m.otp ? { phone_e164: m.phone.trim() } : {}),
+        });
       }
       onChange(d);
       nav(to);
@@ -458,6 +574,24 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   ? 'Each signer gets the document after the person before them signs, in the order shown below.'
                   : 'Everyone gets the document now and can sign at any time.'}
               </p>
+              {/* B2 / Feature-Parity §1.17 — delegate signing (Business; shown only while available). */}
+              {f.delegate_signing === true || env.allow_delegation === true ? (
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+                  <Input
+                    unstyled
+                    type="checkbox"
+                    checked={allowDelegation}
+                    onChange={(e) => setAllowDelegation(e.target.checked)}
+                    data-testid="allow-delegation"
+                  />
+                  Let signers hand off to someone else
+                </label>
+              ) : null}
+              {allowDelegation ? (
+                <p className="sg-muted" style={{ fontSize: 12.5, margin: '4px 0 0' }}>
+                  A signer can pass their part to another person, who signs in their own name. The hand-off is recorded.
+                </p>
+              ) : null}
             </div>
           </section>
           {list.length === 0 ? <div className="sg-card sg-empty">No recipients yet. Add the people who need to sign.</div> : null}
@@ -472,12 +606,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     <TextIn id={`re-${r.key}`} type="email" value={r.email} onChange={(e) => upd(r.key, { email: e.target.value })} />
                   </Field>
                   <Field label="Role" htmlFor={`rr-${r.key}`}>
-                    <Sel
-                      id={`rr-${r.key}`}
-                      value={r.kind}
-                      onChange={(e) => upd(r.key, { kind: e.target.value as RecipientKind, ...(e.target.value === 'RECEIVES_COPY' ? { assign: false } : {}) })}
-                      data-testid="recipient-role"
-                    >
+                    <Sel id={`rr-${r.key}`} value={r.kind} onChange={(e) => setKind(r.key, e.target.value as RecipientKind)} data-testid="recipient-role">
                       <option value="SIGNER" disabled={r.kind !== 'SIGNER' && signerCount >= MAX_SIGNERS}>
                         Needs to sign
                       </option>
@@ -485,9 +614,28 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                         Receives a copy
                       </option>
                       {r.kind === 'IN_PERSON_SIGNER' ? <option value="IN_PERSON_SIGNER">Signs in person (Aramo Sign app)</option> : null}
+                      {f.witness_signing === true || r.kind === 'WITNESS' ? (
+                        <option value="WITNESS" disabled={r.kind !== 'WITNESS' && (signerCount >= MAX_SIGNERS || !list.some((x) => x.key !== r.key && isSigning(x.kind)))}>
+                          Witnesses a signer
+                        </option>
+                      ) : null}
                     </Sel>
                   </Field>
                 </div>
+                {r.kind === 'WITNESS' ? (
+                  <Field label="Witnesses" htmlFor={`rw-${r.key}`} help="The witness signs after this signer to confirm they saw them sign.">
+                    <Sel id={`rw-${r.key}`} value={r.witnessFor ?? ''} onChange={(e) => upd(r.key, { witnessFor: e.target.value === '' ? null : e.target.value })} data-testid="witness-for">
+                      <option value="">Choose a signer</option>
+                      {list
+                        .filter((x) => x.key !== r.key && isSigning(x.kind))
+                        .map((x) => (
+                          <option key={x.key} value={x.key}>
+                            {x.name.trim() || x.email.trim() || 'Unnamed signer'}
+                          </option>
+                        ))}
+                    </Sel>
+                  </Field>
+                ) : null}
                 {r.kind === 'RECEIVES_COPY' ? (
                   <Field label="Send the copy" htmlFor={`rc-${r.key}`}>
                     <Sel id={`rc-${r.key}`} value={r.copy} onChange={(e) => upd(r.key, { copy: e.target.value as CopyDelivery })} data-testid="copy-timing">
@@ -506,21 +654,26 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   </label>
                 ) : null}
                 <div className="sg-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }}>
+                  {/* B2 / §1.9 — the identity check (Business; each method only while available). */}
                   <Field label="Verification" htmlFor={`rv-${r.key}`}>
-                    <Sel id={`rv-${r.key}`} value="LINK" disabled={r.kind === 'RECEIVES_COPY'} onChange={() => undefined}>
-                      <option value="LINK">Secure link</option>
-                      <option value="OTP" disabled>
-                        Link + passcode (proposal)
-                      </option>
-                      <option value="SSO" disabled>
-                        SSO verified (proposal)
-                      </option>
+                    <Sel
+                      id={`rv-${r.key}`}
+                      value={signsByLink(r.kind) ? (r.idv ?? '') : ''}
+                      disabled={!signsByLink(r.kind) || (f.id_verification !== true && f.kba !== true && r.idv === null)}
+                      onChange={(e) => upd(r.key, { idv: e.target.value === '' ? null : (e.target.value as IdentityVerificationMethod) })}
+                      data-testid="identity-check"
+                    >
+                      <option value="">Secure link</option>
+                      {f.id_verification === true || r.idv === 'ID_VERIFICATION' ? <option value="ID_VERIFICATION">Secure link + {lowerFirst(IDV_LABEL.ID_VERIFICATION)}</option> : null}
+                      {f.kba === true || r.idv === 'KBA' ? <option value="KBA">Secure link + {lowerFirst(IDV_LABEL.KBA)}</option> : null}
                     </Sel>
                   </Field>
                   <Field label="Private message (proposed)" htmlFor={`rm-${r.key}`}>
                     <Area id={`rm-${r.key}`} rows={1} disabled placeholder="Per-recipient messages are a proposed capability" />
                   </Field>
                 </div>
+                {f.access_code === true && signsByLink(r.kind) ? <AccessCodeControl r={r} onChange={(accessCode) => upd(r.key, { accessCode })} /> : null}
+                {messagingOn && r.kind === 'SIGNER' ? <TextMessageControl r={r} msg={msgFor(r)} onChange={(m) => upd(r.key, { msg: m })} /> : null}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     {r.role_key != null ? (
@@ -544,7 +697,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                         </LinkBtn>
                       </>
                     ) : null}
-                    <LinkBtn bad onClick={() => setList((l) => l.filter((x) => x.key !== r.key))}>
+                    <LinkBtn bad onClick={() => remove(r.key)}>
                       Remove
                     </LinkBtn>
                   </span>
@@ -602,6 +755,86 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         </Btn>
       </div>
     </>
+  );
+}
+
+// B2 / Feature-Parity §1.9 — set, change or remove a recipient's access code. The code is
+// sent once on save and never shown again (the server keeps only a salted hash).
+function AccessCodeControl({ r, onChange }: { r: DraftRecipient; onChange: (code: string | null | undefined) => void }) {
+  const id = `ra-${r.key}`;
+  if (typeof r.accessCode === 'string') {
+    return (
+      <Field label="Access code" htmlFor={id} help="4 to 32 characters. Give it to the recipient yourself, not in the same email.">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <TextIn id={id} value={r.accessCode} maxLength={32} autoComplete="off" spellCheck={false} onChange={(e) => onChange(e.target.value)} data-testid="access-code-input" />
+          <LinkBtn onClick={() => onChange(undefined)}>Cancel</LinkBtn>
+        </div>
+      </Field>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13 }} data-testid="access-code">
+      {r.accessCode === null ? (
+        <>
+          <span className="sg-muted">The access code will be removed when you continue.</span>
+          <LinkBtn onClick={() => onChange(undefined)}>Undo</LinkBtn>
+        </>
+      ) : r.accessCodeSet ? (
+        <>
+          <span className="sg-tag sg-tag--ok">Access code set</span>
+          <LinkBtn onClick={() => onChange('')} aria-label="Change the access code">
+            Change
+          </LinkBtn>
+          <LinkBtn bad onClick={() => onChange(null)} aria-label="Remove the access code">
+            Remove
+          </LinkBtn>
+        </>
+      ) : (
+        <LinkBtn onClick={() => onChange('')} data-testid="add-access-code">
+          Add an access code
+        </LinkBtn>
+      )}
+    </div>
+  );
+}
+
+// B2 / Feature-Parity §1.7–§1.9 — the signing link also by SMS or WhatsApp, and an SMS code
+// before signing. Each option shows only while available; the number is checked as E.164.
+function TextMessageControl({ r, msg, onChange }: { r: DraftRecipient; msg: Msg; onChange: (m: Msg) => void }) {
+  const { ctx } = useWorkspace();
+  const f = ctx.features ?? {};
+  const needsPhone = msg.channel !== null || msg.otp;
+  const phoneBad = needsPhone && msg.phone.trim() !== '' && !E164_RE.test(msg.phone.trim());
+  return (
+    <div className="sg-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}>
+      <div className="sg-grid" style={{ gap: 8 }}>
+        {f.sms_delivery === true || f.whatsapp_delivery === true || msg.channel !== null ? (
+          <Field label="Send the link by" htmlFor={`rd-${r.key}`}>
+            <Sel id={`rd-${r.key}`} value={msg.channel ?? ''} onChange={(e) => onChange({ ...msg, channel: e.target.value === '' ? null : (e.target.value as DeliveryChannel) })} data-testid="delivery-channel">
+              <option value="">Email</option>
+              {f.sms_delivery === true || msg.channel === 'SMS' ? <option value="SMS">Email and text message (SMS)</option> : null}
+              {f.whatsapp_delivery === true || msg.channel === 'WHATSAPP' ? <option value="WHATSAPP">Email and WhatsApp</option> : null}
+            </Sel>
+          </Field>
+        ) : null}
+        {f.sms_otp === true || msg.otp ? (
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+            <Input unstyled type="checkbox" checked={msg.otp} onChange={(e) => onChange({ ...msg, otp: e.target.checked })} data-testid="sms-code" />
+            Ask for a code sent by SMS before signing
+          </label>
+        ) : null}
+      </div>
+      {needsPhone ? (
+        <Field
+          label="Mobile number"
+          htmlFor={`rp-${r.key}`}
+          help="International format, for example +14155550123."
+          error={phoneBad ? 'Enter the number with + and the country code, no spaces.' : undefined}
+        >
+          <TextIn id={`rp-${r.key}`} type="tel" inputMode="tel" autoComplete="off" value={msg.phone} placeholder="+14155550123" onChange={(e) => onChange({ ...msg, phone: e.target.value })} data-testid="recipient-phone" />
+        </Field>
+      ) : null}
+    </div>
   );
 }
 
@@ -686,6 +919,9 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
                     <span className="sg-muted">
                       · {roleLabel(r.recipient_kind)}
                       {isCopyRecipient(r) ? ` · ${COPY_TIMING_LABEL[r.copy_delivery ?? 'ON_COMPLETION']}` : r.recipient_kind === 'IN_PERSON_SIGNER' ? '' : ' · Secure link'}
+                      {r.recipient_kind === 'WITNESS' ? ` · witnesses ${env.recipients.find((x) => x.id === r.witness_for_signer_id)?.name ?? 'a signer'}` : ''}
+                      {r.identity_verification_method != null ? ` · ${lowerFirst(IDV_LABEL[r.identity_verification_method])}` : ''}
+                      {r.access_code_set === true ? ' · access code' : ''}
                     </span>
                   </div>
                   <span className="sg-muted" style={{ fontSize: 12.5 }}>

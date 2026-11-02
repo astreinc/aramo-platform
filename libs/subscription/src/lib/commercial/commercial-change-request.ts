@@ -584,6 +584,8 @@ export const COMMERCIAL_ROLE_CHANGE_ROLE_KEYS = ['platform_owner', 'finance_admi
 
 /** CCP-B5: the POLICY_ACTIVATE payload key holding the target version's content checksum (NC-5 snapshot). */
 export const POLICY_TARGET_CHECKSUM_KEY = 'target_content_checksum';
+/** Amendment A3 D1: the PLAN_VERSION_PUBLISH payload key holding the approved version's content checksum. */
+export const PLAN_TARGET_CHECKSUM_KEY = 'target_content_checksum';
 
 /**
  * A3 validates only what chain resolution and the eligibility rules read; the applying
@@ -676,8 +678,16 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // CCP-B2-backend — the catalog apply's payloads: the plan VERSION acted on, and for a publish
     // an optional provider price to pin to it (D3; the A5 PlanVersionRepository.pinProviderPrice).
     case 'PLAN_VERSION_PUBLISH':
-      closedKeys(p, ['plan_version_id', 'provider_price_ref'], errors);
+      // Sign Feature Parity Amendment A3 D1 — target_content_checksum is the snapshot of the
+      // version's content (its fingerprint, which covers the add-on unit prices) that Finance and
+      // the Owner approve; the service fills it at creation and the apply refuses a version whose
+      // content changed since (VERSION_CONTENT_CHANGED). Optional here so a request created before
+      // A3 (no snapshot) still validates.
+      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY], errors);
       if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
+      if (p[PLAN_TARGET_CHECKSUM_KEY] !== undefined && (typeof p[PLAN_TARGET_CHECKSUM_KEY] !== 'string' || !SHA256_HEX.test(p[PLAN_TARGET_CHECKSUM_KEY]))) {
+        errors.push(`${PLAN_TARGET_CHECKSUM_KEY} must be a lowercase SHA-256 hex digest`);
+      }
       if (p['provider_price_ref'] !== undefined && !(typeof p['provider_price_ref'] === 'string' && /^[A-Za-z0-9_]{3,200}$/.test(p['provider_price_ref']))) {
         errors.push('provider_price_ref must be a provider price id');
       }

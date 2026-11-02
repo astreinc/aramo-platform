@@ -1719,8 +1719,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The Personal legal documents the signed-in user still has to accept.
-         * @description Aramo Sign Personal (Free). For the signed-in user of a PERSONAL tenant: every current APPROVED version of the Personal Terms of Service, the Aramo Privacy Notice and the Aramo Acceptable Use Policy that this user has not accepted (at signup or in the workspace) for that exact version and text. A BUSINESS tenant always has nothing pending. Sending from a Personal account is refused (details.reason = legal_acceptance_required) while anything is pending. Requires a Sign session of a tenant entitled to `sign`.
+         * The legal documents the signed-in user still has to accept.
+         * @description Aramo Sign Personal (Free). For the signed-in user of a PERSONAL tenant: every current APPROVED version of the Personal Terms of Service, the Aramo Privacy Notice and the Aramo Acceptable Use Policy that this user has not accepted (at signup or in the workspace) for that exact version and text. ToS v2.0: once the Aramo Sign Terms of Service (`sign.terms_of_service`) 2.0 is in effect it replaces the Personal Terms for PERSONAL tenants, and a user of a BUSINESS tenant owes it too until accepted (before then a BUSINESS tenant has nothing pending). Sending is refused (details.reason = legal_acceptance_required) while anything is pending. Requires a Sign session of a tenant entitled to `sign`.
          */
         get: operations["getSignLegalStatus"];
         put?: never;
@@ -1741,8 +1741,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept the current versions of the Personal legal documents.
-         * @description Aramo Sign Personal (Free). Each item must name a Personal legal document and its CURRENT approved version exactly; otherwise the whole request is refused (details.reason = legal_version_not_current) and nothing is recorded. Records one acceptance per user, document and version (idempotent) with the version, the text SHA-256, the time, the client address and the user agent. Refused for a BUSINESS tenant (details.reason = legal_acceptance_not_applicable). Answers the documents still pending.
+         * Accept the current versions of the legal documents owed.
+         * @description Aramo Sign Personal (Free). Each item must name a legal document owed by the tenant's kind and its CURRENT approved version exactly; otherwise the whole request is refused (details.reason = legal_version_not_current) and nothing is recorded. Records one acceptance per user, document and version (idempotent) with the version, the text SHA-256, the time, the client address and the user agent. For a BUSINESS tenant it is refused (details.reason = legal_acceptance_not_applicable) while no Business document is in effect (ToS v2.0: the Aramo Sign Terms of Service once in effect). Answers the documents still pending.
          */
         post: operations["acceptSignLegalDocuments"];
         delete?: never;
@@ -1825,30 +1825,6 @@ export interface paths {
          * @description Aramo Sign Personal (Free) — Settings → Close account. The owner (tenant_owner) of a PERSONAL account closes it: sending stops immediately and for good; envelopes already sent stay open for their signers. The same close the operator performs, audited with the owner as the actor. Requires confirm = CLOSE (else details.reason = account_close_confirmation_required). Refused for a BUSINESS account (details.reason = business_account_close_via_organization) and for a caller who is not the owner (details.reason = not_account_owner). A PERSONAL account without a Personal risk state cannot be closed here (404, details.reason = personal_account_not_closable). Closing a closed account answers its closed state. Requires a Sign session of a tenant entitled to `sign`.
          */
         post: operations["closeSignAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sign/account/upgrade": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Whether the signed-in owner's Personal account can be upgraded to a Business organization.
-         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless SIGN_PERSONAL_UPGRADE_ENABLED=1. eligible is true only for the owner (tenant_owner) of an ACTIVE PERSONAL account in good standing (risk state clear) whose open subscription, if any, is the FREE Personal plan, while APPROVED Business terms are in effect; otherwise reason names the first rule that fails. terms is the Business terms version the upgrade accepts (null while none is approved). Requires a Sign session of a tenant entitled to `sign`.
-         */
-        get: operations["getSignPersonalUpgradeStatus"];
-        put?: never;
-        /**
-         * Upgrade the signed-in owner's Personal account to a Business organization, in place.
-         * @description Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §5. Dark — answers 404 unless SIGN_PERSONAL_UPGRADE_ENABLED=1. Irreversible. The same tenant becomes a BUSINESS organization: its envelopes, evidence, custody and retention setting are unchanged. The Business terms acceptance is recorded, the FREE Personal subscription ends (the owner then chooses a Business plan on the Billing page), the organization name and US organization details are written with the signer's authority attestation, the owner receives tenant_admin beside tenant_owner, and the change is audited (identity.tenant.upgraded_to_business). Requires confirm = UPGRADE (else details.reason = upgrade_confirmation_required), accept_terms = true (terms_not_accepted) and organization.authority_attested = true (authority_attestation_required). Refused with 403 and details.reason not_personal_account, not_account_owner, personal_account_not_active, personal_account_not_in_good_standing, business_terms_not_available or personal_paid_subscription_upgrade_unsupported; 409 TENANT_ALREADY_EXISTS (organization_name_taken) when another organization uses the name. Requires a Sign session of a tenant entitled to `sign`.
-         */
-        post: operations["upgradeSignPersonalAccount"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2093,6 +2069,26 @@ export interface paths {
          * @description Requires sign:billing:manage (tenant_owner only) in a BUSINESS tenant. Refused 503 reason self_service_terms_not_approved while the Sign Terms of Service are not APPROVED; refused 400 plan_not_available for a plan that is not an eligible, active self-service plan other than the current one; otherwise refused 409 financial_treatment_undefined, because a provider price change has no approved proration or usage-transition treatment (decision request DR-C7-1). Nothing is written and no provider call is made. 202 is reserved for the ruled path.
          */
         post: operations["upgradeSelfServiceSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/billing/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign Feature Parity D-2 — the organization's metered usage this billing period.
+         * @description Requires sign:envelope:read or sign:billing:manage. Read only. Per-unit usage (SMS and WhatsApp delivery, SMS one-time passcodes, ID verification, knowledge-based checks, qualified signatures, e-stamps) recorded in the usage ledger for the current billing period of the organization's open Sign subscription, priced at the unit prices of its pinned plan version. Amounts are minor units of currency. A unit_price_minor of null means the unit is not sold on the current plan version. While metered billing is off (SIGN_USAGE_BILLING_ENABLED unset, the default) it answers enabled false and period null. period is null when the organization has no open Sign subscription.
+         */
+        get: operations["getBillingUsage"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2880,6 +2876,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/messaging/sms/inbound/aws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inbound SMS replies (STOP / START) from AWS End User Messaging through Amazon SNS.
+         * @description Remaining-Work Directive §3 B5 — no session. Amazon SNS posts the message as JSON with Content-Type text/plain. Authenticity is the SNS message signature (SignatureVersion 1 or 2) checked with the certificate at SigningCertURL (https, an Amazon SNS host only); TopicArn must equal SIGN_SMS_AWS_INBOUND_TOPIC_ARN. A SubscriptionConfirmation is confirmed through its SubscribeURL (an Amazon SNS host only). A Notification carrying the AWS two-way SMS payload records STOP / START in the opt-out list. 404 unless SIGN_SMS_AWS_INBOUND_TOPIC_ARN is set, SIGN_SMS_PROVIDER includes a configured aws provider and sign.sms_delivery is AVAILABLE.
+         */
+        post: operations["receiveAwsInboundSms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/payment/checkout": {
         parameters: {
             query?: never;
@@ -3317,6 +3333,28 @@ export interface components {
             /** @enum {string|null} */
             reason: "PRODUCT_NOT_SELF_SERVICE" | "SELF_SERVICE_TERMS_NOT_APPROVED" | "GOVERNED_SUBSCRIPTION_OPEN" | "ACTIVATION_PENDING" | "CONVERSION_IN_PROGRESS" | "NO_SELF_SERVICE_SUBSCRIPTION" | "PROVIDER_CHANGE_PENDING" | "ALREADY_CANCELING" | "PLAN_NOT_AVAILABLE" | "FINANCIAL_TREATMENT_UNDEFINED" | null;
         };
+        BillingUsage: {
+            enabled: boolean;
+            period: {
+                /** Format: date-time */
+                start: string;
+                /** Format: date-time */
+                end: string;
+                /** @enum {string} */
+                currency: "USD";
+                units: {
+                    /** @enum {string} */
+                    unit_key: "sign.sms_message" | "sign.whatsapp_message" | "sign.sms_otp" | "sign.id_verification" | "sign.kba" | "sign.qes_signature" | "sign.india_estamp";
+                    name: string;
+                    /** @enum {string} */
+                    quantity_label: "message" | "verification" | "signature" | "stamp";
+                    quantity: number;
+                    unit_price_minor: number | null;
+                    amount_minor: number;
+                }[];
+                total_amount_minor: number;
+            } | null;
+        };
         /** @description CCP-C7 — the self-service state of one registered product (v1 registry, sign only). */
         SelfServiceBilling: {
             /** @enum {string} */
@@ -3369,10 +3407,10 @@ export interface components {
             url: string;
         };
         SignLegalStatus: {
-            /** @description Current approved Personal legal documents the user has not accepted (empty for a BUSINESS tenant). */
+            /** @description Current approved legal documents the user has not accepted (a BUSINESS tenant only ever owes the Aramo Sign Terms of Service in effect). */
             pending: {
                 /** @enum {string} */
-                key: "sign.personal_terms_of_service" | "aramo.privacy_notice" | "aramo.acceptable_use_policy";
+                key: "sign.terms_of_service" | "sign.personal_terms_of_service" | "aramo.privacy_notice" | "aramo.acceptable_use_policy";
                 version: string;
                 /**
                  * Format: uri
@@ -3443,59 +3481,6 @@ export interface components {
             organization_decides: string | null;
             privacy_contact: string;
         };
-        SignPersonalUpgradeStatus: {
-            eligible: boolean;
-            /** @enum {string|null} */
-            reason: "not_personal_account" | "not_account_owner" | "personal_account_not_active" | "personal_account_not_in_good_standing" | "business_terms_not_available" | "personal_paid_subscription_upgrade_unsupported" | null;
-            current_name: string;
-            terms: {
-                key: string;
-                version: string;
-                /** Format: uri */
-                url: string;
-            } | null;
-            subscription: {
-                plan_key: string;
-                source: string;
-            } | null;
-        };
-        SignPersonalUpgradeRequest: {
-            /** @enum {string} */
-            confirm: "UPGRADE";
-            organization_name: string;
-            /** @enum {boolean} */
-            accept_terms: true;
-            /** @description US organization details (Sign Signup Amendment A1; US only). */
-            organization: {
-                legal_name: string;
-                address_line1: string;
-                address_line2?: string | null;
-                city: string;
-                /** @description US state or DC (two-letter code). */
-                state_province: string;
-                postal_code: string;
-                /** @enum {string} */
-                country_code?: "US";
-                /** Format: email */
-                primary_contact_email: string;
-                primary_contact_name: string;
-                signer_title: string;
-                primary_contact_phone?: string | null;
-                tax_id?: string | null;
-                registration_number?: string | null;
-                /** @enum {boolean} */
-                authority_attested: true;
-            };
-        };
-        SignPersonalUpgradeResult: {
-            /** @enum {string} */
-            state: "upgraded";
-            /** @enum {string} */
-            kind: "BUSINESS";
-            organization_name: string;
-            /** Format: date-time */
-            upgraded_at: string;
-        };
         SignAccountClosed: {
             /** @enum {string} */
             state: "closed";
@@ -3553,6 +3538,16 @@ export interface components {
                 delegate_signing?: boolean;
                 /** @description Feature-Parity §1.9 — sign.access_code (per-recipient access code, every plan) is available. */
                 access_code?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.sms_delivery is available (the signing link also goes by SMS; launch availability only, no plan rule). */
+                sms_delivery?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.whatsapp_delivery is available (the signing link also goes by WhatsApp; launch availability only, no plan rule). */
+                whatsapp_delivery?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.sms_otp is available (the recipient enters an SMS code before acting; launch availability only, no plan rule). */
+                sms_otp?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.id_verification is available and the tenant is a BUSINESS tenant (government-ID check per recipient). */
+                id_verification?: boolean;
+                /** @description Consolidated Directive v1.0 B2 — sign.kba is available and the tenant is a BUSINESS tenant (knowledge-based questions per recipient). */
+                kba?: boolean;
                 /** @description Sign 1.14 — payment collection is available: sign.payments is available, Stripe Connect is configured and the plan is Standard Professional or Enterprise. */
                 payments?: boolean;
                 /** @description Feature-Parity §1.16 (Amendment A1) — the sign.qes capability (signing through a QTSP) is available. False until the PO authorizes it. */
@@ -5022,6 +5017,8 @@ export interface operations {
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
+                        /** @description Consolidated Directive v1.0 B3 (Feature-Parity §1.17) — true when sign.delegate_signing is available, the sender allowed delegation and this recipient may still hand the envelope to someone else (a signer with an email who has not delegated or signed). The signer page offers the hand-off only then; POST /v1/sign/signing/delegate re-checks every rule. */
+                        can_delegate?: boolean;
                     };
                 };
             };
@@ -7944,58 +7941,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    getSignPersonalUpgradeStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SignPersonalUpgradeStatus"];
-                };
-            };
-            401: components["responses"]["SenderUnauthorized"];
-            403: components["responses"]["SenderForbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    upgradeSignPersonalAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SignPersonalUpgradeRequest"];
-            };
-        };
-        responses: {
-            /** @description The account is now a Business organization. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SignPersonalUpgradeResult"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["SenderUnauthorized"];
-            403: components["responses"]["SenderForbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
     listMyPrivacyRequests: {
         parameters: {
             query?: never;
@@ -8374,6 +8319,29 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             409: components["responses"]["BillingConflict"];
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    getBillingUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingUsage"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
             503: components["responses"]["BillingUnavailable"];
         };
     };
@@ -9915,6 +9883,55 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    receiveAwsInboundSms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/plain": string;
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        type: "Notification" | "SubscriptionConfirmation" | "UnsubscribeConfirmation";
+                        keywords: number;
+                    };
+                };
+            };
+            /** @description The SNS message is malformed, its signature is invalid, the topic or the certificate URL is not trusted, or it is stale. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The SNS signing certificate could not be fetched; SNS delivers again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     startSignerPaymentCheckout: {

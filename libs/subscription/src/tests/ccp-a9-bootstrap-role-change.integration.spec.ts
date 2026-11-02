@@ -35,6 +35,10 @@ import {
   seedProdAssertionForFixture,
 } from './support/ccp-a9-database.js';
 
+// Amendment A3 D1: a PLAN_VERSION_PUBLISH carries the content-checksum snapshot; the A3-era schema has no
+// PlanVersion table, so the request supplies the snapshot itself (the service reads the row only when absent).
+const A3_SNAPSHOT = 'a'.repeat(64);
+
 // CCP-A9 (PBD §5.1 row A9, mandatory tests) on real Postgres 17: the identity chain (with
 // the A9 last-effective-platform_owner trigger), the subscription chain, A2, A3 and the A9
 // subscription migration. Test IDs are cited by doc/ccp/slices/CCP-A9-acceptance.md.
@@ -136,7 +140,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A9 bootstrap 
     expect(await outcome(svc.create(as(BOOTSTRAP_OPERATOR_ID, ['super_admin']), { action_type: 'ROLE_GRANT', payload: { subject_user_id: FA, role_key: 'platform_owner' }, reason: 'x', idempotency_key: key() }, ctx))).toBe(
       'NOT_HUMAN:not_human',
     );
-    const { request: pub } = await svc.create(as(CAT, ['catalog_manager']), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' }, reason: 'x', idempotency_key: key() }, ctx);
+    const { request: pub } = await svc.create(as(CAT, ['catalog_manager']), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201', target_content_checksum: A3_SNAPSHOT }, reason: 'x', idempotency_key: key() }, ctx);
     await svc.submit(as(CAT, ['catalog_manager']), pub.id, ctx);
     expect(await outcome(svc.approve(as(FA, ['finance_admin']), pub.id, { step_index: 0 }, ctx))).toBe('CCP_NOT_BOOTSTRAPPED');
     const { request: cr } = await svc.create(as(OPS, ['commercial_ops']), { action_type: 'CREDIT', tenant_id: '0190dddd-0000-7000-8000-0000000000a1', product_key: 'sign', payload: { amount_minor: 1, currency: 'USD' }, reason: 'x', idempotency_key: key() }, ctx);

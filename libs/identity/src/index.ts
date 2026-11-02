@@ -437,13 +437,6 @@ export {
   type PersonalSignupStatus,
   type PersonalReviewItem,
 } from './lib/personal/personal-signup.repository.js';
-export {
-  PersonalUpgradeRepository,
-  PERSONAL_UPGRADE_AUDIT_SOURCE,
-  BUSINESS_OWNER_ROLE_KEYS,
-  type PersonalUpgradeInput,
-  type PersonalUpgradeOutcome,
-} from './lib/personal/personal-upgrade.repository.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability
 // (TM-L12 rights-request path; Aramo Sign is the first consumer).

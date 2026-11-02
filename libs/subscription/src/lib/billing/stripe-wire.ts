@@ -267,3 +267,29 @@ export function wireListComplete(obj: Record<string, unknown>): boolean {
 export function wireDisputeState(obj: Record<string, unknown>): { object_ref: string | null; amount_minor: number; status: string | null } {
   return { object_ref: wireStr(obj['id']), amount_minor: wireInt(obj['amount']), status: wireStr(obj['status']) };
 }
+
+// ---------------------------------------------------------------------------------------
+// Sign usage / metered billing (Feature Parity D-2, A1) — Stripe Billing Meter Events
+// (POST /v1/billing/meter_events, available at the pinned API version 2024-06-20). Pure
+// translation of Aramo's meter-event report to Stripe's parameter names; the payload key that
+// names the billing account is Stripe's own vendor field (vocabulary-gate exception above).
+
+/** The Stripe path a meter event is reported to. */
+export const WIRE_METER_EVENTS_PATH = '/v1/billing/meter_events';
+
+/** Aramo meter-event report → Stripe meter-event params (value as a string; timestamp in seconds). */
+export function wireMeterEventParams(r: { event_name: string; account_ref: string; value: number; identifier: string; occurred_at: Date }): Record<string, string> {
+  return {
+    event_name: r.event_name,
+    identifier: r.identifier,
+    timestamp: String(Math.floor(r.occurred_at.getTime() / 1000)),
+    'payload[stripe_customer_id]': r.account_ref,
+    'payload[value]': String(r.value),
+  };
+}
+
+/** Stripe meter event → the identifier it was recorded under (Stripe echoes `identifier`). */
+export function wireMeterEventRef(obj: Record<string, unknown>): string | null {
+  const v = obj['identifier'];
+  return typeof v === 'string' && v !== '' ? v : null;
+}

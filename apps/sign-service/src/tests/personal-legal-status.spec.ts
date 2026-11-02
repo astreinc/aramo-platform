@@ -19,7 +19,11 @@ interface Row {
   ip: string | null;
 }
 
-function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, clock?: () => Date) {
+// ToS v2.0 takes effect 2026-11-02 12:00 EST: the default clock is fixed just before it, so the
+// Personal 1.0 cases never depend on wall time.
+const BEFORE_TOS_V20 = () => new Date('2026-11-02T11:59:59.999-05:00');
+
+function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, clock: () => Date = BEFORE_TOS_V20) {
   const rows: Row[] = [];
   const kinds = new Map<string, string>([
     ['t-personal', 'PERSONAL'],
@@ -112,7 +116,8 @@ describe('PersonalLegalStatusService', () => {
     const privacy = approved('aramo.privacy_notice');
     const v11: LegalDocumentVersion = { ...privacy, version: '1.1', sha256: 'e'.repeat(64), url: 'https://sign.aramo.ai/legal/privacy/1.1', effective_from: '2026-11-25T00:00:00Z' };
     let now = new Date('2026-11-24T23:59:59.999Z');
-    const { svc, rows } = harness([...LEGAL_DOCUMENTS, v11], () => now);
+    // ToS v2.0 left out: this case is about the Privacy Notice alone (v2.0 is in force by Nov 24).
+    const { svc, rows } = harness([...LEGAL_DOCUMENTS.filter((d) => !(d.key === 'sign.terms_of_service' && d.version === '2.0')), v11], () => now);
     for (const k of ALL) rows.push({ tenant_id: 't-personal', user_id: 'u1', document_key: k, version: '1.0', sha256: approved(k).sha256, ip: null });
     expect(await svc.pending('t-personal', 'u1')).toEqual([]);
     expect(svc.current().find((d) => d.key === 'aramo.privacy_notice')!.version).toBe('1.0');
@@ -142,5 +147,57 @@ describe('PersonalLegalStatusService', () => {
     const e = legalAcceptanceRequired('r');
     expect(e.statusCode).toBe(403);
     expect(e.context.details?.['reason']).toBe(LEGAL_ACCEPTANCE_REQUIRED_REASON);
+  });
+});
+
+// ToS v2.0 (PO 2026-11-01) — the combined Terms of Service, registered with effective_from null;
+// a fixture registry schedules it to show the gate for Business and Personal users.
+describe('ToS v2.0 — Business and Personal re-acceptance', () => {
+  const v20 = LEGAL_DOCUMENTS.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
+  const reg = LEGAL_DOCUMENTS;
+  const before = BEFORE_TOS_V20;
+  const after = () => new Date('2026-11-02T12:00:00-05:00');
+  const V20 = { key: 'sign.terms_of_service', version: '2.0', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', title: 'Aramo Sign Terms of Service' };
+
+  it('the shipped registry before 2026-11-02 12:00 EST: Business owes nothing and cannot accept; Personal still owes the Personal Terms 1.0', async () => {
+    const { svc } = harness(reg, before);
+    expect(await svc.pending('t-business', 'u1')).toEqual([]);
+    await expect(svc.accept('t-business', 'u1', [{ key: 'sign.terms_of_service', version: '2.0' }], { ip: null, user_agent: null }, 'r')).rejects.toMatchObject({
+      context: { details: { reason: 'legal_acceptance_not_applicable' } },
+    });
+    expect((await svc.pending('t-personal', 'u1')).map((d) => `${d.key}@${d.version}`)).toEqual(['sign.personal_terms_of_service@1.0', 'aramo.privacy_notice@1.0', 'aramo.acceptable_use_policy@1.0']);
+  });
+
+  it('before its effective instant nothing changes for either kind', async () => {
+    const { svc } = harness(reg, before);
+    expect(await svc.pending('t-business', 'u1')).toEqual([]);
+    expect((await svc.pending('t-personal', 'u1'))[0]!.key).toBe('sign.personal_terms_of_service');
+  });
+
+  it('once effective, an existing Business user owes v2.0 until they accept it (version, text and origin recorded, per user)', async () => {
+    const { svc, rows } = harness(reg, after);
+    expect(await svc.pending('t-business', 'u1')).toEqual([V20]);
+    const left = await svc.accept('t-business', 'u1', [{ key: 'sign.terms_of_service', version: '2.0' }], { ip: '198.51.100.7', user_agent: 'UA' }, 'r');
+    expect(left).toEqual([]);
+    expect(rows.at(-1)).toMatchObject({ tenant_id: 't-business', user_id: 'u1', document_key: 'sign.terms_of_service', version: '2.0', sha256: v20.sha256, ip: '198.51.100.7' });
+    expect(await svc.pending('t-business', 'u2')).toEqual([V20]);
+    await expect(svc.accept('t-business', 'u1', [{ key: 'aramo.privacy_notice', version: '1.0' }], { ip: null, user_agent: null }, 'r')).rejects.toMatchObject({
+      context: { details: { reason: 'legal_version_not_current' } },
+    });
+  });
+
+  it('once effective, a Personal user who accepted the Personal Terms 1.0 owes v2.0 only; 1.0 is no longer owed', async () => {
+    const { svc, rows } = harness(reg, after);
+    for (const k of ALL) rows.push({ tenant_id: 't-personal', user_id: 'u1', document_key: k, version: '1.0', sha256: approved(k).sha256, ip: null });
+    expect(await svc.pending('t-personal', 'u1')).toEqual([V20]);
+    expect(await svc.accept('t-personal', 'u1', [{ key: 'sign.terms_of_service', version: '2.0' }], { ip: null, user_agent: null }, 'r')).toEqual([]);
+    await expect(svc.accept('t-personal', 'u1', [{ key: 'sign.personal_terms_of_service', version: '1.0' }], { ip: null, user_agent: null }, 'r')).rejects.toMatchObject({
+      context: { details: { reason: 'legal_version_not_current' } },
+    });
+  });
+
+  it('once effective, the send refusal applies to a Business user who has not accepted', async () => {
+    const { svc } = harness(reg, after);
+    expect((await svc.pendingFor({ id: 't-business', kind: 'BUSINESS' }, 'u1')).length).toBe(1);
   });
 });

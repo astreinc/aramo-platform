@@ -10668,11 +10668,6 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
-      "from": "apps/sign-service/src/app/account/personal-upgrade.service.ts",
-      "status": "production",
-      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
-    },
-    {
       "excludedBy": "src/sign-negative-control/**",
       "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
       "status": "excluded",
@@ -10695,18 +10690,6 @@
       "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/m-a8-identity-dependency-inspector.spec.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/sign-service/src/tests/personal-upgrade.integration.spec.ts",
-      "status": "excluded",
-      "to": "doc/legal/aramo-sign/terms-of-service.md"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/sign-service/src/tests/personal-upgrade.spec.ts",
-      "status": "excluded",
-      "to": "doc/legal/aramo-sign/terms-of-service.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10751,6 +10734,11 @@
       "from": "apps/sign-web/src/workspace/legal/texts.ts",
       "status": "production",
       "to": "doc/legal/aramo-sign/personal-terms-of-service.md"
+    },
+    {
+      "from": "apps/sign-web/src/workspace/legal/texts.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
     },
     {
       "from": "apps/sign-web/src/workspace/legal/texts.ts",
@@ -11231,11 +11219,6 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/signup/sign-signup.controller.ts"
-    },
-    {
-      "from": "ci/config/api-surface-manifest.json",
-      "status": "unscoped",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -29594,6 +29577,41 @@
       "to": "libs/talent-embedding/prisma/migrations/20260930120000_init_talent_embedding/migration.sql"
     },
     {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/sign/monitoring-and-alerts.md"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/releases/2026-11-01-sign-launch.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
       "from": "doc/runbooks/run-layer.md",
       "status": "unscoped",
       "to": "doc/step4-deploy-substrate-recon.md"
@@ -29701,6 +29719,321 @@
       "to": "libs/sign/src/lib/ports/evidence-manifest-signer.port.ts"
     },
     {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/sign-metering-usage-recorder.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/branding/sign-branding.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/custom-roles/sign-custom-roles.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-seal/remote-hash-signing.provider.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-seal/seal-provider-profiles.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/identity-verification/sign-identity-verification.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/messaging-adapters.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/recipient-otp.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sender-messaging.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sign-messaging.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/messaging/sign-messaging.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/sign-payments.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/stripe-connect-payment.provider.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/csc-qes-signing.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/esign-sender-regulated.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/estamp-adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/regulated/regulated-signing.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-context.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-envelope.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-reports.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-templates.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sign-feature.gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/trusted-timestamp/rfc3161-tsa.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/guest/App.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/App.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/Settings.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/zones.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "deploy/monitoring/install.sh"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/prisma/migrations/20261101130000_sign_tenant_branding/migration.sql"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/identity-gate.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/kba.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261101120000_sign_catalog_v2/migration.sql"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-command.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/provider-price.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/renewal-notice.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/usage-meter.port.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog-apply.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-plan-create.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/sign-template-entitlement.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/metered-units.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-provider-report.service.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-reconciliation.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/legal-publication-readiness.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/config/env.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/features/signing/SigningFlow.tsx"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/screens/send/RecipientOptions.tsx"
+    },
+    {
       "from": "doc/runbooks/sign/incident-response-and-rollback.md",
       "status": "unscoped",
       "to": "deploy/monitoring/aramo-health-probe.sh"
@@ -29804,6 +30137,11 @@
       "from": "doc/runbooks/sign/monitoring-and-alerts.md",
       "status": "unscoped",
       "to": "infrastructure-monitoring/lambda/watchdog.py"
+    },
+    {
+      "from": "doc/runbooks/sign/monitoring-and-alerts.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-provider-report.service.ts"
     },
     {
       "from": "doc/runbooks/sign/privacy-requests.md",
@@ -32068,11 +32406,6 @@
       "to": "apps/platform-admin/src/app/platform/cognito/cognito-admin.service.ts"
     },
     {
-      "from": "libs/identity/src/lib/personal/personal-upgrade.repository.ts",
-      "status": "production",
-      "to": "doc/backlog/sign-personal-to-business-upgrade-recon.md"
-    },
-    {
       "from": "libs/identity/src/lib/prisma/prisma.service.ts",
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
@@ -33877,6 +34210,11 @@
       "to": "doc/ccp/slices/CCP-C8PR-pre-execution.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261101300000_sign_usage_metering/migration.sql",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/sign-usage-metering-compensating.sql"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -33945,6 +34283,11 @@
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
       "status": "production",
       "to": "doc/legal/aramo-sign/retention-export-deletion-policy.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
     },
     {
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
@@ -34330,12 +34673,6 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
-      "status": "excluded",
-      "to": "apps/sign-service/src/app/account/personal-upgrade.service.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -34761,7 +35098,19 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/legal-documents.spec.ts",
       "status": "excluded",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/legal-documents.spec.ts",
+      "status": "excluded",
       "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/legal-publication-readiness.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

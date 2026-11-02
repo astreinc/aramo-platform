@@ -109,7 +109,9 @@ export async function seedCcpCatalog(pg: Client): Promise<void> {
  * migration-published v1. One helper for the B2 route spec and the platform-admin Pact
  * provider (CLAUDE.md: one shared helper, not N duplicated edits).
  */
-export const CCP_CATALOG_MIGRATIONS: readonly string[] = [SUB('20261025140000_ccp_a4_product_dimension'), SUB('20261025160000_ccp_a5_plan_version')];
+// Amendment A3/A4 — the catalog read lists the add-on (metered) units, so the catalog schema carries the
+// metering migration too (it depends only on A5's PlanVersion / pin events and TenantSubscription).
+export const CCP_CATALOG_MIGRATIONS: readonly string[] = [SUB('20261025140000_ccp_a4_product_dimension'), SUB('20261025160000_ccp_a5_plan_version'), SUB('20261101300000_sign_usage_metering')];
 export async function applyCcpCatalogSchema(pg: Client): Promise<void> {
   await applyCcpA3Schema(pg);
   for (const f of CCP_CATALOG_MIGRATIONS) await pg.query(readFileSync(f, 'utf8'));

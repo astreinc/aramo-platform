@@ -23,6 +23,7 @@ import { SupportExtensionService } from './commercial/support-extension.service.
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { LegalChangeNoticeRepository } from './legal/legal-change-notice.repository.js';
+import { RenewalNoticeRepository } from './billing/renewal-notice.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
 import { CommercialCatalogService } from './commercial/commercial-catalog.service.js';
 import { ContractRepository } from './commercial/commercial-contract.repository.js';
@@ -44,6 +45,12 @@ import { PrismaService } from './prisma/prisma.service.js';
 // Sign Feature-Parity 1.1 — whether the Sign plan includes templates (P-6: Free never).
 import { SignTemplateEntitlementService } from './sign-template-entitlement.service.js';
 import { UsageRollupService } from './usage/usage-rollup.service.js';
+// Sign Feature Parity D-2 (A1) — the metered usage ledger (UsageRecorder) and its provider reporting.
+import { MeteredUsageService } from './usage/metered-usage.service.js';
+import { USAGE_RECORDER } from './usage/usage-recorder.port.js';
+import { UsageProviderReportService } from './usage/usage-provider-report.service.js';
+import { UsagePeriodReconciliationService } from './usage/usage-period-reconciliation.service.js';
+import { USAGE_METER_REPORT_PORT } from './billing/usage-meter.port.js';
 
 // SubscriptionModule — the plan/subscription/allowance authority (Multi-Provider
 // directive §B/§C). Kept apart from the signing engine and provider routing.
@@ -76,6 +83,7 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     LegalAcceptanceService,
     // Privacy Notice 1.1 E-6 — legal-change notice delivery evidence.
     LegalChangeNoticeRepository,
+    RenewalNoticeRepository,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
     { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
     { provide: BILLING_PROVIDER_ADJUSTMENT_PORT, useClass: StripeBillingProvider },
@@ -113,8 +121,13 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     ContractPaymentReadService,
     // CCP-D3 — the alert scanner, the exception register reads and the counts-and-states metrics.
     CommercialAlertService,
+    MeteredUsageService,
+    { provide: USAGE_RECORDER, useExisting: MeteredUsageService },
+    { provide: USAGE_METER_REPORT_PORT, useClass: StripeBillingProvider },
+    UsageProviderReportService,
+    UsagePeriodReconciliationService,
   ],
-  exports: [AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT],
+  exports: [AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT],
 })
 export class SubscriptionModule {
   /**
@@ -133,6 +146,7 @@ export class SubscriptionModule {
         LegalAcceptanceService,
         // Privacy Notice 1.1 E-6 — legal-change notice delivery evidence.
         LegalChangeNoticeRepository,
+        RenewalNoticeRepository,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
         { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
         { provide: BILLING_PROVIDER_ADJUSTMENT_PORT, useClass: StripeBillingProvider },
@@ -169,9 +183,14 @@ export class SubscriptionModule {
         ContractRepository,
         ContractPaymentReadService,
         CommercialAlertService,
+        MeteredUsageService,
+        { provide: USAGE_RECORDER, useExisting: MeteredUsageService },
+        { provide: USAGE_METER_REPORT_PORT, useClass: StripeBillingProvider },
+        UsageProviderReportService,
+        UsagePeriodReconciliationService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT],
+      exports: [AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT],
     };
   }
 }

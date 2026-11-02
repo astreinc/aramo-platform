@@ -16,6 +16,7 @@ import {
   type CatalogResponseDto,
   type CatalogVersionDetailDto,
   type CatalogVersionSummaryDto,
+  type CatalogVersionTermsDto,
   CreateCatalogDraftDto,
   UUID_SHAPE,
   UpdateCatalogDraftDto,
@@ -37,8 +38,8 @@ class UuidShapePipe implements PipeTransform<string, string> {
 // the draft writes need `platform:catalog:draft` (catalog_manager only). Below the gate the
 // CommercialCatalogService is the authority: a human principal; DRAFT only (a PUBLISHED or
 // RETIRED version is refused 409 COMMERCIAL_CATALOG_CONFLICT `not_draft` — and the N-16 DB
-// trigger refuses it anyway); one DRAFT per plan; only price, envelopes per month and storage
-// are editable.
+// trigger refuses it anyway); one DRAFT per plan; only price, envelopes per month, storage and
+// (Sign Feature Parity Amendment A4 D2) the add-on unit prices are editable.
 //
 // There is deliberately NO publish, retire or apply route: publishing and retiring are
 // PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests (POST /platform/commercial/change-requests,
@@ -66,6 +67,7 @@ export class PlatformCommercialCatalogController {
         available_keys: view.plan_create.available_keys.map((k) => ({ product_key: k.product_key, keys: [...k.keys] })),
         pending: view.plan_create.pending.map((r) => ({ ...r, expires_at: iso(r.expires_at) })),
       },
+      metered_units: view.metered_units.map((m) => ({ product_key: m.product_key, units: m.units.map((u) => ({ ...u })) })),
     };
   }
 
@@ -108,6 +110,8 @@ export class PlatformCommercialCatalogController {
     if (body.list_price_minor !== undefined) edits.list_price_minor = body.list_price_minor;
     if (body.envelopes_per_month !== undefined) edits.envelopes_per_month = body.envelopes_per_month;
     if (body.storage_bytes !== undefined) edits.storage_bytes = body.storage_bytes;
+    // A4 D2 — add-on unit prices on the DRAFT's content (published through PLAN_VERSION_PUBLISH only).
+    if (body.unit_prices !== undefined) edits.unit_prices = { ...body.unit_prices };
     const v = await run(requestId, () =>
       this.catalog.updateDraft(actorOf(auth), versionId, { expected_content_checksum: body.expected_content_checksum, edits, ...(body.note !== undefined ? { note: body.note } : {}) }, ctxOf(requestId)),
     );
@@ -175,8 +179,13 @@ export function summaryDto(v: CatalogVersionSummary): CatalogVersionSummaryDto {
     created_at: v.created_at.toISOString(),
     published_at: iso(v.published_at),
     retired_at: iso(v.retired_at),
-    terms: { ...v.terms },
+    terms: termsDto(v.terms),
     pinned_subscriptions: v.pinned_subscriptions,
     open_requests: v.open_requests.map((r) => ({ id: r.id, action_type: r.action_type, state: r.state, expires_at: iso(r.expires_at) })),
   };
+}
+
+/** The editor terms, with the A3 D1 / A4 D2 add-on unit prices copied (a fresh array per response). */
+function termsDto(t: CatalogVersionSummary['terms']): CatalogVersionTermsDto {
+  return { ...t, unit_prices: t.unit_prices.map((u) => ({ ...u })) };
 }

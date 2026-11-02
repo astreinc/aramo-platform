@@ -16,13 +16,14 @@ import { CommercialRefundReportService } from '../lib/commercial/commercial-refu
 import { RefundRemainderRefusedError, refundBindingOf } from '../lib/commercial/refund-remainder.gate.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { COMMITMENT_TERM_DETAIL, SelfServiceBillingService, SelfServiceRefusedError } from '../lib/billing/self-service-billing.service.js';
-import { LEGAL_DOCUMENTS, type LegalDocumentVersion } from '../lib/legal/legal-documents.js';
+import { type LegalDocumentVersion } from '../lib/legal/legal-documents.js';
 
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
 import { CCP_BUNDLES, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
 import { A6_CTX, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C4Harness, c4Harness, refundPayload } from './support/ccp-c4.js';
 import { TEST_REFUND_KEYS, TEST_REFUND_POLICY_REF, activatePolicyContent, v1With } from './support/ccp-dg.js';
+import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // CCP-C4 (PBD §5.2 row C4, §10; Conversion Rule C-22, C-23; Charter §6.4 NC-1…NC-5, §7 D5) — credits,
 // discounts and refunds executed in Stripe by C1 durable command, on real Postgres 17 with the real
@@ -834,7 +835,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     // own detail, after the manual credit (checked before C2's conversion request opens: an open
     // CONVERSION refuses C7 first); nothing is recorded and no command is queued. The terms gate is
     // opened TEST-ONLY (the shipped Sign ToS is DRAFT), so the commitment gate is reached.
-    const terms: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
+    const terms: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS_BEFORE_TOS_V20.map((d) => (d.key === 'sign.terms_of_service' && d.version === '0.1.1' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
     const c7 = new SelfServiceBillingService(prisma, h.commands, h.lifecycle, terms);
     const cancel = await c7.cancel({ tenant_id: t, product_key: 'sign', user_id: randomUUID(), at: now }).then(
       () => null,

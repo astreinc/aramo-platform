@@ -28,6 +28,18 @@ export interface CatalogVersionTerms {
   storage_bytes: number | null;
   storage_unlimited: boolean;
   storage_present: boolean;
+  /**
+   * Sign Feature Parity A3 (D1) / A4 (D2) — the add-on unit prices in the version's content
+   * (covered by content_checksum, the fingerprint Finance and the Owner approve). Empty = none sold.
+   */
+  unit_prices?: { unit_key: string; unit_price_minor: number }[];
+}
+
+/** A4 D2 — one add-on (metered) unit a draft can price. */
+export interface CatalogMeteredUnit {
+  unit_key: string;
+  name: string;
+  quantity_label: string;
 }
 
 export interface CatalogOpenRequest {
@@ -98,6 +110,8 @@ export interface Catalog {
     available_keys: { product_key: string; keys: string[] }[];
     pending: CatalogPendingPlanCreate[];
   };
+  /** A4 D2 — the add-on units a draft of each product can price. */
+  metered_units?: { product_key: string; units: CatalogMeteredUnit[] }[];
 }
 
 export interface CatalogVersionDetail {
@@ -111,6 +125,8 @@ export interface CatalogDraftEdits {
   list_price_minor?: number;
   envelopes_per_month?: number | null;
   storage_bytes?: number | null;
+  /** A4 D2 — unit key → minor units (USD cents), or null to stop selling the unit on this draft. */
+  unit_prices?: Record<string, number | null>;
 }
 
 export interface CatalogChangeRequest {

@@ -100,6 +100,9 @@ model PlanVersion {
   plan             Plan                 @relation(fields: [plan_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   prices           PlanVersionPrice[]
   subscriptions    TenantSubscription[]
+  // Sign Feature Parity A3 D3 — billable events priced by this version (its unit prices are in
+  // `content.unit_prices`, A3 D1: covered by content_checksum).
+  usage_entries    UsageLedgerEntry[]
 
   @@unique([plan_id, version_number])
   // The composite FK target of TenantSubscription(plan_version_id, plan_id).
@@ -229,6 +232,11 @@ model TenantSubscription {
   plan_version_id                    String      @db.Uuid
   plan                               Plan        @relation(fields: [plan_id], references: [id])
   plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
+  // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.
+  usage_entries                      UsageLedgerEntry[]
+  usage_reconciliations              UsagePeriodReconciliation[]
+  // Remaining-Work A3 — the renewal notices sent for this subscription's term boundaries.
+  renewal_notices                    RenewalNoticeDelivery[]
 
   // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
   // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
@@ -1179,5 +1187,150 @@ model CommercialBillingAdjustment {
   applied_at                    DateTime @db.Timestamptz(3)
 
   @@index([tenant_id, applied_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sign usage / metered billing (Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §3 item 2,
+// §5 D-2, as amended by Amendment A1 §A1.1: "The usage-metering model (D-2) is built now").
+// Migration 20261101300000_sign_usage_metering. Built dark: no unit price is seeded.
+// ---------------------------------------------------------------------------------------------
+
+// The governed, closed registry of per-unit billable units (catalog data, seeded by migration;
+// UPDATE/DELETE rejected). Code mirror: METERED_UNIT_KEYS (src/lib/usage/metered-units.ts).
+model MeteredUnit {
+  unit_key       String                 @id
+  // CHECK: the CCP-A4 product registry (sign); the unit key namespace equals it.
+  product_key    String
+  name           String
+  // CHECK: message | verification | signature | stamp
+  quantity_label String
+  description    String
+  created_at     DateTime               @db.Timestamptz(3)
+  usage_entries  UsageLedgerEntry[]
+
+  @@schema("subscription")
+}
+
+// A3 D3 — the authoritative, tenant-scoped, APPEND-ONLY billable-event table (UPDATE/DELETE/
+// TRUNCATE rejected). One row per billable event, unique per (tenant_id, idempotency_key). Priced by
+// the APPROVED plan version effective at occurred_at (the from-version of the first pin change after
+// it, else the current pin): plan_version_id + plan_version_checksum (the approved fingerprint) +
+// unit_price_minor from that version's content.unit_prices — the INSERT trigger re-derives all of
+// them. Never an envelope count (AllowanceUsage stays the sole envelope authority). No personal data.
+model UsageLedgerEntry {
+  id                    String               @id @db.Uuid
+  tenant_id             String               @db.Uuid
+  product_key           String
+  unit_key              String
+  quantity              Int
+  occurred_at           DateTime             @db.Timestamptz(3)
+  recorded_at           DateTime             @db.Timestamptz(3)
+  idempotency_key       String
+  source_ref            String
+  subscription_id       String               @db.Uuid
+  plan_version_id       String               @db.Uuid
+  plan_version_checksum String
+  period_start          DateTime             @db.Timestamptz(6)
+  period_end            DateTime             @db.Timestamptz(6)
+  unit_price_minor      Int
+  currency              String
+  amount_minor          BigInt
+  unit                  MeteredUnit          @relation(fields: [unit_key], references: [unit_key], onDelete: Restrict, onUpdate: Restrict)
+  plan_version          PlanVersion          @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  subscription          TenantSubscription   @relation(fields: [subscription_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  report                UsageProviderReport?
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([tenant_id, product_key, period_start])
+  @@index([subscription_id, period_start])
+  @@schema("subscription")
+}
+
+// The provider-reporting outbox of the usage ledger (one row per entry). Delivery state only; a
+// terminal row (REPORTED | SKIPPED | FAILED) is never changed and no row is deleted (trigger).
+model UsageProviderReport {
+  ledger_entry_id    String           @id @db.Uuid
+  tenant_id          String           @db.Uuid
+  // CHECK: PENDING | REPORTED | SKIPPED | FAILED
+  state              String
+  reason             String?
+  attempts           Int              @default(0)
+  next_attempt_at    DateTime         @db.Timestamptz(3)
+  provider           String?
+  provider_event_ref String?
+  reported_at        DateTime?        @db.Timestamptz(3)
+  created_at         DateTime         @db.Timestamptz(3)
+  updated_at         DateTime         @db.Timestamptz(3)
+  entry              UsageLedgerEntry @relation(fields: [ledger_entry_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([state, next_attempt_at])
+  @@schema("subscription")
+}
+
+// A3 billing — one append-only reconciliation per (subscription, product, billing period): the closed
+// period's ledger totals (with a digest over every entry) against the provider invoice. A re-run with
+// the same digest and invoice totals is a replay; anything else is refused (never rewritten).
+model UsagePeriodReconciliation {
+  id                    String             @id @db.Uuid
+  tenant_id             String             @db.Uuid
+  subscription_id       String             @db.Uuid
+  product_key           String
+  period_start          DateTime           @db.Timestamptz(6)
+  period_end            DateTime           @db.Timestamptz(6)
+  ledger_entry_count    Int
+  ledger_amount_minor   BigInt
+  ledger_digest         String
+  ledger_lines          Json
+  // CHECK: STRIPE, or NULL when NOT_PROVIDER_BILLED.
+  provider              String?
+  provider_invoice_ref  String?
+  provider_lines        Json?
+  provider_amount_minor BigInt?
+  currency              String
+  // CHECK: MATCHED | MISMATCH | NOT_PROVIDER_BILLED
+  outcome               String
+  discrepancies         Json
+  reconciled_by         String
+  reconciled_at         DateTime           @db.Timestamptz(3)
+  subscription          TenantSubscription @relation(fields: [subscription_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([subscription_id, product_key, period_start])
+  @@index([tenant_id, period_start])
+  @@schema("subscription")
+}
+
+// Aramo Sign Remaining-Work Consolidated Directive (32e5e3e1) A3 — the Aramo renewal notice's delivery
+// evidence (migration 20261102100000_sign_renewal_notice). One row per (subscription, notice kind,
+// term end, channel), so a re-run never sends twice; no address or email body is stored. A trigger
+// refuses DELETE, identifying-column changes and any change out of SENT / SUPPRESSED.
+model RenewalNoticeDelivery {
+  id                  String             @id @db.Uuid
+  subscription_id     String             @db.Uuid
+  tenant_id           String             @db.Uuid
+  product_key         String
+  // CHECK: COMMITMENT_END (a later annual-term kind widens the CHECK additively).
+  notice_kind         String
+  term_end            DateTime           @db.Timestamptz(6)
+  lead_days           Int
+  // CHECK: EMAIL
+  channel             String             @default("EMAIL")
+  template_id         String
+  template_version    String
+  template_sha256     String
+  provider            String?
+  provider_message_id String?
+  // PENDING | SENT | FAILED | SUPPRESSED
+  status              String
+  error_code          String?
+  attempt_count       Int                @default(1)
+  created_at          DateTime           @default(now()) @db.Timestamptz(3)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(3)
+  sent_at             DateTime?          @db.Timestamptz(3)
+  subscription        TenantSubscription @relation(fields: [subscription_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([subscription_id, notice_kind, term_end, channel])
+  @@index([tenant_id])
+  @@index([status])
   @@schema("subscription")
 }
