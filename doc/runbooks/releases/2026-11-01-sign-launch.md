@@ -7,7 +7,7 @@ session runs it on the box after PR #1057 merges.
 **Authorization (must exist before STEP 1):**
 - PO: deploy "all changes to PROD tonight when #1057 merges" (2026-11-01). The session must still get
   the PO's explicit go at the start of the window (it is a separate chat).
-- Lead Architect approval of the 13 migrations below. **If the session cannot see a recorded Lead
+- Lead Architect approval of the 14 migrations below. **If the session cannot see a recorded Lead
   approval, it STOPS before STEP 3 and asks the PO.**
 
 ## Header block (fill TARGET_SHA)
@@ -40,7 +40,7 @@ code via the signer page/API). User-visible changes tonight: the sign-in page "C
 links, the clearer unverified-Microsoft-email error, the cleaner Personal account name, and the
 Platform Console invite fix (finance@ can now be invited).
 
-### Migrations (13) — STEP 3
+### Migrations (14) — STEP 3
 
 Expected pending after `06372585` (verify with `bash deploy/migrate-prod.sh --status` first; the
 list must match exactly — any extra pending migration = STOP and report):
@@ -60,6 +60,7 @@ list must match exactly — any extra pending migration = STOP and report):
 | sign | `20261102130000_sign_recipient_identity_verification` |
 | sign | `20261102190000_sign_payments` |
 | subscription | `20261101300000_sign_usage_metering` |
+| subscription | `20261102100000_sign_renewal_notice` |
 
 - **Migrate BEFORE any code** (STEP 3 before STEP 5). In particular `identity 20261101150000_sign_custom_roles`
   must be applied before the new auth-service starts: auth-service reads it on every Sign token.
@@ -79,7 +80,10 @@ Before STEP 5, take the encrypted `.env` snapshot (`deploy/backup/aramo-env-snap
 - `SIGN_POST_TERMINATION_EXPORT_DAYS=90` (sign-service; matches ToS v2.0 B7.5 "90 calendar days").
 - `BILLING_PAST_DUE_GRACE_DAYS` must be **unset or 7** (matches B4.3 "7 calendar days"); report its value.
 
-Leave every other new optional variable unset (SMS/WhatsApp, Stripe Connect/Identity, seal, TSA, QES,
+Leave every other new optional variable unset (SMS/WhatsApp incl. `SIGN_SMS_AWS_INBOUND_TOPIC_ARN` and
+`SIGN_SMS_MSG91_SENDER_ID` / `SIGN_SMS_MSG91_DLT_ENTITY_ID`, Stripe Connect/Identity, seal, TSA incl.
+`SIGN_TSA_USERNAME` / `SIGN_TSA_PASSWORD` / `SIGN_TSA_CLIENT_CERT` / `SIGN_TSA_CLIENT_KEY`, QES,
+`SIGN_RENEWAL_NOTICES_ENABLED` / `SIGN_RENEWAL_NOTICE_DAYS` (renewal email stays OFF until counsel approves),
 e-stamp, `SIGN_USAGE_BILLING_ENABLED`, messaging limits): unset = feature off. None is a required
 (`:?`) interpolation. (`SIGN_PERSONAL_UPGRADE_ENABLED` no longer exists: the upgrade is removed, A5.)
 
@@ -127,7 +131,7 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
 
 ### Hard stops specific to this release
 
-- Pending set ≠ the 13 above → STOP.
+- Pending set ≠ the 14 above → STOP.
 - G-073 drop pending → STOP.
 - No recorded Lead migration approval → STOP before STEP 3.
 - Any `.env` change beyond the two ToS settings above → STOP and report.
