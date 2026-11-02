@@ -292,7 +292,9 @@ interface DraftRecipient {
   name: string;
   email: string;
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §4 — the role, the copy timing
-  // and Assign to me (the server binds only the caller's verified account email).
+  // and Assign to me as saved on the server. A signer whose email is the caller's account
+  // email is assigned automatically (Web Self-Signing directive W1); the server binds only
+  // the caller's verified account email.
   kind: RecipientKind;
   copy: CopyDelivery;
   assign: boolean;
@@ -396,12 +398,12 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   }, []);
 
   const keyGen = useRef(0);
-  const add = (name = '', email = '', assign = false) =>
+  const add = (name = '', email = '') =>
     setList((l) => {
       // Past MAX_SIGNERS signers, a new person is added as a copy recipient.
       const signers = l.filter((r) => r.kind !== 'RECEIVES_COPY').length;
       const kind: RecipientKind = signers >= MAX_SIGNERS ? 'RECEIVES_COPY' : 'SIGNER';
-      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }];
+      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: false, witnessFor: null, accessCodeSet: false, idv: null }];
     });
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
@@ -445,7 +447,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         r.email !== was.email ||
         r.kind !== was.kind ||
         (r.kind === 'RECEIVES_COPY' && r.copy !== was.copy) ||
-        (r.assign && isMine(r.email)) !== was.assign ||
+        (r.kind === 'SIGNER' && isMine(r.email)) !== was.assign ||
         r.witnessFor !== was.witnessFor ||
         r.idv !== was.idv ||
         r.accessCode !== undefined
@@ -508,8 +510,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             email: r.kind === 'IN_PERSON_SIGNER' && r.email.trim() === '' ? null : r.email.trim(),
             recipient_kind: r.kind,
             copy_delivery: r.kind === 'RECEIVES_COPY' ? r.copy : null,
-            // M-A5 §4.1 — only offered for the signed-in user's own email; the server re-checks it.
-            ...(r.kind === 'SIGNER' && r.assign && isMine(r.email) ? { assign_to_me: true } : {}),
+            // M-A5 §4.1 — automatic for the signed-in user's own email (W1); the server re-checks it.
+            ...(r.kind === 'SIGNER' && isMine(r.email) ? { assign_to_me: true } : {}),
             // B2 — a witness names its signer by list position.
             ...(r.kind === 'WITNESS' ? { witness_for_index: r.witnessFor === null ? null : (index.get(r.witnessFor) ?? null) } : {}),
             // B2 / §1.9 — sent only when changed: a string sets, null removes, omitted keeps.
@@ -648,10 +650,9 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   </Field>
                 ) : null}
                 {r.kind === 'SIGNER' && isMine(r.email) ? (
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-                    <Input unstyled type="checkbox" checked={r.assign} onChange={(e) => upd(r.key, { assign: e.target.checked })} data-testid="assign-to-me" />
-                    Assign to me (I’ll sign this myself)
-                  </label>
+                  <div className="sg-row__s" data-testid="assign-to-me">
+                    This is you. After sending, sign from the envelope page with Sign now, or use the emailed link.
+                  </div>
                 ) : null}
                 <div className="sg-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }}>
                   {/* B2 / §1.9 — the identity check (Business; each method only while available). */}
@@ -713,7 +714,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               + Add recipient
             </Btn>
             {ctx.user.email !== null && !inList(ctx.user.email) ? (
-              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '', true)} disabled={signerCount >= MAX_SIGNERS}>
+              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')} disabled={signerCount >= MAX_SIGNERS}>
                 + Add me as counter-signer
               </Btn>
             ) : null}

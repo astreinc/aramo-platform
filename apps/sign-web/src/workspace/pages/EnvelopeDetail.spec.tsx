@@ -10,6 +10,7 @@ import type { EnvelopeDetail as Detail, Recipient } from '../api';
 // only for a signer the backend says may sign now (can_remind).
 
 const remind = vi.fn();
+const selfSign = vi.fn();
 const detail = vi.fn();
 const executed = vi.fn();
 const dequeue = vi.fn();
@@ -25,6 +26,7 @@ vi.mock('../api', async (orig) => {
       events: async () => ({ items: [] }),
       evidence: async () => null,
       remind: (...a: unknown[]) => remind(...a),
+      selfSignSession: (...a: unknown[]) => selfSign(...a),
       executed: (...a: unknown[]) => executed(...a),
       dequeuePurge: (...a: unknown[]) => dequeue(...a),
       queuePurge: (...a: unknown[]) => queuePurge(...a),
@@ -150,5 +152,52 @@ describe('EnvelopeDetail — retention and purge', () => {
     fireEvent.change(screen.getByLabelText('Type PURGE to confirm'), { target: { value: 'PURGE' } });
     fireEvent.click(go);
     await waitFor(() => expect(queuePurge).toHaveBeenCalledWith('env-00000001', 'DOCUMENTS_AND_METADATA'));
+  });
+});
+
+// Web Self-Signing directive W1 (M-A5 §4) — Sign now for the recipient assigned to the caller.
+describe('EnvelopeDetail — Sign now', () => {
+  const assign = vi.fn();
+  const realLocation = window.location;
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+  });
+  function stubLocation() {
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
+  }
+
+  it('is offered only on the caller’s own assigned recipient who may sign now, and opens the signing page', async () => {
+    stubLocation();
+    detail.mockResolvedValue(env({ recipients: [rcp(1, { assigned_to_me: true, can_remind: true }), rcp(2, { can_remind: true })] }));
+    selfSign.mockResolvedValue({ session_origin: 'SELF', signer_id: 's1', token: 'tok-abc', expires_at: '2026-11-02T13:00:00Z' });
+    show();
+    const btn = await screen.findByTestId('sign-now-s1');
+    expect(screen.queryByTestId('sign-now-s2')).toBeNull();
+    expect(document.body.textContent).not.toContain('tok-abc');
+    fireEvent.click(btn);
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/s/tok-abc'));
+    expect(selfSign).toHaveBeenCalledWith('env-00000001', 's1');
+  });
+
+  it('is hidden before the recipient’s turn', async () => {
+    detail.mockResolvedValue(env({ routing_mode: 'SEQUENTIAL', next_signer_id: 's2', recipients: [rcp(1, { assigned_to_me: true, can_remind: false }), rcp(2, { can_remind: true })] }));
+    show();
+    await screen.findByText('0 of 2 signed');
+    expect(screen.queryByTestId('sign-now-s1')).toBeNull();
+  });
+
+  it('is hidden on a completed envelope', async () => {
+    detail.mockResolvedValue(env({ status: 'COMPLETED', recipients: [rcp(1, { assigned_to_me: true, can_remind: true, status: 'SIGNED' })] }));
+    show();
+    await screen.findByText('1 of 1 signed');
+    expect(screen.queryByTestId('sign-now-s1')).toBeNull();
+  });
+
+  it('shows the refusal in plain words', async () => {
+    detail.mockResolvedValue(env({ recipients: [rcp(1, { assigned_to_me: true, can_remind: true })] }));
+    selfSign.mockRejectedValue(new ApiError(403, 'x', 'INSUFFICIENT_PERMISSIONS', { reason: 'email_not_verified' }));
+    show();
+    fireEvent.click(await screen.findByTestId('sign-now-s1'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.'));
   });
 });
