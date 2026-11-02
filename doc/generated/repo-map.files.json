@@ -7154,6 +7154,7 @@
     "mobile/sign/src/security/__tests__/useLocalPdf.test.tsx",
     "mobile/sign/src/security/documentTempFiles.ts",
     "mobile/sign/src/security/documentTempFilesNative.ts",
+    "mobile/sign/src/security/sensitiveScreen.ios.ts",
     "mobile/sign/src/security/sensitiveScreen.ts",
     "mobile/sign/src/security/useLocalPdf.ts",
     "mobile/sign/src/signing/useGuestSigningSession.ts",
