@@ -75,4 +75,17 @@ describe('permissions (M-A7 R-5)', () => {
         `<uses-permission android:name="android.permission.${p}" tools:node="remove"/>`,
       );
   });
+
+  // Without DETECT_SCREEN_CAPTURE, expo-screen-capture's Android module crashes the app at
+  // launch on Android 14+ (it registers a screen-capture callback when it is created), so it
+  // is not linked on Android at all and the protection hook is iOS-only.
+  it('does not link expo-screen-capture on Android', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      expo?: { autolinking?: { android?: { exclude?: string[] } } };
+    };
+    expect(pkg.expo?.autolinking?.android?.exclude).toContain('expo-screen-capture');
+    expect(readFileSync(join(root, 'src/security/sensitiveScreen.ts'), 'utf8')).not.toContain(
+      "from 'expo-screen-capture'",
+    );
+  });
 });

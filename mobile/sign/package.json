@@ -73,5 +73,14 @@
   },
   "nx": {
     "includedScripts": []
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "expo-screen-capture"
+        ]
+      }
+    }
   }
 }
