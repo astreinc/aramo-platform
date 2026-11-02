@@ -1,7 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   TemplateVariablesRepository,
+  TemplatesRepository,
+  isConfiguredEditableType,
+  type DocumentTypeTemplateConfig,
+  type DocumentTypeTemplateConfigReader,
   type TemplateBindingDescriptor,
   type TemplateCapabilitiesPort,
   type TemplateLogoRef,
@@ -54,6 +58,19 @@ import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 //
 // Recognised content versions: EXACTLY 'rtr-generated-v1' and 'rtr-html-v1' (A1 §2.1).
 // Anything else fails closed.
+//
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §5 — the GENERIC editable
+// contract. Generalised by document type, not duplicated:
+//   §5.1 isConfigurable(type) is DATA: the type is active, type_class TEMPLATE and
+//        template_kind EDITABLE (it replaces the RTR-only switch).
+//   §5.2 `rtr-html-v1` (HTML + variables + signing config) is the content contract of every
+//        editable type — the historical name is kept (ADD-not-rename); `rtr-generated-v1`
+//        stays read-compatible for old RTR rows only.
+//   §5.3 the allowed variables of a type = the active catalog rows whose products intersect
+//        the type's products (and that have a resolver, as before). RTR is tagged {ats,sign}
+//        and every seeded row carries ats, so its result is exactly the former one (same
+//        keys, order, labels, groups, samples) — the ATS RTR regression gate.
+// Products are compared case-insensitively (the stored keys are lowercase since TP-1).
 
 const TOKEN_RE = /\{\{\s*([\w.]+)\s*\}\}/g;
 
@@ -97,18 +114,49 @@ function unsupportedBinding(requestId: string, key: string, reason?: 'no_resolve
   });
 }
 
+// The seeded configuration (migration 20261103110000 backfill: RTR active TEMPLATE EDITABLE,
+// products {ats,sign}). Used ONLY when the class is constructed without a document-type
+// reader (direct construction in unit specs); the Nest provider always injects the
+// TemplatesRepository, so production decides from the live DocumentType row.
+const SEEDED_TYPE_CONFIG: DocumentTypeTemplateConfigReader = {
+  async findDocumentTypeTemplateConfig(id) {
+    return id === RIGHT_TO_REPRESENT_TYPE_ID
+      ? { id, active: true, type_class: 'TEMPLATE', template_kind: 'EDITABLE', products: ['ats', 'sign'] }
+      : null;
+  },
+};
+
+const lower = (xs: readonly string[]): string[] => xs.map((x) => x.toLowerCase());
+
 @Injectable()
 export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
-  constructor(@Inject(TemplateVariablesRepository) private readonly catalog: TemplateVariableCatalogReader) {}
+  private readonly types: DocumentTypeTemplateConfigReader;
 
-  isConfigurable(documentTypeId: string): boolean {
-    return documentTypeId === RIGHT_TO_REPRESENT_TYPE_ID;
+  constructor(
+    @Inject(TemplateVariablesRepository) private readonly catalog: TemplateVariableCatalogReader,
+    @Optional() @Inject(TemplatesRepository) types?: DocumentTypeTemplateConfigReader,
+  ) {
+    this.types = types ?? SEEDED_TYPE_CONFIG;
   }
 
-  // Active ATS catalog rows (ats_binding_key set), split into the resolvable allowed set
-  // (resolver order) and the keys that exist in the catalog but have no resolver.
-  private async atsCatalog(): Promise<{ allowed: CatalogBinding[]; unresolvable: Set<string> }> {
-    const rows = (await this.catalog.listActive()).filter((r) => r.ats_binding_key !== null);
+  // §5.1 — the type's configuration when it is a configured EDITABLE type, else null.
+  private async editableType(documentTypeId: string): Promise<DocumentTypeTemplateConfig | null> {
+    const t = await this.types.findDocumentTypeTemplateConfig(documentTypeId);
+    return isConfiguredEditableType(t) ? t : null;
+  }
+
+  async isConfigurable(documentTypeId: string): Promise<boolean> {
+    return (await this.editableType(documentTypeId)) !== null;
+  }
+
+  // Active catalog rows (ats_binding_key set) whose products intersect the type's (§5.3),
+  // split into the resolvable allowed set (resolver order) and the keys that exist in the
+  // type's catalog but have no resolver.
+  private async atsCatalog(type: DocumentTypeTemplateConfig): Promise<{ allowed: CatalogBinding[]; unresolvable: Set<string> }> {
+    const typeProducts = new Set(lower(type.products));
+    const rows = (await this.catalog.listActive()).filter(
+      (r) => r.ats_binding_key !== null && lower(r.products).some((p) => typeProducts.has(p)),
+    );
     const allowed: CatalogBinding[] = [];
     const unresolvable = new Set<string>();
     for (const r of rows) {
@@ -130,8 +178,9 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   }
 
   async listAllowedBindings(documentTypeId: string): Promise<readonly TemplateBindingDescriptor[]> {
-    if (!this.isConfigurable(documentTypeId)) return [];
-    const { allowed } = await this.atsCatalog();
+    const type = await this.editableType(documentTypeId);
+    if (type === null) return [];
+    const { allowed } = await this.atsCatalog(type);
     // TEMPLATE-STUDIO-1 B-2 — additive data_type / sample_value / active. The offered set is
     // unchanged: only ACTIVE catalog rows with a resolver are bindable, so `active` is the
     // row's own flag (true for every offered binding today) — no inactive key is added.
@@ -139,8 +188,9 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   }
 
   async validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void> {
-    if (!this.isConfigurable(input.document_type_id)) return; // non-configurable → nothing to validate
-    await this.validateAgainst(await this.atsCatalog(), input);
+    const type = await this.editableType(input.document_type_id);
+    if (type === null) return; // non-configurable → nothing to validate
+    await this.validateAgainst(await this.atsCatalog(type), input);
   }
 
   // Structure + closed-binding validation against an already-loaded catalog (one catalog
@@ -172,10 +222,11 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     requestId: string;
     sample_overrides?: Readonly<Record<string, string>>;
   }): Promise<TemplateSamplePreview> {
-    if (!this.isConfigurable(input.document_type_id)) {
+    const type = await this.editableType(input.document_type_id);
+    if (type === null) {
       throw new AramoError('VALIDATION_ERROR', 'this document type is not configurable', 400, { requestId: input.requestId });
     }
-    const cat = await this.atsCatalog();
+    const cat = await this.atsCatalog(type);
     const parsed = await this.validateAgainst(cat, input); // validate structure + bindings first (fail closed)
     // DOC-TEMPLATE-LIB-1 T-4 — a tenant-branded preview replaces the sample of an allowed
     // key with the tenant's own value (organization.*); unknown keys are ignored.
@@ -216,12 +267,14 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     existing_field_schema: unknown;
     requestId: string;
   }): Promise<unknown> {
-    if (!this.isConfigurable(input.document_type_id) || input.render_schema_version !== RTR_HTML_SCHEMA_V1) return input.field_schema;
+    if (input.render_schema_version !== RTR_HTML_SCHEMA_V1) return input.field_schema;
+    const type = await this.editableType(input.document_type_id);
+    if (type === null) return input.field_schema;
     const fs = input.field_schema;
     if (fs === null || typeof fs !== 'object' || Array.isArray(fs)) throw htmlInvalid(input.requestId, 'content_invalid');
     const o = fs as Record<string, unknown>;
     if (typeof o.title !== 'string' || typeof o.html !== 'string') throw htmlInvalid(input.requestId, 'content_invalid');
-    const allowedKeys = new Set((await this.atsCatalog()).allowed.map((d) => d.key));
+    const allowedKeys = new Set((await this.atsCatalog(type)).allowed.map((d) => d.key));
     const res = sanitizeRtrHtml(o.html, (k) => allowedKeys.has(k));
     if ('issue' in res) throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);
     // The logo reference is SERVER-OWNED: carried over from the existing content only.
@@ -251,8 +304,9 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     return content;
   }
 
+  // Callers build this transform only for a configurable type (isConfigurable awaited first,
+  // §5.1). rtr-generated-v1 exists only on old RTR rows (read-compatible, §5.2).
   draftContentFrom(input: { document_type_id: string; render_schema_version: string; field_schema: unknown }): { render_schema_version: string; field_schema: unknown } {
-    if (!this.isConfigurable(input.document_type_id)) return { render_schema_version: input.render_schema_version, field_schema: input.field_schema };
     if (input.render_schema_version === RTR_GENERATED_SCHEMA_V1) {
       const v1 = this.tryParseV1(input.field_schema);
       if (v1 !== null) return { render_schema_version: RTR_HTML_SCHEMA_V1, field_schema: convertV1ToHtml(v1) };

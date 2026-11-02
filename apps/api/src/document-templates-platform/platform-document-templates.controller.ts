@@ -250,12 +250,15 @@ export class PlatformDocumentTemplatesController {
   async listDocumentTypes(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     this.assertPlatform(auth, requestId);
     const types = await this.templates.listTemplateDocumentTypes();
+    // TEMPLATE-PRODUCT-1 §5.1 — configurability from data (every configured EDITABLE type).
+    const configurable = new Set<string>();
+    for (const t of types) if ((await this.caps?.isConfigurable(t.id)) === true) configurable.add(t.id);
     return {
       document_types: types.map((t) => ({
         id: t.id,
         key: t.key,
         name: t.name,
-        configurable: this.caps?.isConfigurable(t.id) === true,
+        configurable: configurable.has(t.id),
         template_kind: t.template_kind,
         products: [...t.products],
         category: t.category,
@@ -497,7 +500,7 @@ export class PlatformDocumentTemplatesController {
     return this.run(requestId, async () => {
       const t = await this.templates.getPlatformTemplate(id);
       const caps = this.caps;
-      const configurable = caps !== undefined && caps.isConfigurable(t.document_type_id);
+      const configurable = caps !== undefined && (await caps.isConfigurable(t.document_type_id));
       if (hasContent && render_schema_version !== undefined) {
         const field_schema = configurable
           ? await caps.normalizeDraftContent({
@@ -566,7 +569,7 @@ export class PlatformDocumentTemplatesController {
           throw new AramoError('TEMPLATE_IMMUTABLE', `TemplateVersion ${versionId} is not a DRAFT`, 409, { requestId });
         }
         const t = await this.templates.getPlatformTemplate(existing.template_id);
-        if (this.caps.isConfigurable(t.document_type_id)) {
+        if (await this.caps.isConfigurable(t.document_type_id)) {
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: render_schema_version ?? existing.render_schema_version,
@@ -631,7 +634,7 @@ export class PlatformDocumentTemplatesController {
     return this.run(requestId, async () => {
       const v = await this.templates.getPlatformVersion(versionId);
       const t = await this.templates.getPlatformTemplate(v.template_id);
-      if (this.caps === undefined || !this.caps.isConfigurable(t.document_type_id)) {
+      if (this.caps === undefined || !(await this.caps.isConfigurable(t.document_type_id))) {
         throw bad('this document type is not configurable', requestId);
       }
       const out = await this.caps.renderSamplePreview({

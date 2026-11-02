@@ -2,9 +2,10 @@
 // seam. The generic Documents template-admin surface (DocumentTemplatesController) owns
 // the ROUTES; the document-type-specific content knowledge (governed binding catalog,
 // closed-binding validation, and the fixed-sample preview) is delegated to this port,
-// implemented at the composition root (apps/api) per document type. RTR is the only
-// configurable type in this increment; every other type is non-configurable (the port
-// reports isConfigurable=false and the routes refuse / omit it honestly).
+// implemented at the composition root (apps/api) per document type. TEMPLATE-PRODUCT-1 §5:
+// every configured EDITABLE type is configurable (one content contract, rtr-html-v1); any
+// other type is non-configurable (the port reports isConfigurable=false and the routes
+// refuse / omit it honestly).
 //
 // Injected @Optional into the controller: with no provider the generic CRUD still works
 // and the capability routes behave as "not configurable". The backend remains
@@ -55,8 +56,10 @@ export interface TemplateLogoRef {
 }
 
 export interface TemplateCapabilitiesPort {
-  // Is this document type tenant-template configurable in this increment? (RTR: true.)
-  isConfigurable(documentTypeId: string): boolean;
+  // Is this document type configurable for the editable content contract?
+  // TEMPLATE-PRODUCT-1 §5.1 — decided from DATA (the type is active, type_class TEMPLATE,
+  // template_kind EDITABLE), no longer the RTR-only switch; hence async.
+  isConfigurable(documentTypeId: string): Promise<boolean>;
 
   // The governed binding catalog for a document type (the Insert-field source, §15). The
   // SAME canonical catalog the backend validates against — the FE fetches this, so there
@@ -99,7 +102,8 @@ export interface TemplateCapabilitiesPort {
 
   // A1 §2.1 — the content a NEW DRAFT starts from, given the ACTIVE version's content
   // (rtr-generated-v1 is converted to rtr-html-v1; html content is copied as-is, logo
-  // reference included).
+  // reference included). Callers build the transform only for a configurable type
+  // (isConfigurable, awaited first) — TEMPLATE-PRODUCT-1 §5.1.
   draftContentFrom(input: { document_type_id: string; render_schema_version: string; field_schema: unknown }): {
     render_schema_version: string;
     field_schema: unknown;

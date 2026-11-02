@@ -148,6 +148,8 @@ export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
 // data source, its copy table and the static Sections set (additive).
 export {
   organizationStudioCopy,
+  // TEMPLATE-PRODUCT-1 §5 — the organization copy naming any configured editable type.
+  organizationCopyForDocumentType,
   organizationReadinessLabel,
   ORGANIZATION_APPROVE_CONSEQUENCE,
   ORGANIZATION_SCOPE_CARD,

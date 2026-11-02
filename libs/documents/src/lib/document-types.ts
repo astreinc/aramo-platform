@@ -49,3 +49,26 @@ export function documentTypeKeyFromName(name: string): string {
     .slice(0, 64)
     .replace(/_+$/g, '');
 }
+
+/** The template configuration columns of a document type (§4.1) — what §5.1 decides on. */
+export interface DocumentTypeTemplateConfig {
+  readonly id: string;
+  readonly active: boolean;
+  readonly type_class: string;
+  readonly template_kind: string | null;
+  readonly products: readonly string[];
+}
+
+/**
+ * TEMPLATE-PRODUCT-1 §5.1 — a type is configurable for the generic editable contract (the
+ * `rtr-html-v1` content contract, §5.2) iff it is active, a TEMPLATE type and its kind is
+ * EDITABLE. Fixed forms have their own path (§7); an unconfigured kind (NULL) is never usable.
+ */
+export function isConfiguredEditableType(t: DocumentTypeTemplateConfig | null | undefined): boolean {
+  return t !== null && t !== undefined && t.active && t.type_class === 'TEMPLATE' && t.template_kind === 'EDITABLE';
+}
+
+/** The read seam the capability port decides configurability from (a fake in unit tests). */
+export interface DocumentTypeTemplateConfigReader {
+  findDocumentTypeTemplateConfig(id: string): Promise<DocumentTypeTemplateConfig | null>;
+}

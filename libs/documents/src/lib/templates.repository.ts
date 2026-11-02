@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { type DocumentTypeTemplateConfig, type DocumentTypeTemplateKind } from './document-types.js';
 import {
   DocumentNotFoundError,
   TemplateDraftAlreadyExistsError,
@@ -814,6 +815,31 @@ export class TemplatesRepository {
   async listTemplateDocumentTypes() {
     return this.prisma.documentType.findMany({
       where: { tenant_id: null, active: true, type_class: 'TEMPLATE', template_kind: { not: null } },
+      orderBy: { key: 'asc' },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §5.1 — the template configuration of a document type (any owner; a
+  // TENANT/CLIENT type is never configured: its kind stays NULL). Null when unknown. The
+  // capability port decides configurability from it (isConfiguredEditableType).
+  async findDocumentTypeTemplateConfig(id: string): Promise<DocumentTypeTemplateConfig | null> {
+    return this.prisma.documentType.findFirst({
+      where: { id },
+      select: { id: true, active: true, type_class: true, template_kind: true, products: true },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §5.4 — the active SYSTEM TEMPLATE types of a kind, optionally only those
+  // tagged with a product (Sign: EDITABLE types tagged `sign`). Ordered by key.
+  async listConfiguredTemplateTypes(template_kind: DocumentTypeTemplateKind, product?: string) {
+    return this.prisma.documentType.findMany({
+      where: {
+        tenant_id: null,
+        active: true,
+        type_class: 'TEMPLATE',
+        template_kind,
+        ...(product !== undefined ? { products: { has: product } } : {}),
+      },
       orderBy: { key: 'asc' },
     });
   }

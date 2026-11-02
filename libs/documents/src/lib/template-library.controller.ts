@@ -122,6 +122,9 @@ export class DocumentTemplateLibraryController {
       rows.map((t) => t.current_version_id).filter((id): id is string => id !== null),
     );
     const byId = new Map(versions.map((v) => [v.id, v]));
+    const systemTypes = await this.repo.listSystemDocumentTypes();
+    // TEMPLATE-PRODUCT-1 §5.1 — configurability is data (one read per distinct type).
+    const configurable = await this.configurableTypes([...rows.map((t) => t.document_type_id), ...systemTypes.map((d) => d.id)]);
     const items: TemplateLibraryItem[] = rows.map((t) => {
       const v = t.current_version_id !== null ? byId.get(t.current_version_id) : undefined;
       const platform = t.owner_scope === 'PLATFORM';
@@ -139,16 +142,25 @@ export class DocumentTemplateLibraryController {
         updated_at: (v?.activated_at ?? t.updated_at).toISOString(),
         products: platform ? t.products : null,
         withdraw_effective_at: platform && t.withdraw_effective_at !== null ? t.withdraw_effective_at.toISOString() : null,
-        configurable: this.caps?.isConfigurable(t.document_type_id) === true,
+        configurable: configurable.has(t.document_type_id),
       };
     });
-    const document_types = (await this.repo.listSystemDocumentTypes()).map((d) => ({
+    const document_types = systemTypes.map((d) => ({
       id: d.id,
       key: d.key,
       name: d.name,
-      configurable: this.caps?.isConfigurable(d.id) === true,
+      configurable: configurable.has(d.id),
     }));
     return { items, document_types };
+  }
+
+  // The configurable document types among `ids` (the capability port decides; none without it).
+  private async configurableTypes(ids: readonly string[]): Promise<ReadonlySet<string>> {
+    const out = new Set<string>();
+    const caps = this.caps;
+    if (caps === undefined) return out;
+    for (const id of new Set(ids)) if (await caps.isConfigurable(id)) out.add(id);
+    return out;
   }
 
   @Get('library/:id/preview')
@@ -169,7 +181,7 @@ export class DocumentTemplateLibraryController {
         throw new TemplateNotFoundError(id);
       }
       const caps = this.caps;
-      validate(caps !== undefined && caps.isConfigurable(t.document_type_id), 'this document type is not configurable', requestId);
+      validate(caps !== undefined && (await caps.isConfigurable(t.document_type_id)), 'this document type is not configurable', requestId);
       const v = await this.repo.getPlatformVersion(t.current_version_id);
       const brand = this.branding !== undefined
         ? await this.branding.forTenant(auth.tenant_id)

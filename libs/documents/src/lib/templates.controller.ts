@@ -253,7 +253,7 @@ export class DocumentTemplatesController {
       if (source === null || source.owner_scope !== 'PLATFORM') throw new TemplateNotFoundError(body.library_template_id);
       const caps = this.caps;
       const transform =
-        caps !== undefined && caps.isConfigurable(source.document_type_id)
+        caps !== undefined && (await caps.isConfigurable(source.document_type_id))
           ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: source.document_type_id, ...c })
           : undefined;
       adopted = await this.repo.adoptPlatformTemplate({
@@ -384,7 +384,7 @@ export class DocumentTemplatesController {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
       const caps = this.caps;
       const transform =
-        caps !== undefined && caps.isConfigurable(t.document_type_id)
+        caps !== undefined && (await caps.isConfigurable(t.document_type_id))
           ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: t.document_type_id, ...c })
           : undefined;
       return this.versionView(
@@ -451,7 +451,7 @@ export class DocumentTemplatesController {
         const existing = await this.repo.getVersion(auth.tenant_id, versionId);
         if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
         const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
-        if (this.caps.isConfigurable(t.document_type_id)) {
+        if (await this.caps.isConfigurable(t.document_type_id)) {
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version ?? existing.render_schema_version,
@@ -515,7 +515,7 @@ export class DocumentTemplatesController {
   async previewVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
-      validate(this.caps !== undefined && this.caps.isConfigurable(ctx.document_type_id), 'this document type is not configurable', requestId);
+      validate(this.caps !== undefined && (await this.caps.isConfigurable(ctx.document_type_id)), 'this document type is not configurable', requestId);
       const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId });
       await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
       return preview;
@@ -532,7 +532,7 @@ export class DocumentTemplatesController {
   async allowedBindings(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
-      const configurable = this.caps?.isConfigurable(t.document_type_id) === true;
+      const configurable = (await this.caps?.isConfigurable(t.document_type_id)) === true;
       // A1 §2.4 — whether the Tenant profile has a logo the editor can add (+ the name the
       // letterhead shows beside it).
       const tenant_logo =
@@ -613,7 +613,7 @@ export class DocumentTemplatesController {
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
     const t = await this.repo.getTemplate(tenant_id, v.template_id);
     const caps = this.caps;
-    if (caps === undefined || !caps.isConfigurable(t.document_type_id)) {
+    if (caps === undefined || !(await caps.isConfigurable(t.document_type_id))) {
       throw new AramoError('VALIDATION_ERROR', 'this document type does not support a logo', 400, { requestId });
     }
     return { v, caps };

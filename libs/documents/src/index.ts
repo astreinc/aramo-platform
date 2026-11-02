@@ -56,6 +56,10 @@ export {
   OFFER_LETTER_TYPE_ID,
   isSystemLockedType,
   documentTypeKeyFromName,
+  // TEMPLATE-PRODUCT-1 §5.1 — configurability from data.
+  isConfiguredEditableType,
+  type DocumentTypeTemplateConfig,
+  type DocumentTypeTemplateConfigReader,
   type DocumentTypeClass,
   type DocumentTypeTemplateKind,
   type DocumentExecutionMode,

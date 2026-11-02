@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { StudioBlock } from '../studio-codec';
+import { RIGHT_TO_REPRESENT_TYPE_ID } from '../document-templates-api';
 
 import { blockDiff, diffStats, lcs, tokens, wordDiff } from './diff';
 import { appendVariable, deleteBlock, duplicateBlock, insertBlocks, moveBlock, removeVariableEverywhere, setBlockKind, shiftBlock } from './doc-ops';
@@ -8,6 +9,7 @@ import { estimateBlockHeight, fitZoom, paginate, zoomIn, zoomOut } from './pagin
 import { checksLine, deriveReadiness, isPreviewed, readinessLabel, type ReadinessInput } from './readiness';
 import { effectiveLine, noticeDaysValid, publishConsequence } from './studio-dialogs';
 import { outlineLabel } from './StudioLeftPanel';
+import { ORGANIZATION_APPROVE_CONSEQUENCE, ORGANIZATION_SCOPE_CARD, organizationCopyForDocumentType, organizationStudioCopy } from './studio-copy';
 import { buildCatalog, chipInfo } from './variables';
 
 // PLATFORM-UX-1 F-9 — the Studio's pure logic: the diff algorithm (handoff §10.7), readiness
@@ -288,5 +290,29 @@ describe('fit-to-width zoom (TEMPLATE-STUDIO-1 scope ruling item 1)', () => {
     expect(fitZoom(794)).toBe(100);
     expect(fitZoom(600)).toBe(75);
     expect(fitZoom(100)).toBe(40);
+  });
+});
+
+// TEMPLATE-PRODUCT-1 §5 — the organization copy names any configured editable type; Right to
+// Represent keeps its wording exactly.
+describe('organization copy per document type (TEMPLATE-PRODUCT-1 TP-4)', () => {
+  const base = organizationStudioCopy({ organizationHref: '/org', listHref: '/org/templates' });
+
+  it('Right to Represent overrides nothing (ATS RTR wording unchanged)', () => {
+    expect(organizationCopyForDocumentType({ id: RIGHT_TO_REPRESENT_TYPE_ID, name: 'Right to Represent' })).toEqual({});
+    expect(base.approveDialog.consequence(3, 2)).toBe(ORGANIZATION_APPROVE_CONSEQUENCE(3));
+    expect(base.scopeCard).toBe(ORGANIZATION_SCOPE_CARD);
+    expect(base.approveToast(3)).toBe('v3 is active. New RTRs use it from now on.');
+    expect(base.forDocumentType).toBe(organizationCopyForDocumentType);
+  });
+
+  it('another editable type is named in the approve consequence, toast and scope card', () => {
+    const o = organizationCopyForDocumentType({ id: '0000aaaa-0000-4000-8000-000000000001', name: 'Mutual NDA' });
+    expect(o.approveDialog?.consequence(2, 1)).toBe(
+      'v2 becomes the template used for every future Mutual NDA. Documents already sent stay pinned to the version they were sent with.',
+    );
+    expect(o.approveToast?.(2)).toBe('v2 is active. New documents use it from now on.');
+    expect(o.scopeCard).toContain('every Mutual NDA');
+    expect(JSON.stringify(o.scopeCard)).not.toContain('RTR');
   });
 });

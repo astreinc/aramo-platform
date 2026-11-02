@@ -147,7 +147,12 @@ export const LETTERHEAD_SAVE_BLOCKED: Readonly<Record<Exclude<StudioLetterheadSt
 export function TemplateStudio({ context, dataSource: ds, templateId, renderAccount, onEntityName, formatError = defaultErrorMessage, actions }: TemplateStudioProps) {
   // canManage = may edit the draft (the platform's :manage); approval is its own capability.
   const { canEdit: canManage, canApprove } = ds.capabilities;
-  const copy = ds.copy;
+  const [docType, setDocType] = useState<{ id: string; name: string } | null>(null);
+  // TEMPLATE-PRODUCT-1 §5 — the context copy for the loaded template's document type.
+  const copy = useMemo(() => {
+    const base = ds.copy;
+    return docType !== null && base.forDocumentType !== undefined ? { ...base, ...base.forDocumentType(docType) } : base;
+  }, [ds.copy, docType]);
   const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
   const templateErrorMessage = formatError;
   const hasWithdrawal = ds.withdraw !== undefined;
@@ -265,9 +270,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         if (!live) return;
         setCatalog(buildCatalog(cat.variables, cat.bindings));
         setTenantLogo(cat.tenantLogo ?? null);
-        const docType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
-        setDocTypeName(docType?.name ?? d.document_type_id);
-        setTypeProducts(docType?.products);
+        const loadedType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
+        setDocTypeName(loadedType?.name ?? d.document_type_id);
+        setDocType({ id: d.document_type_id, name: loadedType?.name ?? '' });
+        setTypeProducts(loadedType?.products);
         setDetail(d);
         initDoc(d);
       } catch (e) {

@@ -284,6 +284,14 @@ export interface TemplateStudioCopy {
   readonly restoreToast?: (n: number) => string;
   /** The Checks detail of an unknown variable. */
   readonly unknownVariableDetail?: string;
+  /**
+   * TEMPLATE-PRODUCT-1 §5 — copy that names the template's document type, applied once the
+   * template is loaded (any configured editable type, not only Right to Represent). Returns
+   * the fields to override; the base copy stays for the rest.
+   */
+  readonly forDocumentType?: (type: { readonly id: string; readonly name: string }) => Partial<
+    Pick<TemplateStudioCopy, 'approveDialog' | 'approveToast' | 'scopeCard'>
+  >;
 }
 
 export interface TemplateStudioDataSource {

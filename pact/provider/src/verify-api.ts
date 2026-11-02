@@ -5182,9 +5182,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           const RTR_TYPE = 'd0c50005-0000-7000-8000-000000000001';
           const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
           await c.query(
-            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
-             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §5.1/§5.4 — Sign renders only configured EDITABLE types tagged
+            // `sign`: the type carries its §4.1 backfill (EDITABLE, {ats,sign}, Recruiting), which
+            // the TP-3 migration applies only to a row that exists when it runs.
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true,'TEMPLATE','EDITABLE',ARRAY['ats','sign'],'Recruiting')
+             ON CONFLICT ("id") DO UPDATE SET "type_class" = 'TEMPLATE', "template_kind" = 'EDITABLE', "products" = ARRAY['ats','sign'], "active" = true`,
             [RTR_TYPE],
           );
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [TENANT_ID]);
@@ -5231,9 +5234,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             [ROLES_TENANT],
           );
           await c.query(
-            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
-             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §5.1/§5.4 — Sign renders only configured EDITABLE types tagged
+            // `sign`: the type carries its §4.1 backfill (EDITABLE, {ats,sign}, Recruiting), which
+            // the TP-3 migration applies only to a row that exists when it runs.
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true,'TEMPLATE','EDITABLE',ARRAY['ats','sign'],'Recruiting')
+             ON CONFLICT ("id") DO UPDATE SET "type_class" = 'TEMPLATE', "template_kind" = 'EDITABLE', "products" = ARRAY['ats','sign'], "active" = true`,
             [RTR_TYPE],
           );
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [ROLES_TENANT]);
