@@ -19,6 +19,7 @@ export { TenantService } from './lib/tenant.service.js';
 // the pure consumer→capability / scope-namespace policy.
 export { TenantEntitlementReader } from './lib/tenant-entitlement-reader.service.js';
 export {
+  consumerAllowedForTenantKind,
   requiredCapabilityForConsumer,
   filterScopesForConsumer,
   ESIGN_SCOPE_PREFIX,

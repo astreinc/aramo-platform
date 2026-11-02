@@ -6,6 +6,7 @@ import {
   RoleService,
   TenantEntitlementReader,
   TenantService,
+  consumerAllowedForTenantKind,
   requiredCapabilityForConsumer,
   SYSTEM_SERVICE_ACCOUNT_ID,
   TENANT_ACTIVATING_OWNER_ROLE_KEYS,
@@ -83,10 +84,15 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   // refresh from the entitlement store (never from the token), so a removed
   // entitlement cannot be resurrected by refresh. A valid identity is not
   // evidence of product entitlement. Fail closed on an unreadable store.
+  //
+  // A PERSONAL tenant never holds the organization (`org`) credential
+  // (consumerAllowedForTenantKind), refused here before any entitlement read.
   private async assertConsumerEntitled(
     consumer: string | undefined,
     tenant_id: string,
+    tenant_kind: string,
   ): Promise<{ ok: true } | { ok: false; reason: 'consumer_not_entitled' | 'consumer_not_supported' }> {
+    if (!consumerAllowedForTenantKind(consumer, tenant_kind)) return { ok: false, reason: 'consumer_not_entitled' };
     const requirement = requiredCapabilityForConsumer(consumer);
     if (requirement.kind === 'exempt') return { ok: true };
     if (requirement.kind === 'unsupported') return { ok: false, reason: 'consumer_not_supported' };
@@ -256,7 +262,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
 
     // IC-2 PR-6 (rule 3) — product capability gate AFTER the status gate, BEFORE
     // any scope resolution: no session for a product the tenant is not entitled to.
-    const entitled = await this.assertConsumerEntitled(input.consumer, selectedTenant.id);
+    const entitled = await this.assertConsumerEntitled(input.consumer, selectedTenant.id, selectedTenant.kind);
     if (!entitled.ok) {
       return { kind: 'denied', reason: entitled.reason };
     }
@@ -349,7 +355,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
 
     // IC-2 PR-6 (rule 3) — the consumer's product capability is re-proven at
     // every refresh; a refresh cannot resurrect a revoked product capability.
-    const entitled = await this.assertConsumerEntitled(input.consumer, input.context_id);
+    const entitled = await this.assertConsumerEntitled(input.consumer, input.context_id, stored.kind);
     if (!entitled.ok) {
       return { kind: 'denied', reason: entitled.reason };
     }

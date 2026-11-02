@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  consumerAllowedForTenantKind,
   filterScopesForConsumer,
   requiredCapabilityForConsumer,
 } from '../lib/authorization/consumer-scope-policy.js';
@@ -85,6 +86,17 @@ describe('D-ORG — org consumer (rules 3 and 4)', () => {
 // DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.2; conforming amendment row 8) — the
 // org credential additionally carries document_template:{read,manage}; the sign credential
 // additionally carries document_template:read (never :manage); the ATS family is unchanged.
+describe('consumerAllowedForTenantKind — PERSONAL tenants never hold the org credential', () => {
+  it('org is refused for PERSONAL and allowed for BUSINESS; every other consumer is unaffected by kind', () => {
+    expect(consumerAllowedForTenantKind('org', 'PERSONAL')).toBe(false);
+    expect(consumerAllowedForTenantKind('org', 'BUSINESS')).toBe(true);
+    for (const c of ['sign', 'recruiter', 'ingestion', 'platform', 'portal', undefined]) {
+      expect(consumerAllowedForTenantKind(c, 'PERSONAL')).toBe(true);
+      expect(consumerAllowedForTenantKind(c, 'BUSINESS')).toBe(true);
+    }
+  });
+});
+
 describe('DOC-TEMPLATE-LIB-1 T-4 — document_template:* on the org and sign sessions', () => {
   const HELD = [
     'auth:session:read',

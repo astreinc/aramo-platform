@@ -71,8 +71,9 @@ export function requiredCapabilityForConsumer(consumer: string | undefined): Con
     case 'sign':
       return { kind: 'capability', capability: 'sign' };
     // D-ORG (R2) — the organization credential needs the tenant to BE an Aramo
-    // organization (`core`), never a product subscription: a Sign-only, ATS-only,
-    // ATS+Sign or PERSONAL tenant all mint it.
+    // organization (`core`), never a product subscription: a Sign-only, ATS-only
+    // or ATS+Sign tenant mints it. A PERSONAL tenant does not — see
+    // consumerAllowedForTenantKind below.
     case 'org':
       return { kind: 'capability', capability: 'core' };
     case 'platform':
@@ -81,6 +82,16 @@ export function requiredCapabilityForConsumer(consumer: string | undefined): Con
       // `portal` (passwordless path only), undefined, or any unknown value.
       return { kind: 'unsupported' };
   }
+}
+
+// A consumer credential that a tenant KIND may never hold, whatever its capabilities.
+// The organization credential (`org`: App Home + Organization admin) is for BUSINESS
+// organizations only. D-ORG Amendment A1 excludes PERSONAL tenants; Sign Personal Free
+// Launch v1.1 §1/§4 makes a Personal account one user that cannot invite users, so it
+// has no organization to administer. Refused at every mint AND refresh, so typing an
+// Organization address on any host cannot open it for a Personal account.
+export function consumerAllowedForTenantKind(consumer: string | undefined, tenant_kind: string): boolean {
+  return !(consumer === 'org' && tenant_kind === 'PERSONAL');
 }
 
 export const ESIGN_SCOPE_PREFIX = 'sign:';
