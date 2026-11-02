@@ -1043,6 +1043,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/templates/library/{id}/adopt-and-use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Use as it is — adopt an Aramo template and approve it unchanged (TEMPLATE-PRODUCT-1 §8.5).
+         * @description One call: the Aramo template is adopted and the unchanged copy approved; it becomes the account's current version for its document type. Allowed for a Personal owner and for Business principals holding document_template:manage (tenant_owner / tenant_admin); anyone else is refused 403 INSUFFICIENT_PERMISSIONS (details.reason template_approval_required — "Ask an admin to approve this template"). Already adopted → 409 VALIDATION_ERROR (details.reason already_adopted). Anything else is done on desktop. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["adoptAndUseSenderTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/templates/studio": {
         parameters: {
             query?: never;
@@ -6979,6 +6999,33 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    adoptAndUseSenderTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The approved copy (template + version). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateAdopted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listSenderStudioTemplates: {

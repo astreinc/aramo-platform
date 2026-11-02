@@ -184,6 +184,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     expect(preview.body).toMatchObject({ template_id: defaultId });
   });
 
+  it('Use as it is — refused without document_template:manage (403 template_approval_required); nothing written', async () => {
+    const res = await call('POST', `${LIB}/${defaultId}/adopt-and-use`, { tenant_id: BUSINESS_B, actor_id: AUTHOR_B });
+    expect(res.status).toBe(403);
+    expect(reason(res.body)).toBe('template_approval_required');
+    expect(await tenantTemplates(BUSINESS_B)).toEqual([]);
+  });
+
+  it('Use as it is — a Personal owner: one call adopts + approves the unchanged copy; it becomes the selection; audited; a second call is 409', async () => {
+    const res = await call('POST', `${LIB}/${defaultId}/adopt-and-use`, { tenant_id: PERSONAL_A, actor_id: OWNER_A });
+    expect(res.status).toBe(201);
+    const template = res.body['template'] as { id: string; status: string; current_version_id: string };
+    expect(template).toMatchObject({ status: 'ACTIVE' });
+    expect(res.body['version']).toMatchObject({ id: template.current_version_id, status: 'ACTIVE' });
+    const rows = await tenantTemplates(PERSONAL_A);
+    expect(rows).toEqual([{ id: template.id, status: 'ACTIVE', owner_scope: 'TENANT', adopted_from_template_id: defaultId, current_version_id: template.current_version_id }]);
+    const sel = await db.query(`SELECT template_id::text FROM documents."TenantTemplateSelection" WHERE tenant_id = $1 AND document_type_id = $2 AND client_id IS NULL`, [PERSONAL_A, RTR]);
+    expect(sel.rows).toEqual([{ template_id: template.id }]);
+    const audit = await db.query(`SELECT event_type, actor_id::text FROM identity."IdentityAuditEvent" WHERE tenant_id = $1 ORDER BY created_at`, [PERSONAL_A]);
+    expect(audit.rows.map((r: { event_type: string }) => r.event_type).sort()).toEqual(['identity.document_template.adopted', 'identity.document_template.version_activated']);
+    expect(new Set(audit.rows.map((r: { actor_id: string }) => r.actor_id))).toEqual(new Set([OWNER_A]));
+
+    const listed = await call('GET', LIB, { tenant_id: PERSONAL_A });
+    expect(listed.body['items']).toEqual([expect.objectContaining({ template_id: defaultId, adopted_template_id: template.id })]);
+    const again = await call('POST', `${LIB}/${defaultId}/adopt-and-use`, { tenant_id: PERSONAL_A, actor_id: OWNER_A });
+    expect(again.status).toBe(409);
+    expect(reason(again.body)).toBe('already_adopted');
+    expect(await tenantTemplates(PERSONAL_A)).toHaveLength(1);
+  });
+
+  it('Use as it is — a Business approver (document_template:manage) may use it too', async () => {
+    const res = await call('POST', `${LIB}/${defaultId}/adopt-and-use`, { tenant_id: BUSINESS_B, actor_id: ADMIN_B });
+    expect(res.status).toBe(201);
+    expect(res.body['template']).toMatchObject({ status: 'ACTIVE' });
+  });
+
   it('Studio — a BUSINESS tenant is refused (Org Home owns organization templates)', async () => {
     for (const r of [
       await call('GET', STUDIO, { tenant_id: BUSINESS_B, actor_id: ADMIN_B }),

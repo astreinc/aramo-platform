@@ -2319,6 +2319,40 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/library/{id}/adopt-and-use:
+    post:
+      operationId: adoptAndUseSenderTemplate
+      summary: Use as it is — adopt an Aramo template and approve it unchanged (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        One call: the Aramo template is adopted and the unchanged copy approved; it becomes the account's current version for its document type. Allowed for a Personal owner and for Business principals holding document_template:manage (tenant_owner / tenant_admin); anyone else is refused 403 INSUFFICIENT_PERMISSIONS (details.reason template_approval_required — "Ask an admin to approve this template"). Already adopted → 409 VALIDATION_ERROR (details.reason already_adopted). Anything else is done on desktop. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: The approved copy (template + version).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderTemplateAdopted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/templates/studio:
     get:
       operationId: listSenderStudioTemplates

@@ -104,6 +104,33 @@ describe('sign-service → GET /v1/documents/esign/templates/library', () => {
   });
 });
 
+describe('sign-service → POST /v1/documents/esign/templates/library/{id}/adopt-and-use', () => {
+  it('adopts the default and approves the unchanged copy for the person', async () => {
+    const body = {};
+    const path = `/v1/documents/esign/templates/library/${DEFAULT_ID}/adopt-and-use`;
+    const query = { tenant_id: PERSONAL_TENANT_ID, actor_id: OWNER_ID, [SIGN_TEMPLATE_BODY_DIGEST_PARAM]: signTemplateBodyDigest(body) };
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given(STATE)
+      .uponReceiving('a Use as it is call from Aramo Sign')
+      .withRequest('POST', path, (b) => {
+        b.query(query).headers(headerMatchers('POST', `http://core${path}?${qs}`, true)).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          template: { id: UUID, owner_scope: 'TENANT', status: 'ACTIVE', adopted_from_template_id: DEFAULT_ID, current_version_id: UUID },
+          version: { id: UUID, status: 'ACTIVE', version_number: 1 },
+        });
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?${qs}`;
+        const res = await fetch(url, { method: 'POST', headers: { ...signed('POST', url), 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        expect(res.status).toBe(201);
+      });
+  });
+});
+
 describe('sign-service → the Personal Studio', () => {
   it('GET /studio lists the person’s templates and the defaults tagged sign', async () => {
     const path = '/v1/documents/esign/templates/studio';

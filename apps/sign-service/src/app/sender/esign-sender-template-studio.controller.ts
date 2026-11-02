@@ -16,6 +16,7 @@ import { SenderTemplateStudioService } from './sender-template-studio.service.js
 //
 //   GET    v1/sign/sender/templates/library                         gallery (every tenant kind)
 //   GET    v1/sign/sender/templates/library/:id/preview
+//   POST   v1/sign/sender/templates/library/:id/adopt-and-use       "Use as it is"
 //   GET    v1/sign/sender/templates/studio                          (PERSONAL only, below)
 //   POST   v1/sign/sender/templates/studio/adopt
 //   GET    v1/sign/sender/templates/studio/:id                      PATCH = rename
@@ -48,6 +49,13 @@ export class EsignSenderTemplateStudioController {
   @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
   galleryPreview(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     return this.run(requestId, () => this.studio.galleryPreview(auth, id, requestId));
+  }
+
+  @Post('library/:id/adopt-and-use')
+  @HttpCode(HttpStatus.CREATED)
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  adoptAndUse(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.studio.adoptAndUse(auth, id, requestId));
   }
 
   @Get('studio')

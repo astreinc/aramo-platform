@@ -27,6 +27,7 @@ const USE_ROUTES = ['GET v1/sign/sender/templates', 'POST v1/sign/sender/templat
 const TEMPLATE_PRODUCT_1_ROUTES = [
   'GET v1/sign/sender/templates/library',
   'GET v1/sign/sender/templates/library/:id/preview',
+  'POST v1/sign/sender/templates/library/:id/adopt-and-use',
   'GET v1/sign/sender/templates/studio',
   'POST v1/sign/sender/templates/studio/adopt',
   'GET v1/sign/sender/templates/studio/:id',

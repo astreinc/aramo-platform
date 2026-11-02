@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import type { SenderContext } from '../api';
 
-import { personalStudioCopy, personalStudioDataSource } from './PersonalTemplates';
+import { ASK_ADMIN, personalStudioCopy, personalStudioDataSource } from './PersonalTemplates';
 
 // Aramo-TEMPLATE-PRODUCT-1 §8.1–8.3 / §8.5 — Templates in the PERSONAL workspace: the nav item,
 // Coming soon while sign.templates is unavailable, the Free plan's upgrade prompt (P-6), My
@@ -145,7 +145,7 @@ describe('TEMPLATE-PRODUCT-1 §8 — Personal templates in Aramo Sign', () => {
     expect(calledWith(m, '/templates/studio')).toBe(false);
   });
 
-  it('§8.2 — My templates and the Aramo (Sign) gallery, with Adopt and edit', async () => {
+  it('§8.2 — My templates and the Aramo (Sign) gallery, with Adopt and edit / Use as it is', async () => {
     stub(BASE_CTX);
     renderAt('/personal/templates');
     expect(await screen.findByTestId(`my-template-${MINE_ID}`)).toHaveTextContent('My lease');
@@ -154,8 +154,39 @@ describe('TEMPLATE-PRODUCT-1 §8 — Personal templates in Aramo Sign', () => {
     expect(screen.getByTestId(`use-template-${MINE_ID}`)).toHaveAttribute('href', `/personal/templates/${MINE_ID}/use`);
     expect(screen.getByTestId(`gallery-${DEFAULT_ID}`)).toHaveTextContent('Non-disclosure agreement · Sign');
     expect(screen.getByTestId(`adopt-${DEFAULT_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`use-as-is-${DEFAULT_ID}`)).toHaveTextContent('Use as it is');
     // A Personal account never sees the Org Home link.
     expect(screen.queryByTestId('manage-templates-link')).toBeNull();
+  });
+
+  it('§8.5 — Use as it is is one POST adopt-and-use, then the lists reload', async () => {
+    const m = stub(BASE_CTX, (url, init) =>
+      url.endsWith(`/templates/library/${DEFAULT_ID}/adopt-and-use`) && init?.method === 'POST'
+        ? json({ template: { id: 'new-1' }, version: { id: 'new-v1' } }, 201)
+        : undefined,
+    );
+    renderAt('/personal/templates');
+    fireEvent.click(await screen.findByTestId(`use-as-is-${DEFAULT_ID}`));
+    await waitFor(() => expect(calledWith(m, `/templates/library/${DEFAULT_ID}/adopt-and-use`)).toBe(true));
+    await waitFor(() => expect(m.mock.calls.filter(([u]) => String(u).endsWith('/templates/library')).length).toBe(2));
+  });
+
+  it('§8.5 — a refusal for lack of approval reads "Ask an admin to approve this template"', async () => {
+    stub(BASE_CTX, (url) =>
+      url.endsWith('/adopt-and-use')
+        ? json({ error: { code: 'INSUFFICIENT_PERMISSIONS', message: 'Only an admin can approve a template', details: { reason: 'template_approval_required' } } }, 403)
+        : undefined,
+    );
+    renderAt('/personal/templates');
+    fireEvent.click(await screen.findByTestId(`use-as-is-${DEFAULT_ID}`));
+    expect(await screen.findByText(ASK_ADMIN)).toBeInTheDocument();
+  });
+
+  it('§8.5 — without approval the gallery offers Adopt and edit only', async () => {
+    stub({ ...BASE_CTX, template_use_as_is: false });
+    renderAt('/personal/templates');
+    expect(await screen.findByTestId(`adopt-${DEFAULT_ID}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`use-as-is-${DEFAULT_ID}`)).toBeNull();
   });
 
   it('§8.2 — Adopt and edit adopts through Sign and opens the new draft in the Studio route', async () => {

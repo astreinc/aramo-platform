@@ -15,6 +15,7 @@ import { SignTemplateStudioService } from './sign-template-studio.service.js';
 //
 //   GET    v1/documents/esign/templates/library?tenant_id=                     every tenant kind
 //   GET    v1/documents/esign/templates/library/:id/preview?tenant_id=
+//   POST   v1/documents/esign/templates/library/:id/adopt-and-use?tenant_id=&actor_id=&body_sha256=
 //
 //   (PERSONAL tenants only — BUSINESS 403: Org Home owns organization templates)
 //   GET    v1/documents/esign/templates/studio?tenant_id=&actor_id=
@@ -69,6 +70,21 @@ export class DocumentsEsignTemplateGalleryController {
     return this.studio.galleryPreview({ tenant_id: uuid(tenantId, 'tenant_id', requestId), template_id: uuid(id, 'id', requestId), requestId });
   }
 
+  @Post(':id/adopt-and-use')
+  @HttpCode(HttpStatus.CREATED)
+  adoptAndUse(
+    @Param('id') id: string,
+    @Query('tenant_id') tenantId: string,
+    @Query('actor_id') actorId: string,
+    @Query(SIGN_TEMPLATE_BODY_DIGEST_PARAM) digest: string,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ) {
+    const tenant_id = uuid(tenantId, 'tenant_id', requestId);
+    const actor_id = uuid(actorId, 'actor_id', requestId);
+    assertBodyDigest(body, digest, requestId);
+    return this.studio.adoptAndUse({ tenant_id, actor_id, template_id: uuid(id, 'id', requestId), requestId });
+  }
 }
 
 @Controller('v1/documents/esign/templates/studio')

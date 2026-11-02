@@ -1168,6 +1168,53 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/library/{id}/adopt-and-use:
+    post:
+      operationId: adoptAndUseSignTemplate
+      summary: Use as it is — adopt an Aramo default and approve the unchanged copy (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). One call: adopts the default (a TENANT copy), records its sample preview and approves it; the copy becomes the tenant's current version for its type (ADR-0034 D6). Every tenant kind; the acting person (actor_id) must hold document_template:manage (a Personal owner; a Business tenant_owner / tenant_admin), otherwise 403 details.reason template_approval_required with nothing written. Already adopted → 409 details.reason already_adopted. If approval fails the new draft is discarded. Audited (adopted, version_activated).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '201':
+          description: The approved copy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [template, version]
+                properties:
+                  template:
+                    $ref: '#/components/schemas/DocumentTemplate'
+                  version:
+                    $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
   /v1/documents/esign/templates/studio:
     get:
       operationId: listSignStudioTemplates

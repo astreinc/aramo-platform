@@ -79,6 +79,18 @@ export class SenderTemplateStudioService {
     return { ...preview, letterhead: { ...preview.letterhead, organization_name: await this.personalLabel(auth) } };
   }
 
+  async adoptAndUse(auth: AuthContextType, id: string, requestId: string) {
+    await this.templates.assertMayUse(auth, requestId);
+    const template_id = uuid(id, 'id', requestId);
+    return this.documents.call({
+      method: 'POST',
+      path: `/library/${encodeURIComponent(template_id)}/adopt-and-use`,
+      query: { tenant_id: auth.tenant_id, actor_id: auth.sub },
+      body: {},
+      requestId,
+    });
+  }
+
   // ── the Personal Studio ─────────────────────────────────────────────────────────────
 
   private async studio<T>(auth: AuthContextType, method: StudioMethod, path: string, requestId: string, body?: unknown): Promise<T> {

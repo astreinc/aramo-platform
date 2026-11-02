@@ -148,6 +148,35 @@ export class SignTemplateStudioService {
     return this.d.library.previewDefault(this.reader(input.tenant_id), input.template_id, input.requestId);
   }
 
+  // §8.5 "Use as it is" — adopt the default and approve the UNCHANGED copy: it becomes the
+  // tenant's current version for its type (activation writes the selection, ADR-0034 D6).
+  // The copy goes through the same preview gate (the sample preview is recorded) and the same
+  // closed-catalog validation as any approval. If approval fails the new draft is discarded
+  // (audited), so a refused call leaves no half-adopted copy behind.
+  async adoptAndUse(input: { tenant_id: string; actor_id: string; template_id: string; requestId: string }) {
+    const { requestId } = input;
+    const auth = await this.principal({ ...input, need: 'manage', personalOnly: false });
+    const item = await this.assertSignDefault(input.tenant_id, input.template_id, requestId);
+    if (item.adopted_template_id !== null) {
+      throw new AramoError('VALIDATION_ERROR', 'This template is already in your templates', 409, {
+        requestId,
+        details: { reason: 'already_adopted', template_id: item.adopted_template_id },
+      });
+    }
+    // One call by an approver (document_template:manage, checked above): adopt, record the
+    // sample preview of the unchanged copy, approve it.
+    const adopted = await this.d.tenantTemplates.adopt(auth, { library_template_id: input.template_id }, requestId);
+    try {
+      await this.d.tenantTemplates.previewVersion(auth, adopted.version.id, requestId);
+      const version = await this.d.tenantTemplates.activate(auth, adopted.version.id, requestId);
+      const template = await this.d.templates.getTemplate(input.tenant_id, adopted.template.id);
+      return { template, version };
+    } catch (e) {
+      await this.d.tenantTemplates.deleteDraft(auth, adopted.version.id, requestId).catch(() => undefined);
+      throw e;
+    }
+  }
+
   // ── Studio (§8.2–8.3 — PERSONAL tenants only) ────────────────────────────────────────
 
   private studio(input: { tenant_id: string; actor_id: string; requestId: string }, need: StudioNeed): Promise<AuthContextType> {

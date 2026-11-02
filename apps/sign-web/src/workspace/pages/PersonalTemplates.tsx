@@ -28,6 +28,8 @@ import { useWorkspace } from '../workspace';
 // these screens only reflect the sender context (template_plan / template_studio /
 // template_use_as_is) and show the server's refusals.
 
+export const ASK_ADMIN = 'Ask an admin to approve this template.';
+
 /** The Personal Studio copy: "Use this version" for Approve; the person's own templates. */
 export function personalStudioCopy(listHref: string): TemplateStudioCopy {
   const base = organizationStudioCopy({ organizationHref: null, listHref });
@@ -151,7 +153,7 @@ export function PersonalTemplatesPage() {
 const STATUS_LABEL: Record<string, string> = { ACTIVE: 'In use', DRAFT: 'Draft', RETIRED: 'Retired' };
 
 function PersonalTemplateList() {
-  const { base, ctx } = useWorkspace();
+  const { base, ctx, toast } = useWorkspace();
   const nav = useNavigate();
   const [list, setList] = useState<SignStudioList | null>(null);
   const [gallery, setGallery] = useState<SignGalleryItem[] | null>(null);
@@ -181,6 +183,20 @@ function PersonalTemplateList() {
       nav(studioHref(out.template.id));
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const applyAsIs = async (item: SignGalleryItem) => {
+    setBusy(item.template_id);
+    setError('');
+    try {
+      await signTemplateGalleryApi.adoptAndUse(item.template_id);
+      toast(`“${item.name}” is in My templates and ready to use.`);
+      load();
+    } catch (e) {
+      setError(asIsRefusalMessage(e));
     } finally {
       setBusy(null);
     }
@@ -249,6 +265,11 @@ function PersonalTemplateList() {
                     <Btn size="sm" disabled={busy !== null} onClick={() => void adopt(g)} data-testid={`adopt-${g.template_id}`}>
                       Adopt and edit
                     </Btn>
+                    {ctx.template_use_as_is === true ? (
+                      <Btn size="sm" variant="primary" disabled={busy !== null} onClick={() => void applyAsIs(g)} data-testid={`use-as-is-${g.template_id}`}>
+                        {busy === g.template_id ? 'Adding…' : 'Use as it is'}
+                      </Btn>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -259,6 +280,14 @@ function PersonalTemplateList() {
       ) : null}
     </Page>
   );
+}
+
+/** §8.5 — the refusal of "Use as it is" as the person reads it. */
+export function asIsRefusalMessage(e: unknown): string {
+  const details = (e as { details?: Record<string, unknown> } | null)?.details;
+  if (details?.['reason'] === 'template_approval_required') return ASK_ADMIN;
+  if (details?.['reason'] === 'already_adopted') return 'This template is already in My templates.';
+  return errorMessage(e);
 }
 
 function GalleryPreview({ id, name }: { id: string; name: string }) {

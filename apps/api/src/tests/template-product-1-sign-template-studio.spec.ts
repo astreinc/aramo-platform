@@ -104,6 +104,44 @@ describe('§8.5 — the Sign gallery: live Aramo defaults tagged sign only', () 
   });
 });
 
+describe('§8.5 — Use as it is', () => {
+  it('an approver: adopt → record the sample preview → activate, as the person', async () => {
+    const h = harness({ kind: 'BUSINESS', held: ['document_template:read', 'document_template:manage'] });
+    const out = await h.svc.adoptAndUse({ ...who, template_id: SIGN_DEFAULT });
+    expect(out).toMatchObject({ template: { id: 'new-t', status: 'ACTIVE' }, version: { id: 'new-v', status: 'ACTIVE' } });
+    const actor = vi.mocked(h.tenantTemplates.adopt).mock.calls[0]?.[0] as { sub: string; tenant_id: string };
+    expect(actor).toMatchObject({ sub: ACTOR, tenant_id: TENANT });
+    expect(h.tenantTemplates.adopt).toHaveBeenCalledWith(expect.anything(), { library_template_id: SIGN_DEFAULT }, 'r');
+    expect(h.tenantTemplates.previewVersion).toHaveBeenCalledWith(expect.anything(), 'new-v', 'r');
+    expect(h.tenantTemplates.activate).toHaveBeenCalledWith(expect.anything(), 'new-v', 'r');
+  });
+
+  it('without document_template:manage → 403 template_approval_required, nothing written', async () => {
+    const h = harness({ kind: 'BUSINESS', held: ['document_template:read', 'document_template:author'] });
+    await expect(h.svc.adoptAndUse({ ...who, template_id: SIGN_DEFAULT })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'template_approval_required' } },
+    });
+    expect(h.tenantTemplates.adopt).not.toHaveBeenCalled();
+  });
+
+  it('a default not tagged sign → 404; an already adopted one → 409 already_adopted', async () => {
+    const h = harness();
+    await expect(h.svc.adoptAndUse({ ...who, template_id: ATS_DEFAULT })).rejects.toMatchObject({ code: 'TEMPLATE_NOT_FOUND' });
+    const a = harness({ adoptedFrom: SIGN_DEFAULT });
+    await expect(a.svc.adoptAndUse({ ...who, template_id: SIGN_DEFAULT })).rejects.toMatchObject({ statusCode: 409, context: { details: { reason: 'already_adopted', template_id: OWN } } });
+    expect(h.tenantTemplates.adopt).not.toHaveBeenCalled();
+    expect(a.tenantTemplates.adopt).not.toHaveBeenCalled();
+  });
+
+  it('approval refused → the new draft is discarded (audited path) and the refusal stands', async () => {
+    const h = harness({ activateFails: true });
+    await expect(h.svc.adoptAndUse({ ...who, template_id: SIGN_DEFAULT })).rejects.toThrow('binding unsupported');
+    expect(h.tenantTemplates.deleteDraft).toHaveBeenCalledWith(expect.anything(), 'new-v', 'r');
+  });
+});
+
 describe('§8.3 — the Studio: PERSONAL only, authority from live grants', () => {
   it('BUSINESS → 403 organization_templates_in_org_home on every Studio call', async () => {
     const h = harness({ kind: 'BUSINESS' });

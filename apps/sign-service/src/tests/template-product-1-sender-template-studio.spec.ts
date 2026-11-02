@@ -44,7 +44,7 @@ function harness(opts: { kind?: string; registry?: Record<string, 'AVAILABLE' | 
 describe('§8 — the template gate comes first (never a Documents call when refused)', () => {
   it('sign.templates NOT_AVAILABLE → ESIGN_FEATURE_NOT_AVAILABLE on gallery, Use as it is and the Studio', async () => {
     const h = harness({ registry: DARK });
-    for (const call of [() => h.svc.gallery(auth(), 'r'), () => h.svc.list(auth(), 'r'), () => h.svc.activate(auth(), VERSION, 'r')]) {
+    for (const call of [() => h.svc.gallery(auth(), 'r'), () => h.svc.adoptAndUse(auth(), TEMPLATE, 'r'), () => h.svc.list(auth(), 'r'), () => h.svc.activate(auth(), VERSION, 'r')]) {
       await expect(call()).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', statusCode: 403 });
     }
     expect(h.port.call).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe('§8 — the template gate comes first (never a Documents call when ref
 
   it('P-6 — the Free plan is refused (templates_not_in_plan) on every route', async () => {
     const h = harness({ plan: { kind: 'NONE', plan_key: 'aramo-sign-free-personal-v1', reason: 'free_plan' } });
-    for (const call of [() => h.svc.gallery(auth(), 'r'), () => h.svc.list(auth(), 'r'), () => h.svc.adopt(auth(), { library_template_id: TEMPLATE }, 'r')]) {
+    for (const call of [() => h.svc.gallery(auth(), 'r'), () => h.svc.adoptAndUse(auth(), TEMPLATE, 'r'), () => h.svc.list(auth(), 'r'), () => h.svc.adopt(auth(), { library_template_id: TEMPLATE }, 'r')]) {
       await expect(call()).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', context: { details: { reason: 'templates_not_in_plan' } } });
     }
     expect(h.port.call).not.toHaveBeenCalled();
@@ -128,6 +128,17 @@ describe('§8.5 — the gallery and "Use as it is" (every tenant kind)', () => {
     expect(vi.mocked(h.port.call).mock.calls[0]?.[0]).toMatchObject({ method: 'GET', path: '/library', query: { tenant_id: TENANT } });
   });
 
+  it('Use as it is: one POST adopt-and-use carrying the person (BUSINESS allowed; apps/api checks the grant)', async () => {
+    const h = harness({ kind: 'BUSINESS' });
+    await h.svc.adoptAndUse(auth(), TEMPLATE, 'r');
+    expect(vi.mocked(h.port.call).mock.calls[0]?.[0]).toMatchObject({
+      method: 'POST',
+      path: `/library/${TEMPLATE}/adopt-and-use`,
+      query: { tenant_id: TENANT, actor_id: USER },
+      body: {},
+    });
+  });
+
   it('gallery preview: PERSONAL letterhead = the person’s name; BUSINESS unchanged', async () => {
     const answer = { title: 'NDA', letterhead: { organization_name: 'Stored handle', logo_available: false } };
     const p = harness({ answer });
@@ -139,7 +150,7 @@ describe('§8.5 — the gallery and "Use as it is" (every tenant kind)', () => {
   it('the controller exposes exactly the §8 routes', () => {
     const own = Object.getOwnPropertyNames(EsignSenderTemplateStudioController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
     expect(own.sort()).toEqual(
-      ['gallery', 'galleryPreview', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate'].sort(),
+      ['gallery', 'galleryPreview', 'adoptAndUse', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate'].sort(),
     );
   });
 });

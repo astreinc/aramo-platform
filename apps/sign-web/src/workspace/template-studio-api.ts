@@ -42,6 +42,9 @@ export interface SignStudioList extends TemplateLibraryView {
 export const signTemplateGalleryApi = {
   gallery: () => apiClient.get<{ items: SignGalleryItem[] }>(`${BASE}/library`),
   previewDefault: (id: string) => apiClient.get<TemplateDefaultPreview>(`${BASE}/library/${enc(id)}/preview`),
+  /** §8.5 — adopt + approve the unchanged copy (it becomes the current version for its type). */
+  adoptAndUse: (id: string) =>
+    apiClient.post<{ template: DocumentTemplateView; version: TemplateVersionView }>(`${BASE}/library/${enc(id)}/adopt-and-use`, {}),
   studioList: () => apiClient.get<SignStudioList>(STUDIO),
   adopt: (id: string) =>
     apiClient.post<{ template: DocumentTemplateView; version: TemplateVersionView }>(`${STUDIO}/adopt`, { library_template_id: id }),
