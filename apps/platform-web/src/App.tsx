@@ -18,6 +18,7 @@ import { ProposalDetailView } from './skills/ProposalDetailView';
 import { DocumentTemplatesListView } from './document-templates/DocumentTemplatesListView';
 import { DocumentTemplateDetailView } from './document-templates/DocumentTemplateDetailView';
 import { TemplateVariablesView } from './document-templates/TemplateVariablesView';
+import { DocumentTypesView } from './document-types/DocumentTypesView';
 import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
@@ -150,6 +151,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
           path="/document-templates/:id"
           element={gate(P.documentTemplateRead, 'Document templates', <DocumentTemplateDetailView session={session} />)}
         />
+        {/* TEMPLATE-PRODUCT-1 §4.4 — Platform Admin document types (read gate; writes
+            gate on platform:document_template:manage inside). */}
+        <Route path="/document-types" element={gate(P.documentTemplateRead, 'Document types', <DocumentTypesView session={session} />)} />
         <Route
           path="/template-variables"
           element={gate(P.documentTemplateRead, 'Template variables', <TemplateVariablesView session={session} />)}

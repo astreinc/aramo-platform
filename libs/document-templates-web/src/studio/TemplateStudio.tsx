@@ -161,6 +161,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const navigate = useNavigate();
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
   const [docTypeName, setDocTypeName] = useState('');
+  // TEMPLATE-PRODUCT-1 §2.7 — the products the template's document type allows (undefined:
+  // the host did not say; every product key is offered and the server decides).
+  const [typeProducts, setTypeProducts] = useState<readonly string[] | undefined>(undefined);
   const [catalog, setCatalog] = useState<VariableCatalog>(EMPTY_CATALOG);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(() => {
@@ -262,7 +265,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         if (!live) return;
         setCatalog(buildCatalog(cat.variables, cat.bindings));
         setTenantLogo(cat.tenantLogo ?? null);
-        setDocTypeName(cat.documentTypes?.find((t) => t.id === d.document_type_id)?.name ?? d.document_type_id);
+        const docType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
+        setDocTypeName(docType?.name ?? d.document_type_id);
+        setTypeProducts(docType?.products);
         setDetail(d);
         initDoc(d);
       } catch (e) {
@@ -1049,6 +1054,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             canEdit={canManage}
             canEditProps={canManage && ds.updateProperties !== undefined}
             showProductTags={ds.capabilities.productTags}
+            productOptions={typeProducts}
             showDescription={ds.capabilities.description}
             withdrawalEnabled={hasWithdrawal}
             manageVariables={copy.manageVariables}

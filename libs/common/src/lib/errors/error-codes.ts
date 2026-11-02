@@ -411,6 +411,8 @@ export const ERROR_CODES = [
   'TEMPLATE_PRODUCT_REQUIRED',
   // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is still referenced (409, details.reasons).
   'TEMPLATE_IN_USE',
+  // TEMPLATE-PRODUCT-1 §4.3 — a Platform Admin document type write refused by state (409, details.reason).
+  'DOCUMENT_TYPE_CONFLICT',
   'DOCUMENT_REQUIREMENT_NOT_FOUND',
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',

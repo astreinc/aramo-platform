@@ -212,6 +212,18 @@ function productTags(v: unknown, requestId: string): TemplateProductKey[] {
   return out;
 }
 
+// TEMPLATE-PRODUCT-1 §2.7 — a template's tags must be a subset of its document type's
+// products (422 VALIDATION_ERROR details.reason=products_not_in_type).
+function assertProductsInType(products: readonly string[], typeProducts: readonly string[], requestId: string): void {
+  const outside = products.filter((p) => !typeProducts.includes(p));
+  if (outside.length > 0) {
+    throw new AramoError('VALIDATION_ERROR', `products ${outside.join(', ')} are not products of this document type`, 422, {
+      requestId,
+      details: { reason: 'products_not_in_type', products: outside, type_products: [...typeProducts] },
+    });
+  }
+}
+
 @Controller('platform')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PlatformDocumentTemplatesController {
@@ -230,17 +242,23 @@ export class PlatformDocumentTemplatesController {
 
   // SYSTEM document types an Aramo default may target (the create form's type list).
   // Declared before ':id' so the literal segment is matched first.
+  // TEMPLATE-PRODUCT-1 §4.4 — only active TEMPLATE types with a kind set (an UPLOAD slot such
+  // as TALENT_* or an unconfigured type is never offered), with the products a template of
+  // the type may be tagged with (§2.7) and its kind / category.
   @Get('document-templates/document-types')
   @RequireScopes('platform:document_template:read')
   async listDocumentTypes(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     this.assertPlatform(auth, requestId);
-    const types = await this.templates.listSystemDocumentTypes();
+    const types = await this.templates.listTemplateDocumentTypes();
     return {
       document_types: types.map((t) => ({
         id: t.id,
         key: t.key,
         name: t.name,
         configurable: this.caps?.isConfigurable(t.id) === true,
+        template_kind: t.template_kind,
+        products: [...t.products],
+        category: t.category,
       })),
     };
   }
@@ -268,10 +286,11 @@ export class PlatformDocumentTemplatesController {
     const template_kind = typeof body?.['template_kind'] === 'string' ? body['template_kind'] : '';
     if (!TEMPLATE_KINDS.has(template_kind)) throw bad('invalid template_kind', requestId);
     const products = body?.['products'] === undefined ? [] : productTags(body['products'], requestId);
-    const types = await this.templates.listSystemDocumentTypes();
-    if (!types.some((t) => t.id === document_type_id)) {
-      throw bad('document_type_id must be an active SYSTEM document type', requestId, 'document_type_not_system');
+    const type = (await this.templates.listTemplateDocumentTypes()).find((t) => t.id === document_type_id);
+    if (type === undefined) {
+      throw bad('document_type_id must be an active SYSTEM template document type with a kind set', requestId, 'document_type_not_system');
     }
+    assertProductsInType(products, type.products, requestId);
     return this.run(requestId, async () => {
       const t = await this.templates.createPlatformTemplate({
         document_type_id,
@@ -319,6 +338,11 @@ export class PlatformDocumentTemplatesController {
     if (body !== undefined && body !== null && 'products' in body) patch.products = productTags(body['products'], requestId);
     if (Object.keys(patch).length === 0) throw bad('one of name, description, products is required', requestId);
     return this.run(requestId, async () => {
+      if (patch.products !== undefined) {
+        const current = await this.templates.getPlatformTemplate(id);
+        const type = await this.templates.findSystemDocumentType(current.document_type_id);
+        assertProductsInType(patch.products, type?.products ?? [], requestId);
+      }
       const t = await this.templates.updatePlatformTemplate(id, patch);
       return toTemplateView(t, await this.templates.listPlatformVersions(id));
     });

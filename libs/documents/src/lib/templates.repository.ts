@@ -808,6 +808,21 @@ export class TemplatesRepository {
     return this.prisma.documentType.findMany({ where: { tenant_id: null, active: true }, orderBy: { key: 'asc' } });
   }
 
+  // TEMPLATE-PRODUCT-1 §4.4 — the types an Aramo default may be created for: active SYSTEM
+  // TEMPLATE types with a kind set (never an UPLOAD slot such as TALENT_*, never an
+  // unconfigured type). listSystemDocumentTypes above is unchanged for its other readers.
+  async listTemplateDocumentTypes() {
+    return this.prisma.documentType.findMany({
+      where: { tenant_id: null, active: true, type_class: 'TEMPLATE', template_kind: { not: null } },
+      orderBy: { key: 'asc' },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §2.7 — a SYSTEM type by id (null when unknown or tenant-owned).
+  async findSystemDocumentType(id: string) {
+    return this.prisma.documentType.findFirst({ where: { id, tenant_id: null } });
+  }
+
   async getPlatformTemplate(id: string) {
     return this.getTemplateFor(PLATFORM_OWNER, id);
   }

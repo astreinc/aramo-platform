@@ -66,9 +66,13 @@ function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthCon
   };
 }
 
+const RTR_TYPE_ROW = { id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', template_kind: 'EDITABLE', products: ['ats', 'sign'], category: 'Recruiting' };
+
 function build() {
   const templates = {
-    listSystemDocumentTypes: vi.fn(async () => [{ id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' }]),
+    // TEMPLATE-PRODUCT-1 §4.4 — only active TEMPLATE types with a kind; §2.7 their products.
+    listTemplateDocumentTypes: vi.fn(async () => [RTR_TYPE_ROW]),
+    findSystemDocumentType: vi.fn(async () => RTR_TYPE_ROW as typeof RTR_TYPE_ROW | null),
     listPlatformTemplates: vi.fn(async () => []),
     createPlatformTemplate: vi.fn(async (i: Record<string, unknown>) => ({
       id: ID,
@@ -282,6 +286,33 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     expect(variables.update).not.toHaveBeenCalled();
     await c.update(ID, { products: ['sign', 'ats'] }, auth('platform'), RID);
     expect(templates.updatePlatformTemplate).toHaveBeenCalledWith(ID, { products: ['sign', 'ats'] });
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.7 / §4.4.
+  it('document types: only template types with a kind, with their products / kind / category', async () => {
+    const { c, templates } = build();
+    const r = await c.listDocumentTypes(auth('platform'), RID);
+    expect(templates.listTemplateDocumentTypes).toHaveBeenCalled();
+    expect(r.document_types).toEqual([
+      { id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true, template_kind: 'EDITABLE', products: ['ats', 'sign'], category: 'Recruiting' },
+    ]);
+  });
+
+  it('template tags must be a subset of the document type products (create + update) — 422 products_not_in_type', async () => {
+    const { c, templates } = build();
+    templates.listTemplateDocumentTypes.mockResolvedValue([{ ...RTR_TYPE_ROW, products: ['sign'] }]);
+    const e = await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['ats'] }, auth('platform'), RID));
+    expect(e.statusCode).toBe(422);
+    expect(e.context?.details?.['reason']).toBe('products_not_in_type');
+    await c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['sign'] }, auth('platform'), RID);
+    templates.findSystemDocumentType.mockResolvedValueOnce({ ...RTR_TYPE_ROW, products: ['sign'] });
+    expect((await errorOf(c.update(ID, { products: ['ats', 'sign'] }, auth('platform'), RID))).context?.details?.['reason']).toBe('products_not_in_type');
+    expect(templates.updatePlatformTemplate).not.toHaveBeenCalled();
+    // A type outside the template types (an UPLOAD slot, an unconfigured type) is refused.
+    templates.listTemplateDocumentTypes.mockResolvedValue([]);
+    expect((await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['sign'] }, auth('platform'), RID))).context?.details?.['reason']).toBe(
+      'document_type_not_system',
+    );
   });
 
   it('publish: an untagged default maps to 422 TEMPLATE_PRODUCT_REQUIRED', async () => {

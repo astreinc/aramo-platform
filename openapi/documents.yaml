@@ -1319,6 +1319,23 @@ components:
           type: string
         active:
           type: boolean
+        type_class:
+          type: string
+          enum: [TEMPLATE, UPLOAD]
+          description: TEMPLATE-PRODUCT-1 §4.1 — UPLOAD = an upload slot, never a template.
+        template_kind:
+          type: [string, 'null']
+          enum: [EDITABLE, FIXED_FORM, null]
+          description: TEMPLATE-PRODUCT-1 §4.1 — null = not yet configured for templates.
+        products:
+          type: array
+          items:
+            type: string
+            enum: [ats, sign]
+          description: TEMPLATE-PRODUCT-1 §4.1 — the template product keys of the type.
+        category:
+          type: [string, 'null']
+          description: TEMPLATE-PRODUCT-1 §4.1 — gallery grouping.
     Document:
       type: object
       description: The canonical business document aggregate.

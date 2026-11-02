@@ -115,6 +115,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TEMPLATE_PRODUCT_REQUIRED: 422,
   // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is still referenced (409, details.reasons).
   TEMPLATE_IN_USE: 409,
+  // TEMPLATE-PRODUCT-1 §4.3 — a Platform Admin document type write refused by state (409, details.reason).
+  DOCUMENT_TYPE_CONFLICT: 409,
   DOCUMENT_REQUIREMENT_NOT_FOUND: 404,
   DOCUMENT_REQUIREMENT_ALREADY_SATISFIED: 409,
   DOCUMENT_RENDER_FAILED: 422,

@@ -576,6 +576,14 @@ const DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261103100000_template_product_1_lowercase_product_keys/migration.sql',
 );
+// TEMPLATE-PRODUCT-1 TP-3 (§4.1) — DocumentType gains type_class / template_kind / products /
+// category (ADD-not-rename; RTR backfill, TALENT_* → UPLOAD) and the partial unique SYSTEM key
+// index. Changes the returned DocumentType shape (GET/POST /v1/document-types return the
+// row; the regenerated client SELECTs the new columns) → registered (CLAUDE.md law); after TP-1.
+const DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103110000_template_product_1_document_type_classes/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3694,6 +3702,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_ORG_UX_1_MIGRATION,
         DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION,
         DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION,
+        DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,

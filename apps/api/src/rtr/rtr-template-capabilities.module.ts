@@ -87,6 +87,23 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         requestId: e.requestId,
       });
     },
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type change. GLOBAL, written BEFORE
+    // the change through the same non-swallowing writer; field names only, never values.
+    async recordPlatformDocumentType(e) {
+      await repo.writeEvent({
+        event_type: `identity.document_type.${e.action}`,
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.document_type_id,
+        event_payload: {
+          key: e.key,
+          name: e.name,
+          ...(e.changed_fields !== undefined ? { changed_fields: [...e.changed_fields] } : {}),
+        },
+        requestId: e.requestId,
+      });
+    },
     // ORG-UX-1 §5.4 — Org template governance (adopt / create / approve / select / clear).
     async recordGovernance(e) {
       await repo.writeEvent({

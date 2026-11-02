@@ -1,0 +1,41 @@
+/* TEMPLATE-PRODUCT-1 §4.4 — the Document types screen. Built on the Template variables
+ * classes (template-variables.css, pw-tv-*); only the section headings, badges and the
+ * narrower upload table are added here, over the theme.css token layer. */
+
+.pw-dt-h2 {
+  margin: 22px 0 10px;
+  font-size: var(--pw-fs-16);
+  font-weight: 700;
+}
+.pw-dt-note {
+  margin: -4px 0 10px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-dt-alert {
+  margin-bottom: 12px;
+}
+.pw-dt-table {
+  min-width: 900px;
+}
+.pw-dt-table--narrow {
+  min-width: 560px;
+}
+.pw-dt-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.pw-dt-key {
+  margin-top: 2px;
+  font-size: var(--pw-fs-12);
+}
+.pw-dt-muted {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-dt-actions {
+  white-space: nowrap;
+}
+.pw-dt-actions .pw-tv-edit + .pw-tv-edit {
+  margin-left: 12px;
+}

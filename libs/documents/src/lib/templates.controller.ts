@@ -31,6 +31,8 @@ import {
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import {
   DocumentNotFoundError,
+  DocumentTypeConflictError,
+  DocumentTypeNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
   DocumentRequirementNotFoundError,
   TemplateBindingUnsupportedError,
@@ -84,6 +86,13 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
   if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
   if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
+  if (e instanceof DocumentTypeNotFoundError) return new AramoError('DOCUMENT_TYPE_NOT_FOUND', e.message, 404, { requestId });
+  if (e instanceof DocumentTypeConflictError) {
+    return new AramoError('DOCUMENT_TYPE_CONFLICT', e.message, 409, {
+      requestId,
+      details: { document_type_id: e.documentTypeId, reason: e.reason, ...e.details },
+    });
+  }
   if (e instanceof TemplateInUseError) {
     return new AramoError('TEMPLATE_IN_USE', e.message, 409, { requestId, details: { template_id: e.templateId, reasons: [...e.reasons] } });
   }

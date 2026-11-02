@@ -38,6 +38,11 @@ model DocumentType {
   retention_class       String
   system_defined        Boolean  @default(false)
   active                Boolean  @default(true)
+  // TEMPLATE-PRODUCT-1 §4.1 (ADD, migration 20261103110000; CHECKs there).
+  type_class            String   @default("TEMPLATE") // CHECK: TEMPLATE | UPLOAD (UPLOAD = upload slot, never a template)
+  template_kind         String? // CHECK: EDITABLE | FIXED_FORM; NULL = not yet configured for templates
+  products              String[] @default([]) // template product keys (ats, sign)
+  category              String? // gallery grouping (Recruiting, Employment, …)
   created_at            DateTime @default(now()) @db.Timestamptz
   updated_at            DateTime @updatedAt @db.Timestamptz
 
@@ -45,6 +50,8 @@ model DocumentType {
 
   @@unique([tenant_id, key])
   @@index([tenant_id])
+  // TEMPLATE-PRODUCT-1 TP-3 — partial UNIQUE index DocumentType_system_key_key (key) WHERE
+  // tenant_id IS NULL (migration 20261103110000 — not expressible in Prisma).
   @@schema("documents")
 }
 

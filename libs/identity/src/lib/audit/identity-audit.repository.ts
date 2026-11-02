@@ -175,6 +175,13 @@ export const EVENT_TYPES = [
   // non-swallowing repository BEFORE the delete.
   'identity.document_template.platform_draft_discarded',
   'identity.document_template.platform_template_deleted',
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
+  // document type. GLOBAL (tenant_id NULL). subject_id = the DocumentType id; payload
+  // { key, name, changed_fields? } (field names only). Written BEFORE the change.
+  'identity.document_type.created',
+  'identity.document_type.updated',
+  'identity.document_type.retired',
+  'identity.document_type.deleted',
   // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped.
   //   adopted          subject = the new tenant template; payload { adopted_from_template_id, adopted_from_version_id, document_type_id }
   //   created          subject = the new tenant template ("Create your own")

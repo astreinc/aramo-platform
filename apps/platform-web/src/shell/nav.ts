@@ -43,6 +43,7 @@ export type NavKey =
   | 'proposals'
   | 'matching'
   | 'templates'
+  | 'doctypes'
   | 'variables'
   | 'admins'
   // CCP-B1 — the Commercial group.
@@ -112,6 +113,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'Documents',
     items: [
       { key: 'templates', label: 'Document templates', to: '/document-templates', scope: P.documentTemplateRead, icon: 'doc' },
+      // TEMPLATE-PRODUCT-1 §4.4 — next to Document templates.
+      { key: 'doctypes', label: 'Document types', to: '/document-types', scope: P.documentTemplateRead, icon: 'layers' },
       { key: 'variables', label: 'Template variables', to: '/template-variables', scope: P.documentTemplateRead, icon: 'braces' },
     ],
   },
@@ -180,6 +183,7 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p === '/skills' || p.startsWith('/skills/')) return 'skills';
   if (p.startsWith('/matching')) return 'matching';
   if (p.startsWith('/document-templates')) return 'templates';
+  if (p.startsWith('/document-types')) return 'doctypes';
   if (p.startsWith('/template-variables')) return 'variables';
   if (p.startsWith('/admins')) return 'admins';
   // CCP-B1 — the Commercial group (/commercial → Approvals).

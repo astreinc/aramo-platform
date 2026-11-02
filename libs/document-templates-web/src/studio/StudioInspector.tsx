@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Input, TextArea } from '@aramo/fe-foundation';
 
-import { ProductTagsSelect, orderedProducts, templateProductLabel } from '../template-products';
+import { ProductTagsSelect, TEMPLATE_PRODUCT_KEYS, orderedProducts, templateProductLabel } from '../template-products';
 
 import type { StudioPropertiesPatch, StudioSigning, StudioTemplateInfo, WithdrawalState } from './data-source';
 import { formatDate } from './format-date';
@@ -34,6 +34,8 @@ export interface StudioInspectorProps {
   readonly canEditProps: boolean;
   /** Show the product tags / description properties. */
   readonly showProductTags: boolean;
+  /** TEMPLATE-PRODUCT-1 §2.7 — the products the document type allows (default: all keys). */
+  readonly productOptions?: readonly string[];
   readonly showDescription: boolean;
   /** Withdrawal is part of this context (the Withdrawal box). */
   readonly withdrawalEnabled: boolean;
@@ -296,6 +298,7 @@ function PropertiesTab(props: StudioInspectorProps) {
         <ProductTagsSelect
           label="Product tags"
           value={template.products}
+          {...(props.productOptions !== undefined ? { options: TEMPLATE_PRODUCT_KEYS.filter((k) => props.productOptions?.includes(k) === true) } : {})}
           onChange={(products) => void save({ products })}
           fieldClassName="pws-props__field"
           labelClassName="pws-props__l"

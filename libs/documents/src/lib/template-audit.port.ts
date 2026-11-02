@@ -53,6 +53,20 @@ export interface TemplatePlatformDeletionAudit {
   readonly requestId: string;
 }
 
+// TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
+// document type. GLOBAL (no tenant_id). Written BEFORE the change and MUST throw on
+// failure, so no document type change happens without its audit record.
+export interface TemplateDocumentTypeAudit {
+  readonly action: 'created' | 'updated' | 'retired' | 'deleted';
+  readonly actor_id: string;
+  readonly document_type_id: string;
+  readonly key: string;
+  readonly name: string;
+  // updated: the field names that change (never values).
+  readonly changed_fields?: readonly string[];
+  readonly requestId: string;
+}
+
 // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped. Written
 // through the same non-swallowing seam AFTER the state change succeeds (the change is
 // already committed; a failed write surfaces as an error to the caller, never silently).
@@ -72,5 +86,6 @@ export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
   recordPlatformDeletion(event: TemplatePlatformDeletionAudit): Promise<void>;
+  recordPlatformDocumentType(event: TemplateDocumentTypeAudit): Promise<void>;
   recordGovernance(event: TemplateGovernanceAudit): Promise<void>;
 }

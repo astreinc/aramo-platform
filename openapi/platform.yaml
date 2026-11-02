@@ -85,6 +85,12 @@ tags:
       tenant-tier token is refused with 403 `INSUFFICIENT_PERMISSIONS`. These are the
       only routes that write PLATFORM template rows or the catalog; PLATFORM rows carry
       no tenant data.
+  - name: Platform Document Types
+    description: |
+      TEMPLATE-PRODUCT-1 §4.3 — Platform Admin management of the SYSTEM document types
+      (template types and the read-only system upload types). Reads require
+      `platform:document_template:read`; writes require `platform:document_template:manage`.
+      Platform-tier only. Every write records a GLOBAL audit event first.
   - name: Platform Commercial Audit
     description: |
       CCP-A2 — the read-only commercial audit feed over the append-only
@@ -4128,12 +4134,149 @@ paths:
 
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
+  /platform/document-types:
+    get:
+      operationId: listPlatformDocumentTypes
+      tags: [Platform Document Types]
+      summary: List every SYSTEM document type, both classes (TEMPLATE-PRODUCT-1 §4.3).
+      description: 'Template types and the read-only system upload types, with the System / Seeded badge, the fields this screen may change, the templates of any owner using each type and whether an Aramo default of it is live; plus the existing retention classes and the signing modes. Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The SYSTEM document types.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTypeListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformDocumentType
+      tags: [Platform Document Types]
+      summary: Create a SYSTEM template document type (TEMPLATE-PRODUCT-1 §4.3).
+      description: 'scope SYSTEM, system_defined false, type_class TEMPLATE. The key is the name in upper snake (409 `DOCUMENT_TYPE_CONFLICT` `key_exists` when taken). A GLOBAL audit event (`identity.document_type.created`) is written first. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlatformDocumentTypeRequest'
+      responses:
+        '201':
+          description: The new document type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentType'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          $ref: '#/components/responses/PlatformDocumentTypeConflict'
+        '422':
+          $ref: '#/components/responses/PlatformDocumentTypeInvalid'
+
+  /platform/document-types/{id}:
+    patch:
+      operationId: updatePlatformDocumentType
+      tags: [Platform Document Types]
+      summary: Update a SYSTEM document type (TEMPLATE-PRODUCT-1 §4.3).
+      description: 'name, description, category, products, template_kind, retention_class, execution_mode_default — only the fields that change are checked. UPLOAD types are read-only (`upload_type`); a system-locked type accepts only its editable fields (`system_locked`, §4.2); once the type has a template its kind is fixed (`kind_in_use`) and no product can be removed (`product_in_use`). Audited first (`identity.document_type.updated`, field names only). Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformDocumentTypeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlatformDocumentTypeRequest'
+      responses:
+        '200':
+          description: The updated document type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentType'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformDocumentTypeNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformDocumentTypeConflict'
+        '422':
+          $ref: '#/components/responses/PlatformDocumentTypeInvalid'
+    delete:
+      operationId: deletePlatformDocumentType
+      tags: [Platform Document Types]
+      summary: Delete a document type created in Platform Admin (TEMPLATE-PRODUCT-1 §4.3).
+      description: 'Only when it is not seeded (`seeded`) or system-locked (`system_locked`) and nothing references it — no template of any owner, no Document, requirement or selection (`in_use`). Audited first (`identity.document_type.deleted`). Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformDocumentTypeIdParam'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformDocumentTypeNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformDocumentTypeConflict'
+
+  /platform/document-types/{id}/retire:
+    post:
+      operationId: retirePlatformDocumentType
+      tags: [Platform Document Types]
+      summary: Retire a document type (active = false) (TEMPLATE-PRODUCT-1 §4.3).
+      description: 'Refused for a system-locked or UPLOAD type and while an Aramo default of the type is live (`live_default`). Retiring a retired type is a no-op. Audited first (`identity.document_type.retired`). Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformDocumentTypeIdParam'
+      responses:
+        '200':
+          description: The retired document type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentType'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformDocumentTypeNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformDocumentTypeConflict'
+
   /platform/document-templates/document-types:
     get:
       operationId: listPlatformTemplateDocumentTypes
       tags: [Platform Document Templates]
       summary: List the SYSTEM document types an Aramo default may target.
-      description: 'Active SYSTEM document types (tenant_id NULL) plus whether each is configurable in the editor. Requires `platform:document_template:read`.'
+      description: 'The types an Aramo default may be created for (TEMPLATE-PRODUCT-1 §4.4): active SYSTEM `TEMPLATE` types with a kind set (never an `UPLOAD` slot or an unconfigured type), whether each is configurable in the editor, and the products a template of the type may carry (§2.7). Requires `platform:document_template:read`.'
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6059,6 +6202,14 @@ components:
       schema:
         type: string
         format: uuid
+    PlatformDocumentTypeIdParam:
+      name: id
+      in: path
+      required: true
+      description: A SYSTEM DocumentType id.
+      schema:
+        type: string
+        format: uuid
     PlatformTemplateVersionIdParam:
       name: versionId
       in: path
@@ -6438,6 +6589,24 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
     PlatformTemplateContentRejected:
       description: '`TEMPLATE_BINDING_UNSUPPORTED` (a key outside the catalog, or without a resolver) or `VALIDATION_ERROR` (content rejected by the sanitiser). Publish: `TEMPLATE_PRODUCT_REQUIRED` — the template has no product tag (TEMPLATE-PRODUCT-1 §2.6).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformDocumentTypeNotFound:
+      description: '`DOCUMENT_TYPE_NOT_FOUND` — no such SYSTEM document type (a tenant type is never reachable here).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformDocumentTypeConflict:
+      description: '`DOCUMENT_TYPE_CONFLICT` — refused by state (`details.reason`: `key_exists`, `system_locked`, `upload_type`, `kind_in_use`, `product_in_use`, `live_default`, `in_use`, `seeded`).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformDocumentTypeInvalid:
+      description: '`VALIDATION_ERROR` — `details.reason` `invalid_product`, `products_required`, `invalid_template_kind`, `invalid_execution_mode` or `invalid_retention_class`.'
       content:
         application/json:
           schema:
@@ -11259,6 +11428,127 @@ components:
           maxLength: 2000
 
     # DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog.
+    PlatformDocumentType:
+      type: object
+      required: [id, key, name, description, type_class, template_kind, products, category, retention_class, execution_mode_default, active, system_defined, badge, editable_fields, templates_count, live_default, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        type_class:
+          type: string
+          enum: [TEMPLATE, UPLOAD]
+        template_kind:
+          type: [string, 'null']
+          enum: [EDITABLE, FIXED_FORM, null]
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateProductKey'
+        category:
+          type: [string, 'null']
+        retention_class:
+          type: string
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+        active:
+          type: boolean
+        system_defined:
+          type: boolean
+        badge:
+          type: [string, 'null']
+          enum: [SYSTEM, SEEDED, null]
+          description: SYSTEM = code depends on it (§4.2); SEEDED = other system_defined; null = created in Platform Admin.
+        editable_fields:
+          type: array
+          items:
+            type: string
+        templates_count:
+          type: integer
+          description: Templates of any owner using the type.
+        live_default:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlatformDocumentTypeListResponse:
+      type: object
+      required: [document_types, retention_classes, execution_modes]
+      properties:
+        document_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformDocumentType'
+        retention_classes:
+          type: array
+          items:
+            type: string
+        execution_modes:
+          type: array
+          items:
+            type: string
+    CreatePlatformDocumentTypeRequest:
+      type: object
+      required: [name, template_kind, products, retention_class, execution_mode_default]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        category:
+          type: [string, 'null']
+          maxLength: 60
+        template_kind:
+          type: string
+          enum: [EDITABLE, FIXED_FORM]
+        products:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TemplateProductKey'
+        retention_class:
+          type: string
+          description: One of the existing retention classes (the list response).
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
+    UpdatePlatformDocumentTypeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        category:
+          type: [string, 'null']
+          maxLength: 60
+        template_kind:
+          type: string
+          enum: [EDITABLE, FIXED_FORM]
+        products:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TemplateProductKey'
+        retention_class:
+          type: string
+        execution_mode_default:
+          type: string
+          enum: [NO_SIGNATURE, ACKNOWLEDGEMENT, SINGLE_SIGNATURE, MULTI_SIGNATURE]
     PlatformTemplateDocumentTypeListResponse:
       type: object
       required: [document_types]
@@ -11267,7 +11557,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, key, name, configurable]
+            required: [id, key, name, configurable, template_kind, products, category]
             properties:
               id:
                 type: string
@@ -11278,6 +11568,15 @@ components:
                 type: string
               configurable:
                 type: boolean
+              template_kind:
+                type: string
+                enum: [EDITABLE, FIXED_FORM]
+              products:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateProductKey'
+              category:
+                type: [string, 'null']
     PlatformTemplateVersionSummary:
       type: object
       required: [id, version_number, status, activated_at]

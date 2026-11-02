@@ -9,11 +9,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoExceptionFilter, RequestIdMiddleware } from '@aramo/common';
 import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
-import { TemplateVariablesRepository, TemplatesRepository } from '@aramo/documents';
+import { PlatformDocumentTypesRepository, TemplateVariablesRepository, TemplatesRepository } from '@aramo/documents';
 import { filterScopesForConsumer } from '@aramo/identity';
 import { MatchingPolicyRepository, SkillGovernanceService, SkillRegistryService } from '@aramo/skills-taxonomy';
 
 import { PlatformDocumentTemplatesController } from '../document-templates-platform/platform-document-templates.controller.js';
+import { PlatformDocumentTypesController } from '../document-templates-platform/platform-document-types.controller.js';
 import { MatchingPolicyController } from '../matching-policy/matching-policy.controller.js';
 import { SkillGovernanceController } from '../skill-governance/skill-governance.controller.js';
 import { SkillReviewQueueService } from '../skill-governance/skill-review-queue.service.js';
@@ -44,6 +45,8 @@ const CCP_ROLES = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog
 const ROUTES = [
   { path: '/platform/skills', scope: 'platform:skill:read' },
   { path: '/platform/document-templates/document-types', scope: 'platform:document_template:read' },
+  // TEMPLATE-PRODUCT-1 §4.3 — the Platform Admin document types read.
+  { path: '/platform/document-types', scope: 'platform:document_template:read' },
   { path: '/platform/matching-policy', scope: 'platform:matching_policy:read' },
 ] as const;
 
@@ -57,11 +60,12 @@ describe('CCP A1 §4.2.1 — per-role authorization on the apps/api platform gov
     registry: { listSkills: vi.fn(async () => []) },
     governance: {},
     reviewQueue: {},
-    templates: { listSystemDocumentTypes: vi.fn(async () => []) },
+    templates: { listTemplateDocumentTypes: vi.fn(async () => []) },
+    types: { listWithUsage: vi.fn(async () => []), listRetentionClasses: vi.fn(async () => []) },
     variables: {},
     store: { listVersions: vi.fn(async () => []) },
   };
-  const handlers = [svc.registry.listSkills, svc.templates.listSystemDocumentTypes, svc.store.listVersions];
+  const handlers = [svc.registry.listSkills, svc.templates.listTemplateDocumentTypes, svc.types.listWithUsage, svc.store.listVersions];
 
   async function tokenFor(role: string): Promise<string> {
     const sub = uuidv7();
@@ -78,7 +82,7 @@ describe('CCP A1 §4.2.1 — per-role authorization on the apps/api platform gov
     process.env['AUTH_PUBLIC_KEY'] = keys.publicPem;
     const moduleRef = await Test.createTestingModule({
       imports: [AuthModule, AuthorizationModule],
-      controllers: [SkillGovernanceController, PlatformDocumentTemplatesController, MatchingPolicyController],
+      controllers: [SkillGovernanceController, PlatformDocumentTemplatesController, PlatformDocumentTypesController, MatchingPolicyController],
       providers: [
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
@@ -87,6 +91,7 @@ describe('CCP A1 §4.2.1 — per-role authorization on the apps/api platform gov
         { provide: SkillReviewQueueService, useValue: svc.reviewQueue },
         { provide: TemplatesRepository, useValue: svc.templates },
         { provide: TemplateVariablesRepository, useValue: svc.variables },
+        { provide: PlatformDocumentTypesRepository, useValue: svc.types },
         { provide: MatchingPolicyRepository, useValue: svc.store },
       ],
     }).compile();

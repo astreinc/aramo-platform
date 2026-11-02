@@ -17,6 +17,7 @@ const MANAGE = ['platform:document_template:read', 'platform:document_template:m
 const TYPES: DocumentTypeOption[] = [
   { id: 'd1', key: 'rtr', name: 'Right to represent', configurable: true },
   { id: 'd2', key: 'tax', name: 'Tax form', configurable: false },
+  { id: 'd3', key: 'nda', name: 'Mutual NDA', configurable: true, template_kind: 'EDITABLE', products: ['sign'], category: 'Legal' },
 ];
 
 function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): PlatformTemplate {
@@ -138,6 +139,20 @@ describe('DocumentTemplatesListView', () => {
     renderView(READ);
     await screen.findByText('Mutual NDA');
     expect(screen.queryByRole('button', { name: 'Delete Mutual NDA' })).toBeNull();
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.7 — the product choice is bounded by the chosen type's products.
+  it('Create: choosing a type offers only its products and starts from them', async () => {
+    const create = vi.spyOn(documentTemplatesApi, 'createTemplate').mockResolvedValue(tpl('t9', 'NDA'));
+    renderView(MANAGE);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Create default template' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create default template' });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /Document type/ }), { target: { value: 'd3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Product tags Sign' }));
+    expect(within(within(dialog).getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['✓Sign']);
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), { target: { value: 'NDA' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create and open studio' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: 'd3', products: ['sign'] })));
   });
 
   it('a row click opens the Studio', async () => {

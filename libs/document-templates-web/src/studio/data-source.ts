@@ -91,7 +91,7 @@ export interface StudioCatalogData {
   readonly variables: readonly StudioCatalogVariable[];
   readonly bindings: readonly StudioAllowedBinding[];
   /** Document type names (the Properties "Document type" fact). */
-  readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string; readonly products?: readonly string[] }>;
   /** TEMPLATE-STUDIO-1 S-1 — whether the organization profile has a logo to capture (A1). */
   readonly tenantLogo?: { readonly available: boolean; readonly tenant_name: string } | null;
 }

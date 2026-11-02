@@ -232,6 +232,15 @@ export function summarizeDetail(
     }
     case 'identity.document_template.platform_template_deleted':
       return 'Deleted an unpublished Aramo default template';
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document types.
+    case 'identity.document_type.created':
+      return 'Created a document type';
+    case 'identity.document_type.updated':
+      return 'Updated a document type';
+    case 'identity.document_type.retired':
+      return 'Retired a document type';
+    case 'identity.document_type.deleted':
+      return 'Deleted a document type';
     // Domain-Enforcement P3 — the organization's claim on its email domain.
     case 'identity.domain.claim.provisional':
       return 'Reserved the organization email domain';

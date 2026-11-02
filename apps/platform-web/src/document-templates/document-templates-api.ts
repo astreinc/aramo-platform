@@ -1,4 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
+import type { TemplateProductKey } from '@aramo/document-templates-web';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§8.1) — typed client for the platform-tier Aramo default
 // templates (/platform/document-templates*) and the template variable catalog
@@ -59,6 +60,11 @@ export interface DocumentTypeOption {
   key: string;
   name: string;
   configurable: boolean;
+  // TEMPLATE-PRODUCT-1 §4.4 / §2.7 — the type's kind, category and the products a template
+  // of it may carry (its tags must be a subset).
+  template_kind?: 'EDITABLE' | 'FIXED_FORM';
+  products?: TemplateProductKey[];
+  category?: string | null;
 }
 
 export interface AllowedBinding {

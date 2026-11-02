@@ -39,9 +39,33 @@ export {
   type TemplatePlatformWithdrawalAudit,
   // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
   type TemplatePlatformDeletionAudit,
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type changes.
+  type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';
 // TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
 export { TEMPLATE_PRODUCT_KEYS, isTemplateProductKey, type TemplateProductKey } from './lib/template-products.js';
+// TEMPLATE-PRODUCT-1 §4 — document type classes / kinds, system-locked types, the
+// Platform Admin document type repository.
+export {
+  DOCUMENT_TYPE_CLASSES,
+  DOCUMENT_TYPE_TEMPLATE_KINDS,
+  DOCUMENT_EXECUTION_MODES,
+  SYSTEM_LOCKED_TYPE_IDS,
+  SYSTEM_LOCKED_EDITABLE_FIELDS,
+  RIGHT_TO_REPRESENT_TYPE_ID,
+  OFFER_LETTER_TYPE_ID,
+  isSystemLockedType,
+  documentTypeKeyFromName,
+  type DocumentTypeClass,
+  type DocumentTypeTemplateKind,
+  type DocumentExecutionMode,
+} from './lib/document-types.js';
+export {
+  PlatformDocumentTypesRepository,
+  type PlatformDocumentTypeRow,
+  type CreateSystemDocumentTypeInput,
+  type UpdateSystemDocumentTypeInput,
+} from './lib/document-types.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   DocumentsRepository,
@@ -116,6 +140,10 @@ export {
   // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is referenced.
   TemplateInUseError,
   type TemplateInUseReason,
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type management.
+  DocumentTypeNotFoundError,
+  DocumentTypeConflictError,
+  type DocumentTypeConflictReason,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

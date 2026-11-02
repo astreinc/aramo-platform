@@ -311,6 +311,14 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
     if (start !== 'blank' && !sourceKey.split(',').includes(start.slice(5))) setStart('blank');
   }, [start, sourceKey]);
 
+  // TEMPLATE-PRODUCT-1 §2.7 — tags are a subset of the chosen type's products: choosing a
+  // type offers only its products and starts from all of them.
+  const typeProducts = types.find((t) => t.id === typeId)?.products ?? TEMPLATE_PRODUCT_KEYS;
+  const chooseType = (id: string): void => {
+    setTypeId(id);
+    const p = types.find((t) => t.id === id)?.products;
+    if (p !== undefined) setTags([...p]);
+  };
   const ok = typeId !== '' && name.trim() !== '' && types.find((t) => t.id === typeId)?.configurable === true;
 
   const submit = async (): Promise<void> => {
@@ -370,7 +378,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         label="Document type"
         required
         value={typeId}
-        onChange={setTypeId}
+        onChange={chooseType}
         helper="Fixed by regulation or a provider? Those types are listed but can’t be chosen."
         options={[
           { value: '', label: 'Choose a document type' },
@@ -388,6 +396,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         label="Product tags"
         value={tags}
         onChange={setTags}
+        options={typeProducts}
         fieldClassName="pw-field"
         labelClassName="pw-field__label"
         helperClassName="pw-field__helper"
