@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 
-import { lifecycleActionErrorMessage } from './error-messages';
+import {
+  createErrorMessage,
+  lifecycleActionErrorMessage,
+  updateErrorMessage,
+} from './error-messages';
 
 // Talent Lifecycle R1–R5 Implementation Directive v1.2 §6.2 (S3) — the hold refusals get specific
 // recruiter copy, never the generic failure.
@@ -57,5 +61,22 @@ describe('lifecycleActionErrorMessage — ATS-QA-1 D9 hold/status refusals + 5xx
   });
   it('a non-API error keeps the generic fallback', () => {
     expect(lifecycleActionErrorMessage(new Error('network'))).toBe(GENERIC);
+  });
+});
+
+// CONTACTS-1 — a refused hiring-manager link reads as such on create + update.
+describe('requisition create/update — contact link refusals', () => {
+  it('CONTACT_DELETED', () => {
+    const e = new ApiError(422, 'x', 'CONTACT_DELETED', { field: 'contact_id', contact_id: 'c' });
+    expect(createErrorMessage(e)).toMatch(/has been deleted/);
+    expect(updateErrorMessage(e)).toMatch(/has been deleted/);
+  });
+  it('contact_company_mismatch', () => {
+    const e = new ApiError(422, 'x', 'VALIDATION_ERROR', { field: 'contact_id', reason: 'contact_company_mismatch' });
+    expect(updateErrorMessage(e)).toMatch(/different company/);
+  });
+  it('contact_not_found', () => {
+    const e = new ApiError(422, 'x', 'VALIDATION_ERROR', { field: 'contact_id', reason: 'contact_not_found' });
+    expect(createErrorMessage(e)).toMatch(/could not be found/);
   });
 });

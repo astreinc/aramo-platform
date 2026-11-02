@@ -6,6 +6,12 @@ export {
   COMPANY_CLIENT_CHECK_PORT,
   type CompanyClientCheckPort,
 } from './lib/ports/company-client-check.port.js';
+// CONTACTS-1 HM-1 — the hiring-manager validator port + token (adapter
+// supplied by apps/api at composition).
+export {
+  REQUISITION_HIRING_MANAGER_VALIDATOR,
+  type RequisitionHiringManagerValidator,
+} from './lib/ports/hiring-manager-validator.port.js';
 export {
   RequisitionRepository,
   type PublishableRequisitionRow,

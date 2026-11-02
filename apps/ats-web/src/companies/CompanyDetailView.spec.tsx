@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
@@ -333,6 +333,40 @@ describe('CompanyDetailView (account hub)', () => {
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
     const contactCall = calls.find((c) => String(c[0]).includes('/v1/contacts'));
     expect(String(contactCall?.[0])).toContain('company_id=co-1');
+  });
+
+  // CONTACTS-1 F-2 — the contact email affordance honours preference.
+  it('Contacts tab: do_not_contact has no mailto link; limited keeps it with the indicator', async () => {
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/contacts': {
+        items: [
+          makeContact('ct-1', 'Open', 'Line', { email1: 'open@acme.test', preference: 'contactable' }),
+          makeContact('ct-2', 'No', 'Mail', { email1: 'no@acme.test', preference: 'do_not_contact' }),
+          makeContact('ct-3', 'Some', 'Mail', { email1: 'some@acme.test', preference: 'limited' }),
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'contact:read']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Contacts/ }));
+    await waitFor(() => expect(screen.getByText('No Mail')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'open@acme.test' })).toHaveAttribute(
+      'href',
+      'mailto:open@acme.test',
+    );
+    // do-not-contact: no link (and no address offered), the indicator instead
+    expect(screen.queryByRole('link', { name: 'no@acme.test' })).toBeNull();
+    expect(screen.queryByText('no@acme.test')).toBeNull();
+    const dnc = screen.getByText('No Mail').closest('tr');
+    expect(dnc).not.toBeNull();
+    expect(within(dnc as HTMLElement).getByText('Do not contact')).toBeInTheDocument();
+    // limited: the link stays, with the limited indicator
+    expect(screen.getByRole('link', { name: 'some@acme.test' })).toBeInTheDocument();
+    const lim = screen.getByText('Some Mail').closest('tr');
+    expect(within(lim as HTMLElement).getByText('Limited')).toBeInTheDocument();
   });
 
   it('Jobs tab calls /v1/requisitions?company_id=<id> and filters closed client-side', async () => {

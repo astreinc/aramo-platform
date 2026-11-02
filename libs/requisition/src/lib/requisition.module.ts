@@ -35,10 +35,11 @@ import { RequisitionEmbeddingRepository } from './requisition-embedding.reposito
 //
 // No imports of @aramo/company or @aramo/contact. The cross-schema
 // references (company_id, contact_id, company_department_id, recruiter_id,
-// owner_id) are UUID-only logical references per Architecture §7.3 and
-// are NOT validated at the application layer at this batch (referential
-// integrity for company_id is the create-caller's responsibility for now;
-// later batches may add tenant-scoped validation if needed).
+// owner_id) are UUID-only logical references per Architecture §7.3.
+// company_id (CLIENT check) and contact_id (the hiring manager, CONTACTS-1
+// HM-1) are validated through ports bound by apps/api
+// (COMPANY_CLIENT_CHECK_PORT, REQUISITION_HIRING_MANAGER_VALIDATOR), so this
+// module still takes no @aramo/company or @aramo/contact edge.
 @Module({
   // Job-Module LB-3 — AiDraftModule (the 2nd declared ai-draft consumer,
   // ADR-0015 v1.2) + JobDomainModule (the seam mint: Job + GoldenProfile).

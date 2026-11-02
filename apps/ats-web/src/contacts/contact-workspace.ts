@@ -1,12 +1,13 @@
-import type { ContactView } from '../companies/types';
+import type { ContactKind, ContactView } from '../companies/types';
 
 // Contacts workspace — the pure projection/query layer behind the faceted
 // ContactsListView (mirrors company-workspace.ts). The BE list is SERVER-PAGED
 // (GET /v1/contacts?paged=true → keyset cursor + server facet counts), so scope
 // (My/All), segments, the facet rail, and the cold-call mode are SERVER query
-// params built by buildContactQuery(). The in-list text box filters the LOADED
-// page client-side (so it never needs contact:search). Every value binds to a
-// real ContactView field — nothing fabricated.
+// params built by buildContactQuery(). CONTACTS-1 F-4 — the search box is a
+// SERVER search too (?q=, contact:search) across the whole visible directory,
+// paged like every other filter. Every value binds to a real ContactView field —
+// nothing fabricated.
 //
 // Field mapping (mockup → real field):
 //   relationship role ← relationship_role (closed vocab; categorical FUNCTION,
@@ -112,6 +113,25 @@ export function isContactable(c: ContactView): boolean {
   return c.preference !== 'do_not_contact';
 }
 
+// ── Contact kind (CONTACTS-1 §12; nullable — null = not set) ──
+export const CONTACT_KIND_LABELS: Record<ContactKind, string> = {
+  PERSON: 'Person',
+  FUNCTIONAL_MAILBOX: 'Functional mailbox',
+};
+export const CONTACT_KIND_ORDER: readonly ContactKind[] = [
+  'PERSON',
+  'FUNCTIONAL_MAILBOX',
+];
+
+// CONTACTS-1 SD-5 — a referencing screen shows a deleted contact's name with a
+// "Deleted" marker (the name comes from GET /v1/contacts/:id?include_deleted=true).
+export function contactDisplayName(c: ContactView): string {
+  const name = FULL_NAME(c) || '—';
+  return c.deleted_at !== null && c.deleted_at !== undefined
+    ? `${name} (Deleted)`
+    : name;
+}
+
 // ── Recency (cold-call + quiet) ──
 export const QUIET_DAYS = 14;
 export function daysSinceContact(
@@ -152,7 +172,16 @@ export type ListMode = 'directory' | 'cold';
 // ── Segments (one active at a time; 'all' = none). ──
 // 'My contacts' is the scope TAB (top of the view), not a segment — so it is
 // intentionally absent here to avoid a duplicate control/label.
-export type SegmentKey = 'all' | 'decision' | 'champions' | 'quiet' | 'former';
+// CONTACTS-1 FE-SD-2 — 'deleted' is the restore view (?deleted=true). It is
+// rendered only for contact:delete holders (the server answers 403 otherwise),
+// so it is NOT in SEGMENTS; the view appends it behind the scope check.
+export type SegmentKey =
+  | 'all'
+  | 'decision'
+  | 'champions'
+  | 'quiet'
+  | 'former'
+  | 'deleted';
 export const SEGMENTS: readonly { key: SegmentKey; label: string }[] = [
   { key: 'all', label: 'All contacts' },
   { key: 'decision', label: 'Decision makers' },
@@ -189,6 +218,8 @@ export interface ContactFacets {
   readonly hot: number;
   readonly quiet: number;
   readonly former: number;
+  // CONTACTS-1 F-4 — the is_primary count within the base set (the headline).
+  readonly primary?: number;
 }
 export interface ContactSearchPage {
   readonly items: readonly ContactView[];
@@ -197,9 +228,9 @@ export interface ContactSearchPage {
   readonly total: number;
 }
 
-// Translate the workspace state into server query params. The TEXT box stays
-// client-side (filters the loaded page; never sends ?q=, so the surface never
-// needs contact:search).
+// Translate the workspace state into server query params. The search text is
+// sent as ?q= (requires contact:search — the view only renders the box for
+// holders of that scope).
 export interface BuildQueryInput {
   readonly scope: ScopeMode;
   readonly segment: SegmentKey;
@@ -209,6 +240,8 @@ export interface BuildQueryInput {
   // server filters on. Distinct from scope=mine (which resolves the JWT
   // subject); this is "show me contacts owned by <person>". Empty → no filter.
   readonly ownerId?: string | null;
+  // Server search text (?q=). Blank → no q param.
+  readonly q?: string;
   readonly cursor?: string | null;
   readonly pageSize?: number;
 }
@@ -245,26 +278,15 @@ export function buildContactQuery(i: BuildQueryInput): URLSearchParams {
     p.set('quiet', 'true');
   if (i.facets.flags.includes('former') || i.segment === 'former')
     p.set('former', 'true');
+  // The Deleted view — ONLY deleted rows (contact:delete).
+  if (i.segment === 'deleted') p.set('deleted', 'true');
+
+  const q = (i.q ?? '').trim();
+  if (q !== '') p.set('q', q);
 
   if (i.cursor != null && i.cursor !== '') p.set('cursor', i.cursor);
   if (i.pageSize !== undefined) p.set('page_size', String(i.pageSize));
   return p;
-}
-
-// The in-list text filter (client-side, over the loaded page) — name / title /
-// email / company name.
-export function matchesText(c: ContactView, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q === '') return true;
-  const hay = [
-    FULL_NAME(c),
-    c.title ?? '',
-    c.email1 ?? '',
-    c.company_name ?? '',
-  ]
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q);
 }
 
 // Segment count badges, derived from the server facets (stable; base-where).
@@ -289,6 +311,9 @@ export function segmentCountFrom(
       return facets.quiet;
     case 'former':
       return facets.former;
+    case 'deleted':
+      // No facet count for the deleted set (the facets describe live rows).
+      return null;
   }
 }
 

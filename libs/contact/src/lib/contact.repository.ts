@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
-import { CompanyRepository } from '@aramo/company';
+import { CompanyDepartmentRepository, CompanyRepository } from '@aramo/company';
 
 import type { ContactView } from './dto/contact.view.js';
 import type { CreateContactRequestDto } from './dto/create-contact-request.dto.js';
@@ -16,6 +16,12 @@ import type {
 import { QUIET_DAYS } from './dto/contact-search.dto.js';
 import { assertContactVocab } from './dto/contact-vocab.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import {
+  CONTACT_AUDIT_SINK,
+  CONTACT_OWNER_VALIDATOR,
+  type ContactAuditSink,
+  type ContactOwnerValidator,
+} from './contact-owner-validator.port.js';
 
 // ContactRepository — write + read surface for Contact. Reference-CRUD
 // per Ruling 7 (no metering, no event log, no state machine).
@@ -57,6 +63,9 @@ interface ContactRow {
   relationship_role: string | null;
   preference: string | null;
   last_activity_at: Date | null;
+  contact_kind: string | null;
+  deleted_at: Date | null;
+  deleted_by_id: string | null;
 }
 
 // company_name + relationship_types are read-time enrichment (cross-schema,
@@ -99,6 +108,9 @@ function projectView(
     preference: row.preference,
     last_activity_at:
       row.last_activity_at !== null ? row.last_activity_at.toISOString() : null,
+    contact_kind: row.contact_kind ?? null,
+    deleted_at: row.deleted_at != null ? row.deleted_at.toISOString() : null,
+    deleted_by_id: row.deleted_by_id ?? null,
     company_name: companyName,
     relationship_types: relationshipTypes,
   };
@@ -169,7 +181,12 @@ function buildBaseWhere(
   q: ContactSearchQuery,
   visibility: VisibilityContextShape,
 ): Record<string, unknown> {
-  const where: Record<string, unknown> = { tenant_id: q.tenant_id };
+  const where: Record<string, unknown> = {
+    tenant_id: q.tenant_id,
+    // CONTACTS-1 §5 — the deleted view (SD-9) shows ONLY soft-deleted rows;
+    // every other read excludes them (SD-3).
+    deleted_at: q.deleted === true ? { not: null } : null,
+  };
   const and: Record<string, unknown>[] = [];
   if (q.site_id !== undefined) where['site_id'] = q.site_id;
   if (q.q !== undefined && q.q !== '') {
@@ -181,7 +198,10 @@ function buildBaseWhere(
     });
   }
   if (q.owner_id !== undefined) where['owner_id'] = q.owner_id;
-  if (q.former !== true) where['left_company'] = false;
+  // former rows are excluded from the base unless the Former segment is
+  // selected; the selection then narrows to ONLY former rows (CONTACTS-1 F-1),
+  // so the list matches the segment's `former` badge.
+  if (q.former !== true && q.deleted !== true) where['left_company'] = false;
   if (q.cold_callable === true) and.push(coldCallableClause());
   if (!visibility.see_all_company) {
     const visible = visibility.visible_client_ids;
@@ -215,6 +235,7 @@ function buildSelectionWhere(
   // primary per company; combined with company_id[] it returns the page's
   // primaries in a single visibility-scoped read.
   if (q.is_primary === true) where['is_primary'] = true;
+  if (q.former === true) where['left_company'] = true;
   if (q.quiet === true) {
     and.push({
       OR: [
@@ -280,6 +301,13 @@ export class ContactRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly companyRepository: CompanyRepository,
+    private readonly departmentRepository: CompanyDepartmentRepository,
+    @Optional()
+    @Inject(CONTACT_OWNER_VALIDATOR)
+    private readonly ownerValidator?: ContactOwnerValidator,
+    @Optional()
+    @Inject(CONTACT_AUDIT_SINK)
+    private readonly auditSink?: ContactAuditSink,
   ) {}
 
   async create(args: {
@@ -290,6 +318,16 @@ export class ContactRepository {
   }): Promise<ContactView> {
     // Closed-vocab guard (the @IsIn contract, app-layer) — 400 before any write.
     assertContactVocab(args.input, args.requestId);
+    // CONTACTS-1 V-3 — in-tenant reference checks (department, reports-to, owner).
+    await this.assertReferences({
+      tenant_id: args.tenant_id,
+      company_id: args.input.company_id,
+      self_id: null,
+      company_department_id: args.input.company_department_id,
+      reports_to_id: args.input.reports_to_id,
+      owner_id: args.input.owner_id,
+      requestId: args.requestId,
+    });
     // Cross-schema company_id validation — same tenant (Architecture §7.2).
     // Logical UUID resolution; no FK constraint at the DB layer (§7.3).
     const parent = await this.companyRepository.findById({
@@ -334,6 +372,7 @@ export class ContactRepository {
       entered_by_id: args.entered_by_id,
       relationship_role: args.input.relationship_role ?? null,
       preference: args.input.preference ?? null,
+      contact_kind: args.input.contact_kind ?? null,
     };
     // Primary invariant — at most one primary per (tenant, company). When this
     // create claims primary, demote any prior primary in the SAME transaction
@@ -412,21 +451,31 @@ export class ContactRepository {
         import_batch_id: args.import_batch_id,
         relationship_role: args.input.relationship_role ?? null,
         preference: args.input.preference ?? null,
+        contact_kind: args.input.contact_kind ?? null,
       },
     });
     return projectView(row as ContactRow);
   }
 
-  // PR-A8-1 — import-engine reversion. Tenant-scoped deleteMany by the
-  // back-reference. Returns the delete count.
+  // PR-A8-1 — import-engine reversion, by the import_batch_id back-reference.
+  // CONTACTS-1 SD-10 — a SOFT delete like every other contact removal (no
+  // hard-delete path remains): the batch's live rows are marked deleted and
+  // lose any primary flag. Returns the number of rows marked.
   async deleteByImportBatch(args: {
     tenant_id: string;
     import_batch_id: string;
+    deleted_by_id?: string | null;
   }): Promise<number> {
-    const result = await this.prisma.contact.deleteMany({
+    const result = await this.prisma.contact.updateMany({
       where: {
         tenant_id: args.tenant_id,
         import_batch_id: args.import_batch_id,
+        deleted_at: null,
+      },
+      data: {
+        deleted_at: new Date(),
+        deleted_by_id: args.deleted_by_id ?? null,
+        is_primary: false,
       },
     });
     return result.count;
@@ -452,6 +501,7 @@ export class ContactRepository {
     const rows = await this.prisma.contact.findMany({
       where: {
         tenant_id: args.tenant_id,
+        deleted_at: null,
         ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       },
@@ -480,6 +530,7 @@ export class ContactRepository {
     const limit = Math.min(args.limit ?? 50, 200);
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
+      deleted_at: null,
       ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       OR: [
         { first_name: { contains: q, mode: 'insensitive' } },
@@ -503,13 +554,21 @@ export class ContactRepository {
   // AUTHZ-D4b — visibility-scoped read paths. Contact's visibility is
   // direct: contact.company_id ∈ visibility.visible_client_ids. The
   // see_all_company short-circuit (TA + TO per D4a §6) drops the filter.
+  // CONTACTS-1 SD-4/SD-5 — a soft-deleted contact reads as not-found unless the
+  // caller asks for it (include_deleted: the "Name (Deleted)" display on a
+  // screen that still references it). Visibility applies either way.
   async findByIdForActor(args: {
     tenant_id: string;
     id: string;
     visibility: VisibilityContextShape;
+    include_deleted?: boolean;
   }): Promise<ContactView | null> {
     const row = await this.prisma.contact.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        ...(args.include_deleted === true ? {} : { deleted_at: null }),
+      },
     });
     if (row === null) return null;
     if (!args.visibility.see_all_company) {
@@ -552,6 +611,7 @@ export class ContactRepository {
     const limit = Math.min(args.limit ?? 50, 200);
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
+      deleted_at: null,
       ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
       ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       ...(args.q === undefined
@@ -657,7 +717,7 @@ export class ContactRepository {
   private async computeFacets(
     baseWhere: Record<string, unknown>,
   ): Promise<ContactFacets> {
-    const [roleG, prefG, companyG, hot, quiet, former] = await Promise.all([
+    const [roleG, prefG, companyG, hot, quiet, former, primary] = await Promise.all([
       this.prisma.contact.groupBy({
         by: ['relationship_role'],
         where: baseWhere,
@@ -686,6 +746,11 @@ export class ContactRepository {
       this.prisma.contact.count({
         where: { ...baseWhere, left_company: true },
       }),
+      // CONTACTS-1 F-4 — the headline primary count over the whole visible
+      // set (was counted client-side from the loaded page only).
+      this.prisma.contact.count({
+        where: { ...baseWhere, is_primary: true },
+      }),
     ]);
     return {
       relationship_role: toContactBuckets(
@@ -697,6 +762,7 @@ export class ContactRepository {
       hot,
       quiet,
       former,
+      primary,
     };
   }
 
@@ -708,6 +774,7 @@ export class ContactRepository {
     return this.prisma.contact.count({
       where: {
         tenant_id: args.tenant_id,
+        deleted_at: null,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
       },
     });
@@ -735,28 +802,140 @@ export class ContactRepository {
     return (rows as Array<{ id: string }>).map((r) => r.id);
   }
 
+  // CONTACTS-1 W-1 — the write paths resolve the SAME visibility as the reads:
+  // a contact outside the actor's visible companies is NOT_FOUND (identical to
+  // the invisible read). Structural: every mutation REQUIRES the resolved
+  // visibility. A soft-deleted contact is also NOT_FOUND here (SD-7).
+  private async loadWritable(args: {
+    tenant_id: string;
+    id: string;
+    visibility: VisibilityContextShape;
+    requestId: string;
+    deleted: boolean;
+  }): Promise<ContactRow> {
+    const row = (await this.prisma.contact.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        deleted_at: args.deleted ? { not: null } : null,
+      },
+    })) as ContactRow | null;
+    const visible =
+      row !== null &&
+      (args.visibility.see_all_company ||
+        args.visibility.visible_client_ids === null ||
+        args.visibility.visible_client_ids.has(row.company_id));
+    if (row === null || !visible) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Contact not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    return row;
+  }
+
+  // CONTACTS-1 V-3 — in-tenant checks for the cross-row references a contact
+  // carries. company_department_id must belong to the contact's company;
+  // reports_to_id must be another LIVE contact at the same company; owner_id
+  // must be an assignable tenant member (port, bound in apps/api).
+  private async assertReferences(args: {
+    tenant_id: string;
+    company_id: string;
+    self_id: string | null;
+    company_department_id?: string | null;
+    reports_to_id?: string | null;
+    owner_id?: string | null;
+    requestId: string;
+  }): Promise<void> {
+    if (args.company_department_id != null) {
+      const departments = await this.departmentRepository.list({
+        tenant_id: args.tenant_id,
+        company_id: args.company_id,
+      });
+      if (!departments.some((d) => d.id === args.company_department_id)) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'company_department_id is not a department of the contact\'s company',
+          422,
+          {
+            requestId: args.requestId,
+            details: {
+              field: 'company_department_id',
+              reason: 'department_company_mismatch',
+            },
+          },
+        );
+      }
+    }
+    if (args.reports_to_id != null) {
+      if (args.reports_to_id === args.self_id) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'A contact cannot report to itself',
+          422,
+          {
+            requestId: args.requestId,
+            details: { field: 'reports_to_id', reason: 'self_reference' },
+          },
+        );
+      }
+      await this.assertLinkable({
+        tenant_id: args.tenant_id,
+        id: args.reports_to_id,
+        company_id: args.company_id,
+        requestId: args.requestId,
+        field: 'reports_to_id',
+      });
+    }
+    if (args.owner_id != null && this.ownerValidator !== undefined) {
+      await this.ownerValidator.assertAssignable({
+        tenant_id: args.tenant_id,
+        user_id: args.owner_id,
+        requestId: args.requestId,
+        field: 'owner_id',
+      });
+    }
+  }
+
   async update(args: {
     tenant_id: string;
     id: string;
     input: UpdateContactRequestDto;
     requestId: string;
+    visibility: VisibilityContextShape;
   }): Promise<ContactView> {
     assertContactVocab(args.input, args.requestId);
-    const existing = await this.findById({
+    const existing = await this.loadWritable({
       tenant_id: args.tenant_id,
       id: args.id,
+      visibility: args.visibility,
+      requestId: args.requestId,
+      deleted: false,
     });
-    if (existing === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Contact not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
-    }
+    // Only references that CHANGE are re-checked: an unchanged link is not a
+    // new link (SD-6), and editing another field must not fail because a
+    // referenced contact was deleted later.
+    const changed = <K extends 'company_department_id' | 'reports_to_id' | 'owner_id'>(
+      k: K,
+    ): string | null | undefined =>
+      args.input[k] === undefined || args.input[k] === existing[k]
+        ? undefined
+        : args.input[k];
+    await this.assertReferences({
+      tenant_id: args.tenant_id,
+      company_id: existing.company_id,
+      self_id: existing.id,
+      company_department_id: changed('company_department_id'),
+      reports_to_id: changed('reports_to_id'),
+      owner_id: changed('owner_id'),
+      requestId: args.requestId,
+    });
     const data = {
       ...(args.input.relationship_role === undefined ? {} : { relationship_role: args.input.relationship_role }),
       ...(args.input.preference === undefined ? {} : { preference: args.input.preference }),
+      ...(args.input.contact_kind === undefined ? {} : { contact_kind: args.input.contact_kind }),
       ...(args.input.company_department_id === undefined ? {} : { company_department_id: args.input.company_department_id }),
       ...(args.input.first_name === undefined ? {} : { first_name: args.input.first_name }),
       ...(args.input.last_name === undefined ? {} : { last_name: args.input.last_name }),
@@ -799,23 +978,190 @@ export class ContactRepository {
     return projectView(row as ContactRow);
   }
 
+  // CONTACTS-1 SD-1/SD-2 — DELETE is a SOFT delete: the row is kept (existing
+  // references stay resolvable, SD-5), marked deleted, and loses its primary
+  // flag so the company can promote another primary.
   async delete(args: {
     tenant_id: string;
     id: string;
     requestId: string;
+    visibility: VisibilityContextShape;
+    actor_id: string;
   }): Promise<void> {
-    const existing = await this.findById({
+    const existing = await this.loadWritable({
       tenant_id: args.tenant_id,
       id: args.id,
+      visibility: args.visibility,
+      requestId: args.requestId,
+      deleted: false,
     });
-    if (existing === null) {
+    await this.prisma.contact.update({
+      where: { id: args.id },
+      data: {
+        deleted_at: new Date(),
+        deleted_by_id: args.actor_id,
+        is_primary: false,
+      },
+    });
+    await this.auditSink?.record({
+      event: 'deleted',
+      tenant_id: args.tenant_id,
+      actor_id: args.actor_id,
+      contact_id: args.id,
+      company_id: existing.company_id,
+    });
+  }
+
+  // CONTACTS-1 SD-8 — restore clears the soft delete. A live (not deleted)
+  // contact is a 200 no-op. Never re-promotes primary.
+  async restore(args: {
+    tenant_id: string;
+    id: string;
+    requestId: string;
+    visibility: VisibilityContextShape;
+    actor_id: string;
+  }): Promise<ContactView> {
+    const live = await this.prisma.contact.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id, deleted_at: null },
+    });
+    if (live !== null) {
+      const view = await this.findByIdForActor({
+        tenant_id: args.tenant_id,
+        id: args.id,
+        visibility: args.visibility,
+      });
+      if (view === null) {
+        throw new AramoError(
+          'NOT_FOUND',
+          'Contact not found in tenant (or not visible to actor)',
+          404,
+          { requestId: args.requestId, details: { id: args.id } },
+        );
+      }
+      return view;
+    }
+    const deleted = await this.loadWritable({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      visibility: args.visibility,
+      requestId: args.requestId,
+      deleted: true,
+    });
+    await this.prisma.contact.update({
+      where: { id: args.id },
+      data: { deleted_at: null, deleted_by_id: null },
+    });
+    await this.auditSink?.record({
+      event: 'restored',
+      tenant_id: args.tenant_id,
+      actor_id: args.actor_id,
+      contact_id: args.id,
+      company_id: deleted.company_id,
+    });
+    const view = await this.findByIdForActor({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      visibility: args.visibility,
+    });
+    return view as ContactView;
+  }
+
+  // CONTACTS-1 SD-6 — the single "may this contact be the target of a NEW
+  // link?" check, used by every linking surface (requisition hiring manager,
+  // company billing contact, task owner, saved list, reports-to, activity).
+  // Not in tenant → VALIDATION_ERROR contact_not_found; at another company
+  // (when company_id is given) → VALIDATION_ERROR contact_company_mismatch;
+  // soft-deleted → CONTACT_DELETED. All 422.
+  async assertLinkable(args: {
+    tenant_id: string;
+    id: string;
+    company_id?: string;
+    requestId: string;
+    field: string;
+  }): Promise<void> {
+    const row = (await this.prisma.contact.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { id: true, company_id: true, deleted_at: true },
+    })) as { id: string; company_id: string; deleted_at: Date | null } | null;
+    if (row === null) {
+      throw new AramoError('VALIDATION_ERROR', 'Contact not found in tenant', 422, {
+        requestId: args.requestId,
+        details: { field: args.field, reason: 'contact_not_found', contact_id: args.id },
+      });
+    }
+    if (args.company_id !== undefined && row.company_id !== args.company_id) {
       throw new AramoError(
-        'NOT_FOUND',
-        'Contact not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
+        'VALIDATION_ERROR',
+        'Contact belongs to a different company',
+        422,
+        {
+          requestId: args.requestId,
+          details: {
+            field: args.field,
+            reason: 'contact_company_mismatch',
+            contact_id: args.id,
+          },
+        },
       );
     }
-    await this.prisma.contact.delete({ where: { id: args.id } });
+    if (row.deleted_at !== null) {
+      throw new AramoError('CONTACT_DELETED', 'Contact has been deleted', 422, {
+        requestId: args.requestId,
+        details: { field: args.field, contact_id: args.id },
+      });
+    }
+  }
+
+  // CONTACTS-1 H-2 — recency rollup written by the contact-history path:
+  // last_activity_at only moves forward. No-op for a deleted contact.
+  async touchLastActivity(args: {
+    tenant_id: string;
+    id: string;
+    at: Date;
+  }): Promise<void> {
+    await this.prisma.contact.updateMany({
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        deleted_at: null,
+        OR: [{ last_activity_at: null }, { last_activity_at: { lt: args.at } }],
+      },
+      data: { last_activity_at: args.at },
+    });
+  }
+
+  // CONTACTS-1 SD-5 — display names for screens that still reference a contact
+  // (including a deleted one, flagged so the UI can render "Name (Deleted)").
+  async findDisplayByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, { name: string; deleted: boolean; company_id: string }>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = (await this.prisma.contact.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: Array.from(args.ids) } },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        company_id: true,
+        deleted_at: true,
+      },
+    })) as Array<{
+      id: string;
+      first_name: string;
+      last_name: string;
+      company_id: string;
+      deleted_at: Date | null;
+    }>;
+    return new Map(
+      rows.map((r) => [
+        r.id,
+        {
+          name: `${r.first_name} ${r.last_name}`.trim(),
+          deleted: r.deleted_at !== null,
+          company_id: r.company_id,
+        },
+      ]),
+    );
   }
 }

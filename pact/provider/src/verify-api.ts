@@ -990,6 +990,12 @@ const CONTACT_PRIMARY_FLAG_MIGRATION = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
 );
+// CONTACTS-1 — soft delete (deleted_at / deleted_by_id) + contact_kind. Every
+// ContactView now returns these columns, so the contact reads need them.
+const CONTACT_SOFT_DELETE_AND_KIND_MIGRATION = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql',
+);
 // PC-5b — ats-web Gate-2a desk (requisition spine + profile-confirm +
 // assignments). Requisition init CREATEs the schema + Requisition +
 // RequisitionAssignment + the RecruitingStatus enum; the additive ALTERs add
@@ -2410,13 +2416,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         companyId: string;
         firstName: string;
         lastName: string;
+        // CONTACTS-1 — seed a soft-deleted contact (the Deleted view,
+        // include_deleted read and restore targets).
+        deletedAt?: string;
       },
     ): Promise<void> {
       await c.query(
         `INSERT INTO contact."Contact"
-           (id, tenant_id, company_id, first_name, last_name)
-         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
-        [params.id, TENANT_ID, params.companyId, params.firstName, params.lastName],
+           (id, tenant_id, company_id, first_name, last_name, deleted_at, deleted_by_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+        [
+          params.id,
+          TENANT_ID,
+          params.companyId,
+          params.firstName,
+          params.lastName,
+          params.deletedAt ?? null,
+          params.deletedAt === undefined ? null : ATSW_ASSIGN_USER_ID,
+        ],
       );
     }
 
@@ -3863,6 +3880,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CONTACT_IMPORT_BATCH_MIGRATION,
         CONTACT_LIST_SURFACE_MIGRATION,
         CONTACT_PRIMARY_FLAG_MIGRATION,
+        CONTACT_SOFT_DELETE_AND_KIND_MIGRATION,
         // PC-5b — requisition spine (Requisition + RequisitionAssignment +
         // the comp/job-module/rate-type columns RequisitionView reads). init
         // CREATEs the schema + enum; all FKs intra-schema. job_domain (for
@@ -4169,6 +4187,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'contact:search',
           'contact:create',
           'contact:edit',
+          // CONTACTS-1 — soft delete, restore and the ?deleted=true list.
+          'contact:delete',
           'team:manage',
           // PC-5b — requisition spine RolesGuard @RequireScopes. read:all
           // (already present above) short-circuits visibility; requisition:read
@@ -7649,6 +7669,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             companyId: ATSW_COMPANY_ID,
             firstName: 'Ada',
             lastName: 'Byron',
+          });
+        });
+      },
+
+      // -- CONTACTS-1 — a soft-deleted contact under a company (deleted list,
+      // include_deleted read, restore target).
+      'an ats-web recruiter and a deleted contact exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebCompany(c, { id: ATSW_COMPANY_ID, name: 'Acme Corp' });
+          await seedAtsWebContact(c, {
+            id: ATSW_CONTACT_ID,
+            companyId: ATSW_COMPANY_ID,
+            firstName: 'Ada',
+            lastName: 'Byron',
+            deletedAt: '2026-11-02T00:00:00.000Z',
           });
         });
       },

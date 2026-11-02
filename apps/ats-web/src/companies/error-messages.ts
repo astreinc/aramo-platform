@@ -1,5 +1,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 
+import { contactLinkErrorMessage } from '../contacts/error-messages';
+
 export function listErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 403) {
@@ -53,6 +55,10 @@ function fieldFromError(error: ApiError): string | undefined {
 }
 
 export function createErrorMessage(error: unknown): string {
+  // CONTACTS-1 — a refused contact link (deleted / wrong company / not found /
+  // owner not assignable) gets its own copy.
+  const link = contactLinkErrorMessage(error);
+  if (link !== null) return link;
   if (error instanceof ApiError) {
     if (error.status === 403) {
       return 'You do not have permission to create companies.';
@@ -69,6 +75,10 @@ export function createErrorMessage(error: unknown): string {
 }
 
 export function updateErrorMessage(error: unknown): string {
+  // CONTACTS-1 — a refused contact link (deleted / wrong company / not found /
+  // owner not assignable) gets its own copy.
+  const link = contactLinkErrorMessage(error);
+  if (link !== null) return link;
   if (error instanceof ApiError) {
     if (error.status === 403) {
       return 'You do not have permission to edit this company.';

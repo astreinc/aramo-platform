@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react';
 import { Button, FormField, Checkbox, Input, Select, TextArea } from '@aramo/fe-foundation';
 
 import { searchCompanies } from '../../companies/companies-api';
-import type { ContactView } from '../../companies/types';
+import type { ContactKind, ContactView } from '../../companies/types';
 import { fetchAssignableUsers, type AssignableUser } from '../../users/users-api';
+import {
+  CONTACT_KIND_LABELS,
+  CONTACT_KIND_ORDER,
+  PREFERENCE_LABELS,
+  PREFERENCE_ORDER,
+  ROLE_LABELS,
+  ROLE_ORDER,
+} from '../contact-workspace';
 import type {
   CreateContactRequest,
   UpdateContactRequest,
@@ -21,6 +29,12 @@ import type {
 // On EDIT the company is FIXED (UpdateContactRequest has no company_id — a
 // contact cannot change companies) so it renders read-only. On CREATE the
 // company is a required <select> populated from searchCompanies.
+//
+// CONTACTS-1 F-3 / §12 — the RELATIONSHIP section edits every field the
+// directory filters on: relationship role (6 values), communication preference
+// (3 values), hot, former (edit only — left_company is PATCH-only), and the
+// contact kind (Person / Functional mailbox). Each select's "Not set" option is
+// null: omitted on create, sent as null on PATCH when cleared.
 
 interface FormState {
   first_name: string;
@@ -33,6 +47,11 @@ interface FormState {
   phone_cell: string;
   owner_id: string;
   notes: string;
+  relationship_role: string;
+  preference: string;
+  contact_kind: '' | ContactKind;
+  is_hot: boolean;
+  left_company: boolean;
 }
 
 function initialState(c: ContactView | null, initialCompanyId: string): FormState {
@@ -41,6 +60,8 @@ function initialState(c: ContactView | null, initialCompanyId: string): FormStat
       first_name: '', last_name: '', title: '',
       company_id: initialCompanyId, is_primary: false,
       email1: '', phone_work: '', phone_cell: '', owner_id: '', notes: '',
+      relationship_role: '', preference: '', contact_kind: '',
+      is_hot: false, left_company: false,
     };
   }
   return {
@@ -54,6 +75,11 @@ function initialState(c: ContactView | null, initialCompanyId: string): FormStat
     phone_cell: c.phone_cell ?? '',
     owner_id: c.owner_id ?? '',
     notes: c.notes ?? '',
+    relationship_role: c.relationship_role ?? '',
+    preference: c.preference ?? '',
+    contact_kind: c.contact_kind ?? '',
+    is_hot: c.is_hot,
+    left_company: c.left_company,
   };
 }
 
@@ -70,6 +96,10 @@ function buildCreate(s: FormState): CreateContactRequest {
   if (s.notes.trim() !== '') b['notes'] = s.notes.trim();
   if (s.is_primary) b['is_primary'] = true;
   if (s.owner_id !== '') b['owner_id'] = s.owner_id;
+  if (s.relationship_role !== '') b['relationship_role'] = s.relationship_role;
+  if (s.preference !== '') b['preference'] = s.preference;
+  if (s.contact_kind !== '') b['contact_kind'] = s.contact_kind;
+  if (s.is_hot) b['is_hot'] = true;
   return b as unknown as CreateContactRequest;
 }
 
@@ -93,6 +123,12 @@ function buildPatch(s: FormState, initial: ContactView): UpdateContactRequest {
   // structurally absent on PATCH (the anchor is fixed).
   const initOwner = initial.owner_id ?? '';
   if (s.owner_id !== initOwner) b['owner_id'] = s.owner_id === '' ? null : s.owner_id;
+  // Closed-vocab selects: '' (Not set) → null (clear); unchanged → omitted.
+  diff(s.relationship_role, initial.relationship_role, 'relationship_role');
+  diff(s.preference, initial.preference, 'preference');
+  diff(s.contact_kind, initial.contact_kind, 'contact_kind');
+  if (s.is_hot !== initial.is_hot) b['is_hot'] = s.is_hot;
+  if (s.left_company !== initial.left_company) b['left_company'] = s.left_company;
   return b as unknown as UpdateContactRequest;
 }
 
@@ -250,6 +286,68 @@ export function ContactQuickEditForm(props: ContactQuickEditFormProps) {
             />{' '}
             Primary contact for this company
           </label>
+        </FormField>
+      </fieldset>
+
+      <fieldset className="company-form__section" disabled={props.submitting}>
+        <legend>Relationship</legend>
+        <div className="company-form__row2">
+          <FormField label="Relationship role">
+            <Select
+              value={state.relationship_role}
+              onChange={(e) => set('relationship_role', e.target.value)}
+              aria-label="Relationship role"
+            >
+              <option value="">Not set</option>
+              {ROLE_ORDER.map((r) => (
+                <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Communication">
+            <Select
+              value={state.preference}
+              onChange={(e) => set('preference', e.target.value)}
+              aria-label="Communication preference"
+            >
+              <option value="">Not set (contactable)</option>
+              {PREFERENCE_ORDER.map((p) => (
+                <option key={p} value={p}>{PREFERENCE_LABELS[p] ?? p}</option>
+              ))}
+            </Select>
+          </FormField>
+        </div>
+        <FormField label="Contact kind">
+          <Select
+            value={state.contact_kind}
+            onChange={(e) => set('contact_kind', e.target.value as '' | ContactKind)}
+            aria-label="Contact kind"
+          >
+            <option value="">Not set</option>
+            {CONTACT_KIND_ORDER.map((k) => (
+              <option key={k} value={k}>{CONTACT_KIND_LABELS[k]}</option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="Flags">
+          <label className="company-form__check">
+            <Checkbox
+              checked={state.is_hot}
+              onChange={(e) => set('is_hot', e.target.checked)}
+              aria-label="Hot contact"
+            />{' '}
+            Hot contact
+          </label>
+          {!isCreate ? (
+            <label className="company-form__check">
+              <Checkbox
+                checked={state.left_company}
+                onChange={(e) => set('left_company', e.target.checked)}
+                aria-label="Former contact (left the company)"
+              />{' '}
+              Former contact (left the company)
+            </label>
+          ) : null}
         </FormField>
       </fieldset>
 

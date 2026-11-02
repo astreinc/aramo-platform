@@ -22,6 +22,14 @@ export {
   type TaskRequisitionContextValidator,
 } from './lib/task-requisition-context.port.js';
 
+// CONTACTS-1 SD-6 — the contact-owner link port (apps/api binds the
+// ContactRepository-backed adapter).
+export {
+  TASK_CONTACT_OWNER_VALIDATOR,
+  StubTaskContactOwnerValidator,
+  type TaskContactOwnerValidator,
+} from './lib/task-contact-owner.port.js';
+
 export {
   TASK_OWNER_TYPE_VALUES,
   isTaskOwnerType,

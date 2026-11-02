@@ -216,6 +216,20 @@ export class SavedListRepository {
           id: args.item_id,
         });
         exists = row !== null;
+        // CONTACTS-1 SD-6 — a deleted contact accepts no new links. findById
+        // still returns the tombstone (deleted_at set), so absence stays the
+        // 404 above and a deleted contact is the distinct 422 here.
+        if (row !== null && row.deleted_at !== null) {
+          throw new AramoError(
+            'CONTACT_DELETED',
+            'This contact has been deleted and cannot be added to a list',
+            422,
+            {
+              requestId: args.requestId,
+              details: { field: 'item_id', contact_id: args.item_id },
+            },
+          );
+        }
         break;
       }
       case 'requisition': {

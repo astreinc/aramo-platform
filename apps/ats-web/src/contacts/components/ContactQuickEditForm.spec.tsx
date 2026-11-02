@@ -21,6 +21,7 @@ function makeContact(over: Partial<ContactView> = {}): ContactView {
     created_at: '2026-06-01T00:00:00Z', updated_at: '2026-06-01T00:00:00Z',
     relationship_role: null, preference: null, last_activity_at: null,
     company_name: 'Northwind Systems', relationship_types: ['CLIENT'],
+    deleted_at: null, deleted_by_id: null, contact_kind: null,
     ...over,
   };
 }
@@ -145,5 +146,83 @@ describe('ContactQuickEditForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(onSubmit.mock.calls[0][0]).toEqual({});
+  });
+
+  // CONTACTS-1 F-3 / §12 — the Relationship section.
+  it('create: renders the relationship fields; Former is edit-only', async () => {
+    installFetch([], []);
+    render(
+      <ContactQuickEditForm mode="create" submitting={false} onCancel={vi.fn()} onSubmit={vi.fn()} />,
+    );
+    const role = screen.getByLabelText('Relationship role');
+    // Not set + the 6 closed-vocab roles
+    expect(role.querySelectorAll('option')).toHaveLength(7);
+    const pref = screen.getByLabelText('Communication preference');
+    expect(pref.querySelectorAll('option')).toHaveLength(4);
+    const kind = screen.getByLabelText('Contact kind');
+    expect(kind.querySelectorAll('option')).toHaveLength(3);
+    expect(screen.getByRole('option', { name: 'Functional mailbox' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Hot contact')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Former contact (left the company)')).toBeNull();
+  });
+
+  it('create: sends the chosen role, preference, kind and hot flag (unset ones omitted)', async () => {
+    installFetch([{ id: 'co-1', name: 'Northwind Systems' }], []);
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ContactQuickEditForm mode="create" submitting={false} onCancel={vi.fn()} onSubmit={onSubmit} />,
+    );
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Doe' } });
+    await screen.findByRole('option', { name: 'Northwind Systems' });
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'co-1' } });
+    fireEvent.change(screen.getByLabelText('Relationship role'), { target: { value: 'champion' } });
+    fireEvent.change(screen.getByLabelText('Contact kind'), { target: { value: 'FUNCTIONAL_MAILBOX' } });
+    fireEvent.click(screen.getByLabelText('Hot contact'));
+    fireEvent.click(screen.getByRole('button', { name: /save contact/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      company_id: 'co-1',
+      first_name: 'Jane',
+      last_name: 'Doe',
+      relationship_role: 'champion',
+      contact_kind: 'FUNCTIONAL_MAILBOX',
+      is_hot: true,
+    });
+  });
+
+  it('edit: changed relationship fields are sent; cleared selects send null', async () => {
+    installFetch([], []);
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ContactQuickEditForm
+        mode="edit"
+        initial={makeContact({
+          relationship_role: 'gatekeeper',
+          preference: 'limited',
+          contact_kind: 'PERSON',
+        })}
+        submitting={false}
+        onCancel={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(screen.getByLabelText('Relationship role')).toHaveValue('gatekeeper');
+    fireEvent.change(screen.getByLabelText('Relationship role'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Communication preference'), {
+      target: { value: 'do_not_contact' },
+    });
+    fireEvent.change(screen.getByLabelText('Contact kind'), { target: { value: '' } });
+    fireEvent.click(screen.getByLabelText('Hot contact'));
+    fireEvent.click(screen.getByLabelText('Former contact (left the company)'));
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      relationship_role: null,
+      preference: 'do_not_contact',
+      contact_kind: null,
+      is_hot: true,
+      left_company: true,
+    });
   });
 });

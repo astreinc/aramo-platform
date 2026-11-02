@@ -179,8 +179,9 @@ export default [
     },
   },
   // ATI-SEP-1 A7 — the UNTAGGED composition roots (apps/api, apps/auth-service,
-  // apps/sign-service, apps/ats-web, apps/home-web) fall under the trailing '*'
-  // rule, which would let them import scope:intelligence. They must not: the ATS
+  // apps/ats-web, apps/home-web) fall under the trailing '*' rule, which would
+  // let them import scope:intelligence (apps/sign-service is tagged scope:sign,
+  // whose own constraint already excludes it). They must not: the ATS
   // reaches Talent Intelligence over HTTP only, through @aramo/intelligence-contracts
   // (scope:shared). File-scoped override; the TI app itself is excluded.
   {

@@ -12,8 +12,15 @@ import { Avatar, Card, Icons, StatusPill } from '../ui';
 import type { ContactView } from '../companies/types';
 
 import { ContactEditDrawer } from './components/ContactEditDrawer';
-import { getContact, searchContacts, updateContact } from './contacts-api';
-import { listErrorMessage } from './error-messages';
+import { IconRestore, IconTrash } from './components/ContactIcons';
+import { DeleteContactDialog } from './components/DeleteContactDialog';
+import {
+  getContact,
+  restoreContact,
+  searchContacts,
+  updateContact,
+} from './contacts-api';
+import { listErrorMessage, restoreErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
   FULL_NAME,
@@ -26,7 +33,6 @@ import {
   buildContactQuery,
   isContactable,
   lastContactLabel,
-  matchesText,
   preferenceLabel,
   preferenceTone,
   relationshipTypeLabel,
@@ -42,10 +48,16 @@ import {
 } from './contact-workspace';
 
 // Contacts directory — SERVER-PAGED (?paged=true) faceted list. Scope (My/All),
-// the Directory/Cold-call mode, segments, and the filters are server query
-// params; the in-list text box filters the LOADED page client-side (never sends
-// ?q=). "My contacts" is enforced SERVER-SIDE (owner_id from the JWT) — NOT a
-// client filter over an all-contacts payload. Every value binds to a real field.
+// the Directory/Cold-call mode, segments, the filters AND the search box
+// (CONTACTS-1 F-4: debounced ?q=, contact:search — the box is hidden without
+// that scope) are server query params, so search covers the whole visible
+// directory and "Load more" pages through the matches. "My contacts" is
+// enforced SERVER-SIDE (owner_id from the JWT) — NOT a client filter over an
+// all-contacts payload. Every value binds to a real field.
+//
+// CONTACTS-1 FE-SD-1/FE-SD-2 — contact:delete holders get a delete ICON on each
+// row/card (and in the drawer), behind a confirmation, plus a "Deleted" view
+// (?deleted=true) whose rows carry a Restore icon. Everyone else sees neither.
 //
 // Contacts prototype parity — the slide-over edit DRAWER is the ONLY contact
 // surface (there is no detail page): clicking a contact (row or card) opens the
@@ -56,6 +68,7 @@ import {
 // old left facet rail is retired; cold-call mode, segments and bulk-select stay.
 
 const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
 const FLAG_OPTIONS: readonly { value: FacetFlag; label: string }[] = [
   { value: 'hot', label: 'Hot' },
   { value: 'quiet', label: 'Going quiet 14d+' },
@@ -101,7 +114,9 @@ export function ContactsListView({
   const [facetState, setFacetState] = useState<FacetState>(EMPTY_FACETS);
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [vmode, setVmode] = useState<ViewMode>('table');
+  const [pendingDelete, setPendingDelete] = useState<ContactView | null>(null);
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [editState, setEditState] = useState<EditState | null>(
@@ -130,6 +145,23 @@ export function ContactsListView({
     session !== null &&
     Array.isArray(session.scopes) &&
     hasScope(session, 'contact:edit');
+  // CONTACTS-1 — delete + restore + the Deleted view share contact:delete;
+  // the server search (?q=) needs contact:search.
+  const canDelete =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'contact:delete');
+  const canSearch =
+    session !== null &&
+    Array.isArray(session.scopes) &&
+    hasScope(session, 'contact:search');
+  const isDeletedView = segment === 'deleted';
+
+  // Search text → debounced server ?q= (one request per pause, not per key).
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [query]);
 
   // §5 D4c — owner-name resolution → the directory (all users incl. departed).
   useEffect(() => {
@@ -161,6 +193,7 @@ export function ContactsListView({
         mode,
         facets: facetState,
         ownerId: ownerFilter,
+        q: canSearch ? debouncedQuery : '',
         cursor,
         pageSize: PAGE_SIZE,
       });
@@ -171,7 +204,9 @@ export function ContactsListView({
         const pageItems = res.items ?? [];
         setItems((prev) => (append ? [...prev, ...pageItems] : [...pageItems]));
         setNextCursor(res.next_cursor ?? null);
-        setFacets(res.facets ?? null);
+        // The segment badges + headline describe the LIVE directory; the
+        // Deleted view keeps the last live facets rather than its own.
+        if (segment !== 'deleted') setFacets(res.facets ?? null);
         setTotal(res.total ?? pageItems.length);
         setError(null);
       } catch (err) {
@@ -186,7 +221,7 @@ export function ContactsListView({
         else setLoading(false);
       }
     },
-    [scope, segment, mode, facetState, ownerFilter],
+    [scope, segment, mode, facetState, ownerFilter, canSearch, debouncedQuery],
   );
 
   // Debounced refetch on any server-filter change; resets page + selection.
@@ -229,11 +264,9 @@ export function ContactsListView({
     };
   }, [editId, items]);
 
-  // The text box filters the LOADED page (client-side; no ?q=).
-  const visible = useMemo(
-    () => items.filter((c) => matchesText(c, query)),
-    [items, query],
-  );
+  // Every filter (search included) is server-side — the loaded pages ARE the
+  // result set.
+  const visible = items;
 
   // company_id → name, from the loaded page (for the filter labels).
   const companyNames = useMemo(() => {
@@ -323,7 +356,10 @@ export function ContactsListView({
   if (segment !== 'all')
     chips.push({
       k: 'View',
-      label: SEGMENTS.find((s) => s.key === segment)?.label ?? segment,
+      label:
+        segment === 'deleted'
+          ? 'Deleted'
+          : (SEGMENTS.find((s) => s.key === segment)?.label ?? segment),
       clear: () => setSegment('all'),
     });
   for (const r of facetState.role)
@@ -352,12 +388,15 @@ export function ContactsListView({
 
   // Contacts prototype headline — "{n} contacts across {m} companies · {p}
   // primary". n from the server total; m from the server company facet (the
-  // distinct-company base count); p from the loaded page (no primary facet
-  // exists — best-effort, exact when the page holds every row).
+  // distinct-company base count); p from the server primary facet (CONTACTS-1
+  // F-4), falling back to the loaded page only on a response without it.
   const companyCount =
     facets?.company.length ?? new Set(items.map((c) => c.company_id)).size;
-  const primaryCount = items.filter((c) => c.is_primary).length;
-  const headline = `${total} ${total === 1 ? 'contact' : 'contacts'} across ${companyCount} ${companyCount === 1 ? 'company' : 'companies'} · ${primaryCount} primary`;
+  const primaryCount =
+    facets?.primary ?? items.filter((c) => c.is_primary).length;
+  const headline = isDeletedView
+    ? `${total} deleted ${total === 1 ? 'contact' : 'contacts'} — restore one to return it to the directory`
+    : `${total} ${total === 1 ? 'contact' : 'contacts'} across ${companyCount} ${companyCount === 1 ? 'company' : 'companies'} · ${primaryCount} primary`;
 
   // ── drawer wiring (row/card click → edit; "+ New contact" → create) ──
   const editingId = editState?.contact?.id ?? null;
@@ -366,6 +405,28 @@ export function ContactsListView({
   const onSaved = () => {
     setEditState(null);
     void fetchPage(null, false);
+  };
+  // CONTACTS-1 — after a delete (row, card or drawer) the contact leaves the
+  // live list; refetch so the totals + facets follow.
+  const onDeleted = (c: ContactView) => {
+    setPendingDelete(null);
+    if (editState?.contact?.id === c.id) setEditState(null);
+    setSelected(new Set());
+    setNotice(`Deleted ${FULL_NAME(c)}.`);
+    void fetchPage(null, false);
+  };
+  const restore = async (c: ContactView) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await restoreContact(c.id);
+      setNotice(`Restored ${FULL_NAME(c)}.`);
+      void fetchPage(null, false);
+    } catch (err) {
+      setNotice(restoreErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Owner-filter select options — Me / each assignable user.
@@ -496,20 +557,34 @@ export function ContactsListView({
               </Button>
             );
           })}
+          {canDelete ? (
+            <Button unstyled
+              type="button"
+              className={`rc-view${isDeletedView ? ' on' : ''}`}
+              aria-pressed={isDeletedView}
+              onClick={() => setSegment('deleted')}
+            >
+              Deleted
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="rc-tokenbox">
-        <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
-        <Input unstyled
-          className="rc-tokenbox__input"
-          type="search"
-          placeholder="Filter loaded contacts by name, title, email or company"
-          aria-label="Filter contacts"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
+      {/* Server search (?q=) — rendered only for contact:search holders
+          (permission-driven: hidden, never a disabled control). */}
+      {canSearch ? (
+        <div className="rc-tokenbox">
+          <Icons.IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
+          <Input unstyled
+            className="rc-tokenbox__input"
+            type="search"
+            placeholder="Search contacts by name, title, email or company"
+            aria-label="Search contacts"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      ) : null}
 
       {/* Contacts prototype parity — the TOP filter bar (replaces the left facet
           rail): Company ▾ · Role ▾ · Communication ▾ · Owner ▾ + flag pills. */}
@@ -625,14 +700,21 @@ export function ContactsListView({
             <p className="rc-empty">
               {isCold
                 ? 'No one to call — every contactable person with a number has been reached recently.'
-                : hasActiveQuery
+                : isDeletedView
+                  ? 'No deleted contacts.'
+                  : hasActiveQuery
                   ? 'No contacts match these filters.'
                   : 'No contacts visible to you yet.'}
             </p>
-          ) : !isCold && vmode === 'cards' ? (
+          ) : !isCold && !isDeletedView && vmode === 'cards' ? (
             <div className="rc-cocards">
               {visible.map((c) => (
-                <ContactCard key={c.id} contact={c} onOpen={() => openEdit(c)} />
+                <ContactCard
+                  key={c.id}
+                  contact={c}
+                  onOpen={() => openEdit(c)}
+                  onDelete={canDelete ? () => setPendingDelete(c) : undefined}
+                />
               ))}
             </div>
           ) : (
@@ -671,6 +753,7 @@ export function ContactsListView({
                       <th scope="col">Phone</th>
                       <th scope="col">Owner</th>
                       <th scope="col">Last contact</th>
+                      {canDelete ? <th scope="col" aria-label="Actions" /> : null}
                     </tr>
                   )}
                 </thead>
@@ -709,11 +792,14 @@ export function ContactsListView({
                         </tr>
                       );
                     }
+                    // A deleted contact accepts no edits (PATCH → 404), so the
+                    // Deleted view's rows do not open the drawer.
                     return (
                       <tr
                         key={c.id}
-                        className={`rc-row--clickable${selected.has(c.id) ? ' rc-row--sel' : ''}${editingId === c.id ? ' rc-row--active' : ''}`}
+                        className={`${isDeletedView ? '' : 'rc-row--clickable'}${selected.has(c.id) ? ' rc-row--sel' : ''}${editingId === c.id ? ' rc-row--active' : ''}`}
                         onClick={(e) => {
+                          if (isDeletedView) return;
                           if (
                             e.target instanceof Element &&
                             e.target.closest('a,button,input,label')
@@ -735,13 +821,17 @@ export function ContactsListView({
                             <Avatar name={FULL_NAME(c)} size="sm" />
                             <span>
                               <span className="rc-ent__nm">
-                                <Button unstyled
-                                  type="button"
-                                  className="rc-link-strong"
-                                  onClick={() => openEdit(c)}
-                                >
-                                  {FULL_NAME(c)}
-                                </Button>
+                                {isDeletedView ? (
+                                  <span className="rc-link-strong">{FULL_NAME(c)}</span>
+                                ) : (
+                                  <Button unstyled
+                                    type="button"
+                                    className="rc-link-strong"
+                                    onClick={() => openEdit(c)}
+                                  >
+                                    {FULL_NAME(c)}
+                                  </Button>
+                                )}
                                 {c.is_primary ? (
                                   <StatusPill tone="brand">Primary</StatusPill>
                                 ) : null}
@@ -778,13 +868,39 @@ export function ContactsListView({
                             <StatusPill tone="danger">Do not contact</StatusPill>
                           ) : null}
                         </td>
+                        {canDelete ? (
+                          <td>
+                            {isDeletedView ? (
+                              <Button unstyled
+                                type="button"
+                                className="rc-iconbtn"
+                                aria-label={`Restore ${FULL_NAME(c)}`}
+                                title="Restore contact"
+                                disabled={busy}
+                                onClick={() => void restore(c)}
+                              >
+                                <IconRestore />
+                              </Button>
+                            ) : (
+                              <Button unstyled
+                                type="button"
+                                className="rc-iconbtn"
+                                aria-label={`Delete ${FULL_NAME(c)}`}
+                                title="Delete contact"
+                                onClick={() => setPendingDelete(c)}
+                              >
+                                <IconTrash />
+                              </Button>
+                            )}
+                          </td>
+                        ) : null}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
 
-              {nextCursor !== null && query.trim() === '' ? (
+              {nextCursor !== null ? (
                 <div className="rc-loadmore">
                   <Button unstyled
                     type="button"
@@ -806,7 +922,7 @@ export function ContactsListView({
         </Card>
       </div>
 
-      {!isCold && selected.size > 0 ? (
+      {!isCold && !isDeletedView && selected.size > 0 ? (
         <div className="rc-bulkbar" role="region" aria-label="Bulk actions">
           <span className="rc-bulkbar__n num">
             {selected.size} <small>selected</small>
@@ -861,6 +977,17 @@ export function ContactsListView({
           initialCompanyId={editState.mode === 'create' ? createCompanyId : undefined}
           onClose={() => setEditState(null)}
           onSaved={onSaved}
+          canDelete={canDelete}
+          onDeleted={onDeleted}
+        />
+      ) : null}
+
+      {pendingDelete !== null ? (
+        <DeleteContactDialog
+          contactId={pendingDelete.id}
+          contactName={FULL_NAME(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+          onDeleted={() => onDeleted(pendingDelete)}
         />
       ) : null}
     </section>
@@ -868,59 +995,76 @@ export function ContactsListView({
 }
 
 // ── Card (Cards view mode) — same data as the row; click opens the drawer. ──
+// CONTACTS-1 FE-SD-1 — the delete icon is a SIBLING of the card button (a
+// button may not contain another), positioned in the card's corner.
 function ContactCard({
   contact,
   onOpen,
+  onDelete,
 }: {
   readonly contact: ContactView;
   readonly onOpen: () => void;
+  readonly onDelete?: () => void;
 }) {
   const role = roleLabel(contact.relationship_role);
   return (
-    <Button unstyled type="button" className="rc-cocard" onClick={onOpen}>
-      <div className="rc-cocard__top">
-        <Avatar name={FULL_NAME(contact)} size="md" />
-        <div className="rc-cocard__id">
-          <span className="rc-ent__nm">
-            {FULL_NAME(contact)}
-            {contact.is_primary ? <StatusPill tone="brand">Primary</StatusPill> : null}
-            {contact.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
-          </span>
-          <span className="rc-ent__rl">{contact.title ?? '—'}</span>
+    <div className="rc-cocard-wrap">
+      <Button unstyled type="button" className="rc-cocard" onClick={onOpen}>
+        <div className="rc-cocard__top">
+          <Avatar name={FULL_NAME(contact)} size="md" />
+          <div className="rc-cocard__id">
+            <span className="rc-ent__nm">
+              {FULL_NAME(contact)}
+              {contact.is_primary ? <StatusPill tone="brand">Primary</StatusPill> : null}
+              {contact.is_hot ? <Icons.IconFlame className="rc-ent__flame" /> : null}
+            </span>
+            <span className="rc-ent__rl">{contact.title ?? '—'}</span>
+          </div>
         </div>
-      </div>
-      <div className="rc-cocard__meta">
-        {role !== null ? (
-          <StatusPill
-            tone={ROLE_TONES[contact.relationship_role ?? ''] ?? 'neutral'}
-            dot
-          >
-            {role}
-          </StatusPill>
-        ) : null}
-        {(contact.relationship_types ?? []).map((t) => (
-          <StatusPill key={t} tone={relationshipTypeTone(t)} dot>
-            {relationshipTypeLabel(t)}
-          </StatusPill>
-        ))}
-        {!isContactable(contact) ? (
-          <StatusPill tone="danger">Do not contact</StatusPill>
-        ) : (
-          <StatusPill tone={preferenceTone(contact.preference)}>
-            {preferenceLabel(contact.preference)}
-          </StatusPill>
-        )}
-      </div>
-      <div className="rc-cocard__foot">
-        <span className="rc-cocard__stat">
-          <small>Company</small>
-          {contact.company_name ?? '—'}
-        </span>
-        <span className="rc-cocard__stat">
-          <small>Last contact</small>
-          {lastContactLabel(contact)}
-        </span>
-      </div>
-    </Button>
+        <div className="rc-cocard__meta">
+          {role !== null ? (
+            <StatusPill
+              tone={ROLE_TONES[contact.relationship_role ?? ''] ?? 'neutral'}
+              dot
+            >
+              {role}
+            </StatusPill>
+          ) : null}
+          {(contact.relationship_types ?? []).map((t) => (
+            <StatusPill key={t} tone={relationshipTypeTone(t)} dot>
+              {relationshipTypeLabel(t)}
+            </StatusPill>
+          ))}
+          {!isContactable(contact) ? (
+            <StatusPill tone="danger">Do not contact</StatusPill>
+          ) : (
+            <StatusPill tone={preferenceTone(contact.preference)}>
+              {preferenceLabel(contact.preference)}
+            </StatusPill>
+          )}
+        </div>
+        <div className="rc-cocard__foot">
+          <span className="rc-cocard__stat">
+            <small>Company</small>
+            {contact.company_name ?? '—'}
+          </span>
+          <span className="rc-cocard__stat">
+            <small>Last contact</small>
+            {lastContactLabel(contact)}
+          </span>
+        </div>
+      </Button>
+      {onDelete !== undefined ? (
+        <Button unstyled
+          type="button"
+          className="rc-iconbtn"
+          aria-label={`Delete ${FULL_NAME(contact)}`}
+          title="Delete contact"
+          onClick={onDelete}
+        >
+          <IconTrash />
+        </Button>
+      ) : null}
+    </div>
   );
 }

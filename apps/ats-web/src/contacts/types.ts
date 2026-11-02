@@ -1,3 +1,5 @@
+import type { ContactKind } from '../companies/types';
+
 // R6' — contact mutate types. Hand-mirrored from libs/contact/src/lib/
 // dto/{create-contact-request,update-contact-request}.dto.ts +
 // libs/contact/src/lib/dto/contact.view.ts (the ContactView already
@@ -29,8 +31,8 @@
 // omit-not-touch (we never send the key — the BE leaves it untouched).
 // A future department-management UI lands the picker.
 //
-// owner_id (ruling F): omitted from the form (no /v1/users:assignable
-// endpoint). Server defaults to entered_by_id.
+// owner_id: the drawer's "Account owner" select (assignable-users picker
+// source). Omitted on create → the server defaults it to entered_by_id.
 
 export interface CreateContactRequest {
   readonly company_id: string;
@@ -57,6 +59,8 @@ export interface CreateContactRequest {
   // Contact-spec amendment v1.0 — closed-vocab (BE validates @IsIn).
   readonly relationship_role?: string;
   readonly preference?: string;
+  // CONTACTS-1 §12 — Person / Functional mailbox (omit = not set).
+  readonly contact_kind?: ContactKind;
 }
 
 // PATCH semantics: omit=unchanged; null=clear. first_name/last_name
@@ -89,4 +93,6 @@ export interface UpdateContactRequest {
   readonly owner_id?: string | null;
   readonly relationship_role?: string | null;
   readonly preference?: string | null;
+  // CONTACTS-1 §12 — null clears the kind.
+  readonly contact_kind?: ContactKind | null;
 }

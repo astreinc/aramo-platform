@@ -6490,3 +6490,17 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-iconlink { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--brand); }
 .rc-iconlink:hover, .rc-iconlink:focus-visible { background: var(--brand-tint); }
 .rc-iconlink svg { width: 15px; height: 15px; }
+
+/* CONTACTS-1 FE-SD-1 — the contact delete/restore ICON control (row, card,
+   drawer header). An icon-only button with an accessible label; the card's
+   delete icon sits beside the card button (no button-in-button). */
+.rc-iconbtn {
+  width: 28px; height: 28px; border-radius: 7px; border: none; background: none;
+  color: var(--muted); display: inline-grid; place-items: center; cursor: pointer;
+}
+.rc-iconbtn:hover { background: var(--canvas); color: var(--danger); }
+.rc-iconbtn:disabled { opacity: 0.5; cursor: default; }
+.rc-iconbtn svg { width: 16px; height: 16px; }
+.rc-cocard-wrap { position: relative; display: flex; }
+.rc-cocard-wrap > .rc-cocard { flex: 1; }
+.rc-cocard-wrap > .rc-iconbtn { position: absolute; top: 8px; right: 8px; }

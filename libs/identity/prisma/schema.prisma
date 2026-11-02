@@ -61,7 +61,7 @@ model Tenant {
   updated_at   DateTime @updatedAt @db.Timestamptz
 
   // IC-4 PR-9 — tenant KIND: BUSINESS (organization; locked email domain) or
-  // PERSONAL (one-person Sign subscriber; allowed_domain NULL; [core, esign]
+  // PERSONAL (one-person Sign subscriber; allowed_domain NULL; [core, sign]
   // only). String vocabulary enforced in app code (TENANT_KINDS, util/tenant-
   // kind.ts) per the status / invite_status convention — NOT a Prisma enum.
   // Additive with a default: every pre-existing row is BUSINESS.

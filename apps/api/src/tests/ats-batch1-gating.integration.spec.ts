@@ -115,6 +115,10 @@ const CONTACT_PRIMARY_FLAG = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
 );
+const CONTACT_SOFT_DELETE = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-ats-batch1-gating-spec';
@@ -146,11 +150,14 @@ const RECRUITER_SCOPES = [
   'contact:edit',
 ];
 
-// tenant_admin holds the full set incl. delete.
+// tenant_admin holds the full set incl. delete, plus company:read:all (the
+// seeded tenant_admin grant). CONTACTS-1 W-2: company DELETE now resolves D4b
+// visibility, so an unassigned admin needs the see-all bit to reach the row.
 const TENANT_ADMIN_SCOPES = [
   ...RECRUITER_SCOPES,
   'company:delete',
   'contact:delete',
+  'company:read:all',
 ];
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -211,6 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_IMPORT_BACK_REF,
         CONTACT_LIST_SURFACE_FIELDS,
         CONTACT_PRIMARY_FLAG,
+        CONTACT_SOFT_DELETE,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }

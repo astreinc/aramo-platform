@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { errorMessage, senderApi, type ContactRow, type DocumentRow, type EnvelopeRow, type LedgerEvent, type Summary } from '../api';
-import { Avatar, Btn, ErrorBox, Loading, Sel, TextIn, fmtBytes, fmtDate } from '../ui';
+import { Avatar, ErrorBox, Loading, Sel, TextIn, fmtBytes, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { Bars } from './Dashboard';
@@ -120,7 +120,7 @@ export function DocumentsPage() {
   );
 }
 
-// ── Contacts (derived from past recipients — no separate contact store) ──────
+// ── Contacts (the sender's saved Sign contacts plus recent recipients) ───────
 export function ContactsPage() {
   const { base, ctx } = useWorkspace();
   const [rows, setRows] = useState<ContactRow[] | null>(null);
@@ -138,14 +138,9 @@ export function ContactsPage() {
       <div className="sg-pagehead">
         <h1 className="sg-h1">Contacts</h1>
         <TextIn aria-label="Search contacts" placeholder="Search contacts" style={{ maxWidth: 220 }} value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="sg-pagehead__end">
-          <Btn variant="primary" disabled title="Saving contacts needs a contact store (proposed)">
-            + Add contact · Proposed
-          </Btn>
-        </div>
       </div>
       <p className="sg-muted" style={{ marginTop: -8 }}>
-        People you’ve sent envelopes to. A saved contact book is a proposed capability.
+        Your saved contacts and the people you’ve sent envelopes to. Pick from them when you add recipients.
       </p>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {rows === null && error === '' ? <Loading /> : null}

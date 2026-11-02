@@ -28,6 +28,11 @@ export const PREFERENCE_VALUES = [
 ] as const;
 export type ContactPreference = (typeof PREFERENCE_VALUES)[number];
 
+// CONTACTS-1 §12 — contact_kind. A person, or a functional mailbox such as
+// "Accounts Payable". null = unclassified. Also CHECK-constrained in the DB.
+export const CONTACT_KIND_VALUES = ['PERSON', 'FUNCTIONAL_MAILBOX'] as const;
+export type ContactKind = (typeof CONTACT_KIND_VALUES)[number];
+
 // Write-path vocab guard. Mirrors the @IsIn contract at the app layer:
 // undefined → skip (omit-not-touch on PATCH); null → allowed (clears the
 // field); any other value MUST be in the closed set or 400 VALIDATION_ERROR
@@ -36,11 +41,12 @@ export function assertContactVocab(
   input: {
     relationship_role?: string | null;
     preference?: string | null;
+    contact_kind?: string | null;
   },
   requestId: string,
 ): void {
   const check = (
-    field: 'relationship_role' | 'preference',
+    field: 'relationship_role' | 'preference' | 'contact_kind',
     value: string | null | undefined,
     allowed: readonly string[],
   ): void => {
@@ -56,4 +62,5 @@ export function assertContactVocab(
   };
   check('relationship_role', input.relationship_role, RELATIONSHIP_ROLE_VALUES);
   check('preference', input.preference, PREFERENCE_VALUES);
+  check('contact_kind', input.contact_kind, CONTACT_KIND_VALUES);
 }

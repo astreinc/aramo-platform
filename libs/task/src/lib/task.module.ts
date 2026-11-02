@@ -21,6 +21,11 @@ import {
   UnboundTaskRequisitionContextValidator,
   type TaskRequisitionContextValidator,
 } from './task-requisition-context.port.js';
+import {
+  TASK_CONTACT_OWNER_VALIDATOR,
+  UnboundTaskContactOwnerValidator,
+  type TaskContactOwnerValidator,
+} from './task-contact-owner.port.js';
 
 // Options for TaskModule.forRoot — the composition-root entry point.
 // assigneeValidator is the live TaskAssigneeValidator implementation
@@ -42,6 +47,9 @@ export interface TaskModuleOptions {
   // (apps/api's PipelineRepository-backed adapter). REQUIRED (same discipline
   // as assigneeValidator — omission is a compile error, never a silent stub).
   requisitionContextValidator: Type<TaskRequisitionContextValidator>;
+  // CONTACTS-1 SD-6 — the live contact-owner link validator (apps/api's
+  // ContactRepository-backed adapter). REQUIRED (same discipline).
+  contactOwnerValidator: Type<TaskContactOwnerValidator>;
   imports?: ModuleMetadata['imports'];
 }
 
@@ -83,6 +91,10 @@ export interface TaskModuleOptions {
       provide: TASK_REQUISITION_CONTEXT_VALIDATOR,
       useClass: UnboundTaskRequisitionContextValidator,
     },
+    {
+      provide: TASK_CONTACT_OWNER_VALIDATOR,
+      useClass: UnboundTaskContactOwnerValidator,
+    },
   ],
   exports: [TaskRepository],
 })
@@ -107,6 +119,10 @@ export class TaskModule {
         {
           provide: TASK_REQUISITION_CONTEXT_VALIDATOR,
           useClass: options.requisitionContextValidator,
+        },
+        {
+          provide: TASK_CONTACT_OWNER_VALIDATOR,
+          useClass: options.contactOwnerValidator,
         },
       ],
     };

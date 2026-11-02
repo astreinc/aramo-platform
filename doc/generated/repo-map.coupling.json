@@ -635,6 +635,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-a8-2-suggest-mapping.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql"
     },
     {
@@ -792,6 +798,12 @@
       "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch1-gating.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1241,6 +1253,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql"
     },
     {
@@ -1488,6 +1506,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -1859,6 +1883,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql"
     },
     {
@@ -2028,6 +2058,12 @@
       "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
       "status": "excluded",
       "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -19172,6 +19208,23 @@
       "status": "unscoped",
       "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
     },
+    { "from": "doc/contacts.md", "status": "unscoped", "to": "libs/contact/prisma/schema.prisma" },
+    {
+      "from": "doc/contacts.md",
+      "status": "unscoped",
+      "to": "libs/contact/src/lib/contact.controller.ts"
+    },
+    {
+      "from": "doc/contacts.md",
+      "status": "unscoped",
+      "to": "libs/contact/src/lib/dto/contact-vocab.ts"
+    },
+    {
+      "from": "doc/contacts.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    { "from": "doc/contacts.md", "status": "unscoped", "to": "openapi/ats.yaml" },
     {
       "from": "doc/design-reference/ccp/CCP-UI-v1_2/handoff/Commercial Control Plane - Claude Code handoff v1.2.md",
       "status": "unscoped",
@@ -36055,6 +36108,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

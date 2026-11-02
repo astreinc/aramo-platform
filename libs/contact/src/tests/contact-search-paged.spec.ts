@@ -159,7 +159,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
 
   it('VISIBILITY ENFORCEMENT: under My scope the query is owner-AND-visibility constrained server-side', async () => {
     const { prisma, findMany, count } = mockPrisma();
-    const repo = new ContactRepository(prisma as never, noCompanyNames);
+    const repo = new ContactRepository(prisma as never, noCompanyNames, {} as never);
     await repo.searchPaged(
       { tenant_id: TENANT_ID, owner_id: ACTOR_ID },
       makeVisibility(),
@@ -188,7 +188,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
 
   it('item where = base (visibility-AND) + the facet selections; facets over base only', async () => {
     const { prisma, findMany, count } = mockPrisma();
-    const repo = new ContactRepository(prisma as never, noCompanyNames);
+    const repo = new ContactRepository(prisma as never, noCompanyNames, {} as never);
     await repo.searchPaged(
       {
         tenant_id: TENANT_ID,
@@ -221,7 +221,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
 
   it('cold_callable → contactable-or-null AND non-empty work phone, composed in AND', async () => {
     const { prisma, findMany } = mockPrisma();
-    const repo = new ContactRepository(prisma as never, noCompanyNames);
+    const repo = new ContactRepository(prisma as never, noCompanyNames, {} as never);
     await repo.searchPaged(
       { tenant_id: TENANT_ID, cold_callable: true, sort: 'last_activity', dir: 'asc' },
       makeVisibility(true),
@@ -238,7 +238,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
 
   it('see_all_company → no company_id-in predicate (tenant-wide)', async () => {
     const { prisma, findMany } = mockPrisma();
-    const repo = new ContactRepository(prisma as never, noCompanyNames);
+    const repo = new ContactRepository(prisma as never, noCompanyNames, {} as never);
     await repo.searchPaged({ tenant_id: TENANT_ID }, makeVisibility(true));
     const itemWhere = findMany.mock.calls[0][0].where;
     expect(itemWhere.company_id).toBeUndefined();
@@ -261,7 +261,7 @@ describe('Contact searchPaged WHERE + facet construction (repo)', () => {
       { ...baseRow, id: 'c2' },
       { ...baseRow, id: 'c3' },
     ]);
-    const repo = new ContactRepository(prisma as never, noCompanyNames);
+    const repo = new ContactRepository(prisma as never, noCompanyNames, {} as never);
     const res = await repo.searchPaged(
       { tenant_id: TENANT_ID, page_size: 2 },
       makeVisibility(true),

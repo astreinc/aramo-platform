@@ -15,6 +15,7 @@ import {
   type TaskAssigneeValidator,
 } from '../lib/task-assignee.port.js';
 import { StubTaskRequisitionContextValidator } from '../lib/task-requisition-context.port.js';
+import { StubTaskContactOwnerValidator } from '../lib/task-contact-owner.port.js';
 
 // Task-Assignee Binding-Fix v1.0 — §3.3 GATE.
 //
@@ -109,6 +110,7 @@ async function bootController(
       TaskModule.forRoot({
         assigneeValidator: validator,
         requisitionContextValidator: StubTaskRequisitionContextValidator,
+        contactOwnerValidator: StubTaskContactOwnerValidator,
       }),
     ],
   })

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import {
   AramoError,
@@ -31,6 +31,10 @@ import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import { assertStatusOnlyEditScope } from './status-edit-gate.js';
 import { resolveManualHoldDetails } from './hold-details.js';
 import { assertApprovalAuthorization } from './approval-authorization-gate.js';
+import {
+  REQUISITION_HIRING_MANAGER_VALIDATOR,
+  type RequisitionHiringManagerValidator,
+} from './ports/hiring-manager-validator.port.js';
 import {
   assertEstablishmentAuthorization,
   type CreationMode,
@@ -627,7 +631,33 @@ export class RequisitionRepository {
     // truth). Trailing param (ctor-ripple contained). SubmittalEligibilityModule is
     // imported by RequisitionModule, so injection needs no further wiring.
     private readonly clientStatus: RequisitionSubmittalEligibilityReader,
+    // CONTACTS-1 HM-1 / SD-6 — the hiring-manager (contact_id) validator port,
+    // bound by apps/api to the contact-backed adapter. @Optional + trailing so
+    // the direct-construction specs are undisturbed; when unbound (lib specs
+    // only) the check is skipped. apps/api always binds it.
+    @Optional()
+    @Inject(REQUISITION_HIRING_MANAGER_VALIDATOR)
+    private readonly hiringManagerValidator?: RequisitionHiringManagerValidator,
   ) {}
+
+  // CONTACTS-1 HM-1 — refuse (422) a non-null hiring manager that is not in the
+  // tenant, not at the requisition's company, or deleted. null / absent stays
+  // allowed (no hiring manager). Runs after the scope gates, before any write.
+  private async assertHiringManagerLinkable(args: {
+    tenant_id: string;
+    contact_id: string | null | undefined;
+    company_id: string;
+    requestId: string;
+  }): Promise<void> {
+    if (args.contact_id === undefined || args.contact_id === null) return;
+    if (this.hiringManagerValidator === undefined) return;
+    await this.hiringManagerValidator.assertLinkable({
+      tenant_id: args.tenant_id,
+      contact_id: args.contact_id,
+      company_id: args.company_id,
+      requestId: args.requestId,
+    });
+  }
 
   // Track 4 / T4-B2 — project ONE row to a view with the DERIVED openings_available
   // pulled from placement (ACTIVE ContractAssignment count). The single-row read
@@ -1039,6 +1069,13 @@ export class RequisitionRepository {
       value: input.onsite_days_per_week ?? null,
       requestId: args.requestId,
     });
+    // CONTACTS-1 HM-1 — the hiring manager must be a live contact at this company.
+    await this.assertHiringManagerLinkable({
+      tenant_id,
+      contact_id: input.contact_id,
+      company_id: input.company_id,
+      requestId: args.requestId,
+    });
     // PR-15 — requisition_number is allocated inside the create transaction
     // (below), so it is intentionally omitted here and spread in at the insert.
     const data: Omit<Prisma.RequisitionUncheckedCreateInput, 'requisition_number'> = {
@@ -1167,6 +1204,13 @@ export class RequisitionRepository {
     assertOnsiteDaysPerWeekValid({
       work_arrangement: input.work_arrangement ?? null,
       value: input.onsite_days_per_week ?? null,
+      requestId: args.requestId,
+    });
+    // CONTACTS-1 HM-1 — the hiring manager must be a live contact at this company.
+    await this.assertHiringManagerLinkable({
+      tenant_id,
+      contact_id: input.contact_id,
+      company_id: input.company_id,
       requestId: args.requestId,
     });
     // PR-15 — requisition_number is allocated inside the create transaction
@@ -1326,7 +1370,16 @@ export class RequisitionRepository {
       // off the EFFECTIVE arrangement (existing value when the PATCH omits it).
       // T8-P1 — source_system/external_req_id needed for the co-presence check
       // against the EFFECTIVE external identity after a partial PATCH.
-      select: { id: true, status: true, work_arrangement: true, source_system: true, external_req_id: true },
+      // CONTACTS-1 HM-1 — company_id is read so a hiring-manager change is
+      // validated against the requisition's (immutable) company.
+      select: {
+        id: true,
+        status: true,
+        work_arrangement: true,
+        source_system: true,
+        external_req_id: true,
+        company_id: true,
+      },
     });
     if (existing === null) {
       throw new AramoError(
@@ -1349,6 +1402,16 @@ export class RequisitionRepository {
         { requestId: args.requestId, details: { status: args.input.status } },
       );
     }
+    // CONTACTS-1 HM-1 / HM-2 — a non-null hiring-manager change is validated
+    // against the requisition's company (null clears it, no check). company_id
+    // is not writable on update (create-time only), so a company change cannot
+    // strand the existing hiring manager.
+    await this.assertHiringManagerLinkable({
+      tenant_id: args.tenant_id,
+      contact_id: args.input.contact_id,
+      company_id: existing.company_id,
+      requestId: args.requestId,
+    });
     const data: Record<string, unknown> = {};
     const i = args.input;
     if (i.title !== undefined) data['title'] = i.title;

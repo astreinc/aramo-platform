@@ -1,5 +1,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 
+import { contactLinkErrorMessage } from '../contacts/error-messages';
+
 export function taskListErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 403) {
     return 'You do not have permission to view tasks.';
@@ -12,6 +14,10 @@ export function taskListErrorMessage(error: unknown): string {
 // The 422 assignee case (Ruling 5) gets a field-specific message the dialog
 // renders inline on the assignee field.
 export function taskMutateErrorMessage(error: unknown): string {
+  // CONTACTS-1 — a refused contact link (deleted / wrong company / not found /
+  // owner not assignable) gets its own copy.
+  const link = contactLinkErrorMessage(error);
+  if (link !== null) return link;
   if (error instanceof ApiError) {
     if (error.status === 403) {
       return 'You do not have permission to modify this task.';

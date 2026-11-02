@@ -383,6 +383,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
       'SIGNER_IDENTITY_VERIFICATION_LOCKED',
       'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
+      // CONTACTS-1 — soft-deleted contact refused as a new link target.
+      'CONTACT_DELETED',
     ]);
   });
 });
