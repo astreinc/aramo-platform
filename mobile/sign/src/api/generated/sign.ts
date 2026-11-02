@@ -1003,6 +1003,238 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/templates/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Aramo templates for Aramo Sign the account can adopt or use as it is (TEMPLATE-PRODUCT-1 §8.5).
+         * @description Every account kind (Personal and Business; the mobile app lists them). Live Aramo defaults tagged sign, current version only, each with the account's own adopted copy (adopted_template_id) or null. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["listSenderTemplateGallery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/library/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview of an Aramo template for Aramo Sign (TEMPLATE-PRODUCT-1 §8.5).
+         * @description The current version rendered with the account's branding (a Personal account: the person's name as the letterhead). Writes nothing. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["previewSenderTemplateGalleryDefault"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A Personal account's templates and the Aramo templates for Aramo Sign (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["listSenderStudioTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/adopt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt an Aramo template as a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["adoptSenderStudioTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One of the Personal account's templates (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["getSenderStudioTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        patch: operations["renameSenderStudioTemplate"];
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The versions of a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["listSenderStudioTemplateVersions"];
+        put?: never;
+        /**
+         * Open a draft with the given content (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["createSenderStudioTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the next draft from the version in use (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["createSenderStudioTemplateDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/allowed-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The governed variables a Personal template may use (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). The letterhead name is the person's own (tenant_logo.tenant_name); a Personal account has no logo to capture. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        get: operations["listSenderStudioAllowedBindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        delete: operations["discardSenderStudioTemplateDraft"];
+        options?: never;
+        head?: never;
+        /**
+         * Save a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Only field_schema, render_schema_version and internal_notes are forwarded. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        patch: operations["updateSenderStudioTemplateVersion"];
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/versions/{versionId}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sample preview of a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Records the preview that arms "Use this version". Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["previewSenderStudioTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/versions/{versionId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Use this version — approve a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). The version becomes the account's current one for its document type. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         */
+        post: operations["activateSenderStudioTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/templates/{id}/preview": {
         parameters: {
             query?: never;
@@ -3566,6 +3798,57 @@ export interface components {
             organization_roles_url?: string | null;
             /** @description Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL tenant, who may delete their own account. Every other subject is a Business user: the organization manages the account; privacy requests stay available. */
             personal_account_owner?: boolean;
+            /**
+             * @description TEMPLATE-PRODUCT-1 §8.1 — the plan side of templates (Catalog v2 P-6: FREE_PLAN never has templates; the app shows an upgrade prompt). null while sign.templates is not available or the session cannot read templates.
+             * @enum {string|null}
+             */
+            template_plan?: "INCLUDED" | "FREE_PLAN" | "SUBSCRIPTION_INACTIVE" | "NOT_SUBSCRIBED" | null;
+            /** @description TEMPLATE-PRODUCT-1 §8.2 — a PERSONAL account's own template Studio in Aramo Sign (the owner holds author + approve). Always false for BUSINESS (Org Home). */
+            template_studio?: boolean;
+            /** @description TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" is offered (the person holds document_template:manage and the plan includes templates). */
+            template_use_as_is?: boolean;
+        };
+        /** @description TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign). */
+        SenderTemplateGallery: {
+            items: {
+                /** Format: uuid */
+                template_id: string;
+                name: string;
+                description: string | null;
+                document_type: {
+                    /** Format: uuid */
+                    id: string;
+                    name: string | null;
+                };
+                products: ("ats" | "sign")[];
+                /** Format: uuid */
+                version_id: string;
+                version_number: number | null;
+                /** Format: date-time */
+                updated_at: string;
+                /**
+                 * Format: uuid
+                 * @description The account's own copy of this template, or null while it is not adopted.
+                 */
+                adopted_template_id: string | null;
+            }[];
+        };
+        /** @description TEMPLATE-PRODUCT-1 §8.3 / §8.5 — an adopted copy (Documents-owned) and its version. */
+        SenderTemplateAdopted: {
+            template: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                status: "DRAFT" | "ACTIVE" | "RETIRED";
+                /** Format: uuid */
+                current_version_id?: string | null;
+            };
+            version: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                status: "DRAFT" | "ACTIVE" | "RETIRED";
+            };
         };
         /** @description Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy. */
         SenderTemplateRole: {
@@ -6648,6 +6931,391 @@ export interface operations {
             };
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
+        };
+    };
+    listSenderTemplateGallery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateGallery"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    previewSenderTemplateGalleryDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSenderStudioTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    adoptSenderStudioTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    library_template_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The adopted draft (template + version). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateAdopted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderStudioTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameSenderStudioTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSenderStudioTemplateVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createSenderStudioTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    render_schema_version: string;
+                    field_schema?: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createSenderStudioTemplateDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderStudioAllowedBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    discardSenderStudioTemplateDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discarded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateSenderStudioTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    render_schema_version?: string;
+                    field_schema?: unknown;
+                    internal_notes?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewSenderStudioTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    activateSenderStudioTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     previewSenderTemplate: {

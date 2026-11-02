@@ -10758,7 +10758,17 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
     },
     {
       "from": "apps/sign-web/vite.config.ts",
@@ -10889,6 +10899,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/document-templates-platform/platform-document-types.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign-template-studio.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11339,6 +11354,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-template-studio.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",

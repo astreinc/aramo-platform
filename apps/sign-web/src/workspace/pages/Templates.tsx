@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 
 import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
@@ -21,7 +21,27 @@ import { useWorkspace } from '../workspace';
 // available (R-8) the page shows "Coming soon" and is never presented as part of a plan; the
 // Free plan never gets templates (Catalog v2 P-6, refused by the server).
 
+// TEMPLATE-PRODUCT-1 §8.1–8.2 — a PERSONAL account gets its own templates and the shared Studio
+// (loaded as its own chunk); the "Use template" page below is shared with it.
+const PersonalTemplatesPage = lazy(() => import('./PersonalTemplates').then((m) => ({ default: m.PersonalTemplatesPage })));
+
 export function TemplatesPage() {
+  const { ctx } = useWorkspace();
+  if (ctx.workspace === 'personal') {
+    return (
+      <Routes>
+        <Route path=":id/use" element={<UseTemplate />} />
+        <Route
+          path="*"
+          element={
+            <Suspense fallback={<Loading />}>
+              <PersonalTemplatesPage />
+            </Suspense>
+          }
+        />
+      </Routes>
+    );
+  }
   return (
     <Routes>
       <Route index element={<TemplateList />} />

@@ -1117,6 +1117,473 @@ paths:
           $ref: '#/components/responses/UnprocessableEntity'
         '503':
           $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/library:
+    get:
+      operationId: listSignTemplateGallery
+      summary: The Aramo defaults tagged sign a tenant can adopt or use as it is (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). Every tenant kind. Live Aramo (PLATFORM) defaults of a configured editable type tagged `sign`, current version only, with the tenant's own adopted copy (adopted_template_id, provenance only) or null. Writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The gallery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTemplateGalleryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/library/{id}/preview:
+    get:
+      operationId: previewSignTemplateGalleryDefault
+      summary: Tenant-branded preview of an Aramo default tagged sign (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). The default's current version rendered with the tenant's branding and fixed samples. A default not tagged sign is 404. Writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDefaultPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio:
+    get:
+      operationId: listSignStudioTemplates
+      summary: A Personal account's templates and the Aramo defaults tagged sign (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). The Org Home library view (TemplateLibraryResponse) narrowed to the tenant's own templates and the defaults tagged sign; each item carries adopted_template_id (defaults) or null.
+      parameters:
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The Studio list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateLibraryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/adopt:
+    post:
+      operationId: adoptSignStudioTemplate
+      summary: Adopt an Aramo default tagged sign as a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same behaviour as POST /v1/document-templates/adopt (a TENANT DRAFT copy; provenance only; audited).
+      parameters:
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [library_template_id]
+              properties:
+                library_template_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: The adopted draft.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [template, version]
+                properties:
+                  template:
+                    $ref: '#/components/schemas/DocumentTemplate'
+                  version:
+                    $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}:
+    get:
+      operationId: getSignStudioTemplate
+      summary: One of the Personal account's templates (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Tenant-scoped (another tenant's template or an Aramo default is 404).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+    patch:
+      operationId: renameSignStudioTemplate
+      summary: Rename a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as PATCH /v1/document-templates/{id}.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameTemplateRequest'
+      responses:
+        '200':
+          description: The renamed template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/versions:
+    get:
+      operationId: listSignStudioTemplateVersions
+      summary: The versions of a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+    post:
+      operationId: createSignStudioTemplateVersion
+      summary: Open a draft with the given content on a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as POST /v1/document-templates/{id}/versions.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVersionRequest'
+      responses:
+        '201':
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/draft:
+    post:
+      operationId: createSignStudioTemplateDraft
+      summary: Open the next draft from the version in use (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as POST /v1/document-templates/{id}/draft (one open draft).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '201':
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/allowed-bindings:
+    get:
+      operationId: listSignStudioAllowedBindings
+      summary: The governed variables a Personal template may use (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Same answer as GET /v1/document-templates/{id}/allowed-bindings.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowedBindingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/versions/{versionId}:
+    patch:
+      operationId: updateSignStudioTemplateVersion
+      summary: Save the draft content of a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as PATCH /v1/document-templates/versions/{versionId} (DRAFT only; re-arms the preview gate).
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVersionRequest'
+      responses:
+        '200':
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+    delete:
+      operationId: discardSignStudioTemplateDraft
+      summary: Discard the open draft of a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. DRAFT only; audited first (identity.document_template.draft_discarded).
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '204':
+          description: Discarded.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/versions/{versionId}/preview:
+    post:
+      operationId: previewSignStudioTemplateVersion
+      summary: Sample preview of a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Records the preview that arms "Use this version" for exactly this content.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '200':
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateSamplePreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/versions/{versionId}/activate:
+    post:
+      operationId: activateSignStudioTemplateVersion
+      summary: Use this version — approve a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:manage (the Personal owner). Same rules as POST /v1/document-templates/versions/{versionId}/activate (preview gate, closed catalog); the version becomes the account's current one for its type.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '200':
+          description: The version in use.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
   /v1/integrations/sign/events:
     post:
       operationId: receiveEsignLifecycleEvent
@@ -1226,6 +1693,18 @@ components:
       description: base64(HMAC-SHA256(secret, canonical aramo-sign-s2s-v1 string)).
       schema:
         type: string
+    EsignS2sTenantId:
+      name: tenant_id
+      in: query
+      required: true
+      description: The tenant (signed with the request).
+      schema: { type: string, format: uuid }
+    EsignS2sActorId:
+      name: actor_id
+      in: query
+      required: true
+      description: The acting person (TEMPLATE-PRODUCT-1 §8.3; signed with the request). Their live role grants in the tenant decide author / approve.
+      schema: { type: string, format: uuid }
     EsignS2sBodyDigest:
       name: body_sha256
       in: query
@@ -1235,6 +1714,16 @@ components:
         type: string
         pattern: '^[0-9a-f]{64}$'
   responses:
+    EsignStudioForbidden:
+      description: >
+        The acting person or tenant may not do this (TEMPLATE-PRODUCT-1 §8.3 / §8.5):
+        INSUFFICIENT_PERMISSIONS with details.reason organization_templates_in_org_home (a BUSINESS
+        tenant — the Studio is for Personal accounts), template_authoring_required or
+        template_approval_required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     BadRequest:
       description: The request failed validation.
       content:
@@ -2167,6 +2656,38 @@ components:
           type: integer
         required:
           type: boolean
+    SignTemplateGalleryItem:
+      type: object
+      description: An Aramo default tagged sign, as the Sign gallery lists it (TEMPLATE-PRODUCT-1 §8.5).
+      required: [template_id, name, description, document_type, products, version_id, version_number, updated_at, adopted_template_id]
+      properties:
+        template_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        document_type:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: [string, 'null'] }
+        products:
+          type: array
+          items: { type: string, enum: [ats, sign] }
+        version_id: { type: string, format: uuid }
+        version_number: { type: [integer, 'null'] }
+        updated_at: { type: string, format: date-time }
+        adopted_template_id:
+          type: [string, 'null']
+          format: uuid
+          description: The tenant's own (newest) copy of this default, or null when not adopted. Provenance only.
+    SignTemplateGalleryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignTemplateGalleryItem'
     SignTemplateVariable:
       type: object
       additionalProperties: false

@@ -4421,6 +4421,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -6429,6 +6435,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9110,6 +9128,7 @@
       { "project": "aramo-ats-web", "status": "production" },
       { "project": "aramo-home-web", "status": "production" },
       { "project": "aramo-platform-web", "status": "production" },
+      { "project": "aramo-sign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
@@ -9295,6 +9314,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9386,6 +9417,18 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
@@ -9422,6 +9465,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "from": "pact/consumers/sign-source-consumer/src/source-pull.consumer.test.ts",
@@ -9430,6 +9479,11 @@
       },
       {
         "from": "pact/consumers/sign-source-consumer/src/template-library.consumer.test.ts",
+        "project": "sign-source-consumer-pact",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/consumers/sign-source-consumer/src/template-studio.consumer.test.ts",
         "project": "sign-source-consumer-pact",
         "status": "unscoped"
       }
@@ -10754,6 +10808,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalPlan.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PersonalTemplates.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -12155,6 +12215,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -13991,6 +14063,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

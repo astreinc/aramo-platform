@@ -5277,6 +5277,58 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
         });
       },
+      // ===== TEMPLATE-PRODUCT-1 §8.3 / §8.5 — sign-service → apps/api Studio + "Use as it is" =====
+      // The T-5 Aramo RTR default (tagged {ats,sign}) + a PERSONAL tenant whose owner holds
+      // document_template:author + :manage through a live role grant (the Studio reads the
+      // person's grants, never a token). The tenant's own templates are cleared first, so every
+      // interaction starts with nothing adopted (Use as it is / adopt are 201, not 409).
+      'a personal account may adopt and use Aramo templates tagged sign': async () => {
+        await stateHandlers['an Aramo default template is resolvable for the tenant']!();
+        await withClient(async (c) => {
+          const PERSONAL = '11111111-1111-7111-8111-1111111111b7';
+          const OWNER = 'd0c4c000-0000-7000-8000-0000000000b7';
+          const ROLE = 'd0c4c000-0000-7000-8000-0000000000b8';
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at, kind) VALUES ($1::uuid, 'pact-tp7-personal', 'ACTIVE', true, now(), 'PERSONAL')
+             ON CONFLICT (id) DO UPDATE SET kind = 'PERSONAL', status = 'ACTIVE'`,
+            [PERSONAL],
+          );
+          await c.query(`UPDATE documents."DocumentTemplate" SET "products" = ARRAY['ats','sign'] WHERE "id" = 'd0c4c000-0000-7000-8000-0000000000d1'::uuid`);
+          await c.query(
+            `DELETE FROM documents."TemplateFieldDefinition" WHERE "template_version_id" IN (SELECT "id" FROM documents."TemplateVersion" WHERE "tenant_id" = $1::uuid)`,
+            [PERSONAL],
+          );
+          await c.query(`DELETE FROM documents."TenantTemplateSelection" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = NULL WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`DELETE FROM documents."TemplateVersion" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`DELETE FROM documents."DocumentTemplate" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(
+            `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at) VALUES ($1::uuid, 'pact-tp7-owner@example.test', 'Pat Pact', $2::uuid, now()) ON CONFLICT (id) DO NOTHING`,
+            [OWNER, PERSONAL],
+          );
+          await c.query(
+            `INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, is_active, updated_at) VALUES (gen_random_uuid(), $1::uuid, $2::uuid, true, now()) ON CONFLICT (user_id) DO NOTHING`,
+            [OWNER, PERSONAL],
+          );
+          await c.query(`INSERT INTO identity."Role" (id, key, description, is_active, updated_at) VALUES ($1::uuid, 'pact_tp7_personal_owner', 'TP-7 pact role', true, now()) ON CONFLICT (key) DO NOTHING`, [ROLE]);
+          for (const key of ['document_template:read', 'document_template:author', 'document_template:manage']) {
+            await c.query(`INSERT INTO identity."Scope" (id, key, description) VALUES (gen_random_uuid(), $1, 'TP-7 pact scope') ON CONFLICT (key) DO NOTHING`, [key]);
+            await c.query(
+              `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+               SELECT gen_random_uuid(), r.id, s.id FROM identity."Role" r, identity."Scope" s WHERE r.key = 'pact_tp7_personal_owner' AND s.key = $1
+               ON CONFLICT (role_id, scope_id) DO NOTHING`,
+              [key],
+            );
+          }
+          await c.query(
+            `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+             SELECT gen_random_uuid(), m.id, r.id FROM identity."UserTenantMembership" m, identity."Role" r WHERE m.user_id = $1::uuid AND r.key = 'pact_tp7_personal_owner'
+             ON CONFLICT (membership_id, role_id) DO NOTHING`,
+            [OWNER],
+          );
+        });
+      },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the
       // contracted interaction is a NON-completion event the receiver authenticates
       // and acknowledges WITHOUT any write-back (no seed needed). The full

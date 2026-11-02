@@ -55,6 +55,9 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: `${base}/documents`, label: 'Documents', icon: 'doc' },
             // Sign Unified Product S-7 — documents sent TO this user.
             { to: `${base}/inbox`, label: 'Waiting for me', icon: 'mail' },
+            // TEMPLATE-PRODUCT-1 §8.1 — Templates (the page itself shows Coming soon / the Free
+            // plan's upgrade prompt; the server decides).
+            { to: `${base}/templates`, label: 'Templates', icon: 'tpl' },
             // Retention and Purge (DocuSign parity) — envelopes this account deleted.
             { to: `${base}/envelopes/deleted`, label: 'Deleted', icon: 'trash' },
           ],

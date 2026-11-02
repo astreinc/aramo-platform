@@ -2266,6 +2266,475 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/templates/library:
+    get:
+      operationId: listSenderTemplateGallery
+      summary: The Aramo templates for Aramo Sign the account can adopt or use as it is (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        Every account kind (Personal and Business; the mobile app lists them). Live Aramo defaults tagged sign, current version only, each with the account's own adopted copy (adopted_template_id) or null. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderTemplateGallery'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/templates/library/{id}/preview:
+    get:
+      operationId: previewSenderTemplateGalleryDefault
+      summary: Preview of an Aramo template for Aramo Sign (TEMPLATE-PRODUCT-1 §8.5).
+      description: >
+        The current version rendered with the account's branding (a Personal account: the person's name as the letterhead). Writes nothing. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/studio:
+    get:
+      operationId: listSenderStudioTemplates
+      summary: A Personal account's templates and the Aramo templates for Aramo Sign (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/templates/studio/adopt:
+    post:
+      operationId: adoptSenderStudioTemplate
+      summary: Adopt an Aramo template as a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [library_template_id]
+              properties:
+                library_template_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: The adopted draft (template + version).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderTemplateAdopted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/studio/{id}:
+    get:
+      operationId: getSenderStudioTemplate
+      summary: One of the Personal account's templates (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: renameSenderStudioTemplate
+      summary: Rename a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/studio/{id}/versions:
+    get:
+      operationId: listSenderStudioTemplateVersions
+      summary: The versions of a Personal template (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: createSenderStudioTemplateVersion
+      summary: Open a draft with the given content (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [render_schema_version]
+              properties:
+                render_schema_version:
+                  type: string
+                field_schema: {}
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/templates/studio/{id}/draft:
+    post:
+      operationId: createSenderStudioTemplateDraft
+      summary: Open the next draft from the version in use (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/templates/studio/{id}/allowed-bindings:
+    get:
+      operationId: listSenderStudioAllowedBindings
+      summary: The governed variables a Personal template may use (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). The letterhead name is the person's own (tenant_logo.tenant_name); a Personal account has no logo to capture. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/studio/versions/{versionId}:
+    patch:
+      operationId: updateSenderStudioTemplateVersion
+      summary: Save a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Only field_schema, render_schema_version and internal_notes are forwarded. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                render_schema_version:
+                  type: string
+                field_schema: {}
+                internal_notes:
+                  type: [string, 'null']
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: discardSenderStudioTemplateDraft
+      summary: Discard a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Discarded.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/templates/studio/versions/{versionId}/preview:
+    post:
+      operationId: previewSenderStudioTemplateVersion
+      summary: Sample preview of a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Records the preview that arms "Use this version". Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/templates/studio/versions/{versionId}/activate:
+    post:
+      operationId: activateSenderStudioTemplateVersion
+      summary: Use this version — approve a Personal draft (TEMPLATE-PRODUCT-1 §8.3).
+      description: >
+        PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). The version becomes the account's current one for its document type. Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/templates/{id}/preview:
     post:
       operationId: previewSenderTemplate
@@ -7432,6 +7901,91 @@ components:
             Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL
             tenant, who may delete their own account. Every other subject is a Business user:
             the organization manages the account; privacy requests stay available.
+        template_plan:
+          type: [string, 'null']
+          enum: [INCLUDED, FREE_PLAN, SUBSCRIPTION_INACTIVE, NOT_SUBSCRIBED, null]
+          description: >-
+            TEMPLATE-PRODUCT-1 §8.1 — the plan side of templates (Catalog v2 P-6: FREE_PLAN never
+            has templates; the app shows an upgrade prompt). null while sign.templates is not
+            available or the session cannot read templates.
+        template_studio:
+          type: boolean
+          description: TEMPLATE-PRODUCT-1 §8.2 — a PERSONAL account's own template Studio in Aramo Sign (the owner holds author + approve). Always false for BUSINESS (Org Home).
+        template_use_as_is:
+          type: boolean
+          description: TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" is offered (the person holds document_template:manage and the plan includes templates).
+    SenderTemplateGallery:
+      type: object
+      description: TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign).
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [template_id, name, description, document_type, products, version_id, version_number, updated_at, adopted_template_id]
+            properties:
+              template_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              description:
+                type: [string, 'null']
+              document_type:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: [string, 'null']
+              products:
+                type: array
+                items:
+                  type: string
+                  enum: [ats, sign]
+              version_id:
+                type: string
+                format: uuid
+              version_number:
+                type: [integer, 'null']
+              updated_at:
+                type: string
+                format: date-time
+              adopted_template_id:
+                type: [string, 'null']
+                format: uuid
+                description: The account's own copy of this template, or null while it is not adopted.
+    SenderTemplateAdopted:
+      type: object
+      description: TEMPLATE-PRODUCT-1 §8.3 / §8.5 — an adopted copy (Documents-owned) and its version.
+      required: [template, version]
+      properties:
+        template:
+          type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [DRAFT, ACTIVE, RETIRED]
+            current_version_id:
+              type: [string, 'null']
+              format: uuid
+        version:
+          type: object
+          required: [id, status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [DRAFT, ACTIVE, RETIRED]
     SenderTemplateRole:
       type: object
       description: Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy.
