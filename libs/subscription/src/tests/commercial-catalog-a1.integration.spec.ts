@@ -253,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(await reason(checkout(BUSINESS))).toBe('TERMS_NOT_APPROVED');
 
     const approved: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0', effective_from: '2026-01-01T00:00:00Z' };
-    const withTerms = svc([...LEGAL_DOCUMENTS, approved]);
+    const withTerms = svc([...LEGAL_DOCUMENTS_BEFORE_TOS_V20, approved]);
     expect(await reason(checkout(BUSINESS, withTerms))).toBe('TERMS_NOT_ACCEPTED');
     expect(await reason(checkout(BUSINESS, withTerms, { accept_terms: true }))).toBe('OK');
     const acc = await pg.query(`SELECT document_key, version, sha256, context, context_ref FROM subscription."LegalAcceptance" WHERE tenant_id = $1`, [t]);
