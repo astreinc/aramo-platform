@@ -192,6 +192,11 @@ export const EVENT_TYPES = [
   'identity.document_template.version_activated',
   'identity.document_template.selection_set',
   'identity.document_template.selection_cleared',
+  // TEMPLATE-PRODUCT-1 §7.3 — a tenant hid / showed an Aramo fixed form (Hide / Show,
+  // document_template:manage). Tenant-scoped; subject = the fixed form (DocumentTemplate);
+  // payload { document_type_id }.
+  'identity.document_template.fixed_form_hidden',
+  'identity.document_template.fixed_form_shown',
   // Domain-Enforcement P3 (LOCKED) §6 — the domain-claim lifecycle. Every one of these
   // is inserted IN THE SAME database transaction as the claim / exception write
   // (DomainClaimService), never through the best-effort audit service. All tenant-scoped
@@ -322,6 +327,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.document_template.version_activated',
   'identity.document_template.selection_set',
   'identity.document_template.selection_cleared',
+  // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show rows carry the tenant id.
+  'identity.document_template.fixed_form_hidden',
+  'identity.document_template.fixed_form_shown',
   // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',

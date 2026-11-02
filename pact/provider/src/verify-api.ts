@@ -593,6 +593,17 @@ const DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261103120000_template_product_1_tenant_product_tags/migration.sql',
 );
+// TEMPLATE-PRODUCT-1 TP-6 (§7.1, §7.3) — the new PlatformTemplateAsset and
+// TenantTemplateVisibility tables. The Sign S2S list / render now carry Aramo fixed forms
+// (template_kind FIXED_FORM) read through them → registered (CLAUDE.md law); after TP-3.
+const DOCUMENTS_TP6_PLATFORM_TEMPLATE_ASSET_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103140000_template_product_1_platform_template_asset/migration.sql',
+);
+const DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103140100_template_product_1_tenant_template_visibility/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3713,6 +3724,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION,
         DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION,
         DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION,
+        DOCUMENTS_TP6_PLATFORM_TEMPLATE_ASSET_MIGRATION,
+        DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -5226,6 +5239,79 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              ON CONFLICT ("tenant_id","document_type_id","client_id") DO UPDATE SET "template_id" = EXCLUDED."template_id", "legacy_platform" = true`,
             [TENANT_ID, RTR_TYPE, TPL, ACTOR],
           );
+        });
+      },
+      // TEMPLATE-PRODUCT-1 TP-6 (§7.4) — a published Aramo fixed form tagged `sign` under its OWN
+      // tenant: a FIXED_FORM type, a PLATFORM default whose ACTIVE version carries the official
+      // PDF (a PlatformTemplateAsset, recorded while the version was DRAFT, as the trigger
+      // requires) and one SIGNATURE field for the `employee` role. The mocked object storage
+      // returns '%PDF-1.4 pact source bytes' for every read, so the asset records that digest;
+      // with no prefilled field the frozen revision is those bytes. A fixed form is visible to
+      // every entitled tenant, so the state hides it from the tenants of the two states above
+      // (TenantTemplateVisibility) — their lists stay exactly as contracted.
+      'an Aramo fixed form tagged sign is visible to the tenant': async () => {
+        await withClient(async (c) => {
+          const FORM_TENANT = '11111111-1111-7111-8111-1111111111f6';
+          const TYPE = 'd0c4c000-0000-7000-8000-0000000000f0';
+          const TPL = 'd0c4c000-0000-7000-8000-0000000000f1';
+          const VER = 'd0c4c000-0000-7000-8000-0000000000f2';
+          const ASSET = 'd0c4c000-0000-7000-8000-0000000000f3';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          const SHA = (require('node:crypto') as typeof import('node:crypto')).createHash('sha256').update(Buffer.from('%PDF-1.4 pact source bytes', 'utf8')).digest('hex');
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at) VALUES ($1::uuid, 'pact-tp6-fixed-form', 'ACTIVE', true, now()) ON CONFLICT (id) DO NOTHING`,
+            [FORM_TENANT],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'PACT_FIXED_FORM','Pact fixed form','Fixed legal form (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',false,true,'TEMPLATE','FIXED_FORM',ARRAY['sign'],'Employment')
+             ON CONFLICT ("id") DO NOTHING`,
+            [TYPE],
+          );
+          await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [FORM_TENANT]);
+          const exists = await c.query(`SELECT 1 FROM documents."DocumentTemplate" WHERE "id" = $1::uuid`, [TPL]);
+          if (exists.rowCount === 0) {
+            await c.query(
+              `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+               VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Employment eligibility form',NULL,'UPLOADED_PDF','DRAFT',NULL,ARRAY['sign'],$3::uuid,now())`,
+              [TPL, TYPE, ACTOR],
+            );
+            await c.query(
+              `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by")
+               VALUES ($1::uuid,NULL,$2::uuid,1,'DRAFT','fixed-form-pdf-v1',$3::jsonb,$4::uuid)`,
+              [
+                VER,
+                TPL,
+                JSON.stringify({
+                  render_schema_version: 'fixed-form-pdf-v1',
+                  title: 'Employment eligibility form',
+                  pdf: { asset_id: ASSET, sha256: SHA, byte_size: 26, page_count: 1, pages: [{ width: 612, height: 792 }] },
+                  signing: { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' },
+                }),
+                ACTOR,
+              ],
+            );
+            await c.query(
+              `INSERT INTO documents."PlatformTemplateAsset" ("id","template_version_id","storage_key","mime","sha256","byte_size","page_count","created_by")
+               VALUES ($1::uuid,$2::uuid,$3,'application/pdf',$4,26,1,$5::uuid)`,
+              [ASSET, VER, `documents/platform/template-assets/${VER}/${SHA}.pdf`, SHA, ACTOR],
+            );
+            await c.query(
+              `INSERT INTO documents."TemplateFieldDefinition" ("id","template_version_id","field_key","field_type","binding_key","required","page_number","x","y","width","height","signer_role","ordinal")
+               VALUES (gen_random_uuid(),$1::uuid,'employee_signature','SIGNATURE',NULL,true,0,72,72,160,32,'employee',0)`,
+              [VER],
+            );
+            await c.query(`UPDATE documents."TemplateVersion" SET "status" = 'ACTIVE', "activated_at" = now() WHERE "id" = $1::uuid`, [VER]);
+            await c.query(`UPDATE documents."DocumentTemplate" SET "status" = 'ACTIVE', "current_version_id" = $2::uuid WHERE "id" = $1::uuid`, [TPL, VER]);
+          }
+          for (const other of [TENANT_ID, '11111111-1111-7111-8111-1111111111a6']) {
+            await c.query(
+              `INSERT INTO documents."TenantTemplateVisibility" ("tenant_id","template_id","hidden","updated_by","updated_at") VALUES ($1::uuid,$2::uuid,true,$3::uuid,now())
+               ON CONFLICT ("tenant_id","template_id") DO UPDATE SET "hidden" = true`,
+              [other, TPL, ACTOR],
+            );
+          }
         });
       },
       // Amendment M-A6 §3 — a TENANT rtr-html-v1 template with signing roles (2 SIGNER + 1 CC)

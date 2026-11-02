@@ -26,6 +26,7 @@ import {
   type DocumentTypeOption,
   type PlatformTemplate,
 } from './document-templates-api';
+import { fixedFormsApi } from './fixed-forms-api';
 import { templateErrorMessage } from './template-errors';
 import './library.css';
 
@@ -319,12 +320,16 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
     const p = types.find((t) => t.id === id)?.products;
     if (p !== undefined) setTags([...p]);
   };
-  const ok = typeId !== '' && name.trim() !== '' && types.find((t) => t.id === typeId)?.configurable === true;
+  // TEMPLATE-PRODUCT-1 §7.2 — a FIXED_FORM type is authored in the Studio's fixed-form mode
+  // (an UPLOADED_PDF default: the official PDF + placed fields), so it is offered too.
+  const usable = (t: (typeof types)[number] | undefined): boolean => t !== undefined && (t.configurable || t.template_kind === 'FIXED_FORM');
+  const fixedForm = types.find((t) => t.id === typeId)?.template_kind === 'FIXED_FORM';
+  const ok = typeId !== '' && name.trim() !== '' && usable(types.find((t) => t.id === typeId));
 
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
-    const src = start.startsWith('copy:') ? templates.find((t) => t.id === start.slice(5)) : undefined;
+    const src = !fixedForm && start.startsWith('copy:') ? templates.find((t) => t.id === start.slice(5)) : undefined;
     let copied: { render_schema_version: string; field_schema: unknown } | null = null;
     try {
       if (src?.current_version) {
@@ -342,7 +347,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         document_type_id: typeId,
         name: name.trim(),
         description: desc.trim() !== '' ? desc.trim() : null,
-        template_kind: 'GENERATED',
+        template_kind: fixedForm ? 'UPLOADED_PDF' : 'GENERATED',
         products: tags,
       });
     } catch (e) {
@@ -351,6 +356,14 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
       return;
     }
     let copyError: string | null = null;
+    // TEMPLATE-PRODUCT-1 §7.2 — a fixed form opens on its first (empty) draft.
+    if (fixedForm) {
+      try {
+        await fixedFormsApi.createDraft(created.id);
+      } catch (e) {
+        copyError = `The form was created, but its first draft could not be opened: ${templateErrorMessage(e, 'try again in the studio.')}`;
+      }
+    }
     if (copied !== null) {
       try {
         await documentTemplatesApi.createDraft(created.id, copied);
@@ -382,7 +395,11 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         helper="Fixed by regulation or a provider? Those types are listed but can’t be chosen."
         options={[
           { value: '', label: 'Choose a document type' },
-          ...types.map((t) => ({ value: t.id, label: t.configurable ? t.name : `${t.name} — not configurable here`, disabled: !t.configurable })),
+          ...types.map((t) => ({
+            value: t.id,
+            label: t.template_kind === 'FIXED_FORM' ? `${t.name} — fixed form (PDF)` : t.configurable ? t.name : `${t.name} — not configurable here`,
+            disabled: !usable(t),
+          })),
         ]}
       />
       <div className="pwl-countfield">
@@ -402,16 +419,20 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         helperClassName="pw-field__helper"
         helper="Where tenants can use it. At least one is needed to publish."
       />
-      <FieldSelect
-        label="Start from"
-        value={start}
-        onChange={setStart}
-        helper="Copying fills the new draft with that published version."
-        options={[
-          { value: 'blank', label: 'Blank document' },
-          ...sources.map((t) => ({ value: `copy:${t.id}`, label: `Copy of ${t.name} (v${t.current_version?.version_number ?? ''})` })),
-        ]}
-      />
+      {fixedForm ? (
+        <p className="pw-field__helper">A fixed form starts empty: upload the official PDF in the studio, then place its fields.</p>
+      ) : (
+        <FieldSelect
+          label="Start from"
+          value={start}
+          onChange={setStart}
+          helper="Copying fills the new draft with that published version."
+          options={[
+            { value: 'blank', label: 'Blank document' },
+            ...sources.map((t) => ({ value: `copy:${t.id}`, label: `Copy of ${t.name} (v${t.current_version?.version_number ?? ''})` })),
+          ]}
+        />
+      )}
     </ConfirmDialog>
   );
 }

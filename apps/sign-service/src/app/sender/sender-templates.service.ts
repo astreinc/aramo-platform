@@ -4,7 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { EsignSenderRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
-import { type SignTemplateSigning } from '@aramo/documents-contracts';
+import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
@@ -312,6 +312,11 @@ export class SenderTemplatesService {
     if (!sameRoles(signing, rendered.signing ?? null)) {
       throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'The template changed while the envelope was being created. Try again.', 409, { requestId, details: { reason: 'template_roles_changed' } });
     }
+    // TEMPLATE-PRODUCT-1 §7.4 — an Aramo fixed form is ONLY its placed fields (no drawn
+    // signature block): every field must be placeable for a bound signing role and every signing
+    // role must receive one, else the request is refused before the envelope is created (the
+    // frozen Document stays unused), never silently left without a field.
+    if (rendered.template_kind === 'FIXED_FORM') assertFixedFormPlaceable(rendered.field_definitions, bound, requestId);
 
     const title = rendered.title.slice(0, MAX_TITLE);
     const env = await this.repo.createDraft({
@@ -413,4 +418,35 @@ function sameRoles(a: SignTemplateSigning | null, b: SignTemplateSigning | null)
       .map((r) => `${r.role_key}:${r.kind}:${r.order}`)
       .join('|');
   return key(a) === key(b);
+}
+
+// TEMPLATE-PRODUCT-1 §7.4 — the fixed-form placement rule (see createMultiRole).
+function assertFixedFormPlaceable(
+  defs: readonly SignTemplateFieldDefinition[],
+  bound: readonly TemplateRecipientInput[],
+  requestId: string,
+): void {
+  const signerKeys = new Set(bound.filter((r) => r.recipient_kind === 'SIGNER').map((r) => r.role_key));
+  const placed = new Set<string>();
+  for (const d of defs) {
+    const ok =
+      d.signer_role !== null &&
+      signerKeys.has(d.signer_role) &&
+      TEMPLATE_FIELD_TYPES.has(d.field_type) &&
+      d.page_number !== null && d.x !== null && d.y !== null && d.width !== null && d.height !== null;
+    if (!ok) {
+      throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This form has a field Aramo Sign cannot place. Ask Aramo support.', 409, {
+        requestId,
+        details: { reason: 'fixed_form_field_unplaceable', field_key: d.field_key },
+      });
+    }
+    placed.add(d.signer_role!);
+  }
+  const unplaced = [...signerKeys].filter((k) => !placed.has(k));
+  if (unplaced.length > 0) {
+    throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This form has a signing role with no field. Ask Aramo support.', 409, {
+      requestId,
+      details: { reason: 'fixed_form_role_without_field', roles: unplaced },
+    });
+  }
 }

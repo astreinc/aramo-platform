@@ -11,7 +11,7 @@ import { codeFailureMessage, startFailure, toE164 } from './personal-signup-api'
 // off, every refusal reason rendered, the backend decides the next step, the
 // terms checkbox is never preselected, Turnstile only when configured.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const refusal = (status: number, reason: string, extra: Record<string, unknown> = {}) =>

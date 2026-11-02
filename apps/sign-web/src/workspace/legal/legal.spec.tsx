@@ -36,7 +36,7 @@ import { ARAMO_SIGN_IDENTITY } from './identity';
 // APPROVED entry, with the same key, version and URL — and every APPROVED entry is
 // served. So the page can never show a text other than the one people accepted.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const ROOT = resolve(__dirname, '../../../../..');
 const REGISTRY_SRC = readFileSync(resolve(ROOT, 'libs/subscription/src/lib/legal/legal-documents.ts'), 'utf8');

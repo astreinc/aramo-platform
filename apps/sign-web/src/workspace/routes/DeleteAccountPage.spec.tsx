@@ -15,7 +15,7 @@ import { privacyTokenFromHash } from './DeleteAccountPage';
 // the request ID + status + what is kept; status lookup by ID + email. And the
 // signed-in Settings equivalent for Personal and Business accounts.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const TOKEN = 't'.repeat(43);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

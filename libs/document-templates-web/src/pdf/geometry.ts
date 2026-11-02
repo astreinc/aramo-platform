@@ -1,3 +1,7 @@
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.2 — moved unchanged from
+// apps/sign-web/src/workspace/geometry.ts so Aramo Sign's prepare editor and the Platform
+// Studio's fixed-form mode share one implementation (no app-to-app import).
+//
 // Editor geometry — pure helpers (no renderer). The editor works in a TOP-LEFT
 // frame in PDF points; the wire and the execution stamper use the PDF-native
 // BOTTOM-LEFT frame with (x, y) the box's lower-left corner.

@@ -17,6 +17,7 @@ import {
 
 import { OrgPageHeader } from '../ui/OrgPage';
 
+import { AramoFormsSection } from './AramoFormsSection';
 import { fetchTemplateNotices, noticeMessage, type TemplateWithdrawalNotice } from './notices-api';
 import { buildOurTemplateRows, hasLegacySelection, type OurTemplateRow } from './templates-view';
 import './templates.css';
@@ -232,6 +233,9 @@ export function OurTemplatesPage({
             : null}
         </div>
       </section>
+
+      {/* TEMPLATE-PRODUCT-1 §7.3 — Aramo fixed forms (read-only, Hide / Show). */}
+      <AramoFormsSection session={session} />
 
       <p className="ox-tpl__foot">
         Need a new document type? Start from the{' '}

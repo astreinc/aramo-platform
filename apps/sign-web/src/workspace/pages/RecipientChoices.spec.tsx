@@ -12,7 +12,7 @@ import { readinessOf } from './readiness';
 // witness, delegation, access code, identity check, text delivery and the SMS code. Each
 // control shows only while GET /v1/sign/sender/context reports it available.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send'], iat: 0, exp: 9_999_999_999 };
 

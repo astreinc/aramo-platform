@@ -415,6 +415,42 @@ model TemplateAsset {
   @@schema("documents")
 }
 
+/// TEMPLATE-PRODUCT-1 §7.1 (migration 20261103140000) — the official PDF of an Aramo fixed
+/// form, uploaded by Platform Admin to a DRAFT PLATFORM version. PDF only, at most 10 MB,
+/// stored under the platform prefix (documents/platform/) of the documents bucket. Written
+/// once (UPDATE refused, INSERT only for a DRAFT PLATFORM version — DB trigger). FK to
+/// TemplateVersion ON DELETE CASCADE in the migration (no Prisma relation: TemplateVersion
+/// is unchanged). TemplateAsset stays tenant-only.
+model PlatformTemplateAsset {
+  id                  String   @id @db.Uuid
+  template_version_id String   @db.Uuid
+  storage_key         String
+  mime                String // CHECK: application/pdf
+  sha256              String
+  byte_size           Int
+  page_count          Int
+  created_at          DateTime @default(now()) @db.Timestamptz
+  created_by          String   @db.Uuid
+
+  @@index([template_version_id])
+  @@schema("documents")
+}
+
+/// TEMPLATE-PRODUCT-1 §7.3 (migration 20261103140100) — a tenant's Hide / Show choice for an
+/// Aramo fixed form (default shown: no row). FK to DocumentTemplate ON DELETE CASCADE in the
+/// migration (no Prisma relation: DocumentTemplate is unchanged).
+model TenantTemplateVisibility {
+  tenant_id   String   @db.Uuid
+  template_id String   @db.Uuid
+  hidden      Boolean  @default(false)
+  updated_by  String   @db.Uuid
+  updated_at  DateTime @default(now()) @db.Timestamptz
+
+  @@id([tenant_id, template_id])
+  @@index([template_id])
+  @@schema("documents")
+}
+
 /// DOC-2 — the generic requirement bridge (R12). Documents-owned; satisfaction is
 /// determined INDEPENDENTLY of any business transition. satisfied_by_document_id
 /// is NULLABLE (a requirement exists before any document). FKs added in migration.

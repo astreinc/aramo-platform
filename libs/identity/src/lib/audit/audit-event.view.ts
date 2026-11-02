@@ -299,6 +299,11 @@ export function summarizeDetail(
       return 'Chose the active document template';
     case 'identity.document_template.selection_cleared':
       return 'Cleared the active document template choice';
+    // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show.
+    case 'identity.document_template.fixed_form_hidden':
+      return 'Hid an Aramo form from the organization';
+    case 'identity.document_template.fixed_form_shown':
+      return 'Showed an Aramo form to the organization';
     // Sign Feature-Parity §1.21 — the role name and its Sign permissions (whitelisted fields only).
     case 'identity.sign_custom_role.created':
     case 'identity.sign_custom_role.updated':

@@ -2391,6 +2391,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.document_template.adopted',
         'identity.document_template.created',
         'identity.document_template.draft_discarded',
+        // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show.
+        'identity.document_template.fixed_form_hidden',
+        'identity.document_template.fixed_form_shown',
         'identity.document_template.selection_cleared',
         'identity.document_template.selection_set',
         'identity.document_template.version_activated',

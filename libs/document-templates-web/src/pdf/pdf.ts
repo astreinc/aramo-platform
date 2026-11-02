@@ -1,7 +1,7 @@
-// The worker is referenced as a URL string only (Vite `?url`): the renderer itself
-// still loads lazily below.
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
+// TEMPLATE-PRODUCT-1 §7.2 — moved from apps/sign-web/src/workspace/pdf.ts, shared by the Sign
+// prepare editor and the Platform Studio's fixed-form mode. One change: the worker URL import
+// is now lazy, loaded with the renderer.
+//
 // PX-V1 §8 — the prepare editor places fields over the RENDERED source PDF
 // (pdfjs-dist). Loaded lazily so the console shell, lists and tests never pull
 // the renderer; only the editor and preview do.
@@ -26,8 +26,11 @@ let pdfjsPromise: Promise<PdfjsModule> | null = null;
 async function pdfjs(): Promise<PdfjsModule> {
   if (pdfjsPromise === null) {
     pdfjsPromise = (async () => {
-      const mod = await import('pdfjs-dist');
-      mod.GlobalWorkerOptions.workerSrc = workerUrl;
+      // The worker is referenced as a URL string only (Vite `?url`). Imported lazily with the
+      // renderer (TEMPLATE-PRODUCT-1 §7.2: in the shared lib, a module that only imports the
+      // geometry or the Studio never resolves the worker asset — e.g. under vitest).
+      const [mod, worker] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')]);
+      mod.GlobalWorkerOptions.workerSrc = worker.default;
       return mod;
     })();
   }

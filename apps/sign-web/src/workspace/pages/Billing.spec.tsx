@@ -13,7 +13,7 @@ import { BillingPanel, checkoutReturn } from './Billing';
 // the backend); prices are never shown by Aramo. Journey A: an org admin with no
 // Sign role yet gets the setup page instead of a dead end.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const GiB = 1024 ** 3;
 // `available` mirrors the backend availability registry: only envelopes,

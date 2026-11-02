@@ -44,6 +44,7 @@ import {
   TemplatePreviewRequiredError,
   TemplateInUseError,
   TemplateProductRequiredError,
+  TemplateSelectionInvalidError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -299,6 +300,10 @@ export class DocumentTemplatesController {
         ...(transform !== undefined ? { transform } : {}),
       });
     } catch (e) {
+      // TEMPLATE-PRODUCT-1 §7.3 — a fixed form is never adopted (422, details.reason).
+      if (e instanceof TemplateSelectionInvalidError && e.reason === 'fixed_form_not_adoptable') {
+        throw new AramoError('VALIDATION_ERROR', 'An Aramo form is used as it is: it cannot be adopted', 422, { requestId, details: { reason: e.reason } });
+      }
       throw toHttp(e, requestId);
     }
     await this.governance(

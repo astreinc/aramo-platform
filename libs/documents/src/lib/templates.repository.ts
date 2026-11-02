@@ -32,7 +32,7 @@ function stableStringify(value: unknown): string {
 // removing a TemplateFieldDefinition re-arms the preview gate like a content edit. A
 // version with NO field definitions hashes exactly as before (field_schema only), so
 // every existing rtr-generated-v1 / rtr-html-v1 fingerprint is unchanged.
-interface FingerprintField {
+export interface FingerprintField {
   field_key: string;
   field_type: string;
   binding_key: string | null;
@@ -46,7 +46,8 @@ interface FingerprintField {
   signer_role: string | null;
   ordinal: number;
 }
-function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
+// TEMPLATE-PRODUCT-1 TP-6 — exported (unchanged) so the fixed-form repository re-arms the same gate.
+export function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
   if (fields.length === 0) return createHash('sha256').update(stableStringify(field_schema ?? null)).digest('hex');
   const field_definitions = [...fields]
     .sort((a, b) => a.ordinal - b.ordinal || (a.field_key < b.field_key ? -1 : a.field_key > b.field_key ? 1 : 0))
@@ -422,6 +423,9 @@ export class TemplatesRepository {
       where: { id: input.library_template_id, owner_scope: 'PLATFORM', tenant_id: null },
     });
     if (source === null) throw new TemplateNotFoundError(input.library_template_id);
+    // TEMPLATE-PRODUCT-1 §7.3 — a fixed legal form is never adopted (it is shown read-only).
+    const sourceType = await this.prisma.documentType.findFirst({ where: { id: source.document_type_id }, select: { template_kind: true } });
+    if (sourceType?.template_kind === 'FIXED_FORM') throw new TemplateSelectionInvalidError(input.library_template_id, 'fixed_form_not_adoptable');
     const now = new Date();
     if (
       source.status !== 'ACTIVE' ||

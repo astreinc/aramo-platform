@@ -28,6 +28,8 @@ import { type RtrTemplateBindingService } from '../rtr/rtr-template-binding.serv
 import { captureTenantLetterhead, loadLetterhead } from '../rtr/rtr-template-letterhead.js';
 import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
 
+import { type SignFixedFormsService } from './sign-fixed-forms.service.js';
+
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7 (ADR-0034 D6, D7, D8,
 // D12; Conforming Amendment #9). The Documents side of "start an Aramo Sign envelope from a
 // template". Called ONLY by sign-service over the signed service-to-service channel
@@ -90,6 +92,8 @@ export interface SignTemplateLibraryDeps {
   tenants: TenantRepository;
   caps?: TemplateCapabilitiesPort;
   tenantLogo?: TemplateTenantLogoPort;
+  // TEMPLATE-PRODUCT-1 §7.4 — Aramo fixed forms tagged `sign` (their own PDF path).
+  fixedForms?: SignFixedFormsService;
 }
 
 @Injectable()
@@ -124,6 +128,8 @@ export class SignTemplateLibraryService {
       // reported, never silently swapped (ADR-0034 D10).
       if (usable.length === 0 && autoError !== null) unavailable.push({ document_type_id: type.id, reason: autoError });
     }
+    // TEMPLATE-PRODUCT-1 §7.4 — the visible Aramo fixed forms tagged `sign` (TP-4 seam).
+    if (this.d.fixedForms !== undefined) items.push(...(await this.d.fixedForms.list(input.tenant_id)));
     return { items, unavailable };
   }
 
@@ -134,6 +140,7 @@ export class SignTemplateLibraryService {
     requestId: string;
   }): Promise<SignTemplatePreviewResponse> {
     await this.assertTenant(input.tenant_id, input.requestId);
+    if (await this.isFixedForm(input.template_id)) return this.d.fixedForms!.preview(input);
     const { resolved, type } = await this.resolveTemplate(input.tenant_id, input.template_id, null, input.requestId);
     const variables = await this.variables(input.tenant_id, type.id, resolved, input.requestId);
     const sender = this.senderValues(variables, input.values, input.requestId);
@@ -180,6 +187,8 @@ export class SignTemplateLibraryService {
   }): Promise<SignTemplateRenderResponse> {
     const { requestId } = input;
     await this.assertTenant(input.tenant_id, requestId);
+    // TEMPLATE-PRODUCT-1 §7.4 — "Use" an Aramo fixed form: the stored PDF, frozen and pinned.
+    if (await this.isFixedForm(input.template_id)) return this.d.fixedForms!.render(input);
     const key = `sign-template-render:${input.idempotency_key}`;
     const request_hash = DocumentIdempotencyService.hashRequest({
       template_id: input.template_id,
@@ -369,8 +378,8 @@ export class SignTemplateLibraryService {
 
   // TEMPLATE-PRODUCT-1 §5.4 — the configured EDITABLE types tagged `sign` (each confirmed by
   // the capability port, so no type renders without its content capability).
-  // SEAM (TP-6, §7.4): fixed forms tagged `sign` are added here from
-  // listConfiguredTemplateTypes('FIXED_FORM', 'sign') with their own (PDF) render path.
+  // §7.4 (TP-6): fixed forms tagged `sign` take their own (PDF) path — SignFixedFormsService
+  // lists them, and preview / render delegate to it (isFixedForm) before this editable path.
   private async renderableTypes(): Promise<Array<{ id: string; key: string; name: string }>> {
     const caps = this.d.caps;
     if (caps === undefined) return [];
@@ -379,6 +388,11 @@ export class SignTemplateLibraryService {
       if (await caps.isConfigurable(t.id)) out.push({ id: t.id, key: t.key, name: t.name });
     }
     return out;
+  }
+
+  // TEMPLATE-PRODUCT-1 §7.4 — an Aramo fixed form (only with the fixed-form path wired).
+  private async isFixedForm(template_id: string): Promise<boolean> {
+    return this.d.fixedForms !== undefined && UUID_RE.test(template_id) && (await this.d.fixedForms.handles(template_id));
   }
 
   // Unknown tenant ⇒ 404: a Document is never written for a tenant that does not exist.

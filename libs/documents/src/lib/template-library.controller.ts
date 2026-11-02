@@ -138,13 +138,18 @@ export class DocumentTemplateLibraryController {
   async library(@AuthContext() auth: AuthContextType) {
     const now = new Date();
     const entitled = await this.entitled(auth.tenant_id);
+    const systemTypes = await this.repo.listSystemDocumentTypes();
+    // TEMPLATE-PRODUCT-1 §7.3 — an Aramo fixed form is never adopted, so it is not a gallery
+    // item: it is listed read-only under Our templates (GET library/fixed-forms, apps/api).
+    const fixedFormTypes = new Set(systemTypes.filter((d) => d.template_kind === 'FIXED_FORM').map((d) => d.id));
     const rows = (await this.repo.listTemplatesForTenantIncludingPlatform(auth.tenant_id)).filter((t) =>
       t.owner_scope === 'PLATFORM'
         ? t.tenant_id === null &&
           t.status === 'ACTIVE' &&
           t.current_version_id !== null &&
           (t.withdraw_effective_at === null || t.withdraw_effective_at > now) &&
-          visibleToTenant(t.products, entitled)
+          visibleToTenant(t.products, entitled) &&
+          !fixedFormTypes.has(t.document_type_id)
         : t.tenant_id === auth.tenant_id,
     );
     const versions = await this.repo.listVersionSummariesOwnerAware(
@@ -152,7 +157,6 @@ export class DocumentTemplateLibraryController {
       rows.map((t) => t.current_version_id).filter((id): id is string => id !== null),
     );
     const byId = new Map(versions.map((v) => [v.id, v]));
-    const systemTypes = await this.repo.listSystemDocumentTypes();
     // TEMPLATE-PRODUCT-1 §5.1 — configurability is data (one read per distinct type).
     const configurable = await this.configurableTypes([...rows.map((t) => t.document_type_id), ...systemTypes.map((d) => d.id)]);
     const items: TemplateLibraryItem[] = rows.map((t) => {

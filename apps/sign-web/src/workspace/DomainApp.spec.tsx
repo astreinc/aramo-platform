@@ -10,7 +10,7 @@ import { App } from './App';
 // Sign role yet, so Settings is out of reach), and the public /domain-verification
 // route for the IT administrator (no session needed).
 
-vi.mock('./pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const session = (scopes: string[]) => ({ sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes, iat: 0, exp: 9_999_999_999 });

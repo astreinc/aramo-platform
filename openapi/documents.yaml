@@ -343,6 +343,100 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/document-templates/library/fixed-forms:
+    get:
+      operationId: listTenantFixedForms
+      summary: The Aramo fixed forms the organization sees (TEMPLATE-PRODUCT-1 §7.3).
+      description: |
+        Every published Aramo fixed form tagged with a product the tenant is entitled to, shown
+        in Our templates as "Aramo form · read-only" (a fixed form is never adopted). `hidden`
+        is the tenant's Hide / Show choice (default shown). Requires `document_template:read`.
+      responses:
+        '200':
+          description: The forms (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantFixedFormList'
+  /v1/document-templates/library/fixed-forms/{id}:
+    get:
+      operationId: getTenantFixedForm
+      summary: One Aramo fixed form, read-only (pages, signer roles, placed fields).
+      description: |
+        TEMPLATE-PRODUCT-1 §7.3. A form that is not published or not tagged with a product the
+        tenant is entitled to → 404. Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The form.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantFixedFormDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/library/fixed-forms/{id}/pdf:
+    get:
+      operationId: getTenantFixedFormPdf
+      summary: The official PDF of an Aramo fixed form (base64), for the read-only preview.
+      description: |
+        TEMPLATE-PRODUCT-1 §7.3. The stored bytes, checked against their recorded sha256.
+        Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The PDF.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantFixedFormPdf'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/library/fixed-forms/{id}/hide:
+    post:
+      operationId: hideTenantFixedForm
+      summary: Hide an Aramo fixed form the organization does not use (TEMPLATE-PRODUCT-1 §7.3).
+      description: |
+        A hidden form is not offered in Aramo Sign. Audited (`identity.document_template.fixed_form_hidden`).
+        Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The form with its new state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantFixedForm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/library/fixed-forms/{id}/show:
+    post:
+      operationId: showTenantFixedForm
+      summary: Show a hidden Aramo fixed form again (TEMPLATE-PRODUCT-1 §7.3).
+      description: |
+        Audited (`identity.document_template.fixed_form_shown`). Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The form with its new state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantFixedForm'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/document-templates/selections:
     get:
       operationId: listDocumentTemplateSelections
@@ -1828,6 +1922,92 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    # TEMPLATE-PRODUCT-1 §7.3 — Aramo fixed legal forms, tenant read-only.
+    TenantFixedForm:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, document_type, products, version_id, version_number, updated_at, withdraw_effective_at, page_count, hidden]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        document_type:
+          type: object
+          additionalProperties: false
+          required: [id, key, name, category]
+          properties:
+            id: { type: string, format: uuid }
+            key: { type: string }
+            name: { type: string }
+            category: { type: [string, 'null'] }
+        products:
+          type: array
+          items: { type: string, enum: [ats, sign] }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        updated_at: { type: string, format: date-time }
+        withdraw_effective_at: { type: [string, 'null'], format: date-time }
+        page_count: { type: integer }
+        hidden: { type: boolean }
+    TenantFixedFormList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantFixedForm'
+    TenantFixedFormDetail:
+      allOf:
+        - $ref: '#/components/schemas/TenantFixedForm'
+        - type: object
+          required: [title, pages, signing, fields, variables]
+          properties:
+            title: { type: string }
+            pages:
+              type: array
+              items:
+                type: object
+                required: [width, height]
+                properties:
+                  width: { type: number }
+                  height: { type: number }
+            signing:
+              $ref: '#/components/schemas/SignTemplateSigning'
+            fields:
+              type: array
+              items:
+                type: object
+                required: [field_key, field_type, binding_key, signer_role, required, page_number, x, y, width, height, ordinal]
+                properties:
+                  field_key: { type: string }
+                  field_type: { type: string }
+                  binding_key: { type: [string, 'null'] }
+                  signer_role: { type: [string, 'null'] }
+                  required: { type: boolean }
+                  page_number: { type: [integer, 'null'] }
+                  x: { type: [number, 'null'] }
+                  y: { type: [number, 'null'] }
+                  width: { type: [number, 'null'] }
+                  height: { type: [number, 'null'] }
+                  ordinal: { type: integer }
+            variables:
+              type: array
+              items:
+                type: object
+                required: [key, label]
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+    TenantFixedFormPdf:
+      type: object
+      additionalProperties: false
+      required: [sha256, byte_size, content_base64]
+      properties:
+        sha256: { type: string }
+        byte_size: { type: integer }
+        content_base64: { type: string }
     ErrorResponse:
       type: object
       description: The canonical Aramo error envelope.
@@ -2857,6 +3037,10 @@ components:
         routing_mode:
           type: string
           enum: [PARALLEL, SEQUENTIAL]
+        template_kind:
+          type: string
+          enum: [EDITABLE, FIXED_FORM]
+          description: TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM marks an Aramo fixed form (official PDF, fields by role); absent for an editable template.
         signing:
           description: The template's signing roles; null for a template without them.
           oneOf:
@@ -2919,6 +3103,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SignTemplateVariable'
+        template_kind:
+          type: string
+          enum: [EDITABLE, FIXED_FORM]
+          description: TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM marks an Aramo fixed form (official PDF, fields by role); absent for an editable template.
         signing:
           oneOf:
             - $ref: '#/components/schemas/SignTemplateSigning'
@@ -2984,6 +3172,10 @@ components:
               y: { type: [number, 'null'] }
               width: { type: [number, 'null'] }
               height: { type: [number, 'null'] }
+        template_kind:
+          type: string
+          enum: [EDITABLE, FIXED_FORM]
+          description: TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM marks an Aramo fixed form (official PDF, fields by role); absent for an editable template.
         signing:
           oneOf:
             - $ref: '#/components/schemas/SignTemplateSigning'

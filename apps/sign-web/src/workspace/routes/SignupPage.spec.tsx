@@ -11,7 +11,7 @@ import { tokenFromHash } from './SignupPage';
 // fragment and drop it from the address bar, collect the A1 details in the
 // activation steps and send them as ONE `complete`, recover from a taken name.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const TOKEN = 'a'.repeat(43);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
