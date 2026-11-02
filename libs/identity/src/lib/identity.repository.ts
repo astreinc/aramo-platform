@@ -10,6 +10,7 @@ import type { InvitationDto } from './dto/invitation.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { assertPersonalSeatFreeTx, personalTenantSeatTaken } from './tenant-user/personal-single-user.js';
 import { rethrowTenantLastOwner } from './util/tenant-last-owner.js';
 
 // Repository for User / ExternalIdentity reads + (AUTHZ-2) the FIRST
@@ -505,6 +506,8 @@ export class IdentityRepository {
     const membership_role_ids = args.role_ids.map(() => uuidv7());
 
     return this.prisma.$transaction(async (tx) => {
+      // Sign Personal is single-user: authoritative backstop (locks the tenant row).
+      await assertPersonalSeatFreeTx(tx, args.tenant_id);
       const user = await tx.user.create({
         data: {
           id: args.user_id,
@@ -565,6 +568,12 @@ export class IdentityRepository {
   // membership atomically; the static guard spec
   // (ic1-user-create-sites.spec.ts) pins those as the only runtime sites.
 
+  // Sign Personal is single-user — the early (pre-Cognito) read; the transactions above
+  // and below re-check under a row lock.
+  async personalTenantSeatTaken(tenant_id: string): Promise<boolean> {
+    return personalTenantSeatTaken(this.prisma, tenant_id);
+  }
+
   // IC-1 PR-1 — the ownership read behind the cross-tenant invite guard: EVERY
   // membership tenant for a user, regardless of is_active / invite_status
   // (a disabled or still-INVITED membership still establishes which tenant
@@ -607,6 +616,8 @@ export class IdentityRepository {
     const membership_role_ids = args.role_ids.map(() => uuidv7());
 
     return this.prisma.$transaction(async (tx) => {
+      // Sign Personal is single-user: authoritative backstop (locks the tenant row).
+      await assertPersonalSeatFreeTx(tx, args.tenant_id);
       const user = await tx.user.create({
         data: {
           id: args.user_id,

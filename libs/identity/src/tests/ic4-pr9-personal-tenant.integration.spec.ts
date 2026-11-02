@@ -14,6 +14,7 @@ import { InMemoryScopeCache } from '../lib/authorization/in-memory-scope-cache.j
 import { ProductAvailabilityService } from '../lib/authorization/product-availability.service.js';
 import { ESIGN_SENDER_SCOPE_KEY, ORG_ADMIN_SCOPE_KEYS } from '../lib/dto/role.dto.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
+import { PersonalTenantSeatTakenError } from '../lib/tenant-user/personal-single-user.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleRepository } from '../lib/role.repository.js';
@@ -158,6 +159,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
     })).rejects.toMatchObject({ code: 'EMAIL_UNAVAILABLE', statusCode: 409, context: { details: {} } });
     await expect(prisma.user.create({ data: { id: nextId(), email: PERSONAL_EMAIL, tenant_id: other.id } })).rejects.toThrow(/Unique constraint|User_email_key/);
     expect(await prisma.user.count({ where: { email: PERSONAL_EMAIL } })).toBe(1);
+  });
+
+  // Sign Personal is single-user (PO 2026-11-02): the owner holds the only seat. The service
+  // refuses a second member; the repository's locked in-transaction re-check refuses it even
+  // when the service is bypassed, and serializes two concurrent first writes. BUSINESS is untouched.
+  it('#3b — Sign Personal single-user: a second member is refused (service 400, repository backstop, concurrency); BUSINESS unaffected', async () => {
+    await expect(identitySvc.createInvitedUserNoSub({
+      email: 'second.person@gmail.com', display_name: null, tenant_id: personalTenantId,
+      role_keys: ['tenant_admin'], role_ids: [SEED_IDS.roles.tenant_admin], actor_user_id: personalUserId, request_id: 'rq-pr9-3b',
+      owner_role_authority: { actor_user_id: personalUserId },
+    })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'personal_single_user' } } });
+    await expect(identityRepo.createUserWithMembership({
+      user_id: nextId(), email: 'bypass.person@gmail.com', display_name: null, tenant_id: personalTenantId, role_ids: [],
+    })).rejects.toBeInstanceOf(PersonalTenantSeatTakenError);
+    expect(await prisma.userTenantMembership.count({ where: { tenant_id: personalTenantId } })).toBe(1);
+    expect(await prisma.user.count({ where: { email: { in: ['second.person@gmail.com', 'bypass.person@gmail.com'] } } })).toBe(0);
+
+    // Two concurrent first writes into an empty PERSONAL tenant: exactly one wins.
+    const fresh = await tenantSvc.provisionTenant({ name: 'Solo Person', owner_email: 'solo.person@gmail.com', actor_user_id: ACTOR, kind: 'PERSONAL' });
+    const results = await Promise.allSettled([
+      identityRepo.createUserWithMembership({ user_id: nextId(), email: 'solo.a@gmail.com', display_name: null, tenant_id: fresh.id, role_ids: [] }),
+      identityRepo.createUserWithMembership({ user_id: nextId(), email: 'solo.b@gmail.com', display_name: null, tenant_id: fresh.id, role_ids: [] }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(PersonalTenantSeatTakenError);
+    expect(await prisma.userTenantMembership.count({ where: { tenant_id: fresh.id } })).toBe(1);
+
+    // BUSINESS: any number of members.
+    const business = await tenantSvc.provisionTenant({ name: 'Team Corp', owner_email: 'owner@team-corp.example', actor_user_id: ACTOR });
+    for (const email of ['a@team-corp.example', 'b@team-corp.example']) {
+      await identityRepo.createUserWithMembership({ user_id: nextId(), email, display_name: null, tenant_id: business.id, role_ids: [] });
+    }
+    expect(await prisma.userTenantMembership.count({ where: { tenant_id: business.id } })).toBe(2);
   });
 
   // ROLES-1 PR-2 (§3.1/§3.2) — the organization roles hold the Sign scopes statically
