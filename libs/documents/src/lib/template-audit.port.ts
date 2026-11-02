@@ -70,7 +70,16 @@ export interface TemplateDocumentTypeAudit {
 // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped. Written
 // through the same non-swallowing seam AFTER the state change succeeds (the change is
 // already committed; a failed write surfaces as an error to the caller, never silently).
-export type TemplateGovernanceAction = 'adopted' | 'created' | 'version_activated' | 'selection_set' | 'selection_cleared';
+// TEMPLATE-PRODUCT-1 §7.3 — + fixed_form_hidden / fixed_form_shown (a tenant hid or showed an
+// Aramo fixed form; subject = the template).
+export type TemplateGovernanceAction =
+  | 'adopted'
+  | 'created'
+  | 'version_activated'
+  | 'selection_set'
+  | 'selection_cleared'
+  | 'fixed_form_hidden'
+  | 'fixed_form_shown';
 export interface TemplateGovernanceAudit {
   readonly action: TemplateGovernanceAction;
   readonly tenant_id: string;

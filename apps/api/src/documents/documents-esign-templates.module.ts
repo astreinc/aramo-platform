@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import {
   DocumentIdempotencyService,
   DocumentsRepository,
+  FixedFormsRepository,
   PrismaService as DocumentsPrismaService,
   RenderService,
   TEMPLATE_CAPABILITIES,
   TEMPLATE_TENANT_LOGO,
+  TemplateVariablesRepository,
   TemplatesRepository,
   type DocumentStoragePort,
   type TemplateCapabilitiesPort,
@@ -25,6 +27,8 @@ import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service
 import { AramoS3DocumentStorageAdapter } from './aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignTemplatesController } from './documents-esign-templates.controller.js';
 import { SignTemplateLibraryService } from './sign-template-library.service.js';
+import { FixedFormService } from './fixed-form.service.js';
+import { SignFixedFormsService } from './sign-fixed-forms.service.js';
 
 // DOC-TEMPLATE-LIB-1 T-5 (§7) — the Aramo Sign template-library seam module. SELF-CONTAINED
 // like DocumentsEsignModule / RtrModule: its own documents Prisma, storage, rendering,
@@ -68,15 +72,29 @@ const T5_TEMPLATES = 'DOCLIB_T5_TEMPLATES_REPO';
       ): SignTemplateLibraryService => {
         const idempotency = new DocumentIdempotencyService(prisma);
         const rendering: DocumentRenderingPort = new PdfLibDocumentRenderingAdapter();
+        const documents = new DocumentsRepository(prisma, idempotency);
+        const binding = new RtrTemplateBindingService(talent, requisitions, companies, tenants, identity);
+        // TEMPLATE-PRODUCT-1 §7.4 — Aramo fixed forms tagged `sign` (own PDF path).
+        const forms = new FixedFormsRepository(prisma);
+        const fixedForms = new SignFixedFormsService({
+          forms,
+          service: new FixedFormService(forms, templates, new TemplateVariablesRepository(prisma), storage),
+          templates,
+          documents,
+          idempotency,
+          storage,
+          organizationValues: (tenant_id) => binding.organizationValues(tenant_id),
+        });
         return new SignTemplateLibraryService({
           templates,
-          documents: new DocumentsRepository(prisma, idempotency),
+          documents,
           render: new RenderService(prisma, rendering, storage),
           idempotency,
           storage,
           resolver: new RtrTemplateResolverService(templates),
-          binding: new RtrTemplateBindingService(talent, requisitions, companies, tenants, identity),
+          binding,
           tenants,
+          fixedForms,
           ...(caps !== undefined && caps !== null ? { caps } : {}),
           ...(tenantLogo !== undefined && tenantLogo !== null ? { tenantLogo } : {}),
         });

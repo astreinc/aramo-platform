@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 86 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -26,6 +26,7 @@
     "@aramo/conversation-intelligence": "./libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
     "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
+    "@aramo/document-templates-web/pdf": "./libs/document-templates-web/src/pdf/index.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -689,6 +690,12 @@
       "DocIconSmall",
       "DocTemplateRoutesProvider",
       "EyeIcon",
+      "FIXED_FORM_FIELD_TYPES",
+      "FIXED_FORM_MAX_BYTES",
+      "FIXED_FORM_SCHEMA_V1",
+      "FixedFormCanvas",
+      "FixedFormPreview",
+      "FixedFormStudio",
       "GALLERY_STUDIO_READ_ONLY",
       "LETTERHEAD_SAVE_BLOCKED",
       "LETTERHEAD_STUDIO_CONTENT_CODEC",
@@ -723,7 +730,9 @@
       "addRole",
       "adoptTemplate",
       "appendStudioVariable",
+      "base64ToBytes",
       "bindingMapFrom",
+      "bytesToBase64",
       "canApproveTemplates",
       "canAuthorTemplates",
       "canReadTemplates",
@@ -736,12 +745,15 @@
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
+      "fixedFormFieldLabel",
       "fmtDate",
       "galleryContentFromSample",
       "galleryDefaultOf",
       "galleryStudioCopy",
       "galleryStudioDataSource",
       "getDocumentTemplate",
+      "getFixedForm",
+      "getFixedFormPdf",
       "getTemplateVersion",
       "htmlOf",
       "isCanonicalStudioHtml",
@@ -749,9 +761,11 @@
       "isStudioValueEmpty",
       "isTemplateProductKey",
       "listDocumentTemplates",
+      "listFixedForms",
       "listTemplateSelections",
       "listTemplateVersions",
       "makeStudioChip",
+      "nextFieldKey",
       "orderedProducts",
       "organizationReadinessLabel",
       "organizationStudioCopy",
@@ -763,7 +777,9 @@
       "renderStudioBlockDom",
       "resolveUserNames",
       "roleKeyFor",
+      "roleKeyFromLabel",
       "serializeStudioBlockDom",
+      "setFixedFormHidden",
       "setTemplateSelection",
       "signerRolesOf",
       "studioActiveMarks",
@@ -788,6 +804,7 @@
       "useDocTemplateRoutes",
       "variableToken"
     ],
+    "@aramo/document-templates-web/pdf": ["clampBox", "loadPdf", "toPdf", "toTopLeft"],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_EXECUTION_MODES",
@@ -812,7 +829,15 @@
       "DocumentsModule",
       "DocumentsRepository",
       "ExecutedArtifactHashMismatchError",
+      "FIXED_FORM_FIELD_TYPES",
+      "FIXED_FORM_MAX_BYTES",
+      "FIXED_FORM_MAX_FIELDS",
+      "FIXED_FORM_MIME",
+      "FIXED_FORM_MIN_FIELD_SIZE",
+      "FIXED_FORM_SCHEMA_V1",
+      "FixedFormsRepository",
       "OFFER_LETTER_TYPE_ID",
+      "PLATFORM_TEMPLATE_ASSET_PREFIX",
       "PlatformDocumentTypesRepository",
       "PrismaService",
       "RIGHT_TO_REPRESENT_TYPE_ID",
@@ -838,6 +863,10 @@
       "TemplateVersionNotFoundError",
       "TemplatesRepository",
       "documentTypeKeyFromName",
+      "emptyFixedFormContent",
+      "fixedFormIssues",
+      "fixedFormPdfOf",
+      "isFixedFormFieldType",
       "isSystemLockedType",
       "isTemplateProductKey",
       "templateErrorToHttp"
@@ -3841,6 +3870,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6434,6 +6469,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6894,6 +6947,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/template-product-1-tp3-document-types.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp6-fixed-forms.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
       },
@@ -9112,6 +9171,12 @@
       { "project": "aramo-platform-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/AramoFormsSection.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
@@ -9124,6 +9189,7 @@
       },
       { "project": "org-admin-web", "status": "production" }
     ],
+    "@aramo/document-templates-web/pdf": [],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9295,6 +9361,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9383,6 +9467,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10815,6 +10911,12 @@
       { "project": "document-templates-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/AramoFormsSection.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
@@ -12155,6 +12257,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

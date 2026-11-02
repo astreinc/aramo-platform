@@ -88,8 +88,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
   // TEMPLATE-PRODUCT-1 §3.3: +2 GLOBAL document_template.platform_draft_discarded/_template_deleted (83 -> 85).
   // TEMPLATE-PRODUCT-1 §4.3: +4 GLOBAL document_type.created/updated/retired/deleted (85 -> 89).
-  it('EVENT_TYPES contains 89 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(89);
+  // TEMPLATE-PRODUCT-1 §7.3: +2 tenant-scoped document_template.fixed_form_hidden/_shown (89 -> 91).
+  it('EVENT_TYPES contains 91 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes + 2 TEMPLATE-PRODUCT-1 fixed-form hide/show; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(91);
     // Sign Feature-Parity §1.21 — the custom Sign role events are tenant-scoped.
     for (const t of [
       'identity.sign_custom_role.created',
@@ -237,7 +238,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.sign_custom_role.assigned',
       'identity.sign_custom_role.unassigned',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(74); // Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(76); // TEMPLATE-PRODUCT-1 §7.3 +2 fixed_form_hidden/_shown; Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

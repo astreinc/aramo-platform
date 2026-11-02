@@ -12,7 +12,7 @@ import type { SenderContext } from '../api';
 // tenant — sees "Your organization manages this account…" and Privacy requests, never a
 // self-service delete.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read'], iat: 0, exp: 9_999_999_999 };
 const PERSONAL: SenderContext = {

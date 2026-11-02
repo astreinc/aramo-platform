@@ -130,6 +130,8 @@ import { SkillGovernanceModule } from './skill-governance/skill-governance.modul
 import { MatchingPolicyModule } from './matching-policy/matching-policy.module.js';
 // DOC-TEMPLATE-LIB-1 T-2 — platform-tier Aramo default templates + variable catalog.
 import { PlatformDocumentTemplatesModule } from './document-templates-platform/platform-document-templates.module.js';
+// TEMPLATE-PRODUCT-1 §7 — Aramo fixed legal forms (platform authoring + tenant read-only).
+import { FixedFormsModule } from './documents/fixed-forms.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -600,6 +602,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     TemplateCapabilitiesModule,
     // DOC-TEMPLATE-LIB-1 T-2 — /platform/document-templates + /platform/template-variables.
     PlatformDocumentTemplatesModule,
+    FixedFormsModule,
     RtrQualifiedTransitionGuardModule,
     EvidenceReferenceVerifierModule,
     // Lane2-DDR §0/§6 — @Global TALENT_RECORD_EXISTENCE_READER for the Pipeline Add-Talent

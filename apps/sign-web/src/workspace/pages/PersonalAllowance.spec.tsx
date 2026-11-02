@@ -12,7 +12,7 @@ import { AllowanceChip, PersonalAllowance } from './PersonalAllowance';
 // day, 5 a month) and words every Personal send refusal clearly; a limit offers
 // the Business route, never a charge.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send'], iat: 0, exp: 9_999_999_999 };
 

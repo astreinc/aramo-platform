@@ -9,7 +9,7 @@ import { REPORT_REASONS, reportTokenFromHash } from './ReportPage';
 // Aramo Sign Personal §6.4 — "Report this email": no sign-in, token from the URL
 // fragment (dropped from the address bar), a reason, an optional note.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const TOKEN = 'r'.repeat(40);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

@@ -40,7 +40,7 @@ vi.mock('../workspace', () => ({
     toast,
   }),
 }));
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 import { EnvelopeDetail } from './EnvelopeDetail';
 

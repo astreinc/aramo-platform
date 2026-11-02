@@ -7,7 +7,8 @@
     "types": ["node", "vitest/globals", "vite/client", "@testing-library/jest-dom"],
     "noEmit": true,
     "paths": {
-      "@aramo/fe-foundation": ["../../libs/fe-foundation/src/index.ts"]
+      "@aramo/fe-foundation": ["../../libs/fe-foundation/src/index.ts"],
+      "@aramo/document-templates-web/pdf": ["../../libs/document-templates-web/src/pdf/index.ts"]
     }
   },
   "include": ["src/**/*.spec.ts", "src/**/*.spec.tsx", "src/test-setup.ts"]

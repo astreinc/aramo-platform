@@ -26,6 +26,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
+      // TEMPLATE-PRODUCT-1 §7.2 — the shared PDF geometry/rendering helpers (prepare editor).
+      // The SUBPATH only (not the Studio package root); keep it before any root alias.
+      '@aramo/document-templates-web/pdf': resolve(root, '../../libs/document-templates-web/src/pdf/index.ts'),
     },
   },
   server: {

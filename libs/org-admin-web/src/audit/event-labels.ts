@@ -68,6 +68,9 @@ export const EVENT_TYPE_OPTIONS: readonly EventTypeOption[] = [
   { value: 'identity.document_template.version_activated', label: 'Template approved' },
   { value: 'identity.document_template.selection_set', label: 'Active template chosen' },
   { value: 'identity.document_template.selection_cleared', label: 'Active template choice cleared' },
+  // TEMPLATE-PRODUCT-1 §7.3 — Aramo fixed form Hide / Show.
+  { value: 'identity.document_template.fixed_form_hidden', label: 'Aramo form hidden' },
+  { value: 'identity.document_template.fixed_form_shown', label: 'Aramo form shown' },
 ];
 
 const LABEL_BY_VALUE = new Map(EVENT_TYPE_OPTIONS.map((o) => [o.value, o.label]));

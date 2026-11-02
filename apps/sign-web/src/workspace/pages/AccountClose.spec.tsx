@@ -13,7 +13,7 @@ import { AccountClosedPage, CloseAccountSection } from './AccountClose';
 // an open Personal account (backend-decided), confirmed by typing CLOSE, then the
 // user is signed out to "Your account is closed"; a closed account opens on that notice.
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read'], iat: 0, exp: 9_999_999_999 };
 

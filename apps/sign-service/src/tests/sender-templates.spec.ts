@@ -459,3 +459,59 @@ describe('from-template — multi-role binding (M-A6 §3.5)', () => {
     expect(h.repo.createDraft).not.toHaveBeenCalled();
   });
 });
+
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.4 — "Use" an Aramo fixed form: the
+// frozen official PDF plus its placed fields mapped to recipients by role. A fixed form has no
+// drawn signature block, so a field that cannot be placed — or a signing role with no field — is
+// refused BEFORE the envelope is created (never silently dropped).
+describe('from-template — Aramo fixed form (TEMPLATE-PRODUCT-1 §7.4)', () => {
+  const a = auth(SENDER_SCOPES);
+  const recipients = [
+    { role_key: 'agency', name: 'Agency Rep', email: 'agency@x.test' },
+    { role_key: 'client', name: 'Client Signer', email: 'client@x.test' },
+  ];
+  const def = (field_key: string, field_type: string, signer_role: string | null, over: Record<string, unknown> = {}) => ({
+    field_key,
+    field_type,
+    signer_role,
+    required: true,
+    page_number: 0,
+    x: 72,
+    y: 72,
+    width: 160,
+    height: 24,
+    ...over,
+  });
+  const FIXED: SignTemplateRenderResponse = {
+    ...RENDERED_ROLES,
+    signature_fields: [],
+    field_definitions: [def('client_sig', 'SIGNATURE', 'client'), def('client_date', 'SIGN_DATE', 'client'), def('agency_sig', 'SIGNATURE', 'agency'), def('agency_box', 'CHECKBOX', 'agency', { required: false })],
+    template_kind: 'FIXED_FORM',
+  };
+
+  it('maps every placed field to its role recipient (no drawn block)', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce(FIXED);
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r');
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+    expect(bind.fields.map((f) => `${f['role_key']}:${f['field_type']}:${f['required']}`)).toEqual([
+      'client:SIGNATURE:true',
+      'client:SIGN_DATE:true',
+      'agency:SIGNATURE:true',
+      'agency:CHECKBOX:false',
+    ]);
+  });
+
+  it('refuses an unplaceable field or a signing role without a field before the envelope exists', async () => {
+    for (const [defs, reason] of [
+      [[...FIXED.field_definitions, def('loose', 'TEXT', 'client', { page_number: null })], 'fixed_form_field_unplaceable'],
+      [[...FIXED.field_definitions, def('img', 'IMAGE', 'client')], 'fixed_form_field_unplaceable'],
+      [FIXED.field_definitions.filter((d) => d.signer_role !== 'agency'), 'fixed_form_role_without_field'],
+    ] as const) {
+      const h = harness({ registry: AVAILABLE, roles: true });
+      (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...FIXED, field_definitions: defs });
+      await expect(h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r')).rejects.toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', context: { details: { reason } } });
+      expect(h.repo.createDraft).not.toHaveBeenCalled();
+    }
+  });
+});

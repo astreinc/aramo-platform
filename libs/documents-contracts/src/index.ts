@@ -44,5 +44,6 @@ export {
   type SignTemplateRoleKind,
   type SignTemplateRoutingMode,
   type SignTemplateSigning,
+  type SignTemplateKind,
   signTemplateBodyDigest,
 } from './lib/sign-template-library.contract.js';

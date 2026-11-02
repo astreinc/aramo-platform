@@ -160,3 +160,27 @@ export {
   type RetentionInput,
   type LegalHoldInput,
 } from './lib/storage/document-storage.port.js';
+// TEMPLATE-PRODUCT-1 §7 — fixed legal forms (platform PDF store, placed fields, tenant
+// visibility, Sign use).
+export {
+  FIXED_FORM_SCHEMA_V1,
+  FIXED_FORM_MAX_BYTES,
+  FIXED_FORM_MIME,
+  FIXED_FORM_FIELD_TYPES,
+  FIXED_FORM_MAX_FIELDS,
+  FIXED_FORM_MIN_FIELD_SIZE,
+  PLATFORM_TEMPLATE_ASSET_PREFIX,
+  emptyFixedFormContent,
+  fixedFormIssues,
+  fixedFormPdfOf,
+  isFixedFormFieldType,
+  type FixedFormContent,
+  type FixedFormField,
+  type FixedFormFieldType,
+  type FixedFormIssue,
+  type FixedFormPage,
+  type FixedFormPdfRef,
+  type FixedFormRole,
+  type FixedFormSigning,
+} from './lib/fixed-forms.js';
+export { FixedFormsRepository, type FixedFormTypeRow, type PublishedFixedForm } from './lib/fixed-forms.repository.js';

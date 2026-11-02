@@ -4726,6 +4726,278 @@ paths:
         '422':
           $ref: '#/components/responses/PlatformTemplateContentRejected'
 
+  /platform/document-templates/{id}/fixed-form/draft:
+    post:
+      operationId: createPlatformFixedFormDraft
+      tags: [Platform Document Templates]
+      summary: Open a DRAFT of an Aramo fixed form (TEMPLATE-PRODUCT-1 §7.2).
+      description: |
+        The template must be a default of a FIXED_FORM document type (409 `VALIDATION_ERROR`
+        details.reason `not_a_fixed_form` otherwise). The draft copies the current version's PDF
+        reference and placed fields (a new issuer edition then replaces the PDF); the first version
+        starts empty with one signer role. One DRAFT per template (409 `TEMPLATE_DRAFT_ALREADY_EXISTS`).
+        Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      responses:
+        '201':
+          description: The new DRAFT (Studio view).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormVersionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
+  /platform/document-templates/versions/{versionId}/fixed-form:
+    get:
+      operationId: getPlatformFixedFormVersion
+      tags: [Platform Document Templates]
+      summary: The fixed-form Studio view of a version (TEMPLATE-PRODUCT-1 §7.2).
+      description: |
+        The content (title, PDF reference, signer roles), the placed fields, the variables that may
+        prefill a text field, the publish issues and whether the current content has been checked.
+        Requires `platform:document_template:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The Studio view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormVersionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
+  /platform/document-templates/versions/{versionId}/fixed-form/pdf:
+    put:
+      operationId: uploadPlatformFixedFormPdf
+      tags: [Platform Document Templates]
+      summary: Upload the official PDF of a fixed-form DRAFT (TEMPLATE-PRODUCT-1 §7.1).
+      description: |
+        JSON `{ content_base64 }`. PDF only, at most 10 MB, must parse, no active content (scripts,
+        launch / submit / import actions, embedded files, XFA — also inside compressed object streams).
+        Refused 422 `VALIDATION_ERROR` details.reason `pdf_too_large` / `pdf_unsafe` / `pdf_invalid`.
+        Stored once as a PlatformTemplateAsset under the platform prefix of the documents bucket; the
+        draft points at it and the preview gate re-arms. DRAFT only. Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FixedFormUploadRequest'
+      responses:
+        '200':
+          description: The Studio view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormVersionView'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+    get:
+      operationId: getPlatformFixedFormPdf
+      tags: [Platform Document Templates]
+      summary: The official PDF of a fixed-form version (base64).
+      description: |
+        The stored bytes, checked against their recorded sha256. 404 when no PDF is uploaded.
+        Requires `platform:document_template:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The PDF.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormPdfContent'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
+  /platform/document-templates/versions/{versionId}/fixed-form/layout:
+    put:
+      operationId: savePlatformFixedFormLayout
+      tags: [Platform Document Templates]
+      summary: Save the signer roles, title and placed fields of a fixed-form DRAFT.
+      description: |
+        Replaces the roles (the shared signing-role rules) and EVERY placed field in one write;
+        the preview gate re-arms. Field types: TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE,
+        INITIALS; geometry PDF-native (page_number 0-based, points, origin bottom-left). Shape errors are
+        422 `VALIDATION_ERROR` with details.reason. DRAFT only. Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FixedFormLayoutRequest'
+      responses:
+        '200':
+          description: The Studio view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormVersionView'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
+  /platform/document-templates/versions/{versionId}/fields:
+    post:
+      operationId: addPlatformFixedFormField
+      tags: [Platform Document Templates]
+      summary: Add one placed field to a fixed-form DRAFT (mirrors the tenant POST versions/{versionId}/fields).
+      description: |
+        One TemplateFieldDefinition (same shape as a layout field). Duplicate keys are refused.
+        The preview gate re-arms. DRAFT only. Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FixedFormField'
+      responses:
+        '201':
+          description: The placed field.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormField'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+    get:
+      operationId: listPlatformFixedFormFields
+      tags: [Platform Document Templates]
+      summary: The placed fields of a fixed-form version.
+      description: |
+        Requires `platform:document_template:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The placed fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormFieldList'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
+  /platform/document-templates/versions/{versionId}/fixed-form/preview:
+    post:
+      operationId: previewPlatformFixedFormDraft
+      tags: [Platform Document Templates]
+      summary: Check a fixed-form DRAFT and arm the publish gate (TEMPLATE-PRODUCT-1 §7.2).
+      description: |
+        Refused 422 `VALIDATION_ERROR` details.reason `fixed_form_incomplete` with details.issues
+        while anything blocks publishing (no PDF, no field, a field off its page or without a signer
+        role, a SIGNER role without a signature field, an unknown prefill variable). Otherwise records the
+        preview for exactly this content and these fields; publish is the shared
+        `POST /platform/document-templates/versions/{versionId}/publish`.
+        Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The checked Studio view (previewed true).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormVersionView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
   /platform/template-variables:
     get:
       operationId: listPlatformTemplateVariables
@@ -6631,6 +6903,147 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
   schemas:
+    # TEMPLATE-PRODUCT-1 §7.1 / §7.2 — Aramo fixed legal forms (Platform Admin authoring).
+    FixedFormUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [content_base64]
+      properties:
+        content_base64:
+          type: string
+          description: The official PDF, base64 (at most 10 MB decoded).
+    FixedFormPdfContent:
+      type: object
+      additionalProperties: false
+      required: [sha256, byte_size, content_base64]
+      properties:
+        sha256: { type: string }
+        byte_size: { type: integer }
+        content_base64: { type: string }
+    FixedFormRole:
+      type: object
+      additionalProperties: false
+      required: [role_key, label, kind, order]
+      properties:
+        role_key: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [SIGNER, CC] }
+        order: { type: integer }
+    FixedFormSigning:
+      type: object
+      additionalProperties: false
+      required: [roles, routing_mode]
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/FixedFormRole'
+        routing_mode: { type: string, enum: [PARALLEL, SEQUENTIAL] }
+    FixedFormField:
+      type: object
+      additionalProperties: false
+      required: [field_key, field_type, page_number, x, y, width, height]
+      properties:
+        field_key: { type: string }
+        field_type: { type: string, enum: [TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE, INITIALS] }
+        binding_key:
+          type: [string, 'null']
+          description: A variable that prefills a TEXT field (then signer_role is null).
+        signer_role: { type: [string, 'null'] }
+        required: { type: boolean }
+        page_number: { type: [integer, 'null'], description: 0-based }
+        x: { type: [number, 'null'] }
+        y: { type: [number, 'null'] }
+        width: { type: [number, 'null'] }
+        height: { type: [number, 'null'] }
+        ordinal: { type: integer }
+    FixedFormFieldList:
+      type: object
+      additionalProperties: false
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FixedFormField'
+    FixedFormLayoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        signing:
+          $ref: '#/components/schemas/FixedFormSigning'
+        fields:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FixedFormField'
+    FixedFormVersionView:
+      type: object
+      additionalProperties: false
+      required: [template_id, version_id, version_number, status, content, fields, variables, issues, previewed]
+      properties:
+        template_id: { type: string, format: uuid }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        status: { type: string, enum: [DRAFT, ACTIVE, RETIRED] }
+        content:
+          type: object
+          additionalProperties: false
+          required: [render_schema_version, title, pdf, signing]
+          properties:
+            render_schema_version: { type: string, enum: [fixed-form-pdf-v1] }
+            title: { type: string }
+            pdf:
+              oneOf:
+                - type: 'null'
+                - type: object
+                  additionalProperties: false
+                  required: [asset_id, sha256, byte_size, page_count, pages]
+                  properties:
+                    asset_id: { type: string, format: uuid }
+                    sha256: { type: string }
+                    byte_size: { type: integer }
+                    page_count: { type: integer }
+                    pages:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [width, height]
+                        properties:
+                          width: { type: number }
+                          height: { type: number }
+            signing:
+              $ref: '#/components/schemas/FixedFormSigning'
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FixedFormField'
+        variables:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, label, group, data_type, sample_value]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              group: { type: string }
+              data_type: { type: string }
+              sample_value: { type: [string, 'null'] }
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              field_key: { type: string }
+              role_key: { type: string }
+        previewed: { type: boolean }
     PlatformPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request in the operator queue (counts only).
