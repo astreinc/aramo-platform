@@ -71,6 +71,13 @@ export interface SenderContext {
   // Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL
   // tenant (may delete their own account); absent on an older backend.
   personal_account_owner?: boolean;
+  // TEMPLATE-PRODUCT-1 §8.1 — the plan side of templates (Catalog v2 P-6: FREE_PLAN gets an
+  // upgrade prompt, never templates); null / absent when not read (templates not available).
+  template_plan?: 'INCLUDED' | 'FREE_PLAN' | 'SUBSCRIPTION_INACTIVE' | 'NOT_SUBSCRIBED' | null;
+  // TEMPLATE-PRODUCT-1 §8.2 — a PERSONAL account's own template Studio in Aramo Sign.
+  template_studio?: boolean;
+  // TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" (the person may approve templates).
+  template_use_as_is?: boolean;
 }
 
 export interface Summary {

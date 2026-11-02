@@ -1,7 +1,8 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
+import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, RoleService, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
+import { SignTemplateEntitlementService } from '@aramo/subscription';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import {
@@ -22,6 +23,8 @@ import {
   SignFeatureGate,
 } from '../sign-feature.gate.js';
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
+
+import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -120,6 +123,16 @@ export interface SenderContextView {
   // tenant (read live from the active membership). Every other subject is a Business
   // user: organization-managed, offered privacy requests but no self-service delete.
   personal_account_owner: boolean;
+  // TEMPLATE-PRODUCT-1 §8.1 — the plan side of templates (Catalog v2 P-6: FREE_PLAN never has
+  // templates; the page shows an upgrade prompt); null when it was not read (templates not
+  // available, or no plan reader in this composition).
+  template_plan: TemplatePlan | null;
+  // TEMPLATE-PRODUCT-1 §8.2 — a PERSONAL account's own template Studio in Aramo Sign (the owner
+  // holds author + approve). Always false for BUSINESS (Org Home owns organization templates).
+  template_studio: boolean;
+  // TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" (adopt + approve the unchanged copy): the person
+  // holds document_template:manage (a Personal owner; a Business tenant_owner / tenant_admin).
+  template_use_as_is: boolean;
 }
 
 // A Personal account's workspace label, shown wherever the Sign apps name the
@@ -146,7 +159,21 @@ export class SenderContextService {
     @Optional() private readonly idps?: IdentityProviderPolicyService,
     // Sign 1.14 — payment availability (absent ⇒ payments off).
     @Optional() private readonly payments?: SignPaymentsGate,
+    // TEMPLATE-PRODUCT-1 §8.1 / §8.5 — the template plan (P-6) and the person's live template
+    // grants (absent ⇒ template_plan null, no Studio, no "Use as it is").
+    @Optional() private readonly templatePlans?: SignTemplateEntitlementService,
+    @Optional() private readonly roles?: RoleService,
   ) {}
+
+  // TEMPLATE-PRODUCT-1 §8.1 / §8.5 — read only while sign.templates is available (every template
+  // route is refused before the plan otherwise, so there is nothing to offer).
+  private async templateView(auth: AuthContextType, kind: string, available: boolean): Promise<{ template_plan: TemplatePlan | null; template_studio: boolean; template_use_as_is: boolean }> {
+    if (!available) return { template_plan: null, template_studio: false, template_use_as_is: false };
+    const plan = this.templatePlans === undefined ? null : templatePlanOf(await this.templatePlans.of(auth.tenant_id));
+    const can = templateAuthority(kind, await templateGrantsOf(this.roles, auth.sub, auth.tenant_id));
+    const usable = plan === 'INCLUDED';
+    return { template_plan: plan, template_studio: usable && can.studio, template_use_as_is: usable && can.use_as_is };
+  }
 
   // Sign Mobile B-11 (directive §4) — "Signed in with Google/Microsoft". The source
   // is the provider recorded on the user's identity link (AUTH-SIGNIN-1 R2,
@@ -242,6 +269,8 @@ export class SenderContextService {
     const roleKeys = membership !== null && membership.is_active ? await this.identity.findRoleKeysForMembership(membership.id) : [];
     const org_admin = business && roleKeys.some((k) => k === 'tenant_owner' || k === 'tenant_admin');
     const personal_account_owner = !business && tenant.kind === 'PERSONAL' && roleKeys.includes('tenant_owner');
+    const templatesAvailable = (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE);
+    const templates = await this.templateView(auth, tenant.kind, templatesAvailable && permissions.templates);
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null, identity_provider: await this.identityProviderOf(auth.sub, auth.tenant_id) },
       tenant: {
@@ -252,7 +281,7 @@ export class SenderContextService {
       workspace: business ? 'sign' : 'personal',
       permissions,
       features: {
-        templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE),
+        templates: templatesAvailable,
         in_person_signing: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
         custom_roles: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_CUSTOM_ROLES_FEATURE),
         witness_signing: business && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_WITNESS_SIGNING_FEATURE),
@@ -278,6 +307,7 @@ export class SenderContextService {
       organization_roles_url: business && tenantBase !== null ? `${tenantBase}/org/roles` : null,
       app_home_url: tenantBase !== null ? `${tenantBase}/` : null,
       personal_account_owner,
+      ...templates,
     };
   }
 }

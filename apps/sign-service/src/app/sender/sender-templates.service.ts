@@ -114,7 +114,8 @@ export class SenderTemplatesService {
 
   // Launch availability first (an unavailable feature is unavailable to everyone), then the
   // session's template permission, then the plan (Feature-Parity 1.1: Free never, P-6).
-  private async assertMayUse(auth: AuthContextType, requestId: string): Promise<void> {
+  // TEMPLATE-PRODUCT-1 §8 — public: the Studio / "Use as it is" routes apply the same gate.
+  async assertMayUse(auth: AuthContextType, requestId: string): Promise<void> {
     this.gate.assertAvailable(SIGN_TEMPLATES_FEATURE, requestId);
     if (!auth.scopes.includes(DOCUMENT_TEMPLATE_READ_SCOPE)) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'You do not have access to document templates', 403, {

@@ -26,6 +26,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
+      // TEMPLATE-PRODUCT-1 §8.4 — the shared Template Studio (scope:shared) for the Personal
+      // workspace (platform-web precedent). The guest zone never imports it (zones.spec.ts).
+      '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
     },
   },
   server: {
