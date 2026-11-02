@@ -11,6 +11,18 @@ import { useWorkspace } from '../workspace';
 // Download documents + certificate (COMPLETED). Signing links are never shown —
 // they exist only in each signer's email. A DRAFT routes back to the wizard.
 
+// W1 — plain text for the self-sign refusals (the server's reason codes).
+const SELF_SIGN_REFUSAL: Record<string, string> = {
+  not_bound_to_you: 'This signer isn’t assigned to you. Use the link in the signing email.',
+  email_not_verified: 'Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.',
+  not_your_turn: 'It isn’t your turn to sign yet.',
+  envelope_not_signable: 'This envelope can’t be signed any more.',
+};
+function selfSignRefusal(e: unknown): string {
+  const reason = (e as { details?: { reason?: unknown } } | null)?.details?.reason;
+  return (typeof reason === 'string' ? SELF_SIGN_REFUSAL[reason] : undefined) ?? errorMessage(e);
+}
+
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
 // Retention and Purge (DocuSign parity) — only completed, declined or voided envelopes are purged.
 const PURGEABLE = new Set(['COMPLETED', 'DECLINED', 'VOIDED']);
@@ -90,6 +102,18 @@ export function EnvelopeDetail() {
     } catch (e) {
       toast(errorMessage(e));
     } finally {
+      setBusy(false);
+    }
+  };
+  // Web Self-Signing directive W1 (M-A5 §4) — sign as the recipient assigned to the caller.
+  // The server re-checks the binding, the verified account email and the turn.
+  const signNow = async (signer: { id: string }) => {
+    setBusy(true);
+    try {
+      const s = await senderApi.selfSignSession(env.id, signer.id);
+      window.location.assign(`/s/${encodeURIComponent(s.token)}`);
+    } catch (e) {
+      toast(selfSignRefusal(e));
       setBusy(false);
     }
   };
@@ -281,6 +305,11 @@ export function EnvelopeDetail() {
                   </div>
                   {r.decline_reason !== null ? <div className="sg-row__s">“{r.decline_reason}”</div> : null}
                 </div>
+                {canAct && live && r.assigned_to_me === true && r.can_remind === true ? (
+                  <Btn variant="primary" size="sm" disabled={busy} onClick={() => void signNow(r)} data-testid={`sign-now-${r.id}`}>
+                    Sign now
+                  </Btn>
+                ) : null}
                 {canAct && live && r.can_remind === true ? (
                   <LinkBtn disabled={busy} onClick={() => void remind(r)} data-testid={`remind-${r.id}`}>
                     Remind
