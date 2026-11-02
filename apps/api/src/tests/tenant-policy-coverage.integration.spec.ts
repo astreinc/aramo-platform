@@ -73,14 +73,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [COVERED, 'Covered Co', UNCOVERED, 'Uncovered Co', INACTIVE, 'Inactive Co', SIGN_ONLY, 'Sign Only Co', ATS_REVOKED, 'Revoked Co'],
       );
       // Minimal entitlement.TenantEntitlement — the three columns the ATS-product
-      // predicate reads (tenant_id, capability, revoked_at), same approach as Tenant.
+      // predicate reads (tenant_id, capability, revoked_at), same approach as Tenant,
+      // plus granted_source (no default; CCP-R1 requires every INSERT to name it).
       await db.query('CREATE SCHEMA IF NOT EXISTS "entitlement"');
       await db.query(
-        'CREATE TABLE "entitlement"."TenantEntitlement" (tenant_id uuid NOT NULL, capability text NOT NULL, revoked_at timestamptz, PRIMARY KEY (tenant_id, capability))',
+        'CREATE TABLE "entitlement"."TenantEntitlement" (tenant_id uuid NOT NULL, capability text NOT NULL, revoked_at timestamptz, granted_source text NOT NULL, PRIMARY KEY (tenant_id, capability))',
       );
       await db.query(
-        `INSERT INTO "entitlement"."TenantEntitlement" (tenant_id,capability,revoked_at) VALUES
-           ($1,'ats',NULL),($2,'ats',NULL),($3,'ats',NULL),($4,'sign',NULL),($5,'ats',now()),($5,'sign',NULL)`,
+        `INSERT INTO "entitlement"."TenantEntitlement" (tenant_id,capability,revoked_at,granted_source) VALUES
+           ($1,'ats',NULL,'PROVISIONING'),($2,'ats',NULL,'PROVISIONING'),($3,'ats',NULL,'PROVISIONING'),
+           ($4,'sign',NULL,'PROVISIONING'),($5,'ats',now(),'PROVISIONING'),($5,'sign',NULL,'PROVISIONING')`,
         [COVERED, UNCOVERED, INACTIVE, SIGN_ONLY, ATS_REVOKED],
       );
       prisma = new PrismaService(dbUrl);
