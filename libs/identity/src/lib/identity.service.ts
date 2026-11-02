@@ -18,6 +18,10 @@ import {
   displayFromDescription,
   metaRank,
 } from './role-catalog/role-catalog.view.js';
+import {
+  PERSONAL_SINGLE_USER_REASON,
+  PersonalTenantSeatTakenError,
+} from './tenant-user/personal-single-user.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
 import {
@@ -695,6 +699,16 @@ export class IdentityService {
     );
   }
 
+  // Sign Personal is single-user (PO 2026-11-02). Invite paths call this BEFORE any
+  // Cognito side effect; the identity transactions re-check under a row lock
+  // (assertPersonalSeatFreeTx) and their PersonalTenantSeatTakenError is mapped by
+  // rethrowPersonalSeatTaken to the same governed refusal.
+  async assertPersonalSeatAvailable(args: { tenant_id: string; request_id: string }): Promise<void> {
+    if (await this.identityRepo.personalTenantSeatTaken(args.tenant_id)) {
+      throw personalSeatTakenError(args.request_id);
+    }
+  }
+
   async createUserFromInvitation(args: {
     email: string;
     display_name: string | null;
@@ -721,6 +735,8 @@ export class IdentityService {
       role_keys: args.role_keys,
       request_id: args.request_id,
     });
+
+    await this.assertPersonalSeatAvailable(args);
 
     // IC-1 PR-1 — one User, one tenant. Normalized lookup; same-tenant →
     // preserved 409 INVITATION_ALREADY_EXISTS; other-tenant → audit + 409
@@ -749,6 +765,7 @@ export class IdentityService {
           role_ids: args.role_ids,
         });
     } catch (err) {
+      rethrowPersonalSeatTaken(err, args.request_id);
       // Race backstop: a User.email P2002 lost after the pre-check maps to
       // the governed 409s (never a raw P2002 / HTTP 500).
       await this.mapUserEmailCollision(err, guardArgs);
@@ -852,6 +869,7 @@ export class IdentityService {
         invite_status: 'ACTIVE',
       });
     } catch (err) {
+      rethrowPersonalSeatTaken(err, args.request_id);
       await this.mapUserEmailCollision(err, guardArgs);
       throw err;
     }
@@ -891,6 +909,8 @@ export class IdentityService {
       request_id: args.request_id,
     });
 
+    await this.assertPersonalSeatAvailable(args);
+
     // IC-1 PR-1 — one User, one tenant (tenant tier). Normalized lookup;
     // same-tenant → preserved 409 INVITATION_ALREADY_EXISTS; other-tenant →
     // audit + 409 EMAIL_UNAVAILABLE (details {}). Fires BEFORE the DB write,
@@ -916,6 +936,7 @@ export class IdentityService {
         role_ids: args.role_ids,
       });
     } catch (err) {
+      rethrowPersonalSeatTaken(err, args.request_id);
       // Race backstop: a User.email P2002 lost after the pre-check maps to
       // the governed 409s (never a raw P2002 / HTTP 500).
       await this.mapUserEmailCollision(err, guardArgs);
@@ -1283,4 +1304,15 @@ export class IdentityService {
       tenant_id: args.tenant_id,
     });
   }
+}
+
+function personalSeatTakenError(request_id: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', 'A Personal account has a single user; it cannot add members', 400, {
+    requestId: request_id,
+    details: { reason: PERSONAL_SINGLE_USER_REASON },
+  });
+}
+
+function rethrowPersonalSeatTaken(err: unknown, request_id: string): void {
+  if (err instanceof PersonalTenantSeatTakenError) throw personalSeatTakenError(request_id);
 }

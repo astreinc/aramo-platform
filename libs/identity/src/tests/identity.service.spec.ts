@@ -8,6 +8,7 @@ import {
 } from '../lib/identity.service.js';
 import type { UserDto } from '../lib/dto/user.dto.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
+import { PersonalTenantSeatTakenError } from '../lib/tenant-user/personal-single-user.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
 import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 
@@ -250,6 +251,8 @@ function buildInServiceFixture(
   const repoSpies = {
     createUserWithExternalIdentityAndMembership: vi.fn(),
     createUserWithMembership: vi.fn(),
+    // Sign Personal single-user — default: the seat is free (BUSINESS / empty tenant).
+    personalTenantSeatTaken: vi.fn().mockResolvedValue(false),
     createInvitation: vi.fn(),
     replaceMembershipRoles: vi.fn(),
     findMembership: vi.fn(),
@@ -681,6 +684,44 @@ describe('IdentityService — IC-1 PR-1 one-User-one-tenant guard (in-service, b
     expect(isUserEmailUniqueViolation({ code: 'P2025' })).toBe(false);
     expect(isUserEmailUniqueViolation(new Error('boom'))).toBe(false);
     expect(isUserEmailUniqueViolation(null)).toBe(false);
+  });
+});
+
+describe('IdentityService — Sign Personal is single-user (PO 2026-11-02)', () => {
+  const SEAT_TAKEN = { code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'personal_single_user' } } };
+
+  it('tenant tier: a PERSONAL tenant that already has its owner refuses the invite; no User / membership / Invitation write', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.personalTenantSeatTaken.mockResolvedValue(true);
+    await expect(identitySvc.createInvitedUserNoSub(tenantCreateArgs('second@person.io'))).rejects.toMatchObject(SEAT_TAKEN);
+    expect(repoSpies.personalTenantSeatTaken).toHaveBeenCalledWith(TARGET_TENANT);
+    expect(repoSpies.createUserWithMembership).not.toHaveBeenCalled();
+    expect(repoSpies.createInvitation).not.toHaveBeenCalled();
+    expect(auditSpies.writeGlobalEvent).not.toHaveBeenCalled();
+  });
+
+  it('platform tier: the same refusal; no identity write', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.personalTenantSeatTaken.mockResolvedValue(true);
+    await expect(identitySvc.createUserFromInvitation(platformCreateArgs('second@person.io'))).rejects.toMatchObject(SEAT_TAKEN);
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+  });
+
+  it('race backstop: the locked in-transaction re-check (PersonalTenantSeatTakenError) maps to the same governed 400, never a 500', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.createUserWithMembership.mockRejectedValue(new PersonalTenantSeatTakenError(TARGET_TENANT));
+    await expect(identitySvc.createInvitedUserNoSub(tenantCreateArgs('second@person.io'))).rejects.toMatchObject(SEAT_TAKEN);
+    expect(repoSpies.createInvitation).not.toHaveBeenCalled();
+    repoSpies.createUserWithExternalIdentityAndMembership.mockRejectedValue(new PersonalTenantSeatTakenError(TARGET_TENANT));
+    await expect(identitySvc.createUserFromInvitation(platformCreateArgs('third@person.io'))).rejects.toMatchObject(SEAT_TAKEN);
+  });
+
+  it('a free seat (a BUSINESS tenant, or a PERSONAL tenant before its owner exists) proceeds to the write', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.personalTenantSeatTaken.mockResolvedValue(false);
+    repoSpies.createUserWithMembership.mockRejectedValue(new Error('reached the write'));
+    await expect(identitySvc.createInvitedUserNoSub(tenantCreateArgs('member@business.io'))).rejects.toThrow('reached the write');
+    expect(repoSpies.createUserWithMembership).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -68,6 +68,7 @@ function fixture(opts: {
     findRoleIdsByKeys: vi.fn(async (keys: readonly string[]) => new Map(keys.map((k) => [k, `rid-${k}`]))),
     findMembershipTenantIdsForUser: vi.fn().mockResolvedValue([]),
     createUserWithMembership: vi.fn(),
+    personalTenantSeatTaken: vi.fn().mockResolvedValue(false),
     createInvitation: vi.fn(),
     findActiveInvitationByUserAndTenant: vi.fn().mockResolvedValue(null),
     revokeInvitation: vi.fn().mockResolvedValue({ changed: true }),

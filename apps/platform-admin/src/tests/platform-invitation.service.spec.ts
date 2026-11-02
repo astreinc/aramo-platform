@@ -39,6 +39,7 @@ interface Mocks {
   identitySvc: {
     resolveRoleIdsByKeys: ReturnType<typeof vi.fn>;
     createUserFromInvitation: ReturnType<typeof vi.fn>;
+    assertPersonalSeatAvailable: ReturnType<typeof vi.fn>;
     findUserByEmail: ReturnType<typeof vi.fn>;
     findRoleIdsForMembership: ReturnType<typeof vi.fn>;
     // IC-1 PR-1 — the ownership classification + governed cross-tenant
@@ -73,6 +74,8 @@ function makeMocks(): Mocks {
     identitySvc: {
       resolveRoleIdsByKeys: vi.fn(),
       createUserFromInvitation: vi.fn(),
+      // Sign Personal single-user — default: the seat is free.
+      assertPersonalSeatAvailable: vi.fn().mockResolvedValue(undefined),
       // IC-1 PR-1: the provision 0a-ter pre-check reads this; default = no
       // existing user (the pre-IC-1 provisioning tests are unaffected).
       findUserByEmail: vi.fn().mockResolvedValue(null),
@@ -318,6 +321,31 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
     expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
     expect(mocks.identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
+  });
+
+  it('Sign Personal single-user: inviteUserIntoTenant into a PERSONAL tenant that has its owner → 400 personal_single_user BEFORE Cognito and before any identity write', async () => {
+    const mocks = makeMocks();
+    mocks.identitySvc.assertPersonalSeatAvailable.mockRejectedValue(
+      new AramoError('VALIDATION_ERROR', 'A Personal account has a single user; it cannot add members', 400, {
+        requestId: TEST_REQUEST_ID,
+        details: { reason: 'personal_single_user' },
+      }),
+    );
+    await expect(
+      buildService(mocks).inviteUserIntoTenant({
+        tenant_id: 'personal-tenant-1',
+        email: 'second@person.io',
+        role_keys: ['sign_sender'],
+        display_name: null,
+        actor_user_id: 'super-admin-1',
+        pool: 'tenant',
+        request_id: TEST_REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'personal_single_user' } } });
+    expect(mocks.identitySvc.assertPersonalSeatAvailable).toHaveBeenCalledWith({ tenant_id: 'personal-tenant-1', request_id: TEST_REQUEST_ID });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
+    expect(mocks.identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
   });
 
   // CCP A1 §7.3(b) (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0) — each of the 6

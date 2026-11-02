@@ -4885,6 +4885,7 @@
     "libs/identity/src/lib/tenant-user/invitation-lifecycle.service.ts",
     "libs/identity/src/lib/tenant-user/invitation-token.ts",
     "libs/identity/src/lib/tenant-user/invite-emails.ts",
+    "libs/identity/src/lib/tenant-user/personal-single-user.ts",
     "libs/identity/src/lib/tenant-user/role-bundle-validator.ts",
     "libs/identity/src/lib/tenant-user/tenant-cognito.port.ts",
     "libs/identity/src/lib/tenant-user/tenant-user-lifecycle.service.ts",
