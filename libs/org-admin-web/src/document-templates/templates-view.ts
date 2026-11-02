@@ -20,16 +20,30 @@ export const RTR_TYPE_KEY = 'RIGHT_TO_REPRESENT';
 // TEMPLATE-STUDIO-1 S-2 (directive §4.1; conforming amendment #2) — the gallery is
 // BACKEND-DRIVEN: one card per published Aramo default in GET /v1/document-templates/library
 // (owner_scope PLATFORM; current versions only, withdrawn defaults excluded by the server).
-// The static GALLERY_ENTRIES list and its "Not configurable yet" cards are retired. Only the
-// category and a fallback description stay front-end, keyed by the document-type key (G13 data
-// copy: the backend document-type catalog carries neither). Keys for types that are not
-// publishable yet are listed so they categorise automatically once they are.
+// The static GALLERY_ENTRIES list and its "Not configurable yet" cards are retired. A fallback
+// description stays front-end, keyed by the document-type key (G13 data copy).
+//
+// TEMPLATE-PRODUCT-1 §4.1 / §6.4 (divergence D25) — the category is DATA: the document type's
+// `category` (Platform Admin → Document types), returned in `document_types[].category`. The
+// category chips are the distinct categories of the actual cards (plus All). The key map below
+// is only the fallback for a type whose category is not set (null / blank, or an older server),
+// and "Other" after that.
 
-export type GalleryCategory = 'Recruiting' | 'Hiring' | 'Legal' | 'Pre-start' | 'Other';
-/** Chip order; a chip shows only when at least one card is in it (empty categories are hidden). */
-export const GALLERY_CATEGORIES: readonly GalleryCategory[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start', 'Other'];
+/** A gallery category: the document type's own category (free text set in Platform Admin). */
+export type GalleryCategory = string;
 
-export const DOCUMENT_TYPE_CATEGORY: Readonly<Record<string, GalleryCategory>> = {
+/** The last-resort category of a card whose type has none (and no fallback below). */
+export const OTHER_CATEGORY = 'Other';
+
+/**
+ * The preferred chip order for the categories the product has used so far; any other category
+ * follows alphabetically, and "Other" is always last. A chip shows only when at least one card
+ * is in it (empty categories are hidden).
+ */
+export const GALLERY_CATEGORIES: readonly string[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start'];
+
+/** Fallback category by document-type key, used only when the type's `category` is not set. */
+export const DOCUMENT_TYPE_CATEGORY: Readonly<Record<string, string>> = {
   RIGHT_TO_REPRESENT: 'Recruiting',
   OFFER_LETTER: 'Hiring',
   CLIENT_NDA: 'Legal',
@@ -77,6 +91,7 @@ export function ourTemplateOfType(library: TemplateLibraryView, documentTypeId: 
  */
 export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
   const typeKey = new Map(library.document_types.map((t) => [t.id, t.key]));
+  const typeCategory = new Map(library.document_types.map((t) => [t.id, t.category ?? null]));
   return library.items
     .filter((i) => i.owner_scope === 'PLATFORM' && i.configurable)
     .map((i) => {
@@ -87,7 +102,7 @@ export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
         id: i.id,
         name: i.name,
         description,
-        category: DOCUMENT_TYPE_CATEGORY[key] ?? 'Other',
+        category: galleryCategoryOf(typeCategory.get(i.document_type_id) ?? null, key),
         state: ours !== null ? { kind: 'in-ours', ourTemplateId: ours.id } : { kind: 'adoptable' },
         products: orderedProducts(i.products ?? []),
       };
@@ -111,10 +126,33 @@ export function productCounts(cards: readonly Pick<GalleryCard, 'products'>[], p
   return counts;
 }
 
-/** Chip counts (All + each category) from the actual cards. */
-export function categoryCounts(cards: readonly Pick<GalleryCard, 'category'>[]): Readonly<Record<'All' | GalleryCategory, number>> {
-  const counts: Record<'All' | GalleryCategory, number> = { All: cards.length, Recruiting: 0, Hiring: 0, Legal: 0, 'Pre-start': 0, Other: 0 };
-  for (const c of cards) counts[c.category] += 1;
+/**
+ * D25 — a card's category: the document type's `category` when set (trimmed), else the
+ * fallback by type key, else "Other".
+ */
+export function galleryCategoryOf(category: string | null | undefined, typeKey: string): GalleryCategory {
+  const own = typeof category === 'string' ? category.trim() : '';
+  if (own !== '') return own;
+  return DOCUMENT_TYPE_CATEGORY[typeKey] ?? OTHER_CATEGORY;
+}
+
+/**
+ * D25 — the category chips (without All): each distinct category of the cards, in the preferred
+ * order (GALLERY_CATEGORIES), then any other alphabetically, "Other" last.
+ */
+export function galleryCategories(cards: readonly Pick<GalleryCard, 'category'>[]): GalleryCategory[] {
+  const position = (c: string): number => {
+    if (c === OTHER_CATEGORY) return Number.MAX_SAFE_INTEGER;
+    const i = GALLERY_CATEGORIES.indexOf(c);
+    return i === -1 ? GALLERY_CATEGORIES.length : i;
+  };
+  return [...new Set(cards.map((c) => c.category))].sort((a, b) => position(a) - position(b) || a.localeCompare(b));
+}
+
+/** Chip counts (All + each category present) from the actual cards. */
+export function categoryCounts(cards: readonly Pick<GalleryCard, 'category'>[]): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = { All: cards.length };
+  for (const c of cards) counts[c.category] = (counts[c.category] ?? 0) + 1;
   return counts;
 }
 

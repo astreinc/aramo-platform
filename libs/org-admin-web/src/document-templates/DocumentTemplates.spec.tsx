@@ -17,7 +17,7 @@ import { CreateOwnTemplate } from './CreateOwnTemplate';
 import { fetchTemplateNotices, noticeMessage, parseNotices } from './notices-api';
 import { LEGACY_BANNER_TEXT, OurTemplatesPage } from './OurTemplatesPage';
 import { RESPONSIBILITY_SENTENCE, TemplateGalleryPage } from './TemplateGalleryPage';
-import { buildGalleryCards, categoryCounts, galleryProducts, productCounts } from './templates-view';
+import { buildGalleryCards, categoryCounts, galleryCategories, galleryProducts, productCounts } from './templates-view';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §4.1, §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — Our
 // templates (table, legacy "Aramo starting point" banner, footnote to the gallery), the
@@ -208,7 +208,9 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(cards[1]?.state).toEqual({ kind: 'in-ours', ourTemplateId: 'own-offer' });
     expect(cards[1]?.description).toBe('Confirms the role, start date, pay and terms offered to a talent before they start.');
     expect(cards[2]?.description).toBe('Custom copy.');
-    expect(categoryCounts(cards)).toEqual({ All: 3, Recruiting: 1, Hiring: 1, Legal: 0, 'Pre-start': 0, Other: 1 });
+    // No document type carries a category here (older server): the key fallback, then Other.
+    expect(categoryCounts(cards)).toEqual({ All: 3, Recruiting: 1, Hiring: 1, Other: 1 });
+    expect(galleryCategories(cards)).toEqual(['Recruiting', 'Hiring', 'Other']);
     expect(buildGalleryCards({ items: [OWN, OWN_DRAFT], document_types: LIBRARY.document_types })).toEqual([]);
   });
 
@@ -220,6 +222,53 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(screen.getByTestId('gallery-chip-All')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByTestId('gallery-chip-Hiring'));
     expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Offer letter']);
+    fireEvent.click(screen.getByTestId('gallery-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+  });
+
+  // TEMPLATE-PRODUCT-1 D25 — the category is the document type's `category` (data from
+  // document_types[].category); the key map is only the fallback when it is null / blank.
+  const DATA: TemplateLibraryView = {
+    ...WIDE,
+    document_types: [
+      { id: RTR, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true, products: ['ats', 'sign'], category: 'Recruiting' },
+      { id: OFFER, key: 'OFFER_LETTER', name: 'Offer Letter', configurable: true, products: ['ats'], category: 'Employment' },
+      { id: NDA, key: 'CLIENT_NDA', name: 'Client NDA', configurable: false, products: ['ats'], category: 'Legal' },
+      { id: ODD, key: 'SOMETHING_NEW', name: 'Something new', configurable: true, products: ['sign'], category: 'Real estate' },
+    ],
+  };
+
+  it('D25 — buildGalleryCards takes the category from the document type; null / blank falls back to the key map, then Other', () => {
+    expect(buildGalleryCards(DATA).map((c) => [c.id, c.category])).toEqual([
+      ['def-rtr', 'Recruiting'],
+      ['def-offer', 'Employment'],
+      ['def-odd', 'Real estate'],
+    ]);
+    const blank: TemplateLibraryView = {
+      ...DATA,
+      document_types: DATA.document_types.map((t) => (t.id === OFFER ? { ...t, category: '  ' } : t.id === ODD ? { ...t, category: null } : t)),
+    };
+    expect(buildGalleryCards(blank).map((c) => [c.id, c.category])).toEqual([
+      ['def-rtr', 'Recruiting'],
+      ['def-offer', 'Hiring'],
+      ['def-odd', 'Other'],
+    ]);
+  });
+
+  it('D25 — a chip per distinct category present (plus All): preferred order, then alphabetical, Other last', () => {
+    const cards = [{ category: 'Real estate' }, { category: 'Other' }, { category: 'Employment' }, { category: 'Recruiting' }, { category: 'Employment' }];
+    expect(galleryCategories(cards)).toEqual(['Recruiting', 'Employment', 'Real estate', 'Other']);
+    expect(categoryCounts(cards)).toEqual({ All: 5, 'Real estate': 1, Other: 1, Employment: 2, Recruiting: 1 });
+  });
+
+  it('D25 — the category chips follow the document types: a new category gets a chip and filters', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(DATA) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by category' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'Recruiting1', 'Employment1', 'Real estate1']);
+    fireEvent.click(screen.getByTestId('gallery-chip-Real estate'));
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Other']);
+    expect(screen.getByRole('article', { name: 'Aramo Other' })).toHaveTextContent('Real estate');
     fireEvent.click(screen.getByTestId('gallery-chip-All'));
     expect(screen.getAllByRole('article')).toHaveLength(3);
   });
