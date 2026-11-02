@@ -244,7 +244,10 @@ model DocumentTemplate {
   template_kind         String // CHECK: GENERATED|UPLOADED_PDF|HYBRID (migration)
   status                String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
   current_version_id    String?   @db.Uuid // FK -> TemplateVersion added in migration (avoids cycle)
-  // PLATFORM only (CHECK, migration). The column is NULLABLE (NULL for TENANT rows)
+  // Product tags (ats, sign). TEMPLATE-PRODUCT-1 §6.1 (migration 20261103120000): a PLATFORM
+  // row carries non-null products (CHECK); a TENANT row carries server-written tags (copied
+  // from the source default at Adopt, else from the document type — BEFORE INSERT trigger
+  // backstop). The column is NULLABLE.
   // NOTE: Prisma cannot express an optional list, so it is typed String[] here.
   products              String[]
   withdraw_notice_at    DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)

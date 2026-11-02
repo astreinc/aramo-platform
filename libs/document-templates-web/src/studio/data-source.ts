@@ -158,6 +158,11 @@ export interface StudioCapabilities {
   readonly canWithdraw: boolean;
   /** Show the product-tags property. */
   readonly productTags: boolean;
+  /**
+   * TEMPLATE-PRODUCT-1 §6.1/§6.4 — the tags are shown read-only (organization: a tenant
+   * template inherits its tags and can't change them). No product check blocks approval.
+   */
+  readonly productTagsReadOnly?: boolean;
   /** Show the description property. */
   readonly description: boolean;
   /**

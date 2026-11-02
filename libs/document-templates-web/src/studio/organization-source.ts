@@ -142,7 +142,8 @@ function studioInfo(t: DocumentTemplateView, versions: readonly TemplateVersionV
     description: t.description,
     status: t.status,
     document_type_id: t.document_type_id,
-    products: [],
+    // TEMPLATE-PRODUCT-1 §6.1/§6.4 — the template's own (inherited, server-written) tags.
+    products: [...(t.products ?? [])],
     current_version:
       t.current_version_id !== null ? { id: t.current_version_id, version_number: cur?.version_number ?? 0 } : null,
     withdraw_effective_at: null,
@@ -218,7 +219,8 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
       logoUrl: (versionId, assetId) => api.logoUrl(versionId, assetId),
     },
     sections: ORGANIZATION_STUDIO_SECTIONS,
-    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: false, description: false },
+    // TEMPLATE-PRODUCT-1 §6.4 — Properties shows the tags read-only (a tenant can't change them).
+    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: true, productTagsReadOnly: true, description: false },
     copy: organizationStudioCopy(o),
     content: LETTERHEAD_STUDIO_CONTENT_CODEC,
   };

@@ -1,16 +1,20 @@
-import type {
-  TemplateLibraryItem,
-  TemplateLibraryView,
-  TemplateSelectionView,
-  TemplateStatus,
-  TemplateVersionView,
+import {
+  TEMPLATE_PRODUCT_KEYS,
+  orderedProducts,
+  templateProductsLine,
+  type TemplateLibraryItem,
+  type TemplateLibraryView,
+  type TemplateProductKey,
+  type TemplateSelectionView,
+  type TemplateStatus,
+  type TemplateVersionView,
 } from '@aramo/document-templates-web';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — pure
 // derivations shared by Our templates and the Template gallery. No template business
 // truth: the server owns the lifecycle, adoption and resolution.
 
-/** The seeded Right-to-Represent document type key (the only template-driven type today). */
+/** The seeded Right-to-Represent document type key. */
 export const RTR_TYPE_KEY = 'RIGHT_TO_REPRESENT';
 
 // TEMPLATE-STUDIO-1 S-2 (directive §4.1; conforming amendment #2) — the gallery is
@@ -55,6 +59,8 @@ export interface GalleryCard {
   readonly description: string;
   readonly category: GalleryCategory;
   readonly state: GalleryState;
+  /** TEMPLATE-PRODUCT-1 §6.4 — the default's product tags (the product chips filter on them). */
+  readonly products: readonly string[];
 }
 
 /** The organization's own template of a document type (tenant-wide first), if any. */
@@ -65,8 +71,9 @@ export function ourTemplateOfType(library: TemplateLibraryView, documentTypeId: 
 
 /**
  * One card per published Aramo default (PLATFORM item) of a template-driven document type.
- * The server lists only current, published, not-withdrawn defaults; `configurable` keeps
- * the adoptable-types rule (template-driven types only; RTR today).
+ * The server lists only current, published, not-withdrawn defaults for the organization's
+ * entitled products (TEMPLATE-PRODUCT-1 §6.3); `configurable` keeps the adoptable-types rule
+ * (configured editable types, §5.1).
  */
 export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
   const typeKey = new Map(library.document_types.map((t) => [t.id, t.key]));
@@ -82,8 +89,26 @@ export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
         description,
         category: DOCUMENT_TYPE_CATEGORY[key] ?? 'Other',
         state: ours !== null ? { kind: 'in-ours', ourTemplateId: ours.id } : { kind: 'adoptable' },
+        products: orderedProducts(i.products ?? []),
       };
     });
+}
+
+/**
+ * TEMPLATE-PRODUCT-1 §6.4 — the gallery's product chips: the template products the
+ * organization is entitled to (canonical order). An older server that does not say → every
+ * product.
+ */
+export function galleryProducts(library: TemplateLibraryView): TemplateProductKey[] {
+  const entitled = library.entitled_products;
+  return TEMPLATE_PRODUCT_KEYS.filter((k) => entitled === undefined || entitled.includes(k));
+}
+
+/** Chip counts per product (a card counts under each of its tags). */
+export function productCounts(cards: readonly Pick<GalleryCard, 'products'>[], products: readonly string[]): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = { All: cards.length };
+  for (const p of products) counts[p] = cards.filter((c) => c.products.includes(p)).length;
+  return counts;
 }
 
 /** Chip counts (All + each category) from the actual cards. */
@@ -114,21 +139,17 @@ export interface OurTemplateRow {
   readonly newVersion: number | null;
 }
 
-const PRODUCT_LABEL: Readonly<Record<string, string>> = { ATS: 'ATS', SIGN: 'Sign' };
-
 /**
- * One row per organization-owned template. "Used in" — a tenant template carries no product
- * tags, so it shows the tags of the Aramo default of the same document type, else "All apps".
- * Version — the current (approved) version, else the latest one. Last approved — the
- * current version's activation.
+ * One row per organization-owned template. "Used in" — TEMPLATE-PRODUCT-1 §6.4: the template's
+ * OWN tags (server-written, inherited from the default or its document type) through the shared
+ * label map ("ATS · Sign"); "—" when it has none. Version — the current (approved) version, else
+ * the latest one. Last approved — the current version's activation.
  */
 export function buildOurTemplateRows(
   library: TemplateLibraryView,
   versionsById: ReadonlyMap<string, readonly TemplateVersionView[]>,
 ): OurTemplateRow[] {
   const typeName = new Map(library.document_types.map((t) => [t.id, t.name]));
-  const platformByType = new Map<string, TemplateLibraryItem>();
-  for (const i of library.items) if (i.owner_scope === 'PLATFORM' && !platformByType.has(i.document_type_id)) platformByType.set(i.document_type_id, i);
   return library.items
     .filter((i) => i.owner_scope === 'TENANT')
     .map((t) => {
@@ -136,12 +157,12 @@ export function buildOurTemplateRows(
       const current = versions.find((v) => v.id === t.current_version_id) ?? null;
       const latest = versions.reduce<TemplateVersionView | null>((m, v) => (m === null || v.version_number > m.version_number ? v : m), null);
       const n = t.current_version_number ?? current?.version_number ?? latest?.version_number ?? null;
-      const tags = (platformByType.get(t.document_type_id)?.products ?? []).map((p) => PRODUCT_LABEL[p] ?? p);
+      const usedIn = templateProductsLine(t.products ?? []);
       return {
         id: t.id,
         name: t.name,
         typeName: typeName.get(t.document_type_id) ?? 'Document',
-        usedIn: tags.length > 0 ? tags.join(' · ') : 'All apps',
+        usedIn: usedIn !== '' ? usedIn : '—',
         version: n === null ? '—' : `v${n}`,
         status: t.status,
         lastApproved: current?.activated_at != null ? { at: current.activated_at, by: current.activated_by } : null,

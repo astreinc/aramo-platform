@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { TemplateResolutionService, TemplatesRepository, type TemplateResolutionSource } from '@aramo/documents';
+import { TemplateResolutionService, TemplatesRepository, type TemplateProductKey, type TemplateResolutionSource } from '@aramo/documents';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import {
@@ -57,11 +57,15 @@ export class RtrTemplateResolverService {
   // names the editable type to resolve (absent ⇒ RIGHT_TO_REPRESENT, the ATS RTR flow, whose
   // codes, messages and details are byte-identical to before). Another type keeps the same
   // fail-closed codes with type-neutral wording (only Aramo Sign resolves other types).
+  // TEMPLATE-PRODUCT-1 §6.3 — `product` (absent ⇒ `ats`, the ATS RTR flow): only templates
+  // tagged with it resolve. Aramo Sign passes `sign`. RTR templates are tagged both, so the
+  // ATS outcome is unchanged today.
   async resolveActive(input: {
     tenant_id: string;
     client_id?: string | null;
     requestId: string;
     document_type_id?: string;
+    product?: TemplateProductKey;
   }): Promise<ResolvedRtrTemplate> {
     const document_type_id = input.document_type_id ?? RIGHT_TO_REPRESENT_TYPE_ID;
     const rtr = document_type_id === RIGHT_TO_REPRESENT_TYPE_ID;
@@ -69,6 +73,7 @@ export class RtrTemplateResolverService {
       tenant_id: input.tenant_id,
       document_type_id,
       client_id: input.client_id ?? null,
+      product: input.product ?? 'ats',
     });
     if (r.outcome === 'NOT_CONFIGURED') {
       throw new AramoError(

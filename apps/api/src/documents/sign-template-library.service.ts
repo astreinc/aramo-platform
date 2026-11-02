@@ -40,8 +40,9 @@ import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rt
 //             chooses. The template the automatic per-type resolution picks (client →
 //             tenant → grandfathered default) is flagged is_default; that resolution —
 //             used by ATS and every flow that never asks the user — is unchanged.
-//             sign.templates gating is unchanged (sign-service). Product tags are
-//             recorded, not enforced (D9).
+//             sign.templates gating is unchanged (sign-service). TEMPLATE-PRODUCT-1 §6.3 —
+//             product tags are ENFORCED: list, preview and render offer only templates
+//             tagged `sign` (the automatic choice resolves over sign-tagged templates).
 //   preview — a usable template's current version with the tenant's branding values
 //             and the sender's values; samples for the rest. Writes nothing.
 //   render  — binds the tenant-profile values + the sender's values (Sign has no ATS
@@ -111,6 +112,7 @@ export class SignTemplateLibraryService {
           client_id: input.client_id,
           requestId: input.requestId,
           document_type_id: type.id,
+          product: 'sign',
         });
       } catch (e) {
         if (!(e instanceof AramoError)) throw e;
@@ -330,7 +332,8 @@ export class SignTemplateLibraryService {
     auto: ResolvedRtrTemplate | null,
     requestId: string,
   ): Promise<ResolvedRtrTemplate[]> {
-    const rows = await this.d.templates.listUsableTemplatesForTenant(tenant_id, type.id, client_id, new Date());
+    // TEMPLATE-PRODUCT-1 §6.3 — Sign offers only templates tagged `sign`.
+    const rows = await this.d.templates.listUsableTemplatesForTenant(tenant_id, type.id, client_id, new Date(), 'sign');
     const out: ResolvedRtrTemplate[] = [];
     for (const t of rows) {
       if (auto !== null && auto.template_id === t.id) {
@@ -408,7 +411,7 @@ export class SignTemplateLibraryService {
     // M-A6 §3.1 — the user chooses among the templates the list offers (same rules).
     let auto: ResolvedRtrTemplate | null = null;
     try {
-      auto = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId, document_type_id: type.id });
+      auto = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId, document_type_id: type.id, product: 'sign' });
     } catch (e) {
       if (!(e instanceof AramoError)) throw e;
     }

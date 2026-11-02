@@ -182,7 +182,11 @@ export class TemplatesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Templates ──────────────────────────────────────────────────────────────
+  // TEMPLATE-PRODUCT-1 §6.1 — a tenant template created any way other than Adopt inherits its
+  // document type's products, written here by the server (never from the caller). An unknown
+  // type leaves products to the DB (the FK refuses the row; the trigger is the backstop).
   async createTemplate(input: CreateTemplateInput) {
+    const type = await this.prisma.documentType.findFirst({ where: { id: input.document_type_id }, select: { products: true } });
     return this.prisma.documentTemplate.create({
       data: {
         id: randomUUID(),
@@ -193,6 +197,7 @@ export class TemplatesRepository {
         description: input.description ?? null,
         template_kind: input.template_kind,
         status: 'DRAFT',
+        ...(type !== null ? { products: [...type.products] } : {}),
         created_by: input.created_by,
       },
     });
@@ -447,6 +452,9 @@ export class TemplatesRepository {
           description: source.description,
           template_kind: source.template_kind,
           status: 'DRAFT',
+          // TEMPLATE-PRODUCT-1 §6.1 — the tags are COPIED from the source default (never read
+          // through adopted_from_*, which stays provenance only).
+          products: [...(source.products ?? [])],
           created_by: input.created_by,
           adopted_from_template_id: source.id,
           adopted_from_version_id: version.id,
@@ -1116,7 +1124,8 @@ export class TemplatesRepository {
   // and ones that took effect less than `grace_days` ago. A tenant relies on a default
   // when one of its selections names it, or when it has no tenant-wide selection for the
   // type and no other live default (no withdrawal published) would be resolved instead.
-  // Product tags are returned as recorded and NEVER filter (ADR-0034 D9 — not enforced).
+  // Product tags are returned as recorded; the controller filters them by the tenant's
+  // entitlements (TEMPLATE-PRODUCT-1 §6.3, superseding ADR-0034 D9).
   // The only tenant data read is the caller's own selections / templates.
   async listWithdrawalNoticesForTenant(input: { tenant_id: string; now?: Date; grace_days: number }) {
     const now = input.now ?? new Date();
@@ -1170,9 +1179,16 @@ export class TemplatesRepository {
   }
 
   // Ids of the Aramo defaults of a type whose withdrawal has taken effect at `now`.
-  async listWithdrawnPlatformDefaultIds(document_type_id: string, now: Date): Promise<string[]> {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only defaults tagged with it.
+  async listWithdrawnPlatformDefaultIds(document_type_id: string, now: Date, product?: string): Promise<string[]> {
     const rows = await this.prisma.documentTemplate.findMany({
-      where: { ...templateWhere(PLATFORM_OWNER), document_type_id, status: 'ACTIVE', withdraw_effective_at: { lte: now } },
+      where: {
+        ...templateWhere(PLATFORM_OWNER),
+        document_type_id,
+        status: 'ACTIVE',
+        withdraw_effective_at: { lte: now },
+        ...(product !== undefined ? { products: { has: product } } : {}),
+      },
       select: { id: true },
       orderBy: { id: 'asc' },
     });
@@ -1190,10 +1206,12 @@ export class TemplatesRepository {
   // way a PLATFORM template is usable after ORG-UX-1 §5.3), ACTIVE and not past
   // withdraw_effective_at. Each row has a current version (the caller pins it). An explicit
   // own-tenant ∪ PLATFORM union (ADR-0034 §4.1); the automatic resolution is untouched.
-  async listUsableTemplatesForTenant(tenant_id: string, document_type_id: string, client_id: string | null, now: Date) {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only templates tagged with it (Sign: `sign`).
+  async listUsableTemplatesForTenant(tenant_id: string, document_type_id: string, client_id: string | null, now: Date, product?: string) {
     const clientScope = client_id === null ? [{ client_id: null }] : [{ client_id: null }, { client_id }];
+    const tagged = product !== undefined ? { products: { has: product } } : {};
     const own = await this.prisma.documentTemplate.findMany({
-      where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, OR: clientScope },
+      where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, OR: clientScope, ...tagged },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
     const adopted = await this.prisma.tenantTemplateSelection.findMany({
@@ -1212,13 +1230,16 @@ export class TemplatesRepository {
               status: 'ACTIVE',
               current_version_id: { not: null },
               OR: [{ withdraw_effective_at: null }, { withdraw_effective_at: { gt: now } }],
+              ...tagged,
             },
             orderBy: [{ name: 'asc' }, { id: 'asc' }],
           });
     return [...own, ...platform];
   }
 
-  async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null) {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only templates tagged with it.
+  async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null, product?: string) {
+    const tagged = product !== undefined ? { products: { has: product } } : {};
     const rows = await this.prisma.documentTemplate.findMany({
       where: {
         tenant_id,
@@ -1227,13 +1248,14 @@ export class TemplatesRepository {
         status: 'ACTIVE',
         current_version_id: { not: null },
         client_id,
+        ...tagged,
       },
     });
     const tenantWide =
       client_id === null
         ? []
         : await this.prisma.documentTemplate.findMany({
-            where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, client_id: null },
+            where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, client_id: null, ...tagged },
           });
     const all = [...rows, ...tenantWide];
     const versionIds = all.map((t) => t.current_version_id).filter((id): id is string => id !== null);

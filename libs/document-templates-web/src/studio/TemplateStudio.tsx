@@ -330,9 +330,22 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         withdrawal: hasWithdrawal ? withdrawal : null,
         unknownDetail: copy.unknownVariableDetail,
         // TEMPLATE-PRODUCT-1 §2.6 — a blocking check where the context carries product tags.
-        products: ds.capabilities.productTags ? (detail?.products ?? []) : null,
+        // TEMPLATE-PRODUCT-1 §6.1 — read-only (inherited) tags never block approval.
+        products: ds.capabilities.productTags && ds.capabilities.productTagsReadOnly !== true ? (detail?.products ?? []) : null,
       }),
-    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal, copy.unknownVariableDetail, ds.capabilities.productTags, detail?.products],
+    [
+      doc,
+      catalog,
+      dirty,
+      savedRev,
+      previewedRev,
+      withdrawal,
+      hasWithdrawal,
+      copy.unknownVariableDetail,
+      ds.capabilities.productTags,
+      ds.capabilities.productTagsReadOnly,
+      detail?.products,
+    ],
   );
   const editable = canManage && mode === 'edit';
   const wide = width >= WIDE_BP;
@@ -1060,6 +1073,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             canEdit={canManage}
             canEditProps={canManage && ds.updateProperties !== undefined}
             showProductTags={ds.capabilities.productTags}
+            productTagsReadOnly={ds.capabilities.productTagsReadOnly === true}
             productOptions={typeProducts}
             showDescription={ds.capabilities.description}
             withdrawalEnabled={hasWithdrawal}

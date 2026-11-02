@@ -840,7 +840,8 @@
       "documentTypeKeyFromName",
       "isSystemLockedType",
       "isTemplateProductKey",
-      "templateErrorToHttp"
+      "templateErrorToHttp",
+      "visibleToTenant"
     ],
     "@aramo/documents-contracts": [
       "ESIGN_S2S_SCHEME",
@@ -6434,6 +6435,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9295,6 +9302,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9383,6 +9402,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -12155,6 +12180,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

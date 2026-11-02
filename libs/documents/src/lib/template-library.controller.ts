@@ -15,7 +15,7 @@ import {
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 
 import { TemplatesRepository } from './templates.repository.js';
 import {
@@ -27,6 +27,7 @@ import {
 import { TemplateNotFoundError, TemplateSelectionInvalidError } from './domain/errors.js';
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import { templateErrorToHttp } from './templates.controller.js';
+import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from './template-products.js';
 
 // DOC-TEMPLATE-LIB-1 T-4 — Implementation Directive v1.0 (LOCKED) §8.2 (ADR-0034 D3, D4,
 // D5, D6, D8, D11): the tenant template-library reads + the explicit selection, for the
@@ -54,6 +55,14 @@ import { templateErrorToHttp } from './templates.controller.js';
 //
 // Registered BEFORE DocumentTemplatesController in DocumentsModule so the static paths
 // (`library`, `selections`) win over its `:id` route.
+//
+// TEMPLATE-PRODUCT-1 (Directive v1.0 LOCKED §6.3, superseding ADR-0034 D9 "every tenant sees
+// every default") — product tags are ENFORCED. Let E = the tenant's entitlement capabilities
+// (the entitlement store the EntitlementGuard and TenantEntitlementReader read). The gallery,
+// the default preview and Adopt offer only Aramo defaults whose products ∩ E ≠ ∅. The
+// tenant's own templates carry their server-written tags (`products`, §6.1). The response
+// names the template products the tenant is entitled to (`entitled_products`, the gallery's
+// product chips).
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,6 +101,16 @@ export interface TemplateLibraryItem {
   readonly configurable: boolean;
 }
 
+export interface TemplateLibraryDocumentType {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly configurable: boolean;
+  // TEMPLATE-PRODUCT-1 §4.1 — the type's products and gallery category (additive).
+  readonly products: readonly string[];
+  readonly category: string | null;
+}
+
 @Controller('v1/document-templates')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
@@ -102,19 +121,30 @@ export class DocumentTemplateLibraryController {
     @Optional() @Inject(TEMPLATE_TENANT_BRANDING) private readonly branding?: TemplateTenantBrandingPort,
     // ORG-UX-1 §5.4 — selection set / cleared are audited (non-swallowing seam).
     @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
+    // TEMPLATE-PRODUCT-1 §6.3 — E (EntitlementModule, imported by DocumentsModule: always
+    // injected). Absent only when the controller is constructed directly (unit specs).
+    @Inject(EntitlementRepository) private readonly entitlements?: EntitlementRepository,
   ) {}
+
+  // §6.3 — the template products the tenant is entitled to (E ∩ {ats, sign}).
+  private async entitled(tenant_id: string): Promise<string[]> {
+    if (this.entitlements === undefined) return [...TEMPLATE_PRODUCT_KEYS];
+    return entitledTemplateProducts(await this.entitlements.getCapabilities(tenant_id));
+  }
 
   @Get('library')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document_template:read')
   async library(@AuthContext() auth: AuthContextType) {
     const now = new Date();
+    const entitled = await this.entitled(auth.tenant_id);
     const rows = (await this.repo.listTemplatesForTenantIncludingPlatform(auth.tenant_id)).filter((t) =>
       t.owner_scope === 'PLATFORM'
         ? t.tenant_id === null &&
           t.status === 'ACTIVE' &&
           t.current_version_id !== null &&
-          (t.withdraw_effective_at === null || t.withdraw_effective_at > now)
+          (t.withdraw_effective_at === null || t.withdraw_effective_at > now) &&
+          visibleToTenant(t.products, entitled)
         : t.tenant_id === auth.tenant_id,
     );
     const versions = await this.repo.listVersionSummariesOwnerAware(
@@ -140,18 +170,21 @@ export class DocumentTemplateLibraryController {
         current_version_id: t.current_version_id,
         current_version_number: v?.version_number ?? null,
         updated_at: (v?.activated_at ?? t.updated_at).toISOString(),
-        products: platform ? t.products : null,
+        // TEMPLATE-PRODUCT-1 §6.1 — a tenant template's own (server-written) tags.
+        products: t.products ?? (platform ? [] : null),
         withdraw_effective_at: platform && t.withdraw_effective_at !== null ? t.withdraw_effective_at.toISOString() : null,
         configurable: configurable.has(t.document_type_id),
       };
     });
-    const document_types = systemTypes.map((d) => ({
+    const document_types: TemplateLibraryDocumentType[] = systemTypes.map((d) => ({
       id: d.id,
       key: d.key,
       name: d.name,
       configurable: configurable.has(d.id),
+      products: [...d.products],
+      category: d.category,
     }));
-    return { items, document_types };
+    return { items, document_types, entitled_products: entitled };
   }
 
   // The configurable document types among `ids` (the capability port decides; none without it).
@@ -176,7 +209,9 @@ export class DocumentTemplateLibraryController {
         t.owner_scope !== 'PLATFORM' ||
         t.status !== 'ACTIVE' ||
         t.current_version_id === null ||
-        (t.withdraw_effective_at !== null && t.withdraw_effective_at <= now)
+        (t.withdraw_effective_at !== null && t.withdraw_effective_at <= now) ||
+        // TEMPLATE-PRODUCT-1 §6.3 — a default for products the tenant has none of is not offered.
+        !visibleToTenant(t.products, await this.entitled(auth.tenant_id))
       ) {
         throw new TemplateNotFoundError(id);
       }

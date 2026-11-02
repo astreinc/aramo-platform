@@ -17,7 +17,7 @@ import {
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -29,6 +29,7 @@ import {
   type TemplateTenantLogoPort,
 } from './template-capabilities.port.js';
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
+import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from './template-products.js';
 import {
   DocumentNotFoundError,
   DocumentTypeConflictError,
@@ -121,6 +122,16 @@ function validate(condition: boolean, message: string, requestId: string): void 
   if (!condition) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
 }
 
+// TEMPLATE-PRODUCT-1 §6.1 — no tenant route accepts `products` (they are server-written).
+function refuseProducts(body: unknown, requestId: string): void {
+  if (body !== null && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'products')) {
+    throw new AramoError('VALIDATION_ERROR', 'products are set by Aramo and cannot be changed', 422, {
+      requestId,
+      details: { reason: 'products_server_owned' },
+    });
+  }
+}
+
 interface CreateTemplateBody {
   document_type_id: string;
   name: string;
@@ -189,7 +200,16 @@ export class DocumentTemplatesController {
     @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
     // A1 §2.4 — tenant-profile logo capture/read (bound in apps/api).
     @Optional() @Inject(TEMPLATE_TENANT_LOGO) private readonly tenantLogo?: TemplateTenantLogoPort,
+    // TEMPLATE-PRODUCT-1 §6.3 — E (EntitlementModule, imported by DocumentsModule: always
+    // injected). Absent only when the controller is constructed directly (unit specs).
+    @Inject(EntitlementRepository) private readonly entitlements?: EntitlementRepository,
   ) {}
+
+  // §6.3 — the template products the tenant is entitled to (E ∩ {ats, sign}).
+  private async entitledProducts(tenant_id: string): Promise<string[]> {
+    if (this.entitlements === undefined) return [...TEMPLATE_PRODUCT_KEYS];
+    return entitledTemplateProducts(await this.entitlements.getCapabilities(tenant_id));
+  }
 
   // ORG-UX-1 §5.4 — Org template governance audit (adopt / create / approve). Written
   // after the change; the seam is non-swallowing, so a failed write is an error, never
@@ -226,9 +246,20 @@ export class DocumentTemplatesController {
     validate(typeof body?.document_type_id === 'string', 'document_type_id is required', requestId);
     validate(typeof body?.name === 'string' && body.name.length > 0, 'name is required', requestId);
     validate(TEMPLATE_KINDS.has(body.template_kind), 'invalid template_kind', requestId);
+    // TEMPLATE-PRODUCT-1 §6.1 — a tenant template's products are written only by the server
+    // (from the document type here); no tenant route accepts them.
+    refuseProducts(body, requestId);
     let created: Awaited<ReturnType<TemplatesRepository['createTemplate']>>;
     try {
-      created = await this.repo.createTemplate({ tenant_id: auth.tenant_id, created_by: auth.sub, ...body });
+      created = await this.repo.createTemplate({
+        tenant_id: auth.tenant_id,
+        created_by: auth.sub,
+        document_type_id: body.document_type_id,
+        name: body.name,
+        template_kind: body.template_kind,
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.client_id !== undefined ? { client_id: body.client_id } : {}),
+      });
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -247,10 +278,15 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:author')
   async adopt(@AuthContext() auth: AuthContextType, @Body() body: AdoptTemplateBody, @RequestId() requestId: string) {
     validate(typeof body?.library_template_id === 'string' && body.library_template_id.length > 0, 'library_template_id is required', requestId);
+    refuseProducts(body, requestId);
     let adopted: Awaited<ReturnType<TemplatesRepository['adoptPlatformTemplate']>>;
     try {
       const source = await this.repo.findTemplateByIdOwnerAware(auth.tenant_id, body.library_template_id);
       if (source === null || source.owner_scope !== 'PLATFORM') throw new TemplateNotFoundError(body.library_template_id);
+      // TEMPLATE-PRODUCT-1 §6.3 — only a default for a product the tenant holds is adoptable.
+      if (!visibleToTenant(source.products, await this.entitledProducts(auth.tenant_id))) {
+        throw new TemplateNotFoundError(body.library_template_id);
+      }
       const caps = this.caps;
       const transform =
         caps !== undefined && (await caps.isConfigurable(source.document_type_id))
@@ -289,7 +325,8 @@ export class DocumentTemplatesController {
   // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default withdrawal notices
   // that affect THIS tenant (a selection names the default, or the tenant falls back to
   // it): pending ones and ones that took effect within the last 30 days [TD grace]. Feeds
-  // the Org Home banner (T-4). Product tags are informational — no filtering (D9).
+  // the Org Home banner (T-4). TEMPLATE-PRODUCT-1 §6.3 (superseding D9) — only for defaults
+  // the tenant can see (products ∩ E ≠ ∅).
   // Declared before ':id' so the literal segment wins.
   @Get('notices')
   @HttpCode(HttpStatus.OK)
@@ -299,8 +336,9 @@ export class DocumentTemplatesController {
       tenant_id: auth.tenant_id,
       grace_days: WITHDRAWAL_NOTICE_GRACE_DAYS,
     });
+    const entitled = await this.entitledProducts(auth.tenant_id);
     return {
-      notices: rows.map((r) => ({
+      notices: rows.filter((r) => visibleToTenant(r.products, entitled)).map((r) => ({
         template_id: r.template_id,
         name: r.name,
         document_type_id: r.document_type_id,
@@ -338,6 +376,7 @@ export class DocumentTemplatesController {
     @Body() body: RenameTemplateBody,
     @RequestId() requestId: string,
   ) {
+    refuseProducts(body, requestId);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     validate(name.length > 0, 'name is required', requestId);
     validate(name.length <= TEMPLATE_NAME_MAX_LENGTH, `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`, requestId);

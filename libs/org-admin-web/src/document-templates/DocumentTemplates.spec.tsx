@@ -17,7 +17,7 @@ import { CreateOwnTemplate } from './CreateOwnTemplate';
 import { fetchTemplateNotices, noticeMessage, parseNotices } from './notices-api';
 import { LEGACY_BANNER_TEXT, OurTemplatesPage } from './OurTemplatesPage';
 import { RESPONSIBILITY_SENTENCE, TemplateGalleryPage } from './TemplateGalleryPage';
-import { buildGalleryCards, categoryCounts } from './templates-view';
+import { buildGalleryCards, categoryCounts, galleryProducts, productCounts } from './templates-view';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §4.1, §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — Our
 // templates (table, legacy "Aramo starting point" banner, footnote to the gallery), the
@@ -46,7 +46,8 @@ function item(over: Partial<TemplateLibraryItem>): TemplateLibraryItem {
   };
 }
 const DEFAULT = item({ id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ATS'], current_version_number: 3, updated_at: '2026-10-15T10:00:00.000Z' });
-const OWN = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2 });
+// TEMPLATE-PRODUCT-1 §6.1 — a tenant template carries its own (inherited) tags.
+const OWN = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: ['ats', 'sign'] });
 const OWN_DRAFT = item({ id: 'own-draft', name: 'Draft RTR', status: 'DRAFT', current_version_id: null, current_version_number: null });
 const NOTICE = {
   template_id: 'def-rtr',
@@ -263,6 +264,45 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(await screen.findByRole('article', { name: 'Aramo Right to Represent' })).toBeInTheDocument();
   });
 
+  // TEMPLATE-PRODUCT-1 §6.4 — product chips (All · ATS · Sign) for the entitled products only.
+  const TAGGED: TemplateLibraryView = {
+    ...WIDE,
+    items: [
+      item({ id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ats', 'sign'] }),
+      item({ id: 'def-offer', owner_scope: 'PLATFORM', document_type_id: OFFER, name: 'Aramo Offer letter', products: ['ats'] }),
+      item({ id: 'def-odd', owner_scope: 'PLATFORM', document_type_id: ODD, name: 'Aramo Other', description: 'Custom copy.', products: ['sign'] }),
+    ],
+    entitled_products: ['ats', 'sign'],
+  };
+
+  it('product chips: All · ATS · Sign with counts; a chip filters the cards and the category counts', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(TAGGED) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by product' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'ATS2', 'Sign2']);
+    fireEvent.click(screen.getByTestId('gallery-product-chip-sign'));
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Right to Represent', 'Aramo Other']);
+    const cats = screen.getByRole('toolbar', { name: 'Filter by category' });
+    expect(within(cats).getAllByRole('button').map((c) => c.textContent)).toEqual(['All2', 'Recruiting1', 'Other1']);
+    fireEvent.click(screen.getByTestId('gallery-product-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+  });
+
+  it('product chips only for the entitled products', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue({ ...TAGGED, entitled_products: ['sign'] }) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by product' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'Sign2']);
+    expect(screen.queryByTestId('gallery-product-chip-ats')).toBeNull();
+  });
+
+  it('galleryProducts / productCounts', () => {
+    expect(galleryProducts(TAGGED)).toEqual(['ats', 'sign']);
+    expect(galleryProducts({ ...TAGGED, entitled_products: [] })).toEqual([]);
+    expect(galleryProducts({ items: [], document_types: [] })).toEqual(['ats', 'sign']);
+    expect(productCounts(buildGalleryCards(TAGGED), ['ats', 'sign'])).toEqual({ All: 3, ats: 2, sign: 2 });
+  });
+
   it('no use-the-default-directly affordance remains', async () => {
     renderGallery({ session: ADMIN });
     await screen.findByTestId('gallery-preview');
@@ -379,7 +419,7 @@ describe('Our templates (§6.8)', () => {
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Template', 'Used in', 'Version', 'Status', 'Last approved', 'Actions']);
     expect(row).toHaveTextContent('Our RTR');
     expect(row).toHaveTextContent('Right to Represent');
-    expect(row).toHaveTextContent('ATS');
+    expect(row).toHaveTextContent('ATS · Sign');
     expect(row).toHaveTextContent('v2');
     expect(within(row).getByText('Active')).toHaveClass('ox-pill--active');
     expect(row).toHaveTextContent('Oct 9, 2026 · Purush P.');
@@ -392,10 +432,20 @@ describe('Our templates (§6.8)', () => {
     expect(draft).toHaveTextContent('—');
   });
 
-  it('"Used in" falls back to All apps when no product tags are known', async () => {
-    const lib: TemplateLibraryView = { ...LIBRARY, items: [OWN] };
-    renderOurs({ libraryFn: vi.fn().mockResolvedValue(lib) });
-    expect(await screen.findByTestId('our-template-own-rtr')).toHaveTextContent('All apps');
+  // TEMPLATE-PRODUCT-1 §6.4 — "Used in" = the template's OWN tags (shared label map), never the
+  // tags of the Aramo default of the same type; no tags → "—".
+  it('"Used in" shows the template\'s own tags, not the same-type default\'s', async () => {
+    const own = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: ['sign'] });
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [DEFAULT, own] }) });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(row).toHaveTextContent('Sign');
+    expect(row).not.toHaveTextContent('ATS');
+  });
+
+  it('"Used in" is "—" when the template has no tags', async () => {
+    const own = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: null });
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [own] }) });
+    expect(await screen.findByTestId('our-template-own-rtr')).not.toHaveTextContent('All apps');
   });
 
   it('footnote links to the Template gallery', async () => {

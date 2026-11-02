@@ -18,6 +18,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { grantLegacyPlatformSelection } from './helpers/legacy-template-selection.js';
+import { grantTemplateProductEntitlements } from './helpers/template-product-entitlements.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; the guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -108,6 +109,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const t of [RELYING_TENANT, OWN_CHOICE_TENANT, PLATFORM_TENANT_SENTINEL_ID]) await ensureWriteFreezeTenant((s) => db.query(s), t);
       for (const t of [RELYING_TENANT, OWN_CHOICE_TENANT]) {
         await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`, [t]);
+        // TEMPLATE-PRODUCT-1 §6.3 — the defaults are offered only for entitled products.
+        await grantTemplateProductEntitlements((q, params) => db.query(q, params), t);
       }
 
       // A SYSTEM document type with one published Aramo default (ACTIVE version, current).

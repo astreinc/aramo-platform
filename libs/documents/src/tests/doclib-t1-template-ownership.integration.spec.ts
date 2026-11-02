@@ -162,17 +162,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(insertTemplate({ tenant_id: TENANT, typeId, client_id: randomUUID() })).resolves.toBeTypeOf('string');
     });
 
-    it('products and withdraw_* are PLATFORM-only', async () => {
+    // TEMPLATE-PRODUCT-1 §6.1 (migration 20261103120000) replaced the PLATFORM-only products
+    // CHECK: a TENANT row may carry (server-written) products; a PLATFORM row's are non-null.
+    it('withdraw_* are PLATFORM-only; products are non-null on PLATFORM and allowed on TENANT', async () => {
       const typeId = await newDocumentType();
-      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ats'] })).rejects.toThrow(
-        /DocumentTemplate_products_platform_only_check/,
-      );
+      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ats'] })).resolves.toBeTypeOf('string');
       await expect(insertTemplate({ tenant_id: TENANT, typeId, withdraw: true })).rejects.toThrow(
         /DocumentTemplate_withdraw_platform_only_check/,
       );
       const id = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId, products: ['ats', 'sign'], withdraw: true });
       const r = await db.query(`SELECT products FROM "documents"."DocumentTemplate" WHERE id = $1`, [id]);
       expect(r.rows[0].products).toEqual(['ats', 'sign']);
+      await expect(db.query(`UPDATE "documents"."DocumentTemplate" SET products = NULL WHERE id = $1`, [id])).rejects.toThrow(
+        /DocumentTemplate_products_platform_not_null_check/,
+      );
     });
 
     // ── §3.2 version tenant = parent tenant ────────────────────────────────────

@@ -34,6 +34,8 @@ export interface StudioInspectorProps {
   readonly canEditProps: boolean;
   /** Show the product tags / description properties. */
   readonly showProductTags: boolean;
+  /** TEMPLATE-PRODUCT-1 §6.4 — show the tags read-only even to an editor (inherited tags). */
+  readonly productTagsReadOnly?: boolean;
   /** TEMPLATE-PRODUCT-1 §2.7 — the products the document type allows (default: all keys). */
   readonly productOptions?: readonly string[];
   readonly showDescription: boolean;
@@ -294,7 +296,7 @@ function PropertiesTab(props: StudioInspectorProps) {
         </label>
       ) : null}
       {/* TEMPLATE-PRODUCT-1 §2.5 — product tags are a fixed choice (ATS, Sign), never typed. */}
-      {!props.showProductTags ? null : canManage ? (
+      {!props.showProductTags ? null : canManage && props.productTagsReadOnly !== true ? (
         <ProductTagsSelect
           label="Product tags"
           value={template.products}
@@ -306,7 +308,7 @@ function PropertiesTab(props: StudioInspectorProps) {
           helper="At least one is needed to publish."
         />
       ) : (
-        <div className="pws-props__field">
+        <div className="pws-props__field" data-testid="studio-product-tags">
           <span className="pws-props__l">Product tags</span>
           <span className="pws-tags">
             {orderedProducts(template.products).map((p) => (
@@ -315,6 +317,7 @@ function PropertiesTab(props: StudioInspectorProps) {
               </span>
             ))}
           </span>
+          {props.productTagsReadOnly === true ? <span className="pws-faint">Set by Aramo for this document type.</span> : null}
         </div>
       )}
       {error !== null ? (

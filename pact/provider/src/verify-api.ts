@@ -584,6 +584,15 @@ const DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261103110000_template_product_1_document_type_classes/migration.sql',
 );
+// TEMPLATE-PRODUCT-1 TP-5 (§6.1/§6.2) — tenant templates carry server-written product tags: the
+// PLATFORM-only products CHECK is replaced (PLATFORM non-null), a BEFORE INSERT trigger copies the
+// document type's products onto a row inserted without them, and the backfill tags the RTR
+// default {ats,sign} and every tenant template with its type's products. Changes the returned
+// DocumentTemplate shape (tenant rows now return products) → registered (CLAUDE.md law); after TP-3.
+const DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103120000_template_product_1_tenant_product_tags/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3703,6 +3712,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION,
         DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION,
         DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION,
+        DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -5244,9 +5254,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [ROLES_TENANT]);
           await c.query(
-            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","created_by","updated_at")
-             VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Mutual Agreement','Two-party agreement (pact seed).','GENERATED','ACTIVE',NULL,$4::uuid,now())
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §6.1/§6.3 — a tenant template carries its type's tags (server-
+            // written); Sign lists only templates tagged `sign`.
+            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+             VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Mutual Agreement','Two-party agreement (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ats','sign'],$4::uuid,now())
+             ON CONFLICT ("id") DO UPDATE SET "products" = ARRAY['ats','sign']`,
             [TPL, ROLES_TENANT, RTR_TYPE, ACTOR],
           );
           await c.query(

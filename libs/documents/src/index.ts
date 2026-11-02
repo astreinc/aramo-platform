@@ -11,7 +11,11 @@ export {
   templateErrorToHttp,
 } from './lib/templates.controller.js';
 // DOC-TEMPLATE-LIB-1 T-4 — Org Home template library (gallery, default preview, selection).
-export { DocumentTemplateLibraryController, type TemplateLibraryItem } from './lib/template-library.controller.js';
+export {
+  DocumentTemplateLibraryController,
+  type TemplateLibraryItem,
+  type TemplateLibraryDocumentType,
+} from './lib/template-library.controller.js';
 
 export {
   TEMPLATE_CAPABILITIES,
@@ -43,7 +47,14 @@ export {
   type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';
 // TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
-export { TEMPLATE_PRODUCT_KEYS, isTemplateProductKey, type TemplateProductKey } from './lib/template-products.js';
+export {
+  TEMPLATE_PRODUCT_KEYS,
+  isTemplateProductKey,
+  // TEMPLATE-PRODUCT-1 §6.3 — tag enforcement by tenant entitlement.
+  entitledTemplateProducts,
+  visibleToTenant,
+  type TemplateProductKey,
+} from './lib/template-products.js';
 // TEMPLATE-PRODUCT-1 §4 — document type classes / kinds, system-locked types, the
 // Platform Admin document type repository.
 export {

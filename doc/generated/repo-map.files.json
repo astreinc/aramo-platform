@@ -793,6 +793,8 @@
     "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
     "apps/api/src/tests/technical-screening/screening-meeting-artifacts.spec.ts",
     "apps/api/src/tests/technical-screening/screening-retention.spec.ts",
+    "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+    "apps/api/src/tests/template-product-1-tp4-generic-editable.unit.spec.ts",
     "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
     "apps/api/src/tests/tenant-cognito.adapter.spec.ts",
     "apps/api/src/tests/tenant-llm-controller.spec.ts",

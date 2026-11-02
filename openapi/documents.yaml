@@ -198,7 +198,12 @@ paths:
     post:
       operationId: createDocumentTemplate
       summary: Create a document template.
-      description: Creates a DRAFT template (GENERATED, UPLOADED_PDF, or HYBRID). Requires `document_template:author` (ORG-UX-1 §4.1). Writes `identity.document_template.created`.
+      description: >-
+        Creates a DRAFT template (GENERATED, UPLOADED_PDF, or HYBRID). Requires
+        `document_template:author` (ORG-UX-1 §4.1). Writes `identity.document_template.created`.
+        TEMPLATE-PRODUCT-1 §6.1 — the template's product tags are copied from its document
+        type by the server; a body carrying `products` → 422 (details.reason
+        `products_server_owned`).
       requestBody:
         required: true
         content:
@@ -214,6 +219,8 @@ paths:
                 $ref: '#/components/schemas/DocumentTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
     get:
       operationId: listDocumentTemplates
       summary: List document templates for the tenant.
@@ -239,7 +246,10 @@ paths:
         reach it. Nothing is used until a `document_template:manage` holder approves it.
         Requires `document_template:author`. Unknown or non-PLATFORM id → 404; a withdrawn
         or unpublished default → 409 with details.reason `template_not_adoptable`. Writes
-        `identity.document_template.adopted`.
+        `identity.document_template.adopted`. TEMPLATE-PRODUCT-1 §6: a default whose product
+        tags share none of the tenant's entitled products → 404; the draft's product tags are
+        copied from the default (server-written). A body carrying `products` → 422
+        (details.reason `products_server_owned`).
       requestBody:
         required: true
         content:
@@ -267,6 +277,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /v1/document-templates/notices:
     get:
       operationId: listDocumentTemplateWithdrawalNotices
@@ -276,9 +288,9 @@ paths:
         published withdrawal that this tenant relies on — a template selection names the
         default, or the tenant has no organization-wide selection for the document type and
         no other live default would be used instead. Lists pending withdrawals and those
-        that took effect in the last 30 days. Product tags are informational and never
-        filter the list (ADR-0034 D9). Feeds the Org Home banner. Requires
-        `document_template:read`.
+        that took effect in the last 30 days. TEMPLATE-PRODUCT-1 §6.3 (superseding ADR-0034
+        D9): only defaults whose product tags share an entitled product with the tenant.
+        Feeds the Org Home banner. Requires `document_template:read`.
       responses:
         '200':
           description: The notices (possibly empty), ordered by effective date.
@@ -296,7 +308,10 @@ paths:
         Only the CURRENT version of an Aramo default is listed. `updated_at` is the current
         version's activation time (the gallery "Updated {date}" badge). Also returns the
         system document types (with whether each is configurable). Requires
-        `document_template:read`.
+        `document_template:read`. TEMPLATE-PRODUCT-1 §6: only Aramo defaults whose product tags
+        share an entitled product with the tenant are listed; a tenant template carries its
+        own (server-written) tags; `entitled_products` names the template products the
+        tenant holds (the gallery product chips).
       responses:
         '200':
           description: The gallery.
@@ -312,7 +327,8 @@ paths:
         DOC-TEMPLATE-LIB-1 T-4. Renders the CURRENT version of an Aramo (PLATFORM) default
         with the tenant's organization values (organization.* variables from the tenant
         profile) and fixed sample values for every other variable. Read-only: no preview is
-        recorded and nothing is written. Not an Aramo default, not usable now, or unknown → 404.
+        recorded and nothing is written. Not an Aramo default, not usable now, not tagged with
+        a product the tenant is entitled to (TEMPLATE-PRODUCT-1 §6.3), or unknown → 404.
         Requires `document_template:read`.
       parameters:
         - $ref: '#/components/parameters/DocumentId'
@@ -428,6 +444,8 @@ paths:
         version — not draft content, so it does not re-arm the preview gate). The name is
         trimmed and must be 1..120 characters. Tenant-scoped (unknown or cross-tenant ids
         are 404). Returns the same template view as GET. Requires `document_template:author` (ORG-UX-1 §4.1).
+        TEMPLATE-PRODUCT-1 §6.1 — product tags are server-written: a body carrying `products`
+        → 422 (details.reason `products_server_owned`).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -447,6 +465,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /v1/document-templates/{id}/versions:
     post:
       operationId: createTemplateVersion
@@ -1548,7 +1568,10 @@ components:
           description: DOC-TEMPLATE-LIB-1 — tenant routes return the organization's own (TENANT) rows.
         products:
           type: [array, 'null']
-          description: Product tags — PLATFORM defaults only (null on TENANT rows). Recorded, not enforced (ADR-0034 D9).
+          description: >-
+            Product tags (ats, sign). TEMPLATE-PRODUCT-1 §6.1 — a PLATFORM default always carries
+            them; a TENANT template carries server-written tags (copied from the default at
+            Adopt, else from its document type) that no tenant route accepts. Enforced (§6.3).
           items:
             type: string
         withdraw_notice_at:
@@ -1819,13 +1842,13 @@ components:
         updated_at: { type: string, format: date-time }
         products:
           type: [array, 'null']
-          description: Aramo defaults only — the product tags (recorded, not enforced).
+          description: The template's own product tags (TEMPLATE-PRODUCT-1 §6.1 — Aramo defaults and tenant templates).
           items: { type: string }
         withdraw_effective_at: { type: [string, 'null'], format: date-time }
         configurable: { type: boolean }
     TemplateLibraryResponse:
       type: object
-      required: [items, document_types]
+      required: [items, document_types, entitled_products]
       properties:
         items:
           type: array
@@ -1835,12 +1858,21 @@ components:
           type: array
           items:
             type: object
-            required: [id, key, name, configurable]
+            required: [id, key, name, configurable, products, category]
             properties:
               id: { type: string, format: uuid }
               key: { type: string }
               name: { type: string }
               configurable: { type: boolean }
+              products:
+                type: array
+                description: TEMPLATE-PRODUCT-1 §4.1 — the type's template product keys.
+                items: { type: string, enum: [ats, sign] }
+              category: { type: [string, 'null'] }
+        entitled_products:
+          type: array
+          description: TEMPLATE-PRODUCT-1 §6.3 — the template product keys the tenant is entitled to.
+          items: { type: string, enum: [ats, sign] }
     TemplateDefaultPreview:
       description: An Aramo default's current version rendered with the tenant's branding.
       allOf:

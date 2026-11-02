@@ -12,3 +12,16 @@ export type TemplateProductKey = (typeof TEMPLATE_PRODUCT_KEYS)[number];
 export function isTemplateProductKey(value: unknown): value is TemplateProductKey {
   return typeof value === 'string' && (TEMPLATE_PRODUCT_KEYS as readonly string[]).includes(value);
 }
+
+/**
+ * TEMPLATE-PRODUCT-1 §6.3 — the template product keys among a tenant's entitlement
+ * capabilities (E ∩ {ats, sign}).
+ */
+export function entitledTemplateProducts(capabilities: ReadonlySet<string>): TemplateProductKey[] {
+  return TEMPLATE_PRODUCT_KEYS.filter((k) => capabilities.has(k));
+}
+
+/** §6.3 — a template is offered to a tenant iff its products ∩ E ≠ ∅ (case-insensitive). */
+export function visibleToTenant(products: readonly string[] | null | undefined, entitled: readonly string[]): boolean {
+  return (products ?? []).some((p) => entitled.includes(p.toLowerCase()));
+}
