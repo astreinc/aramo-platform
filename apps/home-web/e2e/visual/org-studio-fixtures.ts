@@ -61,7 +61,7 @@ export const libraryItem = (over: Record<string, unknown>) => ({
   withdraw_effective_at: null, configurable: true, ...over,
 });
 export const ARAMO_DEFAULT = libraryItem({
-  id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ATS'], current_version_id: 'pv3', current_version_number: 3,
+  id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ats'], current_version_id: 'pv3', current_version_number: 3,
 });
 const DOC_TYPES = [{ id: RTR, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true }];
 const LOGO_REF = { asset_id: 'a1', mime: 'image/png' };

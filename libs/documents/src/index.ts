@@ -38,6 +38,8 @@ export {
   type TemplateGovernanceAction,
   type TemplatePlatformWithdrawalAudit,
 } from './lib/template-audit.port.js';
+// TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
+export { TEMPLATE_PRODUCT_KEYS, isTemplateProductKey, type TemplateProductKey } from './lib/template-products.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   DocumentsRepository,
@@ -107,6 +109,8 @@ export {
   // DOC-TEMPLATE-LIB-1 T-6 — Aramo default withdrawal / one-live-default refusals.
   TemplatePlatformDefaultConflictError,
   type TemplatePlatformDefaultConflictReason,
+  // TEMPLATE-PRODUCT-1 §2.6 — publishing a default with no product tag.
+  TemplateProductRequiredError,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

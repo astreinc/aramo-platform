@@ -140,6 +140,15 @@ export class TemplatePlatformDefaultConflictError extends Error {
   }
 }
 
+// TEMPLATE-PRODUCT-1 §2.6 — an Aramo (PLATFORM) default cannot be published while it has
+// no product tag. Mapped to 422 TEMPLATE_PRODUCT_REQUIRED.
+export class TemplateProductRequiredError extends Error {
+  constructor(public readonly templateId: string) {
+    super(`Aramo default ${templateId} needs at least one product tag before it can be published`);
+    this.name = 'TemplateProductRequiredError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);

@@ -181,7 +181,7 @@ export const STUDIO_STATES: readonly ScreenState[] = [
   {
     name: 'lib-filtered',
     proto: { file: 'studio', hash: 'library', state: { libTag: 'SIGN' } },
-    build: { path: '/document-templates', mock: studioMock(), act: (p) => p.getByRole('group', { name: 'Product' }).getByRole('button', { name: 'SIGN' }).click() },
+    build: { path: '/document-templates', mock: studioMock(), act: (p) => p.getByRole('group', { name: 'Product' }).getByRole('button', { name: 'Sign' }).click() },
     masks: [...LIB, LIB_DRAFT, LIB_TABLE],
   },
   {

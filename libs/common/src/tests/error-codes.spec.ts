@@ -142,6 +142,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // DOC-TEMPLATE-LIB-1 T-6 (§9) — withdrawal: no fallback (409) / lifecycle conflict (409).
       'TEMPLATE_SELECTION_REQUIRED',
       'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
+      // TEMPLATE-PRODUCT-1 §2.6 — publishing an Aramo default that has no product tag (422).
+      'TEMPLATE_PRODUCT_REQUIRED',
       'DOCUMENT_REQUIREMENT_NOT_FOUND',
       'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
       'DOCUMENT_RENDER_FAILED',

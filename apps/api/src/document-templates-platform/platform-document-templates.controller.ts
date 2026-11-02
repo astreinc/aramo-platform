@@ -18,6 +18,7 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
   TEMPLATE_AUDIT,
   TEMPLATE_CAPABILITIES,
+  TEMPLATE_PRODUCT_KEYS,
   TEMPLATE_VARIABLE_DATA_TYPES,
   TemplateVariableKeyConflictError,
   TemplateVariableNotFoundError,
@@ -29,6 +30,8 @@ import {
   type TemplateVariableDataType,
   type TemplateVariableRow,
   type UpdateTemplateVariableInput,
+  isTemplateProductKey,
+  type TemplateProductKey,
 } from '@aramo/documents';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1; ADR-0034 D2/D3/D7/D9, §4 rule 2) — the PLATFORM-tier
@@ -60,9 +63,6 @@ const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 const NAME_MAX = 120;
 const DESCRIPTION_MAX = 500;
 const INTERNAL_NOTES_MAX = 500;
-// Product tag shape (D9 — recorded, not enforced in this increment), e.g. ATS, SIGN.
-const PRODUCT_TAG = /^[A-Z][A-Z0-9_]{0,31}$/;
-const PRODUCTS_MAX = 16;
 // Catalog key = the token stored in template content: dotted lower-snake segments
 // (e.g. talent.full_name). Immutable once created.
 const VARIABLE_KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
@@ -191,12 +191,16 @@ function optionalText(v: unknown, field: string, max: number, requestId: string)
   return s.length === 0 ? null : s;
 }
 
-function productTags(v: unknown, requestId: string): string[] {
-  if (!Array.isArray(v)) throw bad('products must be an array of product tags', requestId);
-  if (v.length > PRODUCTS_MAX) throw bad(`products must have at most ${PRODUCTS_MAX} tags`, requestId);
-  const out: string[] = [];
+// TEMPLATE-PRODUCT-1 §2.3 — product tags are a fixed choice: the entitlement capability
+// keys in TEMPLATE_PRODUCT_KEYS (ats, sign). Anything else — another string, the old
+// upper-case tags, a non-array — is 422. Duplicates collapse; order is kept.
+function productTags(v: unknown, requestId: string): TemplateProductKey[] {
+  const invalid = (message: string): AramoError =>
+    new AramoError('VALIDATION_ERROR', message, 422, { requestId, details: { reason: 'invalid_product', allowed: [...TEMPLATE_PRODUCT_KEYS] } });
+  if (!Array.isArray(v)) throw invalid('products must be an array of product keys');
+  const out: TemplateProductKey[] = [];
   for (const p of v) {
-    if (typeof p !== 'string' || !PRODUCT_TAG.test(p)) throw bad(`invalid product tag: ${String(p)}`, requestId);
+    if (!isTemplateProductKey(p)) throw invalid(`invalid product: ${String(p)} (allowed: ${TEMPLATE_PRODUCT_KEYS.join(', ')})`);
     if (!out.includes(p)) out.push(p);
   }
   return out;

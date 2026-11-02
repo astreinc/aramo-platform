@@ -4196,6 +4196,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PlatformForbidden'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateProductInvalid'
 
   /platform/document-templates/{id}:
     get:
@@ -4250,6 +4252,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PlatformForbidden'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateProductInvalid'
         '404':
           $ref: '#/components/responses/PlatformTemplateNotFound'
 
@@ -4572,6 +4576,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PlatformForbidden'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateProductInvalid'
         '409':
           $ref: '#/components/responses/TemplateVariableKeyExists'
 
@@ -4605,6 +4611,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PlatformForbidden'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateProductInvalid'
         '404':
           $ref: '#/components/responses/PlatformTemplateNotFound'
 
@@ -6375,7 +6383,13 @@ components:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
     PlatformTemplateContentRejected:
-      description: '`TEMPLATE_BINDING_UNSUPPORTED` (a key outside the catalog, or without a resolver) or `VALIDATION_ERROR` (content rejected by the sanitiser).'
+      description: '`TEMPLATE_BINDING_UNSUPPORTED` (a key outside the catalog, or without a resolver) or `VALIDATION_ERROR` (content rejected by the sanitiser). Publish: `TEMPLATE_PRODUCT_REQUIRED` — the template has no product tag (TEMPLATE-PRODUCT-1 §2.6).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTemplateProductInvalid:
+      description: '`VALIDATION_ERROR` (`details.reason` `invalid_product`) — `products` holds a value that is not a template product key (`ats`, `sign`) (TEMPLATE-PRODUCT-1 §2.3).'
       content:
         application/json:
           schema:
@@ -11219,6 +11233,10 @@ components:
         activated_at:
           type: [string, 'null']
           format: date-time
+    TemplateProductKey:
+      type: string
+      enum: [ats, sign]
+      description: 'TEMPLATE-PRODUCT-1 §2 — a template product tag: the entitlement capability key (displayed ATS / Sign). Any other value is refused (422 `VALIDATION_ERROR`, `details.reason` `invalid_product`).'
     PlatformDocumentTemplate:
       type: object
       required:
@@ -11255,9 +11273,9 @@ components:
           enum: [DRAFT, ACTIVE, RETIRED]
         products:
           type: array
-          description: Product tags (recorded, not enforced — ADR-0034 D9).
+          description: Product tags (TEMPLATE-PRODUCT-1 §2). At least one is required to publish (422 `TEMPLATE_PRODUCT_REQUIRED`).
           items:
-            type: string
+            $ref: '#/components/schemas/TemplateProductKey'
         current_version:
           oneOf:
             - $ref: '#/components/schemas/PlatformTemplateVersionSummary'
@@ -11317,8 +11335,7 @@ components:
         products:
           type: array
           items:
-            type: string
-            pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+            $ref: '#/components/schemas/TemplateProductKey'
     UpdatePlatformDocumentTemplateRequest:
       type: object
       properties:
@@ -11331,8 +11348,7 @@ components:
         products:
           type: array
           items:
-            type: string
-            pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+            $ref: '#/components/schemas/TemplateProductKey'
     WithdrawPlatformDocumentTemplateRequest:
       type: object
       properties:
@@ -11388,7 +11404,7 @@ components:
         products:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/TemplateProductKey'
         ats_binding_key:
           type: [string, 'null']
           description: The ATS resolver this variable is filled from (null = not fillable by ATS).
@@ -11431,7 +11447,7 @@ components:
         products:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/TemplateProductKey'
         ats_binding_key:
           type: [string, 'null']
         sample_value:
@@ -11455,7 +11471,7 @@ components:
         products:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/TemplateProductKey'
         ats_binding_key:
           type: [string, 'null']
         sample_value:

@@ -91,6 +91,17 @@ describe('readiness — derived, never stored (handoff §10.6)', () => {
     expect(checksLine(r)).toBe('6 of 6 checks pass');
   });
 
+  // TEMPLATE-PRODUCT-1 §2.6 — publishing needs at least one product tag (platform context).
+  it('a context with product tags blocks on an untagged template; none leaves the check out', () => {
+    const untagged = deriveReadiness({ ...base, products: [] });
+    expect(untagged.ready).toBe(false);
+    expect(untagged.items.find((i) => i.id === 'products')).toMatchObject({ label: 'At least one product tag', ok: false, severity: 'fail' });
+    const tagged = deriveReadiness({ ...base, products: ['ats'] });
+    expect(tagged.ready).toBe(true);
+    expect(checksLine(tagged)).toBe('7 of 7 checks pass');
+    expect(deriveReadiness({ ...base, products: null }).items.some((i) => i.id === 'products')).toBe(false);
+  });
+
   it('previewed = !dirty && previewedRev === savedRev', () => {
     expect(isPreviewed(false, 3, 3)).toBe(true);
     expect(isPreviewed(true, 3, 3)).toBe(false);

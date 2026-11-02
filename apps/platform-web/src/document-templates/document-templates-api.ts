@@ -105,16 +105,6 @@ export function htmlContentOf(v: Pick<TemplateVersion, 'render_schema_version' |
   return { render_schema_version: HTML_CONTENT_VERSION, title: fs.title, html: fs.html };
 }
 
-// Parse the comma/space separated product tag input into upper-case tags.
-export function parseProductTags(raw: string): string[] {
-  const out: string[] = [];
-  for (const t of raw.split(/[\s,]+/)) {
-    const tag = t.trim().toUpperCase();
-    if (tag.length > 0 && !out.includes(tag)) out.push(tag);
-  }
-  return out;
-}
-
 // DOC-TEMPLATE-LIB-1 T-6 (§9) — the default notice length for a withdrawal (days).
 export const DEFAULT_WITHDRAW_NOTICE_DAYS = 7;
 export const MAX_WITHDRAW_NOTICE_DAYS = 365;

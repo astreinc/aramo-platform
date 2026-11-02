@@ -182,3 +182,16 @@ export {
   galleryStudioDataSource,
   type GallerySourceOptions,
 } from './studio/gallery-source';
+// TEMPLATE-PRODUCT-1 §2.2/§2.5 — template product tags: the one key → label map (ats → ATS,
+// sign → Sign) and the multi-select dropdown every surface uses (additive).
+export {
+  TEMPLATE_PRODUCT_KEYS,
+  TEMPLATE_PRODUCT_LABELS,
+  isTemplateProductKey,
+  templateProductLabel,
+  templateProductsLine,
+  orderedProducts,
+  ProductTagsSelect,
+  type ProductTagsSelectProps,
+  type TemplateProductKey,
+} from './template-products';

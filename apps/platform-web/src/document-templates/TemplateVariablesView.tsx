@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, Button, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
+import { ProductTagsSelect, isTemplateProductKey, orderedProducts, templateProductLabel, type TemplateProductKey } from '@aramo/document-templates-web';
 
 import {
   ConfirmDialog,
@@ -8,7 +9,6 @@ import {
   FieldText,
   Pill,
   Skeleton,
-  TagInput,
   ViewOnlyNote,
   permissionLabel,
   type FieldSelectOption,
@@ -151,9 +151,9 @@ export function TemplateVariablesView({ session }: { readonly session: Session }
                     <td className="pw-tv-type">{dataTypeCode(v.data_type)}</td>
                     <td>
                       <span className="pw-tv-products">
-                        {v.products.map((g) => (
+                        {orderedProducts(v.products).map((g) => (
                           <span key={g} className="pw-tv-product">
-                            {g}
+                            {templateProductLabel(g)}
                           </span>
                         ))}
                       </span>
@@ -212,7 +212,7 @@ export function VariableDialog({
   const [label, setLabel] = useState(variable?.label ?? '');
   const [group, setGroup] = useState(variable?.group_label ?? '');
   const [dataType, setDataType] = useState<TemplateVariableDataType>(variable?.data_type ?? 'TEXT');
-  const [products, setProducts] = useState<string[]>(variable ? [...variable.products] : ['ATS']);
+  const [products, setProducts] = useState<TemplateProductKey[]>(variable ? variable.products.filter(isTemplateProductKey) : ['ats']);
   const [binding, setBinding] = useState(variable?.ats_binding_key ?? '');
   const [sample, setSample] = useState(variable?.sample_value ?? '');
   const [active, setActive] = useState(variable?.active ?? true);
@@ -289,7 +289,14 @@ export function VariableDialog({
         onChange={edit((v: string) => setDataType(v as TemplateVariableDataType))}
         options={TEMPLATE_VARIABLE_DATA_TYPES.map((t) => ({ value: t, label: dataTypeLabel(t) }))}
       />
-      <TagInput label="Products" tags={products} onChange={edit(setProducts)} />
+      <ProductTagsSelect
+        label="Products"
+        value={products}
+        onChange={edit(setProducts)}
+        fieldClassName="pw-field"
+        labelClassName="pw-field__label"
+        helperClassName="pw-field__helper"
+      />
       <FieldText label="ATS binding (optional)" value={binding} onChange={edit(setBinding)} mono maxLength={VARIABLE_KEY_MAX} />
       <FieldText label="Sample value" value={sample} onChange={edit(setSample)} />
       {!creating ? (

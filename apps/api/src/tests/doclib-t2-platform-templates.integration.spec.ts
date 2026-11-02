@@ -127,13 +127,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('super_admin creates a PLATFORM default (no tenant), and the preview gate guards publish', async () => {
       const created = await platform.create(
-        { document_type_id: RTR, name: 'Aramo standard RTR', template_kind: 'GENERATED', products: ['ATS'] },
+        { document_type_id: RTR, name: 'Aramo standard RTR', template_kind: 'GENERATED', products: ['ats'] },
         SUPER,
         RID,
       );
       platformTplId = created.id;
       const row = await db.query(`SELECT owner_scope, tenant_id, products FROM "documents"."DocumentTemplate" WHERE id = $1`, [platformTplId]);
-      expect(row.rows[0]).toEqual({ owner_scope: 'PLATFORM', tenant_id: null, products: ['ATS'] });
+      expect(row.rows[0]).toEqual({ owner_scope: 'PLATFORM', tenant_id: null, products: ['ats'] });
 
       const draft = (await platform.createDraft(
         platformTplId,
@@ -163,7 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const list = await platform.list(SUPER, RID);
       const mine = list.templates.find((t) => t.id === platformTplId);
-      expect(mine).toMatchObject({ owner_scope: 'PLATFORM', products: ['ATS'], current_version: { id: v1, version_number: 1, status: 'ACTIVE' }, draft_version_id: null });
+      expect(mine).toMatchObject({ owner_scope: 'PLATFORM', products: ['ats'], current_version: { id: v1, version_number: 1, status: 'ACTIVE' }, draft_version_id: null });
     });
 
     it('publishing v2 retires v1 — tenants only ever resolve the current version', async () => {
@@ -225,7 +225,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenantTpl = (await tenantRoutes.create(TENANT_ADMIN, { document_type_id: RTR, name: 'Our RTR', template_kind: 'GENERATED' }, RID)) as { id: string };
       const tv = (await tenantRoutes.createVersion(TENANT_ADMIN, tenantTpl.id, { render_schema_version: HTML, field_schema: html('Ours', '<p>x</p>') }, RID)) as { id: string };
       expect((await errorOf(platform.get(tenantTpl.id, SUPER, RID))).code).toBe('TEMPLATE_NOT_FOUND');
-      expect((await errorOf(platform.update(tenantTpl.id, { products: ['SIGN'] }, SUPER, RID))).code).toBe('TEMPLATE_NOT_FOUND');
+      expect((await errorOf(platform.update(tenantTpl.id, { products: ['sign'] }, SUPER, RID))).code).toBe('TEMPLATE_NOT_FOUND');
       expect((await errorOf(platform.getVersion(tv.id, SUPER, RID))).code).toBe('TEMPLATE_VERSION_NOT_FOUND');
       expect((await errorOf(platform.publish(tv.id, SUPER, RID))).code).toBe('TEMPLATE_VERSION_NOT_FOUND');
       expect((await platform.list(SUPER, RID)).templates.map((t) => t.id)).not.toContain(tenantTpl.id);
@@ -241,7 +241,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // DOC-TEMPLATE-LIB-1 T-3 seeds organization.address_* WITH resolvers, so the
       // no-resolver example uses a key that has none.
       await platform.createVariable(
-        { key: 'organization.tax_id', label: 'Tax ID', group_label: 'Organization', data_type: 'TEXT', products: ['ATS', 'SIGN'], ats_binding_key: 'organization.tax_id', sample_value: '12-3456789' },
+        { key: 'organization.tax_id', label: 'Tax ID', group_label: 'Organization', data_type: 'TEXT', products: ['ats', 'sign'], ats_binding_key: 'organization.tax_id', sample_value: '12-3456789' },
         SUPER,
         RID,
       );

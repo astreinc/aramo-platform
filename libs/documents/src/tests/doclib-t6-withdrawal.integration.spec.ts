@@ -58,7 +58,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // An Aramo default published through the platform repository path (draft → preview →
     // publish), so the one-live-default check runs exactly as in production.
-    async function publishDefault(typeId: string, products: string[] = ['ATS']): Promise<{ templateId: string; versionId: string }> {
+    async function publishDefault(typeId: string, products: string[] = ['ats']): Promise<{ templateId: string; versionId: string }> {
       const t = await templates.createPlatformTemplate({
         document_type_id: typeId,
         name: 'Aramo default',
@@ -303,7 +303,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const type = await newDocumentType();
       const first = await publishDefault(type);
       // Repository: publishing a second default while the first is live is refused.
-      const second = await templates.createPlatformTemplate({ document_type_id: type, name: 'Second', template_kind: 'GENERATED', products: [], created_by: ACTOR });
+      const second = await templates.createPlatformTemplate({ document_type_id: type, name: 'Second', template_kind: 'GENERATED', products: ['ats'], created_by: ACTOR });
       const v2 = await templates.createPlatformVersion({ template_id: second.id, render_schema_version: 'v1', field_schema: { blocks: [] }, created_by: ACTOR });
       await templates.recordPlatformPreview(v2.id);
       expect(await conflictReason(templates.activatePlatformVersion({ version_id: v2.id, actor_id: ACTOR }))).toBe('platform_default_live');
@@ -328,7 +328,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ── Tenant notice (§9) ────────────────────────────────────────────────────
     it('notices: only tenants that rely on the default see it, with their own selections only; nothing cross-tenant', async () => {
       const type = await newDocumentType();
-      const def = await publishDefault(type, ['SIGN']);
+      const def = await publishDefault(type, ['sign']);
       const selector = randomUUID();
       const client = randomUUID();
       const fallbackOnly = randomUUID(); // grandfathered tenant-wide selection of the default
@@ -354,7 +354,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         has_own_template: false,
         in_effect: false,
         // D9 — product tags are informational: a SIGN-tagged default is listed for every tenant.
-        products: ['SIGN'],
+        products: ['sign'],
       });
       // A grandfathered tenant-wide selection relies on the default; it never sees another
       // tenant's client ids.
@@ -390,8 +390,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ── Product tags (D9) — recorded, editable, never filtering ────────────────
     it('product tags are recorded and editable and never hide a default from resolution', async () => {
       const type = await newDocumentType();
-      const def = await publishDefault(type, ['SIGN']);
-      expect((await templates.updatePlatformTemplate(def.templateId, { products: ['ATS', 'SIGN'] })).products).toEqual(['ATS', 'SIGN']);
+      const def = await publishDefault(type, ['sign']);
+      expect((await templates.updatePlatformTemplate(def.templateId, { products: ['ats', 'sign'] })).products).toEqual(['ats', 'sign']);
       await templates.updatePlatformTemplate(def.templateId, { products: [] });
       // A grandfathered tenant resolves the default whatever its tags (no subscription filtering).
       const tenant = randomUUID();

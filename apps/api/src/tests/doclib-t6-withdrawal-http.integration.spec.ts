@@ -121,7 +121,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await db.query(
         `INSERT INTO "documents"."DocumentTemplate" (id, owner_scope, tenant_id, document_type_id, name, template_kind, status, products, created_by)
-         VALUES ($1,'PLATFORM',NULL,$2,'Aramo T6 default','GENERATED','ACTIVE',ARRAY['SIGN'],$3)`,
+         VALUES ($1,'PLATFORM',NULL,$2,'Aramo T6 default','GENERATED','ACTIVE',ARRAY['sign'],$3)`,
         [templateId, typeId, OPERATOR],
       );
       await db.query(
@@ -200,7 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(200);
       const body = (await res.json()) as { withdraw_notice_at: string; withdraw_effective_at: string; products: string[] };
       expect(new Date(body.withdraw_effective_at).getTime() - new Date(body.withdraw_notice_at).getTime()).toBe(7 * 86_400_000);
-      expect(body.products).toEqual(['SIGN']);
+      expect(body.products).toEqual(['sign']);
       const rows = await auditRows('identity.document_template.withdrawal_published');
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ tenant_id: null, actor_id: OPERATOR, subject_id: templateId });
@@ -222,7 +222,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         relies_on_default: true,
         selected_for_client_ids: [null],
         has_own_template: false,
-        products: ['SIGN'],
+        products: ['sign'],
       });
       expect(await noticesFor(ownChoiceJwt)).toHaveLength(0);
       expect([401, 403]).toContain((await fetch(url('/v1/document-templates/notices'), auth(superJwt))).status);

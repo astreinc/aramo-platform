@@ -165,7 +165,7 @@ describe('DOC-TEMPLATE-LIB-1 T-2 — catalog-driven allowed bindings', () => {
         label: 'Tax ID',
         group_label: 'Organization',
         data_type: 'TEXT',
-        products: ['ATS'],
+        products: ['ats'],
         ats_binding_key: 'organization.tax_id',
         sample_value: '12-3456789',
         active: true,

@@ -164,15 +164,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('products and withdraw_* are PLATFORM-only', async () => {
       const typeId = await newDocumentType();
-      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ATS'] })).rejects.toThrow(
+      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ats'] })).rejects.toThrow(
         /DocumentTemplate_products_platform_only_check/,
       );
       await expect(insertTemplate({ tenant_id: TENANT, typeId, withdraw: true })).rejects.toThrow(
         /DocumentTemplate_withdraw_platform_only_check/,
       );
-      const id = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId, products: ['ATS', 'SIGN'], withdraw: true });
+      const id = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId, products: ['ats', 'sign'], withdraw: true });
       const r = await db.query(`SELECT products FROM "documents"."DocumentTemplate" WHERE id = $1`, [id]);
-      expect(r.rows[0].products).toEqual(['ATS', 'SIGN']);
+      expect(r.rows[0].products).toEqual(['ats', 'sign']);
     });
 
     // ── §3.2 version tenant = parent tenant ────────────────────────────────────
@@ -304,7 +304,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ── §3.7 TemplateVariable catalog ──────────────────────────────────────────
-    it('seeds TemplateVariable with the 8 RTR binding keys (products ATS), no tenant_id column', async () => {
+    it('seeds TemplateVariable with the 8 RTR binding keys (products ats — lowercased by TEMPLATE-PRODUCT-1 TP-1), no tenant_id column', async () => {
       const r = await db.query(
         `SELECT key, label, group_label, data_type, products, ats_binding_key, sample_value, active
            FROM "documents"."TemplateVariable"
@@ -323,7 +323,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent.full_name',
       ]);
       for (const row of r.rows) {
-        expect(row.products).toEqual(['ATS']);
+        expect(row.products).toEqual(['ats']);
         expect(row.ats_binding_key).toBe(row.key);
         expect(row.active).toBe(true);
         expect(typeof row.sample_value).toBe('string');

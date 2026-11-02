@@ -13031,6 +13031,31 @@
       "to": "libs/ai-draft/src/lib/redaction.ts"
     },
     {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/offer-document/offer-document-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-capabilities.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-resolver.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/rtr/SendRtrModal.tsx"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/template-resolution.service.ts"
+    },
+    {
       "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
       "status": "unscoped",
       "to": "apps/api/src/sign/sign-talent-erasure.client.ts"

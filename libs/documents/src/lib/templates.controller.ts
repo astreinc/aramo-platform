@@ -39,6 +39,7 @@ import {
   TemplateNotFoundError,
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateProductRequiredError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -82,6 +83,9 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
   if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
   if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
+  if (e instanceof TemplateProductRequiredError) {
+    return new AramoError('TEMPLATE_PRODUCT_REQUIRED', e.message, 422, { requestId, details: { template_id: e.templateId } });
+  }
   if (e instanceof TemplatePlatformDefaultConflictError) {
     return new AramoError('TEMPLATE_PLATFORM_DEFAULT_CONFLICT', e.message, 409, {
       requestId,

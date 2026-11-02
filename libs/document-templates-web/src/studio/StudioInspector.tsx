@@ -2,9 +2,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Input, TextArea } from '@aramo/fe-foundation';
 
+import { ProductTagsSelect, orderedProducts, templateProductLabel } from '../template-products';
+
 import type { StudioPropertiesPatch, StudioSigning, StudioTemplateInfo, WithdrawalState } from './data-source';
 import { formatDate } from './format-date';
-import { Pill, TagInput, type PillSpec } from './primitives';
+import { Pill, type PillSpec } from './primitives';
 import { checksLine, type Readiness } from './readiness';
 import { StudioRolesPanel } from './StudioRolesPanel';
 import type { StudioDrag } from './use-studio-drag';
@@ -289,15 +291,24 @@ function PropertiesTab(props: StudioInspectorProps) {
           </span>
         </label>
       ) : null}
+      {/* TEMPLATE-PRODUCT-1 §2.5 — product tags are a fixed choice (ATS, Sign), never typed. */}
       {!props.showProductTags ? null : canManage ? (
-        <TagInput label="Product tags" tags={template.products} onChange={(products) => void save({ products })} />
+        <ProductTagsSelect
+          label="Product tags"
+          value={template.products}
+          onChange={(products) => void save({ products })}
+          fieldClassName="pws-props__field"
+          labelClassName="pws-props__l"
+          helperClassName="pws-faint"
+          helper="At least one is needed to publish."
+        />
       ) : (
         <div className="pws-props__field">
           <span className="pws-props__l">Product tags</span>
           <span className="pws-tags">
-            {template.products.map((p) => (
+            {orderedProducts(template.products).map((p) => (
               <span key={p} className="pws-tag">
-                {p}
+                {templateProductLabel(p)}
               </span>
             ))}
           </span>

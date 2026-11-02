@@ -568,6 +568,14 @@ const DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261028110000_doc_template_field_definition_immutability/migration.sql',
 );
+// TEMPLATE-PRODUCT-1 TP-1 (§2.4) — product tags lowercased to the capability keys (ats, sign)
+// in DocumentTemplate.products + TemplateVariable.products. Data-only (no shape change);
+// registered so the provider DB carries the same variable catalog values the platform
+// catalog routes return, exactly as the T-3 variables migration above. After M-A6.
+const DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103100000_template_product_1_lowercase_product_keys/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3685,6 +3693,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_R2_DECLINED_MIGRATION,
         DOCUMENTS_ORG_UX_1_MIGRATION,
         DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION,
+        DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -5172,7 +5181,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [TENANT_ID]);
           await c.query(
             `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
-             VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Standard Right to Represent','Aramo default (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ATS','SIGN'],$3::uuid,now())
+             VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Standard Right to Represent','Aramo default (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ats','sign'],$3::uuid,now())
              ON CONFLICT ("id") DO NOTHING`,
             [TPL, RTR_TYPE, ACTOR],
           );

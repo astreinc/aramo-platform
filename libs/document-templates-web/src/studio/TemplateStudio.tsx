@@ -316,8 +316,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         previewedRev,
         withdrawal: hasWithdrawal ? withdrawal : null,
         unknownDetail: copy.unknownVariableDetail,
+        // TEMPLATE-PRODUCT-1 §2.6 — a blocking check where the context carries product tags.
+        products: ds.capabilities.productTags ? (detail?.products ?? []) : null,
       }),
-    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal, copy.unknownVariableDetail],
+    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal, copy.unknownVariableDetail, ds.capabilities.productTags, detail?.products],
   );
   const editable = canManage && mode === 'edit';
   const wide = width >= WIDE_BP;

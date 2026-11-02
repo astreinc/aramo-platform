@@ -10,6 +10,7 @@ import {
   TemplateNotFoundError,
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateProductRequiredError,
   TemplateSelectionInvalidError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -864,6 +865,9 @@ export class TemplatesRepository {
   // typed refusal. Publishing a new version of a default whose withdrawal has TAKEN
   // EFFECT is refused (nobody resolves it any more). During the notice window a new
   // version may still be published (tenants still use it until the effective date).
+  //
+  // TEMPLATE-PRODUCT-1 §2.6 — a default with no product tag is never published (422
+  // TEMPLATE_PRODUCT_REQUIRED): tags decide where a default is offered.
   async activatePlatformVersion(input: { version_id: string; actor_id: string }) {
     const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
     const t = await this.getTemplateFor(PLATFORM_OWNER, v.template_id);
@@ -876,6 +880,7 @@ export class TemplatesRepository {
       const live = await this.findLivePlatformDefault(t.document_type_id, t.id);
       if (live !== null) throw new TemplatePlatformDefaultConflictError(t.id, 'platform_default_live', { live_template_id: live.id });
     }
+    if (v.status === 'DRAFT' && (t.products ?? []).length === 0) throw new TemplateProductRequiredError(t.id);
     try {
       return await this.activateVersionFor(PLATFORM_OWNER, { ...input, require_preview: true });
     } catch (e) {

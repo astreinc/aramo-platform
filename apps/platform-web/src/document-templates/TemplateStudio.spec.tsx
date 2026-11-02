@@ -54,7 +54,7 @@ function detail(draft: TemplateVersion | null, extra: Partial<PlatformTemplateDe
     description: 'Default offer letter.',
     template_kind: 'GENERATED',
     status: 'ACTIVE',
-    products: ['ATS', 'SIGN'],
+    products: ['ats', 'sign'],
     current_version: { id: 'v2', version_number: 2, status: 'ACTIVE', activated_at: '2026-02-02T10:00:00.000Z' },
     draft_version_id: draft?.id ?? null,
     withdraw_notice_at: null,
@@ -67,8 +67,8 @@ function detail(draft: TemplateVersion | null, extra: Partial<PlatformTemplateDe
 }
 
 const VARIABLES: TemplateVariable[] = [
-  { id: 'a', key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', products: ['ATS'], ats_binding_key: 'talent.first_name', sample_value: 'Amina', active: true, created_at: '', updated_at: '' },
-  { id: 'b', key: 'talent.full_name', label: 'Full name', group_label: 'Talent', data_type: 'TEXT', products: ['ATS'], ats_binding_key: 'talent.full_name', sample_value: 'Amina Diallo', active: true, created_at: '', updated_at: '' },
+  { id: 'a', key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', products: ['ats'], ats_binding_key: 'talent.first_name', sample_value: 'Amina', active: true, created_at: '', updated_at: '' },
+  { id: 'b', key: 'talent.full_name', label: 'Full name', group_label: 'Talent', data_type: 'TEXT', products: ['ats'], ats_binding_key: 'talent.full_name', sample_value: 'Amina Diallo', active: true, created_at: '', updated_at: '' },
 ];
 
 function mockApi(d: PlatformTemplateDetail) {
@@ -185,6 +185,22 @@ describe('TemplateStudio (manage)', () => {
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const saved = update.mock.calls[0]?.[1] as { field_schema: { html: string } };
     expect(saved.field_schema.html).toBe(body);
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.5/§2.6 — an untagged default can't be published: Checks blocks it,
+  // and Properties picks the tags from the fixed list (ATS, Sign).
+  it('an untagged template fails the product check; Properties picks tags from the dropdown', async () => {
+    mockApi(detail(version('d3', 3, 'DRAFT', DRAFT_BODY), { products: [] }));
+    const update = vi.spyOn(documentTemplatesApi, 'updateTemplate').mockResolvedValue({ ...detail(null), products: ['sign'] });
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('tab', { name: /Checks/ }));
+    expect(screen.getByText('At least one product tag')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Properties/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Product tags Choose products' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Sign' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith('t1', { products: ['sign'] }));
+    expect(await screen.findByRole('button', { name: 'Product tags Sign' })).toBeInTheDocument();
   });
 
   it('removing an unknown variable from Checks clears the required failure', async () => {

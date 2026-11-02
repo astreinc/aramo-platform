@@ -39,6 +39,11 @@ export interface ReadinessInput {
   readonly withdrawal: WithdrawalState | null;
   /** TEMPLATE-STUDIO-1 S-1 — the context's unknown-variable detail (default: the platform's). */
   readonly unknownDetail?: string;
+  /**
+   * TEMPLATE-PRODUCT-1 §2.6 — the template's product tags where the context publishes with
+   * them (the platform); absent/null leaves the check out (organization: tenants carry none).
+   */
+  readonly products?: readonly string[] | null;
 }
 
 export interface Readiness {
@@ -95,6 +100,9 @@ export function deriveReadiness(input: ReadinessInput): Readiness {
     { id: 'format', label: 'Only allowed formatting', ok: allowedOnly, severity: 'fail', detail: 'Paragraphs, H2, bold, italic, underline, lists, line breaks and variables.' },
     { id: 'saved', label: 'Draft saved', ok: saved, severity: 'fail', detail: 'Save the draft before previewing.' },
     { id: 'previewed', label: 'Previewed after the last save', ok: previewed, severity: 'fail', detail: 'Open Preview to check the saved draft with sample values.' },
+    ...(input.products != null
+      ? [{ id: 'products', label: 'At least one product tag', ok: input.products.length > 0, severity: 'fail', detail: 'Choose ATS, Sign or both in Properties. Tags decide where the template is offered.' } satisfies CheckItem]
+      : []),
     ...(input.withdrawal !== null
       ? [{ id: 'withdrawn', label: 'Template is not withdrawn', ok: input.withdrawal !== 'IN_EFFECT', severity: 'fail', detail: 'Withdrawn templates can’t be published.' } satisfies CheckItem]
       : []),

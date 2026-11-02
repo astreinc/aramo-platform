@@ -70,10 +70,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         document_type_id: RTR,
         name: 'Default',
         template_kind: 'GENERATED',
-        products: ['ATS'],
+        products: ['ats'],
         created_by: ACTOR,
       });
-      expect(t).toMatchObject({ owner_scope: 'PLATFORM', tenant_id: null, products: ['ATS'], status: 'DRAFT' });
+      expect(t).toMatchObject({ owner_scope: 'PLATFORM', tenant_id: null, products: ['ats'], status: 'DRAFT' });
       const v = await templates.createPlatformVersion({
         template_id: t.id,
         render_schema_version: 'rtr-html-v1',
@@ -106,14 +106,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Platform methods never match a TENANT row.
       const own = await templates.createTemplate({ tenant_id: TENANT, document_type_id: RTR, name: 'Own', template_kind: 'GENERATED', created_by: ACTOR });
       await expect(templates.getPlatformTemplate(own.id)).rejects.toBeInstanceOf(TemplateNotFoundError);
-      await expect(templates.updatePlatformTemplate(own.id, { products: ['SIGN'] })).rejects.toBeInstanceOf(TemplateNotFoundError);
+      await expect(templates.updatePlatformTemplate(own.id, { products: ['sign'] })).rejects.toBeInstanceOf(TemplateNotFoundError);
       expect((await templates.listPlatformTemplates()).map((r) => r.id)).not.toContain(own.id);
     });
 
     it('updatePlatformTemplate: name / description / products only', async () => {
       const t = await templates.createPlatformTemplate({ document_type_id: RTR, name: 'P', template_kind: 'GENERATED', products: [], created_by: ACTOR });
-      const u = await templates.updatePlatformTemplate(t.id, { products: ['ATS', 'SIGN'], description: 'd' });
-      expect(u).toMatchObject({ products: ['ATS', 'SIGN'], description: 'd', status: 'DRAFT', current_version_id: null });
+      const u = await templates.updatePlatformTemplate(t.id, { products: ['ats', 'sign'], description: 'd' });
+      expect(u).toMatchObject({ products: ['ats', 'sign'], description: 'd', status: 'DRAFT', current_version_id: null });
     });
 
     // DOC-TEMPLATE-LIB-1 T-3 seeds 7 organization.* rows (migration 20261021140000) on top
@@ -121,13 +121,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('variable catalog: 15 seeded active rows; create / update / duplicate / not found', async () => {
       const seeded = await variables.listActive();
       expect(seeded).toHaveLength(15);
-      expect(seeded.every((r) => r.ats_binding_key === r.key && r.products.includes('ATS'))).toBe(true);
+      expect(seeded.every((r) => r.ats_binding_key === r.key && r.products.includes('ats'))).toBe(true);
       const created = await variables.create({
         key: 'organization.tax_id',
         label: 'Tax ID',
         group_label: 'Organization',
         data_type: 'TEXT',
-        products: ['ATS', 'SIGN'],
+        products: ['ats', 'sign'],
         ats_binding_key: null,
         sample_value: 'Astre Consulting',
         active: true,

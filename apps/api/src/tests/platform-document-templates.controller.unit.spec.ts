@@ -6,6 +6,7 @@ import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import {
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateProductRequiredError,
   TemplateVariableKeyConflictError,
   type TemplateAuditPort,
   type TemplateCapabilitiesPort,
@@ -80,6 +81,7 @@ function build() {
       updated_at: new Date(),
     })),
     getPlatformTemplate: vi.fn(async () => ({ id: ID, document_type_id: TYPE })),
+    updatePlatformTemplate: vi.fn(async () => PUBLISHED_ROW),
     getPlatformVersion: vi.fn(async () => ({ id: VID, template_id: ID, status: 'DRAFT', field_schema: {}, render_schema_version: 'rtr-html-v1' })),
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
@@ -140,7 +142,7 @@ const PUBLISHED_ROW = {
   description: null,
   template_kind: 'GENERATED',
   status: 'ACTIVE',
-  products: ['ATS'],
+  products: ['ats'],
   current_version_id: VID,
   withdraw_notice_at: null as Date | null,
   withdraw_effective_at: null as Date | null,
@@ -238,10 +240,39 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     const bad = await errorOf(c.create({ document_type_id: 'tenant-type', name: 'N', template_kind: 'GENERATED' }, auth('platform'), RID));
     expect(bad.code).toBe('VALIDATION_ERROR');
     expect(bad.context?.details?.['reason']).toBe('document_type_not_system');
-    expect((await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['ats'] }, auth('platform'), RID))).code).toBe('VALIDATION_ERROR');
-    const v = await c.create({ document_type_id: TYPE, name: ' Standard RTR ', template_kind: 'GENERATED', products: ['ATS', 'ATS', 'SIGN'] }, auth('platform'), RID);
-    expect(templates.createPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Standard RTR', products: ['ATS', 'SIGN'] }));
-    expect(v).toMatchObject({ owner_scope: 'PLATFORM', products: ['ATS', 'SIGN'], current_version: null, draft_version_id: null });
+    const v = await c.create({ document_type_id: TYPE, name: ' Standard RTR ', template_kind: 'GENERATED', products: ['ats', 'ats', 'sign'] }, auth('platform'), RID);
+    expect(templates.createPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Standard RTR', products: ['ats', 'sign'] }));
+    expect(v).toMatchObject({ owner_scope: 'PLATFORM', products: ['ats', 'sign'], current_version: null, draft_version_id: null });
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.3 — products are the capability keys ats / sign only; anything
+  // else (the old upper-case tags, another capability, a non-array) is 422 invalid_product.
+  it('products: only the template product keys; anything else is 422 invalid_product (create, update, variables)', async () => {
+    const { c, templates, variables } = build();
+    for (const bad of [['ATS'], ['SIGN'], ['core'], ['portal'], ['ats', 'nope'], 'ats', [1]]) {
+      const e = await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: bad }, auth('platform'), RID));
+      expect(e.code, JSON.stringify(bad)).toBe('VALIDATION_ERROR');
+      expect(e.statusCode, JSON.stringify(bad)).toBe(422);
+      expect(e.context?.details?.['reason']).toBe('invalid_product');
+    }
+    expect((await errorOf(c.update(ID, { products: ['SIGN'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect((await errorOf(c.createVariable({ key: 'a.b', label: 'L', group_label: 'G', data_type: 'TEXT', products: ['ATS'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect((await errorOf(c.updateVariable(ID, { products: ['Sign'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect(templates.createPlatformTemplate).not.toHaveBeenCalled();
+    expect(templates.updatePlatformTemplate).not.toHaveBeenCalled();
+    expect(variables.create).not.toHaveBeenCalled();
+    expect(variables.update).not.toHaveBeenCalled();
+    await c.update(ID, { products: ['sign', 'ats'] }, auth('platform'), RID);
+    expect(templates.updatePlatformTemplate).toHaveBeenCalledWith(ID, { products: ['sign', 'ats'] });
+  });
+
+  it('publish: an untagged default maps to 422 TEMPLATE_PRODUCT_REQUIRED', async () => {
+    const { c, templates } = build();
+    templates.activatePlatformVersion.mockRejectedValueOnce(new TemplateProductRequiredError(ID));
+    const e = await errorOf(c.publish(VID, auth('platform'), RID));
+    expect(e.code).toBe('TEMPLATE_PRODUCT_REQUIRED');
+    expect(e.statusCode).toBe(422);
+    expect(e.context?.details?.['template_id']).toBe(ID);
   });
 
   it('publish: validates content against the catalog, then activates; the preview gate refusal maps to 409 TEMPLATE_PREVIEW_REQUIRED', async () => {
@@ -349,8 +380,8 @@ describe('PlatformDocumentTemplatesController — withdrawal (T-6)', () => {
 
   it('D9: list/get expose product tags as recorded (no filtering)', async () => {
     const { c, templates } = build();
-    templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['SIGN'], versions: [] }] as never);
+    templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['sign'], versions: [] }] as never);
     const r = await c.list(auth('platform'), RID);
-    expect(r.templates[0]?.products).toEqual(['SIGN']);
+    expect(r.templates[0]?.products).toEqual(['sign']);
   });
 });

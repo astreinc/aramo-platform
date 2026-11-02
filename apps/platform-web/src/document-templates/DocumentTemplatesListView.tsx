@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Input, hasScope, type Session } from '@aramo/fe-foundation';
+import {
+  ProductTagsSelect,
+  TEMPLATE_PRODUCT_KEYS,
+  orderedProducts,
+  templateProductLabel,
+  type TemplateProductKey,
+} from '@aramo/document-templates-web';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FieldSelect, FieldText, FieldTextArea } from '../components/ConfirmFields';
@@ -8,7 +15,6 @@ import { EmptyState } from '../components/EmptyState';
 import { SegmentedFilter } from '../components/FilterBar';
 import { Pill, type PillSpec } from '../components/Pill';
 import { Skeleton } from '../components/Skeleton';
-import { TagInput } from '../components/TagInput';
 import { ViewOnlyNote } from '../components/ViewOnlyNote';
 import { formatDate, formatDateRelative } from '../components/format-date';
 
@@ -27,8 +33,10 @@ import './library.css';
 // /document-templates: page header + "Create default template" (:manage), the product
 // segmented filter and search, and the table (Template · Current version · Draft ·
 // Products · Updated · "Open studio →"). A row opens the Studio at /document-templates/:id.
+// TEMPLATE-PRODUCT-1 §2.5 — products are the capability keys (ats, sign) shown as ATS / Sign;
+// the filter compares keys and the create dialog picks from the fixed list.
 
-type ProductFilter = 'ALL' | 'ATS' | 'SIGN';
+type ProductFilter = 'ALL' | TemplateProductKey;
 
 const NAME_MAX = 120;
 const DESC_MAX = 500;
@@ -104,11 +112,7 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
           label="Product"
           value={product}
           onChange={setProduct}
-          options={[
-            { value: 'ALL', label: 'All products' },
-            { value: 'ATS', label: 'ATS' },
-            { value: 'SIGN', label: 'SIGN' },
-          ]}
+          options={[{ value: 'ALL', label: 'All products' }, ...TEMPLATE_PRODUCT_KEYS.map((k) => ({ value: k, label: templateProductLabel(k) }))]}
         />
         <Input unstyled className="pwl-in pwl-in--38 pws-lib__q" value={q} placeholder="Search templates" aria-label="Search templates" onChange={(e) => setQ(e.target.value)} />
         <span className="pws-lib__count" role="status">
@@ -183,9 +187,9 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
                         <td className={`pws-lib__draft${t.draft_version_id !== null ? ' pws-lib__draft--open' : ''}`}>{t.draft_version_id !== null ? 'Open draft' : 'No draft'}</td>
                         <td>
                           <span className="pwl-tags">
-                            {t.products.map((p) => (
+                            {orderedProducts(t.products).map((p) => (
                               <span key={p} className="pwl-tag">
-                                {p}
+                                {templateProductLabel(p)}
                               </span>
                             ))}
                           </span>
@@ -247,7 +251,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
   const [typeId, setTypeId] = useState('');
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [tags, setTags] = useState<string[]>(['ATS']);
+  const [tags, setTags] = useState<TemplateProductKey[]>(['ats']);
   const [start, setStart] = useState('blank');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -332,10 +336,15 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         </span>
       </div>
       <FieldTextArea label="Description (optional)" value={desc} onChange={setDesc} max={DESC_MAX} />
-      <div className="pwl-countfield">
-        <TagInput label="Product tags" tags={tags} onChange={setTags} />
-        <span className="pw-field__helper">Enter to add. Uppercase, up to 16.</span>
-      </div>
+      <ProductTagsSelect
+        label="Product tags"
+        value={tags}
+        onChange={setTags}
+        fieldClassName="pw-field"
+        labelClassName="pw-field__label"
+        helperClassName="pw-field__helper"
+        helper="Where tenants can use it. At least one is needed to publish."
+      />
       <FieldSelect
         label="Start from"
         value={start}

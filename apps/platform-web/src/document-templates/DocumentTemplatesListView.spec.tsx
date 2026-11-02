@@ -28,7 +28,7 @@ function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): P
     description: null,
     template_kind: 'GENERATED',
     status: 'ACTIVE',
-    products: ['ATS'],
+    products: ['ats'],
     current_version: null,
     draft_version_id: null,
     withdraw_notice_at: null,
@@ -41,12 +41,12 @@ function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): P
 
 const TEMPLATES: PlatformTemplate[] = [
   tpl('t1', 'Aramo standard RTR', {
-    products: ['ATS', 'SIGN'],
+    products: ['ats', 'sign'],
     current_version: { id: 'v2', version_number: 2, status: 'ACTIVE', activated_at: '2026-10-20T10:00:00.000Z' },
     withdraw_notice_at: '2026-10-20T00:00:00.000Z',
     withdraw_effective_at: '2099-10-29T00:00:00.000Z',
   }),
-  tpl('t2', 'Mutual NDA', { status: 'DRAFT', products: ['SIGN'], draft_version_id: 'v9' }),
+  tpl('t2', 'Mutual NDA', { status: 'DRAFT', products: ['sign'], draft_version_id: 'v9' }),
 ];
 
 function Where() {
@@ -100,7 +100,7 @@ describe('DocumentTemplatesListView', () => {
     expect(within(row).getByText('Published v2')).toBeInTheDocument();
     expect(within(row).getByText('Withdrawal 29 Oct 2099')).toBeInTheDocument();
     expect(within(row).getByText('No draft')).toBeInTheDocument();
-    expect(within(row).getByText('SIGN')).toBeInTheDocument();
+    expect(within(row).getByText('Sign')).toBeInTheDocument();
     expect(within(row).getByRole('link', { name: 'Open studio for Aramo standard RTR' })).toHaveAttribute('href', '/document-templates/t1');
     const nda = screen.getByText('Mutual NDA').closest('tr') as HTMLElement;
     expect(within(nda).getByText('Not published')).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe('DocumentTemplatesListView', () => {
     expect(within(dialog).getByText('7 / 120')).toBeInTheDocument();
     fireEvent.click(commit);
     await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({ document_type_id: 'd1', name: 'New RTR', description: null, template_kind: 'GENERATED', products: ['ATS'] }),
+      expect(create).toHaveBeenCalledWith({ document_type_id: 'd1', name: 'New RTR', description: null, template_kind: 'GENERATED', products: ['ats'] }),
     );
     expect(draft).not.toHaveBeenCalled();
     expect(await screen.findByTestId('path')).toHaveTextContent('/document-templates/t9');
