@@ -3,8 +3,12 @@ import { Pool, type PoolClient } from 'pg';
 
 // ADR-0024 PR-4a-2 — startup coverage repository.
 //
-// Read-only cross-schema anti-join: ACTIVE identity tenants with NO active
-// requisition-lifecycle policy package. Implemented with `pg` directly (not a
+// Read-only cross-schema anti-join: ACTIVE identity tenants that hold the ATS
+// product (an unrevoked entitlement.TenantEntitlement 'ats' row — the same
+// presence-as-entitled read EntitlementGuard gates every ATS route on) with NO
+// active requisition-lifecycle policy package. A tenant without the ATS product
+// (a Sign-only Business tenant, a Personal tenant) never reaches add-talent, so
+// a missing package there is not a gap and is not reported. Implemented with `pg` directly (not a
 // per-module Prisma client) because the query spans two schemas (identity +
 // policy_store) and no single Prisma client owns both — the same rationale as
 // libs/common/cross-schema-consistency.repository.ts. Read-only; never mutates.
@@ -16,8 +20,11 @@ import { Pool, type PoolClient } from 'pg';
 // The requisition-lifecycle package name. The canonical constant lives in
 // @aramo/pipeline (the retrieval side); this raw-SQL predicate uses the literal.
 const REQUISITION_LIFECYCLE_PACKAGE_NAME = 'requisition-lifecycle';
+// The entitlement capability that marks a tenant as holding the ATS product
+// (entitlement.Capability 'ats').
+const ATS_CAPABILITY = 'ats';
 
-// Active tenants lacking an active requisition-lifecycle package. The
+// Active ATS tenants lacking an active requisition-lifecycle package. The
 // active-window predicate mirrors libs/policy-store/src/lib/window.ts
 // (effective_from <= now AND (effective_to IS NULL OR now < effective_to)).
 const UNCOVERED_TENANTS_SQL =
@@ -28,7 +35,10 @@ const UNCOVERED_TENANTS_SQL =
   ' AND v."package_name" = $1 ' +
   ' AND v."effective_from" <= now() ' +
   ' AND (v."effective_to" IS NULL OR now() < v."effective_to") ' +
-  'WHERE t."is_active" = true AND v."id" IS NULL';
+  'WHERE t."is_active" = true AND v."id" IS NULL ' +
+  '  AND EXISTS (SELECT 1 FROM "entitlement"."TenantEntitlement" e ' +
+  '              WHERE e."tenant_id" = t."id" AND e."capability"::text = $2 ' +
+  '                AND e."revoked_at" IS NULL)';
 
 export interface UncoveredTenant {
   tenant_id: string;
@@ -49,7 +59,7 @@ export class TenantPolicyCoverageRepository implements OnModuleDestroy {
     try {
       const { rows } = await client.query<UncoveredTenant>(
         UNCOVERED_TENANTS_SQL,
-        [REQUISITION_LIFECYCLE_PACKAGE_NAME],
+        [REQUISITION_LIFECYCLE_PACKAGE_NAME, ATS_CAPABILITY],
       );
       return rows;
     } finally {

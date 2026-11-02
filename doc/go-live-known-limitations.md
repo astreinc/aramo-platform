@@ -42,7 +42,7 @@ provisioning now publishes each new tenant's lifecycle package as a
 byte-identical copy of the platform-sentinel **template**
 (`apps/platform-admin` `TenantPolicyProvisioningService`, step 4 of the
 provisioning saga), and a bootstrap coverage guard (`apps/api`
-`TenantPolicyCoverageGuard`) LOGS LOUD for any active tenant still lacking one
+`TenantPolicyCoverageGuard`) LOGS LOUD for any active ATS tenant still lacking one
 (**never fail-boots**). **The blocking constraint is lifted.**
 
 ### (OPEN) Future self-service tenant signup must invoke the same handout
