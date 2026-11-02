@@ -15,6 +15,7 @@ import { PDFDocument } from 'pdf-lib';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { AppModule } from '@aramo/sign-service';
 import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/sign';
+import { effectiveLegalDocument } from '@aramo/subscription';
 
 // DOC-3 — Pact provider verifier for apps/sign-service.
 //
@@ -310,6 +311,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [SENDER_TENANT_ID],
       );
+      // ToS v2.0 (effective 2026-11-02 12:00 EST): a Business sender who has not accepted the Sign
+      // Terms of Service in force is refused (legal_acceptance_required). Record the sender's
+      // acceptance of whatever version is in force, so console sends do not depend on the clock
+      // (before the instant nothing is owed and no row is written).
+      const tos = effectiveLegalDocument('sign.terms_of_service');
+      if (tos !== null) {
+        await db.query(
+          `INSERT INTO subscription."LegalAcceptance" (id, tenant_id, user_id, subject_email, document_key, version, sha256, context, context_ref)
+           SELECT gen_random_uuid(), $1::uuid, $2, 'sam.sender@example.com', $3, $4, $5, 'IN_APP', $6
+           WHERE NOT EXISTS (SELECT 1 FROM subscription."LegalAcceptance" WHERE tenant_id = $1::uuid AND user_id = $2 AND document_key = $3 AND version = $4)`,
+          [SENDER_TENANT_ID, SENDER_USER_ID, tos.key, tos.version, tos.sha256, `in_app:${SENDER_TENANT_ID}:${SENDER_USER_ID}`],
+        );
+      }
     }
 
     // CCP-A6 — the governed-subscription billing owner (real RBAC: a role granting

@@ -833,25 +833,31 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
   });
 });
 
-// CCP-C7 (PBD §5.2 row C7, §10) — tenant self-service while the Sign Terms of Service are not
-// APPROVED (the shipped legal registry): the view offers no action and names the stable reason; the
-// owner's cancel is refused with the designed disabled state before any write or provider call. The
-// terms gate precedes the governed-subscription gate, so this tenant (governed) reads the terms state.
-describe('sign-workspace → GET /v1/sign/billing/self-service (terms not approved)', () => {
-  it('returns every self-service action unavailable with reason SELF_SERVICE_TERMS_NOT_APPROVED', async () => {
+// CCP-C7 (PBD §5.2 row C7, §10) — tenant self-service for a governed tenant. Since ToS v2.0 took
+// effect (2026-11-02 12:00 EST) the shipped legal registry has APPROVED Sign terms in force, so the
+// terms gate passes and the governed-subscription gate answers: the view offers no action and names
+// the stable reason; the owner's cancel is refused before any write or provider call. The terms
+// version and URL are matched by type so a later ToS version does not break the contract.
+describe('sign-workspace → GET /v1/sign/billing/self-service (governed subscription open)', () => {
+  it('returns every self-service action unavailable with reason GOVERNED_SUBSCRIPTION_OPEN', async () => {
     const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE };
-    const off = { available: false, reason: 'SELF_SERVICE_TERMS_NOT_APPROVED' };
+    const off = { available: false, reason: 'GOVERNED_SUBSCRIPTION_OPEN' };
     await provider
       .addInteraction()
       .given('a business tenant holds a governed Aramo-managed Sign subscription')
-      .uponReceiving('a self-service billing read by the billing owner while the Sign terms are not approved')
+      .uponReceiving('a self-service billing read by the billing owner of a tenant with a governed subscription')
       .withRequest('GET', '/v1/sign/billing/self-service', (b) => {
         b.headers(headers);
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
           product_key: 'sign',
-          terms: { state: 'NOT_APPROVED', document_key: 'sign.terms_of_service', version: null, url: null },
+          terms: {
+            state: 'APPROVED',
+            document_key: 'sign.terms_of_service',
+            version: like('2.0'),
+            url: like('https://sign.aramo.ai/legal/terms-of-service/2.0'),
+          },
           pending_provider: false,
           actions: { cancel: off, upgrade: off },
           can_manage_billing: true,
@@ -866,31 +872,31 @@ describe('sign-workspace → GET /v1/sign/billing/self-service (terms not approv
   });
 });
 
-describe('sign-workspace → POST /v1/sign/billing/self-service/cancel (terms not approved)', () => {
-  it('is refused 503 ESIGN_BILLING_UNAVAILABLE reason self_service_terms_not_approved', async () => {
+describe('sign-workspace → POST /v1/sign/billing/self-service/cancel (governed subscription open)', () => {
+  it('is refused 409 ESIGN_BILLING_CONFLICT reason governed_subscription_open', async () => {
     const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE, 'Content-Type': 'application/json' };
     await provider
       .addInteraction()
       .given('a business tenant holds a governed Aramo-managed Sign subscription')
-      .uponReceiving('a self-service cancel by the billing owner while the Sign terms are not approved')
+      .uponReceiving('a self-service cancel by the billing owner of a tenant with a governed subscription')
       .withRequest('POST', '/v1/sign/billing/self-service/cancel', (b) => {
         b.headers(headers).jsonBody({});
       })
-      .willRespondWith(503, (b) => {
+      .willRespondWith(409, (b) => {
         b.jsonBody({
           error: {
-            code: 'ESIGN_BILLING_UNAVAILABLE',
-            message: like('Changing your plan online isn’t available yet. Contact Aramo to change your subscription.'),
+            code: 'ESIGN_BILLING_CONFLICT',
+            message: like('Your organization’s subscription is managed by Aramo. Contact Aramo to change it.'),
             request_id: like('req-1'),
-            details: { reason: 'self_service_terms_not_approved' },
+            details: { reason: 'governed_subscription_open' },
           },
         });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/sign/billing/self-service/cancel`, { method: 'POST', headers, body: '{}' });
-        expect(res.status).toBe(503);
+        expect(res.status).toBe(409);
         const out = (await res.json()) as { error: { details: { reason: string } } };
-        expect(out.error.details.reason).toBe('self_service_terms_not_approved');
+        expect(out.error.details.reason).toBe('governed_subscription_open');
       });
   });
 });
