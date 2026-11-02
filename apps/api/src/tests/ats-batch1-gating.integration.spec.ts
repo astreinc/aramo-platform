@@ -114,6 +114,9 @@ const CONTACT_LIST_SURFACE_FIELDS = resolve(
 const CONTACT_PRIMARY_FLAG = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
+);
+const CONTACT_SOFT_DELETE = resolve(
+  ROOT,
   'libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql',
 );
 
@@ -215,6 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CONTACT_IMPORT_BACK_REF,
         CONTACT_LIST_SURFACE_FIELDS,
         CONTACT_PRIMARY_FLAG,
+        CONTACT_SOFT_DELETE,
       ]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
