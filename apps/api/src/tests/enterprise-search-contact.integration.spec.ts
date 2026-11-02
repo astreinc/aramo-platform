@@ -110,7 +110,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       prisma = new ContactPrismaService(url);
       await prisma.$connect();
       // companyRepository is unused by the lean search read.
-      adapter = new ContactSearchAdapter(new ContactRepository(prisma, {} as never));
+      adapter = new ContactSearchAdapter(new ContactRepository(prisma, {} as never, {} as never));
 
       await prisma.contact.create({
         data: { id: contactVisible, tenant_id: TENANT_A, company_id: COMPANY_VISIBLE, first_name: 'Jane', last_name: 'Smith', title: 'CTO', email1: 'jane@acme.test', phone_work: '7035551212' },

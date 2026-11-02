@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { CompanyDepartmentView } from './dto/company-department.view.js';
 import type { CreateCompanyDepartmentRequestDto } from './dto/create-company-department-request.dto.js';
 import type { UpdateCompanyDepartmentRequestDto } from './dto/update-company-department-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { companyNotFound, isCompanyVisible } from './company-write-visibility.js';
 
 interface CompanyDepartmentRow {
   id: string;
@@ -39,20 +40,23 @@ export class CompanyDepartmentRepository {
     company_id: string;
     input: CreateCompanyDepartmentRequestDto;
     requestId: string;
+    // CONTACTS-1 W-2 — the actor's resolved D4b visibility (required). A parent
+    // company outside it is the same 404 as a missing parent.
+    visibility: VisibilityContextShape;
   }): Promise<CompanyDepartmentView> {
     // Tenant-scoped parent lookup (defense against cross-tenant company_id
     // injection — the FK alone would not catch a wrong-tenant id).
-    const parent = await this.prisma.company.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.company_id },
-      select: { id: true },
-    });
+    const parent = isCompanyVisible(args.visibility, args.company_id)
+      ? await this.prisma.company.findFirst({
+          where: { tenant_id: args.tenant_id, id: args.company_id },
+          select: { id: true },
+        })
+      : null;
     if (parent === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Company not found in tenant',
-        404,
-        { requestId: args.requestId, details: { company_id: args.company_id } },
-      );
+      throw new AramoError('NOT_FOUND', 'Company not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { company_id: args.company_id },
+      });
     }
     const row = await this.prisma.companyDepartment.create({
       data: {
@@ -65,10 +69,23 @@ export class CompanyDepartmentRepository {
     return projectView(row as CompanyDepartmentRow);
   }
 
-  async list(args: {
+  // CONTACTS-1 — the visibility-scoped department read behind
+  // GET /v1/companies/:company_id/departments: a company outside the actor's
+  // visible set is NOT_FOUND, identical to the invisible company read. The
+  // unscoped list() below stays for internal callers (contact reference checks).
+  async listForActor(args: {
     tenant_id: string;
     company_id: string;
+    visibility: VisibilityContextShape;
+    requestId: string;
   }): Promise<CompanyDepartmentView[]> {
+    if (!isCompanyVisible(args.visibility, args.company_id)) {
+      throw companyNotFound(args.requestId, args.company_id);
+    }
+    return this.list({ tenant_id: args.tenant_id, company_id: args.company_id });
+  }
+
+  async list(args: { tenant_id: string; company_id: string }): Promise<CompanyDepartmentView[]> {
     const rows = await this.prisma.companyDepartment.findMany({
       where: { tenant_id: args.tenant_id, company_id: args.company_id },
       orderBy: { created_at: 'desc' },
@@ -82,21 +99,24 @@ export class CompanyDepartmentRepository {
     id: string;
     input: UpdateCompanyDepartmentRequestDto;
     requestId: string;
+    // CONTACTS-1 W-2 — required resolved visibility. A department under a
+    // company outside it is the same 404 as a missing department.
+    visibility: VisibilityContextShape;
   }): Promise<CompanyDepartmentView> {
-    const existing = await this.prisma.companyDepartment.findFirst({
-      where: {
-        tenant_id: args.tenant_id,
-        company_id: args.company_id,
-        id: args.id,
-      },
-    });
+    const existing = !isCompanyVisible(args.visibility, args.company_id)
+      ? null
+      : await this.prisma.companyDepartment.findFirst({
+          where: {
+            tenant_id: args.tenant_id,
+            company_id: args.company_id,
+            id: args.id,
+          },
+        });
     if (existing === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'CompanyDepartment not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
+      throw new AramoError('NOT_FOUND', 'CompanyDepartment not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { id: args.id },
+      });
     }
     const row = await this.prisma.companyDepartment.update({
       where: { id: args.id },
@@ -112,22 +132,24 @@ export class CompanyDepartmentRepository {
     company_id: string;
     id: string;
     requestId: string;
+    // CONTACTS-1 W-2 — required resolved visibility (see update()).
+    visibility: VisibilityContextShape;
   }): Promise<void> {
-    const existing = await this.prisma.companyDepartment.findFirst({
-      where: {
-        tenant_id: args.tenant_id,
-        company_id: args.company_id,
-        id: args.id,
-      },
-      select: { id: true },
-    });
+    const existing = !isCompanyVisible(args.visibility, args.company_id)
+      ? null
+      : await this.prisma.companyDepartment.findFirst({
+          where: {
+            tenant_id: args.tenant_id,
+            company_id: args.company_id,
+            id: args.id,
+          },
+          select: { id: true },
+        });
     if (existing === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'CompanyDepartment not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
+      throw new AramoError('NOT_FOUND', 'CompanyDepartment not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { id: args.id },
+      });
     }
     await this.prisma.companyDepartment.delete({ where: { id: args.id } });
   }

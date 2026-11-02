@@ -9,9 +9,9 @@
 | Table | `identity."User"` (+ `UserTenantMembership`, roles, `AuthorizationVersion`) | `portal_identity."PortalUser"` |
 | Key | `User.email` (global UNIQUE, normalized) | `PortalUser.email_normalized` (UNIQUE) |
 | Ownership | exactly ONE tenant per User (`User.tenant_id` NOT NULL, `UNIQUE(UserTenantMembership.user_id)`, composite owner FK, immutability trigger — IC-1) | no tenant; the portal is a talent-axis, passwordless identity |
-| Credential | Cognito federated login → RS256 JWT with `consumer_type ∈ {recruiter, ingestion, platform, esign}` | magic-link token → JWT with `consumer_type = portal`, `tenant_id` = platform sentinel |
+| Credential | Cognito federated login → RS256 JWT with `consumer_type ∈ {recruiter, ingestion, platform, sign, org}` | magic-link token → JWT with `consumer_type = portal`, `tenant_id` = platform sentinel |
 | Authorization | effective scopes resolved from roles per consumer (PR-6 namespace filter), versioned (`authz_version`) | the FIXED portal scope set (`portalScopes`), version pinned to 1 — roles are never consulted |
-| Cross-schema pointer | none to the portal | `cluster_id` → PII-free `identity_index` cluster (UUID ref, NO FK) only |
+| Cross-schema pointer | none to the portal | none to the tenant identity spine |
 
 The same human may exist on both axes under the same email (a recruiter who is also a portal user; from PR-9, a PERSONAL Sign subscriber who is also a portal user). The two rows are unrelated: no foreign key, no shared id, no code path reads one from the other.
 
@@ -27,12 +27,12 @@ The same human may exist on both axes under the same email (a recruiter who is a
 
 ## 3. Personal (B2C) tenancy and the portal
 
-A PERSONAL tenant (`Tenant.kind = 'PERSONAL'`) is an ordinary tenant: one owning User, one membership, `allowed_domain` NULL (P1 Amendment P1-A1), capabilities closed to `[core, esign]`, owner role `org_admin`, Sign sender role a separate governed grant (IC-3 PR-8). It is a product-axis identity. It does not create, read, link or merge a portal identity, and portal sign-in does not create, read, link or merge a tenant identity.
+A PERSONAL tenant (`Tenant.kind = 'PERSONAL'`) is an ordinary tenant: one owning User, one membership, `allowed_domain` NULL (P1 Amendment P1-A1), capabilities closed to `[core, sign]`, owner roles `tenant_owner` and `tenant_admin`, Sign sender role a separate governed grant (IC-3 PR-8). It is a product-axis identity. It does not create, read, link or merge a portal identity, and portal sign-in does not create, read, link or merge a tenant identity.
 
 ## 4. Future interoperability — what a contract must decide before any code
 
 - Which rail owns the link (`PortalUser ↔ User`): the portal sits on the talent/platform rail; Identity-Rail D1–D3 forbid tenant-side identity crossing.
-- Link representation: opaque ref, consent-gated, no PII in `identity_index`.
+- Link representation: opaque ref, consent-gated, no PII in the link.
 - Consent boundary: portal consent/notice events remain the person's record on the talent axis; a product session must not inherit or aggregate them.
 - Authorization: a linked pair still resolves per consumer (portal fixed set vs tenant roles); linking must not widen either side.
 - Lifecycle: RTBF/erasure on one axis must not silently cascade to the other without a ruling.

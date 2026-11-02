@@ -11,7 +11,10 @@ import type {
   UpdateContactRequest,
 } from '../types';
 
+import { ContactHistorySection } from './ContactHistorySection';
 import { ContactQuickEditForm } from './ContactQuickEditForm';
+import { IconTrash } from './ContactIcons';
+import { DeleteContactDialog } from './DeleteContactDialog';
 
 // Contacts prototype parity — the right slide-over quick-edit is the ONLY
 // contact surface. Create and edit share this one panel (the prototype's
@@ -27,6 +30,10 @@ interface ContactEditDrawerProps {
   readonly initialCompanyId?: string;
   readonly onClose: () => void;
   readonly onSaved: (contact: ContactView) => void;
+  // CONTACTS-1 FE-SD-1 — the drawer's delete icon. Shown only in edit mode and
+  // only when the caller says the actor holds contact:delete.
+  readonly canDelete?: boolean;
+  readonly onDeleted?: (contact: ContactView) => void;
 }
 
 export function ContactEditDrawer({
@@ -35,8 +42,11 @@ export function ContactEditDrawer({
   initialCompanyId,
   onClose,
   onSaved,
+  canDelete = false,
+  onDeleted,
 }: ContactEditDrawerProps) {
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const asideRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -54,9 +64,10 @@ export function ContactEditDrawer({
     return () => toRestore?.focus();
   }, [open]);
 
-  // Esc closes; Tab is trapped within the drawer (dialog semantics).
+  // Esc closes; Tab is trapped within the drawer (dialog semantics). While the
+  // delete confirmation is up, the modal owns Esc + focus.
   useEffect(() => {
-    if (!open) return;
+    if (!open || confirmingDelete) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -82,7 +93,7 @@ export function ContactEditDrawer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, confirmingDelete]);
 
   if (!open) return null;
 
@@ -132,6 +143,19 @@ export function ContactEditDrawer({
             </span>
           ) : null}
         </h3>
+        {mode === 'edit' && contact !== null && canDelete ? (
+          <Button unstyled
+            type="button"
+            className="rc-iconbtn"
+            aria-label={`Delete ${title}`}
+            title="Delete contact"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={submitting}
+            data-testid="contact-drawer-delete"
+          >
+            <IconTrash />
+          </Button>
+        ) : null}
         <Button unstyled
           type="button"
           className="rc-drawer__x"
@@ -147,13 +171,17 @@ export function ContactEditDrawer({
           <InlineAlert variant="error">{submitError}</InlineAlert>
         ) : null}
         {mode === 'edit' && contact !== null ? (
-          <ContactQuickEditForm
-            mode="edit"
-            initial={contact}
-            onSubmit={onUpdate}
-            onCancel={onClose}
-            submitting={submitting}
-          />
+          <>
+            <ContactQuickEditForm
+              mode="edit"
+              initial={contact}
+              onSubmit={onUpdate}
+              onCancel={onClose}
+              submitting={submitting}
+            />
+            {/* CONTACTS-1 H-3 — the read-only activity history (slice D). */}
+            <ContactHistorySection contactId={contact.id} />
+          </>
         ) : (
           <ContactQuickEditForm
             mode="create"
@@ -164,6 +192,17 @@ export function ContactEditDrawer({
           />
         )}
       </div>
+      {confirmingDelete && contact !== null ? (
+        <DeleteContactDialog
+          contactId={contact.id}
+          contactName={title}
+          onCancel={() => setConfirmingDelete(false)}
+          onDeleted={() => {
+            setConfirmingDelete(false);
+            onDeleted?.(contact);
+          }}
+        />
+      ) : null}
     </aside>
   );
 }

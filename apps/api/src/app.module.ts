@@ -82,6 +82,11 @@ import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attac
 import { RecruiterCreateConsentDefaultModule } from './talent-consent-default/recruiter-create-consent-default.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
+// CONTACTS-1 (SD-6 / HM-1 / V-3) — @Global contact-link port bindings
+// (requisition hiring manager, company billing contact, contact owner).
+import { ContactLinkValidatorsModule } from './contact-links/contact-link-validators.module.js';
+import { ContactAuditSinkModule } from './contact-audit/contact-audit-sink.module.js';
+import { TaskContactOwnerAdapter } from './contact-links/contact-link-validators.adapter.js';
 import { PipelineSiteReaderModule } from './pipeline-site-reader/pipeline-site-reader.module.js';
 import { TalentIntelligenceReadModule } from './talent-intelligence/talent-intelligence-read.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
@@ -106,6 +111,7 @@ import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
 import { MyDeskModule } from './my-desk/my-desk.module.js';
 import { InterviewsModule } from './interviews/interviews.module.js';
 import { InterviewerValidatorModule } from './interviews/interviewer-validator.module.js';
+import { ContactActivitySubjectModule } from './contact-activity/contact-activity-subject.module.js';
 import { Talent360Module } from './talent-360/talent-360.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
@@ -267,6 +273,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // both CompanyModule and RequisitionModule so the token is available to the
     // requisition controller wherever it resolves.
     CompanyClientCheckModule,
+    // CONTACTS-1 — @Global adapters binding REQUISITION_HIRING_MANAGER_VALIDATOR,
+    // COMPANY_BILLING_CONTACT_VALIDATOR and CONTACT_OWNER_VALIDATOR to
+    // ContactRepository.assertLinkable / identity's assignable-users roster.
+    ContactLinkValidatorsModule,
+    // CONTACTS-1 SD-11 — contact delete/restore audit sink (identity ledger).
+    ContactAuditSinkModule,
     PipelineSiteReaderModule,
     TalentIntelligenceReadModule,
     // PR-A4 Gate 5 — third ATS-domain batch: talent-record + attachment.
@@ -320,7 +332,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     TaskModule.forRoot({
       assigneeValidator: TaskAssigneeAdapter,
       requisitionContextValidator: TaskRequisitionContextAdapter,
-      imports: [IdentityCoreModule, PipelineModule],
+      // CONTACTS-1 SD-6 — a contact-owned task links only to a live contact;
+      // ContactModule (exports ContactRepository) is threaded into the scope.
+      contactOwnerValidator: TaskContactOwnerAdapter,
+      imports: [IdentityCoreModule, PipelineModule, ContactModule],
     }),
     // Search PR-2 — the resume re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the
@@ -540,6 +555,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // @Global — binds the lib's INTERVIEWER_VALIDATOR port (Slice B §9 schedule-time
     // interviewer tenant-user validation) to an IdentityService-backed adapter.
     InterviewerValidatorModule,
+    // @Global — binds the activity lib's ACTIVITY_CONTACT_SUBJECT port (CONTACTS-1
+    // §8: contact visibility + deleted check + last_activity_at on a recorded
+    // contact interaction) to a ContactRepository-backed adapter.
+    ContactActivitySubjectModule,
     // Talent 360 — the person-centric recruiter workspace READ composition
     // (GET /v1/talent-360/:id), replacing the Talent Detail experience. AP-class,
     // OpenAPI-documented; per-section scope-gated; reads only.

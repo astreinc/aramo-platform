@@ -8863,6 +8863,8 @@ paths:
         server-side: a PRIVATE note is returned ONLY to its author — never to
         another user and never through any talent-facing/external surface.
         Requires the `activity:read` scope and the `ats` capability.
+        For `subject_type=contact` (a contact's history) the list is empty when
+        the contact is not visible to the actor.
       parameters:
         - name: subject_type
           in: query
@@ -8898,6 +8900,10 @@ paths:
         bounded 1..20000 characters (400 VALIDATION_ERROR otherwise). tenant_id
         and created_by_id are server-derived from the auth context, never the
         body. Requires the `activity:create` scope and the `ats` capability.
+        With `subject_type=contact` the entry is recorded against a contact and
+        moves the contact's `last_activity_at` forward (later timestamp wins).
+        A contact that is not visible to the actor returns 404; a deleted
+        contact returns 422 CONTACT_DELETED.
       requestBody:
         required: true
         content:
@@ -8917,6 +8923,10 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
   /v1/activities/{id}/pin:
@@ -10403,6 +10413,237 @@ paths:
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
       security: []
+
+  # ── CONTACTS-1 (C-1) — ATS Contacts ──
+  # Contact authority is ATS (`contact` schema, libs/contact). Every route is
+  # tenant-scoped and D4b visibility-scoped: a contact whose company is outside
+  # the actor's visible client set returns 404, on reads and on writes alike.
+  # Deleted contacts are tombstones: hidden from every list and refused as a
+  # new link target (422 CONTACT_DELETED); restore brings them back.
+  /v1/contacts:
+    get:
+      operationId: listContacts
+      summary: List contacts (plain list, or the paged faceted directory with ?paged=true).
+      description: |
+        Requires the `ats` capability and the `contact:read` scope. `?q=`
+        additionally requires `contact:search` (403 INSUFFICIENT_PERMISSIONS,
+        details.reason = search_scope_missing). Results are always narrowed to
+        the actor's visible companies; no filter widens access.
+
+        Without `paged=true` the response is `ContactList` (`items` only; the
+        `company_id`, `site_id` and `q` filters apply). With `paged=true` the
+        response is `ContactSearchPage`: keyset-paged items, facet counts and
+        `total`. Facet counts and `total` are computed over the base set
+        (tenant, site, `q`, owner scope, visibility, deleted state) and do not
+        change as the selection filters are toggled.
+
+        Deleted contacts are excluded from every list. `deleted=true` (paged
+        only) returns ONLY deleted contacts and requires `contact:delete`
+        (else 403 INSUFFICIENT_PERMISSIONS). `former=true` returns ONLY contacts
+        that have left their company.
+      parameters:
+        - { name: paged, in: query, required: false, description: "`true` selects the paged faceted directory (ContactSearchPage).", schema: { type: string, enum: ['true', 'false'] } }
+        - { name: q, in: query, required: false, description: "Name search across the whole visible directory (requires `contact:search`).", schema: { type: string } }
+        - { name: site_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - name: company_id
+          in: query
+          required: false
+          description: Plain list — one company id. Paged — comma-separated company ids.
+          schema: { type: string }
+        - { name: scope, in: query, required: false, description: "Paged only. `mine` narrows to contacts the actor owns (owner derived from the token; wins over owner_id).", schema: { type: string, enum: [all, mine] } }
+        - { name: owner_id, in: query, required: false, description: "Paged only. Narrow to one account owner (ignored when scope=mine).", schema: { type: string, format: uuid } }
+        - { name: relationship_role, in: query, required: false, description: "Paged only. Comma-separated relationship roles.", schema: { type: string } }
+        - { name: preference, in: query, required: false, description: "Paged only. Comma-separated contact preferences.", schema: { type: string } }
+        - { name: is_hot, in: query, required: false, description: "Paged only.", schema: { type: string, enum: ['true'] } }
+        - { name: is_primary, in: query, required: false, description: "Paged only. Primary contacts only.", schema: { type: string, enum: ['true'] } }
+        - { name: quiet, in: query, required: false, description: "Paged only. Contacts with no recorded activity in the last 14 days, or never.", schema: { type: string, enum: ['true'] } }
+        - { name: former, in: query, required: false, description: "Paged only. ONLY contacts with left_company = true.", schema: { type: string, enum: ['true'] } }
+        - { name: cold_callable, in: query, required: false, description: "Paged only. Contactable (preference is not do_not_contact) and a work phone is present.", schema: { type: string, enum: ['true'] } }
+        - { name: deleted, in: query, required: false, description: "Paged only. ONLY deleted contacts; requires `contact:delete`.", schema: { type: string, enum: ['true'] } }
+        - { name: sort, in: query, required: false, description: "Paged only.", schema: { type: string, enum: [name, created_at, last_activity] } }
+        - { name: dir, in: query, required: false, description: "Paged only.", schema: { type: string, enum: [asc, desc] } }
+        - { name: cursor, in: query, required: false, description: "Paged only. Opaque keyset cursor from `next_cursor`.", schema: { type: string } }
+        - { name: page_size, in: query, required: false, description: "Paged only.", schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK. `ContactList` without `paged=true`; `ContactSearchPage` with it.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ContactList'
+                  - $ref: '#/components/schemas/ContactSearchPage'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: createContact
+      summary: Create a contact at a company.
+      description: |
+        Requires `contact:create`. tenant_id is taken from the token;
+        `entered_by_id` is the caller. `is_primary: true` demotes any prior
+        primary contact of the company in the same transaction. Refusals:
+          - 400 VALIDATION_ERROR — body fails validation (unknown field, email
+            or UUID format, length, or a value outside the relationship_role,
+            preference or contact_kind vocabularies; details.field names it).
+          - 404 NOT_FOUND — company_id is not a company in the tenant.
+          - 422 VALIDATION_ERROR — `reports_to_id` is not a live contact at the
+            same company, `company_department_id` is not a department of the
+            company, or `owner_id` is not an active user in the tenant
+            (details.field and details.reason say which).
+          - 422 CONTACT_DELETED — `reports_to_id` names a deleted contact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContactRequest'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
+  /v1/contacts/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getContact
+      summary: Read one contact.
+      description: |
+        Requires `contact:read`. Returns 404 when the contact is not in the
+        tenant, not visible to the actor, or deleted. With
+        `include_deleted=true` a deleted contact is returned (its `deleted_at`
+        is set) so screens that still reference it can show its name with a
+        "Deleted" marker.
+      parameters:
+        - { name: include_deleted, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: updateContact
+      summary: Update a contact (omit = unchanged, null = clear).
+      description: |
+        Requires `contact:edit`. A contact that is not in the tenant, not
+        visible to the actor, or deleted returns 404. `is_primary: true`
+        demotes any prior primary contact of the company in the same
+        transaction; `false` demotes. Refusals:
+          - 400 VALIDATION_ERROR — body fails validation (as on create).
+          - 404 NOT_FOUND — contact missing, not visible, or deleted.
+          - 422 VALIDATION_ERROR — invalid `reports_to_id` (including the
+            contact itself), `company_department_id` or `owner_id`.
+          - 422 CONTACT_DELETED — `reports_to_id` names a deleted contact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContactRequest'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactView'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: deleteContact
+      summary: Soft-delete a contact.
+      description: |
+        Requires `contact:delete`. Sets `deleted_at` and `deleted_by_id`; the
+        row is kept. A primary contact loses `is_primary` in the same
+        transaction. Existing references (requisition hiring manager, company
+        billing contact, tasks, saved-list entries) are left in place; the
+        contact can no longer be used as a new link. A contact that is not in
+        the tenant, not visible to the actor, or already deleted returns 404.
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/contacts/{id}/restore:
+    post:
+      operationId: restoreContact
+      summary: Restore a deleted contact.
+      description: |
+        Requires `contact:delete`. Clears `deleted_at` and `deleted_by_id` and
+        returns the contact. Restore does not make the contact primary again.
+        Restoring a contact that is not deleted is a no-op 200. A contact that
+        is not in the tenant or not visible to the actor returns 404.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Restored (or already live).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
 
 components:
   securitySchemes:
@@ -16336,3 +16577,220 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ImportBatchView'
+    # ── CONTACTS-1 (C-1) — ATS Contacts ──
+    ContactView:
+      type: object
+      additionalProperties: false
+      description: |
+        A contact: a person (or a shared mailbox) at exactly one company.
+        `company_name` and `relationship_types` are read-time enrichments from
+        the company, not stored columns. `deleted_at` is set only on a deleted
+        contact, which ordinary reads do not return.
+      required:
+        - id
+        - tenant_id
+        - site_id
+        - company_id
+        - company_department_id
+        - first_name
+        - last_name
+        - title
+        - email1
+        - email2
+        - phone_work
+        - phone_cell
+        - phone_other
+        - address
+        - address2
+        - city
+        - state
+        - zip
+        - is_hot
+        - notes
+        - left_company
+        - is_primary
+        - reports_to_id
+        - owner_id
+        - entered_by_id
+        - created_at
+        - updated_at
+        - relationship_role
+        - preference
+        - last_activity_at
+        - company_name
+        - relationship_types
+        - deleted_at
+        - deleted_by_id
+        - contact_kind
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        site_id: { type: [string, 'null'], format: uuid }
+        company_id: { type: string, format: uuid }
+        company_department_id: { type: [string, 'null'], format: uuid }
+        first_name: { type: string }
+        last_name: { type: string }
+        title: { type: [string, 'null'] }
+        email1: { type: [string, 'null'] }
+        email2: { type: [string, 'null'] }
+        phone_work: { type: [string, 'null'] }
+        phone_cell: { type: [string, 'null'] }
+        phone_other: { type: [string, 'null'] }
+        address: { type: [string, 'null'] }
+        address2: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        state: { type: [string, 'null'] }
+        zip: { type: [string, 'null'] }
+        is_hot: { type: boolean }
+        notes: { type: [string, 'null'] }
+        left_company: { type: boolean, description: The contact has left the company (Former). Still live and linkable. }
+        is_primary: { type: boolean, description: The company's primary contact (at most one per company). }
+        reports_to_id: { type: [string, 'null'], format: uuid }
+        owner_id:
+          type: [string, 'null']
+          format: uuid
+          description: The account owner (a user). Used for "My contacts"; it does not grant or limit visibility.
+        entered_by_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        relationship_role:
+          type: [string, 'null']
+          enum: [decision_maker, hiring_manager, champion, influencer, gatekeeper, billing_contact, null]
+        preference:
+          type: [string, 'null']
+          enum: [contactable, limited, do_not_contact, null]
+        last_activity_at:
+          type: [string, 'null']
+          format: date-time
+          description: Time of the latest recorded interaction with the contact (later timestamp wins).
+        company_name: { type: [string, 'null'] }
+        relationship_types:
+          type: array
+          description: Active relationship types the contact's company holds.
+          items: { type: string, enum: [CLIENT, VENDOR, PARTNER] }
+        deleted_at: { type: [string, 'null'], format: date-time }
+        deleted_by_id: { type: [string, 'null'], format: uuid }
+        contact_kind:
+          type: [string, 'null']
+          enum: [PERSON, FUNCTIONAL_MAILBOX, null]
+    ContactList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactView'
+    ContactFacetBucket:
+      type: object
+      additionalProperties: false
+      required: [value, count]
+      properties:
+        value: { type: string }
+        count: { type: integer, minimum: 0 }
+    ContactFacets:
+      type: object
+      additionalProperties: false
+      description: Counts over the base set (independent of the selection filters).
+      required: [relationship_role, preference, company, hot, quiet, former, primary]
+      properties:
+        relationship_role:
+          type: array
+          items: { $ref: '#/components/schemas/ContactFacetBucket' }
+        preference:
+          type: array
+          items: { $ref: '#/components/schemas/ContactFacetBucket' }
+        company:
+          type: array
+          description: Bucket value is the company id.
+          items: { $ref: '#/components/schemas/ContactFacetBucket' }
+        hot: { type: integer, minimum: 0 }
+        quiet: { type: integer, minimum: 0 }
+        former: { type: integer, minimum: 0 }
+        primary: { type: integer, minimum: 0 }
+    ContactSearchPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, facets, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContactView'
+        next_cursor: { type: [string, 'null'] }
+        facets:
+          $ref: '#/components/schemas/ContactFacets'
+        total:
+          type: integer
+          minimum: 0
+          description: Count of the base set (the "of M" in "N of M").
+    CreateContactRequest:
+      type: object
+      additionalProperties: false
+      required: [company_id, first_name, last_name]
+      properties:
+        company_id: { type: string, format: uuid }
+        first_name: { type: string, minLength: 1, maxLength: 200 }
+        last_name: { type: string, minLength: 1, maxLength: 200 }
+        site_id: { type: string, format: uuid }
+        company_department_id: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        email1: { type: string, format: email, maxLength: 320 }
+        email2: { type: string, format: email, maxLength: 320 }
+        phone_work: { type: string, maxLength: 50 }
+        phone_cell: { type: string, maxLength: 50 }
+        phone_other: { type: string, maxLength: 50 }
+        address: { type: string, maxLength: 500 }
+        address2: { type: string, maxLength: 500 }
+        city: { type: string, maxLength: 200 }
+        state: { type: string, maxLength: 100 }
+        zip: { type: string, maxLength: 20 }
+        is_hot: { type: boolean }
+        notes: { type: string, maxLength: 20000 }
+        is_primary: { type: boolean }
+        reports_to_id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid }
+        relationship_role:
+          type: string
+          enum: [decision_maker, hiring_manager, champion, influencer, gatekeeper, billing_contact]
+        preference:
+          type: string
+          enum: [contactable, limited, do_not_contact]
+        contact_kind:
+          type: [string, 'null']
+          enum: [PERSON, FUNCTIONAL_MAILBOX, null]
+    UpdateContactRequest:
+      type: object
+      additionalProperties: false
+      description: Omitted fields are unchanged; `null` clears a nullable field.
+      properties:
+        company_department_id: { type: [string, 'null'], format: uuid }
+        first_name: { type: string, minLength: 1, maxLength: 200 }
+        last_name: { type: string, minLength: 1, maxLength: 200 }
+        title: { type: [string, 'null'], maxLength: 200 }
+        email1: { type: [string, 'null'], format: email, maxLength: 320 }
+        email2: { type: [string, 'null'], format: email, maxLength: 320 }
+        phone_work: { type: [string, 'null'], maxLength: 50 }
+        phone_cell: { type: [string, 'null'], maxLength: 50 }
+        phone_other: { type: [string, 'null'], maxLength: 50 }
+        address: { type: [string, 'null'], maxLength: 500 }
+        address2: { type: [string, 'null'], maxLength: 500 }
+        city: { type: [string, 'null'], maxLength: 200 }
+        state: { type: [string, 'null'], maxLength: 100 }
+        zip: { type: [string, 'null'], maxLength: 20 }
+        is_hot: { type: boolean }
+        notes: { type: [string, 'null'], maxLength: 20000 }
+        left_company: { type: boolean }
+        is_primary: { type: boolean }
+        reports_to_id: { type: [string, 'null'], format: uuid }
+        owner_id: { type: [string, 'null'], format: uuid }
+        relationship_role:
+          type: [string, 'null']
+          enum: [decision_maker, hiring_manager, champion, influencer, gatekeeper, billing_contact, null]
+        preference:
+          type: [string, 'null']
+          enum: [contactable, limited, do_not_contact, null]
+        contact_kind:
+          type: [string, 'null']
+          enum: [PERSON, FUNCTIONAL_MAILBOX, null]

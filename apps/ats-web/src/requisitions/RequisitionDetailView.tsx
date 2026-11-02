@@ -1,4 +1,12 @@
-import { ApiError, InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import {
+  ApiError,
+  Combobox,
+  InlineAlert,
+  useSession,
+  useToast,
+  type ComboboxItem,
+  type Session,
+} from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
@@ -7,8 +15,11 @@ import { listActivities } from '../activity/activity-api';
 import { ActivityTimeline } from '../activity/ActivityTimeline';
 import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
-import { getCompany } from '../companies/companies-api';
+import { getCompany, listContactsForCompany } from '../companies/companies-api';
+import type { ContactView } from '../companies/types';
+import { contactDisplayName } from '../contacts/contact-workspace';
 import { getContact } from '../contacts/contacts-api';
+import { contactLinkErrorMessage } from '../contacts/error-messages';
 import { getInterviewCalendar, type InterviewCalendarRow } from '../interviews/interviews-api';
 import { listTasksForOwner } from '../task/task-api';
 import type { TaskView } from '../task/types';
@@ -290,8 +301,10 @@ export function RequisitionDetailView({
           recruiterRes,
         ] = await Promise.allSettled([
           getCompany(reqRes.company_id),
+          // CONTACTS-1 SD-5 — include_deleted so a deleted hiring manager
+          // still resolves, shown as "Name (Deleted)".
           reqRes.contact_id !== null
-            ? getContact(reqRes.contact_id)
+            ? getContact(reqRes.contact_id, { includeDeleted: true })
             : Promise.reject(new Error('no contact')),
           Promise.allSettled(ids.map((id) => getTalent(id))),
           listRequisitionAttachments(reqId),
@@ -323,9 +336,7 @@ export function RequisitionDetailView({
         if (cancelled) return;
         if (coRes.status === 'fulfilled') setCompanyName(coRes.value.name);
         if (contactRes.status === 'fulfilled') {
-          setContactName(
-            `${contactRes.value.first_name} ${contactRes.value.last_name}`.trim(),
-          );
+          setContactName(contactDisplayName(contactRes.value));
         }
         if (talentResults.status === 'fulfilled') {
           const map: Record<string, TalentRecordView> = {};
@@ -452,6 +463,16 @@ export function RequisitionDetailView({
     } as UpdateRequisitionRequest);
     setReq(updated);
     setEditing(false);
+    // CONTACTS-1 HM-3 — a changed hiring manager re-resolves its display name.
+    if (updated.contact_id !== req.contact_id) {
+      if (updated.contact_id === null) {
+        setContactName(null);
+      } else {
+        getContact(updated.contact_id, { includeDeleted: true })
+          .then((c) => setContactName(contactDisplayName(c)))
+          .catch(() => setContactName(null));
+      }
+    }
   };
 
   // L1-E — run a named lifecycle action. AWAITED + catching (replaces the prior
@@ -2113,9 +2134,10 @@ function toFormValues(req: RequisitionView): Record<string, string> {
 // per-field click-to-edit cockpit is gone; whole-form edit arrives via the
 // header Edit button (G2.5b). Requirement skills stay owned by the existing
 // ProfileWorkbenchPanel, dropped into the form's skills slot.
-// G2.5b — the Overview form's editable keys (client/contact/status are excluded:
-// client/contact reassignment isn't a field edit here, and status is a governed
-// transition). Booleans + numbers coerce back from the draft's string map; ''
+// G2.5b — the Overview form's editable keys (client/status are excluded: client
+// reassignment isn't a field edit here, and status is a governed transition).
+// CONTACTS-1 HM-3 — contact_id (the hiring manager) IS editable, through the
+// same company-filtered contact picker as create; '' clears it (→ null). Booleans + numbers coerce back from the draft's string map; ''
 // clears a field (→ null).
 const OVERVIEW_BOOLEAN_KEYS = new Set([
   'is_hot',
@@ -2133,7 +2155,7 @@ const OVERVIEW_NUMBER_KEYS = new Set([
 // margin_percent / markup_percent are DERIVED downstream — read-only in the form,
 // so they are deliberately absent here (never written back).
 const OVERVIEW_EDITABLE_KEYS: readonly string[] = [
-  'title', 'job_type', 'openings', 'is_hot', 'city', 'state', 'postal_code',
+  'title', 'contact_id', 'job_type', 'openings', 'is_hot', 'city', 'state', 'postal_code',
   'work_arrangement', 'onsite_days_per_week', 'duration_value', 'duration_unit',
   'start_date', 'end_date', 'bill_rate_amount', 'pay_rate_amount', 'rate_type',
   'allow_subcontractors', 'description', 'notes',
@@ -2177,6 +2199,54 @@ function DetailsPanel({
   const [draft, setDraft] = useState<Record<string, string>>(original);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // CONTACTS-1 HM-3 — the hiring-manager picker source: the requisition's
+  // company's (live) contacts, loaded when edit mode opens.
+  const [companyContacts, setCompanyContacts] = useState<readonly ContactView[]>([]);
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    listContactsForCompany(req.company_id)
+      .then((res) => {
+        if (!cancelled) setCompanyContacts(Array.isArray(res.items) ? res.items : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyContacts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, req.company_id]);
+  const contactItems: readonly ComboboxItem[] = useMemo(() => {
+    const items: ComboboxItem[] = [{ value: '', label: 'No hiring manager' }];
+    for (const c of companyContacts) {
+      items.push({
+        value: c.id,
+        label: `${c.first_name} ${c.last_name}`.trim() || '—',
+        description: c.title ?? undefined,
+      });
+    }
+    // The current hiring manager may no longer be pickable (deleted): keep it
+    // displayed as the current value, but not selectable again.
+    if (req.contact_id !== null && !companyContacts.some((c) => c.id === req.contact_id)) {
+      items.push({
+        value: req.contact_id,
+        label: contactName ?? 'Current hiring manager',
+        disabled: true,
+      });
+    }
+    return items;
+  }, [companyContacts, req.contact_id, contactName]);
+  const hiringManagerSlot = (
+    <Combobox
+      ariaLabel="Hiring manager"
+      items={contactItems}
+      value={draft['contact_id'] ?? ''}
+      onSelect={(item) => setDraft((d) => ({ ...d, contact_id: item.value }))}
+      placeholder="Select contact…"
+      disabled={busy}
+      testId="hiring-manager-picker"
+    />
+  );
 
   // (Re)seed the draft from the current record whenever edit mode is entered.
   useEffect(() => {
@@ -2207,9 +2277,10 @@ function DetailsPanel({
       await onSave(body as UpdateRequisitionRequest);
     } catch (e) {
       setError(
-        e instanceof ApiError && e.status === 409
-          ? 'This requisition changed since you opened it. Cancel and reopen to edit the latest version.'
-          : 'Your changes could not be saved. Please try again.',
+        contactLinkErrorMessage(e) ??
+          (e instanceof ApiError && e.status === 409
+            ? 'This requisition changed since you opened it. Cancel and reopen to edit the latest version.'
+            : 'Your changes could not be saved. Please try again.'),
       );
       setBusy(false);
     }
@@ -2253,6 +2324,7 @@ function DetailsPanel({
         onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
         clientDisplay={companyName ?? 'Client'}
         contactDisplay={contactName}
+        contactSlot={hiringManagerSlot}
         statusDisplay={RECRUITING_STATUS_LABELS[req.status]}
         skillsSlot={
           <RequirementSkills

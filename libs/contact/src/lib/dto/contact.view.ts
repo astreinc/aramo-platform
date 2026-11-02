@@ -33,6 +33,12 @@ export interface ContactView {
   relationship_role: string | null;
   preference: string | null;
   last_activity_at: string | null;
+  // CONTACTS-1 §12 — PERSON | FUNCTIONAL_MAILBOX | null (unclassified).
+  contact_kind: string | null;
+  // CONTACTS-1 §5 — soft delete. Non-null only on rows returned by the
+  // deleted view (?deleted=true), restore, or ?include_deleted=true reads.
+  deleted_at: string | null;
+  deleted_by_id: string | null;
   // Read-time enrichment — the contact's company display name, resolved via
   // the cross-schema company_id FK (UUID-only) through CompanyRepository.
   // Populated on the paged list + detail reads; null when the company row is

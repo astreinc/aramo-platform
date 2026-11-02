@@ -213,7 +213,13 @@ export class CompanyController {
     @Param('id') id: string,
     @Body() body: UpdateCompanyRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CompanyView> {
+    // CONTACTS-1 W-2 — write-visibility parity. Resolve the SAME lazily-memoized
+    // D4b visibility the read routes use; a company outside it is the same 404
+    // as an invisible GET (the scope gate has already passed, so a 403 here
+    // would reveal existence).
+    const visibility = await req.resolveVisibility!();
     return this.companyRepository.update({
       tenant_id: authContext.tenant_id,
       id,
@@ -221,6 +227,7 @@ export class CompanyController {
       requestId,
       // Company-Fields v1.1 — commercial fields stripped for non-holders.
       scopes: authContext.scopes,
+      visibility,
     });
   }
 
@@ -232,11 +239,15 @@ export class CompanyController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<void> {
+    // CONTACTS-1 W-2 — same write-visibility fold as update().
+    const visibility = await req.resolveVisibility!();
     await this.companyRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
       requestId,
+      visibility,
     });
   }
 
@@ -251,10 +262,17 @@ export class CompanyController {
   async listDepartments(
     @AuthContext() authContext: AuthContextType,
     @Param('company_id') companyId: string,
+    @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<{ items: CompanyDepartmentView[] }> {
-    const items = await this.companyDepartmentRepository.list({
+    // CONTACTS-1 — departments of an invisible company are NOT_FOUND, like the
+    // company itself.
+    const visibility = await req.resolveVisibility!();
+    const items = await this.companyDepartmentRepository.listForActor({
       tenant_id: authContext.tenant_id,
       company_id: companyId,
+      visibility,
+      requestId,
     });
     return { items };
   }
@@ -268,12 +286,17 @@ export class CompanyController {
     @Param('company_id') companyId: string,
     @Body() body: CreateCompanyDepartmentRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CompanyDepartmentView> {
+    // CONTACTS-1 W-2 — department mutations follow the parent company's
+    // visibility (an invisible parent is the missing-parent 404).
+    const visibility = await req.resolveVisibility!();
     return this.companyDepartmentRepository.create({
       tenant_id: authContext.tenant_id,
       company_id: companyId,
       input: body,
       requestId,
+      visibility,
     });
   }
 
@@ -287,13 +310,17 @@ export class CompanyController {
     @Param('id') id: string,
     @Body() body: UpdateCompanyDepartmentRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CompanyDepartmentView> {
+    // CONTACTS-1 W-2 — parent-company visibility (see createDepartment()).
+    const visibility = await req.resolveVisibility!();
     return this.companyDepartmentRepository.update({
       tenant_id: authContext.tenant_id,
       company_id: companyId,
       id,
       input: body,
       requestId,
+      visibility,
     });
   }
 
@@ -306,12 +333,16 @@ export class CompanyController {
     @Param('company_id') companyId: string,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<void> {
+    // CONTACTS-1 W-2 — parent-company visibility (see createDepartment()).
+    const visibility = await req.resolveVisibility!();
     await this.companyDepartmentRepository.delete({
       tenant_id: authContext.tenant_id,
       company_id: companyId,
       id,
       requestId,
+      visibility,
     });
   }
 }

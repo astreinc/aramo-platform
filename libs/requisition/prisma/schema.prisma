@@ -126,6 +126,11 @@ model Requisition {
 
   // Cross-schema logical references (Architecture §7.3 — UUID-only, no FK).
   company_id            String  @db.Uuid
+  // CONTACTS-1 HM-4 — contact_id is the requisition's HIRING MANAGER: a live
+  // contact.Contact at this requisition's company_id (validated on create,
+  // update and import through REQUISITION_HIRING_MANAGER_VALIDATOR; null = no
+  // hiring manager). A later soft delete of the contact leaves the reference
+  // in place (SD-5); a deleted contact cannot be newly linked (SD-6).
   contact_id            String? @db.Uuid
   company_department_id String? @db.Uuid
 

@@ -86,8 +86,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
-  it('EVENT_TYPES contains 83 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(83);
+  // CONTACTS-1 SD-11: +2 contact.deleted / contact.restored (83 -> 85).
+  it('EVENT_TYPES contains 85 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 CONTACTS-1 contact delete/restore; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(85);
     // Sign Feature-Parity §1.21 — the custom Sign role events are tenant-scoped.
     for (const t of [
       'identity.sign_custom_role.created',
@@ -225,8 +226,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.sign_custom_role.deleted',
       'identity.sign_custom_role.assigned',
       'identity.sign_custom_role.unassigned',
+      // CONTACTS-1 SD-11 — contact soft delete / restore.
+      'identity.contact.deleted',
+      'identity.contact.restored',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(74); // Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(76); // CONTACTS-1 +2 contact.deleted/restored; // Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

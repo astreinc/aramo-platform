@@ -145,7 +145,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talentRepo = new TalentRecordRepository(talentPrisma);
       const reqRepo = new RequisitionRepository(reqPrisma, {} as never, {} as never, {} as never, {} as never);
       const companyRepo = new CompanyRepository(companyPrisma);
-      const contactRepo = new ContactRepository(contactPrisma, {} as never);
+      const contactRepo = new ContactRepository(contactPrisma, {} as never, {} as never);
       svc = new EnterpriseSearchReadService([
         new TalentSearchAdapter(talentRepo, DISABLED_EMBEDDING, EMPTY_SEMANTIC, new EmbeddingProcessingConfig()),
         new RequisitionSearchAdapter(reqRepo, DISABLED_EMBEDDING, new RequisitionEmbeddingRepository(reqPrisma), new EmbeddingProcessingConfig()),

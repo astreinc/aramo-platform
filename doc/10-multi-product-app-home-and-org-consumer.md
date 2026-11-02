@@ -34,7 +34,7 @@ organization library; its three links into Organization Administration are host-
 
 ## 2. The `org` consumer — the sixth auth-service consumer (§3.C)
 
-`CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform', 'esign', 'org']` (`libs/auth/src/lib/auth-context.types.ts`;
+`CONSUMER_TYPES = ['recruiter', 'portal', 'ingestion', 'platform', 'sign', 'org']` (`libs/auth/src/lib/auth-context.types.ts`;
 the hand-copied twin in `libs/auth-core/src/lib/cookie-verifier.service.ts`; `openapi/auth.yaml` enum at 7 sites).
 
 | Rule | `org` |

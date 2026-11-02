@@ -945,10 +945,24 @@ function ContactsPanel({
                       </td>
                       <td>{display(c.title)}</td>
                       <td>
-                        {c.email1 !== null && c.email1 !== '' ? (
-                          <a href={`mailto:${c.email1}`} className="rc-link-strong">
-                            {c.email1}
-                          </a>
+                        {/* CONTACTS-1 F-2 — the email affordance honours the
+                            contact's preference: do_not_contact → no mailto,
+                            the indicator instead; limited → the link plus the
+                            limited indicator. */}
+                        {c.preference === 'do_not_contact' ? (
+                          <StatusPill tone="danger">Do not contact</StatusPill>
+                        ) : c.email1 !== null && c.email1 !== '' ? (
+                          <>
+                            <a href={`mailto:${c.email1}`} className="rc-link-strong">
+                              {c.email1}
+                            </a>
+                            {c.preference === 'limited' ? (
+                              <>
+                                {' '}
+                                <StatusPill tone="warn">Limited</StatusPill>
+                              </>
+                            ) : null}
+                          </>
                         ) : (
                           <span className="rc-consent-stub">—</span>
                         )}

@@ -13,6 +13,7 @@ import {
 } from '../lib/task.repository.js';
 import type { TaskAssigneeValidator } from '../lib/task-assignee.port.js';
 import type { TaskRequisitionContextValidator } from '../lib/task-requisition-context.port.js';
+import type { TaskContactOwnerValidator } from '../lib/task-contact-owner.port.js';
 
 // Tasks backend proofs. Lead rulings: R1 async-irrelevant (sync CRUD) · R2
 // binary status · R4 create-time 404 assert · R5 active-within-tenant assignee
@@ -60,7 +61,11 @@ function makeReq(v: ReturnType<typeof scopedVis>): Request {
   } as unknown as Request;
 }
 
-function makeController(opts?: { assigneeOk?: boolean; requisitionLinked?: boolean }): {
+function makeController(opts?: {
+  assigneeOk?: boolean;
+  requisitionLinked?: boolean;
+  contactOwnerError?: Error;
+}): {
   ctl: TaskController;
   repo: {
     create: ReturnType<typeof vi.fn>;
@@ -72,6 +77,7 @@ function makeController(opts?: { assigneeOk?: boolean; requisitionLinked?: boole
   };
   assignee: { isActiveTenantMember: ReturnType<typeof vi.fn> };
   requisitionContext: { talentHasRequisitionPipeline: ReturnType<typeof vi.fn> };
+  contactOwner: { assertLinkable: ReturnType<typeof vi.fn> };
 } {
   const repo = {
     create: vi.fn().mockResolvedValue({ id: 't1' }),
@@ -89,12 +95,21 @@ function makeController(opts?: { assigneeOk?: boolean; requisitionLinked?: boole
   const requisitionContext = {
     talentHasRequisitionPipeline: vi.fn().mockResolvedValue(opts?.requisitionLinked ?? true),
   };
+  // CONTACTS-1 SD-6 — the contact-owner link validator (4th ctor arg).
+  // Resolves by default; a test may force a refusal via opts.
+  const contactOwner = {
+    assertLinkable:
+      opts?.contactOwnerError !== undefined
+        ? vi.fn().mockRejectedValue(opts.contactOwnerError)
+        : vi.fn().mockResolvedValue(undefined),
+  };
   const ctl = new TaskController(
     repo as unknown as TaskRepository,
     assignee as unknown as TaskAssigneeValidator,
     requisitionContext as unknown as TaskRequisitionContextValidator,
+    contactOwner as unknown as TaskContactOwnerValidator,
   );
-  return { ctl, repo, assignee, requisitionContext };
+  return { ctl, repo, assignee, requisitionContext, contactOwner };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +212,65 @@ describe('Tasks proof — create-time 404 assert (controller)', () => {
       makeReq(scopedVis()),
     );
     expect(repo.create).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROOF — CONTACTS-1 SD-6: a contact-owned task links only to a live contact.
+// The port (bound in apps/api over ContactRepository.assertLinkable) refuses a
+// deleted contact (CONTACT_DELETED 422) or one absent from the tenant
+// (VALIDATION_ERROR 422); the controller propagates the refusal before the
+// write and calls the port ONLY for owner_type 'contact'.
+// ---------------------------------------------------------------------------
+describe('Tasks proof — CONTACTS-1 contact-owner link (SD-6)', () => {
+  const contactCreate = (ctl: TaskController, owner_id = 'ct-1') =>
+    ctl.create(
+      makeAuth(['task:write']),
+      { title: 'Email', owner_type: 'contact', owner_id },
+      'rq-1',
+      makeReq(scopedVis()),
+    );
+
+  it('ok — a live contact is validated with the tenant and created', async () => {
+    const { ctl, repo, contactOwner } = makeController();
+    await contactCreate(ctl);
+    expect(contactOwner.assertLinkable).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      contact_id: 'ct-1',
+      requestId: 'rq-1',
+    });
+    expect(repo.create).toHaveBeenCalled();
+  });
+
+  it('deleted contact → CONTACT_DELETED 422, repo.create not called', async () => {
+    const refusal = Object.assign(new Error('deleted'), { code: 'CONTACT_DELETED', statusCode: 422 });
+    const { ctl, repo } = makeController({ contactOwnerError: refusal });
+    await expect(contactCreate(ctl)).rejects.toMatchObject({ code: 'CONTACT_DELETED', statusCode: 422 });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('contact absent from the tenant → VALIDATION_ERROR 422, repo.create not called', async () => {
+    const refusal = Object.assign(new Error('not found'), { code: 'VALIDATION_ERROR', statusCode: 422 });
+    const { ctl, repo } = makeController({ contactOwnerError: refusal });
+    await expect(contactCreate(ctl)).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 422 });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('an invisible contact stays the 404 — the port is never consulted', async () => {
+    const { ctl, contactOwner } = makeController();
+    await expect(contactCreate(ctl, 'ct-2')).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(contactOwner.assertLinkable).not.toHaveBeenCalled();
+  });
+
+  it('non-contact owners never consult the port', async () => {
+    const { ctl, contactOwner } = makeController();
+    await ctl.create(
+      makeAuth(['task:write']),
+      { title: 'Screen', owner_type: 'talent_record', owner_id: 'tal-1' },
+      'rq-1',
+      makeReq(scopedVis()),
+    );
+    expect(contactOwner.assertLinkable).not.toHaveBeenCalled();
   });
 });
 
