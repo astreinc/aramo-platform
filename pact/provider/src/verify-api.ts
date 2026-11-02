@@ -1163,6 +1163,18 @@ const TALENT_RECORD_ATI_SEP_1_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20261024160000_ati_sep_1_duplicate_advisory/migration.sql',
   'libs/talent-record/prisma/migrations/20261024170000_ati_sep_1_drop_legacy_trust_schemas/migration.sql',
 ].map((p) => resolve(ROOT, p));
+// DOC-4 R-4-9 + Sign naming unification — the `esign` capability enum value, then its rename
+// to `sign`. TEMPLATE-PRODUCT-1 §6.3 (TP-5/TP-7): the Personal Studio provider state grants
+// `sign` to the Personal tenant (the library / adopt entitlement filter); without these two the
+// verifier enum has no 'sign' label and the state's grant fails.
+const ENTITLEMENT_ESIGN_CAPABILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20260923173000_add_esign_capability/migration.sql',
+);
+const ENTITLEMENT_SIGN_NAMING_CAPABILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20261020130000_sign_naming_capability/migration.sql',
+);
 // ATI-SEP-1 T9 — the `intelligence` capability enum value (default OFF). The
 // TI-backed provider states grant it to the verifier tenant for ENABLED states.
 const ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION = resolve(
@@ -3808,6 +3820,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        // DOC-4 R-4-9 `esign`, renamed `sign` (TEMPLATE-PRODUCT-1 Personal Studio state).
+        ENTITLEMENT_ESIGN_CAPABILITY_MIGRATION,
+        ENTITLEMENT_SIGN_NAMING_CAPABILITY_MIGRATION,
         // ATI-SEP-1 T9 — the `intelligence` capability enum value.
         ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION,
         // CCP-A7 — provenance, revoke, ledger, resurrection guard (after the enum additions).

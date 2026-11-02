@@ -196,7 +196,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     expect(preview.status).toBe(200);
     expect(String(preview.body['html'])).toContain('Nimbus Leasing');
 
-    const render = await post('render', ndaTemplate, { values: {}, created_by: SENDER, client_id: null }, { idempotency_key: 'tp4-render-0001' });
+    // A single-signer template (no SIGNER roles) always binds the printed signer name
+    // talent.full_name (M-A6 §3.3, RtrTemplateBindingService.usedKeys) — a SENDER value. Without
+    // it the render refuses (422) before any write; with it the new type renders.
+    const unfilled = await post('render', ndaTemplate, { values: {}, created_by: SENDER, client_id: null }, { idempotency_key: 'tp4-render-0000' });
+    expect(unfilled.status).toBe(422);
+    expect(unfilled.body['error']).toMatchObject({ code: 'RTR_TEMPLATE_BINDING_MISSING', details: { missing_keys: ['talent.full_name'] } });
+
+    const render = await post('render', ndaTemplate, { values: { 'talent.full_name': 'Jordan Signer' }, created_by: SENDER, client_id: null }, { idempotency_key: 'tp4-render-0001' });
     expect(render.status).toBe(201);
     expect(render.body).toMatchObject({ template_id: ndaTemplate, template_version_id: ndaVersion });
     const doc = await db.query(`SELECT document_type_id::text, execution_mode FROM documents."Document" WHERE id = $1`, [render.body['document_id']]);

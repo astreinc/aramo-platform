@@ -36219,6 +36219,16 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20260923173000_add_esign_capability/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20261020130000_sign_naming_capability/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20261024150000_add_intelligence_capability/migration.sql"
     },
     {

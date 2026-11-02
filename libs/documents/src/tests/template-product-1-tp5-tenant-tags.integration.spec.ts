@@ -33,6 +33,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
   const TENANT = randomUUID();
   const ACTOR = randomUUID();
   const SIGN_TYPE = randomUUID();
+  let platformRtr = '';
   let tenantRtr = '';
   let tenantSign = '';
   let platformNull = '';
@@ -66,6 +67,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
        VALUES ($1, NULL, 'TP5_SIGN_ONLY', 'Sign only', 'SYSTEM', 'SINGLE_SIGNATURE', 'CONTRACT_RECORD', false, true, 'TEMPLATE', 'EDITABLE', ARRAY['sign'])`,
       [SIGN_TYPE],
     );
+    // The documents-only container has no "identity"."Tenant", so T-3 (20261021140100) skips
+    // creating the Aramo RTR default here. Seed its pre-TP-5 shape (PLATFORM, NULL products) so
+    // the §6.2 RTR backfill has a row to act on.
+    platformRtr = await insert({ owner: 'PLATFORM', type: RIGHT_TO_REPRESENT_TYPE_ID, products: null });
     tenantRtr = await insert({ owner: 'TENANT', type: RIGHT_TO_REPRESENT_TYPE_ID });
     tenantSign = await insert({ owner: 'TENANT', type: SIGN_TYPE });
     platformNull = await insert({ owner: 'PLATFORM', type: SIGN_TYPE, products: null });
@@ -84,6 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     const rtrDefault = (await db.query(`SELECT products FROM "documents"."DocumentTemplate" WHERE owner_scope = 'PLATFORM' AND document_type_id = $1`, [RIGHT_TO_REPRESENT_TYPE_ID])).rows;
     expect(rtrDefault.length).toBeGreaterThan(0);
     for (const r of rtrDefault) expect(r.products).toEqual(['ats', 'sign']);
+    expect(await productsOf(platformRtr)).toEqual(['ats', 'sign']);
     expect(await productsOf(tenantRtr)).toEqual(['ats', 'sign']);
     expect(await productsOf(tenantSign)).toEqual(['sign']);
     expect(await productsOf(platformNull)).toEqual([]);
