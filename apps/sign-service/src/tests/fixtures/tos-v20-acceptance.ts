@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { LEGAL_DOCUMENTS } from '@aramo/subscription';
 import type { Client } from 'pg';
 
-// ToS v2.0 (effective 2026-11-01 23:00 EST) — from that instant a Business sender who has not
+// ToS v2.0 (effective 2026-11-02 12:00 EST) — from that instant a Business sender who has not
 // accepted the Aramo Sign Terms of Service is refused (legal_acceptance_required). Integration specs
 // whose Business senders send from the console record that acceptance up front, so their outcome
 // does not depend on the wall clock (before the instant nothing is owed and the row is inert).

@@ -15,17 +15,17 @@ function signup(registry: readonly LegalDocumentVersion[]): PersonalSignupServic
 }
 
 const v20 = LEGAL_DOCUMENTS.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
-// ToS v2.0 takes effect at 2026-11-01 23:00 EST in the shipped registry (injected clock, never wall time).
+// ToS v2.0 takes effect at 2026-11-02 12:00 EST in the shipped registry (injected clock, never wall time).
 const scheduled = LEGAL_DOCUMENTS;
-const BEFORE = new Date('2026-11-01T22:59:59.999-05:00');
-const AT = new Date('2026-11-01T23:00:00-05:00');
+const BEFORE = new Date('2026-11-02T11:59:59.999-05:00');
+const AT = new Date('2026-11-02T12:00:00-05:00');
 
 describe('Personal signup terms — ToS v2.0', () => {
   it('uses the registry keys, with sign.terms_of_service as the terms key', () => {
     expect([...PERSONAL_LEGAL_KEYS]).toEqual(['sign.terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy']);
   });
 
-  it('the shipped registry before 23:00 EST: the Personal Terms 1.0, Privacy Notice 1.0 and AUP 1.0 are presented', () => {
+  it('the shipped registry before 12:00 EST: the Personal Terms 1.0, Privacy Notice 1.0 and AUP 1.0 are presented', () => {
     expect(signup(LEGAL_DOCUMENTS).currentTerms(BEFORE)!.map((d) => `${d.key}@${d.version}`)).toEqual([
       'sign.personal_terms_of_service@1.0',
       'aramo.privacy_notice@1.0',
@@ -49,7 +49,7 @@ function business(registry: readonly LegalDocumentVersion[]): SignSignupService 
 }
 
 describe('Business signup terms — ToS v2.0', () => {
-  it('the shipped registry before 23:00 EST: no terms are presented or required', () => {
+  it('the shipped registry before 12:00 EST: no terms are presented or required', () => {
     expect(business(LEGAL_DOCUMENTS).currentTerms(BEFORE)).toBeNull();
     expect(business(LEGAL_DOCUMENTS.filter((d) => d !== v20)).currentTerms(AT)).toBeNull();
   });

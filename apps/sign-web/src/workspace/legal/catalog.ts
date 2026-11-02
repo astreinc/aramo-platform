@@ -40,8 +40,8 @@ export interface LegalCatalogEntry {
 }
 
 export const LEGAL_CATALOG: readonly LegalCatalogEntry[] = [
-  // ToS v2.0 — effective 2026-11-01 23:00 EST (the same instant as the registry).
-  { slug: 'terms-of-service', key: 'sign.terms_of_service', version: '2.0', title: 'Aramo Sign Terms of Service', audience: 'all', effective_from: '2026-11-01T23:00:00-05:00' },
+  // ToS v2.0 — effective 2026-11-02 12:00 EST (the same instant as the registry).
+  { slug: 'terms-of-service', key: 'sign.terms_of_service', version: '2.0', title: 'Aramo Sign Terms of Service', audience: 'all', effective_from: '2026-11-02T12:00:00-05:00' },
   { slug: 'personal-terms', key: 'sign.personal_terms_of_service', version: '1.0', title: 'Aramo Sign Personal Terms of Service', audience: 'personal', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'privacy', key: 'aramo.privacy_notice', version: '1.0', title: 'Aramo Privacy Notice', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },
   { slug: 'acceptable-use', key: 'aramo.acceptable_use_policy', version: '1.0', title: 'Aramo Acceptable Use Policy', audience: 'all', effective_from: '2026-10-21T00:00:00Z' },

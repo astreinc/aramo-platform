@@ -108,7 +108,7 @@ describe('legal publication readiness — blocks scheduling an unfinished text',
 
   it('ToS v2.0 (counsel-approved B5.1/B5.3/B9.1, effective date set): scheduled, with zero blockers', () => {
     const v20 = scheduled.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
-    expect(v20.effective_from).toBe('2026-11-01T23:00:00-05:00');
+    expect(v20.effective_from).toBe('2026-11-02T12:00:00-05:00');
     expect(publicationBlockers(textOf(v20))).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@
 | Structure | **Part A** applies to everyone. **Part B** applies to Business accounts. **Part C** applies to Personal accounts. **Part D** holds country-specific terms. Where Part C or Part D conflicts with Part A for an individual, Part C or D controls. |
 | Related documents | Aramo Privacy Notice (`aramo.privacy_notice`) · Aramo Acceptable Use Policy (`aramo.acceptable_use_policy`) · Electronic Signature Consent Disclosure for signers (`sign.esign_consent_disclosure`) · Data Processing Addendum for Business accounts *(to be drafted)* |
 | Operator | **Astre Consulting Services Inc**, a Virginia corporation, 2909 Gettysburg Sq, Vienna, VA 22181, USA ("Aramo", "we", "us") |
-| Effective date | November 1, 2026 |
+| Effective date | November 2, 2026 |
 
 
 ---

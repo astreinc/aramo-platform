@@ -109,7 +109,7 @@ describe('legal texts — build-time integrity against the registry', () => {
     const approved = registry().filter((r) => r.status === 'APPROVED' && r.url !== null && r.effective_from !== null);
     const scheduledCatalog = LEGAL_CATALOG.filter((d) => d.effective_from !== null);
     expect(approved.map((r) => `${r.key}@${r.version}`).sort()).toEqual(scheduledCatalog.map((d) => `${d.key}@${d.version}`).sort());
-    // ToS v2.0 is scheduled (2026-11-01 23:00 EST): no catalog entry is unscheduled.
+    // ToS v2.0 is scheduled (2026-11-02 12:00 EST): no catalog entry is unscheduled.
     expect(LEGAL_CATALOG.filter((d) => d.effective_from === null)).toEqual([]);
     expect(Object.keys(LEGAL_TEXTS).sort()).toEqual(LEGAL_CATALOG.map((d) => `${d.slug}@${d.version}`).sort());
   });
@@ -211,7 +211,7 @@ describe('Markdown renderer (safe subset)', () => {
 
 describe('workspace legal links and re-acceptance', () => {
   it('footer (before ToS v2.0 takes effect, injected clock): Personal accounts see Terms, Privacy and Acceptable Use; Business only the documents binding every account', () => {
-    const before = new Date('2026-11-01T22:59:59.999-05:00');
+    const before = new Date('2026-11-02T11:59:59.999-05:00');
     expect(footerLegalLinks(true, LEGAL_CATALOG, before)).toEqual([
       { label: 'Terms', href: '/legal/personal-terms/1.0' },
       { label: 'Privacy', href: '/legal/privacy/1.0' },
@@ -437,7 +437,7 @@ describe('M-A7 §5.1 — public /legal, /legal/terms and /help', () => {
   });
 
   it('/legal lists every published document in effect (no sign-in; before ToS v2.0 takes effect, injected clock)', async () => {
-    const before = new Date('2026-11-01T22:59:59.999-05:00');
+    const before = new Date('2026-11-02T11:59:59.999-05:00');
     atWith('/legal', { now: () => before });
     const list = await screen.findByTestId('legal-index-documents');
     for (const slug of ['personal-terms', 'privacy', 'acceptable-use']) {
@@ -448,7 +448,7 @@ describe('M-A7 §5.1 — public /legal, /legal/terms and /help', () => {
   });
 
   it('/legal/terms (the app link, before ToS v2.0 takes effect) lists the published Personal Terms and AUP; Business terms are the organization agreement, never a draft', async () => {
-    atWith('/legal/terms', { now: () => new Date('2026-11-01T22:59:59.999-05:00') });
+    atWith('/legal/terms', { now: () => new Date('2026-11-02T11:59:59.999-05:00') });
     const personal = await screen.findByTestId('legal-terms-personal');
     expect(within(personal).getByRole('link', { name: 'Aramo Sign Personal Terms of Service' })).toHaveAttribute('href', '/legal/personal-terms/1.0');
     expect(within(personal).getByRole('link', { name: 'Aramo Acceptable Use Policy' })).toHaveAttribute('href', '/legal/acceptable-use/1.0');
@@ -476,19 +476,19 @@ describe('M-A7 §5.1 — public /legal, /legal/terms and /help', () => {
 // the release-day change sets its effective_from; then it succeeds the Personal Terms 1.0.
 describe('ToS v2.0 — terms-of-service', () => {
   afterEach(() => vi.unstubAllGlobals());
-  // The shipped catalog: v2.0 takes effect 2026-11-01 23:00 EST (injected clock, never wall time).
+  // The shipped catalog: v2.0 takes effect 2026-11-02 12:00 EST (injected clock, never wall time).
   const T20 = LEGAL_CATALOG.find((d) => d.slug === 'terms-of-service')!;
   const LIVE: LegalCatalogEntry = T20;
   const LIVE_CATALOG = LEGAL_CATALOG;
-  const BEFORE_V2 = new Date('2026-11-01T22:59:59.999-05:00');
-  const AFTER = new Date('2026-11-01T23:00:00-05:00');
+  const BEFORE_V2 = new Date('2026-11-02T11:59:59.999-05:00');
+  const AFTER = new Date('2026-11-02T12:00:00-05:00');
 
-  it('before 23:00 EST: v2.0 is upcoming (its stable URL shows the Upcoming banner); the Personal Terms 1.0 stay current', async () => {
-    expect(T20).toMatchObject({ key: 'sign.terms_of_service', version: '2.0', audience: 'all', effective_from: '2026-11-01T23:00:00-05:00' });
+  it('before 12:00 EST: v2.0 is upcoming (its stable URL shows the Upcoming banner); the Personal Terms 1.0 stay current', async () => {
+    expect(T20).toMatchObject({ key: 'sign.terms_of_service', version: '2.0', audience: 'all', effective_from: '2026-11-02T12:00:00-05:00' });
     expect(currentLegal('terms-of-service', LEGAL_CATALOG, BEFORE_V2)).toBeNull();
     expect(footerLegalLinks(true, LEGAL_CATALOG, BEFORE_V2).map((l) => l.href)).toEqual(['/legal/personal-terms/1.0', '/legal/privacy/1.0', '/legal/acceptable-use/1.0']);
     atWith('/legal/terms-of-service/2.0', { now: () => BEFORE_V2 });
-    expect(await screen.findByTestId('legal-upcoming')).toHaveTextContent('Upcoming — effective 2026-11-01 23:00 UTC-05:00');
+    expect(await screen.findByTestId('legal-upcoming')).toHaveTextContent('Upcoming — effective 2026-11-02 12:00 UTC-05:00');
     cleanupRender();
     atWith('/legal/terms-of-service', { now: () => BEFORE_V2 });
     expect(await screen.findByTestId('legal-not-found')).toBeInTheDocument();
@@ -513,7 +513,7 @@ describe('ToS v2.0 — terms-of-service', () => {
     expect(screen.getByTestId('legal-meta')).toHaveTextContent('Version 2.0 · Permanent link: https://sign.aramo.ai/legal/terms-of-service/2.0');
     cleanupRender();
     atWith('/legal/personal-terms/1.0', { catalog: LIVE_CATALOG, now: () => AFTER });
-    expect(await screen.findByTestId('legal-superseded')).toHaveTextContent('No longer in effect since 2026-11-01 23:00 UTC-05:00; the current version is 2.0.');
+    expect(await screen.findByTestId('legal-superseded')).toHaveTextContent('No longer in effect since 2026-11-02 12:00 UTC-05:00; the current version is 2.0.');
     expect(screen.getByTestId('legal-current-link')).toHaveAttribute('href', '/legal/terms-of-service/2.0');
   });
 

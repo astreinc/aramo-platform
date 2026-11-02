@@ -19,9 +19,9 @@ interface Row {
   ip: string | null;
 }
 
-// ToS v2.0 takes effect 2026-11-01 23:00 EST: the default clock is fixed just before it, so the
+// ToS v2.0 takes effect 2026-11-02 12:00 EST: the default clock is fixed just before it, so the
 // Personal 1.0 cases never depend on wall time.
-const BEFORE_TOS_V20 = () => new Date('2026-11-01T22:59:59.999-05:00');
+const BEFORE_TOS_V20 = () => new Date('2026-11-02T11:59:59.999-05:00');
 
 function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, clock: () => Date = BEFORE_TOS_V20) {
   const rows: Row[] = [];
@@ -156,10 +156,10 @@ describe('ToS v2.0 — Business and Personal re-acceptance', () => {
   const v20 = LEGAL_DOCUMENTS.find((d) => d.key === 'sign.terms_of_service' && d.version === '2.0')!;
   const reg = LEGAL_DOCUMENTS;
   const before = BEFORE_TOS_V20;
-  const after = () => new Date('2026-11-01T23:00:00-05:00');
+  const after = () => new Date('2026-11-02T12:00:00-05:00');
   const V20 = { key: 'sign.terms_of_service', version: '2.0', url: 'https://sign.aramo.ai/legal/terms-of-service/2.0', title: 'Aramo Sign Terms of Service' };
 
-  it('the shipped registry before 2026-11-01 23:00 EST: Business owes nothing and cannot accept; Personal still owes the Personal Terms 1.0', async () => {
+  it('the shipped registry before 2026-11-02 12:00 EST: Business owes nothing and cannot accept; Personal still owes the Personal Terms 1.0', async () => {
     const { svc } = harness(reg, before);
     expect(await svc.pending('t-business', 'u1')).toEqual([]);
     await expect(svc.accept('t-business', 'u1', [{ key: 'sign.terms_of_service', version: '2.0' }], { ip: null, user_agent: null }, 'r')).rejects.toMatchObject({

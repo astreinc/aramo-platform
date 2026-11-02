@@ -69,8 +69,8 @@ const SUBSCRIPTION_MIGRATIONS = [
   'libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql',
 ].map((p) => resolve(__dirname, '../../../..', p));
 const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0', effective_from: '2026-01-01T00:00:00Z' };
-// ToS v2.0 — the shipped registry as before ToS v2.0 was registered (it takes effect 2026-11-01
-// 23:00 EST), so these signup cases do not depend on the wall clock; ToS v2.0 itself is covered
+// ToS v2.0 — the shipped registry as before ToS v2.0 was registered (it takes effect 2026-11-02
+// 12:00 EST), so these signup cases do not depend on the wall clock; ToS v2.0 itself is covered
 // by the unit specs with an injected clock.
 const SHIPPED_BEFORE_TOS_V20 = LEGAL_DOCUMENTS.filter((d) => !(d.key === 'sign.terms_of_service' && d.version === '2.0'));
 // Mutable per test: the registry array the signup service holds.

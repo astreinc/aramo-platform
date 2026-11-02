@@ -19,7 +19,7 @@ const v11 = (over: Partial<LegalDocumentVersion> = {}): LegalDocumentVersion => 
 const at = (iso: string) => () => new Date(iso);
 
 describe('RegistryUpcomingLegalChangeSource', () => {
-  it('ToS v2.0 before 2026-11-01 23:00 EST: announced by the registry, but no banner (no current sign.terms_of_service to change from)', () => {
+  it('ToS v2.0 before 2026-11-02 12:00 EST: announced by the registry, but no banner (no current sign.terms_of_service to change from)', () => {
     const src = new RegistryUpcomingLegalChangeSource(LEGAL_DOCUMENTS, at('2026-11-01T12:00:00-05:00'), []);
     expect(src.announced()).toEqual([{ key: 'sign.terms_of_service', version: '2.0', effective_date: '2026-11-02' }]);
     for (const kind of ['BUSINESS', 'PERSONAL']) expect(upcomingLegalNotices(src, kind, new Date('2026-11-01T12:00:00-05:00'))).toEqual([]);

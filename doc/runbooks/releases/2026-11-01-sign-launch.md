@@ -96,12 +96,13 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
   `NOT_AVAILABLE` (branding, custom_roles, trusted_timestamp, witness_signing, delegate_signing,
   sms_delivery, whatsapp_delivery, sms_otp, id_verification, kba, payments,
   document_seal, qes, india_estamp, metering keys). Flipping any is a separate PO authorization (R-8).
-- **ToS v2.0 goes live tonight (PO 2026-11-01; counsel approved B5.1, B5.3, B9.1):** `effective_from`
-  `2026-11-01T23:00:00-05:00` in both `libs/subscription/src/lib/legal/legal-documents.ts` and
-  `apps/sign-web/src/workspace/legal/catalog.ts`. The code is clock-driven: before 23:00 EST v2.0 shows as
-  "Upcoming"; at 23:00 it takes effect. **HARD STOP: if STEP 8 (all services recreated and verified) cannot
-  finish by 22:45 EST, STOP before recreating sign-service / auth-service / nginx and report** — the
-  effective time must not precede the real activation; the PO moves it in a follow-up.
+- **ToS v2.0 (counsel approved B5.1, B5.3, B9.1; PO 2026-11-01 19:05 EST: ship-all-at-once,
+  publication date November 2, 2026):** `effective_from` `2026-11-02T12:00:00-05:00` (12:00 EST) in both
+  `libs/subscription/src/lib/legal/legal-documents.ts` and `apps/sign-web/src/workspace/legal/catalog.ts`.
+  The code is clock-driven: before 12:00 EST on 2026-11-02 v2.0 shows as "Upcoming"; at 12:00 EST it takes
+  effect. **HARD STOP: STEP 8 (all services recreated and verified) must finish by 11:45 EST on 2026-11-02;
+  if it cannot, STOP before recreating sign-service / auth-service / nginx and report** — the effective
+  time must not precede the real activation; the PO moves it in a follow-up.
 - Notification worker stays paused (=0). Retention/purge settings unchanged (`SIGN_PURGE_ENABLED=1`
   as before).
 
@@ -117,8 +118,9 @@ Connect is configured). nginx is rebuilt because the SPAs (sign-web, platform-we
    is published; the invite flow returns success for a test alias invite only if the PO asks for one.
 5. `docker logs` for sign-service, auth-service, api, platform-admin: no ERROR at boot; auth-service
    mints a Sign token (custom-roles path, zero custom roles) — sign-in works end to end.
-6. ToS v2.0 before 23:00 EST: `/legal/terms-of-service` shows v2.0 as Upcoming; existing users sign in with no
-   terms dialog. After 23:00 EST (re-check then): an existing Business and an existing Personal user get
+6. ToS v2.0 before 12:00 EST on 2026-11-02: `/legal/terms-of-service/2.0` shows v2.0 with the Upcoming
+   banner (`/legal/terms-of-service` is not found until then); existing users sign in with no terms dialog.
+   After 12:00 EST on 2026-11-02 (re-check then): an existing Business and an existing Personal user get
    the blocking accept dialog at sign-in (web) and the accept screen (mobile); accepting records it;
    Business sign-up asks for v2.0; the mobile "Personal Terms" link opens v2.0.
 7. Monitoring probe (`doc/runbooks/sign/monitoring-and-alerts.md`) reports healthy, if installed.

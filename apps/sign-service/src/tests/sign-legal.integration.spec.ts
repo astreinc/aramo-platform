@@ -38,9 +38,9 @@ const AUDIENCE = 'aramo-sign-legal-test';
 const OWNER_SCOPES = [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE];
 // ToS v2.0 — the document in effect per key (the Personal Terms 1.0 while v2.0 is not effective).
 const CURRENT = PERSONAL_LEGAL_DOCUMENT_KEYS.map((key) => effectivePersonalLegalDocument(key)!);
-// ToS v2.0 takes effect 2026-11-01 23:00 EST; the service reads the wall clock, so the expectations
+// ToS v2.0 takes effect 2026-11-02 12:00 EST; the service reads the wall clock, so the expectations
 // follow whichever side of that instant the run is on (decided once, at load).
-const TOS_V20_LIVE = Date.now() >= Date.parse('2026-11-01T23:00:00-05:00');
+const TOS_V20_LIVE = Date.now() >= Date.parse('2026-11-02T12:00:00-05:00');
 const pendingView = (d: (typeof CURRENT)[number]) => ({ key: d.key, version: d.version, url: d.url, title: LEGAL_DOCUMENT_TITLES[d.key] });
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — v1/sign/legal (real Postgres 17)', () => {
@@ -207,7 +207,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await status(o)).body.pending).toHaveLength(3);
   });
 
-  it('Business: before ToS v2.0 nothing is pending and accept is refused; from 23:00 EST the Terms are owed and accepted per user', async () => {
+  it('Business: before ToS v2.0 nothing is pending and accept is refused; from 12:00 EST the Terms are owed and accepted per user', async () => {
     const o = await owner('BUSINESS');
     if (!TOS_V20_LIVE) {
       expect((await status(o)).body).toEqual({ pending: [] });

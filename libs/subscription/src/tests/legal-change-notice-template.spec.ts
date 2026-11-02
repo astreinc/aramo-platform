@@ -83,7 +83,7 @@ describe('legal change notice — what may be announced', () => {
   });
   it('refuses a document with no APPROVED published version (sign.terms_of_service before ToS v2.0 takes effect)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-11-01T22:59:59.999-05:00'));
+    vi.setSystemTime(new Date('2026-11-02T11:59:59.999-05:00'));
     try {
       expect(refusal(() => describeLegalChange('sign.terms_of_service', '0.2.0'))).toBe('no_current_version');
     } finally {

@@ -17,9 +17,9 @@ describe('Sign Catalog v2 — Personal checkout rules', () => {
     expect(planMatchesTenantKind('PERSONAL', 'BUSINESS')).toBe(false);
   });
 
-  it('the checkout terms: the Personal Terms for a PERSONAL tenant until ToS v2.0 takes effect (2026-11-01 23:00 EST), then the Sign Terms; the Sign Terms otherwise', () => {
-    const before = new Date('2026-11-01T22:59:59.999-05:00');
-    const at = new Date('2026-11-01T23:00:00-05:00');
+  it('the checkout terms: the Personal Terms for a PERSONAL tenant until ToS v2.0 takes effect (2026-11-02 12:00 EST), then the Sign Terms; the Sign Terms otherwise', () => {
+    const before = new Date('2026-11-02T11:59:59.999-05:00');
+    const at = new Date('2026-11-02T12:00:00-05:00');
     expect(checkoutTermsDocument('PERSONAL', LEGAL_DOCUMENTS, before)).toBe('sign.personal_terms_of_service');
     expect(checkoutTermsDocument('PERSONAL', LEGAL_DOCUMENTS, at)).toBe('sign.terms_of_service');
     expect(checkoutTermsDocument('BUSINESS', LEGAL_DOCUMENTS, before)).toBe('sign.terms_of_service');
