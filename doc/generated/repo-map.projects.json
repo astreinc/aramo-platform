@@ -13590,6 +13590,11 @@
         "status": "unscoped"
       },
       {
+        "from": "pact/provider/src/verify-sign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
         "project": "platform-admin",
