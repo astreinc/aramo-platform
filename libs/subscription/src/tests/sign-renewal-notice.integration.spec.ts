@@ -182,7 +182,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('a subscription set to cancel is not due', async () => {
     const s = await subscribe();
     await pg.query(`UPDATE subscription."TenantSubscription" SET cancel_at_period_end = true WHERE id = $1`, [s.id]);
-    expect((await run(new Date(s.commitment_end.getTime() - 5 * DAY))).due).toBe(0);
+    // Other tests' subscriptions share this database, so check this subscription only: no notice
+    // row (claim, send or failure) is ever written for it.
+    await run(new Date(s.commitment_end.getTime() - 5 * DAY));
     expect(await rows(s.id)).toEqual([]);
   });
 
