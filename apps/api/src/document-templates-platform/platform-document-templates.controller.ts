@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -58,6 +59,11 @@ import {
 // now, effective now + notice_days, default 7) and POST :id/withdraw/cancel cancels a
 // pending one. Each writes a GLOBAL audit event (TEMPLATE_AUDIT port → identity audit
 // ledger, tenant_id NULL) BEFORE the state change; a failed audit write refuses it.
+//
+// TEMPLATE-PRODUCT-1 §3 — delete what was never published: DELETE versions/:versionId
+// discards a DRAFT version, DELETE :id deletes a never-published, unreferenced default.
+// Each writes a GLOBAL audit event BEFORE the delete through the same port; refused (500)
+// when the port is absent. A published version is only ever withdrawn (D10).
 
 const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 const NAME_MAX = 120;
@@ -394,6 +400,37 @@ export class PlatformDocumentTemplatesController {
     });
   }
 
+  // TEMPLATE-PRODUCT-1 §3.2 — delete a never-published Aramo default (204). Allowed only
+  // while it is DRAFT with no published version and nothing references it (selection,
+  // documents, adopted copies); otherwise 409 TEMPLATE_IN_USE with details.reasons.
+  @Delete('document-templates/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('platform:document_template:manage')
+  async deleteTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<void> {
+    this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'template delete');
+    await this.run(requestId, () =>
+      this.templates.deletePlatformTemplate({
+        id,
+        beforeDelete: ({ template }) =>
+          audit.recordPlatformDeletion({
+            action: 'template_deleted',
+            actor_id: auth.sub,
+            template_id: template.id,
+            document_type_id: template.document_type_id,
+            name: template.name,
+            version_id: null,
+            version_number: null,
+            requestId,
+          }),
+      }),
+    );
+  }
+
   // The governed Insert-field catalog for this default's document type (catalog-driven).
   @Get('document-templates/:id/allowed-bindings')
   @RequireScopes('platform:document_template:read')
@@ -523,6 +560,37 @@ export class PlatformDocumentTemplatesController {
       });
       return this.versionView(v);
     });
+  }
+
+  // TEMPLATE-PRODUCT-1 §3.1 — discard the open DRAFT of an Aramo default (204). Mirrors
+  // the tenant DELETE /v1/document-templates/versions/:versionId: DRAFT only (ACTIVE /
+  // RETIRED → 409 TEMPLATE_IMMUTABLE); the published version is untouched.
+  @Delete('document-templates/versions/:versionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('platform:document_template:manage')
+  async discardDraft(
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<void> {
+    this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'draft discard');
+    await this.run(requestId, () =>
+      this.templates.deletePlatformDraftVersion({
+        version_id: versionId,
+        beforeDelete: ({ version, template }) =>
+          audit.recordPlatformDeletion({
+            action: 'draft_discarded',
+            actor_id: auth.sub,
+            template_id: template.id,
+            document_type_id: template.document_type_id,
+            name: template.name,
+            version_id: version.id,
+            version_number: version.version_number,
+            requestId,
+          }),
+      }),
+    );
   }
 
   // Fixed-sample preview of the CURRENT draft content (samples from the variable
@@ -675,9 +743,9 @@ export class PlatformDocumentTemplatesController {
     return { ...v, logo: null };
   }
 
-  private requireAudit(requestId: string): TemplateAuditPort {
+  private requireAudit(requestId: string, what = 'withdrawal'): TemplateAuditPort {
     if (this.audit === undefined) {
-      throw new AramoError('INTERNAL_ERROR', 'Template audit is not configured; withdrawal refused', 500, { requestId });
+      throw new AramoError('INTERNAL_ERROR', `Template audit is not configured; ${what} refused`, 500, { requestId });
     }
     return this.audit;
   }

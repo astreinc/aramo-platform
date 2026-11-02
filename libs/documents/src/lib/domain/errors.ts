@@ -149,6 +149,21 @@ export class TemplateProductRequiredError extends Error {
   }
 }
 
+// TEMPLATE-PRODUCT-1 §3.2 — an Aramo (PLATFORM) template can be deleted only while it has
+// never been published and nothing references it. reasons names every failed condition
+// (published | selection | documents | adopted). Mapped to 409 TEMPLATE_IN_USE.
+export type TemplateInUseReason = 'published' | 'selection' | 'documents' | 'adopted';
+
+export class TemplateInUseError extends Error {
+  constructor(
+    public readonly templateId: string,
+    public readonly reasons: readonly TemplateInUseReason[],
+  ) {
+    super(`Aramo default ${templateId} cannot be deleted (${reasons.join(', ')})`);
+    this.name = 'TemplateInUseError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);

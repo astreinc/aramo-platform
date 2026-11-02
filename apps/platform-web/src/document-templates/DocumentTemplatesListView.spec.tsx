@@ -119,6 +119,27 @@ describe('DocumentTemplatesListView', () => {
     expect(screen.getByText('No templates match')).toBeInTheDocument();
   });
 
+  // TEMPLATE-PRODUCT-1 §3.4 — only a never-published template carries Delete…
+  it('Delete… only on a never-published row; confirming deletes and reloads', async () => {
+    const del = vi.spyOn(documentTemplatesApi, 'deleteTemplate').mockResolvedValue(undefined);
+    renderView(MANAGE);
+    await screen.findByText('Mutual NDA');
+    expect(screen.queryByRole('button', { name: 'Delete Aramo standard RTR' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Mutual NDA' }));
+    expect(screen.queryByTestId('path')).toBeNull();
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Mutual NDA?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete template' }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith('t2'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(documentTemplatesApi.listTemplates).toHaveBeenCalledTimes(2);
+  });
+
+  it('read-only operators get no Delete…', async () => {
+    renderView(READ);
+    await screen.findByText('Mutual NDA');
+    expect(screen.queryByRole('button', { name: 'Delete Mutual NDA' })).toBeNull();
+  });
+
   it('a row click opens the Studio', async () => {
     renderView(READ);
     fireEvent.click(await screen.findByText('Mutual NDA'));

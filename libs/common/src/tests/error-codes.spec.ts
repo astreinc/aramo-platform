@@ -144,6 +144,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
       // TEMPLATE-PRODUCT-1 §2.6 — publishing an Aramo default that has no product tag (422).
       'TEMPLATE_PRODUCT_REQUIRED',
+      // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is still referenced (409, details.reasons).
+      'TEMPLATE_IN_USE',
       'DOCUMENT_REQUIREMENT_NOT_FOUND',
       'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
       'DOCUMENT_RENDER_FAILED',

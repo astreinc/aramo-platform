@@ -225,6 +225,13 @@ export function summarizeDetail(
       return 'Published the withdrawal of an Aramo default template';
     case 'identity.document_template.withdrawal_cancelled':
       return 'Cancelled the withdrawal of an Aramo default template';
+    // TEMPLATE-PRODUCT-1 §3.3 — platform delete of what was never published.
+    case 'identity.document_template.platform_draft_discarded': {
+      const n = payload['version_number'];
+      return typeof n === 'number' ? `Discarded an Aramo default template draft (v${n})` : 'Discarded an Aramo default template draft';
+    }
+    case 'identity.document_template.platform_template_deleted':
+      return 'Deleted an unpublished Aramo default template';
     // Domain-Enforcement P3 — the organization's claim on its email domain.
     case 'identity.domain.claim.provisional':
       return 'Reserved the organization email domain';

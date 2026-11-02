@@ -17,6 +17,7 @@ import type { Readiness } from './readiness';
 //         createDraft = POST /:id/versions | POST /:id/draft
 //         saveDraft = PATCH /versions/:id
 //         discardDraft = DELETE /versions/:id
+//         deleteTemplate = DELETE /:id (platform; never-published only — TEMPLATE-PRODUCT-1 §3)
 //         preview   = POST /versions/:id/preview
 //         approve   = POST /versions/:id/activate (platform: …/publish)
 //   • the caller's capabilities (read-only · edit · edit-and-approve; withdrawal, tags);
@@ -290,8 +291,13 @@ export interface TemplateStudioDataSource {
   catalog(templateId: string): Promise<StudioCatalogData>;
   createDraft(templateId: string, body: StudioContentBody): Promise<StudioVersion>;
   saveDraft(versionId: string, body: StudioContentBody): Promise<StudioVersion>;
-  /** Discard the open draft (organization). */
+  /** Discard the open draft (organization; platform since TEMPLATE-PRODUCT-1 §3.1). */
   discardDraft?(versionId: string): Promise<void>;
+  /**
+   * TEMPLATE-PRODUCT-1 §3.2/§3.4 — delete a template that was never published (platform).
+   * The ⋯ menu offers it only while no version was ever published; the server re-checks.
+   */
+  deleteTemplate?(templateId: string): Promise<void>;
   preview(versionId: string): Promise<StudioSamplePreview>;
   /** Platform: publish · organization: activate. */
   approve(versionId: string): Promise<StudioVersion>;

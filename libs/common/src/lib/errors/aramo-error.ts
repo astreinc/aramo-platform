@@ -113,6 +113,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TEMPLATE_PLATFORM_DEFAULT_CONFLICT: 409,
   // TEMPLATE-PRODUCT-1 §2.6 — publishing an Aramo default that has no product tag (422).
   TEMPLATE_PRODUCT_REQUIRED: 422,
+  // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is still referenced (409, details.reasons).
+  TEMPLATE_IN_USE: 409,
   DOCUMENT_REQUIREMENT_NOT_FOUND: 404,
   DOCUMENT_REQUIREMENT_ALREADY_SATISFIED: 409,
   DOCUMENT_RENDER_FAILED: 422,

@@ -149,6 +149,13 @@ export const documentTemplatesApi = {
   cancelWithdrawal(id: string): Promise<PlatformTemplate> {
     return apiClient.post(`/platform/document-templates/${id}/withdraw/cancel`);
   },
+  // TEMPLATE-PRODUCT-1 §3 — delete a never-published default / discard a default's DRAFT.
+  deleteTemplate(id: string): Promise<void> {
+    return apiClient.delete(`/platform/document-templates/${id}`);
+  },
+  discardDraft(versionId: string): Promise<void> {
+    return apiClient.delete(`/platform/document-templates/versions/${versionId}`);
+  },
   allowedBindings(id: string): Promise<{ bindings: AllowedBinding[] }> {
     return apiClient.get(`/platform/document-templates/${id}/allowed-bindings`);
   },

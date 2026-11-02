@@ -37,6 +37,8 @@ export {
   type TemplateGovernanceAudit,
   type TemplateGovernanceAction,
   type TemplatePlatformWithdrawalAudit,
+  // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
+  type TemplatePlatformDeletionAudit,
 } from './lib/template-audit.port.js';
 // TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
 export { TEMPLATE_PRODUCT_KEYS, isTemplateProductKey, type TemplateProductKey } from './lib/template-products.js';
@@ -111,6 +113,9 @@ export {
   type TemplatePlatformDefaultConflictReason,
   // TEMPLATE-PRODUCT-1 §2.6 — publishing a default with no product tag.
   TemplateProductRequiredError,
+  // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is referenced.
+  TemplateInUseError,
+  type TemplateInUseReason,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

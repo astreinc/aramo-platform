@@ -34,7 +34,8 @@ import './library.css';
 // segmented filter and search, and the table (Template · Current version · Draft ·
 // Products · Updated · "Open studio →"). A row opens the Studio at /document-templates/:id.
 // TEMPLATE-PRODUCT-1 §2.5 — products are the capability keys (ats, sign) shown as ATS / Sign;
-// the filter compares keys and the create dialog picks from the fixed list.
+// the filter compares keys and the create dialog picks from the fixed list. §3.4 — a
+// template that was never published carries "Delete…" (a published one is only withdrawn).
 
 type ProductFilter = 'ALL' | TemplateProductKey;
 
@@ -61,6 +62,24 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
   const [product, setProduct] = useState<ProductFilter>('ALL');
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<PlatformTemplate | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await documentTemplatesApi.deleteTemplate(deleting.id);
+      setDeleting(null);
+      await load();
+    } catch (e) {
+      setDeleteError(templateErrorMessage(e, 'Delete failed.'));
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setError(null);
@@ -196,6 +215,20 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
                         </td>
                         <td className="pws-lib__upd">{formatDateRelative(t.updated_at)}</td>
                         <td className="pws-lib__open">
+                          {canManage && t.current_version === null ? (
+                            <Button
+                              unstyled
+                              className="pws-lib__del"
+                              aria-label={`Delete ${t.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteError(null);
+                                setDeleting(t);
+                              }}
+                            >
+                              Delete…
+                            </Button>
+                          ) : null}
                           <Link to={`/document-templates/${t.id}`} className="pws-lib__openlink" onClick={(e) => e.stopPropagation()} aria-label={`Open studio for ${t.name}`}>
                             Open studio →
                           </Link>
@@ -215,6 +248,21 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
         ) : null}
       </div>
 
+      {deleting !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setDeleting(null);
+          }}
+          title={`Delete ${deleting.name}?`}
+          consequence="The template and its draft are deleted. It was never published, so no tenant has it. This can’t be undone."
+          tone="privileged"
+          commitLabel="Delete template"
+          busy={deleteBusy}
+          error={deleteError}
+          onCommit={() => void confirmDelete()}
+        />
+      ) : null}
       {creating ? (
         <CreateTemplateDialog
           open={creating}

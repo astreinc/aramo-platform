@@ -6856,6 +6856,12 @@
         "project": "documents",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp1-product-keys.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

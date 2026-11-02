@@ -51,8 +51,10 @@ export interface StudioTopBarProps {
   readonly showModeToggle?: boolean;
   /** Show the readiness pill (default true; hidden for an Aramo default). */
   readonly showReadiness?: boolean;
-  /** Discard the open draft (organization): a ⋯ menu item. */
+  /** Discard the open draft (organization; platform): a ⋯ menu item. */
   readonly onDiscard?: () => void;
+  /** TEMPLATE-PRODUCT-1 §3.4 — delete a never-published template (platform): a ⋯ menu item. */
+  readonly onDeleteTemplate?: () => void;
   /** Host actions before the ⋯ menu (the gallery preview's Adopt). */
   readonly actions?: ReactNode;
 }
@@ -194,6 +196,11 @@ export function StudioTopBar(p: StudioTopBarProps) {
               {p.onDiscard !== undefined ? (
                 <Button unstyled role="menuitem" className="pws-more__item pws-more__item--wd" onClick={run(p.onDiscard)}>
                   Discard draft…
+                </Button>
+              ) : null}
+              {p.onDeleteTemplate !== undefined ? (
+                <Button unstyled role="menuitem" className="pws-more__item pws-more__item--wd" onClick={run(p.onDeleteTemplate)}>
+                  Delete template…
                 </Button>
               ) : null}
               {p.canEdit ? (

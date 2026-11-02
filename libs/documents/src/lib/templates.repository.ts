@@ -7,12 +7,14 @@ import {
   DocumentNotFoundError,
   TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
+  TemplateInUseError,
   TemplateNotFoundError,
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
   TemplateProductRequiredError,
   TemplateSelectionInvalidError,
   TemplateVersionNotFoundError,
+  type TemplateInUseReason,
 } from './domain/errors.js';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§18) — deterministic fingerprint of a version's editable
@@ -975,6 +977,88 @@ export class TemplatesRepository {
     }
     if (count === 0) throw new TemplatePlatformDefaultConflictError(t.id, 'withdrawal_in_effect');
     return this.getPlatformTemplate(t.id);
+  }
+
+  // ── TEMPLATE-PRODUCT-1 §3 — platform delete (R1) ──────────────────────────
+  // A published version is only ever withdrawn (ADR-0034 D10); these remove what was never
+  // published. `beforeDelete` runs after every check and before the delete (the platform
+  // controller writes the GLOBAL audit event there — no delete without its audit record; a
+  // failing hook aborts the delete).
+
+  // §3.1 — discard the open DRAFT version of an Aramo default. Mirrors deleteDraftVersion
+  // (tenant): DRAFT only (else TemplateImmutableError), field definitions removed in the
+  // same transaction, and the status-guarded deleteMany is the race backstop (a version
+  // published between the read and the delete matches 0 rows and is refused, never deleted).
+  async deletePlatformDraftVersion(input: {
+    version_id: string;
+    beforeDelete?: (planned: {
+      version: { id: string; version_number: number; template_id: string };
+      template: { id: string; document_type_id: string; name: string };
+    }) => Promise<void>;
+  }): Promise<void> {
+    const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    const t = await this.getTemplateFor(PLATFORM_OWNER, v.template_id);
+    if (input.beforeDelete !== undefined) await input.beforeDelete({ version: v, template: t });
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: input.version_id } });
+      return tx.templateVersion.deleteMany({
+        where: { ...versionWhere(PLATFORM_OWNER), id: input.version_id, status: 'DRAFT' },
+      });
+    });
+    if (deleted.count === 0) throw new TemplateImmutableError(input.version_id);
+  }
+
+  // §3.2 — delete an Aramo default that was never published. In ONE transaction, with the
+  // template row locked (FOR UPDATE: a concurrent publish, new version or selection waits
+  // on it), every condition is checked: PLATFORM, DRAFT, no current version and no ACTIVE /
+  // RETIRED version; no TenantTemplateSelection; no Document / DocumentRevision pinned to
+  // any of its versions; no DocumentTemplate.adopted_from_* pointing at it (explicit — those
+  // columns carry no FK). Any failure is TemplateInUseError naming every reason. Delete
+  // order: field definitions → versions → template.
+  //
+  // Sign SignatureEnvelope.template_ref (Sign's own database, no FK) is not queried: a
+  // template with no ACTIVE or RETIRED version has never been listable or renderable by
+  // Sign (sign-template-library lists only ACTIVE templates pinned to an ACTIVE version),
+  // so no envelope can name it — the "published" check above covers it.
+  async deletePlatformTemplate(input: {
+    id: string;
+    beforeDelete?: (planned: { template: { id: string; document_type_id: string; name: string } }) => Promise<void>;
+  }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"::text FROM "documents"."DocumentTemplate"
+         WHERE "id" = ${input.id}::uuid AND "owner_scope" = 'PLATFORM' AND "tenant_id" IS NULL
+         FOR UPDATE`;
+      if (locked.length === 0) throw new TemplateNotFoundError(input.id);
+      const t = await tx.documentTemplate.findFirstOrThrow({ where: { id: input.id } });
+      const versions = await tx.templateVersion.findMany({ where: { template_id: t.id }, select: { id: true, status: true } });
+      const versionIds = versions.map((v) => v.id);
+      const reasons: TemplateInUseReason[] = [];
+      if (t.status !== 'DRAFT' || t.current_version_id !== null || versions.some((v) => v.status !== 'DRAFT')) reasons.push('published');
+      if ((await tx.tenantTemplateSelection.count({ where: { template_id: t.id } })) > 0) reasons.push('selection');
+      if (versionIds.length > 0) {
+        const docs = await tx.document.count({ where: { template_version_id: { in: versionIds } } });
+        const revisions = await tx.documentRevision.count({ where: { template_version_id: { in: versionIds } } });
+        if (docs + revisions > 0) reasons.push('documents');
+      }
+      const adopted = await tx.documentTemplate.count({
+        where: {
+          OR: [
+            { adopted_from_template_id: t.id },
+            ...(versionIds.length > 0 ? [{ adopted_from_version_id: { in: versionIds } }] : []),
+          ],
+        },
+      });
+      if (adopted > 0) reasons.push('adopted');
+      if (reasons.length > 0) throw new TemplateInUseError(t.id, reasons);
+      if (input.beforeDelete !== undefined) await input.beforeDelete({ template: t });
+      if (versionIds.length > 0) {
+        await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: { in: versionIds } } });
+        await tx.templateVersion.deleteMany({ where: { template_id: t.id, tenant_id: null, status: 'DRAFT' } });
+      }
+      await tx.documentTemplate.delete({ where: { id: t.id } });
+    });
   }
 
   // The Aramo defaults with a published withdrawal whose effective date is after `since`

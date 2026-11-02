@@ -37,6 +37,22 @@ export interface TemplatePlatformWithdrawalAudit {
   readonly requestId: string;
 }
 
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §3.3 — a platform operator
+// discarded the DRAFT version of an Aramo (PLATFORM) default, or deleted a never-published
+// Aramo default. GLOBAL (no tenant_id). Written BEFORE the delete and MUST throw on
+// failure, so nothing is deleted without its audit record.
+export interface TemplatePlatformDeletionAudit {
+  readonly action: 'draft_discarded' | 'template_deleted';
+  readonly actor_id: string;
+  readonly template_id: string;
+  readonly document_type_id: string;
+  readonly name: string;
+  // draft_discarded: the discarded version. template_deleted: null.
+  readonly version_id: string | null;
+  readonly version_number: number | null;
+  readonly requestId: string;
+}
+
 // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped. Written
 // through the same non-swallowing seam AFTER the state change succeeds (the change is
 // already committed; a failed write surfaces as an error to the caller, never silently).
@@ -55,5 +71,6 @@ export interface TemplateGovernanceAudit {
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
+  recordPlatformDeletion(event: TemplatePlatformDeletionAudit): Promise<void>;
   recordGovernance(event: TemplateGovernanceAudit): Promise<void>;
 }

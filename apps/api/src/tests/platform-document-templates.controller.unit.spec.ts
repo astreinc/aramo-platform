@@ -6,6 +6,8 @@ import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import {
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateImmutableError,
+  TemplateInUseError,
   TemplateProductRequiredError,
   TemplateVariableKeyConflictError,
   type TemplateAuditPort,
@@ -47,6 +49,9 @@ const ROUTE_SCOPES: Record<string, string> = {
   // DOC-TEMPLATE-LIB-1 T-6 (§9).
   withdraw: MANAGE,
   cancelWithdrawal: MANAGE,
+  // TEMPLATE-PRODUCT-1 §3.
+  deleteTemplate: MANAGE,
+  discardDraft: MANAGE,
 };
 
 function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthContextType {
@@ -82,6 +87,16 @@ function build() {
     })),
     getPlatformTemplate: vi.fn(async () => ({ id: ID, document_type_id: TYPE })),
     updatePlatformTemplate: vi.fn(async () => PUBLISHED_ROW),
+    // TEMPLATE-PRODUCT-1 §3 — the repository runs the beforeDelete hook (audit) then deletes.
+    deletePlatformTemplate: vi.fn(async (i: { id: string; beforeDelete?: (p: unknown) => Promise<void> }) => {
+      await i.beforeDelete?.({ template: { id: i.id, document_type_id: TYPE, name: 'Draft NDA' } });
+    }),
+    deletePlatformDraftVersion: vi.fn(async (i: { version_id: string; beforeDelete?: (p: unknown) => Promise<void> }) => {
+      await i.beforeDelete?.({
+        version: { id: i.version_id, version_number: 3, template_id: ID },
+        template: { id: ID, document_type_id: TYPE, name: 'Aramo standard RTR' },
+      });
+    }),
     getPlatformVersion: vi.fn(async () => ({ id: VID, template_id: ID, status: 'DRAFT', field_schema: {}, render_schema_version: 'rtr-html-v1' })),
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
@@ -108,6 +123,7 @@ function build() {
   const audit = {
     recordDraftDiscarded: vi.fn(async () => undefined),
     recordPlatformWithdrawal: vi.fn(async () => undefined),
+    recordPlatformDeletion: vi.fn(async () => undefined),
     recordGovernance: vi.fn(async () => undefined),
   };
   const variables = {
@@ -161,12 +177,14 @@ function call(c: PlatformDocumentTemplatesController, name: string, a: AuthConte
     case 'get':
     case 'allowedBindings':
     case 'cancelWithdrawal':
+    case 'deleteTemplate':
       return m[name]!(ID, a, RID);
     case 'withdraw':
       return m[name]!(ID, {}, a, RID);
     case 'getVersion':
     case 'preview':
     case 'publish':
+    case 'discardDraft':
       return m[name]!(VID, a, RID);
     case 'create':
     case 'createVariable':
@@ -383,5 +401,64 @@ describe('PlatformDocumentTemplatesController — withdrawal (T-6)', () => {
     templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['sign'], versions: [] }] as never);
     const r = await c.list(auth('platform'), RID);
     expect(r.templates[0]?.products).toEqual(['sign']);
+  });
+});
+
+// TEMPLATE-PRODUCT-1 §3 (R1) — platform delete of what was never published.
+describe('PlatformDocumentTemplatesController — delete (TEMPLATE-PRODUCT-1 §3)', () => {
+  it('deleteTemplate: writes the GLOBAL audit event before the delete', async () => {
+    const { c, templates, audit } = build();
+    await expect(c.deleteTemplate(ID, auth('platform'), RID)).resolves.toBeUndefined();
+    expect(templates.deletePlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: ID }));
+    expect(audit.recordPlatformDeletion).toHaveBeenCalledWith({
+      action: 'template_deleted',
+      actor_id: auth('platform').sub,
+      template_id: ID,
+      document_type_id: TYPE,
+      name: 'Draft NDA',
+      version_id: null,
+      version_number: null,
+      requestId: RID,
+    });
+  });
+
+  it('deleteTemplate: a published / referenced default is 409 TEMPLATE_IN_USE with the reasons', async () => {
+    const { c, templates } = build();
+    templates.deletePlatformTemplate.mockRejectedValueOnce(new TemplateInUseError(ID, ['published', 'selection']));
+    const e = await errorOf(c.deleteTemplate(ID, auth('platform'), RID));
+    expect(e.code).toBe('TEMPLATE_IN_USE');
+    expect(e.statusCode).toBe(409);
+    expect(e.context?.details?.['reasons']).toEqual(['published', 'selection']);
+  });
+
+  it('discardDraft: audit (version + number) then delete; a non-DRAFT is 409 TEMPLATE_IMMUTABLE', async () => {
+    const { c, templates, audit } = build();
+    await c.discardDraft(VID, auth('platform'), RID);
+    expect(templates.deletePlatformDraftVersion).toHaveBeenCalledWith(expect.objectContaining({ version_id: VID }));
+    expect(audit.recordPlatformDeletion).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'draft_discarded', template_id: ID, version_id: VID, version_number: 3, name: 'Aramo standard RTR' }),
+    );
+    templates.deletePlatformDraftVersion.mockRejectedValueOnce(new TemplateImmutableError(VID));
+    expect((await errorOf(c.discardDraft(VID, auth('platform'), RID))).code).toBe('TEMPLATE_IMMUTABLE');
+  });
+
+  it('a failed audit write refuses the delete; no audit port refuses with 500', async () => {
+    const { c, templates, audit } = build();
+    audit.recordPlatformDeletion.mockRejectedValueOnce(new Error('audit down'));
+    await expect(c.deleteTemplate(ID, auth('platform'), RID)).rejects.toBeDefined();
+    const bare = new PlatformDocumentTemplatesController(
+      templates as unknown as TemplatesRepository,
+      {} as TemplateVariablesRepository,
+    );
+    const e = await errorOf(bare.discardDraft(VID, auth('platform'), RID));
+    expect(e.statusCode).toBe(500);
+    expect(templates.deletePlatformDraftVersion).not.toHaveBeenCalled();
+  });
+
+  it('a tenant token never reaches the delete routes', async () => {
+    const { c, templates } = build();
+    expect((await errorOf(c.deleteTemplate(ID, auth('tenant'), RID))).code).toBe('INSUFFICIENT_PERMISSIONS');
+    expect((await errorOf(c.discardDraft(VID, auth('tenant'), RID))).code).toBe('INSUFFICIENT_PERMISSIONS');
+    expect(templates.deletePlatformTemplate).not.toHaveBeenCalled();
   });
 });
