@@ -135,6 +135,19 @@ describe('§8.5 — Use as it is', () => {
     expect(a.tenantTemplates.adopt).not.toHaveBeenCalled();
   });
 
+  // TP-6 × TP-8 — an Aramo fixed form tagged sign is never adoptable: its type is not configurable
+  // (EDITABLE only), so it is not a Sign gallery default and "Use as it is" / adopt are 404 before
+  // any adopt call (and the tenant adopt itself refuses fixed_form_not_adoptable). It is used as
+  // it is from the Sign template list instead.
+  it('an Aramo fixed form tagged sign (not configurable) → 404 on Use as it is and adopt, nothing adopted', async () => {
+    const FIXED = '33333333-3333-7333-8333-33333333bbbb';
+    const h = harness();
+    await expect(h.svc.adoptAndUse({ ...who, template_id: FIXED })).rejects.toMatchObject({ code: 'TEMPLATE_NOT_FOUND', statusCode: 404 });
+    await expect(h.svc.adopt({ ...who, library_template_id: FIXED })).rejects.toMatchObject({ code: 'TEMPLATE_NOT_FOUND', statusCode: 404 });
+    expect((await h.svc.gallery({ tenant_id: TENANT, requestId: 'r' })).items.map((i) => i.template_id)).not.toContain(FIXED);
+    expect(h.tenantTemplates.adopt).not.toHaveBeenCalled();
+  });
+
   it('approval refused → the new draft is discarded (audited path) and the refusal stands', async () => {
     const h = harness({ activateFails: true });
     await expect(h.svc.adoptAndUse({ ...who, template_id: SIGN_DEFAULT })).rejects.toThrow('binding unsupported');

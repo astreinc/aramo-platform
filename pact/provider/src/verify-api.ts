@@ -5392,6 +5392,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              ON CONFLICT (id) DO UPDATE SET kind = 'PERSONAL', status = 'ACTIVE'`,
             [PERSONAL],
           );
+          // TEMPLATE-PRODUCT-1 §6.3 (TP-5) — the Studio drives the same library / adopt code as
+          // Org Home, which offers only defaults whose products ∩ E ≠ ∅: a Sign account holds
+          // `sign` (a sign session requires it).
+          await c.query(
+            `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+             VALUES ($1::uuid, 'sign', 'PROVISIONING') ON CONFLICT DO NOTHING`,
+            [PERSONAL],
+          );
           await c.query(`UPDATE documents."DocumentTemplate" SET "products" = ARRAY['ats','sign'] WHERE "id" = 'd0c4c000-0000-7000-8000-0000000000d1'::uuid`);
           await c.query(
             `DELETE FROM documents."TemplateFieldDefinition" WHERE "template_version_id" IN (SELECT "id" FROM documents."TemplateVersion" WHERE "tenant_id" = $1::uuid)`,

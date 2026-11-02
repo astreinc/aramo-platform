@@ -427,6 +427,9 @@ export interface SenderTemplate {
   document_count?: number;
   routing_mode?: RoutingMode;
   signing?: TemplateSigning | null;
+  // TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM = an Aramo fixed legal form (used as it is, never
+  // adopted or edited); absent = an editable template.
+  template_kind?: 'EDITABLE' | 'FIXED_FORM';
 }
 
 // M-A6 §3.5 — one template role bound to a person.

@@ -14,7 +14,8 @@ import { ASK_ADMIN, personalStudioCopy, personalStudioDataSource } from './Perso
 // "Ask an admin to approve this template", and the Studio running on the Sign calls with the
 // Personal copy ("Use this version").
 
-vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
+// TP-6 moved the PDF helpers to @aramo/document-templates-web/pdf (the old '../pdf' is gone).
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send', 'document_template:read'], iat: 0, exp: 9_999_999_999 };
 
@@ -157,6 +158,30 @@ describe('TEMPLATE-PRODUCT-1 §8 — Personal templates in Aramo Sign', () => {
     expect(screen.getByTestId(`use-as-is-${DEFAULT_ID}`)).toHaveTextContent('Use as it is');
     // A Personal account never sees the Org Home link.
     expect(screen.queryByTestId('manage-templates-link')).toBeNull();
+  });
+
+  it('§8.2 / §7.4 — My templates also lists the visible Aramo fixed forms tagged Sign: read-only, used as they are (never adopted or opened in the Studio)', async () => {
+    const FORM_ID = 'cccccccc-0000-7000-8000-000000000001';
+    stub(BASE_CTX, (url) =>
+      url.endsWith('/v1/sign/sender/templates')
+        ? json({
+            items: [
+              { template_id: FORM_ID, name: 'Employment eligibility form', description: null, document_type: { id: 'd3', key: 'I_9', name: 'I-9' }, owner_scope: 'PLATFORM', resolution: 'AVAILABLE', version_id: 'fv1', version_number: 1, updated_at: '2026-11-01T00:00:00Z', variables: [], template_kind: 'FIXED_FORM' },
+              { template_id: MINE_ID, name: 'My lease', description: null, document_type: { id: 'd2', key: 'LEASE', name: 'Lease' }, owner_scope: 'TENANT', resolution: 'AVAILABLE', version_id: 'v9', version_number: 2, updated_at: '2026-11-01T00:00:00Z', variables: [] },
+            ],
+            unavailable: [],
+          })
+        : undefined,
+    );
+    renderAt('/personal/templates');
+    const row = await screen.findByTestId(`my-form-${FORM_ID}`);
+    expect(row).toHaveTextContent('Employment eligibility form');
+    expect(row).toHaveTextContent('Aramo form · read-only · v1');
+    expect(screen.getByTestId(`use-template-${FORM_ID}`)).toHaveAttribute('href', `/personal/templates/${FORM_ID}/use`);
+    expect(screen.queryByTestId(`open-studio-${FORM_ID}`)).toBeNull();
+    // The editable template from the same list is shown once (from the Studio list), never as a form.
+    expect(screen.queryByTestId(`my-form-${MINE_ID}`)).toBeNull();
+    expect(screen.getByTestId(`my-template-${MINE_ID}`)).toBeInTheDocument();
   });
 
   it('§8.5 — Use as it is is one POST adopt-and-use, then the lists reload', async () => {

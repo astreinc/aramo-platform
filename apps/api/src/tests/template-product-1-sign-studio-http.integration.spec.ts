@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../app.module.js';
 
+import { grantTemplateProductEntitlements } from './helpers/template-product-entitlements.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
 // Aramo-TEMPLATE-PRODUCT-1 Implementation Directive v1.0 (LOCKED) §8.3 / §8.5 — the signed
@@ -114,6 +115,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     for (const p of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
     for (const p of documentsMigrations()) await db.query(readFileSync(p, 'utf8'));
     for (const t of [PERSONAL_A, PERSONAL_S, BUSINESS_B]) await ensureWriteFreezeTenant((s) => db.query(s), t);
+    // TEMPLATE-PRODUCT-1 §6.3 (TP-5) — the Studio drives the same library / adopt code as Org
+    // Home, which offers only defaults whose products ∩ E ≠ ∅. A Sign account holds `sign` (a
+    // sign session requires it), so each tenant here is entitled to `sign` only.
+    for (const t of [PERSONAL_A, PERSONAL_S, BUSINESS_B]) await grantTemplateProductEntitlements((q, params) => db.query(q, params), t, ['sign']);
     await db.query(`UPDATE identity."Tenant" SET kind = 'PERSONAL' WHERE id IN ($1, $2)`, [PERSONAL_A, PERSONAL_S]);
     await db.query(`UPDATE identity."Tenant" SET kind = 'BUSINESS', display_name = 'Beta Org' WHERE id = $1`, [BUSINESS_B]);
 

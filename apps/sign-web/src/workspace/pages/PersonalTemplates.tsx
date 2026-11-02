@@ -10,7 +10,7 @@ import {
   type TemplateStudioDataSource,
 } from '@aramo/document-templates-web';
 
-import { errorMessage } from '../api';
+import { errorMessage, senderApi, type SenderTemplate } from '../api';
 import { SIGN_STUDIO_API, signTemplateGalleryApi, type SignGalleryItem, type SignStudioList } from '../template-studio-api';
 import { Btn, Empty, ErrorBox, Loading, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
@@ -18,7 +18,9 @@ import { useWorkspace } from '../workspace';
 // Aramo-TEMPLATE-PRODUCT-1 Implementation Directive v1.0 (LOCKED) §8.1–8.2 (R6) and §8.5 (R6-M) —
 // Templates for a PERSONAL account inside Aramo Sign (a Business account keeps the existing list
 // and manages templates in Org Home):
-//   - My templates: the account's own templates (adopted Aramo templates; drafts and approved).
+//   - My templates: the account's own templates (adopted Aramo templates; drafts and approved)
+//     and the visible Aramo fixed forms tagged Sign (§7.3/§7.4: never adopted, read-only, used
+//     as they are — from the Sign template list, which carries them as template_kind FIXED_FORM).
 //   - Aramo templates: the Aramo defaults tagged Sign, with Preview, "Adopt and edit" (opens the
 //     shared Studio on the new draft) and "Use as it is" (one call: adopt + approve unchanged).
 //   - The shared Template Studio (libs/document-templates-web, organization context) on a Sign
@@ -157,16 +159,19 @@ function PersonalTemplateList() {
   const nav = useNavigate();
   const [list, setList] = useState<SignStudioList | null>(null);
   const [gallery, setGallery] = useState<SignGalleryItem[] | null>(null);
+  // §8.2 — "My templates (adopted + fixed forms)": the visible Aramo fixed forms tagged Sign.
+  const [forms, setForms] = useState<SenderTemplate[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError('');
-    Promise.all([signTemplateGalleryApi.studioList(), signTemplateGalleryApi.gallery()])
-      .then(([l, g]) => {
+    Promise.all([signTemplateGalleryApi.studioList(), signTemplateGalleryApi.gallery(), senderApi.templates()])
+      .then(([l, g, usable]) => {
         setList(l);
         setGallery(g.items);
+        setForms(usable.items.filter((t) => t.template_kind === 'FIXED_FORM'));
       })
       .catch((e: unknown) => setError(errorMessage(e)));
   }, []);
@@ -212,30 +217,45 @@ function PersonalTemplateList() {
       {list !== null ? (
         <section className="sg-card" data-testid="my-templates">
           <div className="sg-card__head">My templates</div>
-          {mine.length === 0 ? (
+          {mine.length === 0 && forms.length === 0 ? (
             <Empty title="No templates yet">Adopt an Aramo template below to make it yours.</Empty>
-          ) : (
-            mine.map((t) => (
-              <div key={t.id} className="sg-row" data-testid={`my-template-${t.id}`}>
-                <span className="sg-docicon" aria-hidden="true" />
-                <div className="sg-row__main">
-                  <div className="sg-row__t">{t.name}</div>
-                  <div className="sg-row__s">
-                    {STATUS_LABEL[t.status] ?? t.status}
-                    {t.current_version_number !== null ? ` · v${t.current_version_number}` : ''} · Updated {fmtDate(t.updated_at)}
-                  </div>
+          ) : null}
+          {forms.map((f) => (
+            <div key={f.template_id} className="sg-row" data-testid={`my-form-${f.template_id}`}>
+              <span className="sg-docicon" aria-hidden="true" />
+              <div className="sg-row__main">
+                <div className="sg-row__t">{f.name}</div>
+                <div className="sg-row__s">
+                  Aramo form · read-only · v{f.version_number} · Updated {fmtDate(f.updated_at)}
                 </div>
-                <Link className="sg-btn sg-btn--sm" to={studioHref(t.id)} data-testid={`open-studio-${t.id}`}>
-                  {t.status === 'ACTIVE' ? 'Open' : 'Edit'}
-                </Link>
-                {t.status === 'ACTIVE' && ctx.can_send ? (
-                  <Link className="sg-btn sg-btn--sm sg-btn--primary" to={`${base}/templates/${t.id}/use`} data-testid={`use-template-${t.id}`}>
-                    Use template
-                  </Link>
-                ) : null}
               </div>
-            ))
-          )}
+              {ctx.can_send ? (
+                <Link className="sg-btn sg-btn--sm sg-btn--primary" to={`${base}/templates/${f.template_id}/use`} data-testid={`use-template-${f.template_id}`}>
+                  Use template
+                </Link>
+              ) : null}
+            </div>
+          ))}
+          {mine.map((t) => (
+            <div key={t.id} className="sg-row" data-testid={`my-template-${t.id}`}>
+              <span className="sg-docicon" aria-hidden="true" />
+              <div className="sg-row__main">
+                <div className="sg-row__t">{t.name}</div>
+                <div className="sg-row__s">
+                  {STATUS_LABEL[t.status] ?? t.status}
+                  {t.current_version_number !== null ? ` · v${t.current_version_number}` : ''} · Updated {fmtDate(t.updated_at)}
+                </div>
+              </div>
+              <Link className="sg-btn sg-btn--sm" to={studioHref(t.id)} data-testid={`open-studio-${t.id}`}>
+                {t.status === 'ACTIVE' ? 'Open' : 'Edit'}
+              </Link>
+              {t.status === 'ACTIVE' && ctx.can_send ? (
+                <Link className="sg-btn sg-btn--sm sg-btn--primary" to={`${base}/templates/${t.id}/use`} data-testid={`use-template-${t.id}`}>
+                  Use template
+                </Link>
+              ) : null}
+            </div>
+          ))}
         </section>
       ) : null}
       {gallery !== null ? (
