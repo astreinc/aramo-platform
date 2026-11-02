@@ -38,7 +38,7 @@ describe('TenantPolicyCoverageGuard (ADR-0024 PR-4a-2)', () => {
     errorSpy.mockRestore();
   });
 
-  it('logs OK (no ERROR) when every active tenant is covered', async () => {
+  it('logs OK (no ERROR) when every active ATS tenant is covered', async () => {
     const errorSpy = vi
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);

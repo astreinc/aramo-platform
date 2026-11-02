@@ -527,6 +527,10 @@ export class PlatformInvitationService {
         );
       }
     }
+    // Sign Personal is single-user: a PERSONAL tenant that already has its owner takes no
+    // further member. Refused BEFORE any Cognito side effect (this branch is Cognito-first);
+    // the identity transaction re-checks under a row lock.
+    await this.identitySvc.assertPersonalSeatAvailable({ tenant_id: args.tenant_id, request_id: args.request_id });
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(args.role_keys);
 
     // IC-1 PR-1 (Amendment A1 §4) — normalize ONCE (trim + lowercase) and use

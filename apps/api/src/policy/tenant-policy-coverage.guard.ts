@@ -4,8 +4,8 @@ import { TenantPolicyCoverageRepository } from './tenant-policy-coverage.reposit
 
 // ADR-0024 PR-4a-2 — startup policy-coverage guard.
 //
-// At application bootstrap, scan for ACTIVE tenants with NO active
-// requisition-lifecycle policy package — the gap that tenant provisioning is
+// At application bootstrap, scan for ACTIVE tenants holding the ATS product with
+// NO active requisition-lifecycle policy package — the gap that tenant provisioning is
 // meant to close. Each such tenant's add-talent path fails closed (PR-4a: no
 // package = DENY), so this surfaces a mis-provisioned or pre-PR-4a-2 tenant at
 // BOOT rather than at a recruiter's first add. It LOGS LOUD at ERROR with the
@@ -25,7 +25,7 @@ export class TenantPolicyCoverageGuard implements OnApplicationBootstrap {
       const uncovered = await this.repo.findUncoveredTenants();
       if (uncovered.length === 0) {
         this.logger.log(
-          'tenant policy coverage OK — every active tenant has an active requisition-lifecycle package.',
+          'tenant policy coverage OK — every active ATS tenant has an active requisition-lifecycle package.',
         );
         return;
       }
@@ -33,7 +33,7 @@ export class TenantPolicyCoverageGuard implements OnApplicationBootstrap {
       // tenants cannot add talent until a package is published (a provisioning
       // gap, or a tenant created before PR-4a-2). NOT fatal — API still starts.
       this.logger.error(
-        `tenant policy coverage GAP — ${uncovered.length} active tenant(s) have NO active requisition-lifecycle package and will fail closed on add-talent: ${uncovered
+        `tenant policy coverage GAP — ${uncovered.length} active ATS tenant(s) have NO active requisition-lifecycle package and will fail closed on add-talent: ${uncovered
           .map((t) => `${t.tenant_id} (${t.tenant_name})`)
           .join(', ')}`,
       );

@@ -22,9 +22,11 @@ import { TenantPolicyCoverageRepository } from '../policy/tenant-policy-coverage
 const ROOT = resolve(__dirname, '../../../..');
 const SYSTEM_PUBLISHER = '00000000-0000-0000-0000-000000000000';
 const PKG_NAME = 'requisition-lifecycle';
-const COVERED = '01900000-0000-7000-8000-0000000000b1'; // active + has package
-const UNCOVERED = '01900000-0000-7000-8000-0000000000b2'; // active + NO package
-const INACTIVE = '01900000-0000-7000-8000-0000000000b3'; // inactive + NO package
+const COVERED = '01900000-0000-7000-8000-0000000000b1'; // active ATS + has package
+const UNCOVERED = '01900000-0000-7000-8000-0000000000b2'; // active ATS + NO package
+const INACTIVE = '01900000-0000-7000-8000-0000000000b3'; // inactive ATS + NO package
+const SIGN_ONLY = '01900000-0000-7000-8000-0000000000b4'; // active, no ATS product + NO package
+const ATS_REVOKED = '01900000-0000-7000-8000-0000000000b5'; // active, ATS revoked + NO package
 
 function migrationsFor(lib: string): string[] {
   const dir = resolve(ROOT, `libs/${lib}/prisma/migrations`);
@@ -67,8 +69,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'CREATE TABLE "identity"."Tenant" (id uuid PRIMARY KEY, name text NOT NULL, is_active boolean NOT NULL DEFAULT true)',
       );
       await db.query(
-        'INSERT INTO "identity"."Tenant" (id,name,is_active) VALUES ($1,$2,true),($3,$4,true),($5,$6,false)',
-        [COVERED, 'Covered Co', UNCOVERED, 'Uncovered Co', INACTIVE, 'Inactive Co'],
+        'INSERT INTO "identity"."Tenant" (id,name,is_active) VALUES ($1,$2,true),($3,$4,true),($5,$6,false),($7,$8,true),($9,$10,true)',
+        [COVERED, 'Covered Co', UNCOVERED, 'Uncovered Co', INACTIVE, 'Inactive Co', SIGN_ONLY, 'Sign Only Co', ATS_REVOKED, 'Revoked Co'],
+      );
+      // Minimal entitlement.TenantEntitlement — the three columns the ATS-product
+      // predicate reads (tenant_id, capability, revoked_at), same approach as Tenant,
+      // plus granted_source (no default; CCP-R1 requires every INSERT to name it).
+      await db.query('CREATE SCHEMA IF NOT EXISTS "entitlement"');
+      await db.query(
+        'CREATE TABLE "entitlement"."TenantEntitlement" (tenant_id uuid NOT NULL, capability text NOT NULL, revoked_at timestamptz, granted_source text NOT NULL, PRIMARY KEY (tenant_id, capability))',
+      );
+      await db.query(
+        `INSERT INTO "entitlement"."TenantEntitlement" (tenant_id,capability,revoked_at,granted_source) VALUES
+           ($1,'ats',NULL,'PROVISIONING'),($2,'ats',NULL,'PROVISIONING'),($3,'ats',NULL,'PROVISIONING'),
+           ($4,'sign',NULL,'PROVISIONING'),($5,'ats',now(),'PROVISIONING'),($5,'sign',NULL,'PROVISIONING')`,
+        [COVERED, UNCOVERED, INACTIVE, SIGN_ONLY, ATS_REVOKED],
       );
       prisma = new PrismaService(dbUrl);
       await prisma.$connect();
@@ -85,7 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     }, 60_000);
 
-    it('returns ONLY active tenants lacking an active requisition-lifecycle package', async () => {
+    it('returns ONLY active ATS tenants lacking an active requisition-lifecycle package', async () => {
       const repo = new TenantPolicyCoverageRepository(dbUrl);
       try {
         const rows = await repo.findUncoveredTenants();
@@ -93,6 +108,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(ids).toContain(UNCOVERED); // active + no package → flagged
         expect(ids).not.toContain(COVERED); // has active package → not flagged
         expect(ids).not.toContain(INACTIVE); // inactive → excluded
+        expect(ids).not.toContain(SIGN_ONLY); // no ATS product → not a gap
+        expect(ids).not.toContain(ATS_REVOKED); // ATS revoked → not a gap
+        expect(ids).toEqual([UNCOVERED]);
         // The flagged row carries its name for the loud log.
         expect(rows.find((r) => r.tenant_id === UNCOVERED)?.tenant_name).toBe(
           'Uncovered Co',

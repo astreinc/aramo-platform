@@ -727,3 +727,32 @@ describe('resolveSession — native client context (M-A1)', () => {
     expect(await adapter(makeDeps({ resolveUser: null, findUserByEmail: null })).resolveSession(NATIVE)).toEqual({ kind: 'denied', reason: 'user_not_provisioned' });
   });
 });
+
+// D-ORG Amendment A1 (Exclusions: PERSONAL tenants) + Sign Personal Free Launch v1.1 §1/§4 —
+// a PERSONAL tenant never holds the organization credential, at sign-in OR refresh, on any
+// host. Its Sign credential and a BUSINESS tenant's organization credential are unchanged.
+describe('PERSONAL tenants never hold the organization (org) credential', () => {
+  const personal = [{ id: TENANT_ID, name: 'Jane — Personal', status: 'ACTIVE', kind: 'PERSONAL' }];
+  const business = [{ id: TENANT_ID, name: 'Acme', status: 'ACTIVE', kind: 'BUSINESS' }];
+
+  it('sign-in: org for a PERSONAL tenant → denied consumer_not_entitled before any entitlement or scope read', async () => {
+    const d = makeDeps({ tenants: personal, capabilities: ['core', 'sign'] });
+    expect(await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'org' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d.getCapabilities).not.toHaveBeenCalled();
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+  });
+  it('refresh: org for a PERSONAL tenant → denied consumer_not_entitled (a stored org token cannot be re-minted)', async () => {
+    const d = makeDeps({ tenants: personal, capabilities: ['core', 'sign'] });
+    expect(await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+  });
+  it('the PERSONAL tenant still gets its Sign credential', async () => {
+    const d = makeDeps({ tenants: personal, capabilities: ['core', 'sign'] });
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).kind).toBe('resolved');
+  });
+  it('a BUSINESS tenant still gets the organization credential', async () => {
+    const d = makeDeps({ tenants: business, capabilities: ['core', 'sign'] });
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'org' })).kind).toBe('resolved');
+    expect((await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' })).kind).toBe('resolved');
+  });
+});
