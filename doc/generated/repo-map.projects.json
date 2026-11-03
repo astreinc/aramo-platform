@@ -1125,6 +1125,7 @@
       "FEDERATED_IDPS",
       "GEOIP_RECHECK_MS",
       "GEO_IP_PORT",
+      "GooglePlayIntegrityDecoder",
       "HOSTING_ASN_KEYWORDS",
       "IDENTITY_DEPENDENCY_CODES",
       "IDENTITY_RETIREMENT_PORT",
@@ -1144,6 +1145,7 @@
       "MINT_DENYING_STATUSES",
       "ManagementEdgeRepository",
       "MaxmindGeoIpAdapter",
+      "NATIVE_INTEGRITY_CHECK",
       "NodeDnsAdapter",
       "NotConfiguredIdentityRetirement",
       "ORGANIZATION_COUNTRY_NOT_SUPPORTED",
@@ -1178,6 +1180,7 @@
       "PRODUCT_KEYS",
       "PersonalRiskService",
       "PersonalSignupRepository",
+      "PlayIntegrityCheck",
       "PrismaService",
       "PrivacyRequestService",
       "PrivacySubjectService",
@@ -1201,6 +1204,9 @@
       "SIGN_NATIVE_SESSION_CONSUMER",
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
+      "SIGN_PLAY_INTEGRITY_DEFAULT_MAX_AGE_SECONDS",
+      "SIGN_PLAY_INTEGRITY_DEFAULT_PACKAGE",
+      "SIGN_PLAY_INTEGRITY_FUTURE_SKEW_MS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SMS_VERIFICATION_PORT",
       "SignCustomRoleService",
@@ -1227,10 +1233,12 @@
       "TestModeRobotCheck",
       "TurnstileRobotCheckAdapter",
       "US_STATE_CODES",
+      "UnconfiguredNativeIntegrityCheck",
       "authorityStatement",
       "bumpPrincipalVersion",
       "bumpPrincipalsWithRoleVersion",
       "canonicalEmailForDuplicates",
+      "certificateDigestHex",
       "checkCustomRoleScopes",
       "checkPersonalOtp",
       "cognitoCreateUserAttributes",
@@ -1247,6 +1255,7 @@
       "ensureBaselineVersion",
       "evaluateEsignSenderAuthorization",
       "evaluatePersonalSend",
+      "evaluatePlayIntegrityPayload",
       "extractEmailDomain",
       "extractTenantSlugFromHost",
       "filterScopesForConsumer",
@@ -1275,6 +1284,10 @@
       "looksRandom",
       "mayResendPersonalOtp",
       "mmdbVersion",
+      "nativeIntegrityCheckFromEnv",
+      "nativeSignupCanonicalRequest",
+      "nativeSignupRequestHash",
+      "normalizeCertificateHex",
       "normalizeClaimDomain",
       "normalizeCustomRoleText",
       "normalizeE164",
@@ -1283,6 +1296,7 @@
       "normalizePrivacyEmail",
       "normalizeSlug",
       "normalizeUsPhone",
+      "parseServiceAccount",
       "personalPilotCap",
       "personalRiskConfig",
       "personalSignupMode",
@@ -7799,6 +7813,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup-native.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11236,6 +11256,11 @@
         "status": "unscoped"
       },
       {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "from": "pact/provider/src/verify.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
@@ -11527,6 +11552,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup-attempt-purge-sweeper.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup-native.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -14101,6 +14132,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup-native.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
