@@ -15,6 +15,8 @@ export const PRODUCTION_API_BASE_URL = `https://${SIGN_HOST}`;
 /** Verified app-link callback (primary) and custom-scheme fallback, M-A1 §3.1. */
 export const NATIVE_REDIRECT_URI = `https://${SIGN_HOST}/auth/native/callback`;
 export const NATIVE_FALLBACK_REDIRECT_URI = 'aramosign://auth/callback';
+/** Where Cognito's /logout returns; must be a sign-out URL on the native client. */
+export const NATIVE_SIGNOUT_REDIRECT_URI = 'aramosign://auth/signed-out';
 
 export interface AppEnv {
   readonly apiBaseUrl: string;

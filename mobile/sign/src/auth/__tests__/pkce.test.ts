@@ -75,6 +75,7 @@ describe('authorize request', () => {
       code_challenge: 'ch',
       code_challenge_method: 'S256',
       identity_provider: 'Google',
+      prompt: 'select_account',
     });
     expect(url).not.toContain('client_secret');
     expect(
