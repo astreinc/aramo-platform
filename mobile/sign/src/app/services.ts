@@ -8,14 +8,14 @@ import { Platform } from 'react-native';
 import { createGuestSigningClient, type GuestSigningClient } from '../api/guestSigningClient';
 import type { FetchFn } from '../api/http';
 import { createWorkspaceClient, type WorkspaceClient } from '../api/workspaceClient';
-import type { Provider } from '../auth/authorize';
+import { buildLogoutUrl, type Provider } from '../auth/authorize';
 import { describeDevice } from '../auth/installation';
 import { createNativeAuthApi, type NativeAuthApi } from '../auth/nativeAuthApi';
 import { SECURE_KEYS, secureKeyValue, type SecureKeyValue } from '../auth/secureKeyValue';
 import { SessionManager } from '../auth/session';
 import { signInWithProvider } from '../auth/signIn';
 import { createTokenStore } from '../auth/tokenStore';
-import { env, type AppEnv } from '../config/env';
+import { env, NATIVE_SIGNOUT_REDIRECT_URI, type AppEnv } from '../config/env';
 import { clearGuestTokens } from '../links/guestTokenVault';
 import { unregisterPush } from '../notifications/pushRegistration';
 import { wireDocumentTempCleanup } from '../security/documentTempFiles';
@@ -117,6 +117,14 @@ export function createAppServices(): AppServices {
       queryClient.clear();
       await store.wipe();
       await kv.deleteItem(SECURE_KEYS.localOwner);
+      // Android Custom Tabs share Chrome's cookies (iOS sign-in is ephemeral), so also
+      // end the Cognito browser session. Best effort, after everything local is gone.
+      if (Platform.OS === 'android' && env.cognitoDomain && env.nativeClientId) {
+        await WebBrowser.openAuthSessionAsync(
+          buildLogoutUrl({ cognitoDomain: env.cognitoDomain, clientId: env.nativeClientId }),
+          NATIVE_SIGNOUT_REDIRECT_URI,
+        ).catch(() => undefined);
+      }
     },
   };
 }

@@ -1,6 +1,11 @@
 import { ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
-import { NATIVE_FALLBACK_REDIRECT_URI, NATIVE_REDIRECT_URI } from '../../config/env';
+import {
+  NATIVE_FALLBACK_REDIRECT_URI,
+  NATIVE_REDIRECT_URI,
+  NATIVE_SIGNOUT_REDIRECT_URI,
+} from '../../config/env';
+import { buildLogoutUrl } from '../authorize';
 import { fakeJwt, memoryKv, nodeCrypto, recordingFetch } from '../../testing/fakes';
 import { deliverCallback } from '../callbackBus';
 import { createNativeAuthApi } from '../nativeAuthApi';
@@ -61,6 +66,18 @@ function setup(
   return { net, kv, session, deps, opened: () => opened };
 }
 
+describe('Cognito sign-out URL', () => {
+  it('ends the Cognito browser session and returns to the app sign-out address', () => {
+    const url = new URL(
+      buildLogoutUrl({ cognitoDomain: 'auth.example.com', clientId: 'client-1' }),
+    );
+    expect(`${url.origin}${url.pathname}`).toBe('https://auth.example.com/logout');
+    expect(url.searchParams.get('client_id')).toBe('client-1');
+    expect(url.searchParams.get('logout_uri')).toBe(NATIVE_SIGNOUT_REDIRECT_URI);
+    expect(() => buildLogoutUrl({ cognitoDomain: 'evil.com/x?', clientId: 'c' })).toThrow();
+  });
+});
+
 describe('native sign-in (M-A1 §3.2-§3.3)', () => {
   it('exchanges code + verifier + nonce + redirect + device, and stores tokens in SecureStore only', async () => {
     const t = setup();
@@ -91,6 +108,9 @@ describe('native sign-in (M-A1 §3.2-§3.3)', () => {
       param(t.opened(), 'code_challenge'),
     );
     expect(body.nonce).toBe(param(t.opened(), 'nonce'));
+    // The provider's account picker always shows; a browser session is offered, never silent.
+    expect(param(t.opened(), 'prompt')).toBe('select_account');
+    expect(param(t.opened(), 'identity_provider')).toBe('Google');
     expect(t.session.snapshot()).toMatchObject({ status: 'signedIn', deviceSessionId: 'dsid-1' });
     expect(t.kv.items.get(SECURE_KEYS.refreshToken)).toBe('r1');
   });

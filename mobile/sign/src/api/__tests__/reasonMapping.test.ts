@@ -94,6 +94,33 @@ describe('refusal -> typed error (details.reason)', () => {
     }
     expect(m('something_new')).toBe('Something went wrong. Try again.');
   });
+
+  it('names the sign-in denial instead of the generic text', () => {
+    const denial = (reason: string) =>
+      refusalMessage({
+        reason,
+        code:
+          reason === 'user_not_provisioned' ? 'INSUFFICIENT_PERMISSIONS' : 'TENANT_ACCESS_DENIED',
+      });
+    expect(denial('user_not_provisioned')).toBe(
+      'There’s no Aramo account for this sign-in. Create one at sign.aramo.ai, or try the other sign-in option.',
+    );
+    for (const r of ['no_active_tenant', 'membership_inactive', 'sign_access_removed']) {
+      expect(denial(r)).toBe(
+        'Your account doesn’t have access to Aramo Sign. Ask your Aramo administrator to add you.',
+      );
+    }
+    for (const r of [
+      'consumer_not_entitled',
+      'user_inactive',
+      'tenant_closed',
+      'tenant_suspended',
+      'tenant_resolution_ambiguous',
+      'code_exchange_rejected',
+    ]) {
+      expect(denial(r)).not.toBe('Something went wrong. Try again.');
+    }
+  });
 });
 
 describe('ETag helpers (M-A3 §6)', () => {

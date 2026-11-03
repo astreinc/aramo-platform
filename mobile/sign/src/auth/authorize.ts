@@ -1,7 +1,11 @@
 // Builds the Cognito hosted-UI authorize request for the native client and validates
 // the callback (M-A1 §3.1-§3.2). The request opens in the OS authentication session
 // (ASWebAuthenticationSession / Custom Tabs); embedded webviews are prohibited.
-import { NATIVE_FALLBACK_REDIRECT_URI, NATIVE_REDIRECT_URI } from '../config/env';
+import {
+  NATIVE_FALLBACK_REDIRECT_URI,
+  NATIVE_REDIRECT_URI,
+  NATIVE_SIGNOUT_REDIRECT_URI,
+} from '../config/env';
 import { safeEqual } from './pkce';
 
 export type Provider = 'google' | 'microsoft';
@@ -34,8 +38,20 @@ export function buildAuthorizeUrl(p: AuthorizeParams): string {
     ['code_challenge', p.codeChallenge],
     ['code_challenge_method', 'S256'],
     ['identity_provider', COGNITO_IDP[p.provider]],
+    // Forwarded by Cognito managed login to Microsoft/Google: always show their
+    // account picker, so a browser session is offered but never used silently.
+    ['prompt', 'select_account'],
   ];
   return `https://${p.cognitoDomain}/oauth2/authorize?${q.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}`;
+}
+
+/** Cognito /logout: ends the Cognito session cookie in the browser, then returns to the app. */
+export function buildLogoutUrl(p: {
+  readonly cognitoDomain: string;
+  readonly clientId: string;
+}): string {
+  if (!/^[a-z0-9.-]+$/i.test(p.cognitoDomain)) throw new Error('invalid Cognito domain');
+  return `https://${p.cognitoDomain}/logout?client_id=${encodeURIComponent(p.clientId)}&logout_uri=${encodeURIComponent(NATIVE_SIGNOUT_REDIRECT_URI)}`;
 }
 
 /**

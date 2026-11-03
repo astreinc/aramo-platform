@@ -6,6 +6,12 @@ import type { ApiError } from './errors';
 const LINK_ENDED =
   'This link was replaced or has expired. Open the newest email, or sign in to your inbox.';
 
+// The app never creates accounts (M-A1); a federated login with no Aramo user is sent to the web.
+const NO_ACCOUNT =
+  'There’s no Aramo account for this sign-in. Create one at sign.aramo.ai, or try the other sign-in option.';
+const NO_SIGN_ACCESS =
+  'Your account doesn’t have access to Aramo Sign. Ask your Aramo administrator to add you.';
+
 const COPY: Record<string, string> = {
   // C-9 — a Personal tenant is Google-only (AUTH-SIGNIN-1 R1).
   idp_not_permitted_for_tenant: 'Personal accounts sign in with Google.',
@@ -16,6 +22,19 @@ const COPY: Record<string, string> = {
   session_expired: 'Your session ended. Sign in again.',
   session_reuse_detected: 'For your security you were signed out. Sign in again.',
   network_unavailable: 'You’re offline. Check your connection and try again.',
+  // Principal-resolution denials from /auth/native/sign/token (principalDenialError).
+  user_not_provisioned: NO_ACCOUNT,
+  no_active_tenant: NO_SIGN_ACCESS,
+  membership_inactive: NO_SIGN_ACCESS,
+  sign_access_removed: NO_SIGN_ACCESS,
+  consumer_not_entitled:
+    'Your Aramo plan doesn’t include Aramo Sign. Ask your Aramo administrator.',
+  user_inactive: 'This Aramo account is no longer active. For help, contact support@aramo.ai.',
+  tenant_closed: 'This Aramo account has been closed. For help, contact support@aramo.ai.',
+  tenant_suspended: 'This Aramo account is suspended. For help, contact support@aramo.ai.',
+  tenant_resolution_ambiguous:
+    'We couldn’t tell which Aramo account to open. For help, contact support@aramo.ai.',
+  code_exchange_rejected: 'Sign-in didn’t finish. Try again.',
   // C-21 / M-A2 §2.3 — the app never retries with a stale token.
   SIGNING_SESSION_INVALID: LINK_ENDED,
   SIGNING_SESSION_EXPIRED: LINK_ENDED,
