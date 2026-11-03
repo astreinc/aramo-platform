@@ -35424,16 +35424,6 @@
       "to": "openapi/auth.yaml"
     },
     {
-      "from": "mobile/sign/src/api/generated/auth.ts",
-      "status": "unscoped",
-      "to": "openapi/auth.yaml"
-    },
-    {
-      "from": "mobile/sign/src/api/generated/auth.ts",
-      "status": "unscoped",
-      "to": "openapi/auth.yaml"
-    },
-    {
       "from": "mobile/sign/src/api/generated/sign.ts",
       "status": "unscoped",
       "to": "openapi/sign.yaml"
