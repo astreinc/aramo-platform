@@ -1,6 +1,9 @@
 // Agreements row actions by state (handoff §2A "Swipe left"; M-A4 §3.5–§3.7). Pure.
 //
 //   Needs me                       -> Sign      (inbox `can_sign` only)
+//   Sent, waiting for you (W2)     -> Sign      (server `awaiting_you`; signs with the
+//                                                 server's `my_inbox_item_id`), then
+//                                                 Remind, Void as below
 //   Waiting, own sent              -> Remind, Void
 //   Draft                          -> Edit, Delete
 //   Completed with an artifact     -> Share     (COMPLETED only; never declined/voided/expired)
@@ -17,7 +20,7 @@
 //     only when the detail allows it (see listActions.ts).
 // Every swipe action is also an accessibility custom action (SwipeActions.tsx) and exists
 // on the detail screen, so no action is swipe-only (M-A4 §3.6).
-import type { AgreementRow } from './agreementsModel';
+import { awaitingYou, type AgreementRow } from './agreementsModel';
 import { OPEN_STATUSES, SIGN_APPLICATION, type SenderContext } from './types';
 
 export type SwipeActionKind = 'sign' | 'remind' | 'void' | 'edit' | 'delete' | 'share';
@@ -67,8 +70,11 @@ export function swipeActionsFor(row: AgreementRow, ctx: SwipeContext): SwipeActi
   const fromSign = (e.source_application ?? SIGN_APPLICATION) === SIGN_APPLICATION;
   if (e.status === 'DRAFT')
     return fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.edit, SWIPE_ACTION.delete] : [];
-  if (OPEN_STATUSES.has(e.status))
-    return fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.remind, SWIPE_ACTION.void] : [];
+  if (OPEN_STATUSES.has(e.status)) {
+    const manage =
+      fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.remind, SWIPE_ACTION.void] : [];
+    return awaitingYou(row) ? [SWIPE_ACTION.sign, ...manage] : manage;
+  }
   if (e.status === 'COMPLETED') return [SWIPE_ACTION.share];
   return [];
 }

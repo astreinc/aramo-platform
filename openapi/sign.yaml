@@ -3803,12 +3803,17 @@ paths:
         claim was made with has not been replaced or expired. 409 details.reason association_inactive | envelope_not_signable |
         signer_ineligible | not_your_turn | session_revoked | link_expired. The session lasts at most 30 minutes, never outlives
         the claimed link or the envelope, and is recorded on the ledger (RECIPIENT_INBOX_SESSION_ISSUED).
+        Aramo Sign W2 - {id} may also be a discovered item's opaque handle (source discovered). The handle only names the
+        recipient; the server re-runs the discovery rule (verified current account email, sent at or after that proof, no
+        binding) and the same revalidation (a discovered item has no binding, so its link check is a live emailed link of the
+        recipient), then mints the same session, audited with discovery verified_account_email. A tampered, expired or another
+        user's handle, or discovery being off, answers 404 details.reason inbox_item_not_found.
       tags: [inbox]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
-        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/InboxItemId'
       responses:
         '200':
           description: OK.
@@ -6916,6 +6921,16 @@ components:
       schema:
         type: string
         format: uuid
+    # Aramo Sign W2 — an inbox item: a binding id (UUID) or a discovered item's opaque handle.
+    InboxItemId:
+      name: id
+      in: path
+      required: true
+      description: The inbox item id from GET /v1/sign/inbox - a binding id (UUID) for a bound item, or an opaque handle (base64url, valid 30 minutes, for the signed-in user only) for a discovered item.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
     # Sign Mobile M-A3 §5–§8 (W2b)
     IfMatch:
       name: If-Match
@@ -8457,7 +8472,7 @@ components:
           $ref: '#/components/schemas/SenderEnvelopeCounts'
     SenderEnvelopeListItem:
       type: object
-      required: [id, subject, status, created_at, sent_at, completed_at, last_activity_at, document_count, source_application, recipients]
+      required: [id, subject, status, created_at, sent_at, completed_at, last_activity_at, document_count, source_application, recipients, awaiting_you]
       properties:
         id:
           type: string
@@ -8503,6 +8518,19 @@ components:
                 $ref: '#/components/schemas/SenderRecipientStatus'
               recipient_kind:
                 $ref: '#/components/schemas/SenderRecipientKind'
+        awaiting_you:
+          type: boolean
+          description: >-
+            Aramo Sign W2 - true when the only recipient steps that can act now belong to the signed-in user (assigned to them, or
+            addressed to their verified current account email on an envelope sent at or after that proof). Shown as "Waiting
+            for you", with a Sign action through the inbox.
+        my_inbox_item_id:
+          type: [string, 'null']
+          description: >-
+            Aramo Sign W2 - present (non-null) only when awaiting_you is true and the signed-in user has an inbox item for that
+            step - the binding id when bound, otherwise a fresh discovered-item handle issued to this same user (the same
+            verified current email rule; valid 30 minutes; refused for any other user). Use it with POST
+            /v1/sign/inbox/{id}/sign. Null or absent otherwise.
     SenderEnvelopeCounts:
       type: object
       description: >-
@@ -8740,12 +8768,16 @@ components:
               description: The certificate of completion (PDF), base64.
     RecipientInbox:
       type: object
-      description: The signed-in user's bound documents, split by what they can do now.
+      description: >-
+        The signed-in user's bound and discovered documents, split by what they can do now. Aramo Sign W2 - discovered items
+        are recipient rows addressed to the user's current account email, listed without a binding when the user holds a
+        verified federated link for that email recorded no later than the envelope was sent. A recipient reachable through a
+        binding is listed once, as bound.
       required: [waiting, completed, other]
       properties:
         waiting:
           type: array
-          description: Documents the user can sign now (can_sign).
+          description: Documents the user can sign now (can_sign), and upcoming ones (my_status upcoming, can_sign false) whose turn is later.
           items:
             $ref: '#/components/schemas/RecipientInboxItem'
         completed:
@@ -8763,12 +8795,21 @@ components:
       description: >-
         Recipient facts only (Sign Unified Product §4.6) - never other recipients' data, sender administration or the
         activity log.
-      required: [id, subject, from, envelope_status, my_status, sent_at, expires_at, envelope_expires_at, signing_link_valid_days, completed_at, signed_at, can_sign, can_download]
+      required: [id, source, i_am_sender, subject, from, envelope_status, my_status, sent_at, expires_at, envelope_expires_at, signing_link_valid_days, completed_at, signed_at, can_sign, can_download]
       properties:
         id:
           type: string
-          format: uuid
-          description: The binding id (path parameter of /v1/sign/inbox/{id}/*).
+          description: >-
+            bound - the binding id (UUID; path parameter of /v1/sign/inbox/{id}/*). discovered - an opaque handle (base64url),
+            accepted only by POST /v1/sign/inbox/{id}/sign, for the signed-in user only, valid 30 minutes; every list issues
+            fresh handles.
+        source:
+          type: string
+          enum: [bound, discovered]
+          description: Aramo Sign W2 - bound (a recipient binding) or discovered (the user's verified current email; no binding).
+        i_am_sender:
+          type: boolean
+          description: Aramo Sign W2 - true when the signed-in user sent this envelope.
         subject:
           type: string
         from:
@@ -8777,7 +8818,9 @@ components:
         envelope_status:
           $ref: '#/components/schemas/SenderEnvelopeStatus'
         my_status:
-          $ref: '#/components/schemas/SenderRecipientStatus'
+          type: string
+          enum: [PENDING, VIEWED, SIGNED, DECLINED, upcoming]
+          description: The recipient's status; upcoming (Aramo Sign W2) - signable later, once earlier recipients have signed (sequential order or a witness waiting for its signer). Shown under Upcoming, never as needing the user.
         sent_at:
           type: [string, 'null']
           format: date-time
@@ -8801,8 +8844,10 @@ components:
           format: date-time
         can_sign:
           type: boolean
+          description: True only when the user may act now (turn and witness readiness), the envelope is signable and unexpired, and a live emailed link backs inbox signing.
         can_download:
           type: boolean
+          description: A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link).
     SenderDraftCreated:
       type: object
       required: [id, status, subject]

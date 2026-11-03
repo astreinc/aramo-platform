@@ -684,6 +684,10 @@ services:
       # incomplete stays off. Production use needs separate authorization (§14).
       - SIGN_PUSH_DELIVERY
       - SIGN_PUSH_TOKEN_KEY
+      # Aramo Sign W2 — inbox discovery. SIGN_INBOX_HANDLE_KEY (32 bytes, base64; no default)
+      # encrypts the opaque ids of discovered inbox items. Unset ⇒ discovery is OFF (fail
+      # closed): the inbox lists bound items only and every handle is refused.
+      - SIGN_INBOX_HANDLE_KEY
       - APNS_KEY_ID
       - APNS_TEAM_ID
       - APNS_TOPIC

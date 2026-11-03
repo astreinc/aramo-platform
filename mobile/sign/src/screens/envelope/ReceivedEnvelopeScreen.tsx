@@ -2,9 +2,13 @@
 // Permission Contract §4.6; M-A2 §1). It renders ONLY what GET /v1/sign/inbox returns
 // for the item: subject, the sender organization, the user's own status and dates.
 // No other recipients, no sender administration, no activity log.
+// W2: a discovered item (listed for the user's verified account email) renders the
+// same, without the binding-only actions (remove, report). Its id is a short-lived handle
+// re-issued on every inbox read: when a fresh read no longer has it, the screen says
+// "This item changed. Showing your latest inbox." and goes back to the list.
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -14,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { refusalMessage } from '../../api/refusalMessages';
 import { useServices } from '../../app/ServicesContext';
 import { OfflineBanner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -21,8 +26,16 @@ import { Card } from '../../components/Card';
 import { StatusPill } from '../../components/StatusPill';
 import { useToast } from '../../components/Toast';
 import { shortDate } from '../../features/inbox/agreementsModel';
-import { REPORT_COPY, reportInboxItem, type ReportReasonKey } from '../../features/inbox/inboxReport';
-import { findInboxItem, signedCopyToken } from '../../features/inbox/inboxSigning';
+import {
+  REPORT_COPY,
+  reportInboxItem,
+  type ReportReasonKey,
+} from '../../features/inbox/inboxReport';
+import {
+  findInboxItem,
+  hasBindingActions,
+  signedCopyToken,
+} from '../../features/inbox/inboxSigning';
 import { OFFLINE_ACTION_REASON, signKeys, useInbox, useOnline } from '../../features/inbox/queries';
 import type { InboxItem } from '../../features/inbox/types';
 import { EmptyState } from '../../features/inbox/ui';
@@ -41,6 +54,8 @@ const MY_STATUS: Record<string, string> = {
   VIEWED: 'Opened · not signed yet',
   SIGNED: 'You signed',
   DECLINED: 'You declined',
+  // W2 (A3.2) — the user signs later in the order.
+  upcoming: 'Not your turn yet',
 };
 
 export interface ReceivedEnvelopeViewProps {
@@ -142,8 +157,11 @@ export function ReceivedEnvelopeView({
       {!online ? (
         <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{OFFLINE_ACTION_REASON}</Text>
       ) : null}
-      <Button title="Remove from my inbox" variant="text" disabled={!online} onPress={onRemove} />
-      {onReport ? (
+      {/* W2 — remove and report need a binding; a discovered item has none. */}
+      {hasBindingActions(item) ? (
+        <Button title="Remove from my inbox" variant="text" disabled={!online} onPress={onRemove} />
+      ) : null}
+      {onReport && hasBindingActions(item) ? (
         <Button
           testID="received-report"
           title="Report this envelope"
@@ -171,6 +189,17 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const [reportOpen, setReportOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const item = findInboxItem(inbox.data, inboxItemId);
+  // W2 — a discovered item's handle is re-issued on every inbox read; once a fresh read no
+  // longer has the one shown here, say so and go back to the list (never re-found by subject).
+  const [shownDiscovered, setShownDiscovered] = useState(false);
+  if (item?.source === 'discovered' && !shownDiscovered) setShownDiscovered(true);
+  const changed = shownDiscovered && !item && inbox.isSuccess;
+  useEffect(() => {
+    if (!changed) return;
+    toast.show(refusalMessage({ reason: 'inbox_item_not_found', code: 'inbox_item_not_found' }));
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Main', { screen: 'Agreements' });
+  }, [changed, navigation, toast]);
 
   async function report(reason: ReportReasonKey): Promise<void> {
     setReporting(true);

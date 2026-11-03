@@ -1,12 +1,20 @@
 // Agreements list model (handoff §2A, §4.2; M-A4 §3; directive §7 C-12). Pure: merges
 // the sender list (GET /v1/sign/sender/envelopes) with the recipient inbox
 // (GET /v1/sign/inbox) and any local-only Send-flow drafts into one list, then filters it
-// into All · Needs me · Waiting for others · Drafts · Completed, and by last activity.
+// into All · Needs me · Upcoming · Waiting for others · Drafts · Completed, and by last
+// activity.
 //
 //   All      — every row
-//   Needs me — received items the server says the user can sign now (`can_sign`)
-//   Waiting  — every other open envelope: sent ones in SENT / IN_PROGRESS, and received
-//              ones still open where the user has finished their part
+//   Needs me — received items the server says the user can sign now (`can_sign`); W2
+//              discovered items exactly like added ones
+//   Upcoming — W2 (A3.2): received items whose turn is later (`my_status` 'upcoming');
+//              never Needs me
+//   Waiting  — every other open envelope: sent ones in SENT / IN_PROGRESS unless the
+//              server says only the user's own signature remains (`awaiting_you`: the
+//              row reads "Waiting for you" and offers Sign), and received ones still open
+//              where the user has not finished their part. W2 R-8: a received row the
+//              user signed counts here only when the server says the user also sent that
+//              envelope (`i_am_sender`); otherwise it stays in the received history (All)
 //   Drafts   — the user's DRAFT envelopes (server drafts + local drafts not yet synced)
 //   Completed ('done') — the end states COMPLETED · DECLINED · VOIDED · EXPIRED (sent and
 //              received), labelled "Completed" (M-A4 §3.1)
@@ -37,6 +45,7 @@ export type AgreementRow =
   | {
       readonly kind: 'received';
       readonly key: string;
+      /** A binding id or (W2) an opaque discovered-item handle; passed back unchanged. */
       readonly inboxItemId: string;
       readonly subject: string;
       readonly status: EnvelopeStatus;
@@ -53,16 +62,24 @@ export type AgreementRow =
     };
 
 /** The status filter (a superset of the navigation AgreementsFilter; mapped at the screen). */
-export type ListFilter = 'all' | 'needs_me' | 'waiting' | 'drafts' | 'done';
+export type ListFilter = 'all' | 'needs_me' | 'upcoming' | 'waiting' | 'drafts' | 'done';
 /** Last activity range, applied on the device (M-A4 §3.2). */
 export type ListRange = '30d' | '6m' | '12m' | 'all';
 
-export const FILTERS: readonly ListFilter[] = ['all', 'needs_me', 'waiting', 'drafts', 'done'];
+export const FILTERS: readonly ListFilter[] = [
+  'all',
+  'needs_me',
+  'upcoming',
+  'waiting',
+  'drafts',
+  'done',
+];
 
 /** Chip labels (handoff §2A "Status chips"). */
 export const FILTER_LABEL: Record<ListFilter, string> = {
   all: 'All',
   needs_me: 'Needs me',
+  upcoming: 'Upcoming',
   waiting: 'Waiting for others',
   drafts: 'Drafts',
   done: 'Completed',
@@ -125,6 +142,10 @@ export const EMPTY_STATE: Record<ListFilter | 'search' | 'range', { title: strin
     needs_me: {
       title: 'You’re all caught up',
       body: 'Nothing needs your signature right now.',
+    },
+    upcoming: {
+      title: 'Nothing upcoming',
+      body: 'Envelopes you sign later in the order show up here.',
     },
     waiting: {
       title: 'Nothing waiting on others',
@@ -212,14 +233,46 @@ export function needsMe(row: AgreementRow): boolean {
   return row.kind === 'received' && row.item.can_sign;
 }
 
+/** W2 (A3.2) — a received item whose turn is later: "Upcoming", never Needs me. */
+export function isUpcomingItem(i: InboxItem): boolean {
+  return !i.can_sign && i.my_status === 'upcoming';
+}
+
+export function upcoming(row: AgreementRow): boolean {
+  return row.kind === 'received' && isUpcomingItem(row.item);
+}
+
+/** W2 (A3.5) — a sent row the server says waits only for the user's own signature. */
+export function awaitingYou(row: AgreementRow): boolean {
+  return row.kind === 'sent' && row.item.awaiting_you === true && OPEN_STATUSES.has(row.status);
+}
+
+/**
+ * W2 — the inbox item id to sign a sent row that is waiting for the user: the server's
+ * `my_inbox_item_id` (a binding id or a discovered-item handle), or null (open Needs me).
+ */
+export function inboxItemToSign(row: AgreementRow): string | null {
+  return awaitingYou(row) && row.kind === 'sent' ? (row.item.my_inbox_item_id ?? null) : null;
+}
+
+function waitingForOthers(row: AgreementRow): boolean {
+  if (!OPEN_STATUSES.has(row.status) || needsMe(row) || upcoming(row) || awaitingYou(row))
+    return false;
+  // R-8 — a received row the user signed is "Waiting for others" only for its sender.
+  if (row.kind === 'received' && row.item.my_status === 'SIGNED') return row.item.i_am_sender;
+  return true;
+}
+
 export function matchesFilter(row: AgreementRow, filter: ListFilter): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'needs_me':
       return needsMe(row);
+    case 'upcoming':
+      return upcoming(row);
     case 'waiting':
-      return !needsMe(row) && OPEN_STATUSES.has(row.status);
+      return waitingForOthers(row);
     case 'drafts':
       return row.status === 'DRAFT' && row.kind !== 'received';
     case 'done':
@@ -248,9 +301,12 @@ export function countFor(rows: readonly AgreementRow[], filter: ListFilter): num
   return rows.filter((r) => matchesFilter(r, filter)).length;
 }
 
-/** The pill a row shows: "Sign now" when it needs the user, else its status (all 7). */
+/**
+ * The pill a row shows: "Sign now" when it needs the user (a received item it can sign, or
+ * W2 a sent envelope waiting only for the user), else its status (all 7).
+ */
 export function pillFor(row: AgreementRow): EnvelopeStatus | 'NEEDS_ME' {
-  return needsMe(row) ? 'NEEDS_ME' : row.status;
+  return needsMe(row) || awaitingYou(row) ? 'NEEDS_ME' : row.status;
 }
 
 /**
@@ -265,6 +321,8 @@ export function secondaryLine(row: AgreementRow): string {
     const i = row.item;
     if (i.can_sign)
       return i.from ? `Needs your signature · from ${i.from}` : 'Needs your signature';
+    if (isUpcomingItem(i))
+      return i.from ? `Not your turn yet · from ${i.from}` : 'Not your turn yet';
     switch (i.envelope_status) {
       case 'COMPLETED':
         return 'Completed';
@@ -301,7 +359,8 @@ export function secondaryLine(row: AgreementRow): string {
     case 'VOIDED':
       return 'Voided';
     default:
-      return `Waiting for others · ${signed} of ${signers.length} signed`;
+      // W2 (A3.5) — only the user's own signature remains.
+      return `${e.awaiting_you === true ? 'Waiting for you' : 'Waiting for others'} · ${signed} of ${signers.length} signed`;
   }
 }
 
@@ -309,7 +368,7 @@ export function secondaryLine(row: AgreementRow): string {
 export type StatusIcon = 'needs' | 'waiting' | 'draft' | 'completed' | 'stopped' | 'expired';
 
 export function statusIcon(row: AgreementRow): StatusIcon {
-  if (needsMe(row)) return 'needs';
+  if (needsMe(row) || awaitingYou(row)) return 'needs';
   switch (row.status) {
     case 'DRAFT':
       return 'draft';
@@ -327,7 +386,7 @@ export function statusIcon(row: AgreementRow): StatusIcon {
 
 /** Leading-tile tone (handoff §4.2): needs me tint, completed green, declined red, else fill. */
 export function tileTone(row: AgreementRow): 'needs' | 'completed' | 'declined' | 'other' {
-  if (needsMe(row)) return 'needs';
+  if (needsMe(row) || awaitingYou(row)) return 'needs';
   if (row.status === 'COMPLETED') return 'completed';
   if (row.status === 'DECLINED') return 'declined';
   return 'other';

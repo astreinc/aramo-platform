@@ -17,8 +17,13 @@ const USER_TENANT = '22222222-2222-7222-8222-222222222222';
 const SENDER_TENANT = '33333333-3333-7333-8333-333333333333';
 const auth: AuthContextType = { sub: USER, consumer_type: 'sign', actor_kind: 'user', tenant_id: USER_TENANT, scopes: [], iat: 0, exp: 0 };
 
+// Binding ids are UUIDs (W2: a non-UUID inbox id is a discovered-item handle).
+const bid = (envelope_id: string): string => `b0000000-0000-7000-8000-00000000000${envelope_id.slice(-1)}`;
 const row = (envelope_id: string, over: Record<string, unknown> = {}) => ({
-  id: `b-${envelope_id}`,
+  id: bid(envelope_id),
+  source: 'bound' as const,
+  turn: 'now' as const,
+  link_live: true,
   envelope_tenant_id: SENDER_TENANT,
   envelope_id,
   signer_id: 's1',
@@ -46,35 +51,35 @@ function inbox(opts: { enabled?: boolean; deleted?: string[]; one?: unknown; par
 describe('recipient inbox — DocuSign "Deleted" folder (R-10)', () => {
   it('deletes for this recipient only, keyed by the user, on the binding’s envelope and sender tenant', async () => {
     const { svc, purges, repo } = inbox();
-    await expect(svc.deleteForMe(auth, 'b-e1', 'r')).resolves.toEqual({ deleted: true });
+    await expect(svc.deleteForMe(auth, bid('e1'), 'r')).resolves.toEqual({ deleted: true });
     expect(purges.partyDelete).toHaveBeenCalledWith(SENDER_TENANT, 'e1', { kind: 'RECIPIENT', key: USER }, USER);
     expect(repo.revoke).not.toHaveBeenCalled(); // the binding is kept (unlike `remove`)
   });
 
   it('restores; a purged envelope answers 410 ENVELOPE_PURGED', async () => {
-    await expect(inbox().svc.restoreForMe(auth, 'b-e1', 'r')).resolves.toEqual({ restored: true });
-    await expect(inbox({ partyRestore: 'purged' }).svc.restoreForMe(auth, 'b-e1', 'r')).rejects.toMatchObject({ statusCode: 410, code: 'ENVELOPE_PURGED' });
+    await expect(inbox().svc.restoreForMe(auth, bid('e1'), 'r')).resolves.toEqual({ restored: true });
+    await expect(inbox({ partyRestore: 'purged' }).svc.restoreForMe(auth, bid('e1'), 'r')).rejects.toMatchObject({ statusCode: 410, code: 'ENVELOPE_PURGED' });
   });
 
   it('refuses while purge is disabled (dark) — nothing is written', async () => {
     const { svc, purges } = inbox({ enabled: false });
-    await expect(svc.deleteForMe(auth, 'b-e1', 'r')).rejects.toMatchObject({ statusCode: 403, code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
-    await expect(svc.restoreForMe(auth, 'b-e1', 'r')).rejects.toMatchObject({ statusCode: 403 });
+    await expect(svc.deleteForMe(auth, bid('e1'), 'r')).rejects.toMatchObject({ statusCode: 403, code: 'ESIGN_FEATURE_NOT_AVAILABLE' });
+    await expect(svc.restoreForMe(auth, bid('e1'), 'r')).rejects.toMatchObject({ statusCode: 403 });
     expect(purges.partyDelete).not.toHaveBeenCalled();
   });
 
   it('refuses a non-terminal envelope and a foreign binding', async () => {
-    await expect(inbox({ one: row('e1', { status: 'SENT' }) }).svc.deleteForMe(auth, 'b-e1', 'r')).rejects.toMatchObject({ statusCode: 409 });
-    await expect(inbox({ one: null }).svc.deleteForMe(auth, 'nope', 'r')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(inbox({ one: row('e1', { status: 'SENT' }) }).svc.deleteForMe(auth, bid('e1'), 'r')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(inbox({ one: null }).svc.deleteForMe(auth, 'b0000000-0000-7000-8000-0000000000ff', 'r')).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('the inbox hides deleted envelopes; ?folder=deleted lists only them; items carry purge', async () => {
     const { svc } = inbox({ deleted: ['e2'] });
     const all = await svc.list(auth);
     const ids = [...all.waiting, ...all.completed, ...all.other].map((i) => i.id);
-    expect(ids).toEqual(['b-e1']);
+    expect(ids).toEqual([bid('e1')]);
     const del = await svc.list(auth, 'deleted');
-    expect([...del.waiting, ...del.completed, ...del.other].map((i) => i.id)).toEqual(['b-e2']);
+    expect([...del.waiting, ...del.completed, ...del.other].map((i) => i.id)).toEqual([bid('e2')]);
     expect(all.completed[0]).not.toHaveProperty('purge');
     await expect(svc.list(auth, 'bogus', 'r')).rejects.toMatchObject({ statusCode: 400 });
   });
@@ -92,7 +97,7 @@ describe('recipient inbox — DocuSign "Deleted" folder (R-10)', () => {
     const repo = { listForUser: vi.fn(async () => [row('e1')]) };
     const svc = new RecipientInboxService(repo as never, { findTenantNameById: vi.fn(async () => null) } as never);
     const out = await svc.list(auth);
-    expect(out.completed.map((i) => i.id)).toEqual(['b-e1']);
+    expect(out.completed.map((i) => i.id)).toEqual([bid('e1')]);
   });
 });
 

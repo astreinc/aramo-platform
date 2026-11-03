@@ -756,3 +756,45 @@ describe('PERSONAL tenants never hold the organization (org) credential', () => 
     expect((await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' })).kind).toBe('resolved');
   });
 });
+
+// W2 C1 re-established proof (PO-approved 2026-11-03): a returning sign-in records the link's provider.
+describe('W2 — returning sign-in records the provider of a legacy link', () => {
+  function policy(record: ReturnType<typeof vi.fn>) {
+    return { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined, recordReturningLinkIdp: record } as unknown as IdentityProviderPolicyService;
+  }
+  const RETURNING = { ...SESSION_INPUT, verified_email: ' A@B.c ', idp: 'microsoft' };
+
+  it('verified email equals the account email and the provider resolves → recorded for this exact link', async () => {
+    const record = vi.fn().mockResolvedValue(true);
+    const d = { ...makeDeps({ resolveUser: { id: USER_ID, email: 'a@b.c' } }), idpPolicy: policy(record) };
+    expect((await adapter(d).resolveSession(RETURNING)).kind).toBe('resolved');
+    expect(record).toHaveBeenCalledWith({ user_id: USER_ID, provider: 'cognito', provider_subject: SUB, idp: 'microsoft' });
+  });
+
+  it('verified email differs from the account email → nothing recorded', async () => {
+    const record = vi.fn();
+    const d = { ...makeDeps({ resolveUser: { id: USER_ID, email: 'other@b.c' } }), idpPolicy: policy(record) };
+    expect((await adapter(d).resolveSession(RETURNING)).kind).toBe('resolved');
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 'ambiguous', 'facebook'])('provider %s does not resolve to one federated provider → nothing recorded', async (idp) => {
+    const record = vi.fn();
+    const d = { ...makeDeps({ resolveUser: { id: USER_ID, email: 'a@b.c' } }), idpPolicy: policy(record) };
+    await adapter(d).resolveSession({ ...RETURNING, idp: idp as string | null });
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('the record write fails → sign-in still resolves (best-effort)', async () => {
+    const record = vi.fn().mockRejectedValue(new Error('db down'));
+    const d = { ...makeDeps({ resolveUser: { id: USER_ID, email: 'a@b.c' } }), idpPolicy: policy(record) };
+    expect((await adapter(d).resolveSession(RETURNING)).kind).toBe('resolved');
+  });
+
+  it('first sign-in (by-sub MISS, link path) does not use the returning-sign-in record', async () => {
+    const record = vi.fn();
+    const d = { ...makeDeps({ resolveUser: null, findUserByEmail: { id: USER_ID, email: 'a@b.c' } }), idpPolicy: policy(record) };
+    await adapter(d).resolveSession(RETURNING);
+    expect(record).not.toHaveBeenCalled();
+  });
+});

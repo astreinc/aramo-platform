@@ -177,7 +177,7 @@ export class EsignSenderRepository {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: filter.limit,
       include: {
-        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true, recipient_kind: true } },
+        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true, recipient_kind: true, signing_order: true, witness_for_signer_id: true, bound_user_id: true } },
         documents: { select: { id: true } },
       },
     });

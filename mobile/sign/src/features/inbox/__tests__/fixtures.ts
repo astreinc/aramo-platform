@@ -38,6 +38,7 @@ export function sent(status: EnvelopeStatus, over: Partial<SenderListItem> = {})
     last_activity_at: '2026-10-03T10:00:00.000Z',
     document_count: 1,
     source_application: 'aramo-sign',
+    awaiting_you: false,
     recipients: [
       { id: uuid(), name: 'Alex Morgan', email: 'alex@example.com', status: 'SIGNED', recipient_kind: 'SIGNER' },
       { id: uuid(), name: 'Sam Lee', email: 'sam@example.com', status: 'PENDING', recipient_kind: 'SIGNER' },
@@ -49,6 +50,8 @@ export function sent(status: EnvelopeStatus, over: Partial<SenderListItem> = {})
 export function received(over: Partial<InboxItem> = {}): InboxItem {
   return {
     id: uuid(),
+    source: 'bound',
+    i_am_sender: false,
     subject: 'Offer letter',
     from: 'Northwind Staffing',
     envelope_status: 'IN_PROGRESS',

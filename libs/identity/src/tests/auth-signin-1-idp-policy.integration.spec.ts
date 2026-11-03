@@ -163,4 +163,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
     expect(await policy.recordedIdpsOf(u)).toEqual(['google']);
     await expect(db.query(`INSERT INTO identity."ExternalIdentityIdp" (external_identity_id, idp) VALUES ($1, 'facebook')`, [uuidv7()])).rejects.toThrow();
   });
+
+  // W2 C1 re-established proof (PO-approved 2026-11-03).
+  it('recordReturningLinkIdp records only an unrecorded link of that user and subject, once', async () => {
+    const t = await tenant({ enforced: false });
+    const u = await member(t, OWNER_ROLE);
+    const other = await member(t, OWNER_ROLE);
+    await repo.linkExternalIdentity({ user_id: u, provider: 'cognito', provider_subject: `legacy-${u}`, email_snapshot: null });
+    // Another user's subject never records against u.
+    expect(await policy.recordReturningLinkIdp({ user_id: other, provider: 'cognito', provider_subject: `legacy-${u}`, idp: 'microsoft' })).toBe(false);
+    expect(await policy.hasUnrecordedLink(u)).toBe(true);
+    expect(await policy.recordReturningLinkIdp({ user_id: u, provider: 'cognito', provider_subject: `legacy-${u}`, idp: 'microsoft' })).toBe(true);
+    expect(await policy.recordedIdpsOf(u)).toEqual(['microsoft']);
+    expect(await policy.hasUnrecordedLink(u)).toBe(false);
+    // Already recorded: never overwritten with a different provider.
+    expect(await policy.recordReturningLinkIdp({ user_id: u, provider: 'cognito', provider_subject: `legacy-${u}`, idp: 'google' })).toBe(false);
+    expect(await policy.recordedIdpsOf(u)).toEqual(['microsoft']);
+    // R2 still refuses a second provider for this user afterwards.
+    expect(await policy.evaluate({ user_id: u, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+  });
 });

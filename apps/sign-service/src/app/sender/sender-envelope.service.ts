@@ -52,6 +52,10 @@ import {
   SignPaymentRepository,
   QesWorkflowService,
   EstampWorkflowService,
+  RecipientInboxRepository,
+  awaitingYouSteps,
+  inboxHandleKey,
+  mintInboxHandle,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -166,6 +170,8 @@ export class SenderEnvelopeService {
     // Feature-Parity §1.16 / §1.19 (Amendment A1) — the QES and e-stamp send guards.
     @Optional() private readonly qes?: QesWorkflowService,
     @Optional() private readonly estamp?: EstampWorkflowService,
+    // Aramo Sign W2 §A3.5 — the caller's proven current email, for `awaiting_you`.
+    @Optional() private readonly inbox?: RecipientInboxRepository,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
@@ -315,6 +321,11 @@ export class SenderEnvelopeService {
     });
     const last = await this.repo.lastEventAt(auth.tenant_id, rows.map((r) => r.id));
     const counts = await this.repo.countByStatus(auth.tenant_id, createdBy);
+    // W2 §A3.5 — "Waiting for you": read the proof only when some envelope is still open.
+    const open = rows.some((e) => e.status === 'SENT' || e.status === 'IN_PROGRESS');
+    const proof = open && this.inbox !== undefined ? await this.inbox.verifiedEmailProof(auth.sub).catch(() => null) : null;
+    const now = new Date();
+    const mine = await this.myInboxItemIds(auth.sub, rows, proof, now);
     return {
       items: rows.map((e) => ({
         id: e.id,
@@ -327,6 +338,12 @@ export class SenderEnvelopeService {
         document_count: e.documents.length,
         source_application: e.source_application,
         recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status, recipient_kind: recipientKindOf(s) })),
+        awaiting_you: mine.has(e.id),
+        // W2 (orchestrator addition) — the signed-in user's OWN actionable inbox item for this
+        // envelope: the binding id, or a fresh handle issued to this same user (redeemable only
+        // by them, through the full discovery revalidation). Null when there is none to sign
+        // through (e.g. assigned but neither bound nor proven, or discovery off).
+        my_inbox_item_id: mine.get(e.id) ?? null,
         purge: purgeViewOf(e),
       })),
       counts,
@@ -1290,6 +1307,37 @@ export class SenderEnvelopeService {
     if (user === null || !user.is_active || user.deactivated_at !== null) return null;
     const email = user.email?.trim().toLowerCase() ?? '';
     return email.length > 0 ? email : null;
+  }
+
+  // W2 §A3.5 — envelope id → the caller's inbox item id (or null) for every envelope awaiting
+  // the caller; an envelope absent from the map is not awaiting the caller.
+  private async myInboxItemIds(
+    user_id: string,
+    rows: ReadonlyArray<Parameters<typeof awaitingYouSteps>[0] & { id: string; signers: Parameters<typeof awaitingYouSteps>[1] }>,
+    proof: { email: string; proven_at: Date } | null,
+    now: Date,
+  ): Promise<Map<string, string | null>> {
+    const awaiting = rows.flatMap((e) => {
+      const steps = awaitingYouSteps(e, e.signers, user_id, proof, now);
+      return steps === null ? [] : [{ envelope_id: e.id, steps }];
+    });
+    const out = new Map<string, string | null>();
+    if (awaiting.length === 0) return out;
+    const signerIds = awaiting.flatMap((a) => a.steps.map((st) => st.row.id));
+    const live = this.inbox !== undefined ? await this.inbox.liveBindingIds(user_id, signerIds) : new Map<string, string>();
+    const anyBinding = this.inbox !== undefined ? await this.inbox.anyBindingSignerIds(user_id, signerIds) : new Set<string>(signerIds);
+    const key = inboxHandleKey();
+    for (const a of awaiting) {
+      let id: string | null = null;
+      for (const st of a.steps) {
+        const bound = live.get(st.row.id);
+        if (bound !== undefined) id = bound;
+        else if (st.proven && key !== null && !anyBinding.has(st.row.id)) id = mintInboxHandle(key, { signer_id: st.row.id, user_id }, now);
+        if (id !== null) break;
+      }
+      out.set(a.envelope_id, id);
+    }
+    return out;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

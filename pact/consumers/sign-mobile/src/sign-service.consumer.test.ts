@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { describe, expect, it } from 'vitest';
 
-const { like, uuid, integer, boolean, eachLike, regex } = MatchersV3;
+const { like, uuid, integer, boolean, eachLike, regex, fromProviderState } = MatchersV3;
 
 // Aramo Sign Mobile — Pact consumer for the Sign routes the native app calls
 // (directive §4 B-12; M-A3 §1–§9; M-A2 §2.2).
@@ -37,6 +37,13 @@ const { like, uuid, integer, boolean, eachLike, regex } = MatchersV3;
 //  12. GET    /v1/sign/inbox                            200 { waiting, completed, other }
 //  13. DELETE /v1/sign/sender/envelopes/{id} (If-Match) 204
 //  14. PUT    /v1/sign/sender/envelopes/{id}/fields (If-Match) 200 — M-A6 Name + Checkbox configuration
+// W2 Inbox Discovery (LOCKED Gate-5 plan A3.1-A3.5, A4 Pact row):
+//  15. GET    /v1/sign/inbox                            200 a discovered item (opaque handle id)
+//  16. GET    /v1/sign/inbox                            200 an upcoming item (my_status upcoming)
+//  17. POST   /v1/sign/inbox/{handle}/sign              200 { signing_url, expires_at }
+//  18. POST   /v1/sign/inbox/{handle}/sign (stale)      404 inbox_item_not_found
+//  19. GET    /v1/sign/sender/envelopes                 200 items carry awaiting_you
+//  20. GET    /v1/sign/sender/envelopes                 200 awaiting_you + my_inbox_item_id (handle)
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -56,6 +63,16 @@ const DELETE_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000c1';
 const REMIND_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000d1';
 const REMIND_SIGNER_ID = 'e6000000-0000-7000-8000-0000000000d3';
 const INBOX_BINDING_ID = 'e6000000-0000-7000-8000-0000000000e9';
+// W2 — each recipient-side state signs in its OWN user (pact/provider/src/verify-sign.ts).
+const DISCOVERED_AUTH = { Authorization: 'Bearer pact-native-sign-access-token-discovered', 'X-Aramo-Consumer': 'sign' };
+const UPCOMING_AUTH = { Authorization: 'Bearer pact-native-sign-access-token-upcoming', 'X-Aramo-Consumer': 'sign' };
+// A discovered item's id is an opaque base64url handle (never a uuid); the example is shape only.
+const HANDLE = '^[A-Za-z0-9_-]{40,}$';
+const EXAMPLE_HANDLE = 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8w';
+const AWAITING_ENVELOPE_ID = 'e6b20000-0000-7000-8000-0000000000a1';
+// State 5 — Ava's only envelope waits for her own discovered step; her own placeholder.
+const AWAITING_ITEM_ENVELOPE_ID = 'e6b20000-0000-7000-8000-0000000000d1';
+const AWAITING_AUTH = { Authorization: 'Bearer pact-native-sign-access-token-awaiting', 'X-Aramo-Consumer': 'sign' };
 // M-A6 §2 — a draft with a document and a recipient for the Name/Checkbox fields
 // replace (envelope, document, recipient and ledger event: revision 4).
 const FIELDS_ENVELOPE_ID = 'e6000000-0000-7000-8000-000000000101';
@@ -394,6 +411,8 @@ describe('sign-mobile → GET /v1/sign/inbox (Sign Unified Product S-7)', () => 
         b.jsonBody({
           waiting: eachLike({
             id: uuid(INBOX_BINDING_ID),
+            source: 'bound',
+            i_am_sender: boolean(false),
             subject: like('Contractor agreement'),
             envelope_status: regex('^(SENT|IN_PROGRESS)$', 'SENT'),
             my_status: regex('^(PENDING|VIEWED)$', 'PENDING'),
@@ -411,6 +430,183 @@ describe('sign-mobile → GET /v1/sign/inbox (Sign Unified Product S-7)', () => 
         expect(res.status).toBe(200);
         const body = (await res.json()) as { waiting: unknown[] };
         expect(body.waiting.length).toBeGreaterThan(0);
+      });
+  });
+});
+
+// W2 (A3.1, A3.2) — discovered items render like bound ones; an upcoming item never signs.
+describe('sign-mobile → GET /v1/sign/inbox (W2 discovery)', () => {
+  it('lists a document sent to the verified account email as a discovered item', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document waiting in the inbox')
+      .uponReceiving('a native inbox read with a discovered item')
+      .withRequest('GET', '/v1/sign/inbox', (b) => {
+        b.headers(DISCOVERED_AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          waiting: eachLike({
+            id: regex(HANDLE, EXAMPLE_HANDLE),
+            source: 'discovered',
+            i_am_sender: boolean(false),
+            subject: like('Discovered agreement'),
+            envelope_status: 'SENT',
+            my_status: 'PENDING',
+            sent_at: iso('2026-11-03T10:00:00.000Z'),
+            can_sign: true,
+            can_download: false,
+          }),
+          completed: [],
+          other: [],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox`, { headers: DISCOVERED_AUTH });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { waiting: { id: string; source: string }[] };
+        expect(body.waiting[0]?.source).toBe('discovered');
+      });
+  });
+
+  it('lists a later-turn document as upcoming (can_sign false)', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has an upcoming document in the inbox')
+      .uponReceiving('a native inbox read with an upcoming item')
+      .withRequest('GET', '/v1/sign/inbox', (b) => {
+        b.headers(UPCOMING_AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          waiting: eachLike({
+            id: like(EXAMPLE_HANDLE),
+            source: 'discovered',
+            i_am_sender: boolean(false),
+            subject: like('Sequential agreement'),
+            envelope_status: 'SENT',
+            my_status: 'upcoming',
+            can_sign: false,
+            can_download: false,
+          }),
+          completed: [],
+          other: [],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox`, { headers: UPCOMING_AUTH });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { waiting: { my_status: string; can_sign: boolean }[] };
+        expect(body.waiting[0]).toMatchObject({ my_status: 'upcoming', can_sign: false });
+      });
+  });
+});
+
+// W2 (A3.3, A3.4) — signing a discovered item by its handle mints the same session shape.
+describe('sign-mobile → POST /v1/sign/inbox/{handle}/sign (W2 discovery)', () => {
+  it('mints an inbox signing session from a discovered item handle', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document to sign')
+      .uponReceiving('a native inbox sign from a discovered item handle')
+      .withRequest('POST', fromProviderState('/v1/sign/inbox/${inbox_handle}/sign', `/v1/sign/inbox/${EXAMPLE_HANDLE}/sign`), (b) => {
+        b.headers(DISCOVERED_AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          signing_url: regex('^https://[^/]+/s/[A-Za-z0-9_-]{32,256}$', 'https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123456789'),
+          expires_at: iso('2026-11-03T10:30:00.000Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox/${EXAMPLE_HANDLE}/sign`, { method: 'POST', headers: DISCOVERED_AUTH });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { signing_url: string };
+        expect(body.signing_url).toMatch(/\/s\//);
+      });
+  });
+
+  it('refuses a stale or foreign handle with 404 inbox_item_not_found', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document waiting in the inbox')
+      .uponReceiving('a native inbox sign from a stale item handle')
+      .withRequest('POST', '/v1/sign/inbox/not-a-real-handle/sign', (b) => {
+        b.headers(DISCOVERED_AUTH);
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody({ error: { code: like('NOT_FOUND'), message: like('message'), request_id: like('req-1'), details: { reason: 'inbox_item_not_found' } } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox/not-a-real-handle/sign`, { method: 'POST', headers: DISCOVERED_AUTH });
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: { details: { reason: string } } };
+        expect(body.error.details.reason).toBe('inbox_item_not_found');
+      });
+  });
+});
+
+// W2 (A3.5) — the sender list says when only the signed-in sender's own signature remains.
+describe('sign-mobile → GET /v1/sign/sender/envelopes (W2 awaiting_you)', () => {
+  it('marks an envelope waiting only for the signed-in sender', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender envelope is awaiting the signed-in sender')
+      .uponReceiving('a native sender list read with awaiting_you')
+      .withRequest('GET', '/v1/sign/sender/envelopes', (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            id: uuid(AWAITING_ENVELOPE_ID),
+            subject: like('Self-sent agreement'),
+            status: regex('^(DRAFT|SENT|IN_PROGRESS|COMPLETED|DECLINED|VOIDED|EXPIRED)$', 'SENT'),
+            created_at: iso('2026-11-03T10:00:00.000Z'),
+            document_count: integer(1),
+            awaiting_you: boolean(true),
+          }),
+          counts: like({ SENT: 1 }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/envelopes`, { headers: AUTH });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: { awaiting_you: boolean }[] };
+        expect(typeof body.items[0]?.awaiting_you).toBe('boolean');
+      });
+  });
+});
+
+describe('sign-mobile → GET /v1/sign/sender/envelopes (W2 my_inbox_item_id)', () => {
+  it('names the signed-in sender’s own inbox item for an envelope waiting for them', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender envelope is awaiting the signed-in sender with an inbox item')
+      .uponReceiving('a native sender list read with my_inbox_item_id')
+      .withRequest('GET', '/v1/sign/sender/envelopes', (b) => {
+        b.headers(AWAITING_AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            id: uuid(AWAITING_ITEM_ENVELOPE_ID),
+            subject: like('Self-sent agreement'),
+            status: 'SENT',
+            created_at: iso('2026-11-03T10:00:00.000Z'),
+            document_count: integer(1),
+            awaiting_you: true,
+            my_inbox_item_id: regex(HANDLE, EXAMPLE_HANDLE),
+          }),
+          counts: like({ SENT: 1 }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/envelopes`, { headers: AWAITING_AUTH });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: { awaiting_you: boolean; my_inbox_item_id: string | null }[] };
+        expect(body.items[0]?.awaiting_you).toBe(true);
+        expect(typeof body.items[0]?.my_inbox_item_id).toBe('string');
       });
   });
 });

@@ -14,7 +14,7 @@ import { SignJWT, exportSPKI, generateKeyPair } from 'jose';
 import { PDFDocument } from 'pdf-lib';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { AppModule } from '@aramo/sign-service';
-import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/sign';
+import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, INBOX_HANDLE_KEY_ENV, mintInboxHandle, type PutOwnedSourceInput } from '@aramo/sign';
 import { effectiveLegalDocument } from '@aramo/subscription';
 
 // DOC-3 — Pact provider verifier for apps/sign-service.
@@ -200,6 +200,32 @@ const SIGN_MOBILE_NOTIFICATION_ID = 'e6000000-0000-7000-8000-000000000011';
 const SIGN_MOBILE_NOTIFIED_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000a1';
 const SIGN_MOBILE_INBOX_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000e1';
 const SIGN_MOBILE_INBOX_BINDING_ID = 'e6000000-0000-7000-8000-0000000000e9';
+
+// Aramo Sign W2 — inbox discovery (Aramo-Sign-W2-Inbox-Discovery-Gate5-Plan-and-Amendment-v1_0-LOCKED).
+// Each recipient-side state has its OWN user (so each list is homogeneous) in its own
+// organization, holding a federated (google) link whose verified email is the account email
+// (W-1), recorded long before the envelopes were sent (W-2). MUST match the sign-mobile and
+// sign-workspace consumers. Placeholders → real tokens in the requestFilter.
+const W2_HANDLE_KEY = Buffer.alloc(32, 9);
+const W2_DISCOVERED = {
+  tenant: 'e6b20000-0000-7000-8000-000000000001', user: 'e6b20000-0000-7000-8000-000000000002', membership: 'e6b20000-0000-7000-8000-000000000003',
+  link: 'e6b20000-0000-7000-8000-000000000004', email: 'dana.discovered@example.com', envelope: 'e6b20000-0000-7000-8000-0000000000b1',
+  bearer: 'Bearer pact-native-sign-access-token-discovered', cookie: 'sign-workspace-pact-discovered',
+};
+const W2_UPCOMING = {
+  tenant: 'e6b20000-0000-7000-8000-000000000011', user: 'e6b20000-0000-7000-8000-000000000012', membership: 'e6b20000-0000-7000-8000-000000000013',
+  link: 'e6b20000-0000-7000-8000-000000000014', email: 'uma.upcoming@example.com', envelope: 'e6b20000-0000-7000-8000-0000000000c1',
+  bearer: 'Bearer pact-native-sign-access-token-upcoming', cookie: 'sign-workspace-pact-upcoming',
+};
+// The sender's own envelope awaiting the sender (bound_user_id = Sam).
+const W2_AWAITING_ENVELOPE_ID = 'e6b20000-0000-7000-8000-0000000000a1';
+// A second sender (Ava, own organization, sign_sender role, a qualifying federated link) whose
+// own envelope awaits her through her PROVEN email ⇒ awaiting_you + my_inbox_item_id (a handle).
+const W2_AWAITING_SENDER = {
+  tenant: 'e6b20000-0000-7000-8000-000000000021', user: 'e6b20000-0000-7000-8000-000000000022', membership: 'e6b20000-0000-7000-8000-000000000023',
+  link: 'e6b20000-0000-7000-8000-000000000024', email: 'ava.awaiting@example.com', envelope: 'e6b20000-0000-7000-8000-0000000000d1',
+  bearer: 'Bearer pact-native-sign-access-token-awaiting', cookie: 'sign-workspace-pact-awaiting',
+};
 const SIGN_MOBILE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
@@ -214,6 +240,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let senderJwt = '';
     let billingOwnerJwt = '';
     let nativeJwt = '';
+    // Aramo Sign W2 — per-user tokens: [native bearer, browser cookie].
+    const w2Tokens = new Map<string, string>();
     let letterPdf: Uint8Array = new Uint8Array();
 
     // PX-1 — in-memory OWNED source storage (DOCUMENT_STORAGE_PORT) so uploads and
@@ -500,6 +528,118 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          VALUES ($1,$2,$3,$4,$5,$6,'sam.sender@example.com')
          ON CONFLICT (id) DO NOTHING`,
         [SIGN_MOBILE_INBOX_BINDING_ID, TENANT_ID, SIGN_MOBILE_INBOX_ENVELOPE_ID, signer, SENDER_USER_ID, SENDER_TENANT_ID],
+      );
+      // Aramo Sign W2 (W-3) — can_sign needs the recipient's live emailed link.
+      await db.query(
+        `INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin)
+         VALUES ($1,$2,$3,$4,$5,'ISSUED', now() + interval '7 days','LINK')
+         ON CONFLICT (id) DO NOTHING`,
+        [childId(SIGN_MOBILE_INBOX_ENVELOPE_ID, 5), TENANT_ID, SIGN_MOBILE_INBOX_ENVELOPE_ID, signer, hashToken('pact-sign-mobile-inbox-link')],
+      );
+    }
+
+    // Aramo Sign W2 — a recipient account (own BUSINESS organization entitled core + sign, one
+    // membership, no Sign role: the inbox is a recipient right) with a qualifying federated link.
+    async function seedW2Recipient(u: typeof W2_DISCOVERED): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1, $2, $2, 'BUSINESS', 'ACTIVE', true, now()) ON CONFLICT (id) DO NOTHING`,
+        [u.tenant, `pact-w2-${u.tenant.slice(-2)}`],
+      );
+      await db.query(`INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at) VALUES ($1, $2, 'W2 Recipient', $3, now()) ON CONFLICT (id) DO NOTHING`, [u.user, u.email, u.tenant]);
+      await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1, $2, $3, now()) ON CONFLICT (id) DO NOTHING`, [u.membership, u.user, u.tenant]);
+      await db.query(
+        `INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at) VALUES (gen_random_uuid(), $1, $2, 1, now()) ON CONFLICT (tenant_id, principal_id) DO NOTHING`,
+        [u.tenant, u.user],
+      );
+      for (const capability of ['core', 'sign']) {
+        await db.query(
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          [u.tenant, capability],
+        );
+      }
+      await db.query(
+        `INSERT INTO identity."ExternalIdentity" (id, provider, provider_subject, user_id, email_snapshot, created_at, updated_at)
+         VALUES ($1, 'cognito', $2, $3, $4, '2026-01-01T00:00:00Z', now()) ON CONFLICT (id) DO NOTHING`,
+        [u.link, `pact-w2-${u.link}`, u.user, u.email],
+      );
+      await db.query(`INSERT INTO identity."ExternalIdentityIdp" (external_identity_id, idp) VALUES ($1, 'google') ON CONFLICT (external_identity_id) DO NOTHING`, [u.link]);
+    }
+    // Another organization's SENT envelope addressed to the recipient's email (different case:
+    // matching is normalized). `first` adds an earlier pending signer (SEQUENTIAL ⇒ upcoming);
+    // otherwise the recipient holds a live emailed link (W-3) and can sign now.
+    async function seedW2Envelope(u: typeof W2_DISCOVERED, subject: string, first: boolean): Promise<void> {
+      await seedW2Recipient(u);
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, routing_mode, created_by, sent_at, expires_at)
+         VALUES ($1, $2, $3, 'SENT', $4, $5, $6, now(), now() + interval '30 days') ON CONFLICT (id) DO NOTHING`,
+        [u.envelope, TENANT_ID, subject, first ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE', first ? 'SEQUENTIAL' : 'PARALLEL', CREATED_BY],
+      );
+      const mine = childId(u.envelope, 3);
+      if (first) {
+        await db.query(
+          `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status) VALUES ($1, $2, $3, 'first.signer@example.com', 'First Signer', 1, 'PENDING') ON CONFLICT (id) DO NOTHING`,
+          [childId(u.envelope, 2), TENANT_ID, u.envelope],
+        );
+      }
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status) VALUES ($1, $2, $3, $4, 'W2 Recipient', $5, 'PENDING') ON CONFLICT (id) DO NOTHING`,
+        [mine, TENANT_ID, u.envelope, u.email.toUpperCase(), first ? 2 : 1],
+      );
+      if (!first) {
+        await db.query(
+          `INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin)
+           VALUES ($1, $2, $3, $4, $5, 'ISSUED', now() + interval '7 days', 'LINK') ON CONFLICT (id) DO NOTHING`,
+          [childId(u.envelope, 5), TENANT_ID, u.envelope, mine, hashToken(`pact-w2-link-${u.envelope}`)],
+        );
+      }
+    }
+    async function seedW2Awaiting(): Promise<void> {
+      await seedSender();
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at)
+         VALUES ($1, $2, 'Offer letter', 'SENT', 'SINGLE_SIGNATURE', $3, now()) ON CONFLICT (id) DO NOTHING`,
+        [W2_AWAITING_ENVELOPE_ID, SENDER_TENANT_ID, SENDER_USER_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status, bound_user_id)
+         VALUES ($1, $2, $3, 'sam.sender@example.com', 'Sam Sender', 1, 'PENDING', $4) ON CONFLICT (id) DO NOTHING`,
+        [childId(W2_AWAITING_ENVELOPE_ID, 3), SENDER_TENANT_ID, W2_AWAITING_ENVELOPE_ID, SENDER_USER_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignatureEvent" (id, tenant_id, envelope_id, event_type, actor_type, actor_ref, previous_event_hash, event_hash)
+         VALUES ($1, $2, $3, 'ENVELOPE_SENT', 'SERVICE', $4, NULL, $5) ON CONFLICT (id) DO NOTHING`,
+        [childId(W2_AWAITING_ENVELOPE_ID, 9), SENDER_TENANT_ID, W2_AWAITING_ENVELOPE_ID, SENDER_USER_ID, `ew-seed-${W2_AWAITING_ENVELOPE_ID}`],
+      );
+    }
+
+    async function seedW2AwaitingSender(): Promise<void> {
+      await seedSender(); // the sign_sender role and its scopes
+      const u = W2_AWAITING_SENDER;
+      await seedW2Recipient(u);
+      await db.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'sign_sender'
+         ON CONFLICT (membership_id, role_id) DO NOTHING`,
+        [u.membership],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at)
+         VALUES ($1, $2, 'Self-sent agreement', 'SENT', 'SINGLE_SIGNATURE', $3, now()) ON CONFLICT (id) DO NOTHING`,
+        [u.envelope, u.tenant, u.user],
+      );
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status) VALUES ($1, $2, $3, $4, 'Ava', 1, 'PENDING') ON CONFLICT (id) DO NOTHING`,
+        [childId(u.envelope, 3), u.tenant, u.envelope, u.email],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin)
+         VALUES ($1, $2, $3, $4, $5, 'ISSUED', now() + interval '7 days', 'LINK') ON CONFLICT (id) DO NOTHING`,
+        [childId(u.envelope, 5), u.tenant, u.envelope, childId(u.envelope, 3), hashToken(`pact-w2-link-${u.envelope}`)],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignatureEvent" (id, tenant_id, envelope_id, event_type, actor_type, actor_ref, previous_event_hash, event_hash)
+         VALUES ($1, $2, $3, 'ENVELOPE_SENT', 'SERVICE', $4, NULL, $5) ON CONFLICT (id) DO NOTHING`,
+        [childId(u.envelope, 9), u.tenant, u.envelope, u.user, `ew-seed-${u.envelope}`],
       );
     }
 
@@ -887,7 +1027,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
         REDIS_URL: process.env['REDIS_URL'],
         SIGN_PUSH_TOKEN_KEY: process.env['SIGN_PUSH_TOKEN_KEY'],
+        [INBOX_HANDLE_KEY_ENV]: process.env[INBOX_HANDLE_KEY_ENV],
+        ARAMO_SIGN_BASE_URL: process.env['ARAMO_SIGN_BASE_URL'],
       };
+      // Aramo Sign W2 — inbox discovery is on (a fixed test key).
+      process.env[INBOX_HANDLE_KEY_ENV] = W2_HANDLE_KEY.toString('base64');
+      // Inbox signing mints a signing link (POST /v1/sign/inbox/{id}/sign); the W2 interactions are the
+      // first to exercise it, so the harness sets the Sign base URL the route requires.
+      process.env['ARAMO_SIGN_BASE_URL'] = 'https://sign.aramo.ai';
       // Aramo Sign Mobile — push tokens are stored encrypted (a fixed test key).
       process.env['SIGN_PUSH_TOKEN_KEY'] = Buffer.alloc(32, 7).toString('base64');
       process.env['DATABASE_URL'] = url;
@@ -940,6 +1087,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setExpirationTime(now + 15 * 60)
         .sign(kp.privateKey);
 
+      // Aramo Sign W2 — the recipient users' native and browser tokens.
+      for (const u of [W2_DISCOVERED, W2_UPCOMING, W2_AWAITING_SENDER]) {
+        const claims = { sub: u.user, actor_kind: 'user', consumer_type: 'sign', tenant_id: u.tenant, authz_version: 1 };
+        const sign = (c: Record<string, unknown>) =>
+          new SignJWT(c).setProtectedHeader({ alg: 'RS256', typ: 'JWT' }).setIssuer(AUTH_ISSUER).setAudience(AUTH_AUDIENCE).setSubject(u.user).setIssuedAt(now).setExpirationTime(now + 15 * 60).sign(kp.privateKey);
+        w2Tokens.set(u.bearer, await sign({ ...claims, client: 'native', dsid: SIGN_MOBILE_DSID }));
+        w2Tokens.set(u.cookie, await sign(claims));
+      }
+
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(DOCUMENT_STORAGE_PORT)
         .useValue(inMemoryStorage)
@@ -977,7 +1133,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // consumer's request) is forwarded untouched.
         requestFilter: (req, _res, next) => {
           const cookie = req.headers['cookie'];
-          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=${BILLING_OWNER_PLACEHOLDER}`)) {
+          // Aramo Sign W2 — the recipient users' placeholders (checked first).
+          const w2Cookie = [W2_DISCOVERED.cookie, W2_UPCOMING.cookie, W2_AWAITING_SENDER.cookie].find((c) => typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=${c}`));
+          const w2Bearer = typeof req.headers['authorization'] === 'string' ? w2Tokens.get(req.headers['authorization']) : undefined;
+          if (w2Cookie !== undefined) {
+            req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${w2Tokens.get(w2Cookie) ?? ''}`;
+          } else if (w2Bearer !== undefined) {
+            req.headers['authorization'] = `Bearer ${w2Bearer}`;
+          } else if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=${BILLING_OWNER_PLACEHOLDER}`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${billingOwnerJwt}`;
           } else if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
@@ -1152,6 +1315,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a sign-mobile user has a document waiting in the inbox': async () => {
             await seedMobileInbox();
+            return undefined;
+          },
+          // Aramo Sign W2 — inbox discovery, upcoming, the discovered sign, awaiting_you.
+          'a sign user has a discovered document waiting in the inbox': async () => {
+            await seedW2Envelope(W2_DISCOVERED, 'Discovered agreement', false);
+            return undefined;
+          },
+          'a sign user has a discovered document to sign': async () => {
+            await seedW2Envelope(W2_DISCOVERED, 'Discovered agreement', false);
+            return { inbox_handle: mintInboxHandle(W2_HANDLE_KEY, { signer_id: childId(W2_DISCOVERED.envelope, 3), user_id: W2_DISCOVERED.user }) };
+          },
+          'a sign user has an upcoming document in the inbox': async () => {
+            await seedW2Envelope(W2_UPCOMING, 'Upcoming agreement', true);
+            return undefined;
+          },
+          'a sender envelope is awaiting the signed-in sender': async () => {
+            await seedW2Awaiting();
+            return undefined;
+          },
+          'a sender envelope is awaiting the signed-in sender with an inbox item': async () => {
+            await seedW2AwaitingSender();
             return undefined;
           },
         },

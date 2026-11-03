@@ -152,3 +152,43 @@ export function invitedAtSend<T extends TurnRow>(routing_mode: string, rows: rea
 export function pendingWitnessesOf<T extends TurnRow>(rows: readonly T[], signer_id: string): T[] {
   return rows.filter((r) => isWitness(r) && r.witness_for_signer_id === signer_id && (r.status === 'PENDING' || r.status === 'VIEWED'));
 }
+
+// Aramo Sign W2 §A3.5 (Aramo-Sign-W2-Inbox-Discovery-Gate5-Plan-and-Amendment-v1_0-LOCKED) —
+// the sender list's "Waiting for you": a SENT / IN_PROGRESS, unexpired envelope whose ONLY
+// currently actionable recipient steps (pending signing recipients for whom mayActNow holds)
+// belong to `user_id`. A step is the user's when the recipient is bound to the user
+// (bound_user_id, M-A5 §4.1) or is a SIGNER / WITNESS addressed to the user's proven current
+// email on an envelope sent at or after that proof (the W2 discovery rule, W-1 / W-2).
+export function awaitingYou<T extends TurnRow & { email?: string | null; bound_user_id?: string | null }>(
+  envelope: { status: string; routing_mode: string; sent_at: Date | null; expires_at?: Date | null },
+  rows: readonly T[],
+  user_id: string,
+  proof: { email: string; proven_at: Date } | null,
+  now: Date = new Date(),
+): boolean {
+  return awaitingYouSteps(envelope, rows, user_id, proof, now) !== null;
+}
+
+// The same rule, returning the user's actionable steps (each tagged with whether it is
+// proven by the W2 discovery rule), or null when the envelope is not awaiting the user.
+export function awaitingYouSteps<T extends TurnRow & { email?: string | null; bound_user_id?: string | null }>(
+  envelope: { status: string; routing_mode: string; sent_at: Date | null; expires_at?: Date | null },
+  rows: readonly T[],
+  user_id: string,
+  proof: { email: string; proven_at: Date } | null,
+  now: Date = new Date(),
+): Array<{ row: T; proven: boolean }> | null {
+  if (envelope.status !== 'SENT' && envelope.status !== 'IN_PROGRESS') return null;
+  if (envelope.expires_at !== undefined && envelope.expires_at !== null && envelope.expires_at.getTime() <= now.getTime()) return null;
+  const actionable = signingRecipients(rows).filter((r) => (r.status === 'PENDING' || r.status === 'VIEWED') && mayActNow(envelope.routing_mode, rows, r.id));
+  if (actionable.length === 0) return null;
+  const provenFor = (r: T): boolean =>
+    proof !== null &&
+    isLinkSigner(r) &&
+    typeof r.email === 'string' &&
+    r.email.trim().toLowerCase() === proof.email &&
+    envelope.sent_at !== null &&
+    envelope.sent_at.getTime() >= proof.proven_at.getTime();
+  const steps = actionable.map((row) => ({ row, proven: provenFor(row) }));
+  return steps.every((s) => s.proven || s.row.bound_user_id === user_id) ? steps : null;
+}

@@ -101,6 +101,24 @@ export class IdentityProviderPolicyService {
     await this.prisma.externalIdentityIdp.createMany({ data: [{ external_identity_id, idp }], skipDuplicates: true });
   }
 
+  /**
+   * W2 (locked/Aramo-Sign-W2-Inbox-Discovery-…-v1_0-LOCKED.md, C1 "re-establish that proof") and the
+   * PO's approval of 2026-11-03: a RETURNING sign-in (resolved by subject) records the provider of the
+   * link it used when that link has none (a pre-R2 legacy link). Same rule as at link creation: only a
+   * single resolved provider (`google` | `microsoft`) is ever recorded; the caller has already checked
+   * that the token's verified email equals the account email. Idempotent; returns true when a row
+   * was written. It records which provider authenticated this link now, not mailbox ownership before.
+   */
+  async recordReturningLinkIdp(args: { user_id: string; provider: string; provider_subject: string; idp: FederatedIdp }): Promise<boolean> {
+    const n = await this.prisma.$executeRaw`
+      INSERT INTO "identity"."ExternalIdentityIdp" ("external_identity_id", "idp")
+      SELECT e."id", ${args.idp} FROM "identity"."ExternalIdentity" e
+      WHERE e."provider" = ${args.provider} AND e."provider_subject" = ${args.provider_subject}
+        AND e."user_id" = ${args.user_id}::uuid
+        AND NOT EXISTS (SELECT 1 FROM "identity"."ExternalIdentityIdp" p WHERE p."external_identity_id" = e."id")`;
+    return n > 0;
+  }
+
   private async membershipTenantOf(user_id: string): Promise<string | null> {
     const rows = await this.prisma.userTenantMembership.findMany({ where: { user_id, is_active: true }, select: { tenant_id: true }, take: 2 });
     return rows.length === 1 ? rows[0]!.tenant_id : null;

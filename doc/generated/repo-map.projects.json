@@ -2271,6 +2271,8 @@
       "IDENTITY_VERIFICATION_STARTED_EVENT",
       "IDENTITY_VERIFIED_EVENT",
       "ID_VERIFICATION_MAX_ATTEMPTS_DEFAULT",
+      "INBOX_HANDLE_KEY_ENV",
+      "INBOX_HANDLE_TTL_MS",
       "INDIA_STATE_CODES",
       "IdempotencyKeyReuseError",
       "IdempotencyRequestInProgressError",
@@ -2395,6 +2397,8 @@
       "applyReminderLimits",
       "assertIdentityVerificationCleared",
       "assertQesSatisfied",
+      "awaitingYou",
+      "awaitingYouSteps",
       "backoffMs",
       "buildTimeStampRequest",
       "canonicalEvidenceManifestBytes",
@@ -2421,6 +2425,7 @@
       "idempotencyRequestHash",
       "identityVerificationProviderFromEnv",
       "identityVerificationReturnUrl",
+      "inboxHandleKey",
       "invitedAtSend",
       "isAbuseReportReason",
       "isCopyRecipient",
@@ -2431,23 +2436,27 @@
       "isPurgeLevel",
       "isServerFilledName",
       "isSigningRecipient",
+      "isUuid",
       "isWitness",
       "kbaProviderFromEnv",
       "kmsEvidenceAlgorithmHash",
       "listDisclosures",
       "mayActNow",
+      "mintInboxHandle",
       "nameTokens",
       "nextReminderAt",
       "nonceValue",
       "normalizeAccessCode",
       "normalizeBrandColor",
       "normalizeDisplayName",
+      "openInboxHandle",
       "parseEstampRequest",
       "paymentReceiptText",
       "pendingWitnessesOf",
       "purgeStateFor",
       "qesSigningDigest",
       "qesView",
+      "readVerifiedEmailProof",
       "readableTextOn",
       "recipientKindOf",
       "reminderHistory",
@@ -4483,6 +4492,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-purge-inbox-api.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-w2-inbox-discovery.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8218,6 +8233,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/inbox-discovery.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/multi-signer.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -11023,6 +11044,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeList.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Inbox.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -13732,6 +13765,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-w2-inbox-discovery.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

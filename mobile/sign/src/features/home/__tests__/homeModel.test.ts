@@ -71,7 +71,8 @@ describe('count chips', () => {
       ['drafts', 'Drafts'],
     ]);
     expect(chips[0]?.count).toBe(countFor(rows, 'waiting'));
-    expect(chips[0]?.count).toBe(3);
+    // W2 R-8 — the received row I signed is not mine to track (I did not send it).
+    expect(chips[0]?.count).toBe(2);
     expect(chips[1]?.count).toBe(countFor(rows, 'drafts'));
     expect(chips[1]?.count).toBe(2);
   });

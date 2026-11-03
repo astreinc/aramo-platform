@@ -3,7 +3,9 @@
 // exposes the sender's envelope id (§4.6). Each visit asks the server for a fresh,
 // revalidated 30-minute session (POST /v1/sign/inbox/:id/sign on the workspace client),
 // opens it on the guest transport and discards it on exit. Refusals show the directive
-// §7 copy; nothing is retried with an ended token.
+// §7 copy; nothing is retried with an ended token. W2: the id may be an opaque
+// discovered-item handle; a 404 `inbox_item_not_found` reloads the inbox once, says
+// "This item changed. Showing your latest inbox." and offers no retry of that id.
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -15,6 +17,8 @@ import { Button } from '../../components/Button';
 import { useToast } from '../../components/Toast';
 import {
   findInboxItem,
+  hasBindingActions,
+  isInboxItemGone,
   signedCopyToken,
   startInboxSigning,
 } from '../../features/inbox/inboxSigning';
@@ -42,7 +46,7 @@ export function SigningScreen({ route, navigation }: Props) {
   const [start, setStart] = useState<
     | { kind: 'starting' }
     | { kind: 'ready'; session: GuestSigningSession }
-    | { kind: 'refused'; message: string }
+    | { kind: 'refused'; message: string; gone: boolean }
   >({ kind: 'starting' });
   const [attempt, setAttempt] = useState(0);
   useAppSwitcherProtection(true);
@@ -50,19 +54,23 @@ export function SigningScreen({ route, navigation }: Props) {
   useEffect(() => {
     let live = true;
     let opened: GuestSigningSession | null = null;
-    startInboxSigning(workspace, guest, inboxItemId).then(
+    startInboxSigning(workspace, guest, inboxItemId, () => {
+      void qc.invalidateQueries({ queryKey: signKeys.inbox });
+    }).then(
       (r) => {
         if (r.kind === 'session') {
           opened = r.session;
           if (live) setStart({ kind: 'ready', session: r.session });
           else r.session.discard();
-        } else if (live) setStart({ kind: 'refused', message: r.message });
+        } else if (live)
+          setStart({ kind: 'refused', message: r.message, gone: isInboxItemGone(r) });
       },
       () => {
         if (live)
           setStart({
             kind: 'refused',
             message: 'Couldn’t open this envelope. Check your connection and try again.',
+            gone: false,
           });
       },
     );
@@ -70,7 +78,7 @@ export function SigningScreen({ route, navigation }: Props) {
       live = false;
       opened?.discard();
     };
-  }, [workspace, guest, inboxItemId, attempt]);
+  }, [workspace, guest, inboxItemId, attempt, qc]);
 
   const done = () => {
     void qc.invalidateQueries({ queryKey: signKeys.inbox });
@@ -106,15 +114,17 @@ export function SigningScreen({ route, navigation }: Props) {
         >
           {start.message}
         </Text>
-        <Button
-          title="Try again"
-          variant="secondary"
-          disabled={!online}
-          onPress={() => {
-            setStart({ kind: 'starting' });
-            setAttempt((a) => a + 1);
-          }}
-        />
+        {start.gone ? null : (
+          <Button
+            title="Try again"
+            variant="secondary"
+            disabled={!online}
+            onPress={() => {
+              setStart({ kind: 'starting' });
+              setAttempt((a) => a + 1);
+            }}
+          />
+        )}
         <Button title="Done" onPress={done} />
       </View>
     );
@@ -128,7 +138,10 @@ export function SigningScreen({ route, navigation }: Props) {
       // name, and the signer types any other.
       signerName={ctx.data?.user.display_name ?? ''}
       signedIn
-      onViewCertificate={() => void viewCertificate()}
+      // The signed copy by item id needs a binding (W2: not for a discovered item).
+      onViewCertificate={
+        item && !hasBindingActions(item) ? undefined : () => void viewCertificate()
+      }
       onDone={done}
       onHeaderFinish={setHeaderFinish}
     />

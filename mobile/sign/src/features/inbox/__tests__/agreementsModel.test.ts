@@ -68,10 +68,14 @@ describe('mergeAgreements + filters', () => {
     expect(countFor(rows, 'needs_me')).toBe(1);
   });
 
-  it('Waiting = other open envelopes: sent SENT / IN_PROGRESS and received ones I finished', () => {
+  it('Waiting = other open envelopes: sent SENT / IN_PROGRESS; a received one I signed only if I sent it (W2 R-8)', () => {
     const r = filterAgreements(rows, 'waiting');
-    expect(r.map((x) => x.status).sort()).toEqual(['IN_PROGRESS', 'IN_PROGRESS', 'SENT']);
-    expect(r.some((x) => x.subject === 'I signed, others pending')).toBe(true);
+    expect(r.map((x) => x.status).sort()).toEqual(['IN_PROGRESS', 'SENT']);
+    // Not the sender: the signed received row stays in the received history (All).
+    expect(r.some((x) => x.subject === 'I signed, others pending')).toBe(false);
+    expect(
+      filterAgreements(rows, 'all').some((x) => x.subject === 'I signed, others pending'),
+    ).toBe(true);
     expect(r.some((x) => x.subject === 'Needs me')).toBe(false);
   });
 
@@ -209,7 +213,8 @@ describe('mergeAgreements + filters', () => {
 
   it('All = every row; Completed (done) covers the 4 end states of the 7', () => {
     expect(filterAgreements(rows, 'all')).toHaveLength(rows.length);
-    expect(FILTERS).toEqual(['all', 'needs_me', 'waiting', 'drafts', 'done']);
+    expect(FILTERS).toEqual(['all', 'needs_me', 'upcoming', 'waiting', 'drafts', 'done']);
+    expect(FILTER_LABEL.upcoming).toBe('Upcoming');
     expect(FILTER_LABEL.done).toBe('Completed');
     expect(FILTER_LABEL.waiting).toBe('Waiting for others');
   });

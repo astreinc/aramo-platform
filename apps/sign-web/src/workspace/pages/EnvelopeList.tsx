@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { errorMessage, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
+import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -14,6 +14,13 @@ const DELETABLE: ReadonlySet<EnvelopeStatus> = new Set(['COMPLETED', 'DECLINED',
 // Envelopes — tabs All / Drafts / Waiting for others / Completed / Declined /
 // Voided / Expired (prototype), with a subject/recipient filter, a date range and
 // a sort. Draft rows open the wizard; everything else opens the read-only detail.
+//
+// W2 (A3.5, Docusign semantics) — when the only step anyone can take now is the
+// signed-in sender's own signature, the server sets `awaiting_you`; the row then reads
+// "Waiting for you" (not "Waiting for others") and offers Sign. Sign opens the server's
+// `my_inbox_item_id` through inbox signing; without one, the W1 "Sign now" for a
+// recipient assigned to the sender, otherwise the "Waiting for me" inbox. The page
+// derives no policy.
 
 const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] = [
   { key: 'all', label: 'All', statuses: null },
@@ -27,6 +34,7 @@ const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] 
 
 export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
   const { ctx, base, toast, refreshCounts } = useWorkspace();
+  const navigate = useNavigate();
   const deleted = folder === 'deleted';
   const [params, setParams] = useSearchParams();
   const tab = !deleted && TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
@@ -83,6 +91,35 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
       setBusy(false);
     }
   }, [pending, toast, refreshCounts]);
+
+  // W2 — Sign from an envelope that is waiting for the sender. The server re-checks
+  // everything (assignment, verified email, turn) when the session is issued.
+  const signFromList = useCallback(
+    async (row: EnvelopeRow) => {
+      setBusy(true);
+      try {
+        if (row.my_inbox_item_id != null) {
+          window.location.assign((await inboxApi.sign(row.my_inbox_item_id)).signing_url);
+          return;
+        }
+        const d = await senderApi.detail(row.id);
+        const mine = d.recipients.find((r) => r.assigned_to_me === true && r.can_remind === true);
+        if (mine !== undefined) {
+          const s = await senderApi.selfSignSession(row.id, mine.id);
+          window.location.assign(`/s/${encodeURIComponent(s.token)}`);
+          return;
+        }
+        navigate(`${base}/inbox`);
+      } catch (e) {
+        toast(errorMessage(e));
+        // A changed or expired item: the inbox lists the latest ones.
+        if (isInboxItemNotFound(e)) navigate(`${base}/inbox`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [base, navigate, toast],
+  );
 
   const rows = useMemo(() => {
     const items = [...(data?.items ?? [])];
@@ -207,11 +244,23 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                     </td>
                     <td className="sg-muted">{e.recipients.map((r) => r.name).join(', ') || '—'}</td>
                     <td>
-                      <StatusPill status={e.status} /> <PurgeTag purge={e.purge} />
+                      {e.awaiting_you === true && !deleted ? (
+                        <span className="sg-pill" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }} data-testid={`awaiting-you-${e.id}`}>
+                          Waiting for you
+                        </span>
+                      ) : (
+                        <StatusPill status={e.status} />
+                      )}{' '}
+                      <PurgeTag purge={e.purge} />
                     </td>
                     <td className="sg-muted">{rel(e.last_activity_at)}</td>
                     <td className="sg-muted">{e.sent_at === null ? '—' : fmtDate(e.sent_at)}</td>
                     <td style={{ textAlign: 'right' }}>
+                      {e.awaiting_you === true && !deleted ? (
+                        <Btn variant="primary" size="sm" disabled={busy} onClick={() => void signFromList(e)} data-testid={`sign-${e.id}`}>
+                          Sign
+                        </Btn>
+                      ) : null}
                       {deleted && e.purge?.state !== 'EXECUTED' ? (
                         <LinkBtn onClick={() => setPending({ row: e, action: 'restore' })} data-testid={`restore-${e.id}`}>
                           Restore

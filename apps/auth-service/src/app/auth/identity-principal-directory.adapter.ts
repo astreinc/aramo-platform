@@ -108,6 +108,22 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       : { ok: false, reason: 'consumer_not_entitled' };
   }
 
+  // W2 C1 re-established proof (PO-approved 2026-11-03): a returning sign-in whose token carries a
+  // verified email equal to the account email records the link's provider when the link has none
+  // (pre-R2 legacy). Single resolved provider only; best-effort, never refuses a sign-in.
+  private async recordReturningLinkIdp(input: ResolveSessionInput, user: { id: string; email?: string | null }): Promise<void> {
+    try {
+      const idp = normalizeIdp(input.idp ?? null);
+      if (idp !== 'google' && idp !== 'microsoft') return;
+      if (typeof user.email !== 'string' || typeof input.verified_email !== 'string') return;
+      if (input.verified_email.trim().toLowerCase() !== user.email.trim().toLowerCase()) return;
+      const recorded = await this.idpPolicy.recordReturningLinkIdp({ user_id: user.id, provider: input.provider, provider_subject: input.provider_subject, idp });
+      if (recorded) this.logger.log(JSON.stringify({ event: 'auth.idp_recorded', stage: 'session', idp }));
+    } catch (err) {
+      this.logger.warn(`returning-link provider record failed (non-blocking): ${(err as Error).message}`);
+    }
+  }
+
   async resolveSession(input: ResolveSessionInput): Promise<ResolveSessionResult> {
     // Reconcile by federated sub; on miss, reconcile-by-verified-email.
     let user = await this.identity.resolveUser({
@@ -208,6 +224,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
         this.logger.warn(JSON.stringify({ event: 'auth.idp_policy', stage: 'session', outcome: decision.reason, idp: input.idp ?? null }));
         return { kind: 'denied', reason: decision.reason };
       }
+      await this.recordReturningLinkIdp(input, user);
     }
 
     // IC-2 PR-4 (F-5) — host binding: AFTER tenant selection, BEFORE the status

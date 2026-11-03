@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { logout, useToast } from '@aramo/fe-foundation';
 
-import { errorMessage, inboxApi, tokenFromSigningLink, type InboxItem } from '../api';
+import { INBOX_ITEM_CHANGED, errorMessage, inboxApi, isInboxItemNotFound, isUpcoming, tokenFromSigningLink, type InboxItem } from '../api';
 import { Btn, TextIn } from '../ui';
 
 // Sign Unified Product S-7 — "Waiting for me": documents other organizations sent
@@ -11,6 +11,11 @@ import { Btn, TextIn } from '../ui';
 // email while signed in, and the link's recipient email is theirs. Signing opens
 // the same secure signing page as the email; nothing of the sender organization
 // beyond its name is shown.
+//
+// W2 (Inbox Discovery, A3.1-A3.4) — the server also lists envelopes sent to the
+// user's verified account email ('discovered' items). They render exactly like added
+// ones; their id is an opaque short-lived handle the page passes back unchanged. An
+// item whose turn is later ('upcoming') shows under "Upcoming", never under To sign.
 
 function when(iso: string | null): string {
   return iso === null ? '—' : new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -56,6 +61,12 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
     try {
       window.location.assign((await inboxApi.sign(i.id)).signing_url);
     } catch (e) {
+      // W2 — a changed or expired discovered item: reload the inbox once (fresh handles).
+      if (isInboxItemNotFound(e)) {
+        toast(INBOX_ITEM_CHANGED);
+        load();
+        return;
+      }
       toast(errorMessage(e));
     }
   };
@@ -82,7 +93,9 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
         <div className="sg-muted">{i.from ?? 'An Aramo Sign sender'}</div>
       </td>
       <td className="sg-muted">{when(i.sent_at)}</td>
-      <td className="sg-muted">{i.can_sign ? `Sign by ${when(i.expires_at)}` : i.can_download ? `Completed ${when(i.completed_at)}` : i.envelope_status.toLowerCase()}</td>
+      <td className="sg-muted">
+        {i.can_sign ? `Sign by ${when(i.expires_at)}` : isUpcoming(i) ? 'Not your turn yet' : i.can_download ? `Completed ${when(i.completed_at)}` : i.envelope_status.toLowerCase()}
+      </td>
       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
         {i.can_sign ? (
           <Btn variant="primary" size="sm" onClick={() => void sign(i)}>
@@ -94,9 +107,12 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
             Signed copy
           </Btn>
         ) : null}{' '}
-        <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Remove ${i.subject} from your inbox`}>
-          Remove
-        </Btn>
+        {/* Remove deletes an added (bound) item; a discovered item has nothing to remove. */}
+        {i.source === 'discovered' ? null : (
+          <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Remove ${i.subject} from your inbox`}>
+            Remove
+          </Btn>
+        )}
       </td>
     </tr>
   );
@@ -146,7 +162,8 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
       {data === null && error === null ? <div className="sg-muted">Loading…</div> : null}
       {data !== null ? (
         <>
-          {section('To sign', data.waiting, 'Nothing is waiting for your signature.', 'inbox-waiting')}
+          {section('To sign', data.waiting.filter((i) => !isUpcoming(i)), 'Nothing is waiting for your signature.', 'inbox-waiting')}
+          {data.waiting.some(isUpcoming) ? section('Upcoming', data.waiting.filter(isUpcoming), '', 'inbox-upcoming') : null}
           {section('Completed', data.completed, 'No completed documents yet.', 'inbox-completed')}
           {data.other.length > 0 ? section('Other', data.other, '', 'inbox-other') : null}
         </>
