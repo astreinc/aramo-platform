@@ -1028,9 +1028,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REDIS_URL: process.env['REDIS_URL'],
         SIGN_PUSH_TOKEN_KEY: process.env['SIGN_PUSH_TOKEN_KEY'],
         [INBOX_HANDLE_KEY_ENV]: process.env[INBOX_HANDLE_KEY_ENV],
+        ARAMO_SIGN_BASE_URL: process.env['ARAMO_SIGN_BASE_URL'],
       };
       // Aramo Sign W2 — inbox discovery is on (a fixed test key).
       process.env[INBOX_HANDLE_KEY_ENV] = W2_HANDLE_KEY.toString('base64');
+      // Inbox signing mints a signing link (POST /v1/sign/inbox/{id}/sign); the W2 interactions are the
+      // first to exercise it, so the harness sets the Sign base URL the route requires.
+      process.env['ARAMO_SIGN_BASE_URL'] = 'https://sign.aramo.ai';
       // Aramo Sign Mobile — push tokens are stored encrypted (a fixed test key).
       process.env['SIGN_PUSH_TOKEN_KEY'] = Buffer.alloc(32, 7).toString('base64');
       process.env['DATABASE_URL'] = url;
