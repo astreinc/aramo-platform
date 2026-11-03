@@ -1,4 +1,5 @@
-// Auth-gated root stack (handoff §2). Signed out: Sign in + guest signing. Signed in:
+// Auth-gated root stack (handoff §2). Signed out: Sign in + native Personal signup
+// (M-A11) + guest signing. Signed in:
 // tabs (Home · Agreements) + the side-menu screens (Notifications, Account, Templates) +
 // detail/signing/viewer/send. Guest signing is reachable in both states.
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,6 +9,7 @@ import { ActivityIndicator, AppState, Modal, View } from 'react-native';
 import { useServices, useSession } from '../app/ServicesContext';
 import { biometricCapability, biometricUnlockPref, shouldRelock } from '../auth/biometric';
 import { LegalAcceptanceGate } from '../features/account/LegalAcceptanceGate';
+import { SignupScreen } from '../features/signup/SignupScreen';
 import { setPendingTarget } from '../links/pendingTarget';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { DocumentViewerScreen } from '../screens/documents/DocumentViewerScreen';
@@ -152,7 +154,14 @@ export function RootNavigator() {
         }}
       >
         {snap.status === 'signedOut' ? (
-          <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
+          <>
+            <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="Signup"
+              component={SignupScreen}
+              options={{ title: 'Create a free account', headerBackTitle: 'Sign in' }}
+            />
+          </>
         ) : lock === 'locked' ? (
           <Stack.Screen name="Unlock" options={{ headerShown: false }}>
             {() => <UnlockScreen onUnlocked={unlock} />}

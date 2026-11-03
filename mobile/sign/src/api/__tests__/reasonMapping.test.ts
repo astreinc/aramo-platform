@@ -102,8 +102,9 @@ describe('refusal -> typed error (details.reason)', () => {
         code:
           reason === 'user_not_provisioned' ? 'INSUFFICIENT_PERMISSIONS' : 'TENANT_ACCESS_DENIED',
       });
+    // M-A11 §1: the sign-in screen offers "Create a free account" with this message.
     expect(denial('user_not_provisioned')).toBe(
-      'There’s no Aramo account for this sign-in. Create one at sign.aramo.ai, or try the other sign-in option.',
+      'There’s no Aramo account for this Google account yet.',
     );
     for (const r of ['no_active_tenant', 'membership_inactive', 'sign_access_removed']) {
       expect(denial(r)).toBe(

@@ -408,6 +408,32 @@ export {
   robotCheckAdapterFromEnv,
   type RobotCheckPort,
 } from './lib/personal/robot-check.port.js';
+// Aramo-Sign-Mobile-Amendment-M-A11 §2.1 — the native (Play Integrity Standard) check.
+export {
+  NATIVE_INTEGRITY_CHECK,
+  PlayIntegrityCheck,
+  GooglePlayIntegrityDecoder,
+  UnconfiguredNativeIntegrityCheck,
+  nativeIntegrityCheckFromEnv,
+  nativeSignupCanonicalRequest,
+  nativeSignupRequestHash,
+  evaluatePlayIntegrityPayload,
+  certificateDigestHex,
+  normalizeCertificateHex,
+  parseServiceAccount,
+  SIGN_PLAY_INTEGRITY_DEFAULT_PACKAGE,
+  SIGN_PLAY_INTEGRITY_DEFAULT_MAX_AGE_SECONDS,
+  SIGN_PLAY_INTEGRITY_FUTURE_SKEW_MS,
+  type NativeIntegrityCheck,
+  type NativeIntegrityResult,
+  type NativeIntegrityReason,
+  type NativeIntegrityVerdict,
+  type NativeSignupCanonicalFields,
+  type PlayIntegrityConfig,
+  type PlayIntegrityDecoder,
+  type PlayIntegrityDecodeResult,
+  type GoogleServiceAccount,
+} from './lib/personal/native-integrity.port.js';
 export {
   PersonalRiskService,
   TENANT_RISK_STATES,

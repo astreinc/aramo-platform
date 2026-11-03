@@ -2,6 +2,7 @@
 // Screens reach them through useServices() (app/ServicesContext.tsx).
 import type { QueryClient } from '@tanstack/react-query';
 import type { Persister } from '@tanstack/react-query-persist-client';
+import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
 
@@ -16,6 +17,7 @@ import { SessionManager } from '../auth/session';
 import { signInWithProvider } from '../auth/signIn';
 import { createTokenStore } from '../auth/tokenStore';
 import { env, NATIVE_SIGNOUT_REDIRECT_URI, type AppEnv } from '../config/env';
+import { createSignupApi, type SignupApi } from '../features/signup/signupApi';
 import { clearGuestTokens } from '../links/guestTokenVault';
 import { unregisterPush } from '../notifications/pushRegistration';
 import { wireDocumentTempCleanup } from '../security/documentTempFiles';
@@ -39,6 +41,8 @@ export interface AppServices {
   readonly workspace: WorkspaceClient;
   /** Capability-token transport for signing; never carries workspace credentials. */
   readonly guest: GuestSigningClient;
+  /** Session-less native Personal signup (M-A11); never carries credentials. */
+  readonly signup: SignupApi;
   readonly store: EncryptedStore;
   readonly drafts: DraftStore;
   readonly queryClient: QueryClient;
@@ -52,6 +56,7 @@ export function createAppServices(): AppServices {
   const workspaceFetch: FetchFn = (url, init) => fetch(url, init);
   const guestFetch: FetchFn = (url, init) => fetch(url, init);
   const authFetch: FetchFn = (url, init) => fetch(url, init);
+  const signupFetch: FetchFn = (url, init) => fetch(url, init);
 
   const kv = secureKeyValue;
   const nativeAuth = createNativeAuthApi({ baseUrl: env.apiBaseUrl, fetch: authFetch });
@@ -62,6 +67,11 @@ export function createAppServices(): AppServices {
     session,
   });
   const guest = createGuestSigningClient({ baseUrl: env.apiBaseUrl, fetch: guestFetch });
+  const signup = createSignupApi({
+    baseUrl: env.apiBaseUrl,
+    fetch: signupFetch,
+    userAgent: `AramoSign/${Application.nativeApplicationVersion ?? '0.0.0'} (${Platform.OS} ${String(Platform.Version)})`,
+  });
   const store = encryptedStore();
   const drafts = createDraftStore(store);
   const queryClient = createQueryClient();
@@ -90,6 +100,7 @@ export function createAppServices(): AppServices {
     nativeAuth,
     workspace,
     guest,
+    signup,
     store,
     drafts,
     queryClient,

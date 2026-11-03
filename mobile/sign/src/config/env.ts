@@ -6,6 +6,9 @@
 //   EXPO_PUBLIC_SIGN_COGNITO_DOMAIN    Cognito hosted-UI domain (host only), no default
 //   EXPO_PUBLIC_SIGN_NATIVE_CLIENT_ID  the aramo-sign-native app client id, no default
 //   EXPO_PUBLIC_SIGN_ANDROID_REDIRECT  'https' (default) | 'custom' (App Links unverified)
+//   EXPO_PUBLIC_SIGN_PLAY_CLOUD_PROJECT_NUMBER  the Google Cloud project number linked to the
+//                                      app for Play Integrity (M-A11 §2.1), no default; absent
+//                                      → native Personal signup is unavailable in that build
 //
 // Release builds refuse any non-https API origin; only __DEV__ builds may point at a
 // local http origin (e.g. an emulator reaching the local stack).
@@ -23,6 +26,8 @@ export interface AppEnv {
   readonly cognitoDomain: string | null;
   readonly nativeClientId: string | null;
   readonly androidRedirect: 'https' | 'custom';
+  /** Play Integrity cloud project number (digits only), or null: signup unavailable (M-A11). */
+  readonly signPlayCloudProjectNumber: string | null;
   readonly isDev: boolean;
 }
 
@@ -31,6 +36,7 @@ export interface RawEnv {
   readonly EXPO_PUBLIC_SIGN_COGNITO_DOMAIN?: string | undefined;
   readonly EXPO_PUBLIC_SIGN_NATIVE_CLIENT_ID?: string | undefined;
   readonly EXPO_PUBLIC_SIGN_ANDROID_REDIRECT?: string | undefined;
+  readonly EXPO_PUBLIC_SIGN_PLAY_CLOUD_PROJECT_NUMBER?: string | undefined;
 }
 
 const HOST_ONLY = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
@@ -46,11 +52,13 @@ function apiBaseFrom(raw: string | undefined, isDev: boolean): string {
 export function resolveEnv(raw: RawEnv, isDev: boolean): AppEnv {
   const domain = raw.EXPO_PUBLIC_SIGN_COGNITO_DOMAIN?.trim() ?? '';
   const clientId = raw.EXPO_PUBLIC_SIGN_NATIVE_CLIENT_ID?.trim() ?? '';
+  const cloudProject = raw.EXPO_PUBLIC_SIGN_PLAY_CLOUD_PROJECT_NUMBER?.trim() ?? '';
   return {
     apiBaseUrl: apiBaseFrom(raw.EXPO_PUBLIC_ARAMO_API_BASE_URL, isDev),
     cognitoDomain: HOST_ONLY.test(domain) ? domain.toLowerCase() : null,
     nativeClientId: /^[A-Za-z0-9]{1,128}$/.test(clientId) ? clientId : null,
     androidRedirect: raw.EXPO_PUBLIC_SIGN_ANDROID_REDIRECT === 'custom' ? 'custom' : 'https',
+    signPlayCloudProjectNumber: /^\d{1,20}$/.test(cloudProject) ? cloudProject : null,
     isDev,
   };
 }
@@ -62,6 +70,8 @@ export const env: AppEnv = resolveEnv(
     EXPO_PUBLIC_SIGN_COGNITO_DOMAIN: process.env.EXPO_PUBLIC_SIGN_COGNITO_DOMAIN,
     EXPO_PUBLIC_SIGN_NATIVE_CLIENT_ID: process.env.EXPO_PUBLIC_SIGN_NATIVE_CLIENT_ID,
     EXPO_PUBLIC_SIGN_ANDROID_REDIRECT: process.env.EXPO_PUBLIC_SIGN_ANDROID_REDIRECT,
+    EXPO_PUBLIC_SIGN_PLAY_CLOUD_PROJECT_NUMBER:
+      process.env.EXPO_PUBLIC_SIGN_PLAY_CLOUD_PROJECT_NUMBER,
   },
   typeof __DEV__ !== 'undefined' ? __DEV__ : false,
 );

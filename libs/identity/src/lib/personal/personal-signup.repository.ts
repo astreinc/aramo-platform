@@ -371,7 +371,8 @@ export class PersonalSignupRepository {
    * (from the signup decision; phone assurance only if the phone code was
    * verified), the invite consumed, and the audit event.
    */
-  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean }): Promise<void> {
+  // M-A11 §2 — `client: 'android'` records that the signup (and its acceptances) came from the app.
+  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean; client?: 'android' }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const row = await tx.personalSignupRequest.findUnique({ where: { id: args.id } });
       if (row === null || row.status !== 'PROVISIONING') throw new Error(`personal signup ${args.id} is not provisioning`);
@@ -432,6 +433,7 @@ export class PersonalSignupRepository {
           geo: row.geo_evidence ?? null,
           invite: row.invite_id !== null,
           ...(args.resumed_from === undefined ? {} : { resumed_from_signup_id: args.resumed_from }),
+          ...(args.client === undefined ? {} : { client: args.client }),
         },
       });
     });

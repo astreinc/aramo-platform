@@ -1,9 +1,15 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req, UseFilters } from '@nestjs/common';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { personalSignupMode } from '@aramo/identity';
 import type { Request } from 'express';
 
-import { PersonalSignupService, type PersonalCompleteResult, type PersonalNextStep, type PersonalTermsDocument } from './personal-signup.service.js';
+import {
+  PersonalSignupService,
+  type PersonalCompleteResult,
+  type PersonalNextStep,
+  type PersonalTermsDocument,
+  type PersonalTermsText,
+} from './personal-signup.service.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) §3 / §10 — the PUBLIC
 // (session-less) Personal (Free) signup, reached on sign.aramo.ai through nginx
@@ -24,6 +30,16 @@ export class PersonalSignupController {
   terms(@RequestId() requestId: string): { documents: PersonalTermsDocument[] | null } {
     this.gate(requestId);
     return { documents: this.signup.currentTerms() };
+  }
+
+  // Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — the exact text of an effective Personal
+  // document (native terms screen); 404 for anything else.
+  @Get('terms/:key/:version')
+  termsText(@RequestId() requestId: string, @Param('key') key: string, @Param('version') version: string): PersonalTermsText {
+    this.gate(requestId);
+    const doc = this.signup.termsText(key, version);
+    if (doc === null) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId, details: { reason: 'legal_document_not_found' } });
+    return doc;
   }
 
   @Post('start')
@@ -64,8 +80,15 @@ export class PersonalSignupController {
 
   @Post('complete')
   @HttpCode(HttpStatus.OK)
-  complete(@Req() req: Request, @RequestId() requestId: string, @Body() body: { signup_id?: unknown; accept?: unknown }): Promise<PersonalCompleteResult> {
+  complete(@Req() req: Request, @RequestId() requestId: string, @Body() body: { signup_id?: unknown; accept?: unknown; client?: unknown }): Promise<PersonalCompleteResult> {
     this.gate(requestId);
-    return this.signup.complete({ signup_id: body?.signup_id, accept: body?.accept, ip: req.ip ?? 'unknown', request_id: requestId });
+    return this.signup.complete({
+      signup_id: body?.signup_id,
+      accept: body?.accept,
+      client: body?.client,
+      ip: req.ip ?? 'unknown',
+      user_agent: req.get('user-agent') ?? null,
+      request_id: requestId,
+    });
   }
 }

@@ -14,6 +14,15 @@ import { SignJWT, exportSPKI, generateKeyPair } from 'jose';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import {
+  NATIVE_INTEGRITY_CHECK,
+  PersonalSignupRepository,
+  canonicalEmailForDuplicates,
+  hashPersonalOtp,
+  unknownGeoEvidence,
+  type NativeIntegrityCheck,
+  type NativeIntegrityResult,
+} from '@aramo/identity';
 import { AppModule } from '@aramo/platform-admin';
 import {
   BILLING_PROVIDER_ADJUSTMENT_PORT,
@@ -77,10 +86,24 @@ import { seedUsageTenant } from '../../../libs/subscription/src/tests/support/cc
 // its wire translation are proved separately (libs/subscription stripe-wire.spec.ts C3-W-4/5 and
 // ccp-c3-billing-read.spec.ts). Every other port is the real one.
 //
+// Aramo-Sign-Mobile-Amendment-M-A11 §5 — a SECOND consumer, `sign-mobile` (the Android app's
+// native Personal signup: terms, terms text, start with client android, verify-email,
+// complete with key/version/sha256 acceptances), verified against the same booted AppModule
+// (pact/pacts/sign-mobile-platform-admin.json). The native integrity verifier is the ONLY
+// replaced port for it: PactNativeIntegrity below, a test double bound in this harness only
+// (production binds the Google decoder; libs/identity native-integrity.spec.ts asserts it).
+// Signup mode is `open` only while that pact is verified. Provider states seed signup rows
+// through PersonalSignupRepository (the production writer) and re-key them to the consumer's
+// fixed signup_id; each run uses a fresh personal address.
+//
 // Gated on ARAMO_RUN_PACT_PROVIDER=1 (same as verify.ts / verify-api.ts / verify-sign.ts / verify-ti.ts).
 
 const ROOT = resolve(__dirname, '../../..');
 const PACT_FILE = resolve(ROOT, 'pact/pacts/platform-web-platform-admin.json');
+// M-A11 — the sign-mobile consumer's pact with platform-admin.
+const SIGN_MOBILE_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-mobile-platform-admin.json');
+// MUST match pact/consumers/sign-mobile/src/personal-signup.consumer.test.ts.
+const SIGNUP_CODE = '246810';
 
 // MUST match pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts.
 const OP = {
@@ -176,6 +199,19 @@ function pactCoverage(): Map<string, { allowed: number; superAdmin: number; tena
   return out;
 }
 
+/**
+ * M-A11 — the native integrity verifier's test double (this harness only). It never decodes
+ * anything: a non-empty token answers the verdict the provider state set.
+ */
+class PactNativeIntegrity implements NativeIntegrityCheck {
+  verdict: NativeIntegrityResult['verdict'] = 'pass';
+  async verify(input: { token: string | null }): Promise<NativeIntegrityResult> {
+    if (input.token === null || input.token === '') return { verdict: 'fail', reason: 'token_missing' };
+    if (this.verdict === 'pass') return { verdict: 'pass', reason: 'ok' };
+    return this.verdict === 'fail' ? { verdict: 'fail', reason: 'app_not_recognized' } : { verdict: 'unavailable', reason: 'decode_unavailable' };
+  }
+}
+
 /** CCP-C3 — the in-memory read port (READ methods only; the provider states load it). */
 class PactBillingReader implements BillingProviderReadPort {
   readonly provider = 'STRIPE' as const;
@@ -248,6 +284,51 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let usage: UsageRollupService;
     const billingReader = new PactBillingReader();
     const adjustmentReader = new PactAdjustmentReader();
+    const nativeIntegrity = new PactNativeIntegrity();
+
+    /**
+     * M-A11 — one Personal signup at `stage`, seeded through PersonalSignupRepository and
+     * re-keyed to `signup_id` (any earlier row with that id is replaced). A fresh personal
+     * address each time, so `complete` provisions a new account on every run.
+     */
+    async function personalSignup(params: unknown, stage: 'email_code' | 'phone_code' | 'email_verified'): Promise<{ signup_id: string }> {
+      const given = (params as { signup_id?: unknown } | undefined)?.signup_id;
+      const signup_id = typeof given === 'string' ? given : randomUUID();
+      const repo = module.get(PersonalSignupRepository, { strict: false });
+      const now = new Date();
+      const email = `pact.mobile.${randomUUID().slice(0, 8)}@gmail.com`;
+      await db.query(`DELETE FROM identity."PersonalSignupRequest" WHERE id = $1`, [signup_id]);
+      const created = await repo.create({
+        email,
+        canonical_email: canonicalEmailForDuplicates(email),
+        display_name: 'Pat Mobile',
+        phone_e164: '+14155550123',
+        declared_residence: 'US',
+        ip: null,
+        ip_country: null,
+        phone_region: 'US',
+        network_kind: 'unknown',
+        geo_evidence: unknownGeoEvidence(now),
+        risk_points: 0,
+        risk_signals: [],
+        decision: stage === 'phone_code' ? 'step_up' : 'allow',
+        invite_id: null,
+        status: 'PENDING',
+        now,
+      });
+      await db.query(`UPDATE identity."PersonalSignupRequest" SET id = $1 WHERE id = $2`, [signup_id, created.id]);
+      const expires = new Date(now.getTime() + 10 * 60 * 1000);
+      if (stage === 'email_code') {
+        await repo.setEmailOtp(signup_id, hashPersonalOtp(signup_id, 'email', SIGNUP_CODE), expires, now);
+      } else {
+        // complete provisions the owner with tenant_owner (personal-signup.service.ts); the
+        // role catalog is otherwise unseeded in this harness, as in personal-signup.integration.spec.
+        await db.query(`INSERT INTO identity."Role" (id, key, updated_at) VALUES ($1, 'tenant_owner', now()) ON CONFLICT DO NOTHING`, [randomUUID()]);
+        if (!(await repo.markEmailVerified(signup_id, now))) throw new Error(`pact state: signup ${signup_id} not verified`);
+        if (stage === 'phone_code') await repo.setPhoneOtp(signup_id, hashPersonalOtp(signup_id, 'phone', SIGNUP_CODE), expires, now);
+      }
+      return { signup_id };
+    }
 
     async function signToken(sub: string, consumer_type: 'platform' | 'recruiter', tenant_id: string, key: SigningKey): Promise<string> {
       const now = Math.floor(Date.now() / 1000);
@@ -664,6 +745,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // CCP-C4-R — the refund resolution's authoritative read (no execution).
         .overrideProvider(BILLING_PROVIDER_ADJUSTMENT_PORT)
         .useValue(adjustmentReader)
+        // M-A11 — the native integrity verifier's test double (sign-mobile signup interactions only).
+        .overrideProvider(NATIVE_INTEGRITY_CHECK)
+        .useValue(nativeIntegrity)
         .compile();
       app = module.createNestApplication<NestExpressApplication>({ logger: ['error', 'warn'] });
       // Mirror apps/platform-admin/src/main.ts: cookie-parser, then the ValidationPipe.
@@ -1145,6 +1229,46 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         },
       });
       await verifier.verifyProvider();
+    }, 600_000);
+
+    // Aramo-Sign-Mobile-Amendment-M-A11 §5 — the sign-mobile consumer (native Personal signup).
+    it('verifies the sign-mobile → platform-admin pact (native Personal signup)', async () => {
+      const saved = { mode: process.env['SIGN_PERSONAL_SIGNUP_MODE'], risk: process.env['SIGN_PERSONAL_RISK_CONFIG'] };
+      process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'open';
+      // Every interaction comes from the one loopback IP: lift the per-IP thresholds (unit-covered).
+      process.env['SIGN_PERSONAL_RISK_CONFIG'] = JSON.stringify({ ip_signups_points_over: 1000, ip_signups_refuse_over: 1000 });
+      try {
+        const verifier = new Verifier({
+          provider: 'platform-admin',
+          providerBaseUrl: baseUrl,
+          pactUrls: [SIGN_MOBILE_PACT_FILE],
+          logLevel: 'warn',
+          stateHandlers: {
+            'personal signup is open': async () => {
+              nativeIntegrity.verdict = 'pass';
+              return undefined;
+            },
+            'the native integrity check fails': async () => {
+              nativeIntegrity.verdict = 'fail';
+              return undefined;
+            },
+            'the native integrity check is unavailable': async () => {
+              nativeIntegrity.verdict = 'unavailable';
+              return undefined;
+            },
+            'a personal signup is awaiting its email code': async (params?: unknown) => personalSignup(params, 'email_code'),
+            'a personal signup is awaiting its phone code': async (params?: unknown) => personalSignup(params, 'phone_code'),
+            'a personal signup has a verified email': async (params?: unknown) => personalSignup(params, 'email_verified'),
+          },
+        });
+        await verifier.verifyProvider();
+      } finally {
+        nativeIntegrity.verdict = 'pass';
+        for (const [k, v] of [['SIGN_PERSONAL_SIGNUP_MODE', saved.mode], ['SIGN_PERSONAL_RISK_CONFIG', saved.risk]] as const) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
     }, 600_000);
   },
 );

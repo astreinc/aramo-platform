@@ -8,6 +8,7 @@ import {
   IdentityProviderPolicyService,
   IdentityRepository,
   IdentityService,
+  NATIVE_INTEGRITY_CHECK,
   PERSONAL_ALLOWED_COUNTRIES,
   PERSONAL_OTP_MAX_ATTEMPTS,
   PERSONAL_OTP_TTL_MS,
@@ -35,7 +36,9 @@ import {
   ratePersonalSignup,
   safeGeoLookup,
   geoEvidenceOf,
+  nativeSignupRequestHash,
   type GeoIpPort,
+  type NativeIntegrityCheck,
   type PersonalRiskDecision,
   type PersonalSignupRow,
   type RobotCheckPort,
@@ -48,9 +51,11 @@ import {
   LegalAcceptanceService,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
   effectivePersonalLegalDocument,
+  legalEffectiveFrom,
   type LegalDocumentVersion,
 } from '@aramo/subscription';
 
+import { LegalTextSource } from './legal-text.source.js';
 import { SignupBudget, federatedSignInLinks } from './sign-signup.service.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) §3 — the PUBLIC Personal
@@ -106,6 +111,28 @@ export interface PersonalTermsDocument {
   version: string;
   url: string;
   sha256: string;
+}
+
+/** M-A11 §2.2 — the exact text of one effective Personal document (native terms screen). */
+export interface PersonalTermsText {
+  key: string;
+  version: string;
+  sha256: string;
+  effective_at: string;
+  text: string;
+}
+
+/**
+ * M-A11 — the signup client. Absent or `web`: the browser (Turnstile, `{key, version}`
+ * acceptances), exactly as before. `android`: the native app (Play Integrity,
+ * `{key, version, sha256}` acceptances). Anything else is refused.
+ */
+export type PersonalSignupClient = 'web' | 'android';
+
+function signupClient(v: unknown, requestId: string): PersonalSignupClient {
+  if (v === undefined || v === 'web') return 'web';
+  if (v === 'android') return 'android';
+  throw new AramoError('VALIDATION_ERROR', 'Unsupported client', 400, { requestId, details: { field: 'client' } });
 }
 
 function cleanText(v: unknown, max: number): string | null {
@@ -184,6 +211,8 @@ export class PersonalSignupService {
     @Inject(GEO_IP_PORT) private readonly geo: GeoIpPort,
     @Inject(SMS_VERIFICATION_PORT) private readonly sms: SmsVerificationPort,
     @Inject(ROBOT_CHECK_PORT) private readonly robot: RobotCheckPort,
+    @Inject(NATIVE_INTEGRITY_CHECK) private readonly integrity: NativeIntegrityCheck,
+    private readonly texts: LegalTextSource,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
@@ -208,6 +237,25 @@ export class PersonalSignupService {
     return docs;
   }
 
+  /**
+   * M-A11 §2.2 — the text of a document that is CURRENTLY effective for Personal
+   * signup (one of currentTerms()), with the registry's sha256; the served bytes hash
+   * to it. Anything else (unknown, superseded, upcoming, draft, a text that does not
+   * match its hash) is null → 404.
+   */
+  termsText(key: unknown, version: unknown, now: Date = new Date()): PersonalTermsText | null {
+    if (typeof key !== 'string' || typeof version !== 'string') return null;
+    for (const k of PERSONAL_LEGAL_KEYS) {
+      const doc = effectivePersonalLegalDocument(k, this.legal, now);
+      if (doc === null || doc.url === null || doc.key !== key || doc.version !== version) continue;
+      const at = legalEffectiveFrom(doc);
+      const text = at === null ? null : this.texts.text(doc);
+      if (text === null || at === null) return null;
+      return { key: doc.key, version: doc.version, sha256: doc.sha256, effective_at: new Date(at).toISOString(), text };
+    }
+    return null;
+  }
+
   private approvedDocument(key: string, version: string): LegalDocumentVersion | null {
     return this.legal.find((d) => (d.key as string) === key && d.version === version && d.status === 'APPROVED' && d.url !== null) ?? null;
   }
@@ -215,6 +263,8 @@ export class PersonalSignupService {
   // ── start (§3.1–§3.3, §6.1, §6.2, §6.6) ────────────────────────────────────
 
   async start(input: {
+    client?: unknown;
+    integrity_token?: unknown;
     name?: unknown;
     email?: unknown;
     phone?: unknown;
@@ -229,6 +279,25 @@ export class PersonalSignupService {
   }): Promise<{ signup_id: string }> {
     const now = input.now ?? new Date();
     const rid = input.request_id;
+    // M-A11 §2.1 — a native start is bound to its integrity token by the hash of the
+    // body EXACTLY as received (before any trim or normalization below).
+    const client = signupClient(input.client, rid);
+    let requestHash: string | null = null;
+    if (client === 'android') {
+      if (typeof input.elapsed_ms !== 'number' || !Number.isSafeInteger(input.elapsed_ms)) {
+        throw new AramoError('VALIDATION_ERROR', 'elapsed_ms must be an integer', 400, { requestId: rid, details: { field: 'elapsed_ms' } });
+      }
+      requestHash = nativeSignupRequestHash({
+        client: input.client,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        residence: input.residence,
+        invite_code: input.invite_code,
+        hp: input.hp,
+        elapsed_ms: input.elapsed_ms,
+      });
+    }
     const name = cleanText(input.name, NAME_MAX);
     const typed = cleanText(input.email, 254);
     if (name === null || name.length < 2 || typed === null || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed)) {
@@ -273,8 +342,12 @@ export class PersonalSignupService {
     }
 
     // §6.1 — the robot check, server-side; unavailable is refused (fail closed).
-    const robotToken = typeof input.robot_token === 'string' ? input.robot_token : null;
-    const robot = await this.robot.verify(robotToken, input.ip);
+    // M-A11 §2 — from the Android app the native integrity check takes its place with
+    // the same verdicts (pass; fail → robot_check_failed → refused; unavailable → refused).
+    const robot =
+      requestHash !== null
+        ? await this.integrity.verify({ token: typeof input.integrity_token === 'string' ? input.integrity_token : null, request_hash: requestHash, now })
+        : await this.robot.verify(typeof input.robot_token === 'string' ? input.robot_token : null, input.ip);
     if (robot.verdict === 'unavailable') {
       this.log.warn('personal signup refused: robot check unavailable (fail closed)');
       throw neutralRefusal(rid);
@@ -434,9 +507,19 @@ export class PersonalSignupService {
 
   // ── complete (§3.4–§3.6, §4) ───────────────────────────────────────────────
 
-  async complete(input: { signup_id?: unknown; accept?: unknown; ip: string; request_id: string; now?: Date }): Promise<PersonalCompleteResult> {
+  async complete(input: {
+    signup_id?: unknown;
+    accept?: unknown;
+    client?: unknown;
+    ip: string;
+    user_agent?: string | null;
+    request_id: string;
+    now?: Date;
+  }): Promise<PersonalCompleteResult> {
     const now = input.now ?? new Date();
     const rid = input.request_id;
+    // M-A11 §2.2 — the client is passed again at complete (it is not stored at start).
+    const client = signupClient(input.client, rid);
     const sign_in = { google: federatedSignInLinks().google };
     const row = typeof input.signup_id === 'string' ? await this.requests.findById(input.signup_id).catch(() => null) : null;
     if (row === null) throw this.notFound(rid);
@@ -453,12 +536,33 @@ export class PersonalSignupService {
       throw refusal(rid, 'legal_documents_not_approved', 'Personal accounts are not open yet.');
     }
     const accepted = Array.isArray(input.accept) ? (input.accept as unknown[]) : [];
+    const entry = (a: unknown): { key?: unknown; version?: unknown; sha256?: unknown } | null =>
+      typeof a === 'object' && a !== null ? (a as { key?: unknown; version?: unknown; sha256?: unknown }) : null;
     const acceptedDocs: LegalDocumentVersion[] = [];
     for (const t of terms) {
-      const hit = accepted.some((a) => typeof a === 'object' && a !== null && (a as { key?: unknown }).key === t.key && (a as { version?: unknown }).version === t.version);
+      // An entry that carries a sha256 must name the registry's hash (stricter only; the web
+      // sends none). From the app every entry must carry it (M-A11 §2.2).
+      const hit = accepted.some((a) => {
+        const e = entry(a);
+        if (e === null || e.key !== t.key || e.version !== t.version) return false;
+        if (client === 'android' || e.sha256 !== undefined) return e.sha256 === t.sha256;
+        return true;
+      });
       const doc = this.approvedDocument(t.key, t.version);
-      if (!hit || doc === null) throw refusal(rid, 'terms_not_accepted', 'Accept the terms to continue', { key: t.key, version: t.version });
+      if (!hit || doc === null || doc.sha256 !== t.sha256) throw refusal(rid, 'terms_not_accepted', 'Accept the terms to continue', { key: t.key, version: t.version });
       acceptedDocs.push(doc);
+    }
+    // M-A11 §2.2 — from the app, exactly one entry per effective document: an extra, duplicate
+    // or stale entry (a document that changed after the app fetched it) is refused.
+    if (client === 'android') {
+      const exact =
+        accepted.length === terms.length &&
+        accepted.every((a) => {
+          const e = entry(a);
+          return e !== null && terms.some((t) => e.key === t.key && e.version === t.version && e.sha256 === t.sha256);
+        }) &&
+        new Set(accepted.map((a) => entry(a)?.key)).size === accepted.length;
+      if (!exact) throw refusal(rid, 'terms_not_accepted', 'Accept the terms to continue');
     }
 
     // §10 invite mode — the invite is still valid (the pilot cap is checked below,
@@ -497,7 +601,17 @@ export class PersonalSignupService {
       const adopted = resumable === null ? await this.adopt(row) : null;
       const res = resumable !== null ? { tenant_id: resumable.tenant_id, owner_user_id: resumable.user_id } : (adopted ?? (await this.provision(row, rid)));
       for (const document of acceptedDocs) {
-        await this.acceptances.record({ document, context: 'SIGNUP', context_ref: row.id, tenant_id: res.tenant_id, user_id: res.owner_user_id, subject_email: row.email, accepted_at: now });
+        await this.acceptances.record({
+          document,
+          context: 'SIGNUP',
+          context_ref: row.id,
+          tenant_id: res.tenant_id,
+          user_id: res.owner_user_id,
+          subject_email: row.email,
+          accepted_at: now,
+          // M-A11 §2 — an acceptance from the app records its origin (IP, user agent).
+          ...(client === 'android' ? { origin: { ip: input.ip === 'unknown' ? null : input.ip, user_agent: input.user_agent ?? null } } : {}),
+        });
       }
       await this.requests.completeProvisioning({
         id: row.id,
@@ -506,6 +620,7 @@ export class PersonalSignupService {
         now: new Date(),
         sms_available: this.sms.configured,
         ...(resumable === null ? {} : { resumed_from: resumable.prior_signup_id }),
+        ...(client === 'android' ? { client: 'android' as const } : {}),
       });
       this.log.log(`personal signup provisioned tenant ${res.tenant_id}`);
       await this.send(row.email, 'Your Aramo Sign personal account is ready', [

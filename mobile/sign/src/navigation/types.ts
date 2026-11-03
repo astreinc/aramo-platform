@@ -25,6 +25,8 @@ export type MainTabParamList = {
 export type RootStackParamList = {
   /** Signed out. */
   SignIn: undefined;
+  /** Signed out: native Personal signup (M-A11), Android only. */
+  Signup: undefined;
   Unlock: undefined;
   /** Signed in: the two tabs (Home · Agreements). */
   Main: NavigatorScreenParams<MainTabParamList> | undefined;

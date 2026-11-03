@@ -8,6 +8,7 @@ import { SignSignupController } from './sign-signup.controller.js';
 import { PersonalSignupController } from './personal-signup.controller.js';
 import { PersonalSignupService } from './personal-signup.service.js';
 import { AddressSuggestService } from './address-suggest.service.js';
+import { LegalTextSource } from './legal-text.source.js';
 import { SignupBudget, SignSignupService } from './sign-signup.service.js';
 
 // Aramo Sign launch — public self-service signup. Cognito-free owner
@@ -18,6 +19,7 @@ import { SignupBudget, SignSignupService } from './sign-signup.service.js';
   imports: [PlatformModule, EntitlementModule, MailerModule],
   controllers: [SignSignupController, PersonalSignupController],
   // Sign Personal (Free) Launch v1.1 — the public Personal signup (dark unless SIGN_PERSONAL_SIGNUP_MODE).
-  providers: [SignSignupService, SignupBudget, AddressSuggestService, PersonalSignupService],
+  // M-A11 §2.2 — LegalTextSource serves the hash-pinned legal texts to the native terms screen.
+  providers: [SignSignupService, SignupBudget, AddressSuggestService, PersonalSignupService, LegalTextSource],
 })
 export class SignupModule {}

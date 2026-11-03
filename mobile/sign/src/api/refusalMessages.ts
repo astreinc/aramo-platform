@@ -6,8 +6,11 @@ import type { ApiError } from './errors';
 const LINK_ENDED =
   'This link was replaced or has expired. Open the newest email, or sign in to your inbox.';
 
-// The app never creates accounts (M-A1); a federated login with no Aramo user is sent to the web.
-const NO_ACCOUNT =
+// M-A11 §1: a federated login with no Aramo user is offered the native Personal signup (the
+// sign-in screen shows "Create a free account" with this message). Builds without native
+// signup (iOS, D-2) still point to the web: NO_ACCOUNT_WEB.
+const NO_ACCOUNT = 'There’s no Aramo account for this Google account yet.';
+export const NO_ACCOUNT_WEB =
   'There’s no Aramo account for this sign-in. Create one at sign.aramo.ai, or try the other sign-in option.';
 const NO_SIGN_ACCESS =
   'Your account doesn’t have access to Aramo Sign. Ask your Aramo administrator to add you.';
