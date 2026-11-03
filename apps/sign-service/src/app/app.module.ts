@@ -102,6 +102,10 @@ import { SignApiService } from './integrations/sign-api.service.js';
 import { SignTokenService } from './integrations/sign-token.service.js';
 import { SignWebhookDeliveryService } from './integrations/webhook-delivery.service.js';
 import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './document-templates-http.adapter.js';
+// TEMPLATE-PRODUCT-1 §8.3 / §8.5 — the Studio + "Use as it is" calls (signed S2S to apps/api).
+import { DOCUMENT_TEMPLATE_STUDIO_PORT, DocumentTemplateStudioHttpAdapter } from './document-template-studio-http.adapter.js';
+import { EsignSenderTemplateStudioController } from './sender/esign-sender-template-studio.controller.js';
+import { SenderTemplateStudioService } from './sender/sender-template-studio.service.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
 import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
@@ -305,7 +309,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -333,6 +337,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     RegulatedSigningService,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
+    { provide: DOCUMENT_TEMPLATE_STUDIO_PORT, useClass: DocumentTemplateStudioHttpAdapter },
+    SenderTemplateStudioService,
     // Aramo Sign Feature-Parity §1.21 — custom roles: launch availability + plan entitlement gate.
     SignCustomRolesGate,
     { provide: SIGN_PLAN_FEATURE_READER, useClass: SubscriptionPlanFeatureReader },

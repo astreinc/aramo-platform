@@ -568,6 +568,42 @@ const DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261028110000_doc_template_field_definition_immutability/migration.sql',
 );
+// TEMPLATE-PRODUCT-1 TP-1 (§2.4) — product tags lowercased to the capability keys (ats, sign)
+// in DocumentTemplate.products + TemplateVariable.products. Data-only (no shape change);
+// registered so the provider DB carries the same variable catalog values the platform
+// catalog routes return, exactly as the T-3 variables migration above. After M-A6.
+const DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103100000_template_product_1_lowercase_product_keys/migration.sql',
+);
+// TEMPLATE-PRODUCT-1 TP-3 (§4.1) — DocumentType gains type_class / template_kind / products /
+// category (ADD-not-rename; RTR backfill, TALENT_* → UPLOAD) and the partial unique SYSTEM key
+// index. Changes the returned DocumentType shape (GET/POST /v1/document-types return the
+// row; the regenerated client SELECTs the new columns) → registered (CLAUDE.md law); after TP-1.
+const DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103110000_template_product_1_document_type_classes/migration.sql',
+);
+// TEMPLATE-PRODUCT-1 TP-5 (§6.1/§6.2) — tenant templates carry server-written product tags: the
+// PLATFORM-only products CHECK is replaced (PLATFORM non-null), a BEFORE INSERT trigger copies the
+// document type's products onto a row inserted without them, and the backfill tags the RTR
+// default {ats,sign} and every tenant template with its type's products. Changes the returned
+// DocumentTemplate shape (tenant rows now return products) → registered (CLAUDE.md law); after TP-3.
+const DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103120000_template_product_1_tenant_product_tags/migration.sql',
+);
+// TEMPLATE-PRODUCT-1 TP-6 (§7.1, §7.3) — the new PlatformTemplateAsset and
+// TenantTemplateVisibility tables. The Sign S2S list / render now carry Aramo fixed forms
+// (template_kind FIXED_FORM) read through them → registered (CLAUDE.md law); after TP-3.
+const DOCUMENTS_TP6_PLATFORM_TEMPLATE_ASSET_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103140000_template_product_1_platform_template_asset/migration.sql',
+);
+const DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261103140100_template_product_1_tenant_template_visibility/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -1133,6 +1169,18 @@ const TALENT_RECORD_ATI_SEP_1_MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20261024160000_ati_sep_1_duplicate_advisory/migration.sql',
   'libs/talent-record/prisma/migrations/20261024170000_ati_sep_1_drop_legacy_trust_schemas/migration.sql',
 ].map((p) => resolve(ROOT, p));
+// DOC-4 R-4-9 + Sign naming unification — the `esign` capability enum value, then its rename
+// to `sign`. TEMPLATE-PRODUCT-1 §6.3 (TP-5/TP-7): the Personal Studio provider state grants
+// `sign` to the Personal tenant (the library / adopt entitlement filter); without these two the
+// verifier enum has no 'sign' label and the state's grant fails.
+const ENTITLEMENT_ESIGN_CAPABILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20260923173000_add_esign_capability/migration.sql',
+);
+const ENTITLEMENT_SIGN_NAMING_CAPABILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20261020130000_sign_naming_capability/migration.sql',
+);
 // ATI-SEP-1 T9 — the `intelligence` capability enum value (default OFF). The
 // TI-backed provider states grant it to the verifier tenant for ENABLED states.
 const ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION = resolve(
@@ -3702,6 +3750,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_R2_DECLINED_MIGRATION,
         DOCUMENTS_ORG_UX_1_MIGRATION,
         DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION,
+        DOCUMENTS_TP1_LOWERCASE_PRODUCT_KEYS_MIGRATION,
+        DOCUMENTS_TP3_DOCUMENT_TYPE_CLASSES_MIGRATION,
+        DOCUMENTS_TP5_TENANT_PRODUCT_TAGS_MIGRATION,
+        DOCUMENTS_TP6_PLATFORM_TEMPLATE_ASSET_MIGRATION,
+        DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -3784,6 +3837,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        // DOC-4 R-4-9 `esign`, renamed `sign` (TEMPLATE-PRODUCT-1 Personal Studio state).
+        ENTITLEMENT_ESIGN_CAPABILITY_MIGRATION,
+        ENTITLEMENT_SIGN_NAMING_CAPABILITY_MIGRATION,
         // ATI-SEP-1 T9 — the `intelligence` capability enum value.
         ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION,
         // CCP-A7 — provenance, revoke, ledger, resurrection guard (after the enum additions).
@@ -5184,15 +5240,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           const RTR_TYPE = 'd0c50005-0000-7000-8000-000000000001';
           const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
           await c.query(
-            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
-             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §5.1/§5.4 — Sign renders only configured EDITABLE types tagged
+            // `sign`: the type carries its §4.1 backfill (EDITABLE, {ats,sign}, Recruiting), which
+            // the TP-3 migration applies only to a row that exists when it runs.
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true,'TEMPLATE','EDITABLE',ARRAY['ats','sign'],'Recruiting')
+             ON CONFLICT ("id") DO UPDATE SET "type_class" = 'TEMPLATE', "template_kind" = 'EDITABLE', "products" = ARRAY['ats','sign'], "active" = true`,
             [RTR_TYPE],
           );
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [TENANT_ID]);
           await c.query(
             `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
-             VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Standard Right to Represent','Aramo default (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ATS','SIGN'],$3::uuid,now())
+             VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Standard Right to Represent','Aramo default (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ats','sign'],$3::uuid,now())
              ON CONFLICT ("id") DO NOTHING`,
             [TPL, RTR_TYPE, ACTOR],
           );
@@ -5217,6 +5276,79 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+      // TEMPLATE-PRODUCT-1 TP-6 (§7.4) — a published Aramo fixed form tagged `sign` under its OWN
+      // tenant: a FIXED_FORM type, a PLATFORM default whose ACTIVE version carries the official
+      // PDF (a PlatformTemplateAsset, recorded while the version was DRAFT, as the trigger
+      // requires) and one SIGNATURE field for the `employee` role. The mocked object storage
+      // returns '%PDF-1.4 pact source bytes' for every read, so the asset records that digest;
+      // with no prefilled field the frozen revision is those bytes. A fixed form is visible to
+      // every entitled tenant, so the state hides it from the tenants of the two states above
+      // (TenantTemplateVisibility) — their lists stay exactly as contracted.
+      'an Aramo fixed form tagged sign is visible to the tenant': async () => {
+        await withClient(async (c) => {
+          const FORM_TENANT = '11111111-1111-7111-8111-1111111111f6';
+          const TYPE = 'd0c4c000-0000-7000-8000-0000000000f0';
+          const TPL = 'd0c4c000-0000-7000-8000-0000000000f1';
+          const VER = 'd0c4c000-0000-7000-8000-0000000000f2';
+          const ASSET = 'd0c4c000-0000-7000-8000-0000000000f3';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          const SHA = (require('node:crypto') as typeof import('node:crypto')).createHash('sha256').update(Buffer.from('%PDF-1.4 pact source bytes', 'utf8')).digest('hex');
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at) VALUES ($1::uuid, 'pact-tp6-fixed-form', 'ACTIVE', true, now()) ON CONFLICT (id) DO NOTHING`,
+            [FORM_TENANT],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'PACT_FIXED_FORM','Pact fixed form','Fixed legal form (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',false,true,'TEMPLATE','FIXED_FORM',ARRAY['sign'],'Employment')
+             ON CONFLICT ("id") DO NOTHING`,
+            [TYPE],
+          );
+          await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [FORM_TENANT]);
+          const exists = await c.query(`SELECT 1 FROM documents."DocumentTemplate" WHERE "id" = $1::uuid`, [TPL]);
+          if (exists.rowCount === 0) {
+            await c.query(
+              `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+               VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Employment eligibility form',NULL,'UPLOADED_PDF','DRAFT',NULL,ARRAY['sign'],$3::uuid,now())`,
+              [TPL, TYPE, ACTOR],
+            );
+            await c.query(
+              `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by")
+               VALUES ($1::uuid,NULL,$2::uuid,1,'DRAFT','fixed-form-pdf-v1',$3::jsonb,$4::uuid)`,
+              [
+                VER,
+                TPL,
+                JSON.stringify({
+                  render_schema_version: 'fixed-form-pdf-v1',
+                  title: 'Employment eligibility form',
+                  pdf: { asset_id: ASSET, sha256: SHA, byte_size: 26, page_count: 1, pages: [{ width: 612, height: 792 }] },
+                  signing: { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' },
+                }),
+                ACTOR,
+              ],
+            );
+            await c.query(
+              `INSERT INTO documents."PlatformTemplateAsset" ("id","template_version_id","storage_key","mime","sha256","byte_size","page_count","created_by")
+               VALUES ($1::uuid,$2::uuid,$3,'application/pdf',$4,26,1,$5::uuid)`,
+              [ASSET, VER, `documents/platform/template-assets/${VER}/${SHA}.pdf`, SHA, ACTOR],
+            );
+            await c.query(
+              `INSERT INTO documents."TemplateFieldDefinition" ("id","template_version_id","field_key","field_type","binding_key","required","page_number","x","y","width","height","signer_role","ordinal")
+               VALUES (gen_random_uuid(),$1::uuid,'employee_signature','SIGNATURE',NULL,true,0,72,72,160,32,'employee',0)`,
+              [VER],
+            );
+            await c.query(`UPDATE documents."TemplateVersion" SET "status" = 'ACTIVE', "activated_at" = now() WHERE "id" = $1::uuid`, [VER]);
+            await c.query(`UPDATE documents."DocumentTemplate" SET "status" = 'ACTIVE', "current_version_id" = $2::uuid WHERE "id" = $1::uuid`, [TPL, VER]);
+          }
+          for (const other of [TENANT_ID, '11111111-1111-7111-8111-1111111111a6']) {
+            await c.query(
+              `INSERT INTO documents."TenantTemplateVisibility" ("tenant_id","template_id","hidden","updated_by","updated_at") VALUES ($1::uuid,$2::uuid,true,$3::uuid,now())
+               ON CONFLICT ("tenant_id","template_id") DO UPDATE SET "hidden" = true`,
+              [other, TPL, ACTOR],
+            );
+          }
+        });
+      },
       // Amendment M-A6 §3 — a TENANT rtr-html-v1 template with signing roles (2 SIGNER + 1 CC)
       // under its OWN tenant (so the lists of the default-template state never include it).
       // No selection: it is usable but not the automatic per-type choice (resolution AVAILABLE).
@@ -5233,16 +5365,21 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             [ROLES_TENANT],
           );
           await c.query(
-            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
-             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §5.1/§5.4 — Sign renders only configured EDITABLE types tagged
+            // `sign`: the type carries its §4.1 backfill (EDITABLE, {ats,sign}, Recruiting), which
+            // the TP-3 migration applies only to a row that exists when it runs.
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true,'TEMPLATE','EDITABLE',ARRAY['ats','sign'],'Recruiting')
+             ON CONFLICT ("id") DO UPDATE SET "type_class" = 'TEMPLATE', "template_kind" = 'EDITABLE', "products" = ARRAY['ats','sign'], "active" = true`,
             [RTR_TYPE],
           );
           await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [ROLES_TENANT]);
           await c.query(
-            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","created_by","updated_at")
-             VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Mutual Agreement','Two-party agreement (pact seed).','GENERATED','ACTIVE',NULL,$4::uuid,now())
-             ON CONFLICT ("id") DO NOTHING`,
+            // TEMPLATE-PRODUCT-1 §6.1/§6.3 — a tenant template carries its type's tags (server-
+            // written); Sign lists only templates tagged `sign`.
+            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+             VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Mutual Agreement','Two-party agreement (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ats','sign'],$4::uuid,now())
+             ON CONFLICT ("id") DO UPDATE SET "products" = ARRAY['ats','sign']`,
             [TPL, ROLES_TENANT, RTR_TYPE, ACTOR],
           );
           await c.query(
@@ -5271,6 +5408,66 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             ],
           );
           await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
+        });
+      },
+      // ===== TEMPLATE-PRODUCT-1 §8.3 / §8.5 — sign-service → apps/api Studio + "Use as it is" =====
+      // The T-5 Aramo RTR default (tagged {ats,sign}) + a PERSONAL tenant whose owner holds
+      // document_template:author + :manage through a live role grant (the Studio reads the
+      // person's grants, never a token). The tenant's own templates are cleared first, so every
+      // interaction starts with nothing adopted (Use as it is / adopt are 201, not 409).
+      'a personal account may adopt and use Aramo templates tagged sign': async () => {
+        await stateHandlers['an Aramo default template is resolvable for the tenant']!();
+        await withClient(async (c) => {
+          const PERSONAL = '11111111-1111-7111-8111-1111111111b7';
+          const OWNER = 'd0c4c000-0000-7000-8000-0000000000b7';
+          const ROLE = 'd0c4c000-0000-7000-8000-0000000000b8';
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at, kind) VALUES ($1::uuid, 'pact-tp7-personal', 'ACTIVE', true, now(), 'PERSONAL')
+             ON CONFLICT (id) DO UPDATE SET kind = 'PERSONAL', status = 'ACTIVE'`,
+            [PERSONAL],
+          );
+          // TEMPLATE-PRODUCT-1 §6.3 (TP-5) — the Studio drives the same library / adopt code as
+          // Org Home, which offers only defaults whose products ∩ E ≠ ∅: a Sign account holds
+          // `sign` (a sign session requires it).
+          await c.query(
+            `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+             VALUES ($1::uuid, 'sign', 'PROVISIONING') ON CONFLICT DO NOTHING`,
+            [PERSONAL],
+          );
+          await c.query(`UPDATE documents."DocumentTemplate" SET "products" = ARRAY['ats','sign'] WHERE "id" = 'd0c4c000-0000-7000-8000-0000000000d1'::uuid`);
+          await c.query(
+            `DELETE FROM documents."TemplateFieldDefinition" WHERE "template_version_id" IN (SELECT "id" FROM documents."TemplateVersion" WHERE "tenant_id" = $1::uuid)`,
+            [PERSONAL],
+          );
+          await c.query(`DELETE FROM documents."TenantTemplateSelection" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = NULL WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`DELETE FROM documents."TemplateVersion" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(`DELETE FROM documents."DocumentTemplate" WHERE "tenant_id" = $1::uuid`, [PERSONAL]);
+          await c.query(
+            `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at) VALUES ($1::uuid, 'pact-tp7-owner@example.test', 'Pat Pact', $2::uuid, now()) ON CONFLICT (id) DO NOTHING`,
+            [OWNER, PERSONAL],
+          );
+          await c.query(
+            `INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, is_active, updated_at) VALUES (gen_random_uuid(), $1::uuid, $2::uuid, true, now()) ON CONFLICT (user_id) DO NOTHING`,
+            [OWNER, PERSONAL],
+          );
+          await c.query(`INSERT INTO identity."Role" (id, key, description, is_active, updated_at) VALUES ($1::uuid, 'pact_tp7_personal_owner', 'TP-7 pact role', true, now()) ON CONFLICT (key) DO NOTHING`, [ROLE]);
+          for (const key of ['document_template:read', 'document_template:author', 'document_template:manage']) {
+            await c.query(`INSERT INTO identity."Scope" (id, key, description) VALUES (gen_random_uuid(), $1, 'TP-7 pact scope') ON CONFLICT (key) DO NOTHING`, [key]);
+            await c.query(
+              `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+               SELECT gen_random_uuid(), r.id, s.id FROM identity."Role" r, identity."Scope" s WHERE r.key = 'pact_tp7_personal_owner' AND s.key = $1
+               ON CONFLICT (role_id, scope_id) DO NOTHING`,
+              [key],
+            );
+          }
+          await c.query(
+            `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+             SELECT gen_random_uuid(), m.id, r.id FROM identity."UserTenantMembership" m, identity."Role" r WHERE m.user_id = $1::uuid AND r.key = 'pact_tp7_personal_owner'
+             ON CONFLICT (membership_id, role_id) DO NOTHING`,
+            [OWNER],
+          );
         });
       },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the

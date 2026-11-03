@@ -80,6 +80,7 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
       'Proposals',
       'Matching policy',
       'Document templates',
+      'Document types',
       'Template variables',
       'Platform admins',
     ]);

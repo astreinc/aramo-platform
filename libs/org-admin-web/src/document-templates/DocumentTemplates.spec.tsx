@@ -17,7 +17,7 @@ import { CreateOwnTemplate } from './CreateOwnTemplate';
 import { fetchTemplateNotices, noticeMessage, parseNotices } from './notices-api';
 import { LEGACY_BANNER_TEXT, OurTemplatesPage } from './OurTemplatesPage';
 import { RESPONSIBILITY_SENTENCE, TemplateGalleryPage } from './TemplateGalleryPage';
-import { buildGalleryCards, categoryCounts } from './templates-view';
+import { buildGalleryCards, categoryCounts, galleryCategories, galleryProducts, productCounts } from './templates-view';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §4.1, §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — Our
 // templates (table, legacy "Aramo starting point" banner, footnote to the gallery), the
@@ -46,7 +46,8 @@ function item(over: Partial<TemplateLibraryItem>): TemplateLibraryItem {
   };
 }
 const DEFAULT = item({ id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ATS'], current_version_number: 3, updated_at: '2026-10-15T10:00:00.000Z' });
-const OWN = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2 });
+// TEMPLATE-PRODUCT-1 §6.1 — a tenant template carries its own (inherited) tags.
+const OWN = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: ['ats', 'sign'] });
 const OWN_DRAFT = item({ id: 'own-draft', name: 'Draft RTR', status: 'DRAFT', current_version_id: null, current_version_number: null });
 const NOTICE = {
   template_id: 'def-rtr',
@@ -207,7 +208,9 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(cards[1]?.state).toEqual({ kind: 'in-ours', ourTemplateId: 'own-offer' });
     expect(cards[1]?.description).toBe('Confirms the role, start date, pay and terms offered to a talent before they start.');
     expect(cards[2]?.description).toBe('Custom copy.');
-    expect(categoryCounts(cards)).toEqual({ All: 3, Recruiting: 1, Hiring: 1, Legal: 0, 'Pre-start': 0, Other: 1 });
+    // No document type carries a category here (older server): the key fallback, then Other.
+    expect(categoryCounts(cards)).toEqual({ All: 3, Recruiting: 1, Hiring: 1, Other: 1 });
+    expect(galleryCategories(cards)).toEqual(['Recruiting', 'Hiring', 'Other']);
     expect(buildGalleryCards({ items: [OWN, OWN_DRAFT], document_types: LIBRARY.document_types })).toEqual([]);
   });
 
@@ -219,6 +222,53 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(screen.getByTestId('gallery-chip-All')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByTestId('gallery-chip-Hiring'));
     expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Offer letter']);
+    fireEvent.click(screen.getByTestId('gallery-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+  });
+
+  // TEMPLATE-PRODUCT-1 D25 — the category is the document type's `category` (data from
+  // document_types[].category); the key map is only the fallback when it is null / blank.
+  const DATA: TemplateLibraryView = {
+    ...WIDE,
+    document_types: [
+      { id: RTR, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true, products: ['ats', 'sign'], category: 'Recruiting' },
+      { id: OFFER, key: 'OFFER_LETTER', name: 'Offer Letter', configurable: true, products: ['ats'], category: 'Employment' },
+      { id: NDA, key: 'CLIENT_NDA', name: 'Client NDA', configurable: false, products: ['ats'], category: 'Legal' },
+      { id: ODD, key: 'SOMETHING_NEW', name: 'Something new', configurable: true, products: ['sign'], category: 'Real estate' },
+    ],
+  };
+
+  it('D25 — buildGalleryCards takes the category from the document type; null / blank falls back to the key map, then Other', () => {
+    expect(buildGalleryCards(DATA).map((c) => [c.id, c.category])).toEqual([
+      ['def-rtr', 'Recruiting'],
+      ['def-offer', 'Employment'],
+      ['def-odd', 'Real estate'],
+    ]);
+    const blank: TemplateLibraryView = {
+      ...DATA,
+      document_types: DATA.document_types.map((t) => (t.id === OFFER ? { ...t, category: '  ' } : t.id === ODD ? { ...t, category: null } : t)),
+    };
+    expect(buildGalleryCards(blank).map((c) => [c.id, c.category])).toEqual([
+      ['def-rtr', 'Recruiting'],
+      ['def-offer', 'Hiring'],
+      ['def-odd', 'Other'],
+    ]);
+  });
+
+  it('D25 — a chip per distinct category present (plus All): preferred order, then alphabetical, Other last', () => {
+    const cards = [{ category: 'Real estate' }, { category: 'Other' }, { category: 'Employment' }, { category: 'Recruiting' }, { category: 'Employment' }];
+    expect(galleryCategories(cards)).toEqual(['Recruiting', 'Employment', 'Real estate', 'Other']);
+    expect(categoryCounts(cards)).toEqual({ All: 5, 'Real estate': 1, Other: 1, Employment: 2, Recruiting: 1 });
+  });
+
+  it('D25 — the category chips follow the document types: a new category gets a chip and filters', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(DATA) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by category' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'Recruiting1', 'Employment1', 'Real estate1']);
+    fireEvent.click(screen.getByTestId('gallery-chip-Real estate'));
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Other']);
+    expect(screen.getByRole('article', { name: 'Aramo Other' })).toHaveTextContent('Real estate');
     fireEvent.click(screen.getByTestId('gallery-chip-All'));
     expect(screen.getAllByRole('article')).toHaveLength(3);
   });
@@ -261,6 +311,45 @@ describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('article', { name: 'Aramo Right to Represent' })).toBeInTheDocument();
+  });
+
+  // TEMPLATE-PRODUCT-1 §6.4 — product chips (All · ATS · Sign) for the entitled products only.
+  const TAGGED: TemplateLibraryView = {
+    ...WIDE,
+    items: [
+      item({ id: 'def-rtr', owner_scope: 'PLATFORM', name: 'Aramo Right to Represent', products: ['ats', 'sign'] }),
+      item({ id: 'def-offer', owner_scope: 'PLATFORM', document_type_id: OFFER, name: 'Aramo Offer letter', products: ['ats'] }),
+      item({ id: 'def-odd', owner_scope: 'PLATFORM', document_type_id: ODD, name: 'Aramo Other', description: 'Custom copy.', products: ['sign'] }),
+    ],
+    entitled_products: ['ats', 'sign'],
+  };
+
+  it('product chips: All · ATS · Sign with counts; a chip filters the cards and the category counts', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(TAGGED) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by product' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'ATS2', 'Sign2']);
+    fireEvent.click(screen.getByTestId('gallery-product-chip-sign'));
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Right to Represent', 'Aramo Other']);
+    const cats = screen.getByRole('toolbar', { name: 'Filter by category' });
+    expect(within(cats).getAllByRole('button').map((c) => c.textContent)).toEqual(['All2', 'Recruiting1', 'Other1']);
+    fireEvent.click(screen.getByTestId('gallery-product-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+  });
+
+  it('product chips only for the entitled products', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue({ ...TAGGED, entitled_products: ['sign'] }) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by product' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'Sign2']);
+    expect(screen.queryByTestId('gallery-product-chip-ats')).toBeNull();
+  });
+
+  it('galleryProducts / productCounts', () => {
+    expect(galleryProducts(TAGGED)).toEqual(['ats', 'sign']);
+    expect(galleryProducts({ ...TAGGED, entitled_products: [] })).toEqual([]);
+    expect(galleryProducts({ items: [], document_types: [] })).toEqual(['ats', 'sign']);
+    expect(productCounts(buildGalleryCards(TAGGED), ['ats', 'sign'])).toEqual({ All: 3, ats: 2, sign: 2 });
   });
 
   it('no use-the-default-directly affordance remains', async () => {
@@ -379,7 +468,7 @@ describe('Our templates (§6.8)', () => {
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Template', 'Used in', 'Version', 'Status', 'Last approved', 'Actions']);
     expect(row).toHaveTextContent('Our RTR');
     expect(row).toHaveTextContent('Right to Represent');
-    expect(row).toHaveTextContent('ATS');
+    expect(row).toHaveTextContent('ATS · Sign');
     expect(row).toHaveTextContent('v2');
     expect(within(row).getByText('Active')).toHaveClass('ox-pill--active');
     expect(row).toHaveTextContent('Oct 9, 2026 · Purush P.');
@@ -392,10 +481,20 @@ describe('Our templates (§6.8)', () => {
     expect(draft).toHaveTextContent('—');
   });
 
-  it('"Used in" falls back to All apps when no product tags are known', async () => {
-    const lib: TemplateLibraryView = { ...LIBRARY, items: [OWN] };
-    renderOurs({ libraryFn: vi.fn().mockResolvedValue(lib) });
-    expect(await screen.findByTestId('our-template-own-rtr')).toHaveTextContent('All apps');
+  // TEMPLATE-PRODUCT-1 §6.4 — "Used in" = the template's OWN tags (shared label map), never the
+  // tags of the Aramo default of the same type; no tags → "—".
+  it('"Used in" shows the template\'s own tags, not the same-type default\'s', async () => {
+    const own = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: ['sign'] });
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [DEFAULT, own] }) });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(row).toHaveTextContent('Sign');
+    expect(row).not.toHaveTextContent('ATS');
+  });
+
+  it('"Used in" is "—" when the template has no tags', async () => {
+    const own = item({ id: 'own-rtr', name: 'Our RTR', current_version_number: 2, products: null });
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [own] }) });
+    expect(await screen.findByTestId('our-template-own-rtr')).not.toHaveTextContent('All apps');
   });
 
   it('footnote links to the Template gallery', async () => {

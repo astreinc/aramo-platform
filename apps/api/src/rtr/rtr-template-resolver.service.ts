@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { TemplateResolutionService, TemplatesRepository, type TemplateResolutionSource } from '@aramo/documents';
+import { TemplateResolutionService, TemplatesRepository, type TemplateProductKey, type TemplateResolutionSource } from '@aramo/documents';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import {
@@ -52,20 +52,39 @@ export class RtrTemplateResolverService {
   // RTR default (ACTIVE, not past withdraw_effective_at). The fail-closed RTR codes are
   // unchanged: nothing resolvable ⇒ RTR_TEMPLATE_NOT_CONFIGURED; a broken selection /
   // template / version ⇒ RTR_TEMPLATE_CONFIGURATION_INVALID.
-  async resolveActive(input: { tenant_id: string; client_id?: string | null; requestId: string }): Promise<ResolvedRtrTemplate> {
+  //
+  // TEMPLATE-PRODUCT-1 §5.6 — generalised by document type (not duplicated): `document_type_id`
+  // names the editable type to resolve (absent ⇒ RIGHT_TO_REPRESENT, the ATS RTR flow, whose
+  // codes, messages and details are byte-identical to before). Another type keeps the same
+  // fail-closed codes with type-neutral wording (only Aramo Sign resolves other types).
+  // TEMPLATE-PRODUCT-1 §6.3 — `product` (absent ⇒ `ats`, the ATS RTR flow): only templates
+  // tagged with it resolve. Aramo Sign passes `sign`. RTR templates are tagged both, so the
+  // ATS outcome is unchanged today.
+  async resolveActive(input: {
+    tenant_id: string;
+    client_id?: string | null;
+    requestId: string;
+    document_type_id?: string;
+    product?: TemplateProductKey;
+  }): Promise<ResolvedRtrTemplate> {
+    const document_type_id = input.document_type_id ?? RIGHT_TO_REPRESENT_TYPE_ID;
+    const rtr = document_type_id === RIGHT_TO_REPRESENT_TYPE_ID;
     const r = await this.resolution.resolve({
       tenant_id: input.tenant_id,
-      document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+      document_type_id,
       client_id: input.client_id ?? null,
+      product: input.product ?? 'ats',
     });
     if (r.outcome === 'NOT_CONFIGURED') {
       throw new AramoError(
         'RTR_TEMPLATE_NOT_CONFIGURED',
-        'No active Right to Represent template is configured for this tenant',
+        rtr
+          ? 'No active Right to Represent template is configured for this tenant'
+          : 'No active template of this document type is configured for this tenant',
         409,
         {
           requestId: input.requestId,
-          details: { tenant_id: input.tenant_id, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID },
+          details: { tenant_id: input.tenant_id, document_type_id },
         },
       );
     }
@@ -76,23 +95,24 @@ export class RtrTemplateResolverService {
     // ORG-UX-1 (LOCKED §5.3) — gallery-first: SELECTION_REQUIRED also means "no approved
     // RTR template yet" (withdrawn_template_ids empty) — adopt or create one, then approve.
     if (r.outcome === 'SELECTION_REQUIRED') {
+      const what = rtr ? 'Right to Represent' : 'document';
       throw new AramoError(
         'TEMPLATE_SELECTION_REQUIRED',
         r.withdrawn_template_ids.length > 0
-          ? 'The Aramo Right to Represent default was withdrawn; choose a template for this organization'
-          : 'This organization has no approved Right to Represent template; adopt or create one and approve it',
+          ? `The Aramo ${what} default was withdrawn; choose a template for this organization`
+          : `This organization has no approved ${what} template; adopt or create one and approve it`,
         409,
         {
           requestId: input.requestId,
           details: {
-            document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+            document_type_id,
             withdrawn_template_ids: r.withdrawn_template_ids,
           },
         },
       );
     }
     if (r.outcome === 'INVALID') {
-      throw this.invalid(input.requestId, r.template_id, r.reason, r.details);
+      throw this.invalid(input.requestId, r.template_id, r.reason, r.details, rtr);
     }
     return this.pinned({ template: r.template, version: r.version, owner_scope: r.owner_scope, source: r.source, requestId: input.requestId });
   }
@@ -142,10 +162,13 @@ export class RtrTemplateResolverService {
     template_id: string | null,
     reason: string,
     extra?: Record<string, unknown>,
+    rtr = true,
   ): AramoError {
     return new AramoError(
       'RTR_TEMPLATE_CONFIGURATION_INVALID',
-      'The active Right to Represent template is not usable (configuration invalid)',
+      rtr
+        ? 'The active Right to Represent template is not usable (configuration invalid)'
+        : 'The active template is not usable (configuration invalid)',
       422,
       { requestId, details: { template_id, reason, ...(extra ?? {}) } },
     );

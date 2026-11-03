@@ -225,6 +225,22 @@ export function summarizeDetail(
       return 'Published the withdrawal of an Aramo default template';
     case 'identity.document_template.withdrawal_cancelled':
       return 'Cancelled the withdrawal of an Aramo default template';
+    // TEMPLATE-PRODUCT-1 §3.3 — platform delete of what was never published.
+    case 'identity.document_template.platform_draft_discarded': {
+      const n = payload['version_number'];
+      return typeof n === 'number' ? `Discarded an Aramo default template draft (v${n})` : 'Discarded an Aramo default template draft';
+    }
+    case 'identity.document_template.platform_template_deleted':
+      return 'Deleted an unpublished Aramo default template';
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document types.
+    case 'identity.document_type.created':
+      return 'Created a document type';
+    case 'identity.document_type.updated':
+      return 'Updated a document type';
+    case 'identity.document_type.retired':
+      return 'Retired a document type';
+    case 'identity.document_type.deleted':
+      return 'Deleted a document type';
     // Domain-Enforcement P3 — the organization's claim on its email domain.
     case 'identity.domain.claim.provisional':
       return 'Reserved the organization email domain';
@@ -283,6 +299,11 @@ export function summarizeDetail(
       return 'Chose the active document template';
     case 'identity.document_template.selection_cleared':
       return 'Cleared the active document template choice';
+    // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show.
+    case 'identity.document_template.fixed_form_hidden':
+      return 'Hid an Aramo form from the organization';
+    case 'identity.document_template.fixed_form_shown':
+      return 'Showed an Aramo form to the organization';
     // CONTACTS-1 SD-11 — ATS contact soft delete / restore.
     case 'identity.contact.deleted':
       return 'Deleted a contact';

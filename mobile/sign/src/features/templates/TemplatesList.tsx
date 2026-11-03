@@ -5,6 +5,8 @@
 // at step 2 on that draft. No template editing on mobile. A template WITH signing roles
 // (M-A6 §3.5, FEATURES.multiRoleTemplates) is bound role by role first, and the flow
 // opens on Review when the server bound everything, else on Recipients (landingStep).
+// TEMPLATE-PRODUCT-1 §8.5 (R6-M) — below the list, the Aramo templates not yet adopted, each
+// with "Use as it is" (TemplateGallerySection); any other change is made on desktop.
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,10 +19,12 @@ import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
-import { signKeys, useOnline } from '../inbox/queries';
+import { signKeys, useOnline, useSenderContext } from '../inbox/queries';
 import { EmptyState } from '../inbox/ui';
 import { createFromTemplate, type RoleBindingRequest, type SenderTemplate } from '../send/templates';
+import { canUseAsIs } from './gallery';
 import { landingStep } from './roleBindingModel';
+import { TemplateGallerySection } from './TemplateGallerySection';
 import { TemplateRows } from './TemplateRows';
 import { TemplateUseForm } from './TemplateUseForm';
 import { TEMPLATES_FOOTNOTE, TEMPLATES_INTRO } from './templatesModel';
@@ -33,6 +37,8 @@ export function TemplatesList() {
   const { workspace } = useServices();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { view, refetch, refreshing } = useTemplatesView();
+  // TEMPLATE-PRODUCT-1 §8.5 — the backend's "Use as it is" signal (cached context query).
+  const context = useSenderContext();
   const [template, setTemplate] = useState<SenderTemplate | null>(null);
 
   const create = async (values: Record<string, string>, idempotencyKey: string, binding?: RoleBindingRequest) => {
@@ -77,6 +83,9 @@ export function TemplatesList() {
           {view.note ? <Text style={text}>{view.note}</Text> : null}
         </>
       )}
+      {view.kind === 'list' || view.kind === 'empty' ? (
+        <TemplateGallerySection offerAsIs={canUseAsIs(context.data)} disabled={!online} />
+      ) : null}
       <Text style={text}>{TEMPLATES_FOOTNOTE}</Text>
       <Sheet visible={template !== null} onClose={() => setTemplate(null)} title={template?.name ?? 'Template'}>
         {template ? (

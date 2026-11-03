@@ -37,10 +37,49 @@ export interface TemplatePlatformWithdrawalAudit {
   readonly requestId: string;
 }
 
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §3.3 — a platform operator
+// discarded the DRAFT version of an Aramo (PLATFORM) default, or deleted a never-published
+// Aramo default. GLOBAL (no tenant_id). Written BEFORE the delete and MUST throw on
+// failure, so nothing is deleted without its audit record.
+export interface TemplatePlatformDeletionAudit {
+  readonly action: 'draft_discarded' | 'template_deleted';
+  readonly actor_id: string;
+  readonly template_id: string;
+  readonly document_type_id: string;
+  readonly name: string;
+  // draft_discarded: the discarded version. template_deleted: null.
+  readonly version_id: string | null;
+  readonly version_number: number | null;
+  readonly requestId: string;
+}
+
+// TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
+// document type. GLOBAL (no tenant_id). Written BEFORE the change and MUST throw on
+// failure, so no document type change happens without its audit record.
+export interface TemplateDocumentTypeAudit {
+  readonly action: 'created' | 'updated' | 'retired' | 'deleted';
+  readonly actor_id: string;
+  readonly document_type_id: string;
+  readonly key: string;
+  readonly name: string;
+  // updated: the field names that change (never values).
+  readonly changed_fields?: readonly string[];
+  readonly requestId: string;
+}
+
 // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped. Written
 // through the same non-swallowing seam AFTER the state change succeeds (the change is
 // already committed; a failed write surfaces as an error to the caller, never silently).
-export type TemplateGovernanceAction = 'adopted' | 'created' | 'version_activated' | 'selection_set' | 'selection_cleared';
+// TEMPLATE-PRODUCT-1 §7.3 — + fixed_form_hidden / fixed_form_shown (a tenant hid or showed an
+// Aramo fixed form; subject = the template).
+export type TemplateGovernanceAction =
+  | 'adopted'
+  | 'created'
+  | 'version_activated'
+  | 'selection_set'
+  | 'selection_cleared'
+  | 'fixed_form_hidden'
+  | 'fixed_form_shown';
 export interface TemplateGovernanceAudit {
   readonly action: TemplateGovernanceAction;
   readonly tenant_id: string;
@@ -55,5 +94,7 @@ export interface TemplateGovernanceAudit {
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
+  recordPlatformDeletion(event: TemplatePlatformDeletionAudit): Promise<void>;
+  recordPlatformDocumentType(event: TemplateDocumentTypeAudit): Promise<void>;
   recordGovernance(event: TemplateGovernanceAudit): Promise<void>;
 }

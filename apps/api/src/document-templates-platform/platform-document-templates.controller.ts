@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
   TEMPLATE_AUDIT,
   TEMPLATE_CAPABILITIES,
+  TEMPLATE_PRODUCT_KEYS,
   TEMPLATE_VARIABLE_DATA_TYPES,
   TemplateVariableKeyConflictError,
   TemplateVariableNotFoundError,
@@ -29,6 +31,8 @@ import {
   type TemplateVariableDataType,
   type TemplateVariableRow,
   type UpdateTemplateVariableInput,
+  isTemplateProductKey,
+  type TemplateProductKey,
 } from '@aramo/documents';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1; ADR-0034 D2/D3/D7/D9, §4 rule 2) — the PLATFORM-tier
@@ -55,14 +59,16 @@ import {
 // now, effective now + notice_days, default 7) and POST :id/withdraw/cancel cancels a
 // pending one. Each writes a GLOBAL audit event (TEMPLATE_AUDIT port → identity audit
 // ledger, tenant_id NULL) BEFORE the state change; a failed audit write refuses it.
+//
+// TEMPLATE-PRODUCT-1 §3 — delete what was never published: DELETE versions/:versionId
+// discards a DRAFT version, DELETE :id deletes a never-published, unreferenced default.
+// Each writes a GLOBAL audit event BEFORE the delete through the same port; refused (500)
+// when the port is absent. A published version is only ever withdrawn (D10).
 
 const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 const NAME_MAX = 120;
 const DESCRIPTION_MAX = 500;
 const INTERNAL_NOTES_MAX = 500;
-// Product tag shape (D9 — recorded, not enforced in this increment), e.g. ATS, SIGN.
-const PRODUCT_TAG = /^[A-Z][A-Z0-9_]{0,31}$/;
-const PRODUCTS_MAX = 16;
 // Catalog key = the token stored in template content: dotted lower-snake segments
 // (e.g. talent.full_name). Immutable once created.
 const VARIABLE_KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
@@ -191,15 +197,31 @@ function optionalText(v: unknown, field: string, max: number, requestId: string)
   return s.length === 0 ? null : s;
 }
 
-function productTags(v: unknown, requestId: string): string[] {
-  if (!Array.isArray(v)) throw bad('products must be an array of product tags', requestId);
-  if (v.length > PRODUCTS_MAX) throw bad(`products must have at most ${PRODUCTS_MAX} tags`, requestId);
-  const out: string[] = [];
+// TEMPLATE-PRODUCT-1 §2.3 — product tags are a fixed choice: the entitlement capability
+// keys in TEMPLATE_PRODUCT_KEYS (ats, sign). Anything else — another string, the old
+// upper-case tags, a non-array — is 422. Duplicates collapse; order is kept.
+function productTags(v: unknown, requestId: string): TemplateProductKey[] {
+  const invalid = (message: string): AramoError =>
+    new AramoError('VALIDATION_ERROR', message, 422, { requestId, details: { reason: 'invalid_product', allowed: [...TEMPLATE_PRODUCT_KEYS] } });
+  if (!Array.isArray(v)) throw invalid('products must be an array of product keys');
+  const out: TemplateProductKey[] = [];
   for (const p of v) {
-    if (typeof p !== 'string' || !PRODUCT_TAG.test(p)) throw bad(`invalid product tag: ${String(p)}`, requestId);
+    if (!isTemplateProductKey(p)) throw invalid(`invalid product: ${String(p)} (allowed: ${TEMPLATE_PRODUCT_KEYS.join(', ')})`);
     if (!out.includes(p)) out.push(p);
   }
   return out;
+}
+
+// TEMPLATE-PRODUCT-1 §2.7 — a template's tags must be a subset of its document type's
+// products (422 VALIDATION_ERROR details.reason=products_not_in_type).
+function assertProductsInType(products: readonly string[], typeProducts: readonly string[], requestId: string): void {
+  const outside = products.filter((p) => !typeProducts.includes(p));
+  if (outside.length > 0) {
+    throw new AramoError('VALIDATION_ERROR', `products ${outside.join(', ')} are not products of this document type`, 422, {
+      requestId,
+      details: { reason: 'products_not_in_type', products: outside, type_products: [...typeProducts] },
+    });
+  }
 }
 
 @Controller('platform')
@@ -220,17 +242,26 @@ export class PlatformDocumentTemplatesController {
 
   // SYSTEM document types an Aramo default may target (the create form's type list).
   // Declared before ':id' so the literal segment is matched first.
+  // TEMPLATE-PRODUCT-1 §4.4 — only active TEMPLATE types with a kind set (an UPLOAD slot such
+  // as TALENT_* or an unconfigured type is never offered), with the products a template of
+  // the type may be tagged with (§2.7) and its kind / category.
   @Get('document-templates/document-types')
   @RequireScopes('platform:document_template:read')
   async listDocumentTypes(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     this.assertPlatform(auth, requestId);
-    const types = await this.templates.listSystemDocumentTypes();
+    const types = await this.templates.listTemplateDocumentTypes();
+    // TEMPLATE-PRODUCT-1 §5.1 — configurability from data (every configured EDITABLE type).
+    const configurable = new Set<string>();
+    for (const t of types) if ((await this.caps?.isConfigurable(t.id)) === true) configurable.add(t.id);
     return {
       document_types: types.map((t) => ({
         id: t.id,
         key: t.key,
         name: t.name,
-        configurable: this.caps?.isConfigurable(t.id) === true,
+        configurable: configurable.has(t.id),
+        template_kind: t.template_kind,
+        products: [...t.products],
+        category: t.category,
       })),
     };
   }
@@ -258,10 +289,11 @@ export class PlatformDocumentTemplatesController {
     const template_kind = typeof body?.['template_kind'] === 'string' ? body['template_kind'] : '';
     if (!TEMPLATE_KINDS.has(template_kind)) throw bad('invalid template_kind', requestId);
     const products = body?.['products'] === undefined ? [] : productTags(body['products'], requestId);
-    const types = await this.templates.listSystemDocumentTypes();
-    if (!types.some((t) => t.id === document_type_id)) {
-      throw bad('document_type_id must be an active SYSTEM document type', requestId, 'document_type_not_system');
+    const type = (await this.templates.listTemplateDocumentTypes()).find((t) => t.id === document_type_id);
+    if (type === undefined) {
+      throw bad('document_type_id must be an active SYSTEM template document type with a kind set', requestId, 'document_type_not_system');
     }
+    assertProductsInType(products, type.products, requestId);
     return this.run(requestId, async () => {
       const t = await this.templates.createPlatformTemplate({
         document_type_id,
@@ -309,6 +341,11 @@ export class PlatformDocumentTemplatesController {
     if (body !== undefined && body !== null && 'products' in body) patch.products = productTags(body['products'], requestId);
     if (Object.keys(patch).length === 0) throw bad('one of name, description, products is required', requestId);
     return this.run(requestId, async () => {
+      if (patch.products !== undefined) {
+        const current = await this.templates.getPlatformTemplate(id);
+        const type = await this.templates.findSystemDocumentType(current.document_type_id);
+        assertProductsInType(patch.products, type?.products ?? [], requestId);
+      }
       const t = await this.templates.updatePlatformTemplate(id, patch);
       return toTemplateView(t, await this.templates.listPlatformVersions(id));
     });
@@ -390,6 +427,37 @@ export class PlatformDocumentTemplatesController {
     });
   }
 
+  // TEMPLATE-PRODUCT-1 §3.2 — delete a never-published Aramo default (204). Allowed only
+  // while it is DRAFT with no published version and nothing references it (selection,
+  // documents, adopted copies); otherwise 409 TEMPLATE_IN_USE with details.reasons.
+  @Delete('document-templates/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('platform:document_template:manage')
+  async deleteTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<void> {
+    this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'template delete');
+    await this.run(requestId, () =>
+      this.templates.deletePlatformTemplate({
+        id,
+        beforeDelete: ({ template }) =>
+          audit.recordPlatformDeletion({
+            action: 'template_deleted',
+            actor_id: auth.sub,
+            template_id: template.id,
+            document_type_id: template.document_type_id,
+            name: template.name,
+            version_id: null,
+            version_number: null,
+            requestId,
+          }),
+      }),
+    );
+  }
+
   // The governed Insert-field catalog for this default's document type (catalog-driven).
   @Get('document-templates/:id/allowed-bindings')
   @RequireScopes('platform:document_template:read')
@@ -432,7 +500,7 @@ export class PlatformDocumentTemplatesController {
     return this.run(requestId, async () => {
       const t = await this.templates.getPlatformTemplate(id);
       const caps = this.caps;
-      const configurable = caps !== undefined && caps.isConfigurable(t.document_type_id);
+      const configurable = caps !== undefined && (await caps.isConfigurable(t.document_type_id));
       if (hasContent && render_schema_version !== undefined) {
         const field_schema = configurable
           ? await caps.normalizeDraftContent({
@@ -501,7 +569,7 @@ export class PlatformDocumentTemplatesController {
           throw new AramoError('TEMPLATE_IMMUTABLE', `TemplateVersion ${versionId} is not a DRAFT`, 409, { requestId });
         }
         const t = await this.templates.getPlatformTemplate(existing.template_id);
-        if (this.caps.isConfigurable(t.document_type_id)) {
+        if (await this.caps.isConfigurable(t.document_type_id)) {
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: render_schema_version ?? existing.render_schema_version,
@@ -521,6 +589,37 @@ export class PlatformDocumentTemplatesController {
     });
   }
 
+  // TEMPLATE-PRODUCT-1 §3.1 — discard the open DRAFT of an Aramo default (204). Mirrors
+  // the tenant DELETE /v1/document-templates/versions/:versionId: DRAFT only (ACTIVE /
+  // RETIRED → 409 TEMPLATE_IMMUTABLE); the published version is untouched.
+  @Delete('document-templates/versions/:versionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('platform:document_template:manage')
+  async discardDraft(
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<void> {
+    this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'draft discard');
+    await this.run(requestId, () =>
+      this.templates.deletePlatformDraftVersion({
+        version_id: versionId,
+        beforeDelete: ({ version, template }) =>
+          audit.recordPlatformDeletion({
+            action: 'draft_discarded',
+            actor_id: auth.sub,
+            template_id: template.id,
+            document_type_id: template.document_type_id,
+            name: template.name,
+            version_id: version.id,
+            version_number: version.version_number,
+            requestId,
+          }),
+      }),
+    );
+  }
+
   // Fixed-sample preview of the CURRENT draft content (samples from the variable
   // catalog). Recording it arms the §18 publish gate for exactly this content.
   @Post('document-templates/versions/:versionId/preview')
@@ -535,7 +634,7 @@ export class PlatformDocumentTemplatesController {
     return this.run(requestId, async () => {
       const v = await this.templates.getPlatformVersion(versionId);
       const t = await this.templates.getPlatformTemplate(v.template_id);
-      if (this.caps === undefined || !this.caps.isConfigurable(t.document_type_id)) {
+      if (this.caps === undefined || !(await this.caps.isConfigurable(t.document_type_id))) {
         throw bad('this document type is not configurable', requestId);
       }
       const out = await this.caps.renderSamplePreview({
@@ -671,9 +770,9 @@ export class PlatformDocumentTemplatesController {
     return { ...v, logo: null };
   }
 
-  private requireAudit(requestId: string): TemplateAuditPort {
+  private requireAudit(requestId: string, what = 'withdrawal'): TemplateAuditPort {
     if (this.audit === undefined) {
-      throw new AramoError('INTERNAL_ERROR', 'Template audit is not configured; withdrawal refused', 500, { requestId });
+      throw new AramoError('INTERNAL_ERROR', `Template audit is not configured; ${what} refused`, 500, { requestId });
     }
     return this.audit;
   }

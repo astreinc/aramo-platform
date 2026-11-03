@@ -17,6 +17,7 @@ const MANAGE = ['platform:document_template:read', 'platform:document_template:m
 const TYPES: DocumentTypeOption[] = [
   { id: 'd1', key: 'rtr', name: 'Right to represent', configurable: true },
   { id: 'd2', key: 'tax', name: 'Tax form', configurable: false },
+  { id: 'd3', key: 'nda', name: 'Mutual NDA', configurable: true, template_kind: 'EDITABLE', products: ['sign'], category: 'Legal' },
 ];
 
 function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): PlatformTemplate {
@@ -28,7 +29,7 @@ function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): P
     description: null,
     template_kind: 'GENERATED',
     status: 'ACTIVE',
-    products: ['ATS'],
+    products: ['ats'],
     current_version: null,
     draft_version_id: null,
     withdraw_notice_at: null,
@@ -41,12 +42,12 @@ function tpl(id: string, name: string, extra: Partial<PlatformTemplate> = {}): P
 
 const TEMPLATES: PlatformTemplate[] = [
   tpl('t1', 'Aramo standard RTR', {
-    products: ['ATS', 'SIGN'],
+    products: ['ats', 'sign'],
     current_version: { id: 'v2', version_number: 2, status: 'ACTIVE', activated_at: '2026-10-20T10:00:00.000Z' },
     withdraw_notice_at: '2026-10-20T00:00:00.000Z',
     withdraw_effective_at: '2099-10-29T00:00:00.000Z',
   }),
-  tpl('t2', 'Mutual NDA', { status: 'DRAFT', products: ['SIGN'], draft_version_id: 'v9' }),
+  tpl('t2', 'Mutual NDA', { status: 'DRAFT', products: ['sign'], draft_version_id: 'v9' }),
 ];
 
 function Where() {
@@ -100,7 +101,7 @@ describe('DocumentTemplatesListView', () => {
     expect(within(row).getByText('Published v2')).toBeInTheDocument();
     expect(within(row).getByText('Withdrawal 29 Oct 2099')).toBeInTheDocument();
     expect(within(row).getByText('No draft')).toBeInTheDocument();
-    expect(within(row).getByText('SIGN')).toBeInTheDocument();
+    expect(within(row).getByText('Sign')).toBeInTheDocument();
     expect(within(row).getByRole('link', { name: 'Open studio for Aramo standard RTR' })).toHaveAttribute('href', '/document-templates/t1');
     const nda = screen.getByText('Mutual NDA').closest('tr') as HTMLElement;
     expect(within(nda).getByText('Not published')).toBeInTheDocument();
@@ -117,6 +118,41 @@ describe('DocumentTemplatesListView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All products' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Search templates' }), { target: { value: 'zzz' } });
     expect(screen.getByText('No templates match')).toBeInTheDocument();
+  });
+
+  // TEMPLATE-PRODUCT-1 §3.4 — only a never-published template carries Delete…
+  it('Delete… only on a never-published row; confirming deletes and reloads', async () => {
+    const del = vi.spyOn(documentTemplatesApi, 'deleteTemplate').mockResolvedValue(undefined);
+    renderView(MANAGE);
+    await screen.findByText('Mutual NDA');
+    expect(screen.queryByRole('button', { name: 'Delete Aramo standard RTR' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Mutual NDA' }));
+    expect(screen.queryByTestId('path')).toBeNull();
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Mutual NDA?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete template' }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith('t2'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(documentTemplatesApi.listTemplates).toHaveBeenCalledTimes(2);
+  });
+
+  it('read-only operators get no Delete…', async () => {
+    renderView(READ);
+    await screen.findByText('Mutual NDA');
+    expect(screen.queryByRole('button', { name: 'Delete Mutual NDA' })).toBeNull();
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.7 — the product choice is bounded by the chosen type's products.
+  it('Create: choosing a type offers only its products and starts from them', async () => {
+    const create = vi.spyOn(documentTemplatesApi, 'createTemplate').mockResolvedValue(tpl('t9', 'NDA'));
+    renderView(MANAGE);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Create default template' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create default template' });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /Document type/ }), { target: { value: 'd3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Product tags Sign' }));
+    expect(within(within(dialog).getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['✓Sign']);
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), { target: { value: 'NDA' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create and open studio' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: 'd3', products: ['sign'] })));
   });
 
   it('a row click opens the Studio', async () => {
@@ -147,7 +183,7 @@ describe('DocumentTemplatesListView', () => {
     expect(within(dialog).getByText('7 / 120')).toBeInTheDocument();
     fireEvent.click(commit);
     await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({ document_type_id: 'd1', name: 'New RTR', description: null, template_kind: 'GENERATED', products: ['ATS'] }),
+      expect(create).toHaveBeenCalledWith({ document_type_id: 'd1', name: 'New RTR', description: null, template_kind: 'GENERATED', products: ['ats'] }),
     );
     expect(draft).not.toHaveBeenCalled();
     expect(await screen.findByTestId('path')).toHaveTextContent('/document-templates/t9');

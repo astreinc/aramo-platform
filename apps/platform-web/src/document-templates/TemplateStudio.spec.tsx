@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IdentityProvider } from '../identity/identity';
@@ -54,7 +54,7 @@ function detail(draft: TemplateVersion | null, extra: Partial<PlatformTemplateDe
     description: 'Default offer letter.',
     template_kind: 'GENERATED',
     status: 'ACTIVE',
-    products: ['ATS', 'SIGN'],
+    products: ['ats', 'sign'],
     current_version: { id: 'v2', version_number: 2, status: 'ACTIVE', activated_at: '2026-02-02T10:00:00.000Z' },
     draft_version_id: draft?.id ?? null,
     withdraw_notice_at: null,
@@ -67,8 +67,8 @@ function detail(draft: TemplateVersion | null, extra: Partial<PlatformTemplateDe
 }
 
 const VARIABLES: TemplateVariable[] = [
-  { id: 'a', key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', products: ['ATS'], ats_binding_key: 'talent.first_name', sample_value: 'Amina', active: true, created_at: '', updated_at: '' },
-  { id: 'b', key: 'talent.full_name', label: 'Full name', group_label: 'Talent', data_type: 'TEXT', products: ['ATS'], ats_binding_key: 'talent.full_name', sample_value: 'Amina Diallo', active: true, created_at: '', updated_at: '' },
+  { id: 'a', key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', products: ['ats'], ats_binding_key: 'talent.first_name', sample_value: 'Amina', active: true, created_at: '', updated_at: '' },
+  { id: 'b', key: 'talent.full_name', label: 'Full name', group_label: 'Talent', data_type: 'TEXT', products: ['ats'], ats_binding_key: 'talent.full_name', sample_value: 'Amina Diallo', active: true, created_at: '', updated_at: '' },
 ];
 
 function mockApi(d: PlatformTemplateDetail) {
@@ -185,6 +185,22 @@ describe('TemplateStudio (manage)', () => {
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const saved = update.mock.calls[0]?.[1] as { field_schema: { html: string } };
     expect(saved.field_schema.html).toBe(body);
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.5/§2.6 — an untagged default can't be published: Checks blocks it,
+  // and Properties picks the tags from the fixed list (ATS, Sign).
+  it('an untagged template fails the product check; Properties picks tags from the dropdown', async () => {
+    mockApi(detail(version('d3', 3, 'DRAFT', DRAFT_BODY), { products: [] }));
+    const update = vi.spyOn(documentTemplatesApi, 'updateTemplate').mockResolvedValue({ ...detail(null), products: ['sign'] });
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('tab', { name: /Checks/ }));
+    expect(screen.getByText('At least one product tag')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Properties/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Product tags Choose products' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Sign' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith('t1', { products: ['sign'] }));
+    expect(await screen.findByRole('button', { name: 'Product tags Sign' })).toBeInTheDocument();
   });
 
   it('removing an unknown variable from Checks clears the required failure', async () => {
@@ -384,6 +400,63 @@ describe('TemplateStudio (manage)', () => {
     fireEvent.keyDown(document, { key: 's', metaKey: true });
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+  });
+});
+
+// TEMPLATE-PRODUCT-1 §3.4 — the platform Studio discards drafts and deletes a template that
+// was never published; a published template offers only Withdraw.
+describe('TemplateStudio (manage) — discard and delete (TEMPLATE-PRODUCT-1 §3)', () => {
+  const neverPublished = (): PlatformTemplateDetail =>
+    detail(version('d1', 1, 'DRAFT', DRAFT_BODY), { status: 'DRAFT', current_version: null, versions: [version('d1', 1, 'DRAFT', DRAFT_BODY)] });
+
+  it('a never-published template: ⋯ offers Discard draft and Delete template, not Withdraw; Delete leaves the Studio', async () => {
+    mockApi(neverPublished());
+    const del = vi.spyOn(documentTemplatesApi, 'deleteTemplate').mockResolvedValue(undefined);
+    render(
+      <MemoryRouter initialEntries={['/document-templates/t1']}>
+        <IdentityProvider session={platformSession(MANAGE)} load={() => Promise.reject(new Error('no me'))}>
+          <Routes>
+            <Route path="/document-templates/:id" element={<TemplateStudio session={platformSession(MANAGE)} templateId="t1" />} />
+            <Route path="/document-templates" element={<p>Library</p>} />
+          </Routes>
+        </IdentityProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const menu = screen.getByRole('menu', { name: 'More actions' });
+    expect(within(menu).getByRole('menuitem', { name: 'Discard draft…' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Withdraw template…' })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Delete template…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Offer letter?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete template' }));
+    await waitFor(() => expect(del).toHaveBeenCalledWith('t1'));
+    expect(await screen.findByText('Library')).toBeInTheDocument();
+  });
+
+  it('a published template: ⋯ offers Withdraw and Discard draft, never Delete; Discard calls the platform route', async () => {
+    mockApi(detail(version('d3', 3, 'DRAFT', DRAFT_BODY)));
+    const discard = vi.spyOn(documentTemplatesApi, 'discardDraft').mockResolvedValue(undefined);
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const menu = screen.getByRole('menu', { name: 'More actions' });
+    expect(within(menu).getByRole('menuitem', { name: 'Withdraw template…' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Delete template…' })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Discard draft…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard draft v3?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    await waitFor(() => expect(discard).toHaveBeenCalledWith('d3'));
+  });
+
+  it(':read never sees Discard or Delete', async () => {
+    mockApi(neverPublished());
+    renderStudio(READ);
+    await screen.findByText(/You're seeing the published version/);
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const menu = screen.getByRole('menu', { name: 'More actions' });
+    expect(within(menu).queryByRole('menuitem', { name: 'Delete template…' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Discard draft…' })).toBeNull();
   });
 });
 

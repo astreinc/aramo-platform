@@ -29,7 +29,7 @@ const VAR_A: TemplateVariable = {
   label: 'Desired pay rate',
   group_label: 'Talent',
   data_type: 'MULTILINE_TEXT',
-  products: ['ATS', 'SIGN'],
+  products: ['ats', 'sign'],
   ats_binding_key: 'talent.desired_pay_rate',
   sample_value: '$70/hr',
   active: true,
@@ -44,7 +44,7 @@ const VARS: TemplateVariable[] = [
     label: 'Desired pay rate',
     group_label: 'Talent',
     data_type: 'MULTILINE_TEXT',
-    products: ['ATS', 'SIGN'],
+    products: ['ats', 'sign'],
     ats_binding_key: 'talent.desired_pay_rate',
     sample_value: '$70/hr',
     active: true,
@@ -116,7 +116,7 @@ describe('TemplateVariablesView', () => {
     expect(row).toHaveTextContent('talent.desired_pay_rate');
     expect(row).toHaveTextContent('Desired pay rate');
     expect(row).toHaveTextContent('MULTILINE TEXT');
-    expect(row).toHaveTextContent('ATSSIGN');
+    expect(row).toHaveTextContent('ATSSign');
     expect(row).toHaveTextContent('$70/hr');
     expect(row).toHaveTextContent('Active');
     const other = screen.getByTestId('variable-document.issue_date');
@@ -137,7 +137,13 @@ describe('TemplateVariablesView', () => {
     expect(dialog).toHaveTextContent('Keys use dotted lowercase segments, for example talent.first_name.');
     const commit = within(dialog).getByRole('button', { name: 'Add variable' });
     expect(commit).toBeDisabled();
-    expect(within(dialog).getByText('ATS')).toBeInTheDocument(); // default product tag
+    // TEMPLATE-PRODUCT-1 §2.5 — products are a fixed choice (dropdown); the default is ATS.
+    const products = within(dialog).getByRole('button', { name: 'Products ATS' });
+    expect(products).toHaveAttribute('aria-haspopup', 'listbox');
+    fireEvent.click(products);
+    expect(within(dialog).getByRole('option', { name: 'ATS' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(within(dialog).getByRole('option', { name: 'Sign' }));
+    expect(within(dialog).getByRole('button', { name: 'Products ATS · Sign' })).toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByLabelText('Key'), { target: { value: 'Talent' } });
     fireEvent.change(within(dialog).getByLabelText('Label'), { target: { value: 'Middle name' } });
@@ -162,7 +168,7 @@ describe('TemplateVariablesView', () => {
         label: 'Middle name',
         group_label: 'Talent',
         data_type: 'TEXT',
-        products: ['ATS'],
+        products: ['ats', 'sign'],
         ats_binding_key: null,
         sample_value: 'Ann',
         active: true,

@@ -8,7 +8,7 @@ import {
 import { sanitizeDocHtml } from '../dt-html';
 
 import type { StudioCatalogData, StudioTemplate, TemplateStudioCopy, TemplateStudioDataSource } from './data-source';
-import { organizationStudioCopy } from './studio-copy';
+import { organizationCopyForDocumentType, organizationStudioCopy } from './studio-copy';
 
 // TEMPLATE-STUDIO-1 S-2 (directive §2 "Read-only gallery source", §4.3; ADR-0034 D3) — the
 // Org Template gallery's READ-ONLY data source: an Aramo (PLATFORM) default opened in the
@@ -38,6 +38,8 @@ function groupOf(key: string): string {
   return head === '' ? 'Variables' : head.charAt(0).toUpperCase() + head.slice(1).replace(/_/g, ' ');
 }
 
+const GALLERY_SCOPE_CARD = 'Aramo default · read only. Adopt it to create your organization’s own draft in Our templates.';
+
 /**
  * The read-only Studio copy for an Aramo default in the Org gallery: the organization copy
  * table (S-1) with the gallery crumb, the Aramo-default read-only bar and scope card.
@@ -53,7 +55,9 @@ export function galleryStudioCopy(o: { readonly organizationHref: string | null;
         <b>Aramo default.</b> You&apos;re seeing the current version with your organization&apos;s details. Adopting it creates a draft in Our templates; nothing is used until it&apos;s approved.
       </>
     ),
-    scopeCard: 'Aramo default · read only. Adopt it to create your organization’s own draft in Our templates.',
+    scopeCard: GALLERY_SCOPE_CARD,
+    // TEMPLATE-PRODUCT-1 §5 — the type-named wording, but the gallery keeps its own scope card.
+    forDocumentType: (type) => ({ ...organizationCopyForDocumentType(type), scopeCard: GALLERY_SCOPE_CARD }),
   };
 }
 

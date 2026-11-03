@@ -35,7 +35,7 @@ function template(over: Partial<DocumentTemplateView> = {}): DocumentTemplateVie
   return {
     id: 'tpl-1', tenant_id: 'tenant-abc', document_type_id: RTR, client_id: null, name: 'Our RTR', description: null,
     template_kind: 'GENERATED', status: 'ACTIVE', current_version_id: 'v2', created_at: '2026-10-01T00:00:00.000Z',
-    updated_at: '2026-10-20T00:00:00.000Z', ...over,
+    updated_at: '2026-10-20T00:00:00.000Z', products: ['ats', 'sign'], ...over,
   };
 }
 function version(id: string, n: number, status: TemplateVersionView['status'], html: string, over: Partial<TemplateVersionView> = {}): TemplateVersionView {
@@ -175,7 +175,9 @@ describe('Org Studio — role states (ORG-UX-1 §4.1; directive §1.6)', () => {
 });
 
 describe('Org Studio — organization context differences (directive §3.3)', () => {
-  it('no withdraw control, no product tags, no description; name + facts + the Scope card; Variables footnote, no catalog link', async () => {
+  // TEMPLATE-PRODUCT-1 §6.4 — the organization Studio shows the template's (inherited) product
+  // tags READ-ONLY in Properties (no picker); they never block approval.
+  it('no withdraw control, read-only product tags, no description; name + facts + the Scope card; Variables footnote, no catalog link', async () => {
     renderStudio(MANAGER, makeApi([DRAFT, V2, V1]));
     await screen.findByDisplayValue('Right to Represent');
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
@@ -192,7 +194,12 @@ describe('Org Studio — organization context differences (directive §3.3)', ()
     fireEvent.click(screen.getByRole('tab', { name: 'Properties' }));
     expect(screen.getByRole('textbox', { name: /Name/ })).toHaveValue('Our RTR');
     expect(screen.queryByText('Description')).toBeNull();
-    expect(screen.queryByText('Product tags')).toBeNull();
+    const tags = screen.getByTestId('studio-product-tags');
+    expect(tags).toHaveTextContent('Product tags');
+    expect(tags).toHaveTextContent('ATS');
+    expect(tags).toHaveTextContent('Sign');
+    expect(tags).toHaveTextContent('Set by Aramo for this document type.');
+    expect(within(tags).queryByRole('button')).toBeNull();
     expect(screen.queryByText('Withdrawal')).toBeNull();
     expect(screen.getByTestId('studio-scope')).toHaveTextContent(
       'Organization default · used for every RTR your recruiters send from Aramo ATS. Client-specific templates may be supported later.',

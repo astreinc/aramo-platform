@@ -10,6 +10,9 @@ import { type RtrHtmlLogoRef } from './rtr-html-content.js';
 // The letterhead an RTR-content template version renders with. Shared by the ATS RTR
 // orchestrator and (DOC-TEMPLATE-LIB-1 T-5) the Aramo Sign template render, so an Aramo
 // default carries the SAME tenant branding whichever product generates the document.
+// TEMPLATE-PRODUCT-1 §5.6 — generalised by document type: any editable type's version
+// (rtr-html-v1) uses it; `documentLabel` names the type in the refusal (absent ⇒ the ATS
+// RTR wording, unchanged).
 
 export interface LetterheadDeps {
   readonly templates: TemplatesRepository;
@@ -63,9 +66,10 @@ export async function loadLetterhead(
   tenant_id: string,
   logo: RtrHtmlLogoRef,
   requestId: string,
+  documentLabel = 'Right to Represent',
 ): Promise<LetterheadModel> {
   const invalid = (reason: string): AramoError =>
-    new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'The active Right to Represent template logo is not usable', 422, {
+    new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `The active ${documentLabel} template logo is not usable`, 422, {
       requestId,
       details: { reason },
     });

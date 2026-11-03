@@ -11,7 +11,11 @@ export {
   templateErrorToHttp,
 } from './lib/templates.controller.js';
 // DOC-TEMPLATE-LIB-1 T-4 — Org Home template library (gallery, default preview, selection).
-export { DocumentTemplateLibraryController, type TemplateLibraryItem } from './lib/template-library.controller.js';
+export {
+  DocumentTemplateLibraryController,
+  type TemplateLibraryItem,
+  type TemplateLibraryDocumentType,
+} from './lib/template-library.controller.js';
 
 export {
   TEMPLATE_CAPABILITIES,
@@ -37,7 +41,46 @@ export {
   type TemplateGovernanceAudit,
   type TemplateGovernanceAction,
   type TemplatePlatformWithdrawalAudit,
+  // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
+  type TemplatePlatformDeletionAudit,
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type changes.
+  type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';
+// TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
+export {
+  TEMPLATE_PRODUCT_KEYS,
+  isTemplateProductKey,
+  // TEMPLATE-PRODUCT-1 §6.3 — tag enforcement by tenant entitlement.
+  entitledTemplateProducts,
+  visibleToTenant,
+  type TemplateProductKey,
+} from './lib/template-products.js';
+// TEMPLATE-PRODUCT-1 §4 — document type classes / kinds, system-locked types, the
+// Platform Admin document type repository.
+export {
+  DOCUMENT_TYPE_CLASSES,
+  DOCUMENT_TYPE_TEMPLATE_KINDS,
+  DOCUMENT_EXECUTION_MODES,
+  SYSTEM_LOCKED_TYPE_IDS,
+  SYSTEM_LOCKED_EDITABLE_FIELDS,
+  RIGHT_TO_REPRESENT_TYPE_ID,
+  OFFER_LETTER_TYPE_ID,
+  isSystemLockedType,
+  documentTypeKeyFromName,
+  // TEMPLATE-PRODUCT-1 §5.1 — configurability from data.
+  isConfiguredEditableType,
+  type DocumentTypeTemplateConfig,
+  type DocumentTypeTemplateConfigReader,
+  type DocumentTypeClass,
+  type DocumentTypeTemplateKind,
+  type DocumentExecutionMode,
+} from './lib/document-types.js';
+export {
+  PlatformDocumentTypesRepository,
+  type PlatformDocumentTypeRow,
+  type CreateSystemDocumentTypeInput,
+  type UpdateSystemDocumentTypeInput,
+} from './lib/document-types.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   DocumentsRepository,
@@ -107,6 +150,15 @@ export {
   // DOC-TEMPLATE-LIB-1 T-6 — Aramo default withdrawal / one-live-default refusals.
   TemplatePlatformDefaultConflictError,
   type TemplatePlatformDefaultConflictReason,
+  // TEMPLATE-PRODUCT-1 §2.6 — publishing a default with no product tag.
+  TemplateProductRequiredError,
+  // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is referenced.
+  TemplateInUseError,
+  type TemplateInUseReason,
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type management.
+  DocumentTypeNotFoundError,
+  DocumentTypeConflictError,
+  type DocumentTypeConflictReason,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';
@@ -119,3 +171,27 @@ export {
   type RetentionInput,
   type LegalHoldInput,
 } from './lib/storage/document-storage.port.js';
+// TEMPLATE-PRODUCT-1 §7 — fixed legal forms (platform PDF store, placed fields, tenant
+// visibility, Sign use).
+export {
+  FIXED_FORM_SCHEMA_V1,
+  FIXED_FORM_MAX_BYTES,
+  FIXED_FORM_MIME,
+  FIXED_FORM_FIELD_TYPES,
+  FIXED_FORM_MAX_FIELDS,
+  FIXED_FORM_MIN_FIELD_SIZE,
+  PLATFORM_TEMPLATE_ASSET_PREFIX,
+  emptyFixedFormContent,
+  fixedFormIssues,
+  fixedFormPdfOf,
+  isFixedFormFieldType,
+  type FixedFormContent,
+  type FixedFormField,
+  type FixedFormFieldType,
+  type FixedFormIssue,
+  type FixedFormPage,
+  type FixedFormPdfRef,
+  type FixedFormRole,
+  type FixedFormSigning,
+} from './lib/fixed-forms.js';
+export { FixedFormsRepository, type FixedFormTypeRow, type PublishedFixedForm } from './lib/fixed-forms.repository.js';

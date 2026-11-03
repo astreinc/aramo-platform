@@ -108,7 +108,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }, 60_000);
 
-    const CREATE = JSON.stringify({ document_type_id: RTR, name: 'Aramo standard RTR', template_kind: 'GENERATED', products: ['ATS'] });
+    const CREATE = JSON.stringify({ document_type_id: RTR, name: 'Aramo standard RTR', template_kind: 'GENERATED', products: ['ats'] });
 
     it('a tenant token (even one carrying platform:* strings) is refused on every platform template route', async () => {
       const before = await platformCount();

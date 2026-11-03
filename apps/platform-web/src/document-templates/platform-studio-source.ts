@@ -6,7 +6,8 @@ import { DOC_TEMPLATE_MANAGE_SCOPE, documentTemplatesApi } from './document-temp
 // TEMPLATE-STUDIO-1 S-0 (directive §2) — the PLATFORM data source of the shared Template
 // Studio (libs/document-templates-web): the Aramo defaults at /platform/document-templates*
 // and the variable catalog at /platform/template-variables, through the platform API
-// client. `:manage` edits, publishes, withdraws and edits properties (PLATFORM-UX-1 F-9);
+// client. `:manage` edits, publishes, withdraws, discards drafts, deletes never-published
+// defaults (TEMPLATE-PRODUCT-1 §3) and edits properties (PLATFORM-UX-1 F-9);
 // `:read` sees the published version in Preview only (R-13). Content keeps the default
 // codec (no letterhead on platform defaults).
 export function platformStudioDataSource(session: Session): TemplateStudioDataSource {
@@ -25,6 +26,13 @@ export function platformStudioDataSource(session: Session): TemplateStudioDataSo
     saveDraft: (versionId, body) => documentTemplatesApi.updateDraft(versionId, body),
     preview: (versionId) => documentTemplatesApi.preview(versionId),
     approve: (versionId) => documentTemplatesApi.publish(versionId),
+    // TEMPLATE-PRODUCT-1 §3.4 — discard a draft / delete a never-published default (:manage).
+    ...(canManage
+      ? {
+          discardDraft: (versionId: string) => documentTemplatesApi.discardDraft(versionId),
+          deleteTemplate: (id: string) => documentTemplatesApi.deleteTemplate(id),
+        }
+      : {}),
     updateProperties: (id, patch) => documentTemplatesApi.updateTemplate(id, patch),
     withdraw: (id, body) => documentTemplatesApi.withdraw(id, body),
     cancelWithdrawal: (id) => documentTemplatesApi.cancelWithdrawal(id),

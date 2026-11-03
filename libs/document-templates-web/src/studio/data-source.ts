@@ -17,6 +17,7 @@ import type { Readiness } from './readiness';
 //         createDraft = POST /:id/versions | POST /:id/draft
 //         saveDraft = PATCH /versions/:id
 //         discardDraft = DELETE /versions/:id
+//         deleteTemplate = DELETE /:id (platform; never-published only — TEMPLATE-PRODUCT-1 §3)
 //         preview   = POST /versions/:id/preview
 //         approve   = POST /versions/:id/activate (platform: …/publish)
 //   • the caller's capabilities (read-only · edit · edit-and-approve; withdrawal, tags);
@@ -90,7 +91,7 @@ export interface StudioCatalogData {
   readonly variables: readonly StudioCatalogVariable[];
   readonly bindings: readonly StudioAllowedBinding[];
   /** Document type names (the Properties "Document type" fact). */
-  readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string; readonly products?: readonly string[] }>;
   /** TEMPLATE-STUDIO-1 S-1 — whether the organization profile has a logo to capture (A1). */
   readonly tenantLogo?: { readonly available: boolean; readonly tenant_name: string } | null;
 }
@@ -157,6 +158,11 @@ export interface StudioCapabilities {
   readonly canWithdraw: boolean;
   /** Show the product-tags property. */
   readonly productTags: boolean;
+  /**
+   * TEMPLATE-PRODUCT-1 §6.1/§6.4 — the tags are shown read-only (organization: a tenant
+   * template inherits its tags and can't change them). No product check blocks approval.
+   */
+  readonly productTagsReadOnly?: boolean;
   /** Show the description property. */
   readonly description: boolean;
   /**
@@ -283,6 +289,14 @@ export interface TemplateStudioCopy {
   readonly restoreToast?: (n: number) => string;
   /** The Checks detail of an unknown variable. */
   readonly unknownVariableDetail?: string;
+  /**
+   * TEMPLATE-PRODUCT-1 §5 — copy that names the template's document type, applied once the
+   * template is loaded (any configured editable type, not only Right to Represent). Returns
+   * the fields to override; the base copy stays for the rest.
+   */
+  readonly forDocumentType?: (type: { readonly id: string; readonly name: string }) => Partial<
+    Pick<TemplateStudioCopy, 'approveDialog' | 'approveToast' | 'scopeCard'>
+  >;
 }
 
 export interface TemplateStudioDataSource {
@@ -290,8 +304,13 @@ export interface TemplateStudioDataSource {
   catalog(templateId: string): Promise<StudioCatalogData>;
   createDraft(templateId: string, body: StudioContentBody): Promise<StudioVersion>;
   saveDraft(versionId: string, body: StudioContentBody): Promise<StudioVersion>;
-  /** Discard the open draft (organization). */
+  /** Discard the open draft (organization; platform since TEMPLATE-PRODUCT-1 §3.1). */
   discardDraft?(versionId: string): Promise<void>;
+  /**
+   * TEMPLATE-PRODUCT-1 §3.2/§3.4 — delete a template that was never published (platform).
+   * The ⋯ menu offers it only while no version was ever published; the server re-checks.
+   */
+  deleteTemplate?(templateId: string): Promise<void>;
   preview(versionId: string): Promise<StudioSamplePreview>;
   /** Platform: publish · organization: activate. */
   approve(versionId: string): Promise<StudioVersion>;

@@ -36,12 +36,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const OTHER_TENANT = randomUUID();
     const ACTOR = randomUUID();
 
-    async function newDocumentType(): Promise<string> {
+    async function newDocumentType(products: string[] = []): Promise<string> {
       const id = randomUUID();
       await db.query(
-        `INSERT INTO "documents"."DocumentType" (id, tenant_id, key, name, scope, execution_mode_default, retention_class)
-         VALUES ($1, NULL, $2, 'RTR', 'SYSTEM', 'SINGLE_SIGNATURE', 'CONTRACT_RECORD')`,
-        [id, `T1_TYPE_${id.slice(0, 8)}`],
+        `INSERT INTO "documents"."DocumentType" (id, tenant_id, key, name, scope, execution_mode_default, retention_class, products)
+         VALUES ($1, NULL, $2, 'RTR', 'SYSTEM', 'SINGLE_SIGNATURE', 'CONTRACT_RECORD', $3)`,
+        [id, `T1_TYPE_${id.slice(0, 8)}`, products],
       );
       return id;
     }
@@ -121,14 +121,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ── §3.1 DocumentTemplate ownership CHECKs ─────────────────────────────────
-    it('defaults existing-shape inserts to owner_scope TENANT (behaviour-neutral) with NULL products/withdraw', async () => {
-      const typeId = await newDocumentType();
-      const id = await insertTemplate({ tenant_id: TENANT, typeId });
-      const r = await db.query(
-        `SELECT owner_scope, products, withdraw_notice_at, withdraw_effective_at FROM "documents"."DocumentTemplate" WHERE id = $1`,
-        [id],
-      );
-      expect(r.rows[0]).toEqual({ owner_scope: 'TENANT', products: null, withdraw_notice_at: null, withdraw_effective_at: null });
+    // TEMPLATE-PRODUCT-1 §6.1 (migration 20261103120000): an insert without products takes its
+    // document type's products (BEFORE INSERT trigger document_template_products_from_type), so
+    // an existing-shape TENANT insert is no longer NULL — it carries exactly the type's tags.
+    it('defaults existing-shape inserts to owner_scope TENANT (behaviour-neutral) with the type products (§6.1 trigger) and NULL withdraw', async () => {
+      const select = `SELECT owner_scope, products, withdraw_notice_at, withdraw_effective_at FROM "documents"."DocumentTemplate" WHERE id = $1`;
+      const untaggedType = await newDocumentType();
+      const untagged = await db.query(select, [await insertTemplate({ tenant_id: TENANT, typeId: untaggedType })]);
+      expect(untagged.rows[0]).toEqual({ owner_scope: 'TENANT', products: [], withdraw_notice_at: null, withdraw_effective_at: null });
+      const taggedType = await newDocumentType(['ats', 'sign']);
+      const tagged = await db.query(select, [await insertTemplate({ tenant_id: TENANT, typeId: taggedType })]);
+      expect(tagged.rows[0]).toEqual({ owner_scope: 'TENANT', products: ['ats', 'sign'], withdraw_notice_at: null, withdraw_effective_at: null });
     });
 
     it('a PLATFORM row requires tenant_id NULL and a TENANT row requires tenant_id', async () => {
@@ -162,17 +165,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(insertTemplate({ tenant_id: TENANT, typeId, client_id: randomUUID() })).resolves.toBeTypeOf('string');
     });
 
-    it('products and withdraw_* are PLATFORM-only', async () => {
+    // TEMPLATE-PRODUCT-1 §6.1 (migration 20261103120000) replaced the PLATFORM-only products
+    // CHECK: a TENANT row may carry (server-written) products; a PLATFORM row's are non-null.
+    it('withdraw_* are PLATFORM-only; products are non-null on PLATFORM and allowed on TENANT', async () => {
       const typeId = await newDocumentType();
-      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ATS'] })).rejects.toThrow(
-        /DocumentTemplate_products_platform_only_check/,
-      );
+      await expect(insertTemplate({ tenant_id: TENANT, typeId, products: ['ats'] })).resolves.toBeTypeOf('string');
       await expect(insertTemplate({ tenant_id: TENANT, typeId, withdraw: true })).rejects.toThrow(
         /DocumentTemplate_withdraw_platform_only_check/,
       );
-      const id = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId, products: ['ATS', 'SIGN'], withdraw: true });
+      const id = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId, products: ['ats', 'sign'], withdraw: true });
       const r = await db.query(`SELECT products FROM "documents"."DocumentTemplate" WHERE id = $1`, [id]);
-      expect(r.rows[0].products).toEqual(['ATS', 'SIGN']);
+      expect(r.rows[0].products).toEqual(['ats', 'sign']);
+      await expect(db.query(`UPDATE "documents"."DocumentTemplate" SET products = NULL WHERE id = $1`, [id])).rejects.toThrow(
+        /DocumentTemplate_products_platform_not_null_check/,
+      );
     });
 
     // ── §3.2 version tenant = parent tenant ────────────────────────────────────
@@ -304,7 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ── §3.7 TemplateVariable catalog ──────────────────────────────────────────
-    it('seeds TemplateVariable with the 8 RTR binding keys (products ATS), no tenant_id column', async () => {
+    it('seeds TemplateVariable with the 8 RTR binding keys (products ats — lowercased by TEMPLATE-PRODUCT-1 TP-1), no tenant_id column', async () => {
       const r = await db.query(
         `SELECT key, label, group_label, data_type, products, ats_binding_key, sample_value, active
            FROM "documents"."TemplateVariable"
@@ -323,7 +329,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'talent.full_name',
       ]);
       for (const row of r.rows) {
-        expect(row.products).toEqual(['ATS']);
+        expect(row.products).toEqual(['ats']);
         expect(row.ats_binding_key).toBe(row.key);
         expect(row.active).toBe(true);
         expect(typeof row.sample_value).toBe('string');

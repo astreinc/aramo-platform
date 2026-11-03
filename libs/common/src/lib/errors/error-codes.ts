@@ -407,6 +407,12 @@ export const ERROR_CODES = [
   // pending or already effective, publish/cancel while another live default exists for
   // the type). details.reason names the case (409).
   'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
+  // TEMPLATE-PRODUCT-1 §2.6 — publishing an Aramo default that has no product tag (422).
+  'TEMPLATE_PRODUCT_REQUIRED',
+  // TEMPLATE-PRODUCT-1 §3.2 — deleting an Aramo default that was published or is still referenced (409, details.reasons).
+  'TEMPLATE_IN_USE',
+  // TEMPLATE-PRODUCT-1 §4.3 — a Platform Admin document type write refused by state (409, details.reason).
+  'DOCUMENT_TYPE_CONFLICT',
   'DOCUMENT_REQUIREMENT_NOT_FOUND',
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',

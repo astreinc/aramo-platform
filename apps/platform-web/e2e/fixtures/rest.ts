@@ -193,16 +193,16 @@ export function matchingPolicy() {
 // ---- Template variables (prototype VARS) --------------------------------------
 
 const VARS = [
-  ['talent.first_name', 'Talent first name', 'Talent', 'TEXT', ['ATS', 'SIGN'], 'talent.firstName', 'Amina', true],
-  ['talent.full_name', 'Talent full name', 'Talent', 'TEXT', ['ATS', 'SIGN'], 'talent.fullName', 'Amina Diallo', true],
-  ['requisition.title', 'Role title', 'Requisition', 'TEXT', ['ATS'], 'requisition.title', 'Senior Platform Engineer', true],
-  ['requisition.start_date', 'Start date', 'Requisition', 'DATE', ['ATS'], 'offer.startDate', '3 Nov 2026', true],
-  ['offer.base_salary', 'Base salary', 'Offer', 'CURRENCY', ['ATS'], 'offer.baseSalary', '€84,000', true],
-  ['offer.terms', 'Additional terms', 'Offer', 'MULTILINE_TEXT', ['ATS'], null, 'Relocation support up to €5,000.', true],
-  ['offer.hours_per_week', 'Hours per week', 'Offer', 'NUMBER', ['ATS'], 'offer.hours', '40', false],
-  ['organization.legal_name', 'Organization legal name', 'Organization', 'TEXT', ['ATS', 'SIGN'], 'tenant.legalName', 'Northwind Logistics GmbH', true],
-  ['organization.signatory', 'Signatory name', 'Organization', 'TEXT', ['ATS', 'SIGN'], null, 'Jonas Weber', true],
-  ['document.issue_date', 'Issue date', 'Document', 'DATE', ['SIGN'], null, '24 Oct 2026', true],
+  ['talent.first_name', 'Talent first name', 'Talent', 'TEXT', ['ats', 'sign'], 'talent.firstName', 'Amina', true],
+  ['talent.full_name', 'Talent full name', 'Talent', 'TEXT', ['ats', 'sign'], 'talent.fullName', 'Amina Diallo', true],
+  ['requisition.title', 'Role title', 'Requisition', 'TEXT', ['ats'], 'requisition.title', 'Senior Platform Engineer', true],
+  ['requisition.start_date', 'Start date', 'Requisition', 'DATE', ['ats'], 'offer.startDate', '3 Nov 2026', true],
+  ['offer.base_salary', 'Base salary', 'Offer', 'CURRENCY', ['ats'], 'offer.baseSalary', '€84,000', true],
+  ['offer.terms', 'Additional terms', 'Offer', 'MULTILINE_TEXT', ['ats'], null, 'Relocation support up to €5,000.', true],
+  ['offer.hours_per_week', 'Hours per week', 'Offer', 'NUMBER', ['ats'], 'offer.hours', '40', false],
+  ['organization.legal_name', 'Organization legal name', 'Organization', 'TEXT', ['ats', 'sign'], 'tenant.legalName', 'Northwind Logistics GmbH', true],
+  ['organization.signatory', 'Signatory name', 'Organization', 'TEXT', ['ats', 'sign'], null, 'Jonas Weber', true],
+  ['document.issue_date', 'Issue date', 'Document', 'DATE', ['sign'], null, '24 Oct 2026', true],
 ] as const;
 
 export function templateVariables() {

@@ -37,6 +37,14 @@ import { TemplatesRepository } from './templates.repository.js';
 // selection is ignored. With no usable selection the outcome is SELECTION_REQUIRED (adopt
 // or create, then approve) when the type has an Aramo starting point, else NOT_CONFIGURED.
 
+//
+// TEMPLATE-PRODUCT-1 (Directive v1.0 LOCKED §6.3) — PRODUCT TAGS ENFORCED. With `product` set,
+// only templates tagged with it take part: a selection naming an untagged template is skipped
+// (like any unusable choice), the withdrawal fallback and the "has an Aramo starting point"
+// decision consider only tagged templates. ATS (RTR) resolves with `ats`, Aramo Sign with
+// `sign`, so the Sign is_default auto-choice is the same rule over sign-tagged templates.
+// Without `product` nothing is filtered (unchanged for any other caller).
+
 export type TemplateResolutionSource = 'CLIENT_SELECTION' | 'TENANT_SELECTION' | 'PLATFORM_DEFAULT' | 'WITHDRAWAL_FALLBACK';
 
 type TemplateRow = NonNullable<Awaited<ReturnType<TemplatesRepository['findTemplateByIdOwnerAware']>>>;
@@ -62,6 +70,19 @@ export interface ResolveTemplateInput {
   // The client the document is for, when the flow knows one. null/absent/'' ⇒ only the
   // tenant-wide selection and the Aramo default are consulted.
   client_id?: string | null;
+  // TEMPLATE-PRODUCT-1 §6.3 — the product the document is for (`ats` / `sign`): only
+  // templates tagged with it resolve. Absent ⇒ no product filter.
+  product?: string;
+}
+
+// A template carries the product (case-insensitive; the stored keys are lowercase since TP-1).
+// A row with NO recorded tags (null — not possible after migration 20261103120000, whose CHECK,
+// backfill and insert trigger give every row an array) is treated as unrestricted, so a legacy
+// row is never silently dropped; an EMPTY array is tagged with nothing.
+function tagged(products: readonly string[] | null | undefined, product: string | undefined): boolean {
+  if (product === undefined || products === null || products === undefined) return true;
+  const want = product.toLowerCase();
+  return products.some((p) => p.toLowerCase() === want);
 }
 
 @Injectable()
@@ -89,6 +110,8 @@ export class TemplateResolutionService {
       }
       // ORG-UX-1 §5.3 — only a grandfathered selection may name an Aramo default.
       if (template.owner_scope === 'PLATFORM' && sel.legacy_platform !== true) continue;
+      // TEMPLATE-PRODUCT-1 §6.3 — a template not tagged with the product is not offered to it.
+      if (!tagged(template.products, input.product)) continue;
       // A withdrawn Aramo default (past effective) is never resolved — move on, and
       // remember the tenant relied on it (D10 fallback below).
       if (template.owner_scope === 'PLATFORM' && isWithdrawn(template.withdraw_effective_at, at)) {
@@ -100,16 +123,18 @@ export class TemplateResolutionService {
       }
       return this.pin(input.tenant_id, template, step.source);
     }
-    if (withdrawn.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, withdrawn);
+    if (withdrawn.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, withdrawn, input.product);
 
     // ORG-UX-1 §5.3 — no usable selection: the Aramo default is NOT resolved. When the
     // type has an Aramo starting point (live, or withdrawn) the tenant must adopt or create
     // and approve its own template (SELECTION_REQUIRED); otherwise nothing is configured.
-    const defaults = await this.templates.findResolvablePlatformDefaults(input.document_type_id, at);
+    const defaults = (await this.templates.findResolvablePlatformDefaults(input.document_type_id, at)).filter((d) =>
+      tagged(d.products, input.product),
+    );
     if (defaults.length > 0) return { outcome: 'SELECTION_REQUIRED', withdrawn_template_ids: [] };
-    const gone = await this.templates.listWithdrawnPlatformDefaultIds(input.document_type_id, at);
+    const gone = await this.templates.listWithdrawnPlatformDefaultIds(input.document_type_id, at, input.product);
     // T-6 unchanged: a withdrawn default the type relied on → the tenant's own approved template.
-    if (gone.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, gone);
+    if (gone.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, gone, input.product);
     return { outcome: 'NOT_CONFIGURED' };
   }
 
@@ -121,8 +146,9 @@ export class TemplateResolutionService {
     document_type_id: string,
     client_id: string | null,
     withdrawn_template_ids: string[],
+    product?: string,
   ): Promise<TemplateResolution> {
-    const own = await this.templates.listTenantFallbackTemplates(tenant_id, document_type_id, client_id);
+    const own = await this.templates.listTenantFallbackTemplates(tenant_id, document_type_id, client_id, product);
     for (const t of own) {
       const r = await this.pin(tenant_id, t as TemplateRow, 'WITHDRAWAL_FALLBACK');
       if (r.outcome === 'RESOLVED') return r;

@@ -35,9 +35,11 @@ async function codeOf(fn: () => Promise<unknown>): Promise<string> {
 }
 
 describe('RtrTemplateCapabilities (T1 port)', () => {
-  it('isConfigurable: only RTR', () => {
-    expect(caps.isConfigurable(RTR)).toBe(true);
-    expect(caps.isConfigurable(OTHER)).toBe(false);
+  // TEMPLATE-PRODUCT-1 §5.1 — configurability is data (async). Constructed without a
+  // document-type reader, the capability sees the seeded configuration: RTR only.
+  it('isConfigurable: only RTR (seeded configuration)', async () => {
+    expect(await caps.isConfigurable(RTR)).toBe(true);
+    expect(await caps.isConfigurable(OTHER)).toBe(false);
   });
 
   // Slice 1 B3 adds requisition.description ("Job description"); Amendment A2 adds
@@ -165,7 +167,7 @@ describe('DOC-TEMPLATE-LIB-1 T-2 — catalog-driven allowed bindings', () => {
         label: 'Tax ID',
         group_label: 'Organization',
         data_type: 'TEXT',
-        products: ['ATS'],
+        products: ['ats'],
         ats_binding_key: 'organization.tax_id',
         sample_value: '12-3456789',
         active: true,

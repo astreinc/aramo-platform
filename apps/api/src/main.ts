@@ -29,6 +29,10 @@ import {
   INTELLIGENCE_EVENTS_MAX_BODY_BYTES,
   INTELLIGENCE_EVENTS_WEBHOOK_ROUTE,
 } from './integrations/intelligence/intelligence-webhook.constants.js';
+import {
+  FIXED_FORM_PDF_UPLOAD_MAX_BODY,
+  FIXED_FORM_PDF_UPLOAD_ROUTE,
+} from './document-templates-platform/fixed-form-upload.constants.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -84,6 +88,10 @@ async function bootstrap(): Promise<void> {
     INTELLIGENCE_EVENTS_WEBHOOK_ROUTE,
     express.raw({ type: () => true, limit: INTELLIGENCE_EVENTS_MAX_BODY_BYTES }),
   );
+  // TEMPLATE-PRODUCT-1 §7.1 — the fixed-form PDF upload (JSON { content_base64 }, a PDF of up
+  // to 10 MB) gets a route-scoped JSON parser with a larger limit, mounted BEFORE the global
+  // one (which then skips the already-parsed body). Every other route keeps the default.
+  app.use(FIXED_FORM_PDF_UPLOAD_ROUTE, express.json({ limit: FIXED_FORM_PDF_UPLOAD_MAX_BODY }));
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).
   app.use(express.json());

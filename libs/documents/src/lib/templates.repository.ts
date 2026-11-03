@@ -3,15 +3,19 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { type DocumentTypeTemplateConfig, type DocumentTypeTemplateKind } from './document-types.js';
 import {
   DocumentNotFoundError,
   TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
+  TemplateInUseError,
   TemplateNotFoundError,
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateProductRequiredError,
   TemplateSelectionInvalidError,
   TemplateVersionNotFoundError,
+  type TemplateInUseReason,
 } from './domain/errors.js';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§18) — deterministic fingerprint of a version's editable
@@ -28,7 +32,7 @@ function stableStringify(value: unknown): string {
 // removing a TemplateFieldDefinition re-arms the preview gate like a content edit. A
 // version with NO field definitions hashes exactly as before (field_schema only), so
 // every existing rtr-generated-v1 / rtr-html-v1 fingerprint is unchanged.
-interface FingerprintField {
+export interface FingerprintField {
   field_key: string;
   field_type: string;
   binding_key: string | null;
@@ -42,7 +46,8 @@ interface FingerprintField {
   signer_role: string | null;
   ordinal: number;
 }
-function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
+// TEMPLATE-PRODUCT-1 TP-6 — exported (unchanged) so the fixed-form repository re-arms the same gate.
+export function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
   if (fields.length === 0) return createHash('sha256').update(stableStringify(field_schema ?? null)).digest('hex');
   const field_definitions = [...fields]
     .sort((a, b) => a.ordinal - b.ordinal || (a.field_key < b.field_key ? -1 : a.field_key > b.field_key ? 1 : 0))
@@ -178,7 +183,11 @@ export class TemplatesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Templates ──────────────────────────────────────────────────────────────
+  // TEMPLATE-PRODUCT-1 §6.1 — a tenant template created any way other than Adopt inherits its
+  // document type's products, written here by the server (never from the caller). An unknown
+  // type leaves products to the DB (the FK refuses the row; the trigger is the backstop).
   async createTemplate(input: CreateTemplateInput) {
+    const type = await this.prisma.documentType.findFirst({ where: { id: input.document_type_id }, select: { products: true } });
     return this.prisma.documentTemplate.create({
       data: {
         id: randomUUID(),
@@ -189,6 +198,7 @@ export class TemplatesRepository {
         description: input.description ?? null,
         template_kind: input.template_kind,
         status: 'DRAFT',
+        ...(type !== null ? { products: [...type.products] } : {}),
         created_by: input.created_by,
       },
     });
@@ -413,6 +423,9 @@ export class TemplatesRepository {
       where: { id: input.library_template_id, owner_scope: 'PLATFORM', tenant_id: null },
     });
     if (source === null) throw new TemplateNotFoundError(input.library_template_id);
+    // TEMPLATE-PRODUCT-1 §7.3 — a fixed legal form is never adopted (it is shown read-only).
+    const sourceType = await this.prisma.documentType.findFirst({ where: { id: source.document_type_id }, select: { template_kind: true } });
+    if (sourceType?.template_kind === 'FIXED_FORM') throw new TemplateSelectionInvalidError(input.library_template_id, 'fixed_form_not_adoptable');
     const now = new Date();
     if (
       source.status !== 'ACTIVE' ||
@@ -443,6 +456,9 @@ export class TemplatesRepository {
           description: source.description,
           template_kind: source.template_kind,
           status: 'DRAFT',
+          // TEMPLATE-PRODUCT-1 §6.1 — the tags are COPIED from the source default (never read
+          // through adopted_from_*, which stays provenance only).
+          products: [...(source.products ?? [])],
           created_by: input.created_by,
           adopted_from_template_id: source.id,
           adopted_from_version_id: version.id,
@@ -805,6 +821,46 @@ export class TemplatesRepository {
     return this.prisma.documentType.findMany({ where: { tenant_id: null, active: true }, orderBy: { key: 'asc' } });
   }
 
+  // TEMPLATE-PRODUCT-1 §4.4 — the types an Aramo default may be created for: active SYSTEM
+  // TEMPLATE types with a kind set (never an UPLOAD slot such as TALENT_*, never an
+  // unconfigured type). listSystemDocumentTypes above is unchanged for its other readers.
+  async listTemplateDocumentTypes() {
+    return this.prisma.documentType.findMany({
+      where: { tenant_id: null, active: true, type_class: 'TEMPLATE', template_kind: { not: null } },
+      orderBy: { key: 'asc' },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §5.1 — the template configuration of a document type (any owner; a
+  // TENANT/CLIENT type is never configured: its kind stays NULL). Null when unknown. The
+  // capability port decides configurability from it (isConfiguredEditableType).
+  async findDocumentTypeTemplateConfig(id: string): Promise<DocumentTypeTemplateConfig | null> {
+    return this.prisma.documentType.findFirst({
+      where: { id },
+      select: { id: true, active: true, type_class: true, template_kind: true, products: true },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §5.4 — the active SYSTEM TEMPLATE types of a kind, optionally only those
+  // tagged with a product (Sign: EDITABLE types tagged `sign`). Ordered by key.
+  async listConfiguredTemplateTypes(template_kind: DocumentTypeTemplateKind, product?: string) {
+    return this.prisma.documentType.findMany({
+      where: {
+        tenant_id: null,
+        active: true,
+        type_class: 'TEMPLATE',
+        template_kind,
+        ...(product !== undefined ? { products: { has: product } } : {}),
+      },
+      orderBy: { key: 'asc' },
+    });
+  }
+
+  // TEMPLATE-PRODUCT-1 §2.7 — a SYSTEM type by id (null when unknown or tenant-owned).
+  async findSystemDocumentType(id: string) {
+    return this.prisma.documentType.findFirst({ where: { id, tenant_id: null } });
+  }
+
   async getPlatformTemplate(id: string) {
     return this.getTemplateFor(PLATFORM_OWNER, id);
   }
@@ -864,6 +920,9 @@ export class TemplatesRepository {
   // typed refusal. Publishing a new version of a default whose withdrawal has TAKEN
   // EFFECT is refused (nobody resolves it any more). During the notice window a new
   // version may still be published (tenants still use it until the effective date).
+  //
+  // TEMPLATE-PRODUCT-1 §2.6 — a default with no product tag is never published (422
+  // TEMPLATE_PRODUCT_REQUIRED): tags decide where a default is offered.
   async activatePlatformVersion(input: { version_id: string; actor_id: string }) {
     const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
     const t = await this.getTemplateFor(PLATFORM_OWNER, v.template_id);
@@ -876,6 +935,7 @@ export class TemplatesRepository {
       const live = await this.findLivePlatformDefault(t.document_type_id, t.id);
       if (live !== null) throw new TemplatePlatformDefaultConflictError(t.id, 'platform_default_live', { live_template_id: live.id });
     }
+    if (v.status === 'DRAFT' && (t.products ?? []).length === 0) throw new TemplateProductRequiredError(t.id);
     try {
       return await this.activateVersionFor(PLATFORM_OWNER, { ...input, require_preview: true });
     } catch (e) {
@@ -972,6 +1032,88 @@ export class TemplatesRepository {
     return this.getPlatformTemplate(t.id);
   }
 
+  // ── TEMPLATE-PRODUCT-1 §3 — platform delete (R1) ──────────────────────────
+  // A published version is only ever withdrawn (ADR-0034 D10); these remove what was never
+  // published. `beforeDelete` runs after every check and before the delete (the platform
+  // controller writes the GLOBAL audit event there — no delete without its audit record; a
+  // failing hook aborts the delete).
+
+  // §3.1 — discard the open DRAFT version of an Aramo default. Mirrors deleteDraftVersion
+  // (tenant): DRAFT only (else TemplateImmutableError), field definitions removed in the
+  // same transaction, and the status-guarded deleteMany is the race backstop (a version
+  // published between the read and the delete matches 0 rows and is refused, never deleted).
+  async deletePlatformDraftVersion(input: {
+    version_id: string;
+    beforeDelete?: (planned: {
+      version: { id: string; version_number: number; template_id: string };
+      template: { id: string; document_type_id: string; name: string };
+    }) => Promise<void>;
+  }): Promise<void> {
+    const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    const t = await this.getTemplateFor(PLATFORM_OWNER, v.template_id);
+    if (input.beforeDelete !== undefined) await input.beforeDelete({ version: v, template: t });
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: input.version_id } });
+      return tx.templateVersion.deleteMany({
+        where: { ...versionWhere(PLATFORM_OWNER), id: input.version_id, status: 'DRAFT' },
+      });
+    });
+    if (deleted.count === 0) throw new TemplateImmutableError(input.version_id);
+  }
+
+  // §3.2 — delete an Aramo default that was never published. In ONE transaction, with the
+  // template row locked (FOR UPDATE: a concurrent publish, new version or selection waits
+  // on it), every condition is checked: PLATFORM, DRAFT, no current version and no ACTIVE /
+  // RETIRED version; no TenantTemplateSelection; no Document / DocumentRevision pinned to
+  // any of its versions; no DocumentTemplate.adopted_from_* pointing at it (explicit — those
+  // columns carry no FK). Any failure is TemplateInUseError naming every reason. Delete
+  // order: field definitions → versions → template.
+  //
+  // Sign SignatureEnvelope.template_ref (Sign's own database, no FK) is not queried: a
+  // template with no ACTIVE or RETIRED version has never been listable or renderable by
+  // Sign (sign-template-library lists only ACTIVE templates pinned to an ACTIVE version),
+  // so no envelope can name it — the "published" check above covers it.
+  async deletePlatformTemplate(input: {
+    id: string;
+    beforeDelete?: (planned: { template: { id: string; document_type_id: string; name: string } }) => Promise<void>;
+  }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"::text FROM "documents"."DocumentTemplate"
+         WHERE "id" = ${input.id}::uuid AND "owner_scope" = 'PLATFORM' AND "tenant_id" IS NULL
+         FOR UPDATE`;
+      if (locked.length === 0) throw new TemplateNotFoundError(input.id);
+      const t = await tx.documentTemplate.findFirstOrThrow({ where: { id: input.id } });
+      const versions = await tx.templateVersion.findMany({ where: { template_id: t.id }, select: { id: true, status: true } });
+      const versionIds = versions.map((v) => v.id);
+      const reasons: TemplateInUseReason[] = [];
+      if (t.status !== 'DRAFT' || t.current_version_id !== null || versions.some((v) => v.status !== 'DRAFT')) reasons.push('published');
+      if ((await tx.tenantTemplateSelection.count({ where: { template_id: t.id } })) > 0) reasons.push('selection');
+      if (versionIds.length > 0) {
+        const docs = await tx.document.count({ where: { template_version_id: { in: versionIds } } });
+        const revisions = await tx.documentRevision.count({ where: { template_version_id: { in: versionIds } } });
+        if (docs + revisions > 0) reasons.push('documents');
+      }
+      const adopted = await tx.documentTemplate.count({
+        where: {
+          OR: [
+            { adopted_from_template_id: t.id },
+            ...(versionIds.length > 0 ? [{ adopted_from_version_id: { in: versionIds } }] : []),
+          ],
+        },
+      });
+      if (adopted > 0) reasons.push('adopted');
+      if (reasons.length > 0) throw new TemplateInUseError(t.id, reasons);
+      if (input.beforeDelete !== undefined) await input.beforeDelete({ template: t });
+      if (versionIds.length > 0) {
+        await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: { in: versionIds } } });
+        await tx.templateVersion.deleteMany({ where: { template_id: t.id, tenant_id: null, status: 'DRAFT' } });
+      }
+      await tx.documentTemplate.delete({ where: { id: t.id } });
+    });
+  }
+
   // The Aramo defaults with a published withdrawal whose effective date is after `since`
   // (pending notices, plus recently effective ones when `since` is in the past — the
   // tenant notice grace window). Ordered by effective date.
@@ -986,7 +1128,8 @@ export class TemplatesRepository {
   // and ones that took effect less than `grace_days` ago. A tenant relies on a default
   // when one of its selections names it, or when it has no tenant-wide selection for the
   // type and no other live default (no withdrawal published) would be resolved instead.
-  // Product tags are returned as recorded and NEVER filter (ADR-0034 D9 — not enforced).
+  // Product tags are returned as recorded; the controller filters them by the tenant's
+  // entitlements (TEMPLATE-PRODUCT-1 §6.3, superseding ADR-0034 D9).
   // The only tenant data read is the caller's own selections / templates.
   async listWithdrawalNoticesForTenant(input: { tenant_id: string; now?: Date; grace_days: number }) {
     const now = input.now ?? new Date();
@@ -1040,9 +1183,16 @@ export class TemplatesRepository {
   }
 
   // Ids of the Aramo defaults of a type whose withdrawal has taken effect at `now`.
-  async listWithdrawnPlatformDefaultIds(document_type_id: string, now: Date): Promise<string[]> {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only defaults tagged with it.
+  async listWithdrawnPlatformDefaultIds(document_type_id: string, now: Date, product?: string): Promise<string[]> {
     const rows = await this.prisma.documentTemplate.findMany({
-      where: { ...templateWhere(PLATFORM_OWNER), document_type_id, status: 'ACTIVE', withdraw_effective_at: { lte: now } },
+      where: {
+        ...templateWhere(PLATFORM_OWNER),
+        document_type_id,
+        status: 'ACTIVE',
+        withdraw_effective_at: { lte: now },
+        ...(product !== undefined ? { products: { has: product } } : {}),
+      },
       select: { id: true },
       orderBy: { id: 'asc' },
     });
@@ -1060,10 +1210,12 @@ export class TemplatesRepository {
   // way a PLATFORM template is usable after ORG-UX-1 §5.3), ACTIVE and not past
   // withdraw_effective_at. Each row has a current version (the caller pins it). An explicit
   // own-tenant ∪ PLATFORM union (ADR-0034 §4.1); the automatic resolution is untouched.
-  async listUsableTemplatesForTenant(tenant_id: string, document_type_id: string, client_id: string | null, now: Date) {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only templates tagged with it (Sign: `sign`).
+  async listUsableTemplatesForTenant(tenant_id: string, document_type_id: string, client_id: string | null, now: Date, product?: string) {
     const clientScope = client_id === null ? [{ client_id: null }] : [{ client_id: null }, { client_id }];
+    const tagged = product !== undefined ? { products: { has: product } } : {};
     const own = await this.prisma.documentTemplate.findMany({
-      where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, OR: clientScope },
+      where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, OR: clientScope, ...tagged },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
     const adopted = await this.prisma.tenantTemplateSelection.findMany({
@@ -1082,13 +1234,16 @@ export class TemplatesRepository {
               status: 'ACTIVE',
               current_version_id: { not: null },
               OR: [{ withdraw_effective_at: null }, { withdraw_effective_at: { gt: now } }],
+              ...tagged,
             },
             orderBy: [{ name: 'asc' }, { id: 'asc' }],
           });
     return [...own, ...platform];
   }
 
-  async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null) {
+  // TEMPLATE-PRODUCT-1 §6.3 — `product`: only templates tagged with it.
+  async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null, product?: string) {
+    const tagged = product !== undefined ? { products: { has: product } } : {};
     const rows = await this.prisma.documentTemplate.findMany({
       where: {
         tenant_id,
@@ -1097,13 +1252,14 @@ export class TemplatesRepository {
         status: 'ACTIVE',
         current_version_id: { not: null },
         client_id,
+        ...tagged,
       },
     });
     const tenantWide =
       client_id === null
         ? []
         : await this.prisma.documentTemplate.findMany({
-            where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, client_id: null },
+            where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, client_id: null, ...tagged },
           });
     const all = [...rows, ...tenantWide];
     const versionIds = all.map((t) => t.current_version_id).filter((id): id is string => id !== null);

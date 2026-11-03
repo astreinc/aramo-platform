@@ -148,6 +148,8 @@ export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
 // data source, its copy table and the static Sections set (additive).
 export {
   organizationStudioCopy,
+  // TEMPLATE-PRODUCT-1 §5 — the organization copy naming any configured editable type.
+  organizationCopyForDocumentType,
   organizationReadinessLabel,
   ORGANIZATION_APPROVE_CONSEQUENCE,
   ORGANIZATION_SCOPE_CARD,
@@ -182,3 +184,50 @@ export {
   galleryStudioDataSource,
   type GallerySourceOptions,
 } from './studio/gallery-source';
+// TEMPLATE-PRODUCT-1 §2.2/§2.5 — template product tags: the one key → label map (ats → ATS,
+// sign → Sign) and the multi-select dropdown every surface uses (additive).
+export {
+  TEMPLATE_PRODUCT_KEYS,
+  TEMPLATE_PRODUCT_LABELS,
+  isTemplateProductKey,
+  templateProductLabel,
+  templateProductsLine,
+  orderedProducts,
+  ProductTagsSelect,
+  type ProductTagsSelectProps,
+  type TemplateProductKey,
+} from './template-products';
+// TEMPLATE-PRODUCT-1 §7 — Aramo fixed legal forms: the Platform Studio's fixed-form mode, the
+// tenant read-only preview and client, and the shared model (additive). The PDF geometry /
+// rendering helpers are the separate subpath @aramo/document-templates-web/pdf.
+export { FixedFormStudio, type FixedFormStudioDataSource, type FixedFormStudioProps, type FixedFormStudioTemplate } from './fixed-form/FixedFormStudio';
+export { FixedFormCanvas, type FixedFormCanvasProps } from './fixed-form/FixedFormCanvas';
+export { FixedFormPreview, type FixedFormPreviewProps } from './fixed-form/FixedFormPreview';
+export {
+  FIXED_FORM_SCHEMA_V1,
+  FIXED_FORM_FIELD_TYPES,
+  FIXED_FORM_MAX_BYTES,
+  fixedFormFieldLabel,
+  nextFieldKey,
+  roleKeyFromLabel,
+  base64ToBytes,
+  bytesToBase64,
+  type FixedFormContent,
+  type FixedFormField,
+  type FixedFormFieldType,
+  type FixedFormIssue,
+  type FixedFormPage,
+  type FixedFormPdfRef,
+  type FixedFormRole,
+  type FixedFormSigning,
+  type FixedFormVariable,
+  type FixedFormVersionView,
+} from './fixed-form/fixed-form-model';
+export {
+  listFixedForms,
+  getFixedForm,
+  getFixedFormPdf,
+  setFixedFormHidden,
+  type TenantFixedForm,
+  type TenantFixedFormDetail,
+} from './fixed-form/fixed-forms-api';

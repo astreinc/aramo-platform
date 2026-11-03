@@ -215,6 +215,11 @@
       "to": "ci/config/api-surface-manifest.json"
     },
     {
+      "from": "apps/api/src/document-templates-platform/fixed-form-upload.constants.ts",
+      "status": "production",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
       "from": "apps/api/src/my-desk/dto/my-desk.view.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
@@ -10794,7 +10799,27 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/pdf/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/pdf/index.ts"
     },
     {
       "from": "apps/sign-web/vite.config.ts",
@@ -10924,12 +10949,32 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/document-templates-platform/platform-document-types.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/document-templates-platform/platform-fixed-forms.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign-template-studio.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign-templates.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/tenant-fixed-forms.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11370,6 +11415,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/sender/esign-sender-reports.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-template-studio.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -13065,6 +13115,31 @@
       "from": "doc/backlog/adr-0015-decision6-email-phone-extraction-amendment-request.md",
       "status": "unscoped",
       "to": "libs/ai-draft/src/lib/redaction.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/offer-document/offer-document-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-capabilities.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-resolver.service.ts"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/rtr/SendRtrModal.tsx"
+    },
+    {
+      "from": "doc/backlog/ats-generic-send-document-DEFERRED.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/template-resolution.service.ts"
     },
     {
       "from": "doc/backlog/ats-talent-erasure-operator-access-DEFERRED.md",
@@ -35399,19 +35474,9 @@
       "to": "doc/legal/aramo/privacy-notice.md"
     },
     {
-      "from": "mobile/sign/src/features/editor/__tests__/geometry.test.ts",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/workspace/geometry.ts"
-    },
-    {
       "from": "mobile/sign/src/features/editor/geometry.ts",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/sender/sender-envelope.service.ts"
-    },
-    {
-      "from": "mobile/sign/src/features/editor/geometry.ts",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/workspace/geometry.ts"
     },
     {
       "from": "mobile/sign/src/features/inbox/types.ts",
@@ -36182,7 +36247,42 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261103100000_template_product_1_lowercase_product_keys/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261103110000_template_product_1_document_type_classes/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261103120000_template_product_1_tenant_product_tags/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261103140000_template_product_1_platform_template_asset/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261103140100_template_product_1_tenant_template_visibility/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20260923173000_add_esign_capability/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20261020130000_sign_naming_capability/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -38112,6 +38212,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/pdf/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/documents-contracts/src/index.ts"
     },
     {
@@ -38329,6 +38434,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/pdf/index.ts"
     },
     {
       "from": "vitest.shared.ts",

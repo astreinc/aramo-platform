@@ -118,7 +118,8 @@ describe('CCP-B2 Catalog screen', () => {
     const denied = await screen.findByTestId('access-denied');
     // Merge train (TD-B2-7): the Commercial access-denied card of CCP-B1 (handoff §2).
     expect(within(denied).getByRole('heading', { level: 1 })).toHaveTextContent("This account can't open Commercial catalog");
-    expect(within(denied).getByText('Super admin')).toBeInTheDocument();
+    // The role label arrives with the async /platform/me read; wait for it (was a load-dependent race).
+    expect(await within(denied).findByText('Super admin')).toBeInTheDocument();
     expect(calls.some((c) => c.url.includes('/platform/commercial/catalog'))).toBe(false);
   });
 

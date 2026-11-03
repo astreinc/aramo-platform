@@ -1,0 +1,88 @@
+/* TEMPLATE-PRODUCT-1 §2.5 — the product tags dropdown (template-products.tsx). Uses the
+ * Studio --ts-* tokens where a host defines them, with the Studio defaults as fallback. */
+
+.dt-ptags-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dt-ptags-label {
+  font-size: var(--ts-fs-13, 13px);
+  font-weight: 600;
+}
+.dt-ptags-helper {
+  color: var(--ts-muted, #5c6770);
+  font-size: var(--ts-fs-12-5, 12.5px);
+}
+.dt-ptags {
+  position: relative;
+}
+.dt-ptags__btn {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--ts-line-2, #d5dbe1);
+  border-radius: 6px;
+  background: var(--ts-surface, #fff);
+  color: var(--ts-ink, #18212b);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dt-ptags__btn:focus-visible {
+  outline: none;
+  border-color: var(--ts-focus, #2c6fb3);
+  box-shadow: var(--ts-focus-ring, 0 0 0 3px rgba(44, 111, 179, 0.25));
+}
+.dt-ptags__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.dt-ptags__placeholder {
+  color: var(--ts-muted, #5c6770);
+}
+.dt-ptags__caret {
+  color: var(--ts-muted, #5c6770);
+}
+.dt-ptags__list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--ts-line-2, #d5dbe1);
+  border-radius: 6px;
+  background: var(--ts-surface, #fff);
+  box-shadow: 0 6px 18px rgba(11, 16, 34, 0.12);
+}
+.dt-ptags__opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ts-ink, #18212b);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dt-ptags__opt:hover,
+.dt-ptags__opt:focus-visible {
+  outline: none;
+  background: var(--ts-neutral-bg, #ebeef2);
+}
+.dt-ptags__check {
+  display: inline-block;
+  width: 14px;
+  color: var(--ts-ok, #1f7a4d);
+}

@@ -55,6 +55,11 @@ export interface SignTemplateSigning {
   readonly default_message?: string;
 }
 
+// TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM marks an Aramo fixed legal form (the official PDF with
+// fields placed by role: no html, no blocks, fields come back as role-bound field_definitions).
+// Absent = an editable template (every template before TP-6). ADD-only, optional.
+export type SignTemplateKind = 'EDITABLE' | 'FIXED_FORM';
+
 export interface SignTemplateSummary {
   readonly template_id: string;
   readonly name: string;
@@ -80,6 +85,7 @@ export interface SignTemplateSummary {
   readonly routing_mode: SignTemplateRoutingMode;
   // The template's roles; null for a template without `signing` (the single talent block).
   readonly signing: SignTemplateSigning | null;
+  readonly template_kind?: SignTemplateKind;
 }
 
 export interface SignTemplateListResponse {
@@ -105,6 +111,7 @@ export interface SignTemplatePreviewResponse {
   readonly variables: readonly SignTemplateVariable[];
   // M-A6 §3.2 — the version's roles (null without `signing`).
   readonly signing: SignTemplateSigning | null;
+  readonly template_kind?: SignTemplateKind;
 }
 
 export interface SignTemplateRenderRequest {
@@ -157,6 +164,7 @@ export interface SignTemplateRenderResponse {
   readonly field_definitions: readonly SignTemplateFieldDefinition[];
   // M-A6 §3.2 — the pinned version's roles (null without `signing`).
   readonly signing: SignTemplateSigning | null;
+  readonly template_kind?: SignTemplateKind;
 }
 
 // Deterministic digest of a JSON body: sha256 (hex) over a key-sorted canonical JSON

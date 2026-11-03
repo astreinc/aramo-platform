@@ -203,9 +203,10 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
         <Route path="settings/:section" element={<SettingsPage scopes={scopes} />} />
         {/* S-7 — documents sent TO this user, inside the workspace shell. */}
         <Route path="inbox" element={<InboxPage embedded />} />
+        {/* TEMPLATE-PRODUCT-1 §8.1 — Templates for both workspaces (Personal: own Studio). */}
+        <Route path="templates/*" element={<TemplatesPage />} />
         {expected === 'sign' ? (
           <>
-            <Route path="templates/*" element={<TemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             {/* Feature-Parity §1.13 — organization reports while sign.reports is available; the summary page otherwise. */}
             <Route path="reports" element={<ReportsRoute />} />

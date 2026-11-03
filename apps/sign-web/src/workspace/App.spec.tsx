@@ -2,17 +2,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { configureAuthConsumer } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clampBox, toPdf, toTopLeft } from '@aramo/document-templates-web/pdf';
 
 import { App } from './App';
 import { readinessOf } from './pages/readiness';
-import { clampBox, toPdf, toTopLeft } from './geometry';
 import { tokenFromSigningLink, type EnvelopeDetail, type SenderContext } from './api';
 
 // PX-1 — the Sign sender console. The backend context decides the workspace; the
 // URL prefix never authorizes. Refusal states for an unentitled tenant and a
 // user without a Sign role; sending UI only when the backend says can_send.
 
-vi.mock('./pdf', () => ({ loadPdf: vi.fn() }));
+vi.mock('@aramo/document-templates-web/pdf', async (importOriginal) => ({ ...(await importOriginal<object>()), loadPdf: vi.fn() }));
 
 const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send'], iat: 0, exp: 9_999_999_999 };
 

@@ -167,6 +167,21 @@ export const EVENT_TYPES = [
   // reason? }. Written through the non-swallowing repository BEFORE the state change.
   'identity.document_template.withdrawal_published',
   'identity.document_template.withdrawal_cancelled',
+  // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §3.3 — a platform operator
+  // discarded the DRAFT version of an Aramo (PLATFORM) default / deleted a never-published
+  // Aramo default. GLOBAL (tenant_id NULL), like the withdrawal events. subject_id = the
+  // discarded TemplateVersion / the deleted DocumentTemplate; payload { template_id,
+  // document_type_id, name, version_id?, version_number? }. Written through the
+  // non-swallowing repository BEFORE the delete.
+  'identity.document_template.platform_draft_discarded',
+  'identity.document_template.platform_template_deleted',
+  // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
+  // document type. GLOBAL (tenant_id NULL). subject_id = the DocumentType id; payload
+  // { key, name, changed_fields? } (field names only). Written BEFORE the change.
+  'identity.document_type.created',
+  'identity.document_type.updated',
+  'identity.document_type.retired',
+  'identity.document_type.deleted',
   // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped.
   //   adopted          subject = the new tenant template; payload { adopted_from_template_id, adopted_from_version_id, document_type_id }
   //   created          subject = the new tenant template ("Create your own")
@@ -177,6 +192,11 @@ export const EVENT_TYPES = [
   'identity.document_template.version_activated',
   'identity.document_template.selection_set',
   'identity.document_template.selection_cleared',
+  // TEMPLATE-PRODUCT-1 §7.3 — a tenant hid / showed an Aramo fixed form (Hide / Show,
+  // document_template:manage). Tenant-scoped; subject = the fixed form (DocumentTemplate);
+  // payload { document_type_id }.
+  'identity.document_template.fixed_form_hidden',
+  'identity.document_template.fixed_form_shown',
   // Domain-Enforcement P3 (LOCKED) §6 — the domain-claim lifecycle. Every one of these
   // is inserted IN THE SAME database transaction as the claim / exception write
   // (DomainClaimService), never through the best-effort audit service. All tenant-scoped
@@ -312,6 +332,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.document_template.version_activated',
   'identity.document_template.selection_set',
   'identity.document_template.selection_cleared',
+  // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show rows carry the tenant id.
+  'identity.document_template.fixed_form_hidden',
+  'identity.document_template.fixed_form_shown',
   // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',

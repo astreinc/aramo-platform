@@ -140,6 +140,70 @@ export class TemplatePlatformDefaultConflictError extends Error {
   }
 }
 
+// TEMPLATE-PRODUCT-1 §2.6 — an Aramo (PLATFORM) default cannot be published while it has
+// no product tag. Mapped to 422 TEMPLATE_PRODUCT_REQUIRED.
+export class TemplateProductRequiredError extends Error {
+  constructor(public readonly templateId: string) {
+    super(`Aramo default ${templateId} needs at least one product tag before it can be published`);
+    this.name = 'TemplateProductRequiredError';
+  }
+}
+
+// TEMPLATE-PRODUCT-1 §3.2 — an Aramo (PLATFORM) template can be deleted only while it has
+// never been published and nothing references it. reasons names every failed condition
+// (published | selection | documents | adopted). Mapped to 409 TEMPLATE_IN_USE.
+export type TemplateInUseReason = 'published' | 'selection' | 'documents' | 'adopted';
+
+export class TemplateInUseError extends Error {
+  constructor(
+    public readonly templateId: string,
+    public readonly reasons: readonly TemplateInUseReason[],
+  ) {
+    super(`Aramo default ${templateId} cannot be deleted (${reasons.join(', ')})`);
+    this.name = 'TemplateInUseError';
+  }
+}
+
+// TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type management. NotFound → 404
+// DOCUMENT_TYPE_NOT_FOUND (a SYSTEM type only; tenant types are not reachable). Conflict →
+// 409 DOCUMENT_TYPE_CONFLICT (details.reason):
+//   key_exists      the key derived from the name is taken
+//   system_locked   the field is fixed on a system-locked type (§4.2), or it can't be
+//                   retired / deleted
+//   upload_type     an UPLOAD type is read-only here
+//   kind_in_use     template_kind can't change once the type has a template
+//   product_in_use  a product can't be removed once the type has a template
+//   live_default    retire refused while an Aramo default of the type is live
+//   in_use          delete refused while anything references the type
+//   seeded          delete refused for a seeded (system_defined) type
+export type DocumentTypeConflictReason =
+  | 'key_exists'
+  | 'system_locked'
+  | 'upload_type'
+  | 'kind_in_use'
+  | 'product_in_use'
+  | 'live_default'
+  | 'in_use'
+  | 'seeded';
+
+export class DocumentTypeNotFoundError extends Error {
+  constructor(public readonly documentTypeId: string) {
+    super(`DocumentType ${documentTypeId} not found`);
+    this.name = 'DocumentTypeNotFoundError';
+  }
+}
+
+export class DocumentTypeConflictError extends Error {
+  constructor(
+    public readonly documentTypeId: string | null,
+    public readonly reason: DocumentTypeConflictReason,
+    public readonly details: Record<string, unknown> = {},
+  ) {
+    super(`DocumentType ${documentTypeId ?? '(new)'}: ${reason}`);
+    this.name = 'DocumentTypeConflictError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);

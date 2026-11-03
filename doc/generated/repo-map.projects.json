@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 86 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -26,6 +26,7 @@
     "@aramo/conversation-intelligence": "./libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
     "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
+    "@aramo/document-templates-web/pdf": "./libs/document-templates-web/src/pdf/index.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -697,6 +698,12 @@
       "DocIconSmall",
       "DocTemplateRoutesProvider",
       "EyeIcon",
+      "FIXED_FORM_FIELD_TYPES",
+      "FIXED_FORM_MAX_BYTES",
+      "FIXED_FORM_SCHEMA_V1",
+      "FixedFormCanvas",
+      "FixedFormPreview",
+      "FixedFormStudio",
       "GALLERY_STUDIO_READ_ONLY",
       "LETTERHEAD_SAVE_BLOCKED",
       "LETTERHEAD_STUDIO_CONTENT_CODEC",
@@ -712,6 +719,7 @@
       "PlusIcon",
       "PreviewModal",
       "PreviewPaper",
+      "ProductTagsSelect",
       "RIGHT_TO_REPRESENT_TYPE_ID",
       "RTR_GENERATED_SCHEMA_V1",
       "RTR_HTML_SCHEMA_V1",
@@ -723,12 +731,16 @@
       "SampleValues",
       "SignatureBlocksPreview",
       "StudioRolesPanel",
+      "TEMPLATE_PRODUCT_KEYS",
+      "TEMPLATE_PRODUCT_LABELS",
       "TemplateStudio",
       "activateTemplateVersion",
       "addRole",
       "adoptTemplate",
       "appendStudioVariable",
+      "base64ToBytes",
       "bindingMapFrom",
+      "bytesToBase64",
       "canApproveTemplates",
       "canAuthorTemplates",
       "canReadTemplates",
@@ -741,21 +753,28 @@
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
+      "fixedFormFieldLabel",
       "fmtDate",
       "galleryContentFromSample",
       "galleryDefaultOf",
       "galleryStudioCopy",
       "galleryStudioDataSource",
       "getDocumentTemplate",
+      "getFixedForm",
+      "getFixedFormPdf",
       "getTemplateVersion",
       "htmlOf",
       "isCanonicalStudioHtml",
       "isStudioLetterheadBlock",
       "isStudioValueEmpty",
+      "isTemplateProductKey",
       "listDocumentTemplates",
+      "listFixedForms",
       "listTemplateSelections",
       "listTemplateVersions",
       "makeStudioChip",
+      "nextFieldKey",
+      "orderedProducts",
       "organizationReadinessLabel",
       "organizationStudioCopy",
       "organizationStudioDataSource",
@@ -766,7 +785,9 @@
       "renderStudioBlockDom",
       "resolveUserNames",
       "roleKeyFor",
+      "roleKeyFromLabel",
       "serializeStudioBlockDom",
+      "setFixedFormHidden",
       "setTemplateSelection",
       "signerRolesOf",
       "studioActiveMarks",
@@ -786,12 +807,18 @@
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
+      "templateProductLabel",
+      "templateProductsLine",
       "useDocTemplateRoutes",
       "variableToken"
     ],
+    "@aramo/document-templates-web/pdf": ["clampBox", "loadPdf", "toPdf", "toTopLeft"],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
+      "DOCUMENT_EXECUTION_MODES",
       "DOCUMENT_STORAGE_PORT",
+      "DOCUMENT_TYPE_CLASSES",
+      "DOCUMENT_TYPE_TEMPLATE_KINDS",
       "DocumentExecutedWriteBackService",
       "DocumentIdempotencyConflictError",
       "DocumentIdempotencyService",
@@ -804,17 +831,32 @@
       "DocumentStorageNotSupportedError",
       "DocumentTemplateLibraryController",
       "DocumentTemplatesController",
+      "DocumentTypeConflictError",
       "DocumentTypesController",
       "DocumentsController",
       "DocumentsModule",
       "DocumentsRepository",
       "ExecutedArtifactHashMismatchError",
+      "FIXED_FORM_FIELD_TYPES",
+      "FIXED_FORM_MAX_BYTES",
+      "FIXED_FORM_MAX_FIELDS",
+      "FIXED_FORM_MIME",
+      "FIXED_FORM_MIN_FIELD_SIZE",
+      "FIXED_FORM_SCHEMA_V1",
+      "FixedFormsRepository",
+      "OFFER_LETTER_TYPE_ID",
+      "PLATFORM_TEMPLATE_ASSET_PREFIX",
+      "PlatformDocumentTypesRepository",
       "PrismaService",
+      "RIGHT_TO_REPRESENT_TYPE_ID",
       "RenderService",
       "RequirementsRepository",
       "RevisionSourceService",
+      "SYSTEM_LOCKED_EDITABLE_FIELDS",
+      "SYSTEM_LOCKED_TYPE_IDS",
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
+      "TEMPLATE_PRODUCT_KEYS",
       "TEMPLATE_TENANT_LOGO",
       "TEMPLATE_VARIABLE_DATA_TYPES",
       "TemplateDraftAlreadyExistsError",
@@ -828,7 +870,15 @@
       "TemplateVersionNotActiveError",
       "TemplateVersionNotFoundError",
       "TemplatesRepository",
-      "templateErrorToHttp"
+      "documentTypeKeyFromName",
+      "emptyFixedFormContent",
+      "fixedFormIssues",
+      "fixedFormPdfOf",
+      "isFixedFormFieldType",
+      "isSystemLockedType",
+      "isTemplateProductKey",
+      "templateErrorToHttp",
+      "visibleToTenant"
     ],
     "@aramo/documents-contracts": [
       "ESIGN_S2S_SCHEME",
@@ -3604,6 +3654,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-types.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/policy-add-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3827,6 +3883,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4424,6 +4492,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -4857,6 +4931,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-types.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6449,6 +6529,36 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6903,6 +7013,42 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/template-admin-slice1.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp1-product-keys.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp2-platform-delete.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp3-document-types.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp5-tag-enforcement.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp5-tenant-tags.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-product-1-tp6-fixed-forms.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
       },
@@ -9143,6 +9289,13 @@
       { "project": "aramo-ats-web", "status": "production" },
       { "project": "aramo-home-web", "status": "production" },
       { "project": "aramo-platform-web", "status": "production" },
+      { "project": "aramo-sign-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/AramoFormsSection.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
@@ -9157,6 +9310,7 @@
       },
       { "project": "org-admin-web", "status": "production" }
     ],
+    "@aramo/document-templates-web/pdf": [],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9250,6 +9404,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-types.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9317,6 +9477,30 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9413,6 +9597,30 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
@@ -9449,6 +9657,12 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "from": "pact/consumers/sign-source-consumer/src/source-pull.consumer.test.ts",
@@ -9457,6 +9671,11 @@
       },
       {
         "from": "pact/consumers/sign-source-consumer/src/template-library.consumer.test.ts",
+        "project": "sign-source-consumer-pact",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/consumers/sign-source-consumer/src/template-studio.consumer.test.ts",
         "project": "sign-source-consumer-pact",
         "status": "unscoped"
       }
@@ -10646,6 +10865,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/document-types/DocumentTypesView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/matching/MatchingPolicyView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -10792,6 +11017,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PersonalTemplates.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -10846,6 +11077,12 @@
         "status": "excluded"
       },
       { "project": "document-templates-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/AramoFormsSection.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
@@ -12188,6 +12425,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -14029,6 +14284,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

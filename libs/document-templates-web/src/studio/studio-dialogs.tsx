@@ -170,15 +170,36 @@ export function RestoreDialog(p: SimpleConfirmProps & { readonly version: number
 }
 
 /** TEMPLATE-STUDIO-1 S-1 — discard the open draft (organization; DELETE …/versions/:id). */
-export function DiscardDialog(p: SimpleConfirmProps & { readonly version: number }) {
+export function DiscardDialog(p: SimpleConfirmProps & { readonly version: number; readonly published?: boolean }) {
   return (
     <ConfirmDialog
       open={p.open}
       onOpenChange={p.onOpenChange}
       title={`Discard draft v${p.version}?`}
-      consequence="The draft and any unsaved changes are deleted. The active version is not changed and stays in use."
+      consequence={
+        p.published === false
+          ? 'The draft and any unsaved changes are deleted. The template stays, with no draft.'
+          : 'The draft and any unsaved changes are deleted. The active version is not changed and stays in use.'
+      }
       tone="privileged"
       commitLabel="Discard draft"
+      busy={p.busy}
+      error={p.error}
+      onCommit={p.onConfirm}
+    />
+  );
+}
+
+/** TEMPLATE-PRODUCT-1 §3.4 — delete a template that was never published. */
+export function DeleteTemplateDialog(p: SimpleConfirmProps & { readonly name: string }) {
+  return (
+    <ConfirmDialog
+      open={p.open}
+      onOpenChange={p.onOpenChange}
+      title={`Delete ${p.name}?`}
+      consequence="The template and its draft are deleted. It was never published, so no tenant has it. This can’t be undone."
+      tone="privileged"
+      commitLabel="Delete template"
       busy={p.busy}
       error={p.error}
       onCommit={p.onConfirm}

@@ -23,11 +23,12 @@ import {
 import { type LetterheadModel } from '@aramo/documents-rendering';
 import { type TenantRepository } from '@aramo/identity';
 
-import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
-import { isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
+import { RTR_HTML_SCHEMA_V1, isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
 import { type RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { captureTenantLetterhead, loadLetterhead } from '../rtr/rtr-template-letterhead.js';
 import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
+
+import { type SignFixedFormsService } from './sign-fixed-forms.service.js';
 
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7 (ADR-0034 D6, D7, D8,
 // D12; Conforming Amendment #9). The Documents side of "start an Aramo Sign envelope from a
@@ -41,8 +42,9 @@ import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rt
 //             chooses. The template the automatic per-type resolution picks (client →
 //             tenant → grandfathered default) is flagged is_default; that resolution —
 //             used by ATS and every flow that never asks the user — is unchanged.
-//             sign.templates gating is unchanged (sign-service). Product tags are
-//             recorded, not enforced (D9).
+//             sign.templates gating is unchanged (sign-service). TEMPLATE-PRODUCT-1 §6.3 —
+//             product tags are ENFORCED: list, preview and render offer only templates
+//             tagged `sign` (the automatic choice resolves over sign-tagged templates).
 //   preview — a usable template's current version with the tenant's branding values
 //             and the sender's values; samples for the rest. Writes nothing.
 //   render  — binds the tenant-profile values + the sender's values (Sign has no ATS
@@ -51,8 +53,13 @@ import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rt
 //             Document + DocumentRevision pinned to the EXACT template_version_id. Returns
 //             the CORE_REF document_revision_ref the envelope references.
 //
-// Only the RTR content contract (rtr-generated-v1 / rtr-html-v1) is renderable today — the
-// only configurable document type (TemplateCapabilitiesPort.isConfigurable).
+// TEMPLATE-PRODUCT-1 §5.4 — renderable = every configured EDITABLE document type tagged
+// `sign` (the one content contract rtr-html-v1, §5.2; rtr-generated-v1 read-compatible for
+// old RTR rows), decided from data (TemplateCapabilitiesPort.isConfigurable, §5.1). Each type
+// is resolved per document type through the shared resolver / binding / letterhead modules
+// (generalised, not duplicated, §5.6). Values the organization profile does not supply are
+// sender-filled (unchanged). Fixed forms tagged `sign` join in TP-6 (§7.4) — see
+// renderableTypes().
 
 // Variables whose value is the tenant's own profile (ORGANIZATION when on record).
 const ORGANIZATION_KEYS = new Set([
@@ -85,6 +92,8 @@ export interface SignTemplateLibraryDeps {
   tenants: TenantRepository;
   caps?: TemplateCapabilitiesPort;
   tenantLogo?: TemplateTenantLogoPort;
+  // TEMPLATE-PRODUCT-1 §7.4 — Aramo fixed forms tagged `sign` (their own PDF path).
+  fixedForms?: SignFixedFormsService;
 }
 
 @Injectable()
@@ -102,7 +111,13 @@ export class SignTemplateLibraryService {
       let auto: ResolvedRtrTemplate | null = null;
       let autoError: string | null = null;
       try {
-        auto = await this.d.resolver.resolveActive({ tenant_id: input.tenant_id, client_id: input.client_id, requestId: input.requestId });
+        auto = await this.d.resolver.resolveActive({
+          tenant_id: input.tenant_id,
+          client_id: input.client_id,
+          requestId: input.requestId,
+          document_type_id: type.id,
+          product: 'sign',
+        });
       } catch (e) {
         if (!(e instanceof AramoError)) throw e;
         if (e.code !== 'RTR_TEMPLATE_NOT_CONFIGURED') autoError = e.code;
@@ -113,6 +128,8 @@ export class SignTemplateLibraryService {
       // reported, never silently swapped (ADR-0034 D10).
       if (usable.length === 0 && autoError !== null) unavailable.push({ document_type_id: type.id, reason: autoError });
     }
+    // TEMPLATE-PRODUCT-1 §7.4 — the visible Aramo fixed forms tagged `sign` (TP-4 seam).
+    if (this.d.fixedForms !== undefined) items.push(...(await this.d.fixedForms.list(input.tenant_id)));
     return { items, unavailable };
   }
 
@@ -123,6 +140,7 @@ export class SignTemplateLibraryService {
     requestId: string;
   }): Promise<SignTemplatePreviewResponse> {
     await this.assertTenant(input.tenant_id, input.requestId);
+    if (await this.isFixedForm(input.template_id)) return this.d.fixedForms!.preview(input);
     const { resolved, type } = await this.resolveTemplate(input.tenant_id, input.template_id, null, input.requestId);
     const variables = await this.variables(input.tenant_id, type.id, resolved, input.requestId);
     const sender = this.senderValues(variables, input.values, input.requestId);
@@ -169,6 +187,8 @@ export class SignTemplateLibraryService {
   }): Promise<SignTemplateRenderResponse> {
     const { requestId } = input;
     await this.assertTenant(input.tenant_id, requestId);
+    // TEMPLATE-PRODUCT-1 §7.4 — "Use" an Aramo fixed form: the stored PDF, frozen and pinned.
+    if (await this.isFixedForm(input.template_id)) return this.d.fixedForms!.render(input);
     const key = `sign-template-render:${input.idempotency_key}`;
     const request_hash = DocumentIdempotencyService.hashRequest({
       template_id: input.template_id,
@@ -221,7 +241,7 @@ export class SignTemplateLibraryService {
             requestId,
           )
         : isHtmlContent(resolved.content) && resolved.content.logo
-          ? await loadLetterhead({ templates: this.d.templates, storage: this.d.storage }, input.tenant_id, resolved.content.logo, requestId)
+          ? await loadLetterhead({ templates: this.d.templates, storage: this.d.storage }, input.tenant_id, resolved.content.logo, requestId, type.name)
           : undefined;
 
     // 3. Bind (closed catalog, supplied values only) → a fully resolved RenderModel.
@@ -321,7 +341,8 @@ export class SignTemplateLibraryService {
     auto: ResolvedRtrTemplate | null,
     requestId: string,
   ): Promise<ResolvedRtrTemplate[]> {
-    const rows = await this.d.templates.listUsableTemplatesForTenant(tenant_id, type.id, client_id, new Date());
+    // TEMPLATE-PRODUCT-1 §6.3 — Sign offers only templates tagged `sign`.
+    const rows = await this.d.templates.listUsableTemplatesForTenant(tenant_id, type.id, client_id, new Date(), 'sign');
     const out: ResolvedRtrTemplate[] = [];
     for (const t of rows) {
       if (auto !== null && auto.template_id === t.id) {
@@ -355,11 +376,23 @@ export class SignTemplateLibraryService {
     return out;
   }
 
+  // TEMPLATE-PRODUCT-1 §5.4 — the configured EDITABLE types tagged `sign` (each confirmed by
+  // the capability port, so no type renders without its content capability).
+  // §7.4 (TP-6): fixed forms tagged `sign` take their own (PDF) path — SignFixedFormsService
+  // lists them, and preview / render delegate to it (isFixedForm) before this editable path.
   private async renderableTypes(): Promise<Array<{ id: string; key: string; name: string }>> {
-    const types = await this.d.templates.listSystemDocumentTypes();
-    return types
-      .filter((t) => t.id === RIGHT_TO_REPRESENT_TYPE_ID && this.d.caps?.isConfigurable(t.id) === true)
-      .map((t) => ({ id: t.id, key: t.key, name: t.name }));
+    const caps = this.d.caps;
+    if (caps === undefined) return [];
+    const out: Array<{ id: string; key: string; name: string }> = [];
+    for (const t of await this.d.templates.listConfiguredTemplateTypes('EDITABLE', 'sign')) {
+      if (await caps.isConfigurable(t.id)) out.push({ id: t.id, key: t.key, name: t.name });
+    }
+    return out;
+  }
+
+  // TEMPLATE-PRODUCT-1 §7.4 — an Aramo fixed form (only with the fixed-form path wired).
+  private async isFixedForm(template_id: string): Promise<boolean> {
+    return this.d.fixedForms !== undefined && UUID_RE.test(template_id) && (await this.d.fixedForms.handles(template_id));
   }
 
   // Unknown tenant ⇒ 404: a Document is never written for a tenant that does not exist.
@@ -392,7 +425,7 @@ export class SignTemplateLibraryService {
     // M-A6 §3.1 — the user chooses among the templates the list offers (same rules).
     let auto: ResolvedRtrTemplate | null = null;
     try {
-      auto = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId });
+      auto = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId, document_type_id: type.id, product: 'sign' });
     } catch (e) {
       if (!(e instanceof AramoError)) throw e;
     }
@@ -527,7 +560,7 @@ export function signatureFields(manifest: unknown, withRoles = false): SignTempl
 // the parsed content or a raw stored field_schema (re-validated; invalid ⇒ null).
 function signingOf(content: RtrTemplateContent | unknown): SignTemplateSigning | null {
   const raw = (content as { render_schema_version?: unknown; signing?: unknown } | null) ?? null;
-  if (raw === null || raw.render_schema_version !== 'rtr-html-v1' || raw.signing === undefined) return null;
+  if (raw === null || raw.render_schema_version !== RTR_HTML_SCHEMA_V1 || raw.signing === undefined) return null;
   const parsed = parseSigningConfig(raw.signing);
   return 'issue' in parsed ? null : parsed.signing;
 }

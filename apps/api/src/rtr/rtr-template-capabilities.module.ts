@@ -64,6 +64,46 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         requestId: e.requestId,
       });
     },
+    // TEMPLATE-PRODUCT-1 §3.3 — an Aramo default's DRAFT discarded / a never-published
+    // Aramo default deleted. GLOBAL (tenant_id NULL); written BEFORE the delete through the
+    // same non-swallowing writer as withdrawal, so a failed write refuses the delete.
+    async recordPlatformDeletion(e) {
+      await repo.writeEvent({
+        event_type:
+          e.action === 'draft_discarded'
+            ? 'identity.document_template.platform_draft_discarded'
+            : 'identity.document_template.platform_template_deleted',
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.version_id ?? e.template_id,
+        event_payload: {
+          template_id: e.template_id,
+          document_type_id: e.document_type_id,
+          name: e.name,
+          ...(e.version_id !== null ? { version_id: e.version_id } : {}),
+          ...(e.version_number !== null ? { version_number: e.version_number } : {}),
+        },
+        requestId: e.requestId,
+      });
+    },
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type change. GLOBAL, written BEFORE
+    // the change through the same non-swallowing writer; field names only, never values.
+    async recordPlatformDocumentType(e) {
+      await repo.writeEvent({
+        event_type: `identity.document_type.${e.action}`,
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.document_type_id,
+        event_payload: {
+          key: e.key,
+          name: e.name,
+          ...(e.changed_fields !== undefined ? { changed_fields: [...e.changed_fields] } : {}),
+        },
+        requestId: e.requestId,
+      });
+    },
     // ORG-UX-1 §5.4 — Org template governance (adopt / create / approve / select / clear).
     async recordGovernance(e) {
       await repo.writeEvent({

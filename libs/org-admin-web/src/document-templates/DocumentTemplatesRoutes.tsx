@@ -2,6 +2,7 @@ import { type Session } from '@aramo/fe-foundation';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import { AramoDefaultStudio } from './AramoDefaultStudio';
+import { AramoFormPage } from './AramoFormPage';
 import { CreateOwnTemplate } from './CreateOwnTemplate';
 import { OrgTemplateStudio } from './OrgTemplateStudio';
 import { OurTemplatesPage } from './OurTemplatesPage';
@@ -16,6 +17,8 @@ import { TemplateGalleryPage } from './TemplateGalleryPage';
 //   /org/document-templates/aramo/:templateId     TEMPLATE-STUDIO-1 S-2: an Aramo gallery default in
 //                                                 the shared Studio, read only (Preview, tenant
 //                                                 branding) + Adopt (Conforming Amendment #3)
+//   /org/document-templates/forms/:templateId     TEMPLATE-PRODUCT-1 §7.3: an Aramo fixed form,
+//                                                 read-only preview (no edit, no copy)
 //   /org/document-templates/:templateId           TEMPLATE-STUDIO-1 S-1: your template in the
 //                                                 shared Template Studio (replaces the former
 //                                                 detail screen and the draft editor)
@@ -62,6 +65,8 @@ export function DocumentTemplatesRoutes({
       <Route index element={<OurTemplatesPage session={session} />} />
       <Route path="gallery" element={<TemplateGalleryPage session={session} />} />
       <Route path="new" element={<CreateOwnTemplate sessionOverride={session} />} />
+      {/* TEMPLATE-PRODUCT-1 §7.3 — an Aramo fixed form, read-only preview. */}
+      <Route path="forms/:templateId" element={<AramoFormPage />} />
       <Route path="aramo/:templateId" element={<DefaultRoute session={session} organizationHref={organizationHref} admin={admin} />} />
       <Route path=":templateId" element={<StudioRoute session={session} organizationHref={organizationHref} admin={admin} />} />
       <Route path=":templateId/draft" element={<DraftRedirect />} />

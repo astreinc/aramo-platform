@@ -60,6 +60,9 @@ export interface DocumentTemplateView {
   // optional in this mirror).
   readonly adopted_from_template_id?: string | null;
   readonly adopted_from_version_id?: string | null;
+  // TEMPLATE-PRODUCT-1 §6.1 — the template's own product tags, server-written (copied from the
+  // default at Adopt, else from the document type). Read-only for the tenant.
+  readonly products?: readonly string[] | null;
 }
 
 export interface TemplateVersionView {
@@ -255,6 +258,7 @@ export interface TemplateLibraryItem {
   readonly current_version_id: string | null;
   readonly current_version_number: number | null;
   readonly updated_at: string;
+  /** TEMPLATE-PRODUCT-1 §6.1 — the template's own product tags (defaults and tenant templates). */
   readonly products: readonly string[] | null;
   readonly withdraw_effective_at: string | null;
   readonly configurable: boolean;
@@ -265,11 +269,19 @@ export interface TemplateDocumentType {
   readonly key: string;
   readonly name: string;
   readonly configurable: boolean;
+  /** TEMPLATE-PRODUCT-1 §4.1 — the type's products and gallery category (additive). */
+  readonly products?: readonly string[];
+  readonly category?: string | null;
 }
 
 export interface TemplateLibraryView {
   readonly items: readonly TemplateLibraryItem[];
   readonly document_types: readonly TemplateDocumentType[];
+  /**
+   * TEMPLATE-PRODUCT-1 §6.3 — the template products the organization is entitled to (the
+   * gallery's product chips). Absent from an older server: every product.
+   */
+  readonly entitled_products?: readonly string[];
 }
 
 export interface TemplateDefaultPreview extends TemplateSamplePreview {

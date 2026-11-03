@@ -17,7 +17,7 @@ import {
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -29,8 +29,11 @@ import {
   type TemplateTenantLogoPort,
 } from './template-capabilities.port.js';
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
+import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from './template-products.js';
 import {
   DocumentNotFoundError,
+  DocumentTypeConflictError,
+  DocumentTypeNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
   DocumentRequirementNotFoundError,
   TemplateBindingUnsupportedError,
@@ -39,6 +42,9 @@ import {
   TemplateNotFoundError,
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateInUseError,
+  TemplateProductRequiredError,
+  TemplateSelectionInvalidError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -82,6 +88,19 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
   if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
   if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
+  if (e instanceof DocumentTypeNotFoundError) return new AramoError('DOCUMENT_TYPE_NOT_FOUND', e.message, 404, { requestId });
+  if (e instanceof DocumentTypeConflictError) {
+    return new AramoError('DOCUMENT_TYPE_CONFLICT', e.message, 409, {
+      requestId,
+      details: { document_type_id: e.documentTypeId, reason: e.reason, ...e.details },
+    });
+  }
+  if (e instanceof TemplateInUseError) {
+    return new AramoError('TEMPLATE_IN_USE', e.message, 409, { requestId, details: { template_id: e.templateId, reasons: [...e.reasons] } });
+  }
+  if (e instanceof TemplateProductRequiredError) {
+    return new AramoError('TEMPLATE_PRODUCT_REQUIRED', e.message, 422, { requestId, details: { template_id: e.templateId } });
+  }
   if (e instanceof TemplatePlatformDefaultConflictError) {
     return new AramoError('TEMPLATE_PLATFORM_DEFAULT_CONFLICT', e.message, 409, {
       requestId,
@@ -102,6 +121,16 @@ export const templateErrorToHttp = toHttp;
 
 function validate(condition: boolean, message: string, requestId: string): void {
   if (!condition) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
+}
+
+// TEMPLATE-PRODUCT-1 §6.1 — no tenant route accepts `products` (they are server-written).
+function refuseProducts(body: unknown, requestId: string): void {
+  if (body !== null && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'products')) {
+    throw new AramoError('VALIDATION_ERROR', 'products are set by Aramo and cannot be changed', 422, {
+      requestId,
+      details: { reason: 'products_server_owned' },
+    });
+  }
 }
 
 interface CreateTemplateBody {
@@ -172,7 +201,16 @@ export class DocumentTemplatesController {
     @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
     // A1 §2.4 — tenant-profile logo capture/read (bound in apps/api).
     @Optional() @Inject(TEMPLATE_TENANT_LOGO) private readonly tenantLogo?: TemplateTenantLogoPort,
+    // TEMPLATE-PRODUCT-1 §6.3 — E (EntitlementModule, imported by DocumentsModule: always
+    // injected). Absent only when the controller is constructed directly (unit specs).
+    @Inject(EntitlementRepository) private readonly entitlements?: EntitlementRepository,
   ) {}
+
+  // §6.3 — the template products the tenant is entitled to (E ∩ {ats, sign}).
+  private async entitledProducts(tenant_id: string): Promise<string[]> {
+    if (this.entitlements === undefined) return [...TEMPLATE_PRODUCT_KEYS];
+    return entitledTemplateProducts(await this.entitlements.getCapabilities(tenant_id));
+  }
 
   // ORG-UX-1 §5.4 — Org template governance audit (adopt / create / approve). Written
   // after the change; the seam is non-swallowing, so a failed write is an error, never
@@ -209,9 +247,20 @@ export class DocumentTemplatesController {
     validate(typeof body?.document_type_id === 'string', 'document_type_id is required', requestId);
     validate(typeof body?.name === 'string' && body.name.length > 0, 'name is required', requestId);
     validate(TEMPLATE_KINDS.has(body.template_kind), 'invalid template_kind', requestId);
+    // TEMPLATE-PRODUCT-1 §6.1 — a tenant template's products are written only by the server
+    // (from the document type here); no tenant route accepts them.
+    refuseProducts(body, requestId);
     let created: Awaited<ReturnType<TemplatesRepository['createTemplate']>>;
     try {
-      created = await this.repo.createTemplate({ tenant_id: auth.tenant_id, created_by: auth.sub, ...body });
+      created = await this.repo.createTemplate({
+        tenant_id: auth.tenant_id,
+        created_by: auth.sub,
+        document_type_id: body.document_type_id,
+        name: body.name,
+        template_kind: body.template_kind,
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.client_id !== undefined ? { client_id: body.client_id } : {}),
+      });
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -230,13 +279,18 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:author')
   async adopt(@AuthContext() auth: AuthContextType, @Body() body: AdoptTemplateBody, @RequestId() requestId: string) {
     validate(typeof body?.library_template_id === 'string' && body.library_template_id.length > 0, 'library_template_id is required', requestId);
+    refuseProducts(body, requestId);
     let adopted: Awaited<ReturnType<TemplatesRepository['adoptPlatformTemplate']>>;
     try {
       const source = await this.repo.findTemplateByIdOwnerAware(auth.tenant_id, body.library_template_id);
       if (source === null || source.owner_scope !== 'PLATFORM') throw new TemplateNotFoundError(body.library_template_id);
+      // TEMPLATE-PRODUCT-1 §6.3 — only a default for a product the tenant holds is adoptable.
+      if (!visibleToTenant(source.products, await this.entitledProducts(auth.tenant_id))) {
+        throw new TemplateNotFoundError(body.library_template_id);
+      }
       const caps = this.caps;
       const transform =
-        caps !== undefined && caps.isConfigurable(source.document_type_id)
+        caps !== undefined && (await caps.isConfigurable(source.document_type_id))
           ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: source.document_type_id, ...c })
           : undefined;
       adopted = await this.repo.adoptPlatformTemplate({
@@ -246,6 +300,10 @@ export class DocumentTemplatesController {
         ...(transform !== undefined ? { transform } : {}),
       });
     } catch (e) {
+      // TEMPLATE-PRODUCT-1 §7.3 — a fixed form is never adopted (422, details.reason).
+      if (e instanceof TemplateSelectionInvalidError && e.reason === 'fixed_form_not_adoptable') {
+        throw new AramoError('VALIDATION_ERROR', 'An Aramo form is used as it is: it cannot be adopted', 422, { requestId, details: { reason: e.reason } });
+      }
       throw toHttp(e, requestId);
     }
     await this.governance(
@@ -272,7 +330,8 @@ export class DocumentTemplatesController {
   // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default withdrawal notices
   // that affect THIS tenant (a selection names the default, or the tenant falls back to
   // it): pending ones and ones that took effect within the last 30 days [TD grace]. Feeds
-  // the Org Home banner (T-4). Product tags are informational — no filtering (D9).
+  // the Org Home banner (T-4). TEMPLATE-PRODUCT-1 §6.3 (superseding D9) — only for defaults
+  // the tenant can see (products ∩ E ≠ ∅).
   // Declared before ':id' so the literal segment wins.
   @Get('notices')
   @HttpCode(HttpStatus.OK)
@@ -282,8 +341,9 @@ export class DocumentTemplatesController {
       tenant_id: auth.tenant_id,
       grace_days: WITHDRAWAL_NOTICE_GRACE_DAYS,
     });
+    const entitled = await this.entitledProducts(auth.tenant_id);
     return {
-      notices: rows.map((r) => ({
+      notices: rows.filter((r) => visibleToTenant(r.products, entitled)).map((r) => ({
         template_id: r.template_id,
         name: r.name,
         document_type_id: r.document_type_id,
@@ -321,6 +381,7 @@ export class DocumentTemplatesController {
     @Body() body: RenameTemplateBody,
     @RequestId() requestId: string,
   ) {
+    refuseProducts(body, requestId);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     validate(name.length > 0, 'name is required', requestId);
     validate(name.length <= TEMPLATE_NAME_MAX_LENGTH, `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`, requestId);
@@ -367,7 +428,7 @@ export class DocumentTemplatesController {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
       const caps = this.caps;
       const transform =
-        caps !== undefined && caps.isConfigurable(t.document_type_id)
+        caps !== undefined && (await caps.isConfigurable(t.document_type_id))
           ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: t.document_type_id, ...c })
           : undefined;
       return this.versionView(
@@ -434,7 +495,7 @@ export class DocumentTemplatesController {
         const existing = await this.repo.getVersion(auth.tenant_id, versionId);
         if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
         const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
-        if (this.caps.isConfigurable(t.document_type_id)) {
+        if (await this.caps.isConfigurable(t.document_type_id)) {
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version ?? existing.render_schema_version,
@@ -498,7 +559,7 @@ export class DocumentTemplatesController {
   async previewVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
-      validate(this.caps !== undefined && this.caps.isConfigurable(ctx.document_type_id), 'this document type is not configurable', requestId);
+      validate(this.caps !== undefined && (await this.caps.isConfigurable(ctx.document_type_id)), 'this document type is not configurable', requestId);
       const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId });
       await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
       return preview;
@@ -515,7 +576,7 @@ export class DocumentTemplatesController {
   async allowedBindings(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
-      const configurable = this.caps?.isConfigurable(t.document_type_id) === true;
+      const configurable = (await this.caps?.isConfigurable(t.document_type_id)) === true;
       // A1 §2.4 — whether the Tenant profile has a logo the editor can add (+ the name the
       // letterhead shows beside it).
       const tenant_logo =
@@ -596,7 +657,7 @@ export class DocumentTemplatesController {
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
     const t = await this.repo.getTemplate(tenant_id, v.template_id);
     const caps = this.caps;
-    if (caps === undefined || !caps.isConfigurable(t.document_type_id)) {
+    if (caps === undefined || !(await caps.isConfigurable(t.document_type_id))) {
       throw new AramoError('VALIDATION_ERROR', 'this document type does not support a logo', 400, { requestId });
     }
     return { v, caps };

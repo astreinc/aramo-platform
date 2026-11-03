@@ -16,6 +16,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { grantTemplateProductEntitlements } from './helpers/template-product-entitlements.js';
 
 const __authzTestResolver = new ConfigurableTestResolver();
 
@@ -113,6 +114,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const t of [TENANT_A, TENANT_B]) {
         await ensureWriteFreezeTenant((s) => db.query(s), t);
         await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`, [t]);
+        // TEMPLATE-PRODUCT-1 §6.3 — the defaults are offered only for entitled products.
+        await grantTemplateProductEntitlements((q, params) => db.query(q, params), t);
       }
       await db.query(
         `UPDATE identity."Tenant" SET display_name = 'Acme Branded Staffing', city = 'Springfield' WHERE id = $1`,

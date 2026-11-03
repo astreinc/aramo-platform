@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Input, hasScope, type Session } from '@aramo/fe-foundation';
+import {
+  ProductTagsSelect,
+  TEMPLATE_PRODUCT_KEYS,
+  orderedProducts,
+  templateProductLabel,
+  type TemplateProductKey,
+} from '@aramo/document-templates-web';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FieldSelect, FieldText, FieldTextArea } from '../components/ConfirmFields';
@@ -8,7 +15,6 @@ import { EmptyState } from '../components/EmptyState';
 import { SegmentedFilter } from '../components/FilterBar';
 import { Pill, type PillSpec } from '../components/Pill';
 import { Skeleton } from '../components/Skeleton';
-import { TagInput } from '../components/TagInput';
 import { ViewOnlyNote } from '../components/ViewOnlyNote';
 import { formatDate, formatDateRelative } from '../components/format-date';
 
@@ -20,6 +26,7 @@ import {
   type DocumentTypeOption,
   type PlatformTemplate,
 } from './document-templates-api';
+import { fixedFormsApi } from './fixed-forms-api';
 import { templateErrorMessage } from './template-errors';
 import './library.css';
 
@@ -27,8 +34,11 @@ import './library.css';
 // /document-templates: page header + "Create default template" (:manage), the product
 // segmented filter and search, and the table (Template · Current version · Draft ·
 // Products · Updated · "Open studio →"). A row opens the Studio at /document-templates/:id.
+// TEMPLATE-PRODUCT-1 §2.5 — products are the capability keys (ats, sign) shown as ATS / Sign;
+// the filter compares keys and the create dialog picks from the fixed list. §3.4 — a
+// template that was never published carries "Delete…" (a published one is only withdrawn).
 
-type ProductFilter = 'ALL' | 'ATS' | 'SIGN';
+type ProductFilter = 'ALL' | TemplateProductKey;
 
 const NAME_MAX = 120;
 const DESC_MAX = 500;
@@ -53,6 +63,24 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
   const [product, setProduct] = useState<ProductFilter>('ALL');
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<PlatformTemplate | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await documentTemplatesApi.deleteTemplate(deleting.id);
+      setDeleting(null);
+      await load();
+    } catch (e) {
+      setDeleteError(templateErrorMessage(e, 'Delete failed.'));
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setError(null);
@@ -104,11 +132,7 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
           label="Product"
           value={product}
           onChange={setProduct}
-          options={[
-            { value: 'ALL', label: 'All products' },
-            { value: 'ATS', label: 'ATS' },
-            { value: 'SIGN', label: 'SIGN' },
-          ]}
+          options={[{ value: 'ALL', label: 'All products' }, ...TEMPLATE_PRODUCT_KEYS.map((k) => ({ value: k, label: templateProductLabel(k) }))]}
         />
         <Input unstyled className="pwl-in pwl-in--38 pws-lib__q" value={q} placeholder="Search templates" aria-label="Search templates" onChange={(e) => setQ(e.target.value)} />
         <span className="pws-lib__count" role="status">
@@ -183,15 +207,29 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
                         <td className={`pws-lib__draft${t.draft_version_id !== null ? ' pws-lib__draft--open' : ''}`}>{t.draft_version_id !== null ? 'Open draft' : 'No draft'}</td>
                         <td>
                           <span className="pwl-tags">
-                            {t.products.map((p) => (
+                            {orderedProducts(t.products).map((p) => (
                               <span key={p} className="pwl-tag">
-                                {p}
+                                {templateProductLabel(p)}
                               </span>
                             ))}
                           </span>
                         </td>
                         <td className="pws-lib__upd">{formatDateRelative(t.updated_at)}</td>
                         <td className="pws-lib__open">
+                          {canManage && t.current_version === null ? (
+                            <Button
+                              unstyled
+                              className="pws-lib__del"
+                              aria-label={`Delete ${t.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteError(null);
+                                setDeleting(t);
+                              }}
+                            >
+                              Delete…
+                            </Button>
+                          ) : null}
                           <Link to={`/document-templates/${t.id}`} className="pws-lib__openlink" onClick={(e) => e.stopPropagation()} aria-label={`Open studio for ${t.name}`}>
                             Open studio →
                           </Link>
@@ -211,6 +249,21 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
         ) : null}
       </div>
 
+      {deleting !== null ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setDeleting(null);
+          }}
+          title={`Delete ${deleting.name}?`}
+          consequence="The template and its draft are deleted. It was never published, so no tenant has it. This can’t be undone."
+          tone="privileged"
+          commitLabel="Delete template"
+          busy={deleteBusy}
+          error={deleteError}
+          onCommit={() => void confirmDelete()}
+        />
+      ) : null}
       {creating ? (
         <CreateTemplateDialog
           open={creating}
@@ -247,7 +300,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
   const [typeId, setTypeId] = useState('');
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [tags, setTags] = useState<string[]>(['ATS']);
+  const [tags, setTags] = useState<TemplateProductKey[]>(['ats']);
   const [start, setStart] = useState('blank');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -259,12 +312,24 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
     if (start !== 'blank' && !sourceKey.split(',').includes(start.slice(5))) setStart('blank');
   }, [start, sourceKey]);
 
-  const ok = typeId !== '' && name.trim() !== '' && types.find((t) => t.id === typeId)?.configurable === true;
+  // TEMPLATE-PRODUCT-1 §2.7 — tags are a subset of the chosen type's products: choosing a
+  // type offers only its products and starts from all of them.
+  const typeProducts = types.find((t) => t.id === typeId)?.products ?? TEMPLATE_PRODUCT_KEYS;
+  const chooseType = (id: string): void => {
+    setTypeId(id);
+    const p = types.find((t) => t.id === id)?.products;
+    if (p !== undefined) setTags([...p]);
+  };
+  // TEMPLATE-PRODUCT-1 §7.2 — a FIXED_FORM type is authored in the Studio's fixed-form mode
+  // (an UPLOADED_PDF default: the official PDF + placed fields), so it is offered too.
+  const usable = (t: (typeof types)[number] | undefined): boolean => t !== undefined && (t.configurable || t.template_kind === 'FIXED_FORM');
+  const fixedForm = types.find((t) => t.id === typeId)?.template_kind === 'FIXED_FORM';
+  const ok = typeId !== '' && name.trim() !== '' && usable(types.find((t) => t.id === typeId));
 
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
-    const src = start.startsWith('copy:') ? templates.find((t) => t.id === start.slice(5)) : undefined;
+    const src = !fixedForm && start.startsWith('copy:') ? templates.find((t) => t.id === start.slice(5)) : undefined;
     let copied: { render_schema_version: string; field_schema: unknown } | null = null;
     try {
       if (src?.current_version) {
@@ -282,7 +347,7 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         document_type_id: typeId,
         name: name.trim(),
         description: desc.trim() !== '' ? desc.trim() : null,
-        template_kind: 'GENERATED',
+        template_kind: fixedForm ? 'UPLOADED_PDF' : 'GENERATED',
         products: tags,
       });
     } catch (e) {
@@ -291,6 +356,14 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
       return;
     }
     let copyError: string | null = null;
+    // TEMPLATE-PRODUCT-1 §7.2 — a fixed form opens on its first (empty) draft.
+    if (fixedForm) {
+      try {
+        await fixedFormsApi.createDraft(created.id);
+      } catch (e) {
+        copyError = `The form was created, but its first draft could not be opened: ${templateErrorMessage(e, 'try again in the studio.')}`;
+      }
+    }
     if (copied !== null) {
       try {
         await documentTemplatesApi.createDraft(created.id, copied);
@@ -318,11 +391,15 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         label="Document type"
         required
         value={typeId}
-        onChange={setTypeId}
+        onChange={chooseType}
         helper="Fixed by regulation or a provider? Those types are listed but can’t be chosen."
         options={[
           { value: '', label: 'Choose a document type' },
-          ...types.map((t) => ({ value: t.id, label: t.configurable ? t.name : `${t.name} — not configurable here`, disabled: !t.configurable })),
+          ...types.map((t) => ({
+            value: t.id,
+            label: t.template_kind === 'FIXED_FORM' ? `${t.name} — fixed form (PDF)` : t.configurable ? t.name : `${t.name} — not configurable here`,
+            disabled: !usable(t),
+          })),
         ]}
       />
       <div className="pwl-countfield">
@@ -332,20 +409,30 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
         </span>
       </div>
       <FieldTextArea label="Description (optional)" value={desc} onChange={setDesc} max={DESC_MAX} />
-      <div className="pwl-countfield">
-        <TagInput label="Product tags" tags={tags} onChange={setTags} />
-        <span className="pw-field__helper">Enter to add. Uppercase, up to 16.</span>
-      </div>
-      <FieldSelect
-        label="Start from"
-        value={start}
-        onChange={setStart}
-        helper="Copying fills the new draft with that published version."
-        options={[
-          { value: 'blank', label: 'Blank document' },
-          ...sources.map((t) => ({ value: `copy:${t.id}`, label: `Copy of ${t.name} (v${t.current_version?.version_number ?? ''})` })),
-        ]}
+      <ProductTagsSelect
+        label="Product tags"
+        value={tags}
+        onChange={setTags}
+        options={typeProducts}
+        fieldClassName="pw-field"
+        labelClassName="pw-field__label"
+        helperClassName="pw-field__helper"
+        helper="Where tenants can use it. At least one is needed to publish."
       />
+      {fixedForm ? (
+        <p className="pw-field__helper">A fixed form starts empty: upload the official PDF in the studio, then place its fields.</p>
+      ) : (
+        <FieldSelect
+          label="Start from"
+          value={start}
+          onChange={setStart}
+          helper="Copying fills the new draft with that published version."
+          options={[
+            { value: 'blank', label: 'Blank document' },
+            ...sources.map((t) => ({ value: `copy:${t.id}`, label: `Copy of ${t.name} (v${t.current_version?.version_number ?? ''})` })),
+          ]}
+        />
+      )}
     </ConfirmDialog>
   );
 }

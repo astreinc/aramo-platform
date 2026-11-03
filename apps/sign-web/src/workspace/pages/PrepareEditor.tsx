@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { clampBox, loadPdf, toPdf, toTopLeft, type LoadedPdf, type PdfPageInfo } from '@aramo/document-templates-web/pdf';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
-import { clampBox, toPdf, toTopLeft, type PdfPageInfo } from '../geometry';
-import { loadPdf, type LoadedPdf } from '../pdf';
 import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel, TextIn } from '../ui';
 
 import { DEFAULT_CONFIG, applyConfig, configFromWire, configToWire, groupSize, type ConfigPatch, type FieldConfig } from './field-config';

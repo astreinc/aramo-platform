@@ -197,10 +197,23 @@ server {
   # domain + the template capability port with the tenant template routes). Same
   # edge-owned provider map as the skills blocks: exactly these two governed prefixes
   # go to api:3000; every other /platform/* still falls to platform-admin.
+  # TEMPLATE-PRODUCT-1 §7.1 — the official PDF of an Aramo fixed form is uploaded as JSON
+  # { content_base64 } (a PDF of up to 10 MB, ~13.4 MB as base64). Regex location so it wins
+  # over the /platform/document-templates prefix; the larger body cap is scoped to this one
+  # route (apps/api FIXED_FORM_PDF_UPLOAD_ROUTE carries the same 15 MB parser limit).
+  location ~ ^/platform/document-templates/versions/[^/]+/fixed-form/pdf$ {
+    client_max_body_size 15m;
+    proxy_pass http://api:3000;
+  }
   location /platform/document-templates {
     proxy_pass http://api:3000;
   }
   location /platform/template-variables {
+    proxy_pass http://api:3000;
+  }
+  # TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document types (/platform/document-types*) are
+  # served by apps/api with the template routes. Same edge-owned provider map.
+  location /platform/document-types {
     proxy_pass http://api:3000;
   }
   # ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy (/platform/matching-policy*)
@@ -218,7 +231,8 @@ server {
 
   # NO `/v1` location of any kind — DELIBERATE (R14 negative control). The platform
   # host reaches api:3000 ONLY for the governed /platform/skill* namespace and the
-  # DOC-TEMPLATE-LIB-1 /platform/document-templates + /platform/template-variables
+  # DOC-TEMPLATE-LIB-1 /platform/document-templates + /platform/template-variables, the
+  # TEMPLATE-PRODUCT-1 /platform/document-types
   # and the ATI-SEP-1 /platform/matching-policy prefixes above; the
   # TENANT `/v1/*` surface remains unreachable from this host by construction (no
   # /v1 proxy_pass here), so a stray /v1/* request falls through to the SPA fallback

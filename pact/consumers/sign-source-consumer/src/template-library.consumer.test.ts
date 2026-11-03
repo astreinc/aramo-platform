@@ -312,3 +312,113 @@ describe('sign-service → template library (M-A6 multi-role template)', () => {
       });
   });
 });
+
+// TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.4 — an Aramo fixed legal form in
+// the Sign template list and "Use" (render): template_kind FIXED_FORM (ADD, optional — absent for
+// an editable template), no drawn block (signature_fields empty), the placed signer fields as
+// field_definitions by role. Seeded by 'an Aramo fixed form tagged sign is visible to the tenant'
+// under its own tenant (the state hides the form from the tenants of the states above).
+const FORM_TENANT_ID = '11111111-1111-7111-8111-1111111111f6';
+const FORM_TEMPLATE_ID = 'd0c4c000-0000-7000-8000-0000000000f1';
+const FORM_VERSION_ID = 'd0c4c000-0000-7000-8000-0000000000f2';
+const FORM_SIGNING = { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
+
+describe('sign-service → template library (TEMPLATE-PRODUCT-1 §7.4 fixed form)', () => {
+  it('lists the fixed form with its kind and roles', async () => {
+    const path = '/v1/documents/esign/templates';
+    await provider
+      .addInteraction()
+      .given('an Aramo fixed form tagged sign is visible to the tenant')
+      .uponReceiving('a template-library list including an Aramo fixed form')
+      .withRequest('GET', path, (b) => {
+        b.query({ tenant_id: FORM_TENANT_ID }).headers(headerMatchers('GET', `http://core${path}?tenant_id=${FORM_TENANT_ID}`, false));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: [
+            {
+              template_id: FORM_TEMPLATE_ID,
+              name: like('Employment eligibility form'),
+              description: null,
+              document_type: { id: like('d0c4c000-0000-7000-8000-0000000000f0'), key: like('PACT_FIXED_FORM'), name: like('Pact fixed form') },
+              owner_scope: 'PLATFORM',
+              resolution: 'AVAILABLE',
+              is_default: false,
+              version_id: FORM_VERSION_ID,
+              version_number: like(1),
+              updated_at: like('2026-11-02T00:00:00.000Z'),
+              variables: [],
+              category: like('Pact fixed form'),
+              signer_role_count: 1,
+              cc_role_count: 0,
+              document_count: 1,
+              routing_mode: 'PARALLEL',
+              signing: FORM_SIGNING,
+              template_kind: 'FIXED_FORM',
+            },
+          ],
+          // The tenant has no approved template of the editable types: depending on whether an
+          // Aramo default of such a type is live in the provider DB, the type is reported here
+          // (TEMPLATE_SELECTION_REQUIRED) or not at all — so zero or more entries.
+          unavailable: eachLike({ document_type_id: like('d0c50005-0000-7000-8000-000000000001'), reason: like('TEMPLATE_SELECTION_REQUIRED') }, 0),
+        });
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?tenant_id=${FORM_TENANT_ID}`;
+        const res = await fetch(url, { headers: signed('GET', url) });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: Array<{ template_kind?: string }> };
+        expect(body.items[0]?.template_kind).toBe('FIXED_FORM');
+      });
+  });
+
+  it('"Use" freezes the stored PDF and returns the placed fields by role', async () => {
+    const body = { values: {}, created_by: CREATED_BY, client_id: null };
+    const digest = signTemplateBodyDigest(body);
+    const path = `/v1/documents/esign/templates/${FORM_TEMPLATE_ID}/render`;
+    const query = { tenant_id: FORM_TENANT_ID, idempotency_key: 'pact-tp6-render-0001', [SIGN_TEMPLATE_BODY_DIGEST_PARAM]: digest };
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given('an Aramo fixed form tagged sign is visible to the tenant')
+      .uponReceiving('a fixed-form render for a new Sign envelope')
+      .withRequest('POST', path, (b) => {
+        b.query(query).headers(headerMatchers('POST', `http://core${path}?${qs}`, true)).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          document_id: like('d0c4c000-0000-7000-8000-0000000000e5'),
+          document_revision_ref: like('d0c4c000-0000-7000-8000-0000000000e6'),
+          source_sha256: regex('^[0-9a-f]{64}$', 'c'.repeat(64)),
+          byte_size: like(1024),
+          title: like('Employment eligibility form'),
+          template_id: FORM_TEMPLATE_ID,
+          template_version_id: FORM_VERSION_ID,
+          version_number: like(1),
+          signature_fields: [],
+          field_definitions: [
+            {
+              field_key: 'employee_signature',
+              field_type: 'SIGNATURE',
+              signer_role: 'employee',
+              required: true,
+              page_number: like(0),
+              x: like(72),
+              y: like(72),
+              width: like(160),
+              height: like(32),
+            },
+          ],
+          signing: FORM_SIGNING,
+          template_kind: 'FIXED_FORM',
+        });
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?${qs}`;
+        const res = await fetch(url, { method: 'POST', headers: { ...signed('POST', url), 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        expect(res.status).toBe(201);
+        const out = (await res.json()) as { field_definitions: Array<{ signer_role: string }> };
+        expect(out.field_definitions.map((f) => f.signer_role)).toEqual(['employee']);
+      });
+  });
+});

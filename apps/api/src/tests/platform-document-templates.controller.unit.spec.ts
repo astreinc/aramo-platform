@@ -6,6 +6,9 @@ import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import {
   TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
+  TemplateImmutableError,
+  TemplateInUseError,
+  TemplateProductRequiredError,
   TemplateVariableKeyConflictError,
   type TemplateAuditPort,
   type TemplateCapabilitiesPort,
@@ -46,6 +49,9 @@ const ROUTE_SCOPES: Record<string, string> = {
   // DOC-TEMPLATE-LIB-1 T-6 (§9).
   withdraw: MANAGE,
   cancelWithdrawal: MANAGE,
+  // TEMPLATE-PRODUCT-1 §3.
+  deleteTemplate: MANAGE,
+  discardDraft: MANAGE,
 };
 
 function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthContextType {
@@ -60,9 +66,13 @@ function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthCon
   };
 }
 
+const RTR_TYPE_ROW = { id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', template_kind: 'EDITABLE', products: ['ats', 'sign'], category: 'Recruiting' };
+
 function build() {
   const templates = {
-    listSystemDocumentTypes: vi.fn(async () => [{ id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' }]),
+    // TEMPLATE-PRODUCT-1 §4.4 — only active TEMPLATE types with a kind; §2.7 their products.
+    listTemplateDocumentTypes: vi.fn(async () => [RTR_TYPE_ROW]),
+    findSystemDocumentType: vi.fn(async () => RTR_TYPE_ROW as typeof RTR_TYPE_ROW | null),
     listPlatformTemplates: vi.fn(async () => []),
     createPlatformTemplate: vi.fn(async (i: Record<string, unknown>) => ({
       id: ID,
@@ -80,6 +90,17 @@ function build() {
       updated_at: new Date(),
     })),
     getPlatformTemplate: vi.fn(async () => ({ id: ID, document_type_id: TYPE })),
+    updatePlatformTemplate: vi.fn(async () => PUBLISHED_ROW),
+    // TEMPLATE-PRODUCT-1 §3 — the repository runs the beforeDelete hook (audit) then deletes.
+    deletePlatformTemplate: vi.fn(async (i: { id: string; beforeDelete?: (p: unknown) => Promise<void> }) => {
+      await i.beforeDelete?.({ template: { id: i.id, document_type_id: TYPE, name: 'Draft NDA' } });
+    }),
+    deletePlatformDraftVersion: vi.fn(async (i: { version_id: string; beforeDelete?: (p: unknown) => Promise<void> }) => {
+      await i.beforeDelete?.({
+        version: { id: i.version_id, version_number: 3, template_id: ID },
+        template: { id: ID, document_type_id: TYPE, name: 'Aramo standard RTR' },
+      });
+    }),
     getPlatformVersion: vi.fn(async () => ({ id: VID, template_id: ID, status: 'DRAFT', field_schema: {}, render_schema_version: 'rtr-html-v1' })),
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
@@ -106,6 +127,7 @@ function build() {
   const audit = {
     recordDraftDiscarded: vi.fn(async () => undefined),
     recordPlatformWithdrawal: vi.fn(async () => undefined),
+    recordPlatformDeletion: vi.fn(async () => undefined),
     recordGovernance: vi.fn(async () => undefined),
   };
   const variables = {
@@ -140,7 +162,7 @@ const PUBLISHED_ROW = {
   description: null,
   template_kind: 'GENERATED',
   status: 'ACTIVE',
-  products: ['ATS'],
+  products: ['ats'],
   current_version_id: VID,
   withdraw_notice_at: null as Date | null,
   withdraw_effective_at: null as Date | null,
@@ -159,12 +181,14 @@ function call(c: PlatformDocumentTemplatesController, name: string, a: AuthConte
     case 'get':
     case 'allowedBindings':
     case 'cancelWithdrawal':
+    case 'deleteTemplate':
       return m[name]!(ID, a, RID);
     case 'withdraw':
       return m[name]!(ID, {}, a, RID);
     case 'getVersion':
     case 'preview':
     case 'publish':
+    case 'discardDraft':
       return m[name]!(VID, a, RID);
     case 'create':
     case 'createVariable':
@@ -238,10 +262,66 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     const bad = await errorOf(c.create({ document_type_id: 'tenant-type', name: 'N', template_kind: 'GENERATED' }, auth('platform'), RID));
     expect(bad.code).toBe('VALIDATION_ERROR');
     expect(bad.context?.details?.['reason']).toBe('document_type_not_system');
-    expect((await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['ats'] }, auth('platform'), RID))).code).toBe('VALIDATION_ERROR');
-    const v = await c.create({ document_type_id: TYPE, name: ' Standard RTR ', template_kind: 'GENERATED', products: ['ATS', 'ATS', 'SIGN'] }, auth('platform'), RID);
-    expect(templates.createPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Standard RTR', products: ['ATS', 'SIGN'] }));
-    expect(v).toMatchObject({ owner_scope: 'PLATFORM', products: ['ATS', 'SIGN'], current_version: null, draft_version_id: null });
+    const v = await c.create({ document_type_id: TYPE, name: ' Standard RTR ', template_kind: 'GENERATED', products: ['ats', 'ats', 'sign'] }, auth('platform'), RID);
+    expect(templates.createPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Standard RTR', products: ['ats', 'sign'] }));
+    expect(v).toMatchObject({ owner_scope: 'PLATFORM', products: ['ats', 'sign'], current_version: null, draft_version_id: null });
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.3 — products are the capability keys ats / sign only; anything
+  // else (the old upper-case tags, another capability, a non-array) is 422 invalid_product.
+  it('products: only the template product keys; anything else is 422 invalid_product (create, update, variables)', async () => {
+    const { c, templates, variables } = build();
+    for (const bad of [['ATS'], ['SIGN'], ['core'], ['portal'], ['ats', 'nope'], 'ats', [1]]) {
+      const e = await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: bad }, auth('platform'), RID));
+      expect(e.code, JSON.stringify(bad)).toBe('VALIDATION_ERROR');
+      expect(e.statusCode, JSON.stringify(bad)).toBe(422);
+      expect(e.context?.details?.['reason']).toBe('invalid_product');
+    }
+    expect((await errorOf(c.update(ID, { products: ['SIGN'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect((await errorOf(c.createVariable({ key: 'a.b', label: 'L', group_label: 'G', data_type: 'TEXT', products: ['ATS'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect((await errorOf(c.updateVariable(ID, { products: ['Sign'] }, auth('platform'), RID))).statusCode).toBe(422);
+    expect(templates.createPlatformTemplate).not.toHaveBeenCalled();
+    expect(templates.updatePlatformTemplate).not.toHaveBeenCalled();
+    expect(variables.create).not.toHaveBeenCalled();
+    expect(variables.update).not.toHaveBeenCalled();
+    await c.update(ID, { products: ['sign', 'ats'] }, auth('platform'), RID);
+    expect(templates.updatePlatformTemplate).toHaveBeenCalledWith(ID, { products: ['sign', 'ats'] });
+  });
+
+  // TEMPLATE-PRODUCT-1 §2.7 / §4.4.
+  it('document types: only template types with a kind, with their products / kind / category', async () => {
+    const { c, templates } = build();
+    const r = await c.listDocumentTypes(auth('platform'), RID);
+    expect(templates.listTemplateDocumentTypes).toHaveBeenCalled();
+    expect(r.document_types).toEqual([
+      { id: TYPE, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true, template_kind: 'EDITABLE', products: ['ats', 'sign'], category: 'Recruiting' },
+    ]);
+  });
+
+  it('template tags must be a subset of the document type products (create + update) — 422 products_not_in_type', async () => {
+    const { c, templates } = build();
+    templates.listTemplateDocumentTypes.mockResolvedValue([{ ...RTR_TYPE_ROW, products: ['sign'] }]);
+    const e = await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['ats'] }, auth('platform'), RID));
+    expect(e.statusCode).toBe(422);
+    expect(e.context?.details?.['reason']).toBe('products_not_in_type');
+    await c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['sign'] }, auth('platform'), RID);
+    templates.findSystemDocumentType.mockResolvedValueOnce({ ...RTR_TYPE_ROW, products: ['sign'] });
+    expect((await errorOf(c.update(ID, { products: ['ats', 'sign'] }, auth('platform'), RID))).context?.details?.['reason']).toBe('products_not_in_type');
+    expect(templates.updatePlatformTemplate).not.toHaveBeenCalled();
+    // A type outside the template types (an UPLOAD slot, an unconfigured type) is refused.
+    templates.listTemplateDocumentTypes.mockResolvedValue([]);
+    expect((await errorOf(c.create({ document_type_id: TYPE, name: 'N', template_kind: 'GENERATED', products: ['sign'] }, auth('platform'), RID))).context?.details?.['reason']).toBe(
+      'document_type_not_system',
+    );
+  });
+
+  it('publish: an untagged default maps to 422 TEMPLATE_PRODUCT_REQUIRED', async () => {
+    const { c, templates } = build();
+    templates.activatePlatformVersion.mockRejectedValueOnce(new TemplateProductRequiredError(ID));
+    const e = await errorOf(c.publish(VID, auth('platform'), RID));
+    expect(e.code).toBe('TEMPLATE_PRODUCT_REQUIRED');
+    expect(e.statusCode).toBe(422);
+    expect(e.context?.details?.['template_id']).toBe(ID);
   });
 
   it('publish: validates content against the catalog, then activates; the preview gate refusal maps to 409 TEMPLATE_PREVIEW_REQUIRED', async () => {
@@ -349,8 +429,67 @@ describe('PlatformDocumentTemplatesController — withdrawal (T-6)', () => {
 
   it('D9: list/get expose product tags as recorded (no filtering)', async () => {
     const { c, templates } = build();
-    templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['SIGN'], versions: [] }] as never);
+    templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['sign'], versions: [] }] as never);
     const r = await c.list(auth('platform'), RID);
-    expect(r.templates[0]?.products).toEqual(['SIGN']);
+    expect(r.templates[0]?.products).toEqual(['sign']);
+  });
+});
+
+// TEMPLATE-PRODUCT-1 §3 (R1) — platform delete of what was never published.
+describe('PlatformDocumentTemplatesController — delete (TEMPLATE-PRODUCT-1 §3)', () => {
+  it('deleteTemplate: writes the GLOBAL audit event before the delete', async () => {
+    const { c, templates, audit } = build();
+    await expect(c.deleteTemplate(ID, auth('platform'), RID)).resolves.toBeUndefined();
+    expect(templates.deletePlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: ID }));
+    expect(audit.recordPlatformDeletion).toHaveBeenCalledWith({
+      action: 'template_deleted',
+      actor_id: auth('platform').sub,
+      template_id: ID,
+      document_type_id: TYPE,
+      name: 'Draft NDA',
+      version_id: null,
+      version_number: null,
+      requestId: RID,
+    });
+  });
+
+  it('deleteTemplate: a published / referenced default is 409 TEMPLATE_IN_USE with the reasons', async () => {
+    const { c, templates } = build();
+    templates.deletePlatformTemplate.mockRejectedValueOnce(new TemplateInUseError(ID, ['published', 'selection']));
+    const e = await errorOf(c.deleteTemplate(ID, auth('platform'), RID));
+    expect(e.code).toBe('TEMPLATE_IN_USE');
+    expect(e.statusCode).toBe(409);
+    expect(e.context?.details?.['reasons']).toEqual(['published', 'selection']);
+  });
+
+  it('discardDraft: audit (version + number) then delete; a non-DRAFT is 409 TEMPLATE_IMMUTABLE', async () => {
+    const { c, templates, audit } = build();
+    await c.discardDraft(VID, auth('platform'), RID);
+    expect(templates.deletePlatformDraftVersion).toHaveBeenCalledWith(expect.objectContaining({ version_id: VID }));
+    expect(audit.recordPlatformDeletion).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'draft_discarded', template_id: ID, version_id: VID, version_number: 3, name: 'Aramo standard RTR' }),
+    );
+    templates.deletePlatformDraftVersion.mockRejectedValueOnce(new TemplateImmutableError(VID));
+    expect((await errorOf(c.discardDraft(VID, auth('platform'), RID))).code).toBe('TEMPLATE_IMMUTABLE');
+  });
+
+  it('a failed audit write refuses the delete; no audit port refuses with 500', async () => {
+    const { c, templates, audit } = build();
+    audit.recordPlatformDeletion.mockRejectedValueOnce(new Error('audit down'));
+    await expect(c.deleteTemplate(ID, auth('platform'), RID)).rejects.toBeDefined();
+    const bare = new PlatformDocumentTemplatesController(
+      templates as unknown as TemplatesRepository,
+      {} as TemplateVariablesRepository,
+    );
+    const e = await errorOf(bare.discardDraft(VID, auth('platform'), RID));
+    expect(e.statusCode).toBe(500);
+    expect(templates.deletePlatformDraftVersion).not.toHaveBeenCalled();
+  });
+
+  it('a tenant token never reaches the delete routes', async () => {
+    const { c, templates } = build();
+    expect((await errorOf(c.deleteTemplate(ID, auth('tenant'), RID))).code).toBe('INSUFFICIENT_PERMISSIONS');
+    expect((await errorOf(c.discardDraft(VID, auth('tenant'), RID))).code).toBe('INSUFFICIENT_PERMISSIONS');
+    expect(templates.deletePlatformTemplate).not.toHaveBeenCalled();
   });
 });

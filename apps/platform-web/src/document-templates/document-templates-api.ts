@@ -1,4 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
+import type { TemplateProductKey } from '@aramo/document-templates-web';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§8.1) — typed client for the platform-tier Aramo default
 // templates (/platform/document-templates*) and the template variable catalog
@@ -59,6 +60,11 @@ export interface DocumentTypeOption {
   key: string;
   name: string;
   configurable: boolean;
+  // TEMPLATE-PRODUCT-1 §4.4 / §2.7 — the type's kind, category and the products a template
+  // of it may carry (its tags must be a subset).
+  template_kind?: 'EDITABLE' | 'FIXED_FORM';
+  products?: TemplateProductKey[];
+  category?: string | null;
 }
 
 export interface AllowedBinding {
@@ -105,16 +111,6 @@ export function htmlContentOf(v: Pick<TemplateVersion, 'render_schema_version' |
   return { render_schema_version: HTML_CONTENT_VERSION, title: fs.title, html: fs.html };
 }
 
-// Parse the comma/space separated product tag input into upper-case tags.
-export function parseProductTags(raw: string): string[] {
-  const out: string[] = [];
-  for (const t of raw.split(/[\s,]+/)) {
-    const tag = t.trim().toUpperCase();
-    if (tag.length > 0 && !out.includes(tag)) out.push(tag);
-  }
-  return out;
-}
-
 // DOC-TEMPLATE-LIB-1 T-6 (§9) — the default notice length for a withdrawal (days).
 export const DEFAULT_WITHDRAW_NOTICE_DAYS = 7;
 export const MAX_WITHDRAW_NOTICE_DAYS = 365;
@@ -158,6 +154,13 @@ export const documentTemplatesApi = {
   },
   cancelWithdrawal(id: string): Promise<PlatformTemplate> {
     return apiClient.post(`/platform/document-templates/${id}/withdraw/cancel`);
+  },
+  // TEMPLATE-PRODUCT-1 §3 — delete a never-published default / discard a default's DRAFT.
+  deleteTemplate(id: string): Promise<void> {
+    return apiClient.delete(`/platform/document-templates/${id}`);
+  },
+  discardDraft(versionId: string): Promise<void> {
+    return apiClient.delete(`/platform/document-templates/versions/${versionId}`);
   },
   allowedBindings(id: string): Promise<{ bindings: AllowedBinding[] }> {
     return apiClient.get(`/platform/document-templates/${id}/allowed-bindings`);

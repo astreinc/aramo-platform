@@ -1,12 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { Button, Dialog, DialogClose, Input, StatusPill, TextArea, type PillTone } from '@aramo/fe-foundation';
 
 import './studio-primitives.css';
 
 // TEMPLATE-STUDIO-1 S-0 (directive §2) — the Studio's lib-local primitives. They were the
 // platform console's components (PLATFORM-UX-1 F-1: Pill, EmptyState, Skeleton,
-// ConfirmDialog + fields, TagInput, return-focus); the Studio now carries its own copies
-// so it renders in any host. Same markup and the same design values, expressed as `ts-*`
+// ConfirmDialog + fields, return-focus); the Studio now carries its own copies so it
+// renders in any host (TEMPLATE-PRODUCT-1 §2.5: product tags use ProductTagsSelect, the
+// free-text tag input is gone). Same markup and the same design values, expressed as `ts-*`
 // classes over the Studio's `--ts-*` tokens (studio-primitives.css).
 
 // ─── focus return ───────────────────────────────────────────────────────────
@@ -309,57 +310,3 @@ export function FieldTextArea({ label, helper, required, value, onChange, max, r
   );
 }
 
-// ─── tag input ──────────────────────────────────────────────────────────────
-
-export interface TagInputProps {
-  readonly label: string;
-  readonly tags: readonly string[];
-  readonly onChange: (tags: string[]) => void;
-  readonly placeholder?: string;
-  readonly max?: number;
-}
-
-const normalizeTag = (draft: string): string => draft.toUpperCase().replace(/[^A-Z0-9_]/g, '');
-
-/** Mono chips with a remove ×, and a borderless input that adds a tag on Enter. */
-export function TagInput({ label, tags, onChange, placeholder = 'TAG ↵', max = 16 }: TagInputProps) {
-  const id = useId();
-  const [draft, setDraft] = useState('');
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Enter' && draft) {
-      e.preventDefault();
-      if (!tags.includes(draft) && tags.length < max) onChange([...tags, draft]);
-      setDraft('');
-    } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
-      onChange(tags.slice(0, -1));
-    }
-  };
-
-  return (
-    <div className="ts-field">
-      <label className="ts-field__label" htmlFor={id}>
-        {label}
-      </label>
-      <div className="ts-taginput">
-        {tags.map((t) => (
-          <span key={t} className="ts-taginput__tag">
-            {t}
-            <Button unstyled className="ts-taginput__rm" aria-label={`Remove ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}>
-              ×
-            </Button>
-          </span>
-        ))}
-        <Input
-          id={id}
-          unstyled
-          className="ts-taginput__input"
-          value={draft}
-          placeholder={placeholder}
-          onChange={(e) => setDraft(normalizeTag(e.target.value))}
-          onKeyDown={onKeyDown}
-        />
-      </div>
-    </div>
-  );
-}

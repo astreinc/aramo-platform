@@ -38,6 +38,11 @@ model DocumentType {
   retention_class       String
   system_defined        Boolean  @default(false)
   active                Boolean  @default(true)
+  // TEMPLATE-PRODUCT-1 §4.1 (ADD, migration 20261103110000; CHECKs there).
+  type_class            String   @default("TEMPLATE") // CHECK: TEMPLATE | UPLOAD (UPLOAD = upload slot, never a template)
+  template_kind         String? // CHECK: EDITABLE | FIXED_FORM; NULL = not yet configured for templates
+  products              String[] @default([]) // template product keys (ats, sign)
+  category              String? // gallery grouping (Recruiting, Employment, …)
   created_at            DateTime @default(now()) @db.Timestamptz
   updated_at            DateTime @updatedAt @db.Timestamptz
 
@@ -45,6 +50,8 @@ model DocumentType {
 
   @@unique([tenant_id, key])
   @@index([tenant_id])
+  // TEMPLATE-PRODUCT-1 TP-3 — partial UNIQUE index DocumentType_system_key_key (key) WHERE
+  // tenant_id IS NULL (migration 20261103110000 — not expressible in Prisma).
   @@schema("documents")
 }
 
@@ -237,7 +244,10 @@ model DocumentTemplate {
   template_kind         String // CHECK: GENERATED|UPLOADED_PDF|HYBRID (migration)
   status                String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
   current_version_id    String?   @db.Uuid // FK -> TemplateVersion added in migration (avoids cycle)
-  // PLATFORM only (CHECK, migration). The column is NULLABLE (NULL for TENANT rows)
+  // Product tags (ats, sign). TEMPLATE-PRODUCT-1 §6.1 (migration 20261103120000): a PLATFORM
+  // row carries non-null products (CHECK); a TENANT row carries server-written tags (copied
+  // from the source default at Adopt, else from the document type — BEFORE INSERT trigger
+  // backstop). The column is NULLABLE.
   // NOTE: Prisma cannot express an optional list, so it is typed String[] here.
   products              String[]
   withdraw_notice_at    DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
@@ -402,6 +412,42 @@ model TemplateAsset {
 
   @@index([tenant_id])
   @@index([tenant_id, asset_kind])
+  @@schema("documents")
+}
+
+/// TEMPLATE-PRODUCT-1 §7.1 (migration 20261103140000) — the official PDF of an Aramo fixed
+/// form, uploaded by Platform Admin to a DRAFT PLATFORM version. PDF only, at most 10 MB,
+/// stored under the platform prefix (documents/platform/) of the documents bucket. Written
+/// once (UPDATE refused, INSERT only for a DRAFT PLATFORM version — DB trigger). FK to
+/// TemplateVersion ON DELETE CASCADE in the migration (no Prisma relation: TemplateVersion
+/// is unchanged). TemplateAsset stays tenant-only.
+model PlatformTemplateAsset {
+  id                  String   @id @db.Uuid
+  template_version_id String   @db.Uuid
+  storage_key         String
+  mime                String // CHECK: application/pdf
+  sha256              String
+  byte_size           Int
+  page_count          Int
+  created_at          DateTime @default(now()) @db.Timestamptz
+  created_by          String   @db.Uuid
+
+  @@index([template_version_id])
+  @@schema("documents")
+}
+
+/// TEMPLATE-PRODUCT-1 §7.3 (migration 20261103140100) — a tenant's Hide / Show choice for an
+/// Aramo fixed form (default shown: no row). FK to DocumentTemplate ON DELETE CASCADE in the
+/// migration (no Prisma relation: DocumentTemplate is unchanged).
+model TenantTemplateVisibility {
+  tenant_id   String   @db.Uuid
+  template_id String   @db.Uuid
+  hidden      Boolean  @default(false)
+  updated_by  String   @db.Uuid
+  updated_at  DateTime @default(now()) @db.Timestamptz
+
+  @@id([tenant_id, template_id])
+  @@index([template_id])
   @@schema("documents")
 }
 

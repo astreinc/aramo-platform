@@ -1,3 +1,5 @@
+import { RIGHT_TO_REPRESENT_TYPE_ID } from '../document-templates-api';
+
 import type { TemplateStudioCopy } from './data-source';
 import { readinessLabel, type Readiness } from './readiness';
 import { publishConsequence } from './studio-dialogs';
@@ -63,6 +65,30 @@ export const ORGANIZATION_VARIABLES_NOTE =
 export const ORGANIZATION_SCOPE_CARD =
   'Organization default · used for every RTR your recruiters send from Aramo ATS. Client-specific templates may be supported later.';
 
+/**
+ * TEMPLATE-PRODUCT-1 §5 — the organization copy that names the document type. Right to
+ * Represent keeps its wording exactly (nothing overridden); any other configured editable type
+ * gets type-neutral wording naming the type.
+ */
+export function organizationCopyForDocumentType(type: { readonly id: string; readonly name: string }): Partial<
+  Pick<TemplateStudioCopy, 'approveDialog' | 'approveToast' | 'scopeCard'>
+> {
+  if (type.id === RIGHT_TO_REPRESENT_TYPE_ID) return {};
+  const what = type.name.trim() !== '' ? type.name.trim() : 'document';
+  return {
+    approveDialog: {
+      title: (next) => `Approve version v${next}?`,
+      commit: (next) => `Approve & activate v${next}`,
+      from: (current) => (current !== null ? { label: `v${current} active`, tone: 'ok' } : { label: 'No active version', tone: 'neutral' }),
+      to: (next) => ({ label: `v${next} active`, tone: 'ok' }),
+      consequence: (next) =>
+        `v${next} becomes the template used for every future ${what}. Documents already sent stay pinned to the version they were sent with.`,
+    },
+    approveToast: (n) => `v${n} is active. New documents use it from now on.`,
+    scopeCard: `Organization default · used for every ${what} your organization sends from Aramo. Client-specific templates may be supported later.`,
+  };
+}
+
 export function organizationStudioCopy(o: OrganizationStudioCopyOptions): TemplateStudioCopy {
   return {
     crumbs: [o.organizationHref !== null ? { label: 'Organization', to: o.organizationHref } : { label: 'Organization' }, { label: 'Our templates', to: o.listHref }],
@@ -92,5 +118,6 @@ export function organizationStudioCopy(o: OrganizationStudioCopyOptions): Templa
     approveWarnings: (n) => `${n} warning${n > 1 ? 's' : ''} (inactive variables) will be approved as is.`,
     restoreToast: (n) => `Draft replaced with v${n}. Save and preview before approving.`,
     unknownVariableDetail: 'Not in Aramo’s governed catalog for this document type. Remove it from the draft.',
+    forDocumentType: organizationCopyForDocumentType,
   };
 }

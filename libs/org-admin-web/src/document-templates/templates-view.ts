@@ -1,31 +1,49 @@
-import type {
-  TemplateLibraryItem,
-  TemplateLibraryView,
-  TemplateSelectionView,
-  TemplateStatus,
-  TemplateVersionView,
+import {
+  TEMPLATE_PRODUCT_KEYS,
+  orderedProducts,
+  templateProductsLine,
+  type TemplateLibraryItem,
+  type TemplateLibraryView,
+  type TemplateProductKey,
+  type TemplateSelectionView,
+  type TemplateStatus,
+  type TemplateVersionView,
 } from '@aramo/document-templates-web';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — pure
 // derivations shared by Our templates and the Template gallery. No template business
 // truth: the server owns the lifecycle, adoption and resolution.
 
-/** The seeded Right-to-Represent document type key (the only template-driven type today). */
+/** The seeded Right-to-Represent document type key. */
 export const RTR_TYPE_KEY = 'RIGHT_TO_REPRESENT';
 
 // TEMPLATE-STUDIO-1 S-2 (directive §4.1; conforming amendment #2) — the gallery is
 // BACKEND-DRIVEN: one card per published Aramo default in GET /v1/document-templates/library
 // (owner_scope PLATFORM; current versions only, withdrawn defaults excluded by the server).
-// The static GALLERY_ENTRIES list and its "Not configurable yet" cards are retired. Only the
-// category and a fallback description stay front-end, keyed by the document-type key (G13 data
-// copy: the backend document-type catalog carries neither). Keys for types that are not
-// publishable yet are listed so they categorise automatically once they are.
+// The static GALLERY_ENTRIES list and its "Not configurable yet" cards are retired. A fallback
+// description stays front-end, keyed by the document-type key (G13 data copy).
+//
+// TEMPLATE-PRODUCT-1 §4.1 / §6.4 (divergence D25) — the category is DATA: the document type's
+// `category` (Platform Admin → Document types), returned in `document_types[].category`. The
+// category chips are the distinct categories of the actual cards (plus All). The key map below
+// is only the fallback for a type whose category is not set (null / blank, or an older server),
+// and "Other" after that.
 
-export type GalleryCategory = 'Recruiting' | 'Hiring' | 'Legal' | 'Pre-start' | 'Other';
-/** Chip order; a chip shows only when at least one card is in it (empty categories are hidden). */
-export const GALLERY_CATEGORIES: readonly GalleryCategory[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start', 'Other'];
+/** A gallery category: the document type's own category (free text set in Platform Admin). */
+export type GalleryCategory = string;
 
-export const DOCUMENT_TYPE_CATEGORY: Readonly<Record<string, GalleryCategory>> = {
+/** The last-resort category of a card whose type has none (and no fallback below). */
+export const OTHER_CATEGORY = 'Other';
+
+/**
+ * The preferred chip order for the categories the product has used so far; any other category
+ * follows alphabetically, and "Other" is always last. A chip shows only when at least one card
+ * is in it (empty categories are hidden).
+ */
+export const GALLERY_CATEGORIES: readonly string[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start'];
+
+/** Fallback category by document-type key, used only when the type's `category` is not set. */
+export const DOCUMENT_TYPE_CATEGORY: Readonly<Record<string, string>> = {
   RIGHT_TO_REPRESENT: 'Recruiting',
   OFFER_LETTER: 'Hiring',
   CLIENT_NDA: 'Legal',
@@ -55,6 +73,8 @@ export interface GalleryCard {
   readonly description: string;
   readonly category: GalleryCategory;
   readonly state: GalleryState;
+  /** TEMPLATE-PRODUCT-1 §6.4 — the default's product tags (the product chips filter on them). */
+  readonly products: readonly string[];
 }
 
 /** The organization's own template of a document type (tenant-wide first), if any. */
@@ -65,11 +85,13 @@ export function ourTemplateOfType(library: TemplateLibraryView, documentTypeId: 
 
 /**
  * One card per published Aramo default (PLATFORM item) of a template-driven document type.
- * The server lists only current, published, not-withdrawn defaults; `configurable` keeps
- * the adoptable-types rule (template-driven types only; RTR today).
+ * The server lists only current, published, not-withdrawn defaults for the organization's
+ * entitled products (TEMPLATE-PRODUCT-1 §6.3); `configurable` keeps the adoptable-types rule
+ * (configured editable types, §5.1).
  */
 export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
   const typeKey = new Map(library.document_types.map((t) => [t.id, t.key]));
+  const typeCategory = new Map(library.document_types.map((t) => [t.id, t.category ?? null]));
   return library.items
     .filter((i) => i.owner_scope === 'PLATFORM' && i.configurable)
     .map((i) => {
@@ -80,16 +102,57 @@ export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
         id: i.id,
         name: i.name,
         description,
-        category: DOCUMENT_TYPE_CATEGORY[key] ?? 'Other',
+        category: galleryCategoryOf(typeCategory.get(i.document_type_id) ?? null, key),
         state: ours !== null ? { kind: 'in-ours', ourTemplateId: ours.id } : { kind: 'adoptable' },
+        products: orderedProducts(i.products ?? []),
       };
     });
 }
 
-/** Chip counts (All + each category) from the actual cards. */
-export function categoryCounts(cards: readonly Pick<GalleryCard, 'category'>[]): Readonly<Record<'All' | GalleryCategory, number>> {
-  const counts: Record<'All' | GalleryCategory, number> = { All: cards.length, Recruiting: 0, Hiring: 0, Legal: 0, 'Pre-start': 0, Other: 0 };
-  for (const c of cards) counts[c.category] += 1;
+/**
+ * TEMPLATE-PRODUCT-1 §6.4 — the gallery's product chips: the template products the
+ * organization is entitled to (canonical order). An older server that does not say → every
+ * product.
+ */
+export function galleryProducts(library: TemplateLibraryView): TemplateProductKey[] {
+  const entitled = library.entitled_products;
+  return TEMPLATE_PRODUCT_KEYS.filter((k) => entitled === undefined || entitled.includes(k));
+}
+
+/** Chip counts per product (a card counts under each of its tags). */
+export function productCounts(cards: readonly Pick<GalleryCard, 'products'>[], products: readonly string[]): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = { All: cards.length };
+  for (const p of products) counts[p] = cards.filter((c) => c.products.includes(p)).length;
+  return counts;
+}
+
+/**
+ * D25 — a card's category: the document type's `category` when set (trimmed), else the
+ * fallback by type key, else "Other".
+ */
+export function galleryCategoryOf(category: string | null | undefined, typeKey: string): GalleryCategory {
+  const own = typeof category === 'string' ? category.trim() : '';
+  if (own !== '') return own;
+  return DOCUMENT_TYPE_CATEGORY[typeKey] ?? OTHER_CATEGORY;
+}
+
+/**
+ * D25 — the category chips (without All): each distinct category of the cards, in the preferred
+ * order (GALLERY_CATEGORIES), then any other alphabetically, "Other" last.
+ */
+export function galleryCategories(cards: readonly Pick<GalleryCard, 'category'>[]): GalleryCategory[] {
+  const position = (c: string): number => {
+    if (c === OTHER_CATEGORY) return Number.MAX_SAFE_INTEGER;
+    const i = GALLERY_CATEGORIES.indexOf(c);
+    return i === -1 ? GALLERY_CATEGORIES.length : i;
+  };
+  return [...new Set(cards.map((c) => c.category))].sort((a, b) => position(a) - position(b) || a.localeCompare(b));
+}
+
+/** Chip counts (All + each category present) from the actual cards. */
+export function categoryCounts(cards: readonly Pick<GalleryCard, 'category'>[]): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = { All: cards.length };
+  for (const c of cards) counts[c.category] = (counts[c.category] ?? 0) + 1;
   return counts;
 }
 
@@ -114,21 +177,17 @@ export interface OurTemplateRow {
   readonly newVersion: number | null;
 }
 
-const PRODUCT_LABEL: Readonly<Record<string, string>> = { ATS: 'ATS', SIGN: 'Sign' };
-
 /**
- * One row per organization-owned template. "Used in" — a tenant template carries no product
- * tags, so it shows the tags of the Aramo default of the same document type, else "All apps".
- * Version — the current (approved) version, else the latest one. Last approved — the
- * current version's activation.
+ * One row per organization-owned template. "Used in" — TEMPLATE-PRODUCT-1 §6.4: the template's
+ * OWN tags (server-written, inherited from the default or its document type) through the shared
+ * label map ("ATS · Sign"); "—" when it has none. Version — the current (approved) version, else
+ * the latest one. Last approved — the current version's activation.
  */
 export function buildOurTemplateRows(
   library: TemplateLibraryView,
   versionsById: ReadonlyMap<string, readonly TemplateVersionView[]>,
 ): OurTemplateRow[] {
   const typeName = new Map(library.document_types.map((t) => [t.id, t.name]));
-  const platformByType = new Map<string, TemplateLibraryItem>();
-  for (const i of library.items) if (i.owner_scope === 'PLATFORM' && !platformByType.has(i.document_type_id)) platformByType.set(i.document_type_id, i);
   return library.items
     .filter((i) => i.owner_scope === 'TENANT')
     .map((t) => {
@@ -136,12 +195,12 @@ export function buildOurTemplateRows(
       const current = versions.find((v) => v.id === t.current_version_id) ?? null;
       const latest = versions.reduce<TemplateVersionView | null>((m, v) => (m === null || v.version_number > m.version_number ? v : m), null);
       const n = t.current_version_number ?? current?.version_number ?? latest?.version_number ?? null;
-      const tags = (platformByType.get(t.document_type_id)?.products ?? []).map((p) => PRODUCT_LABEL[p] ?? p);
+      const usedIn = templateProductsLine(t.products ?? []);
       return {
         id: t.id,
         name: t.name,
         typeName: typeName.get(t.document_type_id) ?? 'Document',
-        usedIn: tags.length > 0 ? tags.join(' · ') : 'All apps',
+        usedIn: usedIn !== '' ? usedIn : '—',
         version: n === null ? '—' : `v${n}`,
         status: t.status,
         lastApproved: current?.activated_at != null ? { at: current.activated_at, by: current.activated_by } : null,

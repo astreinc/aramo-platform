@@ -63,14 +63,15 @@ function api(over: Partial<OrganizationStudioApi> = {}): Partial<OrganizationStu
 const BODY = { render_schema_version: 'rtr-html-v1', field_schema: { render_schema_version: 'rtr-html-v1', title: 'T', html: '<p>x</p>' } };
 
 describe('organizationStudioDataSource — capabilities (3 states)', () => {
-  it('manage → edit + approve; author → edit only; read → neither; never withdrawal / product tags / description', () => {
+  // TEMPLATE-PRODUCT-1 §6.4 — the product tags are shown, read-only (inherited, server-written).
+  it('manage → edit + approve; author → edit only; read → neither; never withdrawal / description; tags read-only', () => {
     const m = organizationStudioDataSource({ session: MANAGER, ...OPTS }).capabilities;
     const a = organizationStudioDataSource({ session: AUTHOR, ...OPTS }).capabilities;
     const r = organizationStudioDataSource({ session: READER, ...OPTS }).capabilities;
     expect([m.canEdit, m.canApprove]).toEqual([true, true]);
     expect([a.canEdit, a.canApprove]).toEqual([true, false]);
     expect([r.canEdit, r.canApprove]).toEqual([false, false]);
-    for (const c of [m, a, r]) expect([c.canWithdraw, c.productTags, c.description]).toEqual([false, false, false]);
+    for (const c of [m, a, r]) expect([c.canWithdraw, c.productTags, c.productTagsReadOnly, c.description]).toEqual([false, true, true, false]);
     const ds = organizationStudioDataSource({ session: MANAGER, ...OPTS });
     expect(ds.withdraw).toBeUndefined();
     expect(ds.cancelWithdrawal).toBeUndefined();
@@ -84,11 +85,21 @@ describe('organizationStudioDataSource — /v1/document-templates mapping', () =
   it('load = GET /:id + GET /:id/versions (logo carried, no product tags, current version number)', async () => {
     const ds = organizationStudioDataSource({ session: MANAGER, ...OPTS, api: api() });
     const t = await ds.load('t1');
+    // The fixture template carries no products (an older server) → none shown.
     expect(t.products).toEqual([]);
     expect(t.withdraw_effective_at).toBeNull();
     expect(t.current_version).toEqual({ id: 'v2', version_number: 2 });
     expect(t.versions.map((v) => v.id)).toEqual(['d3', 'v2']);
     expect(t.versions[0]?.logo).toEqual({ asset_id: 'a1', mime: 'image/png' });
+  });
+
+  it('load carries the template\'s own product tags (TEMPLATE-PRODUCT-1 §6.1)', async () => {
+    const ds = organizationStudioDataSource({
+      session: MANAGER,
+      ...OPTS,
+      api: api({ getTemplate: vi.fn().mockResolvedValue({ ...tpl(), products: ['ats', 'sign'] }) }),
+    });
+    expect((await ds.load('t1')).products).toEqual(['ats', 'sign']);
   });
 
   it('catalog = allowed-bindings with the B-2 metadata (type, sample, active) + document types + the tenant logo', async () => {

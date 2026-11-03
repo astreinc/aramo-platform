@@ -13,6 +13,7 @@ import { DocumentTemplateLibraryController } from './template-library.controller
 import { DocumentsRepository } from './documents.repository.js';
 import { TemplatesRepository } from './templates.repository.js';
 import { TemplateVariablesRepository } from './template-variables.repository.js';
+import { PlatformDocumentTypesRepository } from './document-types.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
 import { DocumentIdempotencyService } from './idempotency.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -44,6 +45,8 @@ import { PrismaService } from './prisma/prisma.service.js';
     RequirementsRepository,
     // DOC-TEMPLATE-LIB-1 T-2 — the Aramo template variable catalog.
     TemplateVariablesRepository,
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document types (platform controller only).
+    PlatformDocumentTypesRepository,
   ],
   exports: [
     DocumentsRepository,
@@ -51,6 +54,8 @@ import { PrismaService } from './prisma/prisma.service.js';
     TemplatesRepository,
     RequirementsRepository,
     TemplateVariablesRepository,
+    // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document types (platform controller only).
+    PlatformDocumentTypesRepository,
   ],
   // NOTE (DOC-2): the rendering capability (DocumentRenderingPort +
   // PdfLibDocumentRenderingAdapter + SafePdfPipeline + RenderService) is

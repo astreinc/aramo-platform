@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
 import { Letterhead, SafeDoc, type LetterheadInfo } from '../dt-html-render';
@@ -38,7 +38,7 @@ import { StudioLeftPanel, type LeftTab, type SectionCardModel, type VersionRowMo
 import { StudioPreview, orgNameOf, type PreviewSource } from './StudioPreview';
 import { signerRolesOf } from './StudioRolesPanel';
 import { StudioTopBar, type SaveState, type StudioMode } from './StudioTopBar';
-import { CancelWithdrawalDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
+import { CancelWithdrawalDialog, DeleteTemplateDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
 import { useStudioDoc } from './use-studio-doc';
 import { useStudioDrag, type DragPayload, type DropPos } from './use-studio-drag';
 import { VersionDiff, type DiffSide } from './VersionDiff';
@@ -147,7 +147,12 @@ export const LETTERHEAD_SAVE_BLOCKED: Readonly<Record<Exclude<StudioLetterheadSt
 export function TemplateStudio({ context, dataSource: ds, templateId, renderAccount, onEntityName, formatError = defaultErrorMessage, actions }: TemplateStudioProps) {
   // canManage = may edit the draft (the platform's :manage); approval is its own capability.
   const { canEdit: canManage, canApprove } = ds.capabilities;
-  const copy = ds.copy;
+  const [docType, setDocType] = useState<{ id: string; name: string } | null>(null);
+  // TEMPLATE-PRODUCT-1 §5 — the context copy for the loaded template's document type.
+  const copy = useMemo(() => {
+    const base = ds.copy;
+    return docType !== null && base.forDocumentType !== undefined ? { ...base, ...base.forDocumentType(docType) } : base;
+  }, [ds.copy, docType]);
   const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
   const templateErrorMessage = formatError;
   const hasWithdrawal = ds.withdraw !== undefined;
@@ -158,8 +163,12 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const lhApi = ds.letterhead;
   const versionPill = (v: TemplateVersion) => (v.status === 'ACTIVE' ? copy.versionActive : copy.versionRetired);
   const location = useLocation();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
   const [docTypeName, setDocTypeName] = useState('');
+  // TEMPLATE-PRODUCT-1 §2.7 — the products the template's document type allows (undefined:
+  // the host did not say; every product key is offered and the server decides).
+  const [typeProducts, setTypeProducts] = useState<readonly string[] | undefined>(undefined);
   const [catalog, setCatalog] = useState<VariableCatalog>(EMPTY_CATALOG);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(() => {
@@ -202,6 +211,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [cancelWdOpen, setCancelWdOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [tenantLogo, setTenantLogo] = useState<{ readonly available: boolean; readonly tenant_name: string } | null>(null);
   // S-2 — the read-only Preview's server render of the current version (previewCurrent).
   const [readerPreview, setReaderPreview] = useState<SamplePreview | null>(null);
@@ -260,7 +270,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         if (!live) return;
         setCatalog(buildCatalog(cat.variables, cat.bindings));
         setTenantLogo(cat.tenantLogo ?? null);
-        setDocTypeName(cat.documentTypes?.find((t) => t.id === d.document_type_id)?.name ?? d.document_type_id);
+        const loadedType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
+        setDocTypeName(loadedType?.name ?? d.document_type_id);
+        setDocType({ id: d.document_type_id, name: loadedType?.name ?? '' });
+        setTypeProducts(loadedType?.products);
         setDetail(d);
         initDoc(d);
       } catch (e) {
@@ -316,8 +329,23 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         previewedRev,
         withdrawal: hasWithdrawal ? withdrawal : null,
         unknownDetail: copy.unknownVariableDetail,
+        // TEMPLATE-PRODUCT-1 §2.6 — a blocking check where the context carries product tags.
+        // TEMPLATE-PRODUCT-1 §6.1 — read-only (inherited) tags never block approval.
+        products: ds.capabilities.productTags && ds.capabilities.productTagsReadOnly !== true ? (detail?.products ?? []) : null,
       }),
-    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal, copy.unknownVariableDetail],
+    [
+      doc,
+      catalog,
+      dirty,
+      savedRev,
+      previewedRev,
+      withdrawal,
+      hasWithdrawal,
+      copy.unknownVariableDetail,
+      ds.capabilities.productTags,
+      ds.capabilities.productTagsReadOnly,
+      detail?.products,
+    ],
   );
   const editable = canManage && mode === 'edit';
   const wide = width >= WIDE_BP;
@@ -328,6 +356,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const canWithdraw = ds.capabilities.canWithdraw && ds.withdraw !== undefined && withdrawal === 'NONE' && published;
   const canCancelWithdrawal = ds.capabilities.canWithdraw && ds.cancelWithdrawal !== undefined && withdrawal === 'PENDING';
   const canDiscard = canManage && ds.discardDraft !== undefined && draft !== null;
+  // TEMPLATE-PRODUCT-1 §3.4 — Delete only for a template no version of which was ever
+  // published (a published one is only withdrawn); the server re-checks every guard.
+  const neverPublished = detail !== null && detail.current_version === null && detail.versions.every((v) => v.status === 'DRAFT');
+  const canDeleteTemplate = canManage && ds.deleteTemplate !== undefined && neverPublished;
   // S-1 (A1) — the server-owned logo reference the letterhead node must agree with: the
   // open draft's, or (no draft yet) the active version's, which POST …/:id/draft copies.
   const logoRef = draft !== null ? (draft.logo ?? null) : (current?.logo ?? null);
@@ -617,6 +649,16 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     }, 'Could not discard the draft.');
   };
 
+  // ── delete a never-published template (platform, TEMPLATE-PRODUCT-1 §3.4) ──
+  const doDeleteTemplate = (): void => {
+    void runAction(async () => {
+      if (ds.deleteTemplate === undefined) throw new Error('delete unavailable');
+      await ds.deleteTemplate(templateId);
+      setDeleteOpen(false);
+      navigate(copy.back.to, { replace: true });
+    }, 'Could not delete the template.');
+  };
+
   // ── letterhead logo (organization, A1) ────────────────────────────────
   // Capture / remove always act on the DRAFT through the server (which places or strips
   // the node itself): save first (creating the draft if needed), call, then reload.
@@ -846,6 +888,14 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               }
             : undefined
         }
+        onDeleteTemplate={
+          canDeleteTemplate
+            ? () => {
+                setActionError(null);
+                setDeleteOpen(true);
+              }
+            : undefined
+        }
         actions={
           typeof actions === 'function'
             ? actions({
@@ -1023,6 +1073,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             canEdit={canManage}
             canEditProps={canManage && ds.updateProperties !== undefined}
             showProductTags={ds.capabilities.productTags}
+            productTagsReadOnly={ds.capabilities.productTagsReadOnly === true}
+            productOptions={typeProducts}
             showDescription={ds.capabilities.description}
             withdrawalEnabled={hasWithdrawal}
             manageVariables={copy.manageVariables}
@@ -1074,7 +1126,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         warningsText={copy.approveWarnings}
       />
       {draft !== null && ds.discardDraft !== undefined ? (
-        <DiscardDialog open={discardOpen} onOpenChange={setDiscardOpen} version={draft.version_number} busy={actionBusy} error={actionError} onConfirm={doDiscard} />
+        <DiscardDialog
+          open={discardOpen}
+          onOpenChange={setDiscardOpen}
+          version={draft.version_number}
+          published={detail.current_version !== null}
+          busy={actionBusy}
+          error={actionError}
+          onConfirm={doDiscard}
+        />
+      ) : null}
+      {canDeleteTemplate ? (
+        <DeleteTemplateDialog open={deleteOpen} onOpenChange={setDeleteOpen} name={detail.name} busy={actionBusy} error={actionError} onConfirm={doDeleteTemplate} />
       ) : null}
       <WithdrawDialog open={withdrawOpen} onOpenChange={setWithdrawOpen} name={detail.name} busy={actionBusy} error={actionError} onWithdraw={doWithdraw} />
       <CancelWithdrawalDialog open={cancelWdOpen} onOpenChange={setCancelWdOpen} busy={actionBusy} error={actionError} onConfirm={doCancelWithdrawal} />
