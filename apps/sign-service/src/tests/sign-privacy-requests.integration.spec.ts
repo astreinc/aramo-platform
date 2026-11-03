@@ -374,6 +374,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await events(res.body.reference)).map((e) => e.to_status)).toEqual(['RECEIVED', 'IDENTITY_VALIDATED', 'DATA_INVENTORY', 'EXECUTING', 'COMPLETED']);
   });
 
+  // M-A8 / M-A9 Lead ruling 3 (2026-11-03): populated drafts, saved signatures and contacts are
+  // gone from their authoritative stores (not just counted by the handler), and another
+  // account's identical data is untouched.
+  it('flag ON — populated data: draft, its document and object, saved signatures and contacts are removed from their stores; another account keeps its own', async () => {
+    process.env[FLAG] = '1';
+    const p = await account('PERSONAL');
+    const other = await account('PERSONAL');
+    await seedUserData(p.tenant, p.user);
+    await seedUserData(other.tenant, other.user);
+    const env = await seedEnvelopes(p.tenant, p.user);
+    const otherEnv = await seedEnvelopes(other.tenant, other.user);
+    const stores = async (o: { tenant: string; user: string }, draft: string) => ({
+      saved_signatures: await n(`SELECT count(*) AS n FROM "sign"."SignSavedSignature" WHERE tenant_id=$1 AND user_id=$2`, [o.tenant, o.user]),
+      contacts: await n(`SELECT count(*) AS n FROM "sign"."SignContact" WHERE tenant_id=$1 AND owner_user_id=$2`, [o.tenant, o.user]),
+      live_drafts: await n(`SELECT count(*) AS n FROM "sign"."SignatureEnvelope" WHERE id=$1 AND deleted_at IS NULL`, [draft]),
+      draft_documents: await n(`SELECT count(*) AS n FROM "sign"."EnvelopeDocument" WHERE envelope_id=$1`, [draft]),
+    });
+    expect(await stores(p, env.draft)).toEqual({ saved_signatures: 2, contacts: 1, live_drafts: 1, draft_documents: 1 });
+
+    const res = await create(p, { request_type: 'DELETION', confirm: 'DELETE' });
+    expect(res.body).toMatchObject({ status: 'COMPLETED' });
+
+    expect(await stores(p, env.draft)).toEqual({ saved_signatures: 0, contacts: 0, live_drafts: 0, draft_documents: 0 });
+    expect(deletedObjects).toContain(env.key);
+    expect(await stores(other, otherEnv.draft)).toEqual({ saved_signatures: 2, contacts: 1, live_drafts: 1, draft_documents: 1 });
+    expect(deletedObjects).not.toContain(otherEnv.key);
+    expect(await userActive(other.user)).toBe(true);
+    expect(retired).not.toContain(`sub-${other.user}`);
+  });
+
   it('flag ON — shared-identity guard: another product on the account keeps the identity', async () => {
     process.env[FLAG] = '1';
     const p = await account('PERSONAL', { extraCapability: 'ats' });

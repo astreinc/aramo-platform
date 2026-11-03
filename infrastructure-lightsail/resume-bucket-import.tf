@@ -234,6 +234,7 @@ resource "aws_iam_policy" "api_prod" {
           "cognito-idp:AdminDisableUser",
           "cognito-idp:AdminEnableUser",
           "cognito-idp:AdminGetUser",
+          "cognito-idp:ListUsers",
         ]
         Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/us-east-1_4fKlnGfaW"
       },

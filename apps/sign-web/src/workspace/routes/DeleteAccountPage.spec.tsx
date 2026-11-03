@@ -112,7 +112,7 @@ describe('Settings → Delete account / privacy requests', () => {
     const requester = vi.fn(async () => REQUEST);
     wrap(<PrivacyRequestsSection personal loader={async () => ({ items: [] })} requester={requester} onDeleted={vi.fn()} />);
     const card = await screen.findByTestId('settings-privacy-requests');
-    expect(within(card).getByTestId('privacy-personal-copy')).toHaveTextContent('keeps only what we must');
+    expect(within(card).getByTestId('privacy-personal-copy')).toHaveTextContent('Aramo processes the request automatically');
     const button = screen.getByRole('button', { name: 'Delete my account' });
     expect(button).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
