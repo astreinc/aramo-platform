@@ -321,6 +321,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       if (stage === 'email_code') {
         await repo.setEmailOtp(signup_id, hashPersonalOtp(signup_id, 'email', SIGNUP_CODE), expires, now);
       } else {
+        // complete provisions the owner with tenant_owner (personal-signup.service.ts); the
+        // role catalog is otherwise unseeded in this harness, as in personal-signup.integration.spec.
+        await db.query(`INSERT INTO identity."Role" (id, key, updated_at) VALUES ($1, 'tenant_owner', now()) ON CONFLICT DO NOTHING`, [randomUUID()]);
         if (!(await repo.markEmailVerified(signup_id, now))) throw new Error(`pact state: signup ${signup_id} not verified`);
         if (stage === 'phone_code') await repo.setPhoneOtp(signup_id, hashPersonalOtp(signup_id, 'phone', SIGNUP_CODE), expires, now);
       }
