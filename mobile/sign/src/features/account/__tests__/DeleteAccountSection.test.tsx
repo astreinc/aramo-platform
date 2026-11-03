@@ -67,7 +67,7 @@ describe('Delete account (M-A7 §3.3)', () => {
       fireEvent.press(await screen.findByTestId('delete-account', undefined, WAIT));
     });
     expect(screen.getByText(/sending stops/)).toBeTruthy();
-    expect(screen.getByText(/We keep only what we must/)).toBeTruthy();
+    expect(screen.getByText(/Aramo processes your request automatically/)).toBeTruthy();
     fireEvent.changeText(screen.getByTestId('delete-confirm-input'), 'delete me');
     fireEvent.press(screen.getByTestId('delete-account-confirm'));
     expect(call).not.toHaveBeenCalledWith('/v1/sign/me/privacy-requests', 'post', expect.anything());

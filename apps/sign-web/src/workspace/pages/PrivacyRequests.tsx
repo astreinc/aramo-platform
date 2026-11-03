@@ -91,12 +91,12 @@ function PersonalDeleteAccount({
       <div className="sg-card__head">Delete account / privacy requests</div>
       <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
         <div data-testid="privacy-personal-copy">
-          <p style={{ margin: '0 0 8px' }}>Requesting deletion of your Aramo Sign personal account:</p>
+          <p style={{ margin: '0 0 8px' }}>When you confirm deletion of your Aramo Sign personal account, Aramo processes the request automatically:</p>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
-            <li>closes the account now: sending stops and you can’t open or download your documents afterwards, so download what you want to keep first;</li>
-            <li>deletes your saved signatures and initials, contacts, notifications and device registrations, and your unsent drafts with their files;</li>
-            <li>signs you out everywhere and ends your sign-in, once the Aramo privacy team completes it (within 30 days);</li>
-            <li>keeps only what we must: signed agreements and their evidence, legal acceptances, security logs and abuse reports, each listed with your request.</li>
+            <li>your account is closed: sending stops and you can’t open or download your documents afterwards, so download what you want to keep first;</li>
+            <li>your saved signatures and initials, contacts, notifications, device registrations and unsent drafts with their files are deleted;</li>
+            <li>your active sessions are revoked and your Aramo sign-in is removed (your Google or Microsoft account itself is not affected);</li>
+            <li>certain records may be retained for legitimate legal, security and compliance purposes, as described in the Privacy Notice: signed agreements and their evidence, legal acceptances, security records, abuse reports, and minimal account and request records. Each is listed with your request.</li>
           </ul>
         </div>
         {shown !== null ? (

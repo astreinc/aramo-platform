@@ -50,10 +50,11 @@ export function deletionCopy(personal: boolean): { title: string; button: string
         title: 'Delete your account?',
         button: 'Delete account',
         points: [
-          'Your account closes now: sending stops and you can’t open or download your documents afterwards, so download what you want to keep first.',
-          'We delete your saved signatures and initials, contacts, notifications, device registrations and unsent drafts with their files.',
-          'You are signed out everywhere and your sign-in ends once the Aramo privacy team completes it (within 30 days).',
-          'We keep only what we must: signed agreements and their evidence, legal acceptances, security logs and abuse reports.',
+          'When you confirm, Aramo processes your request automatically.',
+          'Your account is closed: sending stops and you can’t open or download your documents afterwards, so download what you want to keep first.',
+          'Your saved signatures and initials, contacts, notifications, device registrations and unsent drafts with their files are deleted.',
+          'Your active sessions are revoked and your Aramo sign-in is removed. Your Google or Microsoft account itself is not affected.',
+          'Certain records may be retained for legitimate legal, security and compliance purposes, as described in the Privacy Notice: signed agreements and their evidence, legal acceptances, security records, abuse reports, and minimal account and request records.',
         ],
       }
     : {

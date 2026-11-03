@@ -195,7 +195,7 @@ export function DeleteAccountPage() {
     return (
       <Frame testId="delete-account-request">
         <Tile tone="green" icon="check" />
-        <CardTitle title="We have your request" sub="Your email address is confirmed. The Aramo privacy team handles your request and answers within 30 days." />
+        <CardTitle title="We have your request" sub="Your email address is confirmed. The Aramo privacy team handles your request and tells you the outcome. You can check its status here with your request ID." />
         <PrivacyRequestResult request={view.request} />
         <AppIdentity />
       </Frame>

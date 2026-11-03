@@ -78,8 +78,8 @@ export const SIGN_RETAINED_CATEGORIES: ReadonlyArray<{ key: string; label: strin
     label: 'Sent and completed agreements, their signing evidence and certificates',
     why: 'Kept under the documented retention rules so the agreements and their signatures can be proven (legal obligation and legal claims). Envelopes already sent stay open for their signers until completed, declined or expired.',
   },
-  { key: 'legal_acceptances', label: 'Your acceptance of the terms and notices', why: 'Kept to show what was agreed and when (at least 6 years).' },
-  { key: 'security_logs', label: 'Security and access logs', why: 'Kept for security and fraud prevention (up to 180 days).' },
+  { key: 'legal_acceptances', label: 'Your acceptance of the terms and notices', why: 'Kept to show what was agreed and when (legal compliance and dispute resolution), as described in the Privacy Notice.' },
+  { key: 'security_logs', label: 'Security and access logs', why: 'Kept for security and fraud prevention, as described in the Privacy Notice.' },
   { key: 'abuse_reports', label: 'Abuse reports and their outcomes', why: 'Kept to protect recipients from abusive senders.' },
   { key: 'legal_hold', label: 'Anything under a legal hold', why: 'Kept until the hold is released; nothing is deleted while it stands.' },
   {
