@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { RTR_HTML_SCHEMA_V1 } from '../document-templates-api';
-import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
+import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V1 } from '../document-templates-api';
+import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, studioValueFromText, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
 
 import type { PillSpec } from './primitives';
 import type { Readiness } from './readiness';
@@ -369,8 +369,32 @@ export function studioSigningOf(field_schema: unknown): StudioSigning | null {
   };
 }
 
+/**
+ * A version in the pre-Studio content contract (rtr-generated-v1: a title plus ordered
+ * HEADING / TEXT blocks whose text carries `{{key}}` tokens) as Studio html — so the Studio
+ * opens it with its content, and the next save stores it as rtr-html-v1. HEADING → h2,
+ * TEXT → one paragraph per blank-line-separated part; tokens become chips through the same
+ * rule pasted text uses (studioValueFromText). Null when the shape is not that contract.
+ */
+function legacyGeneratedContentOf(field_schema: unknown): { title: string; html: string } | null {
+  const fs = field_schema as { title?: unknown; blocks?: unknown } | null;
+  if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || !Array.isArray(fs.blocks)) return null;
+  const blocks: { kind: 'h2' | 'p'; value: string }[] = [];
+  for (const b of fs.blocks as Array<{ type?: unknown; text?: unknown } | null>) {
+    if (b === null || typeof b !== 'object' || typeof b.text !== 'string') return null;
+    if (b.type === 'HEADING') blocks.push({ kind: 'h2', value: studioValueFromText('h2', b.text) });
+    else if (b.type === 'TEXT') {
+      for (const part of b.text.split(/\n\s*\n/)) {
+        if (part.trim() !== '') blocks.push({ kind: 'p', value: studioValueFromText('p', part) });
+      }
+    } else return null;
+  }
+  return { title: fs.title, html: studioBlocksToHtml(blocks) };
+}
+
 /** The editable html content of a version (null when it is another content version). */
 export function studioHtmlContentOf(v: Pick<StudioVersion, 'render_schema_version' | 'field_schema'>): { title: string; html: string } | null {
+  if (v.render_schema_version === RTR_GENERATED_SCHEMA_V1) return legacyGeneratedContentOf(v.field_schema);
   if (v.render_schema_version !== STUDIO_HTML_CONTENT_VERSION) return null;
   const fs = v.field_schema as { title?: unknown; html?: unknown } | null;
   if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || typeof fs.html !== 'string') return null;
