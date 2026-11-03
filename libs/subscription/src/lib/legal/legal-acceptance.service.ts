@@ -20,24 +20,35 @@ export class LegalAcceptanceService {
     user_id: string | null;
     subject_email: string | null;
     accepted_at: Date;
+    // Aramo-Sign-Mobile-Amendment-M-A11 §2 — the acceptance's origin (IP, user agent),
+    // written with it in one transaction (LegalAcceptanceOrigin, as for IN_APP).
+    origin?: { ip: string | null; user_agent: string | null };
   }): Promise<void> {
     const existing = await this.prisma.legalAcceptance.findFirst({
       where: { document_key: input.document.key, version: input.document.version, context: input.context, context_ref: input.context_ref },
     });
     if (existing !== null) return;
-    await this.prisma.legalAcceptance.create({
-      data: {
-        id: uuidv7(),
-        tenant_id: input.tenant_id,
-        user_id: input.user_id,
-        subject_email: input.subject_email,
-        document_key: input.document.key,
-        version: input.document.version,
-        sha256: input.document.sha256,
-        context: input.context,
-        context_ref: input.context_ref,
-        accepted_at: input.accepted_at,
-      },
+    const id = uuidv7();
+    const data = {
+      id,
+      tenant_id: input.tenant_id,
+      user_id: input.user_id,
+      subject_email: input.subject_email,
+      document_key: input.document.key,
+      version: input.document.version,
+      sha256: input.document.sha256,
+      context: input.context,
+      context_ref: input.context_ref,
+      accepted_at: input.accepted_at,
+    };
+    const origin = input.origin;
+    if (origin === undefined) {
+      await this.prisma.legalAcceptance.create({ data });
+      return;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.legalAcceptance.create({ data });
+      await tx.legalAcceptanceOrigin.create({ data: { acceptance_id: id, ip: clip(origin.ip, 64), user_agent: clip(origin.user_agent, 512) } });
     });
   }
 

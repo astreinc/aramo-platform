@@ -28,6 +28,7 @@ import { IdentityDependencyInspector } from './privacy/identity-dependency-inspe
 import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/identity-retirement.port.js';
 import { PersonalSignupRepository } from './personal/personal-signup.repository.js';
 import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
+import { NATIVE_INTEGRITY_CHECK, nativeIntegrityCheckFromEnv } from './personal/native-integrity.port.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
 import { RoleService } from './role.service.js';
 import { SignCustomRoleService } from './sign-custom-role/sign-custom-role.service.js';
@@ -118,6 +119,9 @@ import { ProductAvailabilityService } from './authorization/product-availability
     { provide: GEO_IP_PORT, useFactory: () => new MaxmindGeoIpAdapter() },
     { provide: SMS_VERIFICATION_PORT, useFactory: () => smsVerificationAdapterFromEnv() },
     { provide: ROBOT_CHECK_PORT, useFactory: () => robotCheckAdapterFromEnv() },
+    // Aramo-Sign-Mobile-Amendment-M-A11 §2.1 — the native (Play Integrity) check beside the
+    // robot check. Production binds the Google decoder; unconfigured ⇒ unavailable (refused).
+    { provide: NATIVE_INTEGRITY_CHECK, useFactory: () => nativeIntegrityCheckFromEnv() },
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
@@ -165,6 +169,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     GEO_IP_PORT,
     SMS_VERIFICATION_PORT,
     ROBOT_CHECK_PORT,
+    NATIVE_INTEGRITY_CHECK,
     IdentityProviderPolicyService,
     OrganizationRegionService,
     DomainClaimService,

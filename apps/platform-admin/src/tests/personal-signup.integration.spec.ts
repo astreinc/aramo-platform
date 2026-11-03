@@ -47,6 +47,7 @@ import { PersonalSignupAttemptPurgeSweeper } from '../app/platform/personal-sign
 import { PlatformPersonalController } from '../app/platform/platform-personal.controller.js';
 import { PersonalSignupController } from '../app/signup/personal-signup.controller.js';
 import { PERSONAL_LEGAL_KEYS, PersonalSignupService } from '../app/signup/personal-signup.service.js';
+import { LegalTextSource } from '../app/signup/legal-text.source.js';
 import { SignSignupController } from '../app/signup/sign-signup.controller.js';
 import { SignSignupService, SignupBudget } from '../app/signup/sign-signup.service.js';
 import { AddressSuggestService } from '../app/signup/address-suggest.service.js';
@@ -213,6 +214,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
       controllers: [PersonalSignupController, PlatformPersonalController, SignSignupController],
       providers: [
         PersonalSignupService,
+        // M-A11 §2.2 — the hash-pinned legal texts (native terms screen).
+        LegalTextSource,
         SignSignupService,
         AddressSuggestService,
         SignupBudget,

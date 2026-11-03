@@ -5117,6 +5117,45 @@ paths:
                       $ref: '#/components/schemas/PersonalTermsDocument'
         '404':
           $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/terms/{key}/{version}:
+    get:
+      operationId: getPersonalSignupTermsText
+      tags: [Sign Personal Signup]
+      summary: The exact text of one currently effective Personal document (native app).
+      description: |
+        Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — for the native terms screen. Answers only
+        for a document that is CURRENTLY effective for Personal signup (one of the
+        documents `GET …/personal/terms` lists), with the legal registry's `sha256`; the
+        UTF-8 bytes of `text` hash to it. Anything else — an unknown key or version, a
+        superseded, upcoming or DRAFT version, or a text whose bytes do not match the
+        registry — is 404 `NOT_FOUND` with details.reason `legal_document_not_found`.
+        Also 404 while Personal signup is off.
+      security: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalTermsText'
+        '404':
+          description: |
+            `NOT_FOUND` — details.reason `legal_document_not_found`, or Personal signup is off.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
   /v1/signup/sign/personal/start:
     post:
       operationId: startPersonalSignup
@@ -5134,6 +5173,21 @@ paths:
         answer or a lookup error) adds `ip_country_unknown`. An address that already has an Aramo account gets
         the same 202 (with a signup_id that never verifies) and an "already
         have an account" email — non-enumerating.
+
+        Aramo-Sign-Mobile-Amendment-M-A11 §2.1 — `client: "android"` (the native app)
+        replaces the robot check with a Play Integrity Standard token in
+        `integrity_token` (`robot_token` absent or null). Its `requestHash` is the
+        lowercase hex SHA-256 of the UTF-8 bytes of
+        `JSON.stringify([client, name, email, phone, residence, invite_code ?? null, hp, elapsed_ms])`
+        built from the values exactly as sent (before any normalization; the token
+        excluded). The server recomputes it from the received body, decodes the token
+        through Google and requires the request hash, the package `ai.aramo.sign`,
+        `PLAY_RECOGNIZED`, the Play app-signing certificate, `MEETS_DEVICE_INTEGRITY`
+        and a fresh timestamp. A failed check is refused (`personal_signup_refused`,
+        stored as the `robot_check_failed` risk signal); an unconfigured or unreachable
+        verifier is refused too (fail closed). For android, `elapsed_ms` must be a JSON
+        integer. Absent `client` or `client: "web"` is the browser flow, unchanged; any
+        other value is `VALIDATION_ERROR`.
       security: []
       requestBody:
         required: true
@@ -5143,6 +5197,13 @@ paths:
               type: object
               required: [name, email, phone, residence]
               properties:
+                client:
+                  type: string
+                  enum: [web, android]
+                  description: Absent or `web` = the browser (Turnstile); `android` = the native app (Play Integrity).
+                integrity_token:
+                  type: string
+                  description: client android only — the Play Integrity Standard token bound to the requestHash.
                 name:
                   type: string
                   minLength: 2
@@ -5159,16 +5220,16 @@ paths:
                   enum: [US, IN]
                 robot_token:
                   type: [string, 'null']
-                  description: The Cloudflare Turnstile token.
+                  description: The Cloudflare Turnstile token (web).
                 invite_code:
-                  type: string
+                  type: [string, 'null']
                   description: Required in invite mode.
                 hp:
                   type: string
                   description: Honeypot; must be empty.
                 elapsed_ms:
                   type: number
-                  description: Milliseconds the form was open before submitting.
+                  description: Milliseconds the form was open before submitting (an integer from client android).
       responses:
         '202':
           description: Accepted (a code was emailed, or the address already has an account).
@@ -5327,6 +5388,16 @@ paths:
         and no billing provider are created. The account activates only when the
         owner signs in with the Google account for exactly the verified email.
         `held` reports a review hold or an unmet phone step-up. Idempotent.
+
+        Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — the native app sends `client:
+        "android"` and one `accept[]` entry `{key, version, sha256}` per currently
+        effective Personal document: exactly those, no missing, extra, duplicate,
+        stale or mismatched entry, else `terms_not_accepted` and nothing is recorded
+        (a document that changed after the app fetched it is refused; the app refetches
+        and asks again). Each acceptance records the document key, version and hash,
+        and its origin (IP and user agent); the signup's audit event records client
+        android. The web's `{key, version}` entries are unchanged (an entry that does
+        carry `sha256` must match it).
       security: []
       requestBody:
         required: true
@@ -5339,6 +5410,10 @@ paths:
                 signup_id:
                   type: string
                   format: uuid
+                client:
+                  type: string
+                  enum: [web, android]
+                  description: Absent or `web` = the browser; `android` = the native app (sha256 binding).
                 accept:
                   type: array
                   items:
@@ -5349,6 +5424,10 @@ paths:
                         type: string
                       version:
                         type: string
+                      sha256:
+                        type: string
+                        pattern: '^[0-9a-f]{64}$'
+                        description: Required from client android — the registry hash of the accepted text.
       responses:
         '200':
           description: Provisioned (or provisioning in a concurrent request).
@@ -12265,6 +12344,25 @@ components:
           format: uri
         sha256:
           type: string
+    PersonalTermsText:
+      type: object
+      required: [key, version, sha256, effective_at, text]
+      properties:
+        key:
+          type: string
+          enum: [sign.terms_of_service, sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
+        version:
+          type: string
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: The legal registry's SHA-256 of the text; the UTF-8 bytes of `text` hash to it.
+        effective_at:
+          type: string
+          format: date-time
+        text:
+          type: string
+          description: The approved document text (Markdown), byte-for-byte.
     PersonalSignupRef:
       type: object
       required: [signup_id]

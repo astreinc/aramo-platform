@@ -76,6 +76,10 @@ WORKDIR /app
 # No source, no dev deps, no .env — config arrives as runtime env.
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
+# Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — the approved legal texts (data, not code), served
+# byte-for-byte to the native terms screen from /app/doc/legal (the process working
+# directory is /app); each is served only when its bytes hash to the legal registry's sha256.
+COPY --from=builder --chown=node:node /app/doc/legal ./doc/legal
 
 USER node
 EXPOSE 3002
