@@ -4483,6 +4483,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-w2-inbox-discovery.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8207,6 +8213,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/inbox-discovery.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/multi-signer.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -11018,6 +11030,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Inbox.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -13716,6 +13734,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-w2-inbox-discovery.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

@@ -10751,6 +10751,12 @@
       "to": "libs/sign/prisma/schema.prisma"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/sign-w2-inbox-discovery.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/src/tests/inbox-discovery.integration.spec.ts"
+    },
+    {
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"
@@ -34042,6 +34048,12 @@
       "from": "libs/sign/src/tests/disclosure-legal-copy.spec.ts",
       "status": "excluded",
       "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/sign/src/tests/inbox-discovery.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
     },
     {
       "from": "libs/sign/vitest.config.ts",
