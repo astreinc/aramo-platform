@@ -304,6 +304,11 @@ export function summarizeDetail(
       return 'Hid an Aramo form from the organization';
     case 'identity.document_template.fixed_form_shown':
       return 'Showed an Aramo form to the organization';
+    // CONTACTS-1 SD-11 — ATS contact soft delete / restore.
+    case 'identity.contact.deleted':
+      return 'Deleted a contact';
+    case 'identity.contact.restored':
+      return 'Restored a contact';
     // Sign Feature-Parity §1.21 — the role name and its Sign permissions (whitelisted fields only).
     case 'identity.sign_custom_role.created':
     case 'identity.sign_custom_role.updated':

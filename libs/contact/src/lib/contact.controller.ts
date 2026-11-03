@@ -23,8 +23,10 @@ import {
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { ContactView } from './dto/contact.view.js';
-import type { CreateContactRequestDto } from './dto/create-contact-request.dto.js';
-import type { UpdateContactRequestDto } from './dto/update-contact-request.dto.js';
+// CONTACTS-1 V-1 — VALUE imports: the ValidationPipe reads the body classes'
+// decorator metadata at runtime (an `import type` would erase it).
+import { CreateContactRequestDto } from './dto/create-contact-request.dto.js';
+import { UpdateContactRequestDto } from './dto/update-contact-request.dto.js';
 import type {
   ContactSearchPage,
   ContactSearchQuery,
@@ -70,6 +72,16 @@ export class ContactController {
         { requestId, details: { reason: 'search_scope_missing', required_scope: 'contact:search' } },
       );
     }
+    // CONTACTS-1 SD-9 — the deleted view (restore source) is limited to the
+    // holders of contact:delete (who may also restore).
+    if (qp['deleted'] === 'true' && !authContext.scopes.includes('contact:delete')) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'contact:delete scope required for ?deleted=true',
+        403,
+        { requestId, details: { reason: 'deleted_view_scope_missing', required_scope: 'contact:delete' } },
+      );
+    }
     const visibility = await req.resolveVisibility!();
 
     // Contact-spec amendment v1.0 — server-side faceted page. Same route + gate
@@ -110,6 +122,7 @@ export class ContactController {
         ...(qp['is_primary'] === 'true' ? { is_primary: true } : {}),
         ...(qp['quiet'] === 'true' ? { quiet: true } : {}),
         ...(qp['former'] === 'true' ? { former: true } : {}),
+        ...(qp['deleted'] === 'true' ? { deleted: true } : {}),
         ...(qp['cold_callable'] === 'true' ? { cold_callable: true } : {}),
         ...(qp['sort'] ? { sort: qp['sort'] as ContactSortKey } : {}),
         ...(qp['dir'] ? { dir: qp['dir'] as SortDir } : {}),
@@ -138,14 +151,18 @@ export class ContactController {
   async get(
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
+    @Query('include_deleted') includeDeleted: string | undefined,
     @RequestId() requestId: string,
     @Req() req: Request,
   ): Promise<ContactView> {
     const visibility = await req.resolveVisibility!();
+    // CONTACTS-1 SD-4/SD-5 — a deleted contact is 404 unless the caller asks
+    // for it to label a reference ("Name (Deleted)"); visibility still applies.
     const view = await this.contactRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
       visibility,
+      include_deleted: includeDeleted === 'true',
     });
     if (view === null) {
       throw new AramoError(
@@ -184,12 +201,16 @@ export class ContactController {
     @Param('id') id: string,
     @Body() body: UpdateContactRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ContactView> {
+    // CONTACTS-1 W-1 — mutations resolve the same visibility as reads.
+    const visibility = await req.resolveVisibility!();
     return this.contactRepository.update({
       tenant_id: authContext.tenant_id,
       id,
       input: body,
       requestId,
+      visibility,
     });
   }
 
@@ -201,11 +222,38 @@ export class ContactController {
     @AuthContext() authContext: AuthContextType,
     @Param('id') id: string,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<void> {
+    // CONTACTS-1 SD-1 — soft delete (same route, scope and 204).
+    const visibility = await req.resolveVisibility!();
     await this.contactRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
       requestId,
+      visibility,
+      actor_id: authContext.sub,
+    });
+  }
+
+  // CONTACTS-1 SD-8 — restore a soft-deleted contact. Gated on contact:delete
+  // (§15 ruling 3 — no new scope). A live contact is a 200 no-op.
+  @Post(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('contact:delete')
+  @RequireSiteMatch()
+  async restore(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<ContactView> {
+    const visibility = await req.resolveVisibility!();
+    return this.contactRepository.restore({
+      tenant_id: authContext.tenant_id,
+      id,
+      requestId,
+      visibility,
+      actor_id: authContext.sub,
     });
   }
 }

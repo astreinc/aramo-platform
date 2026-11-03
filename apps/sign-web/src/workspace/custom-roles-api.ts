@@ -61,7 +61,7 @@ export const PERMISSION_LABELS: Readonly<Record<string, { label: string; help: s
   'sign:envelope:create': { label: 'Prepare envelopes', help: 'Upload documents, add recipients and fields.' },
   'sign:envelope:send': { label: 'Send envelopes', help: 'Send, remind and void their own envelopes.' },
   'sign:envelope:manage:all': { label: 'Manage all envelopes', help: 'Change, remind or void any envelope in the organization.' },
-  'sign:contact:read': { label: 'Use contacts', help: 'Pick recipients from the organization’s contacts.' },
+  'sign:contact:read': { label: 'Use contacts', help: 'Pick recipients from your saved contacts and recent recipients.' },
   'sign:report:read': { label: 'View reports', help: 'Open the organization’s Sign reports.' },
   'sign:member:manage': { label: 'Manage roles', help: 'Create custom roles and give roles to members.' },
   'sign:settings:manage': { label: 'Manage settings', help: 'Change organization Sign settings such as retention.' },

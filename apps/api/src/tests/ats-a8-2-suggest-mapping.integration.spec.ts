@@ -106,6 +106,10 @@ const CONTACT_PRIMARY_FLAG = resolve(
   ROOT,
   'libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql',
 );
+const CONTACT_SOFT_DELETE = resolve(
+  ROOT,
+  'libs/contact/prisma/migrations/20261102120000_contacts_1_soft_delete_and_kind/migration.sql',
+);
 const REQUISITION_IMPORT_BACK_REF = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
@@ -181,6 +185,7 @@ const MIGRATIONS = [
   CONTACT_IMPORT_BACK_REF,
   CONTACT_LIST_SURFACE_FIELDS,
   CONTACT_PRIMARY_FLAG,
+  CONTACT_SOFT_DELETE,
   REQUISITION_IMPORT_BACK_REF,
   REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION,
   TALENT_RECORD_IMPORT_BACK_REF,

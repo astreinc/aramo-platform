@@ -34,3 +34,10 @@ export {
   isNoteEventType,
   type NoteEventType,
 } from './lib/dto/index.js';
+
+// CONTACTS-1 §8 — contact-subject seam (bound by apps/api over @aramo/contact).
+export {
+  ACTIVITY_CONTACT_SUBJECT,
+  CONTACT_SUBJECT_TYPE,
+  type ActivityContactSubjectPort,
+} from './lib/contact-subject.port.js';

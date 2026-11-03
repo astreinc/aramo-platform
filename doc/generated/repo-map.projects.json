@@ -90,11 +90,13 @@
   },
   "exports": {
     "@aramo/activity": [
+      "ACTIVITY_CONTACT_SUBJECT",
       "ACTIVITY_TYPE_VALUES",
       "ActivityController",
       "ActivityModule",
       "ActivityPrismaService",
       "ActivityRepository",
+      "CONTACT_SUBJECT_TYPE",
       "CreateActivityRequestDto",
       "DEFAULT_NOTE_BODY_FORMAT",
       "DEFAULT_NOTE_CATEGORY",
@@ -495,6 +497,7 @@
       "verifyZoomWebhookSignature"
     ],
     "@aramo/company": [
+      "COMPANY_BILLING_CONTACT_VALIDATOR",
       "CompanyController",
       "CompanyDepartmentRepository",
       "CompanyEmbeddingRepository",
@@ -545,13 +548,18 @@
       "renderRecruiterCreateDefaultConsentText"
     ],
     "@aramo/contact": [
+      "CONTACT_AUDIT_SINK",
+      "CONTACT_KIND_VALUES",
+      "CONTACT_OWNER_VALIDATOR",
       "ContactController",
       "ContactModule",
       "ContactPrismaService",
       "ContactRepository",
+      "CreateContactRequestDto",
       "PREFERENCE_VALUES",
       "QUIET_DAYS",
       "RELATIONSHIP_ROLE_VALUES",
+      "UpdateContactRequestDto",
       "assertContactVocab"
     ],
     "@aramo/conversation-intelligence": [
@@ -2093,6 +2101,7 @@
       "RATE_PERIOD_VALUES",
       "RATE_TYPE_VALUES",
       "RECRUITING_STATUS_VALUES",
+      "REQUISITION_HIRING_MANAGER_VALIDATOR",
       "REQUISITION_RESOURCE",
       "RequisitionAssignmentRepository",
       "RequisitionController",
@@ -3134,9 +3143,11 @@
     ],
     "@aramo/task": [
       "StubTaskAssigneeValidator",
+      "StubTaskContactOwnerValidator",
       "StubTaskRequisitionContextValidator",
       "TASK_ACTIVE_STATUS_VALUES",
       "TASK_ASSIGNEE_VALIDATOR",
+      "TASK_CONTACT_OWNER_VALIDATOR",
       "TASK_OWNER_TYPE_VALUES",
       "TASK_PRIORITY_VALUES",
       "TASK_REQUISITION_CONTEXT_VALIDATOR",
@@ -3310,6 +3321,12 @@
     "@aramo/attachment": [{ "project": "api", "status": "production" }],
     "@aramo/audit": [],
     "@aramo/auth": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/activity/src/tests/contact-subject.spec.ts",
+        "project": "activity",
+        "status": "excluded"
+      },
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3961,6 +3978,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/company-write-visibility.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/d4a.controller.read.spec.ts",
         "project": "company",
         "status": "excluded"
@@ -4018,6 +4041,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/contact/src/tests/contact-search-paged.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contacts-1-foundation.spec.ts",
         "project": "contact",
         "status": "excluded"
       },
@@ -5392,6 +5421,12 @@
     ],
     "@aramo/common": [
       { "from": "tools/send-mailer-proof.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/activity/src/tests/contact-subject.spec.ts",
+        "project": "activity",
+        "status": "excluded"
+      },
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5673,6 +5708,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/connector-integration-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/contacts-1-contact-activity-subject.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/contacts-1-contact-link-validators.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6745,6 +6792,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/company/src/tests/company-write-visibility.spec.ts",
+        "project": "company",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/company/src/tests/d4a.controller.read.spec.ts",
         "project": "company",
         "status": "excluded"
@@ -6814,6 +6867,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/contact/src/tests/contact-search-paged.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contacts-1-foundation.spec.ts",
         "project": "contact",
         "status": "excluded"
       },
@@ -7968,6 +8027,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/hiring-manager-validation.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/openings-available-drop-b2.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -8022,6 +8087,12 @@
         "status": "excluded"
       },
       { "project": "resume-parse", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/saved-list/src/tests/saved-list-contact-deleted.spec.ts",
+        "project": "saved-list",
+        "status": "excluded"
+      },
       { "project": "saved-list", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -9031,6 +9102,12 @@
         "project": "contact",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/contact/src/tests/contacts-1-foundation.spec.ts",
+        "project": "contact",
+        "status": "excluded"
+      },
       { "project": "contact", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
@@ -9141,6 +9218,12 @@
     ],
     "@aramo/contact": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/contacts-1-contact-activity-subject.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-contact.integration.spec.ts",
@@ -10156,6 +10239,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/contacts/contact-workspace.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/dashboard/DashboardView.spec.tsx",
         "project": "aramo-ats-web",
@@ -10404,6 +10493,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/RequisitionDetailView.cockpit.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/RequisitionDetailView.hiringmanager.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

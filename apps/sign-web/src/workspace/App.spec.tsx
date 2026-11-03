@@ -448,9 +448,9 @@ describe('envelope wizard — recipient roles (M-A5)', () => {
     const roles = await screen.findAllByTestId('recipient-role');
     expect(roles).toHaveLength(2);
     expect(screen.queryByRole('option', { name: /in person/i })).not.toBeInTheDocument();
-    // Only the signed-in user's own row offers Assign to me.
+    // W1 — the signed-in user's own row is assigned automatically (a note, no checkbox).
     expect(screen.getAllByTestId('assign-to-me')).toHaveLength(1);
-    fireEvent.click(screen.getByTestId('assign-to-me'));
+    expect(screen.queryByRole('checkbox', { name: /assign to me/i })).not.toBeInTheDocument();
     fireEvent.change(roles[1]!, { target: { value: 'RECEIVES_COPY' } });
     fireEvent.change(await screen.findByTestId('copy-timing'), { target: { value: 'BOTH' } });
     fireEvent.click(screen.getByTestId('recipients-continue'));

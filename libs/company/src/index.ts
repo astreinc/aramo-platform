@@ -2,6 +2,11 @@ export { CompanyModule } from './lib/company.module.js';
 export { CompanyController } from './lib/company.controller.js';
 export { CompanyRepository } from './lib/company.repository.js';
 export { CompanyDepartmentRepository } from './lib/company-department.repository.js';
+// CONTACTS-1 (SD-6) — billing-contact link port; bound by apps/api.
+export {
+  COMPANY_BILLING_CONTACT_VALIDATOR,
+  type CompanyBillingContactValidator,
+} from './lib/billing-contact-validator.port.js';
 export { PrismaService as CompanyPrismaService } from './lib/prisma/prisma.service.js';
 export type { CompanySearchRow } from './lib/company.repository.js';
 export {

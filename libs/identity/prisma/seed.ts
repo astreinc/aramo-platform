@@ -1554,10 +1554,12 @@ const SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // expanding the deliberately-constrained talent:search is out of scope for
 // an additive search PR (flagged in the post-merge record for the Lead).
 //
-// :read-holder sets (from ROLE_SCOPE_ASSIGNMENTS + AUTHZ1_BUNDLES above):
-//   company:read     — TA, recruiter, TO, AM, sourcer, RM, DM, LR, BO        (9)
-//   contact:read     — same 9 as company:read                                 (9)
-//   requisition:read — the 9 above + finance                                  (10)
+// :read-holder sets (from ROLE_SCOPE_ASSIGNMENTS + AUTHZ1_BUNDLES above, plus
+// tenant_admin, which holds every ats_admin scope via ROLES1_ATS_GRANT_SOURCES):
+//   company:read     — ats_admin, tenant_admin, recruiter, TO, AM, sourcer,
+//                      RM, DM, LR, BO                                        (10)
+//   contact:read     — same 10 as company:read                               (10)
+//   requisition:read — the 10 above + finance                                (11)
 // auditor / auditor_with_financials / candidate / super_admin hold none of
 // the three :read scopes → hold no :search scope → 403 on any ?q=.
 //

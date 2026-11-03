@@ -18,10 +18,30 @@ import type {
 //   GET    /v1/contacts/:id    → contact:read
 //   PATCH  /v1/contacts/:id    → contact:edit
 // The recruiter role-bundle holds all three.
+// CONTACTS-1 §5 — soft delete + restore (both contact:delete):
+//   DELETE /v1/contacts/:id          → 204, the row is kept with deleted_at set
+//   POST   /v1/contacts/:id/restore  → 200 ContactView
+//   GET    /v1/contacts?paged=true&deleted=true → the deleted rows only
+//   GET    /v1/contacts/:id?include_deleted=true → also returns a deleted row,
+//          for screens that show a referenced contact as "Name (Deleted)".
 
-export async function getContact(id: string): Promise<ContactView> {
+export async function getContact(
+  id: string,
+  opts: { readonly includeDeleted?: boolean } = {},
+): Promise<ContactView> {
+  const qs = opts.includeDeleted === true ? '?include_deleted=true' : '';
   return apiClient.get<ContactView>(
-    `/v1/contacts/${encodeURIComponent(id)}`,
+    `/v1/contacts/${encodeURIComponent(id)}${qs}`,
+  );
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  await apiClient.delete<void>(`/v1/contacts/${encodeURIComponent(id)}`);
+}
+
+export async function restoreContact(id: string): Promise<ContactView> {
+  return apiClient.post<ContactView>(
+    `/v1/contacts/${encodeURIComponent(id)}/restore`,
   );
 }
 

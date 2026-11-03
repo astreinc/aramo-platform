@@ -90,6 +90,17 @@ model Contact {
   //   facet as a REAL server filter/sort.
   last_activity_at DateTime? @db.Timestamptz
 
+  // CONTACTS-1 §12 — what kind of contact this row is (PERSON |
+  // FUNCTIONAL_MAILBOX, e.g. an "Accounts Payable" mailbox). Nullable =
+  // unclassified; CHECK-constrained in the migration (no native enum).
+  contact_kind String?
+
+  // CONTACTS-1 §5 — soft delete. A contact is never removed: deleted_at marks
+  // it deleted (hidden from every directory read, refused as the target of any
+  // new link), and restore clears it. Existing references are left untouched.
+  deleted_at    DateTime? @db.Timestamptz
+  deleted_by_id String?   @db.Uuid
+
   // Intra-tenant self-reference (UUID-only — Prisma can model this with
   // an explicit relation, but since the column is nullable and the
   // intra-table self-loop adds no semantic value at this batch, we keep
@@ -121,6 +132,8 @@ model Contact {
   @@index([tenant_id, preference])
   @@index([tenant_id, owner_id])
   @@index([tenant_id, last_activity_at])
+  // CONTACTS-1 §5 — every directory read filters on deleted_at.
+  @@index([tenant_id, deleted_at])
 
   @@schema("contact")
 }

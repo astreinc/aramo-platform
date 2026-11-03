@@ -286,6 +286,10 @@ hand-edit the generated projects. What they configure:
   (Metro).
 - No storage-wide Android permissions. `READ_MEDIA_IMAGES` and `DETECT_SCREEN_CAPTURE`
   (merged in by expo-screen-capture, used on iOS only) and `CAMERA` are blocked.
+  expo-screen-capture is therefore **excluded from Android autolinking** (`package.json`
+  `expo.autolinking.android.exclude`): its Android module registers a screen-capture
+  callback when the app starts, which needs `DETECT_SCREEN_CAPTURE` and crashed the app at
+  launch on Android 14+. The hook is iOS-only (`src/security/sensitiveScreen.ios.ts`).
 - Release signing with the upload key from outside Git, or a failed build
   (`plugins/withReleaseSigning.js`, M-A7 §4 R-6; runbook P-3a). R8 and resource
   shrinking for release, with keep rules in `app.config.ts` (R-13).

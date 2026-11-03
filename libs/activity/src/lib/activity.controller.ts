@@ -4,6 +4,9 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  Logger,
+  Optional,
   Param,
   Post,
   Query,
@@ -27,6 +30,11 @@ import { CreateActivityRequestDto } from './dto/create-activity-request.dto.js';
 import type { RedactActivityRequestDto } from './dto/redact-activity-request.dto.js';
 import { isRedactionReasonCode } from './dto/redaction-reason.js';
 import { ActivityRepository } from './activity.repository.js';
+import {
+  ACTIVITY_CONTACT_SUBJECT,
+  CONTACT_SUBJECT_TYPE,
+  type ActivityContactSubjectPort,
+} from './contact-subject.port.js';
 
 // ActivityController — PR-A5a Gate 5 ATS Batch 4a (sidecar to pipeline).
 //
@@ -44,7 +52,41 @@ import { ActivityRepository } from './activity.repository.js';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class ActivityController {
-  constructor(private readonly activityRepository: ActivityRepository) {}
+  private readonly logger = new Logger(ActivityController.name);
+
+  constructor(
+    private readonly activityRepository: ActivityRepository,
+    // CONTACTS-1 §8 — contact-subject checks + recency, bound by apps/api.
+    // Optional so the lib stays standalone; when it is absent every
+    // subject_type='contact' write is refused and contact rows stay hidden.
+    @Optional()
+    @Inject(ACTIVITY_CONTACT_SUBJECT)
+    private readonly contactSubject?: ActivityContactSubjectPort,
+  ) {}
+
+  // H-3 — the contact ids this actor may read, for the repository's contact
+  // visibility branch. Only the one requested contact is ever resolved.
+  private async visibleContactIds(args: {
+    tenant_id: string;
+    subject_type: string | null | undefined;
+    subject_id: string | null | undefined;
+    req: Request;
+  }): Promise<ReadonlySet<string> | undefined> {
+    if (
+      args.subject_type !== CONTACT_SUBJECT_TYPE ||
+      args.subject_id === undefined ||
+      args.subject_id === null ||
+      this.contactSubject === undefined
+    ) {
+      return undefined;
+    }
+    const visible = await this.contactSubject.isVisible({
+      tenant_id: args.tenant_id,
+      contact_id: args.subject_id,
+      visibility: await args.req.resolveVisibility!(),
+    });
+    return visible ? new Set([args.subject_id]) : undefined;
+  }
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -59,12 +101,21 @@ export class ActivityController {
     const visibility = await req.resolveVisibility!();
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     const visiblePipelineIds = await req.resolveVisiblePipelineIds!();
+    const visibleContactIds = await this.visibleContactIds({
+      tenant_id: authContext.tenant_id,
+      subject_type: subjectType,
+      subject_id: subjectId,
+      req,
+    });
     const items = await this.activityRepository.listForActor({
       tenant_id: authContext.tenant_id,
       actor_user_id: authContext.sub,
       visibility,
       visible_requisition_ids: visibleReqIds,
       visible_pipeline_ids: visiblePipelineIds,
+      ...(visibleContactIds === undefined
+        ? {}
+        : { visible_contact_ids: visibleContactIds }),
       ...(subjectType === undefined ? {} : { subject_type: subjectType }),
       ...(subjectId === undefined ? {} : { subject_id: subjectId }),
     });
@@ -84,6 +135,18 @@ export class ActivityController {
     const visibility = await req.resolveVisibility!();
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     const visiblePipelineIds = await req.resolveVisiblePipelineIds!();
+    // A contact-subject row needs its contact resolved first (H-3); the
+    // tenant-only peek decides nothing on its own — the scoped read below does.
+    const peek = await this.activityRepository.findById({
+      tenant_id: authContext.tenant_id,
+      id,
+    });
+    const visibleContactIds = await this.visibleContactIds({
+      tenant_id: authContext.tenant_id,
+      subject_type: peek?.subject_type,
+      subject_id: peek?.subject_id,
+      req,
+    });
     const view = await this.activityRepository.findByIdForActor({
       tenant_id: authContext.tenant_id,
       id,
@@ -91,6 +154,9 @@ export class ActivityController {
       visibility,
       visible_requisition_ids: visibleReqIds,
       visible_pipeline_ids: visiblePipelineIds,
+      ...(visibleContactIds === undefined
+        ? {}
+        : { visible_contact_ids: visibleContactIds }),
     });
     if (view === null) {
       throw new AramoError(
@@ -111,13 +177,79 @@ export class ActivityController {
     @AuthContext() authContext: AuthContextType,
     @Body() body: CreateActivityRequestDto,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ActivityView> {
-    return this.activityRepository.create({
+    if (body.subject_type !== CONTACT_SUBJECT_TYPE) {
+      return this.activityRepository.create({
+        tenant_id: authContext.tenant_id,
+        created_by_id: authContext.sub,
+        input: body,
+        requestId,
+      });
+    }
+    return this.createForContact(authContext, body, requestId, req);
+  }
+
+  // CONTACTS-1 §8 — record a note / call / email against a contact. The
+  // contact must be visible (404 otherwise) and not deleted (CONTACT_DELETED,
+  // H-4); a recorded row then moves the contact's last_activity_at forward
+  // (H-2, later timestamp wins).
+  private async createForContact(
+    authContext: AuthContextType,
+    body: CreateActivityRequestDto,
+    requestId: string,
+    req: Request,
+  ): Promise<ActivityView> {
+    const contactId = body.subject_id;
+    if (contactId === undefined) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'subject_id is required when subject_type is contact',
+        422,
+        { requestId, details: { field: 'subject_id', reason: 'required' } },
+      );
+    }
+    if (this.contactSubject === undefined) {
+      // Fail closed: without the contact seam the contact cannot be checked.
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Recording activity against a contact is not available',
+        422,
+        {
+          requestId,
+          details: { field: 'subject_type', reason: 'subject_type_unsupported' },
+        },
+      );
+    }
+    await this.contactSubject.assertRecordable({
+      tenant_id: authContext.tenant_id,
+      contact_id: contactId,
+      visibility: await req.resolveVisibility!(),
+      requestId,
+    });
+    const view = await this.activityRepository.create({
       tenant_id: authContext.tenant_id,
       created_by_id: authContext.sub,
       input: body,
       requestId,
     });
+    // The activity row is committed; a recency failure must not turn a
+    // recorded interaction into an error response (a retry would record it
+    // twice). Logged so a stale last_activity_at is traceable.
+    try {
+      await this.contactSubject.touchLastActivity({
+        tenant_id: authContext.tenant_id,
+        contact_id: contactId,
+        at: new Date(view.created_at),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `contact last_activity_at update failed for activity ${view.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return view;
   }
 
   // RN-1 (D-3) — pin / unpin a note to the requisition overview. Pin permission

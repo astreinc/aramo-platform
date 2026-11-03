@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError, type VisibilityContextShape } from '@aramo/common';
 
 import type { CompanyView, CompanyRelationshipView } from './dto/company.view.js';
@@ -18,6 +18,11 @@ import {
   type SortDir,
 } from './dto/company-search.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import {
+  COMPANY_BILLING_CONTACT_VALIDATOR,
+  type CompanyBillingContactValidator,
+} from './billing-contact-validator.port.js';
+import { companyNotFound, isCompanyVisible } from './company-write-visibility.js';
 
 // Decimal columns (default_contract_markup_pct / default_perm_fee_pct) come
 // back from Prisma as a Decimal instance; projected to string on the wire
@@ -510,11 +515,41 @@ function toCompanyBuckets(
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
+// CONTACTS-1 (SD-6) — a billing contact must be a contact AT this company, and
+// a company being created (manually or by import) has no contacts yet, so any
+// non-null billing_contact_id is refused before the write. Set it by PATCH once
+// the contact exists.
+function assertNoBillingContactOnCreate(
+  billingContactId: string | null | undefined,
+  requestId: string | undefined,
+): void {
+  if (billingContactId === undefined || billingContactId === null) return;
+  throw new AramoError(
+    'VALIDATION_ERROR',
+    'billing_contact_id cannot be set when creating a company; set it after the contact is added',
+    422,
+    {
+      requestId: requestId ?? 'company-create-validation',
+      details: {
+        field: 'billing_contact_id',
+        reason: 'contact_company_mismatch',
+        contact_id: billingContactId,
+      },
+    },
+  );
+}
+
 @Injectable()
 export class CompanyRepository {
   private readonly logger = new Logger(CompanyRepository.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // CONTACTS-1 (SD-6) — billing-contact link check, bound by apps/api.
+    @Optional()
+    @Inject(COMPANY_BILLING_CONTACT_VALIDATOR)
+    private readonly billingContactValidator?: CompanyBillingContactValidator,
+  ) {}
 
   async create(args: {
     tenant_id: string;
@@ -531,6 +566,7 @@ export class CompanyRepository {
     const input = normalizeNewTypedFields(
       stripUnscopedCommercialFields(args.input, args.scopes),
     );
+    assertNoBillingContactOnCreate(input.billing_contact_id, args.requestId);
     // Company Party/Role (ADR-0032) — derive/collect the relationships to
     // nested-create (A1 bridge or explicit); rejects a do_not_contact legacy
     // create before any write.
@@ -579,6 +615,10 @@ export class CompanyRepository {
   }): Promise<CompanyView> {
     const { tenant_id, entered_by_id, import_batch_id } = args;
     const input = normalizeNewTypedFields(args.input);
+    // CONTACTS-1 SD-6 — the same rule as create(): an imported company is new,
+    // so it has no contacts and cannot carry a billing contact. The import
+    // engine records the refusal against the row.
+    assertNoBillingContactOnCreate(input.billing_contact_id, args.requestId);
     // Company Party/Role (ADR-0032) — an imported company is NOT roleless: it
     // gets the same bridge-derived CLIENT relationship as a legacy create (a
     // do_not_contact import row is rejected, same as the free create path).
@@ -948,22 +988,41 @@ export class CompanyRepository {
     // present-keys-only, a stripped (now-absent) commercial field is NOT set,
     // so an existing commercial value is preserved (never nulled).
     scopes: readonly string[];
+    // CONTACTS-1 W-2 — the actor's resolved D4b visibility (required: the
+    // structural enforcement, as on the read paths). A company outside it is
+    // a 404, identical to the invisible read.
+    visibility: VisibilityContextShape;
   }): Promise<CompanyView> {
+    if (!isCompanyVisible(args.visibility, args.id)) {
+      throw companyNotFound(args.requestId, args.id);
+    }
     const existing = await this.findById({
       tenant_id: args.tenant_id,
       id: args.id,
     });
     if (existing === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Company not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
+      throw companyNotFound(args.requestId, args.id);
     }
     const input = normalizeNewTypedFields(
       stripUnscopedCommercialFields(args.input, args.scopes),
     );
+    // CONTACTS-1 (SD-6) — a NEW non-null billing contact must be a live contact
+    // at this company. An unchanged value is not a new link and is not
+    // re-checked (an edit of other fields never fails on an existing link);
+    // null clears and needs no check.
+    if (
+      this.billingContactValidator !== undefined &&
+      input.billing_contact_id !== undefined &&
+      input.billing_contact_id !== null &&
+      input.billing_contact_id !== existing.billing_contact_id
+    ) {
+      await this.billingContactValidator.assertLinkable({
+        tenant_id: args.tenant_id,
+        contact_id: input.billing_contact_id,
+        company_id: args.id,
+        requestId: args.requestId,
+      });
+    }
     // Company Party/Role (ADR-0032) — nested relationship upserts (explicit
     // relationship-aware writes, or the A1 legacy status→CLIENT sync). Applied
     // atomically as part of the single company.update.
@@ -1039,18 +1098,18 @@ export class CompanyRepository {
     tenant_id: string;
     id: string;
     requestId: string;
+    // CONTACTS-1 W-2 — required resolved visibility (see update()).
+    visibility: VisibilityContextShape;
   }): Promise<void> {
+    if (!isCompanyVisible(args.visibility, args.id)) {
+      throw companyNotFound(args.requestId, args.id);
+    }
     const existing = await this.findById({
       tenant_id: args.tenant_id,
       id: args.id,
     });
     if (existing === null) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Company not found in tenant',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
+      throw companyNotFound(args.requestId, args.id);
     }
     await this.prisma.company.delete({ where: { id: args.id } });
   }

@@ -147,7 +147,16 @@ export interface ContactView {
   // Read-time enrichment — the ACTIVE relationship types (CLIENT|VENDOR|PARTNER)
   // the contact's company holds. A company may hold several, so this is a set.
   readonly relationship_types: string[];
+  // CONTACTS-1 §5 — soft delete. A deleted contact is hidden from every list
+  // read; GET /v1/contacts/:id?include_deleted=true still returns it so a
+  // referencing screen can show "Name (Deleted)". §12 — optional contact kind.
+  readonly deleted_at: string | null;
+  readonly deleted_by_id: string | null;
+  readonly contact_kind: ContactKind | null;
 }
+
+// CONTACTS-1 §12 — closed vocabulary (nullable column; null = not set).
+export type ContactKind = 'PERSON' | 'FUNCTIONAL_MAILBOX';
 
 export interface ContactListResponse {
   readonly items: readonly ContactView[];

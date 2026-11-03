@@ -43,6 +43,10 @@ import {
   type TaskRequisitionContextValidator,
 } from './task-requisition-context.port.js';
 import {
+  TASK_CONTACT_OWNER_VALIDATOR,
+  type TaskContactOwnerValidator,
+} from './task-contact-owner.port.js';
+import {
   isOwnerVisible,
   TaskRepository,
   type TaskListFilters,
@@ -72,6 +76,9 @@ export class TaskController {
     private readonly assignee: TaskAssigneeValidator,
     @Inject(TASK_REQUISITION_CONTEXT_VALIDATOR)
     private readonly requisitionContext: TaskRequisitionContextValidator,
+    // CONTACTS-1 SD-6 — a contact-owned task links only to a live contact.
+    @Inject(TASK_CONTACT_OWNER_VALIDATOR)
+    private readonly contactOwner: TaskContactOwnerValidator,
   ) {}
 
   // GET /v1/tasks
@@ -211,6 +218,16 @@ export class TaskController {
           details: { owner_type: body.owner_type, owner_id: body.owner_id },
         },
       );
+    }
+
+    // CONTACTS-1 SD-6 — a deleted contact accepts no new links (422). Runs
+    // after the visibility 404 so an invisible contact never leaks its state.
+    if (body.owner_type === 'contact') {
+      await this.contactOwner.assertLinkable({
+        tenant_id: authContext.tenant_id,
+        contact_id: body.owner_id,
+        requestId,
+      });
     }
 
     if (body.assignee_id !== undefined) {

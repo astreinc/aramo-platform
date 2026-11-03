@@ -243,6 +243,11 @@ export const EVENT_TYPES = [
   'identity.sign_custom_role.deleted',
   'identity.sign_custom_role.assigned',
   'identity.sign_custom_role.unassigned',
+  // CONTACTS-1 §5 SD-11 — ATS contact soft delete / restore, written through the
+  // CONTACT_AUDIT_SINK port bound in apps/api. Tenant-scoped; subject_id = the
+  // contact id; payload { company_id } (no name, email or phone).
+  'identity.contact.deleted',
+  'identity.contact.restored',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -361,6 +366,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.sign_custom_role.deleted',
   'identity.sign_custom_role.assigned',
   'identity.sign_custom_role.unassigned',
+  // CONTACTS-1 SD-11 — contact soft delete / restore carry the tenant id.
+  'identity.contact.deleted',
+  'identity.contact.restored',
 ]);
 
 export interface WriteAuditEventInput {

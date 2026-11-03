@@ -376,6 +376,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SIGNER_IDENTITY_VERIFICATION_REQUIRED: 403,
   SIGNER_IDENTITY_VERIFICATION_LOCKED: 423,
   ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE: 503,
+  // CONTACTS-1 §5 SD-6 — no new link to a soft-deleted contact.
+  CONTACT_DELETED: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

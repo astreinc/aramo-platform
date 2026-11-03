@@ -1107,6 +1107,10 @@ export const ERROR_CODES = [
   'SIGNER_IDENTITY_VERIFICATION_REQUIRED',
   'SIGNER_IDENTITY_VERIFICATION_LOCKED',
   'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE',
+  // CONTACTS-1 §5 SD-6 — a soft-deleted contact refused as the target of a new
+  // link (hiring manager, billing contact, task owner, saved list, reports-to,
+  // primary, activity). HTTP 422. details = { contact_id, field }.
+  'CONTACT_DELETED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

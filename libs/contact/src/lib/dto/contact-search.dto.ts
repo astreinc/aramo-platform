@@ -28,6 +28,7 @@ export interface ContactFacets {
   readonly hot: number;
   readonly quiet: number; // last_activity_at older than QUIET_DAYS, or never
   readonly former: number; // left_company
+  readonly primary: number; // CONTACTS-1 §9 F-4 — is_primary within the base set
 }
 
 export interface ContactSearchQuery {
@@ -43,7 +44,10 @@ export interface ContactSearchQuery {
   readonly is_primary?: boolean; // companies-list primary-contact column
 
   readonly quiet?: boolean; // going-quiet segment (>= QUIET_DAYS, or never)
-  readonly former?: boolean; // include left-company contacts (default: excluded)
+  readonly former?: boolean; // ONLY left-company contacts (default: excluded)
+  // CONTACTS-1 §5 SD-9 — ONLY soft-deleted contacts (the restore view). The
+  // controller gates it on contact:delete. Default: deleted rows excluded.
+  readonly deleted?: boolean;
   // Cold-call queue — contactable (preference != do_not_contact) AND a work
   // phone present. Combined with sort=last_activity dir=asc this IS the
   // "who haven't I spoken to longest" queue. A REAL server filter (the

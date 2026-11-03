@@ -729,6 +729,13 @@ export const senderApi = {
   // signer_id — remind one signer; omitted, everyone who may sign now.
   remind: (id: string, signer_id?: string) =>
     apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/remind`, signer_id !== undefined ? { signer_id } : {}),
+  // M-A5 §4 / Web Self-Signing directive W1 — a SELF session for the recipient assigned to
+  // the caller. The token is a signing capability: used once to open /s/:token, never stored.
+  selfSignSession: (id: string, signer_id?: string) =>
+    apiClient.post<{ session_origin: 'SELF'; signer_id: string; token: string; expires_at: string }>(
+      `${BASE}/envelopes/${enc(id)}/self-sign-session`,
+      signer_id !== undefined ? { signer_id } : {},
+    ),
   void: (id: string, reason: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/void`, { reason }),
   executed: (id: string) => apiClient.get<ExecutedBundle>(`${BASE}/envelopes/${enc(id)}/executed`),
   // Retention and Purge (DocuSign parity). Delete hides the envelope for this organization only

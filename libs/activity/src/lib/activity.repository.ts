@@ -541,6 +541,10 @@ export class ActivityRepository {
   //   - 'company'       → subject_id ∈ visible_client_ids
   //   - 'talent_record' → UNRESTRICTED (pool-open per the §5 boundary —
   //                       a talent note is a talent read; tenant-wide)
+  //   - 'contact'       → CONTACTS-1 H-3: see_all_company, else subject_id ∈
+  //                       visible_contact_ids (the contact ids the controller
+  //                       has already resolved as visible through the
+  //                       ACTIVITY_CONTACT_SUBJECT port; absent = none)
   //
   // Implemented as a single Prisma `where` (one query-layer OR per
   // DDR D6 — NO post-query filter, NO leak risk). When the actor has
@@ -553,6 +557,7 @@ export class ActivityRepository {
     visibility: VisibilityContextShape;
     visible_requisition_ids: ReadonlySet<string> | null;
     visible_pipeline_ids: ReadonlySet<string> | null;
+    visible_contact_ids?: ReadonlySet<string>;
   }): Promise<ActivityView | null> {
     const where: Record<string, unknown> = {
       tenant_id: args.tenant_id,
@@ -565,6 +570,9 @@ export class ActivityRepository {
           visibility: args.visibility,
           visible_requisition_ids: args.visible_requisition_ids,
           visible_pipeline_ids: args.visible_pipeline_ids,
+          ...(args.visible_contact_ids === undefined
+            ? {}
+            : { visible_contact_ids: args.visible_contact_ids }),
         }),
         buildNotePrivacyWhere(args.actor_user_id),
       ],
@@ -582,6 +590,7 @@ export class ActivityRepository {
     visibility: VisibilityContextShape;
     visible_requisition_ids: ReadonlySet<string> | null;
     visible_pipeline_ids: ReadonlySet<string> | null;
+    visible_contact_ids?: ReadonlySet<string>;
     subject_type?: string;
     subject_id?: string;
     limit?: number;
@@ -599,6 +608,9 @@ export class ActivityRepository {
           visibility: args.visibility,
           visible_requisition_ids: args.visible_requisition_ids,
           visible_pipeline_ids: args.visible_pipeline_ids,
+          ...(args.visible_contact_ids === undefined
+            ? {}
+            : { visible_contact_ids: args.visible_contact_ids }),
         }),
         buildNotePrivacyWhere(args.actor_user_id),
       ],
@@ -641,6 +653,7 @@ function buildActivityVisibilityWhere(args: {
   visibility: VisibilityContextShape;
   visible_requisition_ids: ReadonlySet<string> | null;
   visible_pipeline_ids: ReadonlySet<string> | null;
+  visible_contact_ids?: ReadonlySet<string>;
 }): Record<string, unknown> {
   const seeAllCompany = args.visibility.see_all_company;
   const seeAllReq = args.visibility.see_all_requisition;
@@ -684,6 +697,19 @@ function buildActivityVisibilityWhere(args: {
 
   // talent_record branch — UNRESTRICTED per §5 pool-open boundary.
   branches.push({ subject_type: 'talent_record' });
+
+  // contact branch (CONTACTS-1 H-3) — contact visibility is company-derived
+  // (contact.company_id ∈ visible_client_ids), but Activity carries only the
+  // contact id, so the caller passes the contact ids it resolved as visible.
+  // No ids passed → no contact row matches (fail closed).
+  if (seeAllCompany || visibleClients === null) {
+    branches.push({ subject_type: 'contact' });
+  } else {
+    branches.push({
+      subject_type: 'contact',
+      subject_id: { in: Array.from(args.visible_contact_ids ?? []) },
+    });
+  }
 
   return { OR: branches };
 }

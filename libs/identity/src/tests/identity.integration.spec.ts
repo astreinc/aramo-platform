@@ -2386,6 +2386,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // ROLES-1 PR-2 §5.3 — the reconciliation migration's grant / removal rows.
         'ROLES1_RECONCILE_GRANT',
         'ROLES1_RECONCILE_REVOKE',
+        // CONTACTS-1 SD-11 — contact soft delete / restore.
+        'identity.contact.deleted',
+        'identity.contact.restored',
         // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1 — template draft discard audit.
         // ORG-UX-1 §5.4 — template governance events (sorted around draft_discarded).
         'identity.document_template.adopted',
