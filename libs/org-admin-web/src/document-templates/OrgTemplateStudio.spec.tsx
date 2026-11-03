@@ -422,4 +422,46 @@ describe('Org Studio — explicit Create new version (directive §1.4, §3.4)', 
     expect(screen.queryByTestId('studio-create-version')).toBeNull();
     expect(screen.queryByText(/Create new version/)).toBeNull();
   });
+
+  it('one header action: no draft → Create new version only; an open draft → Approve & activate only', async () => {
+    const { unmount } = renderStudio(MANAGER, makeApi([V2, V1]));
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.getByTestId('studio-create-version')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Approve & activate/ })).toBeNull();
+    unmount();
+    renderStudio(MANAGER, makeApi([DRAFT, V2, V1]));
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.getByRole('button', { name: 'Approve & activate v3…' })).toBeInTheDocument();
+    expect(screen.queryByTestId('studio-create-version')).toBeNull();
+  });
+});
+
+describe('Org Studio — an active version in the pre-Studio format (rtr-generated-v1)', () => {
+  const LEGACY_FS = {
+    render_schema_version: 'rtr-generated-v1',
+    title: 'Right to Represent',
+    blocks: [
+      { type: 'HEADING', text: 'Authorization' },
+      { type: 'TEXT', text: 'I, {{talent.full_name}}, authorize the firm.' },
+    ],
+  };
+  const LEGACY_V2 = version('v2', 2, 'ACTIVE', '', { render_schema_version: 'rtr-generated-v1', field_schema: LEGACY_FS });
+
+  it('opens with its content, and Create new version stores it as rtr-html-v1', async () => {
+    const api = makeApi([LEGACY_V2, V1]);
+    renderStudio(MANAGER, api);
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.getByRole('textbox', { name: 'Heading' })).toHaveTextContent('Authorization');
+    expect(screen.queryByText('Start this template')).toBeNull();
+    fireEvent.click(screen.getByTestId('studio-create-version'));
+    await waitFor(() =>
+      expect(api.updateDraft).toHaveBeenCalledWith(
+        'd3',
+        expect.objectContaining({
+          render_schema_version: 'rtr-html-v1',
+          field_schema: expect.objectContaining({ html: BODY }),
+        }),
+      ),
+    );
+  });
 });

@@ -28,8 +28,6 @@ export {
   htmlOf,
   type PreviewContent,
 } from './dt-modals';
-export { RtrTemplateDetail } from './RtrTemplateDetail';
-export { RtrDraftEditor } from './RtrDraftEditor';
 export {
   DocTemplateRoutesProvider,
   useDocTemplateRoutes,

@@ -723,8 +723,6 @@
       "RIGHT_TO_REPRESENT_TYPE_ID",
       "RTR_GENERATED_SCHEMA_V1",
       "RTR_HTML_SCHEMA_V1",
-      "RtrDraftEditor",
-      "RtrTemplateDetail",
       "STUDIO_HTML_CONTENT_VERSION",
       "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
@@ -11058,24 +11056,6 @@
         "status": "excluded"
       },
       { "project": "aramo-sign-web", "status": "production" },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/document-templates-web/src/DocumentTemplates.spec.tsx",
-        "project": "document-templates-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/document-templates-web/src/RtrDraftEditor.spec.tsx",
-        "project": "document-templates-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/document-templates-web/src/RtrDraftEditorHtml.spec.tsx",
-        "project": "document-templates-web",
-        "status": "excluded"
-      },
       { "project": "document-templates-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",

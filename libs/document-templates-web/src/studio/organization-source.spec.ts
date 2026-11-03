@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DocumentTemplateView, TemplateVersionView } from '../document-templates-api';
 import { studioBlocksFromHtml, studioVariableKeys } from '../studio-codec';
 
-import { LETTERHEAD_STUDIO_CONTENT_CODEC } from './data-source';
+import { LETTERHEAD_STUDIO_CONTENT_CODEC, studioHtmlContentOf } from './data-source';
 import { newBlockId } from './doc-ops';
 import {
   ORGANIZATION_STUDIO_SECTIONS,
@@ -204,5 +204,32 @@ describe('Organization Sections (directive §7.2)', () => {
       expect(s.html).not.toContain('agreed_pay_rate');
     }
     expect(ORGANIZATION_STUDIO_SECTIONS.find((s) => s.key === 'job-description')?.html).toContain('data-field="requisition.description"');
+  });
+});
+
+describe('studioHtmlContentOf — the pre-Studio content contract (rtr-generated-v1)', () => {
+  const legacy = (blocks: unknown) => ({ render_schema_version: 'rtr-generated-v1', field_schema: { render_schema_version: 'rtr-generated-v1', title: 'Right to Represent', blocks } });
+
+  it('HEADING → h2, TEXT → p, {{key}} → a chip; the text is escaped', () => {
+    const c = studioHtmlContentOf(
+      legacy([
+        { type: 'HEADING', text: 'Pay & terms' },
+        { type: 'TEXT', text: 'Rate for {{talent.full_name}}: {{ talent.desired_pay_rate }} <net>' },
+      ]),
+    );
+    expect(c).toEqual({
+      title: 'Right to Represent',
+      html: '<h2>Pay &amp; terms</h2><p>Rate for <span data-field="talent.full_name"></span>: <span data-field="talent.desired_pay_rate"></span> &lt;net&gt;</p>',
+    });
+  });
+
+  it('a TEXT block with blank lines becomes one paragraph per part', () => {
+    expect(studioHtmlContentOf(legacy([{ type: 'TEXT', text: 'One.\n\nTwo.' }]))?.html).toBe('<p>One.</p><p>Two.</p>');
+  });
+
+  it('an unknown block type or a malformed shape → null (never best effort)', () => {
+    expect(studioHtmlContentOf(legacy([{ type: 'TABLE', text: 'x' }]))).toBeNull();
+    expect(studioHtmlContentOf(legacy('nope'))).toBeNull();
+    expect(studioHtmlContentOf({ render_schema_version: 'rtr-other-v9', field_schema: { title: 't', html: '<p>x</p>' } })).toBeNull();
   });
 });

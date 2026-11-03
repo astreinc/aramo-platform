@@ -257,7 +257,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
       savedRevRef.current = 0;
       setSavedRev(0);
       setPreviewedRev(dv !== null && dv.previewed_fingerprint !== null && dv.previewed_fingerprint === dv.content_fingerprint ? 0 : null);
-      if (dv !== null && fromDraft === null && canManage) setBanner('This draft uses an earlier content format. Saving it here converts it to the Studio format.');
+      if (dv !== null && (fromDraft === null || dv.render_schema_version !== HTML_CONTENT_VERSION) && canManage) setBanner('This draft uses an earlier content format. Saving it here converts it to the Studio format.');
     },
     [canManage, reset, content],
   );
@@ -842,7 +842,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         name={detail.name}
         versionTag={publishedNumber !== null ? `v${publishedNumber}` : 'Not published'}
         canEdit={canManage}
-        canApprove={canApprove}
+        // Approve only while a draft is open; with none, the host's "Create new version" is
+        // the one action (an unsaved edit becomes the draft on its first save).
+        canApprove={canApprove && draft !== null}
         copy={copy}
         saveState={saveState}
         saveLabel={saveLabel}
