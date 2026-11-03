@@ -52,6 +52,8 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'ai.aramo.sign',
+    // Play requires a higher versionCode for every upload (1 = internal test 2026-11-02).
+    versionCode: 2,
     // Android App Links, verified against assetlinks.json on the Sign host (P-3 / P-6).
     intentFilters: [
       {
