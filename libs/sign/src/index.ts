@@ -248,6 +248,21 @@ export {
 } from './lib/integration.repository.js';
 // Sign Unified Product S-7 — the recipient inbox (refinement B).
 export { RecipientInboxRepository, RECIPIENT_SESSION_TTL_MS, RECIPIENT_COPY_TTL_MS, type RecipientInboxRow } from './lib/recipient-inbox.repository.js';
+// Aramo Sign W2 — inbox discovery (verified current email) and the opaque discovered-item handle.
+export {
+  readVerifiedEmailProof,
+  type RecipientInboxEntry,
+  type VerifiedEmailProof,
+} from './lib/recipient-inbox.repository.js';
+export {
+  INBOX_HANDLE_KEY_ENV,
+  INBOX_HANDLE_TTL_MS,
+  inboxHandleKey,
+  isUuid,
+  mintInboxHandle,
+  openInboxHandle,
+  type InboxHandleClaims,
+} from './lib/inbox-handle.js';
 export { canonicalSignEventType } from './lib/event-type.js';
 export { SigningInvitationService, SIGNING_INVITATION_MAX_ATTEMPTS } from './lib/signing-invitation.service.js';
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 — abuse reports.
@@ -316,6 +331,8 @@ export {
   currentTurnOf,
   currentTurnSignerId,
   mayActNow,
+  awaitingYou,
+  awaitingYouSteps,
   invitedAtSend,
   type RecipientKind,
   type CopyDelivery,

@@ -1,7 +1,20 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { hashSigningToken, InboxSigningRefusedError, PURGE_ELIGIBLE_STATUSES, RecipientInboxRepository, type RecipientInboxRow, SignPurgeRepository, signBaseUrl } from '@aramo/sign';
+import {
+  hashSigningToken,
+  inboxHandleKey,
+  InboxSigningRefusedError,
+  isUuid,
+  mintInboxHandle,
+  openInboxHandle,
+  PURGE_ELIGIBLE_STATUSES,
+  RecipientInboxRepository,
+  type RecipientInboxEntry,
+  type RecipientInboxRow,
+  SignPurgeRepository,
+  signBaseUrl,
+} from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
 
 import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
@@ -31,12 +44,24 @@ import { SignPurgeService } from '../retention/sign-purge.service.js';
 //                                every party has deleted it, the envelope is queued for purge.
 // delete / restore apply to terminal envelopes only and are refused (403
 // ESIGN_FEATURE_NOT_AVAILABLE) while purge is disabled (SIGN_PURGE_ENABLED unset).
+//
+// Aramo Sign W2 (Aramo-Sign-W2-Inbox-Discovery-Gate5-Plan-and-Amendment-v1_0-LOCKED) — the
+// list also carries DISCOVERED items: recipient rows addressed to the user's current
+// account email, listed without any binding when the user holds a qualifying federated
+// link for that email recorded no later than the envelope was sent (W-1, W-2). Discovery
+// grants listing and session eligibility only. A discovered item's id is an opaque,
+// user-bound, 30-minute handle (C3); POST /:handle/sign re-runs the whole rule before it
+// mints. Without SIGN_INBOX_HANDLE_KEY there is no discovery (fail closed).
+//
+// can_sign (bound and discovered alike) = the shared turn rule (sequential turn + witness
+// readiness) + envelope signable + not expired + a live emailed link (W-3). A signable row
+// whose turn is later is `upcoming` (listed in `waiting`, can_sign false).
 
 const SIGNABLE = new Set(['SENT', 'IN_PROGRESS']);
 const PENDING_SIGNER = new Set(['PENDING', 'VIEWED']);
 
 function notFound(requestId: string): AramoError {
-  return new AramoError('NOT_FOUND', 'Not in your inbox', 404, { requestId });
+  return new AramoError('NOT_FOUND', 'Not in your inbox', 404, { requestId, details: { reason: 'inbox_item_not_found' } });
 }
 
 @Injectable()
@@ -75,7 +100,10 @@ export class RecipientInboxService {
       });
     }
     const user = await this.identity.findUserById(auth.sub);
-    const mine = user?.email?.trim().toLowerCase();
+    // W2 W-5 — an inactive or deactivated account has no verified email to claim with (the
+    // same check as assign / self-sign).
+    const active = user !== null && user.is_active && user.deactivated_at === null;
+    const mine = active ? user.email?.trim().toLowerCase() : undefined;
     if (mine === undefined || mine === '' || session.signer_email === null || mine !== session.signer_email.trim().toLowerCase()) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'This document was sent to a different email address', 403, {
         requestId,
@@ -96,16 +124,23 @@ export class RecipientInboxService {
     return { id: b.id };
   }
 
-  private async view(r: RecipientInboxRow) {
+  private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id) {
     const org = await this.identity.findTenantNameById(r.envelope_tenant_id).catch(() => null);
     const signable = SIGNABLE.has(r.envelope.status) && PENDING_SIGNER.has(r.signer.status) && (r.envelope.expires_at === null || r.envelope.expires_at.getTime() > Date.now());
     const purge = purgeViewOf(r.envelope);
+    const upcoming = signable && r.turn === 'later';
+    // Discovered items list the signed copy through the emailed link only (no handle route
+    // for it): can_download stays false for them.
+    const can_download = r.source === 'bound' && r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED';
     return {
-      id: r.id,
+      id,
+      source: r.source,
+      // W2 (orchestrator addition) — the signed-in user sent this envelope (a boolean only).
+      i_am_sender: r.envelope.created_by === user_id,
       subject: r.envelope.subject,
       from: org?.display_name ?? org?.name ?? null,
       envelope_status: r.envelope.status,
-      my_status: r.signer.status,
+      my_status: upcoming ? 'upcoming' : r.signer.status,
       sent_at: r.envelope.sent_at?.toISOString() ?? null,
       // The envelope's own expiry (Sign Mobile C-14: the same value the sender
       // detail reports as envelope_expires_at; the link window is separate).
@@ -114,22 +149,37 @@ export class RecipientInboxService {
       signing_link_valid_days: SIGNING_LINK_VALID_DAYS,
       completed_at: r.envelope.completed_at?.toISOString() ?? null,
       signed_at: r.signer.signed_at?.toISOString() ?? null,
-      can_sign: signable,
-      can_download: r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED',
+      can_sign: signable && r.turn === 'now' && r.link_live,
+      can_download,
       // Present only once the envelope was queued for purge (the item shape is unchanged otherwise).
       ...(purge !== null ? { purge } : {}),
     };
   }
 
+  // W2 §A3.1 — the discovered rows (none without the handle key, or without a proof of the
+  // current email), each with a fresh handle bound to this user.
+  private async discovered(auth: AuthContextType, key: Buffer | null): Promise<Array<{ row: RecipientInboxEntry; id: string }>> {
+    if (key === null) return [];
+    const proof = await this.repo.verifiedEmailProof(auth.sub);
+    if (proof === null) return [];
+    const now = new Date();
+    const rows = await this.repo.listDiscoveredForUser(auth.sub, proof, now);
+    return rows.map((row) => ({ row, id: mintInboxHandle(key, { signer_id: row.signer_id, user_id: auth.sub }, now) }));
+  }
+
   async list(auth: AuthContextType, folder?: string, requestId = '') {
     if (folder !== undefined && folder !== 'deleted') throw new AramoError('VALIDATION_ERROR', 'unknown folder', 400, { requestId, details: { folder } });
     const deleted = new Set(this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'RECIPIENT', key: auth.sub }) : []);
-    const rows = (await this.repo.listForUser(auth.sub)).filter((r) => (folder === 'deleted') === deleted.has(r.envelope_id));
-    const items = await Promise.all(rows.map((r) => this.view(r)));
+    const inFolder = (r: RecipientInboxRow): boolean => (folder === 'deleted') === deleted.has(r.envelope_id);
+    const bound = (await this.repo.listForUser(auth.sub)).filter(inFolder).map((row) => ({ row, id: row.id }));
+    // Dedupe (rule 5): a recipient reachable through a binding is listed once, as bound.
+    const boundSigners = new Set(bound.map((b) => b.row.signer_id));
+    const found = (await this.discovered(auth, inboxHandleKey())).filter((d) => inFolder(d.row) && !boundSigners.has(d.row.signer_id));
+    const items = await Promise.all([...bound, ...found].map((i) => this.view(i.row, auth.sub, i.id)));
     return {
-      waiting: items.filter((i) => i.can_sign),
+      waiting: items.filter((i) => i.can_sign || i.my_status === 'upcoming'),
       completed: items.filter((i) => i.can_download),
-      other: items.filter((i) => !i.can_sign && !i.can_download),
+      other: items.filter((i) => !i.can_sign && i.my_status !== 'upcoming' && !i.can_download),
     };
   }
 
@@ -140,6 +190,8 @@ export class RecipientInboxService {
   // details.reason (see envelope-contracts.ts). A foreign binding is not found.
   async sign(auth: AuthContextType, id: string, requestId: string) {
     const base = this.base(requestId);
+    // W2 §A3.4 — a uuid is a binding id; anything else can only be a discovered-item handle.
+    if (!isUuid(id)) return this.signDiscovered(auth, id, base, requestId);
     let issued: Awaited<ReturnType<RecipientInboxRepository['issueRevalidatedRecipientSession']>>;
     try {
       issued = await this.repo.issueRevalidatedRecipientSession(auth.sub, id);
@@ -155,10 +207,35 @@ export class RecipientInboxService {
     return { signing_url: `${base}/s/${issued.raw_token}`, expires_at: issued.expires_at.toISOString() };
   }
 
+  // W2 §A3.3 / §A3.4 (Lead C3) — a tampered, expired or other user's handle, or no key, is
+  // one answer: 404 inbox_item_not_found. A valid handle only names the recipient row; the
+  // repository re-runs the discovery rule and today's revalidation before minting. Only
+  // reason codes are logged (never the handle).
+  private async signDiscovered(auth: AuthContextType, handle: string, base: string, requestId: string) {
+    const key = inboxHandleKey();
+    const claims = key === null ? null : openInboxHandle(key, handle, auth.sub);
+    if (claims === null) {
+      this.log.log(`recipient session refused origin=inbox user=${auth.sub} reason=inbox_item_not_found request=${requestId}`);
+      throw notFound(requestId);
+    }
+    let issued: Awaited<ReturnType<RecipientInboxRepository['issueDiscoveredRecipientSession']>>;
+    try {
+      issued = await this.repo.issueDiscoveredRecipientSession(auth.sub, claims.signer_id);
+    } catch (e) {
+      if (e instanceof InboxSigningRefusedError) {
+        this.log.log(`recipient session refused origin=inbox discovery=verified_account_email user=${auth.sub} reason=${e.reason} request=${requestId}`);
+        throw senderHttp(e, requestId);
+      }
+      throw e;
+    }
+    this.log.log(`recipient session issued origin=inbox discovery=verified_account_email user=${auth.sub} session=${issued.session_id} client=${auth.client ?? 'browser'} request=${requestId}`);
+    return { signing_url: `${base}/s/${issued.raw_token}`, expires_at: issued.expires_at.toISOString() };
+  }
+
   async signedCopy(auth: AuthContextType, id: string, requestId: string) {
-    const r = await this.repo.getForUser(auth.sub, id);
+    const r = isUuid(id) ? await this.repo.getForUser(auth.sub, id) : null;
     if (r === null) throw notFound(requestId);
-    if (!(await this.view(r)).can_download) {
+    if (!(r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED')) {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'A signed copy is available once everyone has signed', 409, { requestId });
     }
     const raw = await this.repo.issueRecipientCopyAccess(r.envelope_tenant_id, r.envelope_id, r.signer_id);
@@ -166,7 +243,7 @@ export class RecipientInboxService {
   }
 
   async remove(auth: AuthContextType, id: string, requestId: string) {
-    if (!(await this.repo.revoke(auth.sub, id))) throw notFound(requestId);
+    if (!isUuid(id) || !(await this.repo.revoke(auth.sub, id))) throw notFound(requestId);
     return { removed: true };
   }
 
@@ -191,7 +268,7 @@ export class RecipientInboxService {
     if (this.purges === undefined || this.purgeEngine?.enabled !== true) {
       throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention and purge are not enabled', 403, { requestId, details: { reason: 'purge_not_enabled' } });
     }
-    const r = await this.repo.getForUser(auth.sub, id);
+    const r = isUuid(id) ? await this.repo.getForUser(auth.sub, id) : null;
     if (r === null) throw notFound(requestId);
     if (!PURGE_ELIGIBLE_STATUSES.includes(r.envelope.status) && r.envelope.status !== 'EXPIRED') {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });

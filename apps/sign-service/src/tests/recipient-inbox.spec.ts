@@ -17,6 +17,9 @@ const USER_TENANT = '22222222-2222-7222-8222-222222222222';
 const SENDER_TENANT = '33333333-3333-7333-8333-333333333333';
 const TOKEN = 'tok_abcdefghijklmnopqrstuvwxyz0123456789';
 const auth: AuthContextType = { sub: USER, consumer_type: 'sign', actor_kind: 'user', tenant_id: USER_TENANT, scopes: [], iat: 0, exp: 0 };
+// Binding ids are UUIDs (W2: a non-UUID inbox id is a discovered-item handle).
+const BINDING = 'b1000000-0000-7000-8000-000000000001';
+const FOREIGN_BINDING = 'b9000000-0000-7000-8000-000000000009';
 
 let savedBase: string | undefined;
 beforeEach(() => {
@@ -29,7 +32,10 @@ afterEach(() => {
 });
 
 const row = (over: Record<string, unknown> = {}) => ({
-  id: 'b1',
+  id: BINDING,
+  source: 'bound',
+  turn: 'now',
+  link_live: true,
   envelope_tenant_id: SENDER_TENANT,
   envelope_id: 'e1',
   signer_id: 's1',
@@ -39,14 +45,14 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function service(opts: { session?: Record<string, unknown> | null; email?: string | null; rows?: unknown[]; one?: unknown; refuse?: InboxSigningRefusal } = {}) {
+function service(opts: { session?: Record<string, unknown> | null; email?: string | null; active?: boolean; deactivated?: boolean; rows?: unknown[]; one?: unknown; refuse?: InboxSigningRefusal } = {}) {
   const repo = {
     sessionForToken: vi.fn(async (h: string) =>
       h === hashSigningToken(TOKEN) && opts.session !== null
         ? { id: 'sess-claimed', tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', status: 'ISSUED', expires_at: new Date(Date.now() + 60_000), signer_email: 'Bob@Example.TEST', ...opts.session }
         : null,
     ),
-    bind: vi.fn(async () => ({ id: 'b1' })),
+    bind: vi.fn(async () => ({ id: BINDING })),
     listForUser: vi.fn(async () => opts.rows ?? [row()]),
     getForUser: vi.fn(async () => (opts.one === undefined ? row() : opts.one)),
     issueRevalidatedRecipientSession: vi.fn(async () => {
@@ -57,7 +63,7 @@ function service(opts: { session?: Record<string, unknown> | null; email?: strin
     revoke: vi.fn(async () => false),
   };
   const identity = {
-    findUserById: vi.fn(async () => (opts.email === null ? null : { id: USER, email: opts.email ?? 'bob@example.test' })),
+    findUserById: vi.fn(async () => (opts.email === null ? null : { id: USER, email: opts.email ?? 'bob@example.test', is_active: opts.active ?? true, deactivated_at: opts.deactivated ? '2026-11-01T00:00:00.000Z' : null })),
     findTenantNameById: vi.fn(async () => ({ name: 'northwind', display_name: 'Northwind Staffing' })),
   };
   return { svc: new RecipientInboxService(repo as never, identity as never), repo };
@@ -66,11 +72,21 @@ function service(opts: { session?: Record<string, unknown> | null; email?: strin
 describe('binding — a live signing link AND the user’s verified email, never an email match alone', () => {
   it('binds when both hold; tenant and envelope come from the signing session, the user’s tenant from the token', async () => {
     const { svc, repo } = service();
-    await expect(svc.claim(auth, { token: TOKEN }, 'r')).resolves.toEqual({ id: 'b1' });
+    await expect(svc.claim(auth, { token: TOKEN }, 'r')).resolves.toEqual({ id: BINDING });
     // Sign Mobile M-A2 §2.2 — the claim records the emailed session it was made with.
     expect(repo.bind).toHaveBeenCalledWith({
       envelope_tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', user_id: USER, user_tenant_id: USER_TENANT, email: 'bob@example.test', claim_session_id: 'sess-claimed',
     });
+  });
+
+  // W2 W-5 — the claim refuses an inactive or deactivated account (same check as assign / self-sign).
+  it.each([
+    ['inactive', { active: false }],
+    ['deactivated', { deactivated: true }],
+  ])('a %s account cannot claim, even with its own email and a valid link', async (_n, o) => {
+    const { svc, repo } = service(o);
+    await expect(svc.claim(auth, { token: TOKEN }, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'recipient_mismatch' } } });
+    expect(repo.bind).not.toHaveBeenCalled();
   });
 
   it('a different email address is refused even with a valid link', async () => {
@@ -101,21 +117,21 @@ describe('recipient-only access', () => {
     const out = await svc.list(auth);
     expect(repo.listForUser).toHaveBeenCalledWith(USER);
     expect(Object.keys(out.waiting[0]!).sort()).toEqual(
-      ['can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'subject'].sort(),
+      ['can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'i_am_sender', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'source', 'subject'].sort(),
     );
     expect(JSON.stringify(out)).not.toContain(SENDER_TENANT);
     expect(JSON.stringify(out)).not.toContain('"e1"');
-    expect(out.waiting[0]).toMatchObject({ from: 'Northwind Staffing', can_sign: true });
+    expect(out.waiting[0]).toMatchObject({ from: 'Northwind Staffing', can_sign: true, source: 'bound', id: BINDING });
   });
 
   it('another user’s binding reads as not found', async () => {
-    await expect(service({ one: null }).svc.sign(auth, 'b9', 'r')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service({ one: null }).svc.sign(auth, FOREIGN_BINDING, 'r')).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('signing issues a fresh short-lived link for that recipient, keyed by the caller', async () => {
     const { svc, repo } = service();
-    await expect(svc.sign(auth, 'b1', 'r')).resolves.toEqual({ signing_url: 'https://sign.example.test/s/rawsession', expires_at: '2026-10-25T10:30:00.000Z' });
-    expect(repo.issueRevalidatedRecipientSession).toHaveBeenCalledWith(USER, 'b1');
+    await expect(svc.sign(auth, BINDING, 'r')).resolves.toEqual({ signing_url: 'https://sign.example.test/s/rawsession', expires_at: '2026-10-25T10:30:00.000Z' });
+    expect(repo.issueRevalidatedRecipientSession).toHaveBeenCalledWith(USER, BINDING);
   });
 
   // Sign Mobile M-A2 §2.2 — every refusal of the transactional revalidation is a 409
@@ -123,24 +139,24 @@ describe('recipient-only access', () => {
   it.each<InboxSigningRefusal>(['association_inactive', 'envelope_not_signable', 'signer_ineligible', 'not_your_turn', 'session_revoked', 'link_expired'])(
     'revalidation refusal %s → 409 with that reason',
     async (reason) => {
-      await expect(service({ refuse: reason }).svc.sign(auth, 'b1', 'r')).rejects.toMatchObject({ statusCode: 409, code: 'ENVELOPE_ILLEGAL_TRANSITION', context: { details: { reason } } });
+      await expect(service({ refuse: reason }).svc.sign(auth, BINDING, 'r')).rejects.toMatchObject({ statusCode: 409, code: 'ENVELOPE_ILLEGAL_TRANSITION', context: { details: { reason } } });
     },
   );
 
   it('a replaced or expired claimed link shows the recovery message', async () => {
-    await expect(service({ refuse: 'session_revoked' }).svc.sign(auth, 'b1', 'r')).rejects.toMatchObject({
+    await expect(service({ refuse: 'session_revoked' }).svc.sign(auth, BINDING, 'r')).rejects.toMatchObject({
       message: 'This link was replaced or has expired. Open the newest email, or sign in to your inbox.',
     });
   });
 
   it('a signed copy only once complete and signed by this recipient', async () => {
-    await expect(service().svc.signedCopy(auth, 'b1', 'r')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service().svc.signedCopy(auth, BINDING, 'r')).rejects.toMatchObject({ statusCode: 409 });
     const done = row({ envelope: { ...row().envelope, status: 'COMPLETED', completed_at: new Date() }, signer: { name: 'Bob', status: 'SIGNED', signed_at: new Date() } });
-    await expect(service({ one: done }).svc.signedCopy(auth, 'b1', 'r')).resolves.toEqual({ download_url: 'https://sign.example.test/d/rawcopy' });
+    await expect(service({ one: done }).svc.signedCopy(auth, BINDING, 'r')).resolves.toEqual({ download_url: 'https://sign.example.test/d/rawcopy' });
   });
 
   it('removing an unknown binding is not found', async () => {
-    await expect(service().svc.remove(auth, 'b1', 'r')).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service().svc.remove(auth, BINDING, 'r')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

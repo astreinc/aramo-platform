@@ -31,7 +31,12 @@ export type SenderListItem = Schemas['SenderEnvelopeListItem'];
 export type SenderListRecipient = SenderListItem['recipients'][number];
 export type SenderEnvelopeList = Schemas['SenderEnvelopeList'];
 
-/** One item of GET /v1/sign/inbox (recipient facts only, §4.6). */
+/**
+ * One item of GET /v1/sign/inbox (recipient facts only, §4.6). W2: `id` is a binding id
+ * (source 'bound') or an opaque, short-lived server handle (source 'discovered'), passed
+ * back unchanged and never parsed; `my_status` 'upcoming' = the user signs later in the
+ * order (can_sign false).
+ */
 export type InboxItem = Schemas['RecipientInboxItem'];
 export type InboxList = Schemas['RecipientInbox'];
 

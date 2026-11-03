@@ -7,6 +7,9 @@
 //          the association, envelope, signer, turn and revocation every time, then mints
 //          a 30-minute single-envelope token. The app opens it on the GUEST transport,
 //          keeps it in memory only, and discards it when the task ends.
+//          W2: `id` may be an opaque discovered-item handle (short-lived, user-bound); it
+//          is passed through unchanged. A 404 `inbox_item_not_found` (changed or expired
+//          item) reloads the inbox once and is never retried with the same id.
 import { isApiError, type ApiError } from '../../api/errors';
 import type { GuestSigningClient, GuestSigningSession } from '../../api/guestSigningClient';
 import { refusalMessage } from '../../api/refusalMessages';
@@ -50,11 +53,24 @@ export type InboxSignStart =
   | { readonly kind: 'session'; readonly session: GuestSigningSession; readonly expiresAt: string }
   | { readonly kind: 'refused'; readonly reason: string; readonly message: string };
 
-/** Mint a fresh inbox signing session (revalidated server-side) and open it as guest. */
+/** W2 — the inbox item named in the request is gone (changed, expired or not the user's). */
+export const INBOX_ITEM_NOT_FOUND = 'inbox_item_not_found';
+
+/** Whether a refusal means the item id is stale: retrying it can never succeed. */
+export function isInboxItemGone(start: InboxSignStart): boolean {
+  return start.kind === 'refused' && start.reason === INBOX_ITEM_NOT_FOUND;
+}
+
+/**
+ * Mint a fresh inbox signing session (revalidated server-side) and open it as guest.
+ * `onItemGone` runs once when the server answers `inbox_item_not_found` (the caller
+ * reloads the inbox, which issues fresh discovered-item handles).
+ */
 export async function startInboxSigning(
   workspace: WorkspaceClient,
   guest: GuestSigningClient,
   inboxItemId: string,
+  onItemGone?: () => void,
 ): Promise<InboxSignStart> {
   try {
     const r = await workspace.call('/v1/sign/inbox/{id}/sign', 'post', {
@@ -69,7 +85,10 @@ export async function startInboxSigning(
       };
     return { kind: 'session', session: guest.open(token), expiresAt: r.expires_at };
   } catch (e) {
-    if (isApiError(e)) return { kind: 'refused', reason: e.reason, message: inboxRefusalCopy(e) };
+    if (isApiError(e)) {
+      if (e.reason === INBOX_ITEM_NOT_FOUND) onItemGone?.();
+      return { kind: 'refused', reason: e.reason, message: inboxRefusalCopy(e) };
+    }
     throw e;
   }
 }
@@ -83,6 +102,15 @@ export async function signedCopyToken(
     path: { id: inboxItemId },
   });
   return downloadTokenFromUrl(r?.download_url);
+}
+
+/**
+ * W2 — whether the item supports the binding-only actions (remove, report, signed copy
+ * by item id). A discovered item has no binding: only POST /v1/sign/inbox/{id}/sign
+ * accepts its handle.
+ */
+export function hasBindingActions(item: Pick<InboxItem, 'source'>): boolean {
+  return item.source !== 'discovered';
 }
 
 /** The inbox item with this id, from the (cached) inbox list. */

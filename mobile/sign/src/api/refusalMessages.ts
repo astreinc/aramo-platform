@@ -52,6 +52,8 @@ const COPY: Record<string, string> = {
   not_your_turn: 'It’s not your turn to sign yet. You’ll get an email when it is.',
   ENVELOPE_ALREADY_EXECUTED: 'This envelope can’t be signed any more.',
   recipient_mismatch: 'This link was sent to a different email address.',
+  // W2 (A3.4) — the inbox item changed or its handle expired: the inbox is reloaded once.
+  inbox_item_not_found: 'This item changed. Showing your latest inbox.',
   SIGNATURE_FIELD_INCOMPLETE: 'Complete the required fields first',
   phone_verification_required: 'Verify your phone number to send.',
   personal_review_pending: 'Sending is paused while we review your account.',

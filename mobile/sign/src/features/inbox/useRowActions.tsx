@@ -1,5 +1,6 @@
 // Runs an Agreements row action (M-A4 §3.5–§3.7) the way the detail screens do:
-//   Sign   -> the existing inbox signing route
+//   Sign   -> the existing inbox signing route (W2: from a sent row waiting for the user,
+//             with the server's `my_inbox_item_id`; Needs me when the server gave none)
 //   Remind -> one reminder intent after reading the detail (listActions.remindFromList)
 //   Void   -> the reason sheet, then void with the detail's ETag (412 = refresh, never resubmit)
 //   Edit   -> Send flow with the envelope (after the server says it is `editable`), or
@@ -18,7 +19,7 @@ import { shareTargetFor } from '../share/shareCompleted';
 import { useShare } from '../share/useShare';
 import { createDocumentBytesStore } from '../send/documentBytes';
 import { forgetLocalDrafts } from '../send/localDrafts';
-import type { AgreementRow } from './agreementsModel';
+import { inboxItemToSign, type AgreementRow } from './agreementsModel';
 import { deleteDraftById, VOID_REASON_MIN } from './envelopeActions';
 import { checkEditable, remindFromList, voidFromList } from './listActions';
 import { OFFLINE_ACTION_REASON, putDetail, signKeys, useOnline, useSenderContext } from './queries';
@@ -133,6 +134,13 @@ export function useRowActions(): {
       case 'sign':
         if (row.kind === 'received')
           navigation.navigate('Signing', { envelopeId: row.inboxItemId });
+        else if (row.kind === 'sent') {
+          // W2 (A3.5) — the server names the user's own inbox item for this envelope.
+          const id = inboxItemToSign(row);
+          if (id !== null) navigation.navigate('Signing', { envelopeId: id });
+          else
+            navigation.navigate('Main', { screen: 'Agreements', params: { filter: 'needs_me' } });
+        }
         return;
       case 'edit':
         if (row.kind === 'local-draft')

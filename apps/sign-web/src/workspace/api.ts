@@ -130,6 +130,12 @@ export interface EnvelopeRow {
   source_application?: string;
   // Retention and Purge — absent from an older server (read as no purge).
   purge?: PurgeInfo | null;
+  // W2 (A3.5) — true when the only step anyone can take now is the signed-in sender's own
+  // signature (the server decides; absent from an older server = false).
+  awaiting_you?: boolean;
+  // W2 — the signed-in sender's own inbox item for that step (a binding id or a discovered
+  // item handle) when awaiting_you; null when there is none.
+  my_inbox_item_id?: string | null;
 }
 
 // A short label for an envelope sent by another Aramo application, or null for Sign's own.
@@ -924,6 +930,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     // Personal (Free) — Settings → Close account refusals.
     const close = closeRefusalMessage(e.details?.['reason']);
     if (close !== null) return close;
+    // W2 (A3.4) — a discovered inbox item that changed or expired.
+    if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
@@ -951,13 +959,21 @@ function closeRefusalMessage(reason: unknown): string | null {
 
 // Sign Unified Product S-7 — the recipient inbox (/v1/sign/inbox). A recipient
 // right: available to any signed-in Aramo Sign user, limited to their own
-// recipient bindings.
+// recipient bindings and (W2) the envelopes the server lists for their verified
+// account email.
 export interface InboxItem {
+  // A binding id (source 'bound') or an opaque, short-lived server handle (source
+  // 'discovered'). Never parsed: only passed back to /v1/sign/inbox/{id}/*.
   id: string;
+  // W2 — absent from an older server (read as 'bound').
+  source?: 'bound' | 'discovered';
+  // W2 — the signed-in user also sent this envelope.
+  i_am_sender?: boolean;
   subject: string;
   from: string | null;
   envelope_status: EnvelopeStatus;
-  my_status: RecipientStatus;
+  // W2 (A3.2) — 'upcoming': the signed-in user signs later in the order (can_sign false).
+  my_status: RecipientStatus | 'upcoming';
   sent_at: string | null;
   expires_at: string | null;
   completed_at: string | null;
@@ -973,6 +989,17 @@ export const inboxApi = {
   signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),
   remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}`),
 };
+
+// W2 (A3.4) — the inbox item named in the request is gone (an expired or changed
+// discovered item): the page reloads the inbox once and says so.
+export const INBOX_ITEM_CHANGED = 'This item changed. Showing your latest inbox.';
+export function isInboxItemNotFound(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 404 && e.details?.['reason'] === 'inbox_item_not_found';
+}
+// W2 (A3.2) — the user signs later in the order: shown under "Upcoming", never under To sign.
+export function isUpcoming(i: InboxItem): boolean {
+  return i.my_status === 'upcoming';
+}
 
 // The capability token from a pasted signing link (…/s/<token>) or a bare token.
 export function tokenFromSigningLink(input: string): string | null {

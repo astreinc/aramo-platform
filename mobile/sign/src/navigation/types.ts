@@ -4,8 +4,11 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 import type { SendStep } from '../state/draftStore';
 
-/** Agreements status chips (M-A4 §3.1); 'done' is labelled "Completed" (all end statuses). */
-export type AgreementsFilter = 'all' | 'needs_me' | 'waiting' | 'drafts' | 'done';
+/**
+ * Agreements status chips (M-A4 §3.1); 'done' is labelled "Completed" (all end statuses);
+ * 'upcoming' (W2 A3.2) holds received items whose turn is later.
+ */
+export type AgreementsFilter = 'all' | 'needs_me' | 'upcoming' | 'waiting' | 'drafts' | 'done';
 /** Last-activity window, applied on the device over the loaded rows (M-A4 §3.2). */
 export type AgreementsRange = '30d' | '6m' | '12m' | 'all';
 /** How the Send flow was opened from the + button (M-A4 §1.3). 'self' needs FEATURES.selfSign. */

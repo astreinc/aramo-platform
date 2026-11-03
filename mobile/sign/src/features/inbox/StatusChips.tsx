@@ -1,5 +1,6 @@
-// Agreements status chips (handoff §2A; M-A4 §3.1): All · Needs me {n} · Waiting for
-// others · Drafts · Completed. They scroll sideways; the selected chip is filled accent.
+// Agreements status chips (handoff §2A; M-A4 §3.1): All · Needs me {n} · Upcoming (W2) ·
+// Waiting for others · Drafts · Completed. They scroll sideways; the selected chip is
+// filled accent.
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useTheme } from '../../theme';

@@ -36,6 +36,8 @@ export const KNOWN_REASONS = [
   'session_revoked',
   'link_expired',
   'recipient_mismatch',
+  // W2 inbox discovery: a changed, expired or foreign inbox item handle (404)
+  'inbox_item_not_found',
   // Personal gates (directive §5)
   'phone_verification_required',
   'personal_review_pending',

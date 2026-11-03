@@ -4,7 +4,7 @@ import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { PDFDocument } from 'pdf-lib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const { like, uuid, integer, eachLike, regex } = MatchersV3;
+const { like, uuid, integer, eachLike, regex, boolean, fromProviderState } = MatchersV3;
 
 // PX-1 (PX-V1 §12) — the authenticated SENDER-console transport contract.
 //
@@ -64,6 +64,14 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //  19. PUT   /v1/sign/sender/envelopes/{id}/recipients (a signer + a copy recipient with its timing)
 //  18. GET   /v1/sign/legal/notices                         200 { notices: [] } (nothing announced:
 //      the shipped upcoming-change list is empty; legalApi.notices of apps/sign-web/src/workspace/api.ts)
+// W2 Inbox Discovery (LOCKED Gate-5 plan A3.1-A3.5, A4 Pact row) — inboxApi / senderApi of
+// apps/sign-web/src/workspace/api.ts ("Waiting for me" and Envelopes):
+//  20. GET   /v1/sign/inbox                                 200 a discovered item (opaque handle id)
+//  21. GET   /v1/sign/inbox                                 200 an upcoming item (my_status upcoming)
+//  22. POST  /v1/sign/inbox/{handle}/sign                   200 { signing_url, expires_at }
+//  23. POST  /v1/sign/inbox/{handle}/sign (stale handle)    404 inbox_item_not_found
+//  24. GET   /v1/sign/sender/envelopes                      200 items carry awaiting_you
+//  25. GET   /v1/sign/sender/envelopes                      200 awaiting_you + my_inbox_item_id (handle)
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -941,6 +949,191 @@ describe('sign-workspace → GET /v1/sign/legal/notices (nothing announced)', ()
         const res = await fetch(`${mock.url}/v1/sign/legal/notices`, { headers: AUTH_HEADERS });
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({ notices: [] });
+      });
+  });
+});
+
+// W2 — each recipient-side state signs in its OWN user (pact/provider/src/verify-sign.ts).
+const DISCOVERED_HEADERS = { 'X-Aramo-Consumer': 'sign', Cookie: 'aramo_access_token_sign=sign-workspace-pact-discovered' };
+const UPCOMING_HEADERS = { 'X-Aramo-Consumer': 'sign', Cookie: 'aramo_access_token_sign=sign-workspace-pact-upcoming' };
+// A discovered item's id is an opaque base64url handle (never a uuid); the example is shape only.
+const HANDLE = '^[A-Za-z0-9_-]{40,}$';
+const EXAMPLE_HANDLE = 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8w';
+const AWAITING_ENVELOPE_ID = 'e6b20000-0000-7000-8000-0000000000a1';
+// State 5 — Ava's only envelope waits for her own discovered step; her own placeholder.
+const AWAITING_ITEM_ENVELOPE_ID = 'e6b20000-0000-7000-8000-0000000000d1';
+const AWAITING_HEADERS = { 'X-Aramo-Consumer': 'sign', Cookie: 'aramo_access_token_sign=sign-workspace-pact-awaiting' };
+
+describe('sign-web → GET /v1/sign/inbox (W2 discovery)', () => {
+  it('lists a document sent to the verified account email as a discovered item', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document waiting in the inbox')
+      .uponReceiving('a Waiting for me read with a discovered item')
+      .withRequest('GET', '/v1/sign/inbox', (b) => {
+        b.headers(DISCOVERED_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          waiting: eachLike({
+            id: regex(HANDLE, EXAMPLE_HANDLE),
+            source: 'discovered',
+            i_am_sender: boolean(false),
+            subject: like('Discovered agreement'),
+            envelope_status: 'SENT',
+            my_status: 'PENDING',
+            sent_at: iso('2026-11-03T10:00:00.000Z'),
+            can_sign: true,
+            can_download: false,
+          }),
+          completed: [],
+          other: [],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox`, { headers: DISCOVERED_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { waiting: { source: string }[] };
+        expect(body.waiting[0]?.source).toBe('discovered');
+      });
+  });
+
+  it('lists a later-turn document as upcoming (can_sign false)', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has an upcoming document in the inbox')
+      .uponReceiving('a Waiting for me read with an upcoming item')
+      .withRequest('GET', '/v1/sign/inbox', (b) => {
+        b.headers(UPCOMING_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          waiting: eachLike({
+            id: like(EXAMPLE_HANDLE),
+            source: 'discovered',
+            i_am_sender: boolean(false),
+            subject: like('Sequential agreement'),
+            envelope_status: 'SENT',
+            my_status: 'upcoming',
+            can_sign: false,
+            can_download: false,
+          }),
+          completed: [],
+          other: [],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox`, { headers: UPCOMING_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { waiting: { my_status: string; can_sign: boolean }[] };
+        expect(body.waiting[0]).toMatchObject({ my_status: 'upcoming', can_sign: false });
+      });
+  });
+});
+
+describe('sign-web → POST /v1/sign/inbox/{handle}/sign (W2 discovery)', () => {
+  it('mints an inbox signing session from a discovered item handle', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document to sign')
+      .uponReceiving('a Waiting for me sign from a discovered item handle')
+      .withRequest('POST', fromProviderState('/v1/sign/inbox/${inbox_handle}/sign', `/v1/sign/inbox/${EXAMPLE_HANDLE}/sign`), (b) => {
+        b.headers(DISCOVERED_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          signing_url: regex('/s/[A-Za-z0-9_-]{32,256}$', 'https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123456789'),
+          expires_at: iso('2026-11-03T10:30:00.000Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox/${EXAMPLE_HANDLE}/sign`, { method: 'POST', headers: DISCOVERED_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { signing_url: string };
+        expect(body.signing_url).toMatch(/\/s\//);
+      });
+  });
+
+  it('refuses a stale or foreign handle with 404 inbox_item_not_found', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign user has a discovered document waiting in the inbox')
+      .uponReceiving('a Waiting for me sign from a stale item handle')
+      .withRequest('POST', '/v1/sign/inbox/not-a-real-handle/sign', (b) => {
+        b.headers(DISCOVERED_HEADERS);
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody({ error: { code: like('NOT_FOUND'), message: like('message'), request_id: like('req-1'), details: { reason: 'inbox_item_not_found' } } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/inbox/not-a-real-handle/sign`, { method: 'POST', headers: DISCOVERED_HEADERS });
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: { details: { reason: string } } };
+        expect(body.error.details.reason).toBe('inbox_item_not_found');
+      });
+  });
+});
+
+describe('sign-web → GET /v1/sign/sender/envelopes (W2 awaiting_you)', () => {
+  it('marks an envelope waiting only for the signed-in sender', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender envelope is awaiting the signed-in sender')
+      .uponReceiving('an envelope list read with awaiting_you from the Aramo Sign console')
+      .withRequest('GET', `${BASE}/envelopes`, (b) => {
+        b.headers(AUTH_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            id: uuid(AWAITING_ENVELOPE_ID),
+            subject: like('Self-sent agreement'),
+            status: regex(STATUS, 'SENT'),
+            created_at: iso('2026-11-03T10:00:00.000Z'),
+            document_count: integer(1),
+            awaiting_you: boolean(true),
+          }),
+          counts: like({ SENT: 1 }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes`, { headers: AUTH_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: { awaiting_you: boolean }[] };
+        expect(typeof body.items[0]?.awaiting_you).toBe('boolean');
+      });
+  });
+});
+
+describe('sign-web → GET /v1/sign/sender/envelopes (W2 my_inbox_item_id)', () => {
+  it('names the signed-in sender’s own inbox item for an envelope waiting for them', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender envelope is awaiting the signed-in sender with an inbox item')
+      .uponReceiving('an envelope list read with my_inbox_item_id from the Aramo Sign console')
+      .withRequest('GET', `${BASE}/envelopes`, (b) => {
+        b.headers(AWAITING_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          items: eachLike({
+            id: uuid(AWAITING_ITEM_ENVELOPE_ID),
+            subject: like('Self-sent agreement'),
+            status: 'SENT',
+            created_at: iso('2026-11-03T10:00:00.000Z'),
+            document_count: integer(1),
+            awaiting_you: true,
+            my_inbox_item_id: regex(HANDLE, EXAMPLE_HANDLE),
+          }),
+          counts: like({ SENT: 1 }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes`, { headers: AWAITING_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: { awaiting_you: boolean; my_inbox_item_id: string | null }[] };
+        expect(body.items[0]?.awaiting_you).toBe(true);
+        expect(typeof body.items[0]?.my_inbox_item_id).toBe('string');
       });
   });
 });

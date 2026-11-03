@@ -1854,7 +1854,7 @@ export interface paths {
         put?: never;
         /**
          * A fresh short-lived signing link for this recipient while signable; the emailed link stays valid.
-         * @description Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user. Sign Mobile M-A2 §2.2 — every call revalidates in one transaction - the association is active and the caller's, the envelope is signable, the signer is eligible (PENDING or VIEWED, same email as at claim), it is their turn when signing in order, and the link the claim was made with has not been replaced or expired. 409 details.reason association_inactive | envelope_not_signable | signer_ineligible | not_your_turn | session_revoked | link_expired. The session lasts at most 30 minutes, never outlives the claimed link or the envelope, and is recorded on the ledger (RECIPIENT_INBOX_SESSION_ISSUED).
+         * @description Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user. Sign Mobile M-A2 §2.2 — every call revalidates in one transaction - the association is active and the caller's, the envelope is signable, the signer is eligible (PENDING or VIEWED, same email as at claim), it is their turn when signing in order, and the link the claim was made with has not been replaced or expired. 409 details.reason association_inactive | envelope_not_signable | signer_ineligible | not_your_turn | session_revoked | link_expired. The session lasts at most 30 minutes, never outlives the claimed link or the envelope, and is recorded on the ledger (RECIPIENT_INBOX_SESSION_ISSUED). Aramo Sign W2 - {id} may also be a discovered item's opaque handle (source discovered). The handle only names the recipient; the server re-runs the discovery rule (verified current account email, sent at or after that proof, no binding) and the same revalidation (a discovered item has no binding, so its link check is a live emailed link of the recipient), then mints the same session, audited with discovery verified_account_email. A tampered, expired or another user's handle, or discovery being off, answers 404 details.reason inbox_item_not_found.
          */
         post: operations["signFromInbox"];
         delete?: never;
@@ -4128,6 +4128,10 @@ export interface components {
                 status: components["schemas"]["SenderRecipientStatus"];
                 recipient_kind: components["schemas"]["SenderRecipientKind"];
             }[];
+            /** @description Aramo Sign W2 - true when the only recipient steps that can act now belong to the signed-in user (assigned to them, or addressed to their verified current account email on an envelope sent at or after that proof). Shown as "Waiting for you", with a Sign action through the inbox. */
+            awaiting_you: boolean;
+            /** @description Aramo Sign W2 - present (non-null) only when awaiting_you is true and the signed-in user has an inbox item for that step - the binding id when bound, otherwise a fresh discovered-item handle issued to this same user (the same verified current email rule; valid 30 minutes; refused for any other user). Use it with POST /v1/sign/inbox/{id}/sign. Null or absent otherwise. */
+            my_inbox_item_id?: string | null;
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
         SenderEnvelopeCounts: {
@@ -4267,9 +4271,9 @@ export interface components {
                 certificate_base64: string;
             } | null;
         };
-        /** @description The signed-in user's bound documents, split by what they can do now. */
+        /** @description The signed-in user's bound and discovered documents, split by what they can do now. Aramo Sign W2 - discovered items are recipient rows addressed to the user's current account email, listed without a binding when the user holds a verified federated link for that email recorded no later than the envelope was sent. A recipient reachable through a binding is listed once, as bound. */
         RecipientInbox: {
-            /** @description Documents the user can sign now (can_sign). */
+            /** @description Documents the user can sign now (can_sign), and upcoming ones (my_status upcoming, can_sign false) whose turn is later. */
             waiting: components["schemas"]["RecipientInboxItem"][];
             /** @description Completed documents the user signed (can_download). */
             completed: components["schemas"]["RecipientInboxItem"][];
@@ -4278,16 +4282,24 @@ export interface components {
         };
         /** @description Recipient facts only (Sign Unified Product §4.6) - never other recipients' data, sender administration or the activity log. */
         RecipientInboxItem: {
-            /**
-             * Format: uuid
-             * @description The binding id (path parameter of /v1/sign/inbox/{id}/*).
-             */
+            /** @description bound - the binding id (UUID; path parameter of /v1/sign/inbox/{id}/*). discovered - an opaque handle (base64url), accepted only by POST /v1/sign/inbox/{id}/sign, for the signed-in user only, valid 30 minutes; every list issues fresh handles. */
             id: string;
+            /**
+             * @description Aramo Sign W2 - bound (a recipient binding) or discovered (the user's verified current email; no binding).
+             * @enum {string}
+             */
+            source: "bound" | "discovered";
+            /** @description Aramo Sign W2 - true when the signed-in user sent this envelope. */
+            i_am_sender: boolean;
             subject: string;
             /** @description The sending organization's name. */
             from: string | null;
             envelope_status: components["schemas"]["SenderEnvelopeStatus"];
-            my_status: components["schemas"]["SenderRecipientStatus"];
+            /**
+             * @description The recipient's status; upcoming (Aramo Sign W2) - signable later, once earlier recipients have signed (sequential order or a witness waiting for its signer). Shown under Upcoming, never as needing the user.
+             * @enum {string}
+             */
+            my_status: "PENDING" | "VIEWED" | "SIGNED" | "DECLINED" | "upcoming";
             /** Format: date-time */
             sent_at: string | null;
             /**
@@ -4307,7 +4319,9 @@ export interface components {
             completed_at: string | null;
             /** Format: date-time */
             signed_at: string | null;
+            /** @description True only when the user may act now (turn and witness readiness), the envelope is signable and unexpired, and a live emailed link backs inbox signing. */
             can_sign: boolean;
+            /** @description A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link). */
             can_download: boolean;
         };
         SenderDraftCreated: {
@@ -4931,6 +4945,8 @@ export interface components {
         SenderLimit: number;
         /** @description The signature envelope id (UUID). */
         EnvelopeId: string;
+        /** @description The inbox item id from GET /v1/sign/inbox - a binding id (UUID) for a bound item, or an opaque handle (base64url, valid 30 minutes, for the signed-in user only) for a discovered item. */
+        InboxItemId: string;
         /** @description The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision). */
         IfMatch: string;
         /** @description 1 to 255 printable characters, scoped to (tenant, authenticated user, operation, key) for 24 hours. A replay with the same body returns the first response; a different body is 422 idempotency_key_reuse; 409 idempotency_request_in_progress while the first request runs. */
@@ -8273,8 +8289,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The signature envelope id (UUID). */
-                id: components["parameters"]["EnvelopeId"];
+                /** @description The inbox item id from GET /v1/sign/inbox - a binding id (UUID) for a bound item, or an opaque handle (base64url, valid 30 minutes, for the signed-in user only) for a discovered item. */
+                id: components["parameters"]["InboxItemId"];
             };
             cookie?: never;
         };
