@@ -514,7 +514,7 @@ describe('sign-mobile → POST /v1/sign/inbox/{handle}/sign (W2 discovery)', () 
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
-          signing_url: regex('/s/[A-Za-z0-9_-]{32,256}$', 'https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123456789'),
+          signing_url: regex('^https://[^/]+/s/[A-Za-z0-9_-]{32,256}$', 'https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123456789'),
           expires_at: iso('2026-11-03T10:30:00.000Z'),
         });
       })
