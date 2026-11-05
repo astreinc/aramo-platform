@@ -5,6 +5,10 @@
 //   2. one editor screen: each placed field is filled at once (the adopted signature and
 //      initials; date, name and the profile fields from the user's Sign profile, editable);
 //   3. the disclosure; 4. Finish; 5. the completed screen (Share PDF, certificate).
+// Templates (while the backend allows them) start the flow instead: the server creates the
+// self envelope from the template (`mode: "self"`), with its documents and fields for the
+// caller, and the editor opens on them. M-A12 D-1: nothing on the device disables this
+// flow (not `can_send`, not the allowance); a server refusal is shown when one comes back.
 // No Recipients step and no invitation: the server makes the caller the only signer
 // (`mode: "self"`), and the send allowance is never used, so "no sends left" never
 // blocks this flow (M-A12 D-1). Signing tokens stay in memory (features/selfSign).
@@ -32,7 +36,7 @@ import { senderTextLayer } from '../../features/find/textLayerApi';
 import type { FindDoc } from '../../features/find/useFind';
 import { deleteDraftById } from '../../features/inbox/envelopeActions';
 import { signKeys, useOnline, useSenderContext } from '../../features/inbox/queries';
-import { CheckRow } from '../../features/inbox/ui';
+import { CheckRow, EmptyState } from '../../features/inbox/ui';
 import { DEFAULT_SETTINGS, useSignProfile, useSignSettings } from '../../features/profile/signProfile';
 import {
   acceptFillComplete,
@@ -41,7 +45,10 @@ import {
   NO_PROGRESS,
   pagesOf,
   removeUploaded,
+  selfSignRefusalCopy,
   sendAndOpen,
+  startFromTemplate,
+  createSelfFromTemplate,
   type SelfProgress,
 } from '../../features/selfSign/selfSignFlow';
 import {
@@ -63,6 +70,12 @@ import {
   type SelfDoc,
 } from '../../features/selfSign/selfSignModel';
 import { addSourceTiles, SOURCE_UNAVAILABLE } from '../../features/send/AddDocumentsSheet';
+import { templatesAvailable, type SenderTemplate } from '../../features/send/templates';
+import { TextField } from '../../features/send/ui';
+import { fetchSourcePdf } from '../../features/editor/sourcePdf';
+import { TemplateRows } from '../../features/templates/TemplateRows';
+import { useTemplatesView } from '../../features/templates/useTemplates';
+import { newIdempotencyKey } from '../../api/workspaceClient';
 import { pickPhotosToPdf } from '../../features/send/photos';
 import { createSenderApi } from '../../features/send/senderApi';
 import { pickPdf, scanToPdf, type SourceResult } from '../../features/send/sources';
@@ -102,7 +115,8 @@ export function SelfSignScreen() {
   const toast = useToast();
   const qc = useQueryClient();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { workspace, guest, kv } = useServices();
+  const services = useServices();
+  const { workspace, guest, kv } = services;
   const online = useOnline();
   const ctx = useSenderContext();
   const profile = useSignProfile();
@@ -119,6 +133,9 @@ export function SelfSignScreen() {
   const [saved, setSaved] = useState<SavedMarks | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [pickMode, setPickMode] = useState<'sources' | 'templates' | SenderTemplate>('sources');
+  const [tplValues, setTplValues] = useState<Record<string, string>>({});
+  const tplKey = useRef<string | null>(null);
   const [running, setRunning] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; title: string } | null>(null);
@@ -231,8 +248,53 @@ export function SelfSignScreen() {
       setEnvelopeId(r.progress.envelopeId);
       setDocs(r.docs);
       setStage({ kind: 'place' });
-    } catch {
-      setError(SELF_COPY.uploadFailed);
+    } catch (e) {
+      setError(selfSignRefusalCopy(e, SELF_COPY.uploadFailed));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  // Templates as a source: the template's documents and fields, for the caller only.
+  const templatesOn = templatesAvailable(ctx.data ?? null) && docs.length === 0 && envelopeId === null;
+  const templates = useTemplatesView(picking && templatesOn && pickMode !== 'sources');
+  function closePicker(): void {
+    setPicking(false);
+    setPickMode('sources');
+    setTplValues({});
+    tplKey.current = null;
+  }
+  async function startTemplate(tpl: SenderTemplate): Promise<void> {
+    if (!online) {
+      setError(SELF_COPY.offline);
+      return;
+    }
+    setError(null);
+    setRunning(true);
+    // One key per "Use" intent, reused on a retry of the same template.
+    tplKey.current ??= newIdempotencyKey();
+    try {
+      const r = await startFromTemplate(
+        {
+          createFromTemplate: createSelfFromTemplate(workspace),
+          fetchSource: (envId, docId) =>
+            fetchSourcePdf(
+              { baseUrl: services.env.apiBaseUrl, fetch: (u, i) => fetch(u, i), session: services.session },
+              envId,
+              docId,
+            ),
+        },
+        { templateId: tpl.id, values: tplValues, idempotencyKey: tplKey.current },
+      );
+      progress.current = r.progress;
+      setEnvelopeId(r.progress.envelopeId);
+      setDocs(r.docs);
+      setFields(r.fields);
+      setSources(Object.fromEntries(r.docs.map((d) => [d.key, 'Template'])));
+      closePicker();
+      setStage({ kind: 'place' });
+    } catch (e) {
+      setError(selfSignRefusalCopy(e, SELF_COPY.uploadFailed));
     } finally {
       setRunning(false);
     }
@@ -343,8 +405,8 @@ export function SelfSignScreen() {
       setConsented(false);
       setStage({ kind: 'consent', disclosure: r.disclosure });
       void qc.invalidateQueries({ queryKey: signKeys.senderList });
-    } catch {
-      setError(SELF_COPY.finishFailed);
+    } catch (e) {
+      setError(selfSignRefusalCopy(e, SELF_COPY.finishFailed));
       setStage({ kind: 'place' });
     }
   }
@@ -605,22 +667,70 @@ export function SelfSignScreen() {
           onPress={() => void next()}
         />
       </View>
-      <Sheet visible={picking} onClose={() => setPicking(false)} title="Add a document">
-        <View style={styles.tiles}>
-          {addSourceTiles(false).map((tile) => (
-            <Button
-              key={tile.key}
-              testID={`self-source-${tile.key}`}
-              title={tile.label}
-              variant="secondary"
-              disabled={running}
-              accessibilityHint={tile.hint}
-              onPress={() => void add(tile.key as 'scan' | 'photos' | 'files')}
+      <Sheet
+        visible={picking}
+        onClose={closePicker}
+        title={pickMode === 'sources' ? 'Add a document' : pickMode === 'templates' ? 'Templates' : pickMode.name}
+      >
+        {pickMode === 'sources' ? (
+          <View style={styles.tiles}>
+            {addSourceTiles(templatesOn).map((tile) => (
+              <Button
+                key={tile.key}
+                testID={`self-source-${tile.key}`}
+                title={tile.label}
+                variant="secondary"
+                disabled={running}
+                accessibilityHint={tile.hint}
+                onPress={() =>
+                  tile.key === 'templates' ? setPickMode('templates') : void add(tile.key as 'scan' | 'photos' | 'files')
+                }
+              />
+            ))}
+          </View>
+        ) : pickMode === 'templates' ? (
+          templates.view.kind === 'list' ? (
+            <TemplateRows rows={templates.view.rows} onUse={(tpl) => setPickMode(tpl)} disabled={running} />
+          ) : templates.view.kind === 'loading' ? (
+            <ActivityIndicator color={t.color.accent} accessibilityLabel="Loading templates" />
+          ) : (
+            <EmptyState
+              title="No templates"
+              body={'message' in templates.view ? templates.view.message : 'Templates couldn’t be loaded.'}
             />
-          ))}
-        </View>
-        {running ? <ActivityIndicator color={t.color.accent} accessibilityLabel="Adding the document" /> : null}
-        <Button title="Close" variant="text" onPress={() => setPicking(false)} />
+          )
+        ) : (
+          <View style={styles.tiles} testID="self-template-form">
+            {pickMode.senderVariables.map((v) => (
+              <TextField
+                key={v.key}
+                label={v.label}
+                value={tplValues[v.key] ?? ''}
+                onChangeText={(x) => setTplValues((m) => ({ ...m, [v.key]: x }))}
+              />
+            ))}
+            <Button
+              testID="self-template-use"
+              title="Use template"
+              busy={running}
+              disabled={running || !online || pickMode.senderVariables.some((v) => !(tplValues[v.key] ?? '').trim())}
+              onPress={() => void startTemplate(pickMode)}
+            />
+          </View>
+        )}
+        {error && picking ? (
+          <Text accessibilityRole="alert" style={{ color: t.color.destructive, fontSize: 14 }}>
+            {error}
+          </Text>
+        ) : null}
+        {running && pickMode === 'sources' ? (
+          <ActivityIndicator color={t.color.accent} accessibilityLabel="Adding the document" />
+        ) : null}
+        <Button
+          title={pickMode === 'sources' ? 'Close' : 'Back'}
+          variant="text"
+          onPress={() => (pickMode === 'sources' ? closePicker() : setPickMode(pickMode === 'templates' ? 'sources' : 'templates'))}
+        />
       </Sheet>
       <Sheet visible={menuFor !== null && renaming === null} onClose={() => setMenuFor(null)} title="Document">
         {menu?.rename ? (

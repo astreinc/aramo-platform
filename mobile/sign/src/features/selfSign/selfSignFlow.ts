@@ -16,11 +16,16 @@ import { isApiError } from '../../api/errors';
 import type { GuestSigningSession } from '../../api/guestSigningClient';
 import { newIdempotencyKey, type WorkspaceClient } from '../../api/workspaceClient';
 import type { EditorField } from '../editor/editorReducer';
-import { editorToWire } from '../editor/geometry';
+import { editorToWire, wireToEditor } from '../editor/geometry';
+import { isAuthoringFieldType } from '../editor/fieldTypes';
+import { parseEnvelope } from '../send/draftModel';
+import { etagFor } from '../../api/workspaceClient';
+import { refusalMessage } from '../../api/refusalMessages';
+import { randomId } from '../../util/ids';
 import { readPdfPageSizes } from '../editor/pdfPageSizes';
 import { revisionMismatch, type FieldWire, type SenderApi } from '../send/senderApi';
 import { uploadWithRetry } from '../send/syncDraft';
-import { base64Decode } from '../../util/bytes';
+import { base64Decode, base64Encode } from '../../util/bytes';
 import {
   acceptAndLoad,
   openSigning,
@@ -31,6 +36,7 @@ import {
   fillValue,
   matchServerFields,
   placedOnServer,
+  SELF_KEY,
   type SelfContext,
   type SelfDoc,
   type SelfEdits,
@@ -257,3 +263,98 @@ export function pagesOf(base64: string): SelfDoc['pages'] {
 export function isOfflineError(e: unknown): boolean {
   return isApiError(e) && e.isNetwork;
 }
+
+// ── Templates as a source (M-A12 W1-A; agent A's from-template `mode: "self"`) ─────
+
+/**
+ * POST /v1/sign/sender/envelopes/from-template { template_id, values, idempotency_key,
+ * mode: "self" }. No signer, recipients, cc or routing_mode is sent: the server binds the
+ * template's one signer role to the caller (422 self_sign_single_recipient otherwise).
+ */
+export function createSelfFromTemplate(workspace: WorkspaceClient) {
+  return async (input: {
+    readonly templateId: string;
+    readonly values: Readonly<Record<string, string>>;
+    readonly idempotencyKey: string;
+  }) => {
+    const r = await workspace.request<unknown>({
+      method: 'POST',
+      path: '/v1/sign/sender/envelopes/from-template',
+      body: {
+        template_id: input.templateId,
+        values: { ...input.values },
+        idempotency_key: input.idempotencyKey,
+        mode: 'self',
+      },
+    });
+    const raw = (r.data ?? {}) as Record<string, unknown>;
+    const env = parseEnvelope(raw['envelope'] ?? raw);
+    if (!env.id || env.revision === null) throw new Error('the server returned no envelope');
+    return { env, etag: r.etag ?? etagFor({ id: env.id, revision: env.revision }) };
+  };
+}
+
+export interface TemplateStartDeps {
+  readonly createFromTemplate: ReturnType<typeof createSelfFromTemplate>;
+  /** The frozen source PDF of a document on the envelope. */
+  readonly fetchSource: (envelopeId: string, documentId: string) => Promise<Uint8Array>;
+}
+
+/**
+ * Start "Sign a document" from a template: the server creates the self envelope with the
+ * template's documents and fields; the app loads each document and turns the template's
+ * fields into placed fields for the self recipient, ready to fill.
+ */
+export async function startFromTemplate(
+  deps: TemplateStartDeps,
+  input: { readonly templateId: string; readonly values: Readonly<Record<string, string>>; readonly idempotencyKey: string },
+): Promise<{ progress: SelfProgress; docs: SelfDoc[]; fields: EditorField[] }> {
+  const v = await deps.createFromTemplate(input);
+  const docs: SelfDoc[] = [];
+  for (const d of v.env.documents) {
+    const bytes = await deps.fetchSource(v.env.id, d.id);
+    const base64 = base64Encode(bytes);
+    docs.push({ key: randomId(), title: d.title, filename: `${d.title}.pdf`, base64, pages: pagesOf(base64), serverId: d.id });
+  }
+  const fields: EditorField[] = [];
+  for (const f of v.env.fields) {
+    if (!isAuthoringFieldType(f.field_type)) continue;
+    const doc = docs.find((x) => x.serverId === f.envelope_document_id);
+    const page = doc?.pages?.[f.page_number];
+    if (!doc || !page) continue;
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
+    fields.push({
+      key: randomId(),
+      docKey: doc.key,
+      page: f.page_number,
+      recipientKey: SELF_KEY,
+      type: f.field_type,
+      ...box,
+      required: f.required,
+      ...(f.field_type === 'SIGNER_NAME'
+        ? { nameMode: f.name_mode === 'SIGNER_ENTERED' ? ('SIGNER_ENTERED' as const) : ('SIGNER_PROFILE' as const) }
+        : {}),
+      ...(f.field_type === 'CHECKBOX' ? { label: f.label, groupKey: null, groupRule: null, minSelected: null } : {}),
+    });
+  }
+  return {
+    progress: { ...NO_PROGRESS, envelopeId: v.env.id, etag: v.etag, signerId: v.env.recipients[0]?.id ?? null },
+    docs,
+    fields,
+  };
+}
+
+const SELF_REFUSAL: Record<string, string> = {
+  self_sign_email_unverified: 'Verify your account email to sign documents here.',
+  self_sign_single_recipient: 'This template needs more than one signer, so it can’t be signed by you alone.',
+};
+
+/**
+ * M-A12 D-1 — the app never blocks "Sign a document" itself; when the server refuses,
+ * this is the copy (network problems keep the given fallback).
+ */
+export function selfSignRefusalCopy(e: unknown, fallback: string): string {
+  if (!isApiError(e) || e.isNetwork) return fallback;
+  return SELF_REFUSAL[e.reason] ?? SELF_REFUSAL[e.code] ?? (e.status >= 500 ? fallback : refusalMessage(e));
+}
+

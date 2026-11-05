@@ -84,7 +84,7 @@ describe('Templates (M-A12 W1-F)', () => {
       fireEvent.press(screen.getByTestId('template-star-1'));
     });
     await waitFor(() =>
-      expect(request).toHaveBeenCalledWith({ method: 'PUT', path: '/v1/sign/templates/a/favorite' }),
+      expect(request).toHaveBeenCalledWith({ method: 'PUT', path: '/v1/sign/sender/templates/a/favorite' }),
     );
   });
 });

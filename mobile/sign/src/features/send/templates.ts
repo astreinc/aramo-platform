@@ -129,7 +129,8 @@ function parseTemplate(raw: unknown): SenderTemplate {
 
 /**
  * M-A12 W1-F — star or unstar a template for this user:
- * PUT / DELETE /v1/sign/templates/{template_id}/favorite → 204 (contract §3).
+ * PUT / DELETE /v1/sign/sender/templates/{template_id}/favorite → 204 (contract change A:
+ * favorites live under the existing template list prefix).
  */
 export async function setTemplateFavorite(
   workspace: WorkspaceClient,
@@ -138,7 +139,7 @@ export async function setTemplateFavorite(
 ): Promise<void> {
   await workspace.request<unknown>({
     method: on ? 'PUT' : 'DELETE',
-    path: `/v1/sign/templates/${encodeURIComponent(templateId)}/favorite`,
+    path: `/v1/sign/sender/templates/${encodeURIComponent(templateId)}/favorite`,
   });
 }
 

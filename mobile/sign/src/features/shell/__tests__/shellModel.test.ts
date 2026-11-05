@@ -125,6 +125,23 @@ describe('plusActions', () => {
     expect(a.find((x) => x.intent === 'self')).toMatchObject({ disabled: false, reason: null });
   });
 
+  it('M-A12 D-1: can_send false never disables Sign a document (Personal or Business, any reason)', () => {
+    const business = {
+      tenant_kind: 'BUSINESS',
+      allowance: { limit: 50, used: 50, remaining: 0 },
+    } as unknown as BillingAccount;
+    for (const allowance of [null, allowanceModel(business)]) {
+      const a = plusActions({ canSend: false, allowance, selfSign: true });
+      expect(a.find((x) => x.intent === 'request')?.disabled).toBe(true);
+      expect(a.find((x) => x.intent === 'self')).toEqual({
+        intent: 'self',
+        label: 'Sign a document',
+        disabled: false,
+        reason: null,
+      });
+    }
+  });
+
   it('falls back to a generic reason when no limit explains it', () => {
     const a = plusActions({ canSend: false, allowance: null, selfSign: false });
     expect(a[0]).toMatchObject({ disabled: true, reason: SEND_UNAVAILABLE_REASON });

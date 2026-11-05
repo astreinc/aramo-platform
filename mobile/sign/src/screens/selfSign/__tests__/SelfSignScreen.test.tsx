@@ -24,6 +24,8 @@ jest.mock('@react-navigation/native', () => ({
 const mockPick = jest.fn();
 jest.mock('../../../features/send/sources', () => ({ scanToPdf: jest.fn(), pickPdf: () => mockPick() }));
 jest.mock('../../../features/send/photos', () => ({ pickPhotosToPdf: jest.fn() }));
+const mockSource = jest.fn();
+jest.mock('../../../features/editor/sourcePdf', () => ({ fetchSourcePdf: () => mockSource() }));
 jest.setTimeout(30_000);
 const WAIT = { timeout: 10_000 } as const;
 
@@ -39,14 +41,47 @@ const pdf = (pages: number) =>
   );
 
 let revision = 1;
+let templatesOn = false;
 beforeEach(() => {
   revision = 1;
+  templatesOn = false;
 });
 
 function responder(req: RecordedRequest) {
   const path = req.url.replace('https://sign.aramo.ai', '');
   if (path === '/v1/sign/sender/context')
-    return { status: 200, body: { user: { id: 'u1', email: 'me@example.com', display_name: 'Priya Raman' }, tenant: { kind: 'PERSONAL' }, can_send: false } };
+    return {
+      status: 200,
+      body: {
+        user: { id: 'u1', email: 'me@example.com', display_name: 'Priya Raman' },
+        tenant: { kind: 'PERSONAL' },
+        can_send: false,
+        features: { templates: templatesOn },
+        permissions: { templates: templatesOn },
+      },
+    };
+  if (path === '/v1/sign/sender/templates')
+    return {
+      status: 200,
+      body: {
+        items: [{ template_id: 'tpl-1', name: 'Lease template', document_type: { name: 'Lease' }, variables: [] }],
+        unavailable: [],
+      },
+    };
+  if (path === '/v1/sign/sender/envelopes/from-template')
+    return {
+      status: 201,
+      body: {
+        envelope: {
+          id: 'env-t',
+          revision: 1,
+          status: 'DRAFT',
+          documents: [{ id: 'doc-t', title: 'Lease' }],
+          recipients: [{ id: 'r-self' }],
+          fields: [{ id: 'f1', envelope_document_id: 'doc-t', signer_id: 'r-self', field_type: 'SIGNATURE', page_number: 0, x: 100, y: 600, width: 230, height: 50, required: true }],
+        },
+      },
+    };
   if (path === '/v1/sign/me/profile') return { status: 404, body: { reason: 'not_found', code: 'not_found' } };
   if (path === '/v1/sign/me/settings') return { status: 200, body: { date_format: 'MM/DD/YYYY', default_field_size: 'M' } };
   if (req.method === 'POST' && path === '/v1/sign/sender/envelopes') return { status: 201, body: { id: 'env-1' } };
@@ -66,7 +101,13 @@ function renderScreen() {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const { net, workspace } = workspaceWith(responder);
   const guest = createGuestSigningClient({ baseUrl: 'https://sign.aramo.ai', fetch: net.fetch });
-  const services = { workspace, guest, kv: memoryKv() } as unknown as AppServices;
+  const services = {
+    workspace,
+    guest,
+    kv: memoryKv(),
+    env: { apiBaseUrl: 'https://sign.aramo.ai' },
+    session: {},
+  } as unknown as AppServices;
   render(
     <ServicesProvider services={services}>
       <QueryClientProvider client={qc}>
@@ -126,5 +167,32 @@ describe('Sign a document', () => {
     expect(create?.body).toEqual({ subject: 'Lease', mode: 'self' });
     expect(net.calls.some((c) => c.url.includes('/recipients'))).toBe(false);
     expect(net.calls.some((c) => c.url.endsWith('/env-1/documents'))).toBe(true);
+  });
+
+  it('the Templates tile shows only while the backend allows templates', async () => {
+    renderScreen();
+    fireEvent.press(screen.getByTestId('self-add'));
+    await waitFor(() => expect(screen.getByTestId('self-source-files')).toBeTruthy(), WAIT);
+    expect(screen.queryByTestId('self-source-templates')).toBeNull();
+  });
+
+  it('Templates: mode "self" from the template, then the editor with its documents and fields', async () => {
+    templatesOn = true;
+    mockSource.mockResolvedValue(pdf(1));
+    const net = renderScreen();
+    fireEvent.press(screen.getByTestId('self-add'));
+    await waitFor(() => expect(screen.getByTestId('self-source-templates')).toBeTruthy(), WAIT);
+    fireEvent.press(screen.getByTestId('self-source-templates'));
+    await waitFor(() => expect(screen.getByText('Lease template')).toBeTruthy(), WAIT);
+    fireEvent.press(screen.getByTestId('template-0'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('self-template-use'));
+    });
+    await waitFor(() => expect(screen.getByTestId('self-place')).toBeTruthy(), WAIT);
+    const call = net.calls.find((c) => c.url.endsWith('/from-template'));
+    expect(call?.body).toMatchObject({ template_id: 'tpl-1', mode: 'self' });
+    expect(call?.body).not.toHaveProperty('recipients');
+    expect(call?.body).not.toHaveProperty('signer');
+    expect(screen.getByText('1 page · 1 field placed')).toBeTruthy();
   });
 });

@@ -88,7 +88,7 @@ export interface PlusAction {
 /**
  * The + button's actions. Request signatures depends on the server's `can_send`; while it
  * is false the action is disabled with the allowance limit copy when a limit explains it.
- * Sign a document is never disabled by the allowance (M-A12 D-1).
+ * Sign a document is never disabled on the device (M-A12 D-1): the server decides.
  * "Sign a document" is omitted entirely unless the self-signing backend ships.
  */
 export function plusActions(input: {
@@ -101,17 +101,10 @@ export function plusActions(input: {
   const out: PlusAction[] = [
     { intent: 'request', label: 'Request signatures', disabled: !input.canSend, reason },
   ];
-  // M-A12 D-1: signing is always free. A self-signed document never uses the send
-  // allowance, so a used-up allowance never disables "Sign a document"; any other reason
-  // the server gives for no sending still does.
-  const selfBlocked = !input.canSend && banner === null;
-  if (input.selfSign)
-    out.push({
-      intent: 'self',
-      label: 'Sign a document',
-      disabled: selfBlocked,
-      reason: selfBlocked ? reason : null,
-    });
+  // M-A12 D-1: signing is always free. "Sign a document" is never disabled by the
+  // device: not by `can_send: false`, not by a used-up allowance, for Personal or
+  // Business. The server decides, and the flow shows its refusal if one comes back.
+  if (input.selfSign) out.push({ intent: 'self', label: 'Sign a document', disabled: false, reason: null });
   return out;
 }
 
