@@ -21,6 +21,10 @@
 
 SET LOCAL lock_timeout = '5s';
 
+--   5. The BillingWebhookInbox and BillingReconciliationFlag provider CHECKs are widened in the next migration
+--      (20261104100100_sign_store_billing_providers), so this one depends only on the lifecycle and A5 tables
+--      (the gated specs that apply a fixed migration set include it through the shared M_A12 fixture).
+
 -- 1. Provider CHECK widening.
 ALTER TABLE "subscription"."PlanVersionPrice" DROP CONSTRAINT "PlanVersionPrice_provider_check";
 ALTER TABLE "subscription"."PlanVersionPrice"
@@ -35,13 +39,6 @@ ALTER TABLE "subscription"."CheckoutIntent" DROP CONSTRAINT "CheckoutIntent_prov
 ALTER TABLE "subscription"."CheckoutIntent"
     ADD CONSTRAINT "CheckoutIntent_provider_check" CHECK ("provider" IN ('STRIPE', 'APP_STORE', 'GOOGLE_PLAY'));
 
-ALTER TABLE "subscription"."BillingWebhookInbox" DROP CONSTRAINT "BillingWebhookInbox_provider_check";
-ALTER TABLE "subscription"."BillingWebhookInbox"
-    ADD CONSTRAINT "BillingWebhookInbox_provider_check" CHECK ("provider" IN ('STRIPE', 'APP_STORE', 'GOOGLE_PLAY'));
-
-ALTER TABLE "subscription"."BillingReconciliationFlag" DROP CONSTRAINT "BillingReconciliationFlag_provider_check";
-ALTER TABLE "subscription"."BillingReconciliationFlag"
-    ADD CONSTRAINT "BillingReconciliationFlag_provider_check" CHECK ("provider" IN ('STRIPE', 'APP_STORE', 'GOOGLE_PLAY'));
 
 -- 2. Pin interval and the pin uniqueness rules.
 ALTER TABLE "subscription"."PlanVersionPrice" ADD COLUMN "interval" TEXT NOT NULL DEFAULT 'MONTH';

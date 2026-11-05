@@ -31,6 +31,8 @@ const A4 = resolve(SUB_DIR, A4_NAME, 'migration.sql');
 // CCP-A5 — applied right after A4: the code under test reads limits through the pinned plan
 // version, so the golden also proves A5 changes no result (plan versions + v1 backfill).
 const A5 = resolve(SUB_DIR, '20261025160000_ccp_a5_plan_version', 'migration.sql');
+// M-A12 — the store-billing columns the subscription Prisma client reads, applied right after A5.
+const M_A12_STORE = resolve(SUB_DIR, '20261104100000_sign_store_billing', 'migration.sql');
 // A plan created after A5 needs its v1 (DRAFT, then PUBLISHED) before a subscription can pin it.
 const PUBLISH_V1 = `
   INSERT INTO subscription."PlanVersion" (id, plan_id, version_number, status, content, content_checksum, created_by, created_at)
@@ -97,6 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
     if (!CAPTURE) {
       await pg.query(readFileSync(A4, 'utf8'));
       await pg.query(readFileSync(A5, 'utf8'));
+      await pg.query(readFileSync(M_A12_STORE, 'utf8'));
     }
     prisma = new SubscriptionPrismaService(container.getConnectionUri());
     await prisma.$connect();
