@@ -5,6 +5,7 @@ import { formatSignDate, isProfileTextField, profileTextValueRefusal, PROFILE_TE
 import { PDFDocument, StandardFonts, degrees } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
+import { AramoSignAllowanceGate } from '../app/aramo-sign-allowance.gate.js';
 import { NativeAramoSignatureProvider } from '../app/native-aramo-signature.provider.js';
 import { SavedDataPurgeService } from '../app/me/signature/saved-data-purge.service.js';
 import { SignMeProfileService, appIssueSupportAddress, validateAppIssue, validateProfile, validateSettings } from '../app/me/profile/sign-me-profile.service.js';
@@ -156,7 +157,10 @@ describe('M-A12 D-1 — a self-sign envelope never uses the sign.envelopes allow
     };
     const service = { send: vi.fn(async () => ({ envelope: {}, sessions: [], copies: [] })) };
     // The allowance would refuse (no sends left): a self envelope must not reach it.
-    const allowance = { guardSend: vi.fn(async () => { throw new AramoError('ESIGN_ALLOWANCE_EXHAUSTED', 'used up', 409, { requestId: '' }); }) };
+    const allowance = {
+      guardSend: vi.fn(async () => { throw new AramoError('ESIGN_ALLOWANCE_EXHAUSTED', 'used up', 409, { requestId: '' }); }),
+      assertSubscribedForSelfSign: vi.fn(async () => undefined),
+    };
     const notifier = { notify: vi.fn() };
     const notifications = { copiesIssued: vi.fn() };
     return { p: new NativeAramoSignatureProvider(repo as never, service as never, allowance as never, notifier as never, notifications as never), service, allowance, notifier, notifications };
@@ -171,11 +175,44 @@ describe('M-A12 D-1 — a self-sign envelope never uses the sign.envelopes allow
     expect(notifications.copiesIssued).not.toHaveBeenCalled();
   });
 
+  it('SELF without an active subscription: 403 ESIGN_NOT_SUBSCRIBED, nothing sent (PO: same as web)', async () => {
+    const { p, service, allowance } = provider('SELF');
+    allowance.assertSubscribedForSelfSign.mockRejectedValueOnce(new AramoError('ESIGN_NOT_SUBSCRIBED', 'x', 403, { requestId: '' }));
+    await expect(p.sendEnvelope(AUTH.tenant_id, 'e1', AUTH.sub)).rejects.toMatchObject({ code: 'ESIGN_NOT_SUBSCRIBED', statusCode: 403 });
+    expect(service.send).not.toHaveBeenCalled();
+    expect(allowance.guardSend).not.toHaveBeenCalled();
+  });
+
   it('STANDARD: the allowance gate still decides (here: refused at the limit)', async () => {
     const { p, allowance, service } = provider('STANDARD');
     await expect(p.sendEnvelope(AUTH.tenant_id, 'e1', AUTH.sub)).rejects.toMatchObject({ code: 'ESIGN_ALLOWANCE_EXHAUSTED' });
     expect(allowance.guardSend).toHaveBeenCalledTimes(1);
     expect(service.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('AramoSignAllowanceGate.assertSubscribedForSelfSign — read-only (PO ruling on D-1)', () => {
+  function gate(status: Record<string, unknown>) {
+    const allowance = { getStatus: vi.fn(async () => status), reserve: vi.fn(), consume: vi.fn(), release: vi.fn(), resolveStale: vi.fn() };
+    return { g: new AramoSignAllowanceGate(allowance as never, {} as never), allowance };
+  }
+
+  it('not subscribed (Business without a plan) → 403 ESIGN_NOT_SUBSCRIBED', async () => {
+    const { g } = gate({ subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' });
+    await expect(g.assertSubscribedForSelfSign('t1')).rejects.toMatchObject({ code: 'ESIGN_NOT_SUBSCRIBED', statusCode: 403 });
+  });
+
+  it('Business at 0 sends left, and Personal at its daily limit → allowed; nothing reserved or consumed', async () => {
+    for (const status of [
+      { subscribed: true, limit: 100, used: 100, remaining: 0, period_end: new Date() },
+      { subscribed: true, limit: 5, used: 3, remaining: 2, daily: { limit: 1, used: 1, remaining: 0, next_available_at: new Date() }, period_end: new Date() },
+    ]) {
+      const { g, allowance } = gate(status);
+      await expect(g.assertSubscribedForSelfSign('t1')).resolves.toBeUndefined();
+      expect(allowance.reserve).not.toHaveBeenCalled();
+      expect(allowance.consume).not.toHaveBeenCalled();
+      expect(allowance.release).not.toHaveBeenCalled();
+    }
   });
 });
 
@@ -410,5 +447,79 @@ describe('M-A12 W1-F — template favorites and ownership', () => {
     await expect(svc.setFavorite(auth, 'not-a-uuid', true, 'r')).rejects.toMatchObject({ statusCode: 400 });
     await svc.setFavorite(auth, '33333333-3333-4333-8333-333333333333', false, 'r');
     expect(userData.removeFavorite).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('M-A12 W1-A — "Sign a document" from a template (mode self)', () => {
+  const TPL = '44444444-4444-4444-8444-444444444444';
+  function fromTemplate(opts: { roles?: Array<{ role_key: string; kind: 'SIGNER' | 'CC'; order: number }>; fields?: Array<{ role_key?: string }>; defs?: Array<{ signer_role: string | null; field_type: string }> } = {}) {
+    const signing = opts.roles === undefined ? null : { roles: opts.roles.map((r) => ({ ...r, label: r.role_key })), routing_mode: 'PARALLEL' as const };
+    const documents = {
+      list: vi.fn(async () => ({ items: [{ template_id: TPL, owner_scope: 'TENANT', signing }], unavailable: [] })),
+      render: vi.fn(async () => ({
+        template_id: TPL,
+        template_version_id: 'v1',
+        version_number: 1,
+        title: 'NDA',
+        document_id: 'doc',
+        document_revision_ref: 'rev',
+        source_sha256: 'sha',
+        signing,
+        signature_fields: (opts.fields ?? [{}]).map((f, i) => ({ field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100 + i * 50, width: 200, height: 40, ...f })),
+        field_definitions: (opts.defs ?? []).map((d) => ({ field_key: 'k', page_number: 0, x: 72, y: 400, width: 100, height: 20, required: true, ...d })),
+      })),
+    };
+    const repo = {
+      createDraft: vi.fn(async () => ({ id: 'e1' })),
+      addDraftCoreRefDocument: vi.fn(async () => ({ id: 'd1' })),
+      replaceDraftRecipients: vi.fn(async () => [{ id: 's1' }]),
+    };
+    const envelopes = {
+      selfRecipient: vi.fn(async () => ({ name: 'Me', email: 'me@x.test' })),
+      replaceFields: vi.fn(async () => ({})),
+      detail: vi.fn(async () => ({ id: 'e1', mode: 'self' })),
+    };
+    const auth = { ...AUTH, scopes: [...AUTH.scopes, 'document_template:read'] } as AuthContextType;
+    const svc = new SenderTemplatesService(
+      documents as never, { assertAvailable: vi.fn() } as never, { assertCanAuthor: vi.fn() } as never, repo as never, envelopes as never, { of: vi.fn(async () => ({ kind: 'INCLUDED' })) } as never,
+    );
+    return { svc, documents, repo, envelopes, auth };
+  }
+
+  it('binds the single signer role to the caller (SELF draft, server-made bound recipient, the role fields)', async () => {
+    const t = fromTemplate({ roles: [{ role_key: 'client', kind: 'SIGNER', order: 1 }, { role_key: 'cc', kind: 'CC', order: 2 }], fields: [{ role_key: 'client' }], defs: [{ signer_role: 'client', field_type: 'SIGN_DATE' }] });
+    const out = await t.svc.createEnvelope(t.auth, { template_id: TPL, mode: 'self' }, 'r');
+    expect(out).toMatchObject({ mode: 'self', bound_role_key: 'client' });
+    expect(t.repo.createDraft).toHaveBeenCalledWith(expect.objectContaining({ envelope_mode: 'SELF', template_ref: TPL }));
+    expect(t.repo.replaceDraftRecipients).toHaveBeenCalledWith(expect.objectContaining({ recipients: [{ name: 'Me', email: 'me@x.test', recipient_kind: 'SIGNER', copy_delivery: null, bound_user_id: AUTH.sub, witness_for_index: null }] }));
+    const fields = (t.envelopes.replaceFields.mock.calls[0] as unknown as [unknown, unknown, { fields: Array<{ field_type: string; signer_id: string }> }])[2].fields;
+    expect(fields.map((f) => [f.field_type, f.signer_id])).toEqual([['SIGNATURE', 's1'], ['SIGN_DATE', 's1']]);
+  });
+
+  it('several signer roles but fields for one: the first needed role is bound; a template without roles binds its single block', async () => {
+    const a = fromTemplate({ roles: [{ role_key: 'a', kind: 'SIGNER', order: 1 }, { role_key: 'b', kind: 'SIGNER', order: 2 }], fields: [{ role_key: 'b' }] });
+    expect(await a.svc.createEnvelope(a.auth, { template_id: TPL, mode: 'self' }, 'r')).toMatchObject({ bound_role_key: 'b' });
+    const plain = fromTemplate();
+    expect(await plain.svc.createEnvelope(plain.auth, { template_id: TPL, mode: 'self' }, 'r')).toMatchObject({ bound_role_key: null });
+    expect(plain.envelopes.replaceFields).toHaveBeenCalledTimes(1);
+  });
+
+  it('fields for two signer roles → 422 self_sign_single_recipient, before any envelope; given recipients → 422; unknown mode → 400', async () => {
+    const two = fromTemplate({ roles: [{ role_key: 'a', kind: 'SIGNER', order: 1 }, { role_key: 'b', kind: 'SIGNER', order: 2 }], fields: [{ role_key: 'a' }, { role_key: 'b' }] });
+    await expect(two.svc.createEnvelope(two.auth, { template_id: TPL, mode: 'self' }, 'r')).rejects.toMatchObject({ statusCode: 422, context: { details: { reason: 'self_sign_single_recipient' } } });
+    expect(two.repo.createDraft).not.toHaveBeenCalled();
+    const t = fromTemplate();
+    for (const extra of [{ signer: { name: 'B', email: 'b@x.test' } }, { recipients: [] }, { cc: [] }]) {
+      await expect(t.svc.createEnvelope(t.auth, { template_id: TPL, mode: 'self', ...extra }, 'r')).rejects.toMatchObject({ statusCode: 422 });
+    }
+    await expect(t.svc.createEnvelope(t.auth, { template_id: TPL, mode: 'solo' }, 'r')).rejects.toMatchObject({ statusCode: 400, context: { details: { reason: 'invalid_mode' } } });
+    expect(t.documents.render).not.toHaveBeenCalled();
+  });
+
+  it('no verified account email → refused before the render', async () => {
+    const t = fromTemplate();
+    t.envelopes.selfRecipient.mockRejectedValueOnce(new AramoError('INSUFFICIENT_PERMISSIONS', 'x', 403, { requestId: 'r', details: { reason: 'self_sign_email_unverified' } }));
+    await expect(t.svc.createEnvelope(t.auth, { template_id: TPL, mode: 'self' }, 'r')).rejects.toMatchObject({ statusCode: 403 });
+    expect(t.documents.render).not.toHaveBeenCalled();
   });
 });

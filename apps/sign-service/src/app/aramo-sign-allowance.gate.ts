@@ -71,6 +71,15 @@ export class AramoSignAllowanceGate {
     return env.status !== 'DRAFT';
   }
 
+  // Aramo Sign Mobile M-A12 D-1 + PO ruling ("same as web") — a SELF send still needs an
+  // active Aramo Sign subscription (the same 403 ESIGN_NOT_SUBSCRIBED as guardSend), but it is
+  // READ-ONLY: no reservation, no consumption, and never refused for the monthly or daily
+  // limit (signing is always free).
+  async assertSubscribedForSelfSign(tenant_id: string): Promise<void> {
+    const status = await this.allowance.getStatus(tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
+    if (!status.subscribed) throw refusal('NOT_SUBSCRIBED', status);
+  }
+
   async guardSend<T>(tenant_id: string, envelope_id: string, send: () => Promise<T>): Promise<T> {
     const key = { tenant_id, product_key: SIGN_PRODUCT_KEY, allowance_key: ESIGN_ENVELOPE_ALLOWANCE };
     // Overdue reservations are settled from the envelope record before counting.

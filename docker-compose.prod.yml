@@ -525,6 +525,19 @@ services:
       # SIGN_RENEWAL_NOTICE_DAYS: days before the commitment end (default 30, 1 to 90).
       - SIGN_RENEWAL_NOTICES_ENABLED
       - SIGN_RENEWAL_NOTICE_DAYS
+      # Aramo Sign Mobile M-A12 W1-G — in-app store billing (App Store, Google Play). Dark unless
+      # SIGN_STORE_BILLING_ENABLED=1; a store whose values are unset is off (no defaults). Live store
+      # billing needs separate PO authorization. Secrets enter only via the box .env (pipe), never the repo.
+      - SIGN_STORE_BILLING_ENABLED
+      - SIGN_APPLE_IAP_ISSUER_ID
+      - SIGN_APPLE_IAP_KEY_ID
+      - SIGN_APPLE_IAP_PRIVATE_KEY_B64
+      - SIGN_APPLE_BUNDLE_ID
+      - SIGN_APPLE_ENVIRONMENT
+      - SIGN_GOOGLE_PLAY_PACKAGE
+      - SIGN_GOOGLE_PLAY_CREDENTIALS_B64
+      - SIGN_GOOGLE_PLAY_RTDN_AUDIENCE
+      - SIGN_GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - SIGN_KMS_KEY_ID
@@ -688,6 +701,9 @@ services:
       # encrypts the opaque ids of discovered inbox items. Unset ⇒ discovery is OFF (fail
       # closed): the inbox lists bound items only and every handle is refused.
       - SIGN_INBOX_HANDLE_KEY
+      # Aramo Sign Mobile M-A12 W1-E.3 — the support address app issues are emailed to (no
+      # default). Unset ⇒ "Report app issue" is OFF (503 app_issues_unavailable).
+      - SIGN_APP_ISSUE_EMAIL
       - APNS_KEY_ID
       - APNS_TEAM_ID
       - APNS_TOPIC
@@ -884,6 +900,11 @@ services:
       # Signup-attempt cleanup (abandoned: 3 days after expiry; refused: 180 days) — ON unless set to 0.
       - SIGN_PERSONAL_SIGNUP_PURGE_ENABLED
       - SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS
+      # Aramo Sign Mobile M-A12 A1-3 — the store price reconciliation report reads the Play base-plan
+      # prices (same values as sign-service; unset ⇒ Play prices reported unavailable).
+      - SIGN_STORE_BILLING_ENABLED
+      - SIGN_GOOGLE_PLAY_PACKAGE
+      - SIGN_GOOGLE_PLAY_CREDENTIALS_B64
     # Sign Personal (Free) — offline MaxMind GeoLite2 databases, read-only (written by
     # deploy/geoip/docker-compose.geoip.yml; a replaced file is picked up without a restart). A
     # missing directory / file ⇒ network country UNKNOWN ⇒ a risk signal, not a refusal.

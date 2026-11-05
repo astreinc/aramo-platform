@@ -140,7 +140,7 @@ export function envelopeModeOf(env: { envelope_mode?: string | null }): Envelope
   return env.envelope_mode === 'SELF' ? 'self' : 'standard';
 }
 
-function selfSignSingleRecipient(requestId: string): AramoError {
+export function selfSignSingleRecipient(requestId: string): AramoError {
   return new AramoError('VALIDATION_ERROR', 'A document you sign yourself has exactly one recipient: you', 422, {
     requestId,
     details: { reason: 'self_sign_single_recipient' },
@@ -828,7 +828,7 @@ export class SenderEnvelopeService {
 
   // M-A12 W1-A — the caller as their own recipient: the verified account email (as stored)
   // and the Sign profile display name, else the account display name, else the email.
-  private async selfRecipient(auth: AuthContextType, requestId: string): Promise<{ name: string; email: string }> {
+  async selfRecipient(auth: AuthContextType, requestId: string): Promise<{ name: string; email: string }> {
     const verified = await this.verifiedAccountEmail(auth);
     const user = verified === null ? null : await this.identity.findUserById(auth.sub).catch(() => null);
     const email = user?.email?.trim() ?? '';

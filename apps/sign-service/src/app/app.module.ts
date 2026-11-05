@@ -44,7 +44,7 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
+import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, TENANT_MEMBERSHIP_PORT, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -91,6 +91,7 @@ import { EsignOwnerActivationService } from './billing/esign-owner-activation.se
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
 import { OrganizationBillingProfileAdapter } from './billing/organization-billing-profile.adapter.js';
+import { TenantMembershipAdapter } from './billing/tenant-membership.adapter.js';
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
 import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
 import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
@@ -128,6 +129,8 @@ import { SignAccountService } from './account/sign-account.service.js';
 import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
 import { SavedDataPurgeService } from './me/signature/saved-data-purge.service.js';
+import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
+import { SignMeProfileService } from './me/profile/sign-me-profile.service.js';
 // Aramo Sign Mobile (M-A3 §1, §2, §9) — notification feed, push devices, preferences, push delivery.
 import { SignMeNotificationsController } from './me/notifications/sign-me-notifications.controller.js';
 import { SignMeNotificationsService } from './me/notifications/sign-me-notifications.service.js';
@@ -193,6 +196,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
       providers: [
         { provide: PLAN_ELIGIBILITY_PORT, useClass: AtsPlanEligibilityAdapter },
         { provide: ORGANIZATION_BILLING_PROFILE_PORT, useClass: OrganizationBillingProfileAdapter },
+        // M-A12 A1-2 — in-app purchase needs exactly one active member (the purchaser).
+        { provide: TENANT_MEMBERSHIP_PORT, useClass: TenantMembershipAdapter },
       ],
     }),
     // PX-V1 §8 (D-2) — the authenticated sender zone (v1/sign/sender/*). The
@@ -363,6 +368,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // and the account-close purge of saved signatures and contacts.
     SavedSignatureService,
     SavedDataPurgeService,
+    // Aramo Sign Mobile M-A12 — Find in document, and the user's profile / settings / app issues.
+    DocumentTextLayerService,
+    SignMeProfileService,
     // Aramo Sign Mobile (M-A3 §1, §2, §9) — feed, devices, preferences; the outbox
     // fan-out + push delivery worker (PUSH_DELIVERY_PORT, SIGN_PUSH_DELIVERY, default
     // disabled); the account-close convenience-data purge.

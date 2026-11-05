@@ -3078,6 +3078,32 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/store-price-reconciliation:
+    get:
+      operationId: getPlatformCommercialStorePriceReconciliation
+      tags: [Platform Commercial Billing Status]
+      summary: Store price reconciliation report (Sign Mobile M-A12 A1-3).
+      description: |
+        Every store product (App Store / Google Play) pinned to a PUBLISHED plan version, compared
+        with the version's published regional list prices, per country: `MATCH`, `MISMATCH`,
+        `NO_REGIONAL_PRICE`, `NOT_IN_STORE`, or `STORE_PRICE_UNAVAILABLE` (the store's prices could
+        not be read; App Store prices are not read). A report only: nothing is blocked at runtime
+        (the store always charges its own localized price). Read-only. Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The reconciliation entries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorePriceReconciliationResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/tenants/{tenant_id}/billing-status:
     get:
       operationId: getPlatformCommercialTenantBillingStatus
@@ -9111,6 +9137,10 @@ components:
           type: integer
         billing_subscription_ref:
           type: [string, 'null']
+        billing_provider:
+          type: [string, 'null']
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          description: Sign Mobile M-A12 W1-G item 8 — the billing channel; store revenue is net of the store fee (the store is the merchant of record).
         status_since:
           type: [string, 'null']
           format: date-time
@@ -9210,6 +9240,10 @@ components:
           type: boolean
         billing_subscription_ref:
           type: [string, 'null']
+        billing_provider:
+          type: [string, 'null']
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          description: Sign Mobile M-A12 W1-G item 8 — the billing channel of the subscription.
         provider_price_ref:
           type: [string, 'null']
         entitlement:
@@ -10735,7 +10769,7 @@ components:
     CommercialCatalogVersionTerms:
       type: object
       additionalProperties: false
-      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices]
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices]
       properties:
         list_price_minor:
           type: [integer, 'null']
@@ -10780,6 +10814,14 @@ components:
                 minimum: 0
                 maximum: 10000000
                 description: Minor units (USD cents) per unit.
+        regional_prices:
+          type: array
+          description: >-
+            Sign Mobile M-A12 A1-3 — the regional list prices in the version's content (covered by
+            content_checksum), sorted by country then interval. Empty = none. Never US (the list price
+            is the US / USD price).
+          items:
+            $ref: '#/components/schemas/CommercialRegionalPrice'
 
     CommercialCatalogOpenRequest:
       type: object
@@ -11064,9 +11106,103 @@ components:
             type: [integer, 'null']
             minimum: 0
             maximum: 10000000
+        regional_prices:
+          type: array
+          description: >-
+            Sign Mobile M-A12 A1-3 — regional list prices on the DRAFT's content: each entry sets the
+            (country, interval) price in the currency's minor units, or removes it (amount_minor
+            null). Entries not named keep their price. Published only through the PLAN_VERSION_PUBLISH
+            change request (Finance → Owner); immutable once published.
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [country, interval, currency, amount_minor]
+            properties:
+              country:
+                type: string
+                pattern: '^[A-Z]{2}$'
+              interval:
+                type: string
+                enum: [MONTH, YEAR]
+              currency:
+                type: string
+                pattern: '^[A-Z]{3}$'
+              amount_minor:
+                type: [integer, 'null']
+                minimum: 0
+                maximum: 1000000000
         note:
           type: string
           maxLength: 500
+
+    CommercialRegionalPrice:
+      type: object
+      additionalProperties: false
+      required: [country, currency, amount_minor, interval]
+      properties:
+        country:
+          type: string
+        currency:
+          type: string
+        amount_minor:
+          type: integer
+          minimum: 0
+        interval:
+          type: string
+          enum: [MONTH, YEAR]
+
+    StorePriceReconciliationResponse:
+      type: object
+      additionalProperties: false
+      required: [product_key, entries]
+      properties:
+        product_key:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [plan_key, plan_version_id, provider, product_id, interval, country, status, published, store]
+            properties:
+              plan_key:
+                type: string
+              plan_version_id:
+                type: string
+                format: uuid
+              provider:
+                type: string
+                enum: [APP_STORE, GOOGLE_PLAY]
+              product_id:
+                type: string
+              interval:
+                type: string
+                enum: [MONTH, YEAR]
+              country:
+                type: [string, 'null']
+              status:
+                type: string
+                enum: [MATCH, MISMATCH, NO_REGIONAL_PRICE, NOT_IN_STORE, STORE_PRICE_UNAVAILABLE]
+              published:
+                type: [object, 'null']
+                additionalProperties: false
+                required: [currency, amount_minor]
+                properties:
+                  currency:
+                    type: string
+                  amount_minor:
+                    type: integer
+              store:
+                type: [object, 'null']
+                additionalProperties: false
+                required: [currency, amount_minor]
+                properties:
+                  currency:
+                    type: string
+                  amount_minor:
+                    type: integer
 
     CommercialChangeRequestDetail:
       type: object

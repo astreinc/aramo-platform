@@ -9,6 +9,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput, hashSigningToken } from '@aramo/sign';
 import { ESIGN_ROLE_PERMISSIONS } from '@aramo/identity';
+import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, ESIGN_ENVELOPE_SENT_EVENT, SIGN_PRODUCT_KEY } from '@aramo/subscription';
 import cookieParser from 'cookie-parser';
 import { SignJWT, exportSPKI, generateKeyPair, type KeyLike } from 'jose';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
@@ -590,6 +591,57 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile envel
       } finally {
         delete process.env['SIGN_APP_ISSUE_EMAIL'];
       }
+    });
+
+    // PO ruling on M-A12 D-1 ("same as web"): a self send still needs an active subscription
+    // (403 ESIGN_NOT_SUBSCRIBED), but is never refused at 0 sends left and never uses one.
+    async function selfReady(user: string, tenant: string): Promise<string> {
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(user, tenant)).send({ mode: 'self', subject: 'Self send' });
+      expect(created.status).toBe(201);
+      const id = created.body.id as string;
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      const up = await http().post(`/v1/sign/sender/envelopes/${id}/documents`).set(await H(user, tenant)).send({ filename: 's.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      const d = await http().get(`/v1/sign/sender/envelopes/${id}`).set(await H(user, tenant));
+      const field = { envelope_document_id: up.body.id, signer_id: d.body.recipients[0].id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 };
+      expect((await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(user, tenant)).send({ fields: [field] })).status).toBe(200);
+      return id;
+    }
+
+    it('a Business tenant without a subscription: self send 403 ESIGN_NOT_SUBSCRIBED', async () => {
+      const tenant = randomUUID();
+      const user = randomUUID();
+      await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,'NoSub Co','nosub-co','BUSINESS','ACTIVE',true, now())`, [tenant]);
+      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [tenant, c]);
+      await member(user, 'nora@nosub.test', tenant);
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(user, tenant)).send({ mode: 'self', subject: 'Self send' });
+      expect(created.status).toBe(201);
+      // Without a subscription nothing can be prepared to sign: the upload is the same 403
+      // ESIGN_NOT_SUBSCRIBED (the send-side check is covered in sign-m-a12-gap-closure.spec.ts).
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      const up = await http().post(`/v1/sign/sender/envelopes/${created.body.id}/documents`).set(await H(user, tenant)).send({ filename: 's.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      expect(up.status).toBe(403);
+      expect(up.body.error.code).toBe('ESIGN_NOT_SUBSCRIBED');
+    });
+
+    it('a Business tenant at 0 sends left: self send succeeds and usage is unchanged', async () => {
+      const id = await selfReady(ANN, TENANT);
+      const allowance = module.get(AllowanceService);
+      const key = { tenant_id: TENANT, product_key: SIGN_PRODUCT_KEY, allowance_key: ESIGN_ENVELOPE_ALLOWANCE };
+      for (let i = 0; i < 1000; i += 1) {
+        const send_key = `aramo-sign:envelope:seed-${randomUUID()}`;
+        const r = await allowance.reserve({ ...key, send_key });
+        if (!r.ok) break;
+        await allowance.consume({ ...key, send_key, usage_event_type: ESIGN_ENVELOPE_SENT_EVENT });
+      }
+      const status = await allowance.getStatus(TENANT, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
+      expect(status.subscribed && status.remaining).toBe(0);
+      const before = (await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE tenant_id=$1`, [TENANT])).rows[0].n;
+      const sent = await http().post(`/v1/sign/sender/envelopes/${id}/send`).set(await H(ANN)).send({});
+      expect(sent.status).toBe(200);
+      expect(sent.body.status).toBe('SENT');
+      expect((await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE tenant_id=$1`, [TENANT])).rows[0].n).toBe(before);
     });
   });
 });

@@ -44,6 +44,8 @@ const { like, uuid, integer, boolean, eachLike, regex, fromProviderState } = Mat
 //  18. POST   /v1/sign/inbox/{handle}/sign (stale)      404 inbox_item_not_found
 //  19. GET    /v1/sign/sender/envelopes                 200 items carry awaiting_you
 //  20. GET    /v1/sign/sender/envelopes                 200 awaiting_you + my_inbox_item_id (handle)
+// M-A12 (agent A): self create, sender/signer text layer, profile GET/PUT, settings GET/PUT,
+//   app-issues 202, template favorite PUT/DELETE 204 (see the M-A12 describe at the end).
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -650,6 +652,307 @@ describe('sign-mobile → PUT /v1/sign/sender/envelopes/{id}/fields (M-A6 Name a
         expect(res.status).toBe(200);
         const out = (await res.json()) as { fields: unknown[] };
         expect(out.fields).toHaveLength(2);
+      });
+  });
+});
+
+// Aramo Sign Mobile M-A12 W1-G — plans, account and in-app store billing. The provider verifies with
+// store billing DARK (SIGN_STORE_BILLING_ENABLED unset): no store product is offered, the account says
+// why the app may not buy, and every store route answers 503 store_billing_disabled. The plans are
+// filtered to the caller's tenant kind (R-2, A5).
+describe('sign-mobile → billing and store (M-A12 W1-G)', () => {
+  it('reads the plans of the caller’s tenant kind, with store products and the regional price', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native plans read (store billing off)')
+      .withRequest('GET', '/v1/sign/billing/plans', (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          plans: eachLike({ key: like('aramo-sign-standard-business-v1'), name: like('Business'), purchasable: boolean(false), store_products: [], regional_price: null, regional_prices: [] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/plans`, { headers: AUTH });
+        expect(res.status).toBe(200);
+        const out = (await res.json()) as { plans: { store_products: unknown[] }[] };
+        expect(out.plans[0]?.store_products).toEqual([]);
+      });
+  });
+
+  it('reads the account: where the plan is managed and whether the app may buy', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native billing account read (store billing off)')
+      .withRequest('GET', '/v1/sign/billing/account', (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_kind: like('BUSINESS'),
+          can_manage_billing: boolean(true),
+          managed_by: null,
+          store_purchase_eligible: false,
+          store_purchase_block_reason: 'store_billing_disabled',
+          manage_url: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/account`, { headers: AUTH });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { store_purchase_eligible: boolean }).store_purchase_eligible).toBe(false);
+      });
+  });
+
+  it('a store purchase intent is refused while store billing is off', async () => {
+    const body = { platform: 'ios', product_id: 'ai.aramo.sign.business.monthly' };
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native store purchase intent while store billing is off')
+      .withRequest('POST', '/v1/sign/billing/store/intent', (b) => {
+        b.headers(JSON_AUTH).jsonBody(body);
+      })
+      .willRespondWith(503, (b) => {
+        b.jsonBody(errorBody('ESIGN_BILLING_UNAVAILABLE', { reason: 'store_billing_disabled' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/store/intent`, { method: 'POST', headers: JSON_AUTH, body: JSON.stringify(body) });
+        expect(res.status).toBe(503);
+      });
+  });
+
+  it('a store purchase verification is refused while store billing is off', async () => {
+    const body = { platform: 'android', product_id: 'ai.aramo.sign.business.monthly', intent_id: 'e6120000-0000-7000-8000-000000000001', purchase_token: 'pact-play-purchase-token' };
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native store purchase verification while store billing is off')
+      .withRequest('POST', '/v1/sign/billing/store/verify', (b) => {
+        b.headers(JSON_AUTH).jsonBody(body);
+      })
+      .willRespondWith(503, (b) => {
+        b.jsonBody(errorBody('ESIGN_BILLING_UNAVAILABLE', { reason: 'store_billing_disabled' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/store/verify`, { method: 'POST', headers: JSON_AUTH, body: JSON.stringify(body) });
+        expect(res.status).toBe(503);
+      });
+  });
+
+  it('a store restore is refused while store billing is off', async () => {
+    const body = { platform: 'android', purchase_tokens: ['pact-play-purchase-token'] };
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native store restore while store billing is off')
+      .withRequest('POST', '/v1/sign/billing/store/restore', (b) => {
+        b.headers(JSON_AUTH).jsonBody(body);
+      })
+      .willRespondWith(503, (b) => {
+        b.jsonBody(errorBody('ESIGN_BILLING_UNAVAILABLE', { reason: 'store_billing_disabled' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/store/restore`, { method: 'POST', headers: JSON_AUTH, body: JSON.stringify(body) });
+        expect(res.status).toBe(503);
+      });
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A12 (LOCKED) W1-A / W1-C.2 / W1-E / W1-F — self-sign create, Find in
+// document (sender GET, signer POST), the Sign profile and settings, app issues, template favorites.
+// The fixed ids and the self token MUST match pact/provider/src/verify-sign.ts.
+const SELF_ENVELOPE_ID = 'e6c10000-0000-7000-8000-0000000000a1';
+const SELF_SESSION_ENVELOPE_ID = 'e6c10000-0000-7000-8000-0000000000b1';
+const SELF_TOKEN = 'sign-mobile-pact-token-self';
+const TEMPLATE_ID = 'e6c10000-0000-7000-8000-000000000001';
+const PROFILE_BODY = { display_name: 'Sam Sender', title: 'Account Manager', company: 'Pact Sign Co', country: 'US', phone: '+14155550123' };
+
+describe('sign-mobile → M-A12 self-sign, text layer, profile, settings, app issues, favorites', () => {
+  it('creates a self-sign draft (mode self)', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native self-sign draft create')
+      .withRequest('POST', '/v1/sign/sender/envelopes', (b) => {
+        b.headers(JSON_AUTH).jsonBody({ mode: 'self', subject: 'My lease' });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ id: uuid('e6c10000-0000-7000-8000-0000000000f1'), status: 'DRAFT', subject: 'My lease', mode: 'self' });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/envelopes`, { method: 'POST', headers: JSON_AUTH, body: JSON.stringify({ mode: 'self', subject: 'My lease' }) });
+        expect(res.status).toBe(201);
+        expect(((await res.json()) as { mode: string }).mode).toBe('self');
+      });
+  });
+
+  it('reads a document text layer as the sender (an image-only page has no words)', async () => {
+    const doc = childOf(SELF_ENVELOPE_ID, 2);
+    const path = `/v1/sign/sender/envelopes/${SELF_ENVELOPE_ID}/documents/${doc}/text-layer`;
+    await provider
+      .addInteraction()
+      .given('a sent self-sign envelope awaits the signed-in sender', { envelope_id: SELF_ENVELOPE_ID })
+      .uponReceiving('a native sender text-layer read')
+      .withRequest('GET', path, (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ document_id: doc, pages: eachLike({ page: integer(1), words: [] }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${path}`, { headers: AUTH });
+        expect(res.status).toBe(200);
+        const out = (await res.json()) as { pages: { page: number; words: unknown[] }[] };
+        expect(out.pages[0]?.page).toBe(1);
+      });
+  });
+
+  it('reads a document text layer through the SELF signing session (token in the body)', async () => {
+    const doc = childOf(SELF_SESSION_ENVELOPE_ID, 2);
+    const path = `/v1/sign/signing/documents/${doc}/text-layer`;
+    await provider
+      .addInteraction()
+      .given('a self-sign session has accepted the disclosure', { envelope_id: SELF_SESSION_ENVELOPE_ID })
+      .uponReceiving('a signer text-layer read with the session token')
+      .withRequest('POST', path, (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: SELF_TOKEN });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ document_id: doc, pages: eachLike({ page: integer(1), words: [] }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: SELF_TOKEN }) });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('reads the Sign profile', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign-mobile user has a Sign profile')
+      .uponReceiving('a native Sign profile read')
+      .withRequest('GET', '/v1/sign/me/profile', (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          display_name: like('Sam Sender'),
+          title: like('Account Manager'),
+          company: like('Pact Sign Co'),
+          country: like('US'),
+          phone: like('+14155550123'),
+          email: like('sam.sender@example.com'),
+          updated_at: like('2026-11-04T00:00:00.000Z'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/me/profile`, { headers: AUTH });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { display_name: string }).display_name).toBe('Sam Sender');
+      });
+  });
+
+  it('saves the Sign profile', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native Sign profile save')
+      .withRequest('PUT', '/v1/sign/me/profile', (b) => {
+        b.headers(JSON_AUTH).jsonBody(PROFILE_BODY);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ ...PROFILE_BODY, address_line1: null, city: null, email: like('sam.sender@example.com'), updated_at: like('2026-11-04T00:00:00.000Z') });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/me/profile`, { method: 'PUT', headers: JSON_AUTH, body: JSON.stringify(PROFILE_BODY) });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('reads the Sign settings', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign-mobile user has a Sign profile')
+      .uponReceiving('a native Sign settings read')
+      .withRequest('GET', '/v1/sign/me/settings', (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ date_format: regex('^(MM/DD/YYYY|DD/MM/YYYY|YYYY-MM-DD)$', 'DD/MM/YYYY'), default_field_size: regex('^(S|M|L)$', 'M') });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/me/settings`, { headers: AUTH });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('saves the Sign settings', async () => {
+    const body = { date_format: 'YYYY-MM-DD', default_field_size: 'L' };
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native Sign settings save')
+      .withRequest('PUT', '/v1/sign/me/settings', (b) => {
+        b.headers(JSON_AUTH).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(body);
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/me/settings`, { method: 'PUT', headers: JSON_AUTH, body: JSON.stringify(body) });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('reports an app issue (202)', async () => {
+    const body = { message: 'The Find button does nothing', app_version: '1.2.0', os: 'android', os_version: '15', device_model: 'Pixel 8', screen: 'Signing' };
+    await provider
+      .addInteraction()
+      .given('app issue reports are delivered to support')
+      .uponReceiving('a native app issue report')
+      .withRequest('POST', '/v1/sign/me/app-issues', (b) => {
+        b.headers(JSON_AUTH).jsonBody(body);
+      })
+      .willRespondWith(202, (b) => {
+        b.jsonBody({ received: true, reference: uuid('e6c10000-0000-7000-8000-0000000000e1') });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/me/app-issues`, { method: 'POST', headers: JSON_AUTH, body: JSON.stringify(body) });
+        expect(res.status).toBe(202);
+      });
+  });
+
+  it('marks a template as a favorite (204)', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a native template favorite')
+      .withRequest('PUT', `/v1/sign/sender/templates/${TEMPLATE_ID}/favorite`, (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(204)
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/templates/${TEMPLATE_ID}/favorite`, { method: 'PUT', headers: AUTH });
+        expect(res.status).toBe(204);
+      });
+  });
+
+  it('removes a template favorite (204)', async () => {
+    await provider
+      .addInteraction()
+      .given('a sign-mobile user has a favorite template')
+      .uponReceiving('a native template unfavorite')
+      .withRequest('DELETE', `/v1/sign/sender/templates/${TEMPLATE_ID}/favorite`, (b) => {
+        b.headers(AUTH);
+      })
+      .willRespondWith(204)
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/templates/${TEMPLATE_ID}/favorite`, { method: 'DELETE', headers: AUTH });
+        expect(res.status).toBe(204);
       });
   });
 });

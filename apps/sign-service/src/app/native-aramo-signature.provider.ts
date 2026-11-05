@@ -117,9 +117,11 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     // Aramo Sign Mobile M-A12 D-1 (amends M-A5 §4.4) — signing is always free: a SELF
     // envelope is not counted against the sign.envelopes allowance, so the "no sends left"
-    // refusal never applies to it. It invites no one (the engine mints no LINK session),
+    // (monthly or daily) refusal never applies to it; it still needs an active subscription. It invites no one (the engine mints no LINK session),
     // so there is no signer email and no copy to dispatch either.
     if (env.envelope_mode === 'SELF') {
+      // PO ruling ("same as web"): an active subscription is still required (read-only check).
+      await this.allowance.assertSubscribedForSelfSign(tenant_id);
       await this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by, opts);
       return this.summarize(tenant_id, envelope_id);
     }

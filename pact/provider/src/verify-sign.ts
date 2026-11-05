@@ -168,6 +168,8 @@ const SENDER_SCOPES: readonly (readonly [string, string])[] = [
   ['e5000000-0000-7000-8000-000000000011', 'sign:envelope:read'],
   ['e5000000-0000-7000-8000-000000000012', 'sign:envelope:create'],
   ['e5000000-0000-7000-8000-000000000013', 'sign:envelope:send'],
+  // Aramo Sign Mobile M-A12 W1-F — template favorites need the template read scope.
+  ['e5000000-0000-7000-8000-000000000014', 'document_template:read'],
 ];
 // The consumer's placeholder session cookie; the requestFilter swaps in a real token.
 const SENDER_COOKIE_NAME = 'aramo_access_token_sign';
@@ -226,6 +228,9 @@ const W2_AWAITING_SENDER = {
   link: 'e6b20000-0000-7000-8000-000000000024', email: 'ava.awaiting@example.com', envelope: 'e6b20000-0000-7000-8000-0000000000d1',
   bearer: 'Bearer pact-native-sign-access-token-awaiting', cookie: 'sign-workspace-pact-awaiting',
 };
+// Aramo Sign Mobile M-A12 — MUST match pact/consumers/sign-mobile/src/sign-service.consumer.test.ts.
+const SIGN_MOBILE_SELF_TOKEN = 'sign-mobile-pact-token-self';
+const SIGN_MOBILE_TEMPLATE_ID = 'e6c10000-0000-7000-8000-000000000001';
 const SIGN_MOBILE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
@@ -419,6 +424,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       STRIPE_PLAN_PRICES: 'aramo-sign-standard-business-v1=price_pact_business',
     } as const;
     const billingEnvSaved: Partial<Record<string, string | undefined>> = {};
+    let appIssueEnvSaved: string | undefined;
 
     // PX-1 — one sender-authored (OWNED-source) envelope fixture. NO deletes:
     // SignatureEvent is append-only; each interaction names its own envelope id.
@@ -493,6 +499,60 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
          VALUES (gen_random_uuid(),$1,$2,'signature','TYPED','Sam Sender','caveat',$3)
          ON CONFLICT (tenant_id, user_id, slot) DO NOTHING`,
         [SENDER_TENANT_ID, SENDER_USER_ID, SIGN_MOBILE_PNG],
+      );
+    }
+    // Aramo Sign Mobile M-A12 W1-E — the sender's Sign profile and settings.
+    async function seedMobileProfile(): Promise<void> {
+      await seedSender();
+      await db.query(
+        `INSERT INTO "sign"."SignUserProfile" (tenant_id, user_id, display_name, title, company, country, phone)
+         VALUES ($1,$2,'Sam Sender','Account Manager','Pact Sign Co','US','+14155550123')
+         ON CONFLICT (tenant_id, user_id) DO NOTHING`,
+        [SENDER_TENANT_ID, SENDER_USER_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignUserSettings" (tenant_id, user_id, date_format, default_field_size)
+         VALUES ($1,$2,'DD/MM/YYYY','M')
+         ON CONFLICT (tenant_id, user_id) DO NOTHING`,
+        [SENDER_TENANT_ID, SENDER_USER_ID],
+      );
+    }
+    // Aramo Sign Mobile M-A12 W1-A — a SENT self-sign envelope: its one recipient is the
+    // signed-in sender (bound to them, their verified email), so "Sign now" is offered.
+    async function seedMobileSelfSignEnvelope(envelopeId: string): Promise<void> {
+      await seedSenderEnvelope({ envelopeId, status: 'SENT', document: true });
+      await db.query(`UPDATE "sign"."SignatureEnvelope" SET envelope_mode = 'SELF', signer_date_format = 'MM/DD/YYYY' WHERE id = $1`, [envelopeId]);
+      const docId = childId(envelopeId, 2);
+      const signerId = childId(envelopeId, 3);
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status, bound_user_id)
+         VALUES ($1,$2,$3,'sam.sender@example.com','Sam Sender',1,'PENDING',$4)
+         ON CONFLICT (id) DO NOTHING`,
+        [signerId, SENDER_TENANT_ID, envelopeId, SENDER_USER_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required)
+         VALUES ($1,$2,$3,$4,'SIGNATURE',0,72,100,180,40,true), ($5,$2,$3,$4,'FIRST_NAME',0,72,160,150,22,true)
+         ON CONFLICT (id) DO NOTHING`,
+        [childId(envelopeId, 4), SENDER_TENANT_ID, docId, signerId, childId(envelopeId, 5)],
+      );
+    }
+    // M-A12 W1-C.2 — the self-sign envelope with a live SELF session that accepted the disclosure.
+    async function seedMobileSelfSession(envelopeId: string): Promise<void> {
+      await seedMobileSelfSignEnvelope(envelopeId);
+      const signerId = childId(envelopeId, 3);
+      const sessionId = childId(envelopeId, 6);
+      await db.query(
+        `INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin, authenticated_user_id)
+         VALUES ($1,$2,$3,$4,$5,'ISSUED', now() + interval '30 minutes','SELF',$6)
+         ON CONFLICT (id) DO NOTHING`,
+        [sessionId, SENDER_TENANT_ID, envelopeId, signerId, createHash('sha256').update(SIGN_MOBILE_SELF_TOKEN).digest('base64url'), SENDER_USER_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignerDisclosureAcceptance" (id, tenant_id, signer_id, disclosure_version, disclosure_text_hash, session_id)
+         SELECT gen_random_uuid(),$1,$2,'v1',$3,$4
+          WHERE NOT EXISTS (SELECT 1 FROM "sign"."SignerDisclosureAcceptance" WHERE signer_id = $2)`,
+        [SENDER_TENANT_ID, signerId, 'a'.repeat(64), sessionId],
       );
     }
     // A SENT sender envelope whose signer was reminded a moment ago (the 60-minute
@@ -1096,9 +1156,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         w2Tokens.set(u.cookie, await sign(claims));
       }
 
+      // Aramo Sign Mobile M-A12 W1-F — the Documents template list (an HTTP port to apps/api in
+      // production) answers with one tenant template, for the favorite interactions.
+      const pactTemplates = {
+        list: async () => ({ items: [{ template_id: SIGN_MOBILE_TEMPLATE_ID, owner_scope: 'TENANT', name: 'NDA', signing: null }], unavailable: [] }),
+      };
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(DOCUMENT_STORAGE_PORT)
         .useValue(inMemoryStorage)
+        // The DOCUMENT_TEMPLATES_PORT token (apps/sign-service/src/app/document-templates-http.adapter.ts).
+        .overrideProvider('DOCUMENT_TEMPLATES_PORT')
+        .useValue(pactTemplates)
         .compile();
       app = module.createNestApplication<NestExpressApplication>();
       // Mirror apps/sign-service/src/main.ts: JSON body ceiling for base64 PDF
@@ -1309,6 +1377,41 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await seedMobileSavedSignature();
             return undefined;
           },
+          // Aramo Sign Mobile M-A12 — profile and settings; a self-sign envelope ("Sign now").
+          'a sign-mobile user has a Sign profile': async () => {
+            await seedMobileProfile();
+            return undefined;
+          },
+          'a sent self-sign envelope awaits the signed-in sender': async (params?: unknown) => {
+            await seedMobileSelfSignEnvelope(envelopeParam(params));
+            return undefined;
+          },
+          'a self-sign session has accepted the disclosure': async (params?: unknown) => {
+            await seedMobileSelfSession(envelopeParam(params));
+            return undefined;
+          },
+          'a sign-mobile user has a favorite template': async () => {
+            await seedSender();
+            await db.query(
+              `INSERT INTO "sign"."SignUserFavorite" (tenant_id, user_id, item_kind, item_ref) VALUES ($1,$2,'TEMPLATE',$3) ON CONFLICT DO NOTHING`,
+              [SENDER_TENANT_ID, SENDER_USER_ID, SIGN_MOBILE_TEMPLATE_ID],
+            );
+            return undefined;
+          },
+          // M-A12 W1-E.3 — app issues are emailed to support (the stub mailer); off without the address.
+          'app issue reports are delivered to support': {
+            setup: async () => {
+              await seedSender();
+              appIssueEnvSaved = process.env['SIGN_APP_ISSUE_EMAIL'];
+              process.env['SIGN_APP_ISSUE_EMAIL'] = 'support@example.test';
+              return undefined;
+            },
+            teardown: async () => {
+              if (appIssueEnvSaved === undefined) delete process.env['SIGN_APP_ISSUE_EMAIL'];
+              else process.env['SIGN_APP_ISSUE_EMAIL'] = appIssueEnvSaved;
+              return undefined;
+            },
+          } as never,
           'a sent sender envelope whose signer was just reminded': async (params?: unknown) => {
             await seedMobileRemindedEnvelope(envelopeParam(params));
             return undefined;
