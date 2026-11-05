@@ -13,6 +13,7 @@ import { AbuseReportService } from './abuse-report.service.js';
 import { SignIdempotencyRepository } from './sign-idempotency.repository.js';
 import { SignSavedSignatureRepository } from './sign-saved-signature.repository.js';
 import { SignContactRepository } from './sign-contact.repository.js';
+import { SignUserProfileRepository } from './sign-user-profile.repository.js';
 import { SIGNER_ATTESTED_NAME_PORT } from './ports/signer-attested-name.port.js';
 import { PrismaSignerAttestedNameAdapter } from './prisma-signer-attested-name.adapter.js';
 import { TrustedTimestampService } from './trusted-timestamp/trusted-timestamp.service.js';
@@ -71,6 +72,8 @@ export class EsignModule {
         SignIdempotencyRepository,
         SignSavedSignatureRepository,
         SignContactRepository,
+        // M-A12 W1-E / W1-F — profile, settings, app-issue metadata, template favorites.
+        SignUserProfileRepository,
         // M-A6 §2.2 × M-A5 §3.4 — a HOSTED signer's SIGNER_PROFILE name is the name
         // they attested at disclosure (SignerDisclosureAcceptance.attested_name).
         { provide: SIGNER_ATTESTED_NAME_PORT, useClass: PrismaSignerAttestedNameAdapter },
@@ -90,7 +93,7 @@ export class EsignModule {
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignReportRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignReportRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, SignUserProfileRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
     };
   }
 }

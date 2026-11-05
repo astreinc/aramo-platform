@@ -117,6 +117,8 @@ export function HomeBody() {
       onSign={(task) => navigation.navigate('Signing', { envelopeId: task.inboxItemId })}
       onRow={openRow}
       onViewAll={() => openAgreements('all')}
+      onTasks={() => navigation.navigate('Tasks')}
+      onPlans={() => navigation.navigate('Plans', { from: 'home' })}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -139,6 +141,10 @@ export interface HomeViewProps {
   readonly onSign: (task: AssignedTask) => void;
   readonly onRow: (row: AgreementRow) => void;
   readonly onViewAll: () => void;
+  /** M-A12 W1-D.1 — Home "Assigned tasks" opens the Tasks screen. */
+  readonly onTasks?: () => void;
+  /** M-A12 W1-D.3 — the banner's "See plans ›" / "Manage plan ›". */
+  readonly onPlans?: () => void;
   readonly refreshControl?: ReactElement<RefreshControlProps>;
   readonly now?: number;
 }
@@ -155,6 +161,8 @@ export function HomeView({
   onSign,
   onRow,
   onViewAll,
+  onTasks,
+  onPlans,
   refreshControl,
   now,
 }: HomeViewProps) {
@@ -183,7 +191,7 @@ export function HomeView({
       {model.banner ? (
         <View
           testID="home-plan-banner"
-          accessible
+          accessible={!onPlans}
           accessibilityRole="summary"
           accessibilityLabel={[model.banner.title, model.banner.body].filter(Boolean).join('. ')}
           style={[styles.plan, { backgroundColor: PLAN_NAVY }]}
@@ -192,6 +200,18 @@ export function HomeView({
             <Text style={[styles.planTitle, { fontFamily: font }]}>{model.banner.title}</Text>
             {model.banner.body ? (
               <Text style={[styles.planBody, { fontFamily: font }]}>{model.banner.body}</Text>
+            ) : null}
+            {onPlans ? (
+              <Pressable
+                testID="home-plan-action"
+                onPress={onPlans}
+                accessibilityRole="link"
+                accessibilityLabel={model.banner.action}
+                hitSlop={8}
+                style={{ minHeight: t.size.minTouch, justifyContent: 'center' }}
+              >
+                <Text style={[styles.planAction, { fontFamily: font }]}>{`${model.banner.action} ›`}</Text>
+              </Pressable>
             ) : null}
           </View>
           <View style={styles.planTile}>
@@ -233,9 +253,24 @@ export function HomeView({
         ))}
       </View>
 
-      <Text accessibilityRole="header" style={[styles.section, sectionTitle]}>
-        {model.tasksHeading}
-      </Text>
+      {onTasks ? (
+        <Pressable
+          testID="home-tasks"
+          onPress={onTasks}
+          accessibilityRole="button"
+          accessibilityHint="Opens Tasks"
+          style={[styles.section, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+        >
+          <Text accessibilityRole="header" style={sectionTitle}>
+            {model.tasksHeading}
+          </Text>
+          <Text style={{ color: t.color.accent, fontFamily: font, fontSize: 15 }}>See all ›</Text>
+        </Pressable>
+      ) : (
+        <Text accessibilityRole="header" style={[styles.section, sectionTitle]}>
+          {model.tasksHeading}
+        </Text>
+      )}
       <Card style={styles.block}>
         {model.tasks.length === 0 ? (
           <Text
@@ -441,6 +476,7 @@ const styles = StyleSheet.create({
   },
   planTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '600' },
   planBody: { color: 'rgba(255,255,255,0.86)', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  planAction: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', marginTop: 4 },
   planTile: {
     width: 52,
     height: 52,

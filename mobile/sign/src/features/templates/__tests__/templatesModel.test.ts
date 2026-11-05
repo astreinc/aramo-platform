@@ -71,6 +71,8 @@ describe('template library (GET /v1/sign/sender/templates)', () => {
           documentCount: null,
           routingMode: null,
           signing: null,
+          favorite: false,
+          ownership: null,
         },
       ],
       unavailable: [{ documentTypeId: 'dt2', reason: 'TEMPLATE_SELECTION_REQUIRED' }],

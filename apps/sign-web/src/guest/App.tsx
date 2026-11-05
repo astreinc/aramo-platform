@@ -52,6 +52,12 @@ const FIELD_LABEL: Record<string, string> = {
   CHECKBOX: 'Checkbox',
   ACKNOWLEDGEMENT: 'Acknowledgement',
   PAYMENT: 'Payment',
+  // M-A12 W1-C.4 — profile text fields (the signer enters them).
+  FIRST_NAME: 'First name',
+  LAST_NAME: 'Last name',
+  EMAIL: 'Email',
+  COMPANY: 'Company',
+  TITLE: 'Title',
 };
 const ACTION_LABEL: Record<string, string> = {
   SIGNATURE: 'Sign',
@@ -62,6 +68,11 @@ const ACTION_LABEL: Record<string, string> = {
   CHECKBOX: 'Check',
   ACKNOWLEDGEMENT: 'Acknowledge',
   PAYMENT: 'Pay',
+  FIRST_NAME: 'Enter first name',
+  LAST_NAME: 'Enter last name',
+  EMAIL: 'Enter email',
+  COMPANY: 'Enter company',
+  TITLE: 'Enter title',
 };
 
 // M-A6 — a check box shows its caption; a server-filled name says where it is from.
@@ -130,8 +141,16 @@ function tokenFromLocation(): string {
   return new URLSearchParams(window.location.search).get('token') ?? '';
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+// M-A12 W1-E.2 — the date in the sender's format (stamped on the envelope at send); an
+// envelope without one keeps the earlier YYYY-MM-DD.
+export function today(format?: string | null, now: Date = new Date()): string {
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  if (format === 'MM/DD/YYYY') return `${mm}/${dd}/${yyyy}`;
+  if (format === 'DD/MM/YYYY') return `${dd}/${mm}/${yyyy}`;
+  if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
+  return now.toISOString().slice(0, 10);
 }
 
 function initialsOf(name: string): string {
@@ -1039,7 +1058,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       if (a && !done) void fill(f, a.value, a.method);
       else setAdoptFor(f);
     } else if (t === 'SIGN_DATE') {
-      if (!done) void fill(f, today());
+      if (!done) void fill(f, today(view?.date_format));
     } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
       void toggle(f);
     } else setTextFor(f);

@@ -33,11 +33,17 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
   // Sign 1.14 — a payment (placed through the API for now): shown locked here and sent back
   // with its amount on save.
   PAYMENT: { label: 'Payment', glyph: '$', w: 160, h: 26 },
+  // M-A12 W1-C.4 — profile text fields (the signer fills them; the app prefills from their profile).
+  FIRST_NAME: { label: 'First name', glyph: 'Fn', w: 150, h: 22 },
+  LAST_NAME: { label: 'Last name', glyph: 'Ln', w: 150, h: 22 },
+  EMAIL: { label: 'Email', glyph: '@', w: 220, h: 22 },
+  COMPANY: { label: 'Company', glyph: 'Co', w: 220, h: 22 },
+  TITLE: { label: 'Title', glyph: 'Ti', w: 180, h: 22 },
 };
 const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
 // PX-V1 §15 — the sender authoring types; the rest are shown but not placeable.
 // M-A6 §2.1 — Name and Checkbox are authorable; Acknowledgement stays engine-only.
-export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX']);
+export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE']);
 
 interface EdField extends FieldConfig {
   key: string;

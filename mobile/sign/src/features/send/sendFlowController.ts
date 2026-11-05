@@ -436,6 +436,38 @@ export class SendFlowController {
     }
   }
 
+  /**
+   * M-A12 W1-B — rename a document that is not uploaded yet (the server keeps the title
+   * of an uploaded one; there is no rename route).
+   */
+  renameDocument(docKey: string, title: string): void {
+    const t = title.trim().slice(0, SUBJECT_MAX);
+    const doc = this.payload.documents.find((d) => d.key === docKey);
+    if (!t || !doc || doc.pendingUpload === null) return;
+    this.update((p) => ({
+      ...p,
+      documents: p.documents.map((d) => (d.key === docKey ? { ...d, title: t } : d)),
+    }));
+  }
+
+  /**
+   * M-A12 W1-B — move a not-yet-uploaded document up or down past another not-yet-uploaded
+   * one (uploaded documents keep the server's order).
+   */
+  moveDocument(docKey: string, dir: -1 | 1): void {
+    const docs = this.payload.documents;
+    const i = docs.findIndex((d) => d.key === docKey);
+    const j = i + dir;
+    const a = docs[i];
+    const b = docs[j];
+    if (!a || !b || a.pendingUpload === null || b.pendingUpload === null) return;
+    this.update((p) => {
+      const out = [...p.documents];
+      [out[i], out[j]] = [out[j]!, out[i]!];
+      return { ...p, documents: out };
+    });
+  }
+
   /** A draft created from a template (templates.ts) becomes this flow's envelope. */
   async adoptTemplateEnvelope(v: Versioned, step: SendStep = 'recipients'): Promise<void> {
     const d = this.state.draft;

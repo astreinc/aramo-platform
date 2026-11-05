@@ -52,6 +52,10 @@ export interface SenderTemplate {
   readonly routingMode: RoutingMode | null;
   /** The signing roles (M-A6 §3.2), or null for a template without roles. */
   readonly signing: TemplateSigning | null;
+  /** M-A12 W1-F — the user's own star (absent from older servers). */
+  readonly favorite?: boolean;
+  /** M-A12 W1-F — the server's ownership (absent from older servers; never derived). */
+  readonly ownership?: 'mine' | 'shared' | null;
 }
 
 const count = (v: unknown): number | null =>
@@ -118,7 +122,25 @@ function parseTemplate(raw: unknown): SenderTemplate {
     documentCount: count(t['document_count']),
     routingMode: routing(t['routing_mode']),
     signing: parseSigning(t['signing']),
+    favorite: t['favorite'] === true,
+    ownership: t['ownership'] === 'mine' || t['ownership'] === 'shared' ? t['ownership'] : null,
   };
+}
+
+/**
+ * M-A12 W1-F — star or unstar a template for this user:
+ * PUT / DELETE /v1/sign/sender/templates/{template_id}/favorite → 204 (contract change A:
+ * favorites live under the existing template list prefix).
+ */
+export async function setTemplateFavorite(
+  workspace: WorkspaceClient,
+  templateId: string,
+  on: boolean,
+): Promise<void> {
+  await workspace.request<unknown>({
+    method: on ? 'PUT' : 'DELETE',
+    path: `/v1/sign/sender/templates/${encodeURIComponent(templateId)}/favorite`,
+  });
 }
 
 /**

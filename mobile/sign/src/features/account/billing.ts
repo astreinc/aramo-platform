@@ -12,6 +12,9 @@ export const MANAGE_BILLING_LABEL = 'Manage billing or cancel';
 /** The web billing settings link for this account, or null when there is nothing to manage. */
 export function billingSettingsLink(account: BillingAccount | null | undefined): string | null {
   if (account == null || !account.can_manage_billing) return null;
+  // M-A12 W1-G — a store-billed plan is managed in the store (Plans › Manage subscription).
+  const managedBy = (account as { managed_by?: string | null }).managed_by;
+  if (managedBy === 'APP_STORE' || managedBy === 'GOOGLE_PLAY') return null;
   const sub = account.subscription;
   if (sub == null || !sub.billing_managed || sub.ended_at != null) return null;
   return account.tenant_kind === 'PERSONAL' ? PERSONAL_BILLING_SETTINGS_URL : BILLING_SETTINGS_URL;

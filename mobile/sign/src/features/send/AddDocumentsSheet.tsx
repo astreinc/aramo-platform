@@ -58,7 +58,7 @@ const TILES: Record<AddSourceKey, AddSourceTile> = {
   templates: {
     key: 'templates',
     label: 'Templates',
-    hint: 'Start from a template your organization approved.',
+    hint: 'Start from one of your templates.',
     icon: 'M4 4h16v16H4zM4 9h16M9 9v11',
   },
   files: { key: 'files', label: 'Files', hint: FILES_NOTE, icon: 'M3 6h6l2 2h10v11H3z' },

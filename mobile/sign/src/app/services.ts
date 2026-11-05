@@ -17,6 +17,7 @@ import { SessionManager } from '../auth/session';
 import { signInWithProvider } from '../auth/signIn';
 import { createTokenStore } from '../auth/tokenStore';
 import { env, NATIVE_SIGNOUT_REDIRECT_URI, type AppEnv } from '../config/env';
+import { defaultStorePort, type StorePort } from '../features/plans/storePort';
 import { createSignupApi, type SignupApi } from '../features/signup/signupApi';
 import { clearGuestTokens } from '../links/guestTokenVault';
 import { unregisterPush } from '../notifications/pushRegistration';
@@ -43,6 +44,8 @@ export interface AppServices {
   readonly guest: GuestSigningClient;
   /** Session-less native Personal signup (M-A11); never carries credentials. */
   readonly signup: SignupApi;
+  /** M-A12 W1-G — the platform store (App Store / Google Play); null where unavailable. */
+  readonly iap?: StorePort | null;
   readonly store: EncryptedStore;
   readonly drafts: DraftStore;
   readonly queryClient: QueryClient;
@@ -101,6 +104,7 @@ export function createAppServices(): AppServices {
     workspace,
     guest,
     signup,
+    iap: defaultStorePort(),
     store,
     drafts,
     queryClient,

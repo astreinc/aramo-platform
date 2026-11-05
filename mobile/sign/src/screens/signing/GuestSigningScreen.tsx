@@ -10,6 +10,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../../app/ServicesContext';
 import { Button } from '../../components/Button';
 import { useSenderContext } from '../../features/inbox/queries';
+import { profileValue, useSignProfile } from '../../features/profile/signProfile';
 import { ExecutedCopyView, type ExecutedPart } from '../../features/signing/ExecutedCopyView';
 import {
   classifySigningError,
@@ -95,6 +96,8 @@ export function GuestSigningScreen({ route, navigation }: Props) {
   const { status } = useSession();
   const signedIn = status === 'signedIn';
   const ctx = useSenderContext(signedIn);
+  const profile = useSignProfile(signedIn);
+  const prefill = (type: string) => profileValue(type, profile.data ?? null, ctx.data?.user.email ?? null);
   const setHeaderFinish = useHeaderFinish();
   useAppSwitcherProtection(true);
   useEffect(() => {
@@ -119,6 +122,9 @@ export function GuestSigningScreen({ route, navigation }: Props) {
       session={link.session}
       signerName={signedIn ? (ctx.data?.user.display_name ?? '') : ''}
       signedIn={signedIn}
+      // M-A12 W1-C.4 — only on the user's own SELF session (never an emailed link that
+      // may be meant for someone else) does their profile pre-fill the profile fields.
+      {...(self && signedIn ? { prefill } : {})}
       {...(signedIn && !self ? { onClaim: link.claim } : {})}
       onDone={done}
       onHeaderFinish={setHeaderFinish}

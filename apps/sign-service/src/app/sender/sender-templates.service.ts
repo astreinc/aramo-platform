@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { EsignSenderRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
+import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 
@@ -12,7 +12,7 @@ import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js
 
 import { DOCUMENT_TEMPLATE_READ_SCOPE, ESIGN_CREATE_SCOPE, SenderContextService } from './sender-context.service.js';
 import { sanitizeMessage } from './envelope-contracts.js';
-import { MAX_SIGNERS, ROUTING_MODES, SenderEnvelopeService } from './sender-envelope.service.js';
+import { MAX_SIGNERS, ROUTING_MODES, SenderEnvelopeService, selfSignSingleRecipient } from './sender-envelope.service.js';
 
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7.2–7.4 (ADR-0034 D6,
 // D7, D12; Conforming Amendment #7). "Start an envelope from a template" in the Aramo Sign
@@ -77,6 +77,9 @@ export interface FromTemplateBody {
   cc?: unknown;
   routing_mode?: unknown;
   message?: unknown;
+  // Aramo Sign Mobile M-A12 W1-A — "self": the caller signs alone (Templates as a source for
+  // "Sign a document"). No signer / recipients / cc may be given.
+  mode?: unknown;
 }
 
 interface RoleBinding {
@@ -110,6 +113,8 @@ export class SenderTemplatesService {
     private readonly envelopes: SenderEnvelopeService,
     // Feature-Parity 1.1 — whether the tenant's Sign plan includes templates (P-6).
     private readonly entitlements: SignTemplateEntitlementService,
+    // M-A12 W1-F — per-user template favorites.
+    @Optional() private readonly userData?: SignUserProfileRepository,
   ) {}
 
   // Launch availability first (an unavailable feature is unavailable to everyone), then the
@@ -135,9 +140,32 @@ export class SenderTemplatesService {
     }
   }
 
+  // Aramo Sign Mobile M-A12 W1-F — each item also carries `favorite` (this user's) and
+  // `ownership`, read from the list's own owner_scope: TENANT (the organization's or account's
+  // own template) = "mine", PLATFORM (an Aramo default shared with every account) = "shared".
   async list(auth: AuthContextType, requestId: string) {
     await this.assertMayUse(auth, requestId);
-    return this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    const out = await this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    const favorites = (await this.userData?.favoriteTemplateIds(auth.tenant_id, auth.sub).catch(() => null)) ?? new Set<string>();
+    return {
+      ...out,
+      items: out.items.map((t) => ({ ...t, favorite: favorites.has(t.template_id), ownership: t.owner_scope === 'TENANT' ? ('mine' as const) : ('shared' as const) })),
+    };
+  }
+
+  // M-A12 W1-F — mark / unmark a template the caller can see as a favorite (per user,
+  // idempotent). A template outside the caller's list reads as not found.
+  async setFavorite(auth: AuthContextType, template_id: string, favorite: boolean, requestId: string): Promise<void> {
+    await this.assertMayUse(auth, requestId);
+    if (!UUID_RE.test(template_id)) throw bad(requestId, 'template id must be a uuid', { field: 'id' });
+    if (this.userData === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Favorites are not available', 503, { requestId, details: { reason: 'favorites_unavailable' } });
+    if (!favorite) {
+      await this.userData.removeFavorite(auth.tenant_id, auth.sub, template_id);
+      return;
+    }
+    const visible = await this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    if (!visible.items.some((t) => t.template_id === template_id)) throw new AramoError('NOT_FOUND', 'Template not found', 404, { requestId });
+    await this.userData.addFavorite(auth.tenant_id, auth.sub, template_id);
   }
 
   async preview(auth: AuthContextType, template_id: string, body: { values?: unknown }, requestId: string) {
@@ -171,6 +199,10 @@ export class SenderTemplatesService {
       }
       idempotency_key = body.idempotency_key;
     }
+    // M-A12 W1-A — self mode: the template's signer role is bound to the caller.
+    const mode = body?.mode ?? 'standard';
+    if (mode !== 'standard' && mode !== 'self') throw bad(requestId, 'mode must be standard or self', { field: 'mode', reason: 'invalid_mode' });
+    if (mode === 'self') return this.createSelf(auth, { template_id, values, subject, idempotency_key, body }, requestId);
     // M-A6 §3.5 — `recipients` (multi-role) and the single `signer` are mutually exclusive.
     const multi = (body?.recipients !== undefined && body.recipients !== null) || (body?.cc !== undefined && body.cc !== null);
     if (multi && body?.signer !== undefined && body.signer !== null) {
@@ -259,6 +291,92 @@ export class SenderTemplatesService {
       suggested_fields: rendered.signature_fields,
       field_definitions: rendered.field_definitions,
       signing: rendered.signing ?? null,
+    };
+  }
+
+  // Aramo Sign Mobile M-A12 W1-A — "Sign a document" from a template. The draft is a SELF
+  // envelope whose one recipient is the caller (verified account email, bound to them; the
+  // same rules as POST /v1/sign/sender/envelopes with mode "self"): no other recipient, no
+  // invitation, no allowance use. The template's single signer role (the first, when there
+  // are several) is bound to the caller; a template whose fields need more than one signer
+  // role is refused 422 self_sign_single_recipient (before any envelope is created).
+  private async createSelf(
+    auth: AuthContextType,
+    input: { template_id: string; values: Record<string, string>; subject: string | undefined; idempotency_key: string; body: FromTemplateBody },
+    requestId: string,
+  ) {
+    const { body } = input;
+    const present = (v: unknown): boolean => v !== undefined && v !== null;
+    if (present(body.signer) || present(body.recipients) || present(body.cc)) throw selfSignSingleRecipient(requestId);
+    if (present(body.routing_mode)) throw bad(requestId, 'routing_mode applies to recipients', { field: 'routing_mode', reason: 'recipients_required' });
+    const me = await this.envelopes.selfRecipient(auth, requestId);
+    const item = (await this.documents.list({ tenant_id: auth.tenant_id, requestId })).items.find((t) => t.template_id === input.template_id);
+    if (item === undefined) {
+      throw new AramoError('TEMPLATE_NOT_FOUND', `template ${input.template_id} is not available to this organization`, 404, { requestId, details: { reason: 'not_a_usable_template' } });
+    }
+    const listedSigners = (item.signing?.roles ?? []).filter((r) => r.kind === 'SIGNER').sort((a, b) => a.order - b.order);
+    const rendered = await this.documents.render({
+      tenant_id: auth.tenant_id,
+      template_id: input.template_id,
+      idempotency_key: input.idempotency_key,
+      body: { values: input.values, created_by: auth.sub, client_id: null },
+      requestId,
+    });
+    // The signer roles the fields need. More than one ⇒ refused (the frozen Document stays unused).
+    const needed = new Set<string>();
+    for (const f of rendered.signature_fields) if (f.role_key !== undefined) needed.add(f.role_key);
+    for (const d of rendered.field_definitions) if (d.signer_role !== null && TEMPLATE_FIELD_TYPES.has(d.field_type)) needed.add(d.signer_role);
+    const signerKeys = new Set((rendered.signing?.roles ?? item.signing?.roles ?? []).filter((r) => r.kind === 'SIGNER').map((r) => r.role_key));
+    const neededSigners = [...needed].filter((k) => signerKeys.size === 0 || signerKeys.has(k));
+    if (neededSigners.length > 1) throw selfSignSingleRecipient(requestId);
+    const role = neededSigners[0] ?? listedSigners[0]?.role_key ?? null;
+
+    const title = rendered.title.slice(0, MAX_TITLE);
+    const env = await this.repo.createDraft({
+      tenant_id: auth.tenant_id,
+      subject: (input.subject ?? rendered.signing?.default_subject ?? title).slice(0, MAX_TITLE),
+      created_by: auth.sub,
+      template_ref: rendered.template_id,
+      template_version_ref: rendered.template_version_id,
+      envelope_mode: 'SELF',
+    });
+    const doc = await this.repo.addDraftCoreRefDocument({
+      tenant_id: auth.tenant_id,
+      envelope_id: env.id,
+      actor_ref: auth.sub,
+      title,
+      document_ref: rendered.document_id,
+      document_revision_ref: rendered.document_revision_ref,
+      source_sha256: rendered.source_sha256,
+    });
+    const signers = await this.repo.replaceDraftRecipients({
+      tenant_id: auth.tenant_id,
+      envelope_id: env.id,
+      recipients: [{ name: me.name, email: me.email, recipient_kind: 'SIGNER', copy_delivery: null, bound_user_id: auth.sub, witness_for_index: null }],
+    });
+    const signer_id = signers[0]?.id;
+    const mine = (key: string | null | undefined): boolean => key === undefined || key === null || key === role;
+    const fields: Array<Record<string, unknown>> = [];
+    if (signer_id !== undefined) {
+      for (const f of rendered.signature_fields) {
+        if (!mine(f.role_key)) continue;
+        fields.push({ envelope_document_id: doc.id, signer_id, field_type: f.field_type, page_number: f.page_number, x: f.x, y: f.y, width: f.width, height: f.height, required: true });
+      }
+      for (const d of rendered.field_definitions) {
+        if (d.signer_role === null || d.signer_role !== role || !TEMPLATE_FIELD_TYPES.has(d.field_type)) continue;
+        if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
+        fields.push({ envelope_document_id: doc.id, signer_id, field_type: d.field_type, page_number: d.page_number, x: d.x, y: d.y, width: d.width, height: d.height, required: d.required });
+      }
+      if (fields.length > 0) await this.envelopes.replaceFields(auth, env.id, { fields }, requestId);
+    }
+    return {
+      envelope: await this.envelopes.detail(auth, env.id, requestId),
+      template: { template_id: rendered.template_id, version_id: rendered.template_version_id, version_number: rendered.version_number },
+      suggested_fields: rendered.signature_fields,
+      field_definitions: rendered.field_definitions,
+      signing: rendered.signing ?? null,
+      mode: 'self' as const,
+      bound_role_key: role,
     };
   }
 

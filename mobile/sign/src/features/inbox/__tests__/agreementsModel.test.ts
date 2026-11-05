@@ -213,7 +213,8 @@ describe('mergeAgreements + filters', () => {
 
   it('All = every row; Completed (done) covers the 4 end states of the 7', () => {
     expect(filterAgreements(rows, 'all')).toHaveLength(rows.length);
-    expect(FILTERS).toEqual(['all', 'needs_me', 'upcoming', 'waiting', 'drafts', 'done']);
+    expect(FILTERS).toEqual(['all', 'needs_me', 'upcoming', 'waiting', 'drafts', 'done', 'voided']);
+    expect(FILTER_LABEL.voided).toBe('Voided/Canceled');
     expect(FILTER_LABEL.upcoming).toBe('Upcoming');
     expect(FILTER_LABEL.done).toBe('Completed');
     expect(FILTER_LABEL.waiting).toBe('Waiting for others');

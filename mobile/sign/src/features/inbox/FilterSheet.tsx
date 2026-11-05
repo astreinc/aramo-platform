@@ -1,5 +1,7 @@
 // "Filter agreements" sheet (handoff §2A; M-A4 §3.2): a Status list and a Last activity
 // list with checkmarks, and Done. Selections apply immediately; Done closes.
+// M-A12 W1-D.2: the Status list has Voided/Canceled, and a "Sort by" list (newest,
+// oldest, name A–Z, status).
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '../../components/Button';
@@ -10,8 +12,11 @@ import {
   FILTERS,
   RANGE_LABEL,
   RANGES,
+  SORT_LABEL,
+  SORTS,
   type ListFilter,
   type ListRange,
+  type ListSort,
 } from './agreementsModel';
 
 function OptionList<K extends string>({
@@ -99,6 +104,8 @@ export function FilterSheet({
   onFilter,
   onRange,
   onClose,
+  sort,
+  onSort,
 }: {
   readonly visible: boolean;
   readonly filter: ListFilter;
@@ -106,6 +113,9 @@ export function FilterSheet({
   readonly onFilter: (f: ListFilter) => void;
   readonly onRange: (r: ListRange) => void;
   readonly onClose: () => void;
+  /** M-A12 W1-D.2 — the list order. */
+  readonly sort?: ListSort;
+  readonly onSort?: (s: ListSort) => void;
 }) {
   return (
     <Sheet visible={visible} onClose={onClose} title="Filter agreements">
@@ -123,6 +133,15 @@ export function FilterSheet({
         onChange={onRange}
         testIDPrefix="filter-range"
       />
+      {sort && onSort ? (
+        <OptionList
+          title="Sort by"
+          options={SORTS.map((k) => ({ key: k, label: SORT_LABEL[k] }))}
+          value={sort}
+          onChange={onSort}
+          testIDPrefix="filter-sort"
+        />
+      ) : null}
       <Button testID="filter-done" title="Done" onPress={onClose} />
     </Sheet>
   );

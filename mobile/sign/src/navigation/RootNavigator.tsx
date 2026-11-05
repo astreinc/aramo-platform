@@ -1,7 +1,7 @@
 // Auth-gated root stack (handoff §2). Signed out: Sign in + native Personal signup
 // (M-A11) + guest signing. Signed in:
 // tabs (Home · Agreements) + the side-menu screens (Notifications, Account, Templates) +
-// detail/signing/viewer/send. Guest signing is reachable in both states.
+// detail/signing/viewer/send + (M-A12) Sign a document, Tasks, Plans and My profile. Guest signing is reachable in both states.
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Modal, View } from 'react-native';
@@ -17,7 +17,11 @@ import { EnvelopeDetailScreen } from '../screens/envelope/EnvelopeDetailScreen';
 import { HostedSigningScreen } from '../screens/hosted/HostedSigningScreen';
 import { ReceivedEnvelopeScreen } from '../screens/envelope/ReceivedEnvelopeScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
+import { PlansScreen } from '../screens/plans/PlansScreen';
+import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { SelfSignScreen } from '../screens/selfSign/SelfSignScreen';
 import { SendFlowScreen } from '../screens/send/SendFlowScreen';
+import { TasksScreen } from '../screens/tasks/TasksScreen';
 import { SignInScreen } from '../screens/signIn/SignInScreen';
 import { GuestSigningScreen } from '../screens/signing/GuestSigningScreen';
 import { SigningScreen } from '../screens/signing/SigningScreen';
@@ -209,6 +213,19 @@ export function RootNavigator() {
               name="SendFlow"
               component={SendFlowScreen}
               options={{ presentation: 'fullScreenModal', title: 'New envelope' }}
+            />
+            {/* M-A12 W1: Sign a document, Tasks, Plans and the Sign profile. */}
+            <Stack.Screen
+              name="SelfSign"
+              component={SelfSignScreen}
+              options={{ title: 'Sign a document', headerBackTitle: 'Home' }}
+            />
+            <Stack.Screen name="Tasks" component={TasksScreen} options={{ title: 'Tasks', headerBackTitle: 'Home' }} />
+            <Stack.Screen name="Plans" component={PlansScreen} options={{ title: 'Plans', headerBackTitle: 'Back' }} />
+            <Stack.Screen
+              name="Profile"
+              component={ProfileScreen}
+              options={{ title: 'My profile', headerBackTitle: 'Account' }}
             />
             {/* Locked hosted (in-person) signing: covers tabs and side menu (M-A5 §3.3). */}
             <Stack.Screen

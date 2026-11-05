@@ -60,6 +60,7 @@ dependency, move `before` to (today − 14 days) in the same change.
 | react-native-document-scanner-plugin | 2.0.4 | document scanner (see below) |
 | expo-image-picker | 57.0.20 (2026-09-24) | Photos source (M-A4 §5.2, A12): system photo picker, images composed into one PDF on the device. SDK 57 matrix (`~57.0.20`). Pulls in `expo-image-loader`. |
 | react-native-view-shot | 5.1.0 | rasterizes drawn signatures to PNG (C-19). SDK 57 matrix. |
+| expo-iap | 5.8.3 (2026-10-07) | M-A12 W1-G in-app purchase (StoreKit 2 / Play Billing via OpenIAP; apple 3.6.1, google 3.6.3). An Expo module, autolinked like the other `expo-*` modules, so no config plugin and no native-folder edit is needed (the Play flavor is the default store for release builds). Chosen over `react-native-iap` 16/17, which needs `react-native-nitro-modules`. The 5.x line, not the 6.0.0 major released one day before the `before` cut-off. Wrapped by `src/features/plans/storePort.ts`; only `expoIapStore.ts` imports it. The iOS build needs `pod install` to add the `ExpoIap` and `openiap` pods to `Podfile.lock`. |
 | @tanstack/react-query · react-query-persist-client | 5.104.1 | query cache + persistence |
 | openapi-typescript | 7.13.0 | type generation. Its `typescript ^5` peer is overridden to the app's TS 6. |
 | jest-expo · jest · @testing-library/react-native | 57.0.5 · 29.7.0 · 13.3.3 | RNTL 14 needs a peer that has no stable release |

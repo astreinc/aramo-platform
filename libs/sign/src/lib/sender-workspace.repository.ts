@@ -311,13 +311,15 @@ export class EsignSenderRepository {
 
   // ── DRAFT authoring writes ─────────────────────────────────────────────────
 
-  async createDraft(input: { tenant_id: string; subject: string; created_by: string; template_ref?: string; template_version_ref?: string }) {
+  async createDraft(input: { tenant_id: string; subject: string; created_by: string; template_ref?: string; template_version_ref?: string; envelope_mode?: 'STANDARD' | 'SELF' }) {
     return this.repo.createEnvelope({
       tenant_id: input.tenant_id,
       subject: input.subject,
       execution_mode: 'SINGLE_SIGNATURE',
       created_by: input.created_by,
       source_application: 'aramo-sign',
+      // M-A12 W1-A — a self-sign draft (the caller is its one recipient).
+      ...(input.envelope_mode === 'SELF' ? { envelope_mode: 'SELF' as const } : {}),
       // M-A6 §3.6 — a from-template draft records the template + exact version (written once).
       ...(input.template_ref !== undefined && input.template_version_ref !== undefined
         ? { template_ref: input.template_ref, template_version_ref: input.template_version_ref }
@@ -450,6 +452,8 @@ export class EsignSenderRepository {
     message?: string | null;
     // Feature-Parity §1.17 — the sender allows a signer to delegate (DRAFT only).
     allow_delegation?: boolean;
+    // M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send.
+    signer_date_format?: string;
     expected_revision?: number;
   }): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
@@ -462,6 +466,7 @@ export class EsignSenderRepository {
           ...(input.execution_mode !== undefined ? { execution_mode: input.execution_mode } : {}),
           ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
           ...(input.message !== undefined ? { message: input.message } : {}),
+          ...(input.signer_date_format !== undefined ? { signer_date_format: input.signer_date_format } : {}),
         },
       });
       return this.repo.revisionIn(tx, input.envelope_id);

@@ -17,7 +17,8 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 // cannot be silently dropped or widened), the backend workspace + Personal rule
 // (Lead Host & Workspace Ruling v1.0), and fail-closed input validation.
 
-const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'executed', 'evidence', 'documents', 'activity'] as const;
+// M-A12 W1-C.2 — Find in document (textLayerOf) has the source route's read scope.
+const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'textLayerOf', 'executed', 'evidence', 'documents', 'activity'] as const;
 // Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
 const CONTACTS = ['contacts'] as const;
 // ORG-UX-1 §6 — the Sign member routes are retired (no MEMBERS group).
@@ -203,7 +204,8 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
       await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, ...bad }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
     await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, field_type: 'ACKNOWLEDGEMENT' }] }, 'r')).rejects.toMatchObject({
-      context: { details: { reason: 'v1_field_type', allowed: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX'] } },
+      // M-A12 W1-C.4 — + the profile text fields.
+      context: { details: { reason: 'v1_field_type', allowed: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] } },
     });
     expect(repo.replaceDraftFields).not.toHaveBeenCalled();
     await svc.replaceFields(AUTH, 'e1', { fields: [base] }, 'r');

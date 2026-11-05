@@ -11,6 +11,12 @@ export const DEFAULT_SIZE: Record<string, [number, number]> = {
   TEXT: [220, 22],
   CHECKBOX: [16, 16],
   ACKNOWLEDGEMENT: [400, 26],
+  // M-A12 W1-C.4 — profile text fields.
+  FIRST_NAME: [150, 22],
+  LAST_NAME: [150, 22],
+  EMAIL: [220, 22],
+  COMPANY: [220, 22],
+  TITLE: [180, 22],
 };
 
 export interface PageSize {

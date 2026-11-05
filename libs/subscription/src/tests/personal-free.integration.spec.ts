@@ -13,6 +13,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+import { M_A12_STORE_MIGRATION } from './fixtures/m-a12.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §1 / §4 — on real Postgres 17:
 // the FREE subscription opens only for an ACTIVE PERSONAL tenant while the mode is
@@ -30,7 +31,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION, M_A12_STORE_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const EVENT = 'sign.envelope.sent';

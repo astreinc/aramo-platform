@@ -105,6 +105,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
     expect((executed?.byte_size ?? 0) > 0).toBe(true);
   });
 
+  // Aramo Sign Mobile M-A12 W1-C.4 — the profile text fields burn in as plain text at their
+  // coordinates (no script font, no stamp), like TEXT; the DB CHECK accepts all five types.
+  it('M-A12: FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are stamped as text', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Profile fields', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({
+      tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(),
+      title: 'profile.pdf', source_sha256: 'seed', ordinal: 1,
+    });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'jane@x.com', name: 'Jane', signing_order: 1 });
+    const values: Record<string, string> = { FIRST_NAME: 'Jane', LAST_NAME: 'Doe', EMAIL: 'jane@x.com', COMPANY: 'Acme', TITLE: 'Director' };
+    let y = 100;
+    for (const [field_type, value] of Object.entries(values)) {
+      const f = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type, page_number: 0, x: 72, y, width: 180, height: 22, required: true });
+      await prisma.signatureField.update({ where: { id: f.id }, data: { value, filled_at: new Date() } });
+      y += 40;
+    }
+    const real = new PdfLibDocumentRenderingAdapter();
+    const captured: PreparedField[][] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: async (src, placements, opts): Promise<RenderedOutput> => {
+        captured.push(placements);
+        return real.prepareFromSource(src, placements, opts);
+      },
+      renderGenerated: (model) => real.renderGenerated(model),
+    };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf });
+    await execution.produce(TENANT, env.id);
+    expect(captured).toHaveLength(1);
+    const placed = captured[0] ?? [];
+    expect(placed.map((p) => (p as { value?: string }).value).sort()).toEqual(Object.values(values).sort());
+    for (const p of placed) expect(p).not.toHaveProperty('font');
+    for (const p of placed) expect(p).not.toHaveProperty('stamp');
+  });
+
   // PX-2 — the Signature ID under a stamped signature is the signer's
   // SIGNER_SIGNED ledger hash (as uppercase hex), and the execution certificate
   // prints the same ID in full, so the two can be matched.

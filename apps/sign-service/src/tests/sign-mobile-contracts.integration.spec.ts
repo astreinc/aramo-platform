@@ -9,9 +9,10 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput, hashSigningToken } from '@aramo/sign';
 import { ESIGN_ROLE_PERMISSIONS } from '@aramo/identity';
+import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, ESIGN_ENVELOPE_SENT_EVENT, SIGN_PRODUCT_KEY } from '@aramo/subscription';
 import cookieParser from 'cookie-parser';
 import { SignJWT, exportSPKI, generateKeyPair, type KeyLike } from 'jose';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { Client } from 'pg';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -430,6 +431,217 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile envel
       } finally {
         await db.query(`UPDATE identity."User" SET email='ann@mobile.test' WHERE id=$1`, [ANN]);
       }
+    });
+  });
+
+  // Aramo-Sign-Mobile-Amendment-M-A12 (LOCKED) §4 tests 1, 2, 5, 6 over HTTP: self-sign mode,
+  // Find in document, the Sign profile / settings and app issues.
+  describe('M-A12 — self-sign mode, text layer, profile, settings, app issues', () => {
+    let selfId = '';
+    let selfDoc = '';
+    let selfSigner = '';
+    let selfToken = '';
+
+    it('self mode: one server-made recipient bound to the caller; client recipients 422; no invitation; no allowance use', async () => {
+      const refused = await http().post('/v1/sign/sender/envelopes').set(await H(ANN)).send({ mode: 'self', recipients: [{ name: 'X', email: 'x@x.test' }] });
+      expect(refused.status).toBe(422);
+      expect(refused.body.error.details.reason).toBe('self_sign_single_recipient');
+      expect((await http().post('/v1/sign/sender/envelopes').set(await H(ANN)).send({ mode: 'solo' })).status).toBe(400);
+      // A client bound_user_id is never read: the server binds the caller.
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(ANN)).send({ mode: 'self', subject: 'My lease', bound_user_id: BEN });
+      expect(created.status).toBe(201);
+      expect(created.body).toMatchObject({ status: 'DRAFT', subject: 'My lease', mode: 'self' });
+      selfId = created.body.id;
+      const bound = (await db.query(`SELECT email, bound_user_id, recipient_kind FROM "sign"."Signer" WHERE envelope_id=$1`, [selfId])).rows;
+      expect(bound).toEqual([{ email: 'ann@mobile.test', bound_user_id: ANN, recipient_kind: 'SIGNER' }]);
+      const again = await http().put(`/v1/sign/sender/envelopes/${selfId}/recipients`).set(await H(ANN)).send({ recipients: [{ name: 'Bob', email: 'bob@x.test' }] });
+      expect(again.status).toBe(422);
+      expect(again.body.error.details.reason).toBe('self_sign_single_recipient');
+      const pdf = await PDFDocument.create();
+      const page = pdf.addPage([612, 792]);
+      page.drawText('Lease agreement between parties', { x: 72, y: 700, size: 12, font: await pdf.embedFont(StandardFonts.Helvetica) });
+      const up = await http().post(`/v1/sign/sender/envelopes/${selfId}/documents`).set(await H(ANN)).send({ filename: 'lease.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      expect(up.status).toBe(201);
+      selfDoc = up.body.id;
+      const detail = await http().get(`/v1/sign/sender/envelopes/${selfId}`).set(await H(ANN));
+      expect(detail.body).toMatchObject({ mode: 'self', can_self_sign_now: false });
+      selfSigner = detail.body.recipients[0].id;
+      expect(detail.body.recipients[0]).toMatchObject({ assigned_to_me: true, email: 'ann@mobile.test' });
+      const f = (field_type: string, y: number) => ({ envelope_document_id: selfDoc, signer_id: selfSigner, field_type, page_number: 0, x: 72, y, width: 150, height: 30 });
+      expect((await http().put(`/v1/sign/sender/envelopes/${selfId}/fields`).set(await H(ANN)).send({ fields: [f('SIGNATURE', 100), f('FIRST_NAME', 200), f('EMAIL', 260)] })).status).toBe(200);
+      const sent = await http().post(`/v1/sign/sender/envelopes/${selfId}/send`).set(await H(ANN)).send({});
+      expect(sent.status).toBe(200);
+      expect(sent.body).toMatchObject({ status: 'SENT', mode: 'self', can_self_sign_now: true });
+      expect(sent.body.recipients[0].can_remind).toBe(false);
+      // No emailed link, no invitation, no allowance reservation or charge.
+      expect((await db.query(`SELECT count(*)::int n FROM "sign"."SigningSession" WHERE envelope_id=$1`, [selfId])).rows[0].n).toBe(0);
+      expect((await db.query(`SELECT count(*)::int n FROM "sign"."NotificationDelivery" WHERE envelope_id=$1`, [selfId])).rows[0].n).toBe(0);
+      expect((await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE send_key=$1`, [`aramo-sign:envelope:${selfId}`])).rows[0].n).toBe(0);
+      const remind = await http().post(`/v1/sign/sender/envelopes/${selfId}/remind`).set(await H(ANN)).send({});
+      expect(remind.status).toBe(409);
+      expect(remind.body.error.details.reason).toBe('self_sign_no_reminders');
+      const list = await http().get('/v1/sign/sender/envelopes').set(await H(ANN));
+      expect(list.body.items.find((i: { id: string }) => i.id === selfId)).toMatchObject({ mode: 'self', can_self_sign_now: true });
+    });
+
+    it('text layer: the sender and the SELF session read normalised words; another tenant, member or envelope is 404; an image-only page has no words', async () => {
+      const url = `/v1/sign/sender/envelopes/${selfId}/documents/${selfDoc}/text-layer`;
+      const res = await http().get(url).set(await H(ANN));
+      expect(res.status).toBe(200);
+      expect(res.body.document_id).toBe(selfDoc);
+      expect(res.body.pages).toHaveLength(1);
+      const words = res.body.pages[0].words as Array<{ t: string; x: number; y: number; w: number; h: number }>;
+      expect(words.map((w) => w.t)).toEqual(['Lease', 'agreement', 'between', 'parties']);
+      for (const w of words) for (const v of [w.x, w.y, w.w, w.h]) expect(v >= 0 && v <= 1).toBe(true);
+      expect(words[0]?.y).toBeLessThan(0.15); // near the top (origin top-left)
+      expect((await http().get(url).set(await H(OLA, OTHER_TENANT))).status).toBe(404);
+      expect((await http().get(url).set(await H(BEN))).status).toBe(404);
+      expect((await http().get(`/v1/sign/sender/envelopes/${selfId}/documents/${randomUUID()}/text-layer`).set(await H(ANN))).status).toBe(404);
+      const session = await http().post(`/v1/sign/sender/envelopes/${selfId}/self-sign-session`).set(await H(ANN)).send({});
+      expect(session.status).toBe(201);
+      selfToken = session.body.token;
+      const text = (await http().post('/v1/sign/signing/disclosure-text').send({ token: selfToken })).body;
+      expect((await http().post('/v1/sign/signing/disclosure').send({ token: selfToken, disclosure_version: text.disclosure_version, disclosure_text_hash: text.text_sha256 })).status).toBe(200);
+      const signer = await http().post(`/v1/sign/signing/documents/${selfDoc}/text-layer`).send({ token: selfToken });
+      expect(signer.status).toBe(200);
+      expect(signer.body.pages[0].words).toHaveLength(4);
+      // A document of another envelope (the M-A5 envelope's blank page) is not in this session.
+      const other = (
+        await db.query(
+          `SELECT d.id FROM "sign"."EnvelopeDocument" d JOIN "sign"."SignatureEnvelope" e ON e.id = d.envelope_id WHERE d.tenant_id=$1 AND d.envelope_id<>$2 AND e.created_by=$3 AND e.deleted_at IS NULL LIMIT 1`,
+          [TENANT, selfId, ANN],
+        )
+      ).rows[0] as { id: string } | undefined;
+      if (other !== undefined) expect((await http().post(`/v1/sign/signing/documents/${other.id}/text-layer`).send({ token: selfToken })).status).toBe(404);
+      expect((await http().post(`/v1/sign/signing/documents/${selfDoc}/text-layer`).send({ token: 'nope' })).status).toBe(401);
+      // An image-only (text-less) page: present, with no words.
+      if (other !== undefined) {
+        const env = (await db.query(`SELECT envelope_id FROM "sign"."EnvelopeDocument" WHERE id=$1`, [other.id])).rows[0] as { envelope_id: string };
+        const blank = await http().get(`/v1/sign/sender/envelopes/${env.envelope_id}/documents/${other.id}/text-layer`).set(await H(ANN));
+        expect(blank.status).toBe(200);
+        expect(blank.body.pages.every((p: { words: unknown[] }) => p.words.length === 0)).toBe(true);
+      }
+    });
+
+    it('the SELF session fills profile fields (EMAIL validated) and completes; evidence says SELF; the executed copy goes to the caller only', async () => {
+      const view = await http().post('/v1/sign/signing/document').send({ token: selfToken });
+      const byType = new Map((view.body.fields as Array<{ field_type: string; field_id: string }>).map((x) => [x.field_type, x.field_id]));
+      const fill = (type: string, value: string, signature_method?: string) =>
+        http().post(`/v1/sign/signing/fields/${byType.get(type)}/fill`).send({ token: selfToken, value, ...(signature_method ? { signature_method } : {}) });
+      const badEmail = await fill('EMAIL', 'not-an-email');
+      expect(badEmail.status).toBe(400);
+      expect(badEmail.body.error.details.reason).toBe('email_field_value_invalid');
+      expect((await fill('EMAIL', 'ann@mobile.test')).status).toBe(200);
+      expect((await fill('FIRST_NAME', 'Ann')).status).toBe(200);
+      expect((await fill('SIGNATURE', 'Ann Sender', 'TYPED')).status).toBe(200);
+      const done = await http().post('/v1/sign/signing/complete').send({ token: selfToken });
+      expect(done.status).toBe(200);
+      expect(done.body.envelope_status).toBe('COMPLETED');
+      const signed = (await db.query(`SELECT count(*)::int n FROM "sign"."SignatureEvent" WHERE envelope_id=$1 AND event_type='SIGNER_SIGNED'`, [selfId])).rows[0].n;
+      expect(signed).toBe(1);
+      const deliveries = (await db.query(`SELECT notification_kind, signer_id FROM "sign"."NotificationDelivery" WHERE envelope_id=$1 ORDER BY created_at`, [selfId])).rows;
+      expect(deliveries).toEqual([{ notification_kind: 'SIGNATURE_COMPLETED', signer_id: selfSigner }]);
+      expect((await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE send_key=$1`, [`aramo-sign:envelope:${selfId}`])).rows[0].n).toBe(0);
+    });
+
+    it('profile and settings: per user; validated; the date format is stamped on the next send', async () => {
+      const initial = await http().get('/v1/sign/me/profile').set(await H(BEN));
+      expect(initial.status).toBe(200);
+      expect(initial.body).toMatchObject({ display_name: 'ben@mobile.test', title: null, email: 'ben@mobile.test', updated_at: null });
+      const bad = await http().put('/v1/sign/me/profile').set(await H(BEN)).send({ display_name: 'Ben', phone: '555' });
+      expect(bad.body.error.details.reason).toBe('invalid_phone');
+      expect((await http().put('/v1/sign/me/profile').set(await H(BEN)).send({ display_name: 'Ben', role: 'x' })).body.error.details.reason).toBe('unknown_field');
+      const put = await http().put('/v1/sign/me/profile').set(await H(BEN)).send({ display_name: 'Ben Brown', company: 'Acme', country: 'us', phone: '+1 415 555 0123' });
+      expect(put.status).toBe(200);
+      expect(put.body).toMatchObject({ display_name: 'Ben Brown', company: 'Acme', country: 'US', phone: '+14155550123', title: null });
+      expect((await http().get('/v1/sign/me/profile').set(await H(ANN))).body.display_name).not.toBe('Ben Brown');
+      expect((await http().get('/v1/sign/me/settings').set(await H(BEN))).body).toEqual({ date_format: 'MM/DD/YYYY', default_field_size: 'M' });
+      expect((await http().put('/v1/sign/me/settings').set(await H(BEN)).send({ date_format: 'DD.MM.YYYY', default_field_size: 'M' })).status).toBe(400);
+      expect((await http().put('/v1/sign/me/settings').set(await H(BEN)).send({ date_format: 'DD/MM/YYYY', default_field_size: 'L' })).status).toBe(200);
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(BEN)).send({ mode: 'self', subject: 'Dated' });
+      expect(created.status).toBe(201);
+      const id = created.body.id as string;
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      const up = await http().post(`/v1/sign/sender/envelopes/${id}/documents`).set(await H(BEN)).send({ filename: 'd.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      const d = await http().get(`/v1/sign/sender/envelopes/${id}`).set(await H(BEN));
+      // The self recipient is named from the Sign profile.
+      expect(d.body.recipients[0].name).toBe('Ben Brown');
+      const field = { envelope_document_id: up.body.id, signer_id: d.body.recipients[0].id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 };
+      expect((await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(BEN)).send({ fields: [field] })).status).toBe(200);
+      const sent = await http().post(`/v1/sign/sender/envelopes/${id}/send`).set(await H(BEN)).send({});
+      expect(sent.body.date_format).toBe('DD/MM/YYYY');
+    });
+
+    it('app issues: off without a support address; extra fields refused; 5 per user per hour', async () => {
+      const body = { message: 'The Find button does nothing', app_version: '1.2.0', os: 'android', os_version: '15', device_model: 'Pixel 8' };
+      delete process.env['SIGN_APP_ISSUE_EMAIL'];
+      const off = await http().post('/v1/sign/me/app-issues').set(await H(ANN)).send(body);
+      expect(off.status).toBe(503);
+      expect(off.body.error.details.reason).toBe('app_issues_unavailable');
+      process.env['SIGN_APP_ISSUE_EMAIL'] = 'support@example.test';
+      try {
+        expect((await http().post('/v1/sign/me/app-issues').set(await H(ANN)).send({ ...body, logs: 'x' })).body.error.details.reason).toBe('unknown_field');
+        expect((await http().post('/v1/sign/me/app-issues').set(await H(ANN)).send({ ...body, message: 'x'.repeat(2001) })).status).toBe(400);
+        for (let i = 0; i < 5; i += 1) expect((await http().post('/v1/sign/me/app-issues').set(await H(ANN)).send(body)).status).toBe(202);
+        const limited = await http().post('/v1/sign/me/app-issues').set(await H(ANN)).send(body);
+        expect(limited.status).toBe(429);
+        expect(limited.body.error.details.reason).toBe('app_issue_rate_limited');
+        expect((await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='sign' AND table_name='SignAppIssueReport'`)).rows.map((r: { column_name: string }) => r.column_name)).not.toContain('message');
+      } finally {
+        delete process.env['SIGN_APP_ISSUE_EMAIL'];
+      }
+    });
+
+    // PO ruling on M-A12 D-1 ("same as web"): a self send still needs an active subscription
+    // (403 ESIGN_NOT_SUBSCRIBED), but is never refused at 0 sends left and never uses one.
+    async function selfReady(user: string, tenant: string): Promise<string> {
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(user, tenant)).send({ mode: 'self', subject: 'Self send' });
+      expect(created.status).toBe(201);
+      const id = created.body.id as string;
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      const up = await http().post(`/v1/sign/sender/envelopes/${id}/documents`).set(await H(user, tenant)).send({ filename: 's.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      const d = await http().get(`/v1/sign/sender/envelopes/${id}`).set(await H(user, tenant));
+      const field = { envelope_document_id: up.body.id, signer_id: d.body.recipients[0].id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 };
+      expect((await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(user, tenant)).send({ fields: [field] })).status).toBe(200);
+      return id;
+    }
+
+    it('a Business tenant without a subscription: self send 403 ESIGN_NOT_SUBSCRIBED', async () => {
+      const tenant = randomUUID();
+      const user = randomUUID();
+      await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,'NoSub Co','nosub-co','BUSINESS','ACTIVE',true, now())`, [tenant]);
+      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [tenant, c]);
+      await member(user, 'nora@nosub.test', tenant);
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(user, tenant)).send({ mode: 'self', subject: 'Self send' });
+      expect(created.status).toBe(201);
+      // Without a subscription nothing can be prepared to sign: the upload is the same 403
+      // ESIGN_NOT_SUBSCRIBED (the send-side check is covered in sign-m-a12-gap-closure.spec.ts).
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      const up = await http().post(`/v1/sign/sender/envelopes/${created.body.id}/documents`).set(await H(user, tenant)).send({ filename: 's.pdf', content_base64: Buffer.from(await pdf.save()).toString('base64') });
+      expect(up.status).toBe(403);
+      expect(up.body.error.code).toBe('ESIGN_NOT_SUBSCRIBED');
+    });
+
+    it('a Business tenant at 0 sends left: self send succeeds and usage is unchanged', async () => {
+      const id = await selfReady(ANN, TENANT);
+      const allowance = module.get(AllowanceService);
+      const key = { tenant_id: TENANT, product_key: SIGN_PRODUCT_KEY, allowance_key: ESIGN_ENVELOPE_ALLOWANCE };
+      for (let i = 0; i < 1000; i += 1) {
+        const send_key = `aramo-sign:envelope:seed-${randomUUID()}`;
+        const r = await allowance.reserve({ ...key, send_key });
+        if (!r.ok) break;
+        await allowance.consume({ ...key, send_key, usage_event_type: ESIGN_ENVELOPE_SENT_EVENT });
+      }
+      const status = await allowance.getStatus(TENANT, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
+      expect(status.subscribed && status.remaining).toBe(0);
+      const before = (await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE tenant_id=$1`, [TENANT])).rows[0].n;
+      const sent = await http().post(`/v1/sign/sender/envelopes/${id}/send`).set(await H(ANN)).send({});
+      expect(sent.status).toBe(200);
+      expect(sent.body.status).toBe('SENT');
+      expect((await db.query(`SELECT count(*)::int n FROM subscription."AllowanceUsage" WHERE tenant_id=$1`, [TENANT])).rows[0].n).toBe(before);
     });
   });
 });

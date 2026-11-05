@@ -35461,6 +35461,11 @@
       "to": "openapi/sign.yaml"
     },
     {
+      "from": "mobile/sign/src/api/m-a12-contract-types.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
       "from": "mobile/sign/src/auth/installation.ts",
       "status": "unscoped",
       "to": "openapi/auth.yaml"
@@ -37250,6 +37255,11 @@
       "from": "pact/provider/src/verify-platform-admin.ts",
       "status": "unscoped",
       "to": "pact/consumers/sign-mobile/src/personal-signup.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-sign.ts",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-templates-http.adapter.ts"
     },
     {
       "from": "pact/provider/src/verify-sign.ts",

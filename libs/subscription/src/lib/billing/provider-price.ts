@@ -55,7 +55,47 @@ export interface PriceResolution {
   readonly plan_id: string;
   readonly plan_version_id: string;
   readonly version_status: string;
-  readonly source: 'PIN' | 'ENV';
+  // M-A12 — STORE: resolved through a store product pin (stable across versions of one plan).
+  readonly source: 'PIN' | 'ENV' | 'STORE';
+}
+
+// ---- M-A12 W1-G: store product pins ---------------------------------------------------------
+
+export type StoreProvider = 'APP_STORE' | 'GOOGLE_PLAY';
+
+/**
+ * A store product → the version of its plan a purchase opens: the plan's PUBLISHED version when that
+ * version pins the product, else the newest non-DRAFT version pinning it (a grandfathered product on a
+ * RETIRED version). Null when the product is unpinned, or its plan is not a sellable plan of the product.
+ */
+export async function resolveStoreProductToVersion(db: Db, provider: StoreProvider, product_id: string, product_key: ProductKey): Promise<PriceResolution | null> {
+  const pins = await db.planVersionPrice.findMany({
+    where: { provider, provider_price_ref: product_id, plan_version: { status: { not: 'DRAFT' } } },
+    include: { plan_version: { include: { plan: true } } },
+  });
+  if (pins.length === 0) return null;
+  const ranked = [...pins].sort((a, b) =>
+    a.plan_version.status === 'PUBLISHED' ? -1 : b.plan_version.status === 'PUBLISHED' ? 1 : b.plan_version.version_number - a.plan_version.version_number,
+  );
+  const v = (ranked[0] as (typeof pins)[number]).plan_version;
+  if (!v.plan.sellable || v.plan.product_key !== product_key) return null;
+  return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'STORE' };
+}
+
+/** The billed interval of a store product (from its pin), or null when the product is not pinned. */
+export async function storePinInterval(db: Db, provider: StoreProvider, product_id: string | null): Promise<'MONTH' | 'YEAR' | null> {
+  if (product_id === null) return null;
+  const pin = await db.planVersionPrice.findFirst({ where: { provider, provider_price_ref: product_id }, select: { interval: true } });
+  return pin?.interval === 'MONTH' || pin?.interval === 'YEAR' ? pin.interval : null;
+}
+
+/** The store products pinned to a version (for the plans view): platform, product id, interval. */
+export async function storeProductsOfVersion(db: Db, plan_version_id: string): Promise<{ platform: 'ios' | 'android'; product_id: string; interval: 'MONTH' | 'YEAR' }[]> {
+  const pins = await db.planVersionPrice.findMany({
+    where: { plan_version_id, provider: { in: ['APP_STORE', 'GOOGLE_PLAY'] } },
+    orderBy: [{ provider: 'asc' }, { interval: 'asc' }],
+  });
+  return pins.map((p) => ({ platform: p.provider === 'APP_STORE' ? ('ios' as const) : ('android' as const), product_id: p.provider_price_ref, interval: p.interval === 'YEAR' ? ('YEAR' as const) : ('MONTH' as const) }));
 }
 
 /** A provider price → a version of a sellable plan of the SAME product, else null (planForPrice). */

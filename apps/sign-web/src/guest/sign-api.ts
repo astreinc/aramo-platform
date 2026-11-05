@@ -19,7 +19,13 @@ export type SignFieldType =
   | 'CHECKBOX'
   | 'ACKNOWLEDGEMENT'
   // Sign 1.14 — paid on Stripe's hosted page; filled by the server once paid.
-  | 'PAYMENT';
+  | 'PAYMENT'
+  // Aramo Sign Mobile M-A12 W1-C.4 — profile text fields the signer fills.
+  | 'FIRST_NAME'
+  | 'LAST_NAME'
+  | 'EMAIL'
+  | 'COMPANY'
+  | 'TITLE';
 
 export interface SignField {
   field_id: string;
@@ -63,6 +69,9 @@ export interface SignerDocumentView {
   fields: SignField[];
   // Consolidated Directive B3 — the sender allowed delegation and this signer may hand it off.
   can_delegate?: boolean;
+  // M-A12 W1-E.2 — the sender's date format for SIGN_DATE (null: an envelope sent before
+  // formats were stamped, which keeps YYYY-MM-DD).
+  date_format?: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | null;
 }
 
 // Feature-Parity §1.16 — the signer's qualified-signature step (null = not required).

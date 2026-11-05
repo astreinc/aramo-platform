@@ -67,6 +67,8 @@ export type EditorAction =
       readonly pageSize: PageSize;
       /** The tap point, EDITOR frame. */
       readonly center: Point;
+      /** M-A12 W1-E.2 — the user's default field size (1 = the type's default). */
+      readonly scale?: number;
     }
   | {
       /** Accessible placement (handoff §7): the picked tool, centred on the page. */
@@ -75,6 +77,7 @@ export type EditorAction =
       readonly docKey: string;
       readonly page: number;
       readonly pageSize: PageSize;
+      readonly scale?: number;
     }
   | { readonly type: 'select'; readonly key: string | null }
   /** A drag or resize gesture starts: one undo step for the whole gesture. */
@@ -238,7 +241,12 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       const spec = FIELD_TYPE_SPECS[tool];
       const center =
         a.type === 'placeAt' ? a.center : { x: a.pageSize.width / 2, y: a.pageSize.height / 2 };
-      const box = centeredBox(center, spec, a.pageSize);
+      const k = a.scale && a.scale > 0 ? a.scale : 1;
+      const box = centeredBox(
+        center,
+        { width: Math.round(spec.width * k), height: Math.round(spec.height * k) },
+        a.pageSize,
+      );
       const f = newField(a.key, tool, recipient, a.docKey, a.page, box);
       // The tool is released and the new field selected (handoff §4.6).
       return { ...commit(s, [...s.fields, f]), tool: null, selected: f.key };

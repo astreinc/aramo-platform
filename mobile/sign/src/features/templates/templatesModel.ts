@@ -17,6 +17,51 @@ export const NO_TEMPLATE_PERMISSION =
   'You don’t have access to templates. Ask an admin in your organization.';
 export const NO_TEMPLATES = 'Your organization has no templates yet.';
 
+// M-A12 W1-F — a Personal account has no organization: its own copy.
+export const PERSONAL_TEMPLATES_INTRO =
+  'Your templates. Pick one to start an envelope with its documents, roles and fields ready.';
+export const PERSONAL_TEMPLATES_FOOTNOTE = 'Create and edit templates on the web.';
+export const PERSONAL_NO_TEMPLATES = 'You have no templates yet.';
+export const PERSONAL_NO_PERMISSION = 'Templates aren’t available on this account.';
+/** The Personal Free prompt (M-A12 W1-F), with "View plans". */
+export const PERSONAL_TEMPLATES_PROMPT = 'Sending the same thing over and over? Templates come with Standard.';
+
+export type TemplateTab = 'mine' | 'shared';
+
+function isPersonal(context: unknown): boolean {
+  return rec(rec(context)['tenant'])['kind'] === 'PERSONAL';
+}
+
+/** The intro and footnote for the account kind. */
+export function templatesCopy(context: unknown): { intro: string; footnote: string } {
+  return isPersonal(context)
+    ? { intro: PERSONAL_TEMPLATES_INTRO, footnote: PERSONAL_TEMPLATES_FOOTNOTE }
+    : { intro: TEMPLATES_INTRO, footnote: TEMPLATES_FOOTNOTE };
+}
+
+/** Whether the server's list says who owns each template (the tabs show only then). */
+export function hasOwnership(rows: readonly TemplateRowModel[]): boolean {
+  return rows.some((r) => r.template.ownership === 'mine' || r.template.ownership === 'shared');
+}
+
+/**
+ * Search (name, category, description), the My / Shared tab (only while the server
+ * reports ownership), favorites first.
+ */
+export function filterTemplateRows(
+  rows: readonly TemplateRowModel[],
+  query: string,
+  tab: TemplateTab | null,
+): TemplateRowModel[] {
+  const q = query.trim().toLowerCase();
+  const out = rows.filter((r) => {
+    if (tab && hasOwnership(rows) && r.template.ownership !== tab) return false;
+    if (!q) return true;
+    return [r.title, r.meta, r.description].some((x) => (x ?? '').toLowerCase().includes(q));
+  });
+  return out.sort((a, b) => Number(b.template.favorite === true) - Number(a.template.favorite === true));
+}
+
 export interface TemplateRowModel {
   readonly template: SenderTemplate;
   readonly title: string;
@@ -29,6 +74,8 @@ export interface TemplateRowModel {
 export type TemplatesView =
   | { readonly kind: 'loading' }
   | { readonly kind: 'unavailable'; readonly message: string }
+  /** M-A12 W1-F — Personal without templates: the plans prompt, never an error. */
+  | { readonly kind: 'upsell'; readonly message: string }
   | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'empty'; readonly message: string; readonly note: string | null }
   | {
@@ -117,7 +164,13 @@ export function templatesView(input: {
   if (input.contextLoading && input.context === undefined) return { kind: 'loading' };
   if (input.context !== undefined) {
     const refused = contextRefusal(input.context);
-    if (refused) return { kind: 'unavailable', message: refused };
+    if (refused === FEATURE_UNAVAILABLE && isPersonal(input.context))
+      return { kind: 'upsell', message: PERSONAL_TEMPLATES_PROMPT };
+    if (refused)
+      return {
+        kind: 'unavailable',
+        message: isPersonal(input.context) ? PERSONAL_NO_PERMISSION : refused,
+      };
   }
   if (input.error) {
     return {
@@ -135,6 +188,7 @@ export function templatesView(input: {
   }
   if (lib.kind === 'unavailable') return { kind: 'unavailable', message: libraryRefusal(lib) };
   const note = unavailableNote(lib.unavailable);
-  if (lib.items.length === 0) return { kind: 'empty', message: NO_TEMPLATES, note };
+  if (lib.items.length === 0)
+    return { kind: 'empty', message: isPersonal(input.context) ? PERSONAL_NO_TEMPLATES : NO_TEMPLATES, note };
   return { kind: 'list', rows: lib.items.map(templateRow), note };
 }

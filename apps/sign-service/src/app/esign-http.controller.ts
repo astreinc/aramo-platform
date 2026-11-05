@@ -36,6 +36,7 @@ import { NativeAramoSignatureProvider, assertNotPurged } from './native-aramo-si
 import { SIGN_DELEGATE_SIGNING_FEATURE, SignFeatureGate } from './sign-feature.gate.js';
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { identityVerificationHttpError } from './identity-verification/identity-verification-http-error.js';
+import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -260,6 +261,8 @@ export class EsignSignerController {
     @Optional() private readonly features?: SignFeatureGate,
     // Feature-Parity §1.9 — the SMS one-time-code gate (sender-set SMS_OTP). Unbound = none.
     @Optional() private readonly verification?: RecipientOtpService,
+    // Aramo Sign Mobile M-A12 W1-C.2 — "Find in document" (unbound ⇒ 503).
+    @Optional() private readonly textLayer?: DocumentTextLayerService,
   ) {}
 
   // Resolve the session and, when the sender set SMS_OTP on this recipient, require a
@@ -420,6 +423,30 @@ export class EsignSignerController {
       const descriptor = await this.service.resolveSignerSource(ctx, body.document_id);
       const bytes = await this.sourceProvider.getSourcePdf(descriptor);
       return { source_base64: Buffer.from(bytes).toString('base64'), content_type: descriptor.content_type };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // Aramo Sign Mobile M-A12 W1-C.2 — "Find in document" for the signer: the words of a
+  // document in THIS session's envelope, with boxes normalised to 0..1 of the page (origin
+  // top-left), cached per document version. The same token-in-body auth and gates as
+  // `source` (live session, verification, disclosure); a document of another envelope
+  // reads as not found. The text is never logged.
+  @Post('documents/:documentId/text-layer')
+  @HttpCode(HttpStatus.OK)
+  async textLayerOf(@Param('documentId') documentId: string, @Body() body: { token: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    if (this.textLayer === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Find in document is not available', 503, { requestId, details: { reason: 'text_layer_unavailable' } });
+    const textLayer = this.textLayer;
+    try {
+      const ctx = await this.verifiedSession(body.token, requestId);
+      const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
+      const doc = full.documents.find((d) => d.id === documentId);
+      if (doc === undefined) throw new AramoError('NOT_FOUND', 'Document not found', 404, { requestId });
+      const descriptor = await this.service.resolveSignerSource(ctx, documentId);
+      const version = doc.source_sha256 ?? doc.document_revision_ref ?? doc.id;
+      return await textLayer.forDocument(documentId, version, () => this.sourceProvider.getSourcePdf(descriptor));
     } catch (e) {
       throw toHttp(e, requestId);
     }

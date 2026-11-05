@@ -15,10 +15,12 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('sender field tools (M-A6 §2.1)', () => {
   it('Name and Checkbox are authorable; Acknowledgement is not', () => {
-    expect([...V1_TYPES].sort()).toEqual(['CHECKBOX', 'INITIALS', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT']);
+    // M-A12 W1-C.4 — + the profile text fields.
+    expect([...V1_TYPES].sort()).toEqual(['CHECKBOX', 'COMPANY', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE']);
     expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(false);
     expect(TYPES.SIGNER_NAME.label).toBe('Name');
     expect(TYPES.CHECKBOX).toMatchObject({ w: 14, h: 14 });
+    expect(TYPES.FIRST_NAME.label).toBe('First name');
   });
 });
 

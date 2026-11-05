@@ -25,6 +25,29 @@ export interface FieldRuleRow {
 // (the receipt line the executed PDF prints); a signer never fills it.
 export const PAYMENT_FIELD_TYPE = 'PAYMENT';
 
+// Aramo Sign Mobile M-A12 W1-C.4 — profile auto-fill field types. Text-valued: the
+// sender places them, the signer fills them (the app prefills from the signer's own
+// Sign profile and the signer may edit). The executed PDF prints the value as text.
+export const PROFILE_TEXT_FIELD_TYPES = ['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] as const;
+export type ProfileTextFieldType = (typeof PROFILE_TEXT_FIELD_TYPES)[number];
+const PROFILE_TEXT_SET: ReadonlySet<string> = new Set(PROFILE_TEXT_FIELD_TYPES);
+
+export function isProfileTextField(f: Pick<FieldRuleRow, 'field_type'>): boolean {
+  return PROFILE_TEXT_SET.has(f.field_type);
+}
+
+// The value rule for a profile text field (M-A12): at most 200 characters, and an EMAIL
+// field holds one email address. Returns the refusal reason, or null when it is valid.
+export const PROFILE_TEXT_MAX = 200;
+const FIELD_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export function profileTextValueRefusal(field_type: string, value: string): 'profile_field_value_invalid' | 'email_field_value_invalid' | null {
+  if (!PROFILE_TEXT_SET.has(field_type)) return null;
+  const v = value.trim();
+  if (v.length > PROFILE_TEXT_MAX) return 'profile_field_value_invalid';
+  if (field_type === 'EMAIL' && v.length > 0 && (v.length > 254 || !FIELD_EMAIL_RE.test(v))) return 'email_field_value_invalid';
+  return null;
+}
+
 export function isPaymentField(f: Pick<FieldRuleRow, 'field_type'>): boolean {
   return f.field_type === PAYMENT_FIELD_TYPE;
 }

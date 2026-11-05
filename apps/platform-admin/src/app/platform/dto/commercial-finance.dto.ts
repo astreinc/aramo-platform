@@ -76,6 +76,8 @@ export interface OutstandingItemDto extends PriceFigureDto {
   plan_key: string;
   version_number: number;
   billing_subscription_ref: string | null;
+  /** M-A12 W1-G item 8 — STRIPE | APP_STORE | GOOGLE_PLAY (store revenue is net of the store fee). */
+  billing_provider: string | null;
   status_since: string | null;
   grace_until: string | null;
   // IN_GRACE | GRACE_ENDED | NO_GRACE_DATE
@@ -111,6 +113,8 @@ export interface ReconciledSubscriptionDto extends PriceFigureDto {
   version_status: string;
   grandfathered: boolean;
   billing_subscription_ref: string | null;
+  /** M-A12 W1-G item 8 — STRIPE | APP_STORE | GOOGLE_PLAY (store revenue is net of the store fee). */
+  billing_provider: string | null;
   provider_price_ref: string | null;
   entitlement: { expected: string[]; present: string[]; missing: string[] };
   open_flag_reasons: string[];

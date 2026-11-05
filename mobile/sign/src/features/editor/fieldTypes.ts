@@ -3,11 +3,28 @@
 // FEATURES.extraFieldTypes is on (M-A4 §2.2). ACKNOWLEDGEMENT stays engine-only:
 // authoring never creates it and the server refuses it on PUT …/fields
 // (`v1_field_type`). Signers still complete every engine type (§6).
+// M-A12 W1-C.4 (LOCKED) adds the profile auto-fill types FIRST_NAME, LAST_NAME, EMAIL,
+// COMPANY and TITLE (text-valued; the signer's own Sign profile pre-fills them at fill
+// time and the signer may edit), shown while FEATURES.profileFieldTypes is on.
 import { FEATURES } from '../../config/features';
 
 export const BASE_FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT'] as const;
 export const EXTRA_FIELD_TYPES = ['SIGNER_NAME', 'CHECKBOX'] as const;
-export const AUTHORING_FIELD_TYPES = [...BASE_FIELD_TYPES, ...EXTRA_FIELD_TYPES] as const;
+export const PROFILE_FIELD_TYPES = ['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] as const;
+export const AUTHORING_FIELD_TYPES = [
+  ...BASE_FIELD_TYPES,
+  ...EXTRA_FIELD_TYPES,
+  ...PROFILE_FIELD_TYPES,
+] as const;
+
+export type ProfileFieldType = (typeof PROFILE_FIELD_TYPES)[number];
+
+const PROFILE_SET: ReadonlySet<string> = new Set(PROFILE_FIELD_TYPES);
+
+/** M-A12 W1-C.4 — a text field the signer's Sign profile pre-fills. */
+export function isProfileFieldType(v: unknown): v is ProfileFieldType {
+  return typeof v === 'string' && PROFILE_SET.has(v);
+}
 
 export type AuthoringFieldType = (typeof AUTHORING_FIELD_TYPES)[number];
 
@@ -21,8 +38,13 @@ export function isAuthoringFieldType(v: unknown): v is AuthoringFieldType {
 /** The tools the editor offers in this build. */
 export function toolFieldTypes(
   extra: boolean = FEATURES.extraFieldTypes,
+  profile: boolean = FEATURES.profileFieldTypes,
 ): readonly AuthoringFieldType[] {
-  return extra ? AUTHORING_FIELD_TYPES : BASE_FIELD_TYPES;
+  return [
+    ...BASE_FIELD_TYPES,
+    ...(extra ? EXTRA_FIELD_TYPES : []),
+    ...(profile ? PROFILE_FIELD_TYPES : []),
+  ];
 }
 
 /** M-A6 §2.2 — who supplies a Name field's value. The sender never does. */
@@ -63,4 +85,17 @@ export const FIELD_TYPE_SPECS: Readonly<Record<AuthoringFieldType, FieldTypeSpec
     height: 18,
     requiredByDefault: false,
   },
+  FIRST_NAME: { label: 'First name', noun: 'first name', width: 150, height: 22, requiredByDefault: true },
+  LAST_NAME: { label: 'Last name', noun: 'last name', width: 150, height: 22, requiredByDefault: true },
+  EMAIL: { label: 'Email', noun: 'email', width: 200, height: 22, requiredByDefault: true },
+  COMPANY: { label: 'Company', noun: 'company', width: 200, height: 22, requiredByDefault: true },
+  TITLE: { label: 'Title', noun: 'title', width: 200, height: 22, requiredByDefault: true },
 };
+
+/** M-A12 W1-E.2 — the user's default field size: the starting size of a placed field. */
+export const FIELD_SIZE_SCALE = { S: 0.85, M: 1, L: 1.2 } as const;
+export type FieldSizeKey = keyof typeof FIELD_SIZE_SCALE;
+
+export function sizeScale(size: string | null | undefined): number {
+  return size === 'S' || size === 'M' || size === 'L' ? FIELD_SIZE_SCALE[size] : 1;
+}

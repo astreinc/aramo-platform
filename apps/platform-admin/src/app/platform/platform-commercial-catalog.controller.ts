@@ -38,8 +38,9 @@ class UuidShapePipe implements PipeTransform<string, string> {
 // the draft writes need `platform:catalog:draft` (catalog_manager only). Below the gate the
 // CommercialCatalogService is the authority: a human principal; DRAFT only (a PUBLISHED or
 // RETIRED version is refused 409 COMMERCIAL_CATALOG_CONFLICT `not_draft` — and the N-16 DB
-// trigger refuses it anyway); one DRAFT per plan; only price, envelopes per month, storage and
-// (Sign Feature Parity Amendment A4 D2) the add-on unit prices are editable.
+// trigger refuses it anyway); one DRAFT per plan; only price, envelopes per month, storage,
+// (Sign Feature Parity Amendment A4 D2) the add-on unit prices and (Sign Mobile M-A12 A1-3) the
+// regional list prices are editable.
 //
 // There is deliberately NO publish, retire or apply route: publishing and retiring are
 // PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests (POST /platform/commercial/change-requests,
@@ -112,6 +113,8 @@ export class PlatformCommercialCatalogController {
     if (body.storage_bytes !== undefined) edits.storage_bytes = body.storage_bytes;
     // A4 D2 — add-on unit prices on the DRAFT's content (published through PLAN_VERSION_PUBLISH only).
     if (body.unit_prices !== undefined) edits.unit_prices = { ...body.unit_prices };
+    // M-A12 A1-3 — regional list prices on the DRAFT's content (published through PLAN_VERSION_PUBLISH only).
+    if (body.regional_prices !== undefined) edits.regional_prices = body.regional_prices.map((r) => ({ ...r }));
     const v = await run(requestId, () =>
       this.catalog.updateDraft(actorOf(auth), versionId, { expected_content_checksum: body.expected_content_checksum, edits, ...(body.note !== undefined ? { note: body.note } : {}) }, ctxOf(requestId)),
     );
@@ -187,5 +190,5 @@ export function summaryDto(v: CatalogVersionSummary): CatalogVersionSummaryDto {
 
 /** The editor terms, with the A3 D1 / A4 D2 add-on unit prices copied (a fresh array per response). */
 function termsDto(t: CatalogVersionSummary['terms']): CatalogVersionTermsDto {
-  return { ...t, unit_prices: t.unit_prices.map((u) => ({ ...u })) };
+  return { ...t, unit_prices: t.unit_prices.map((u) => ({ ...u })), regional_prices: (t.regional_prices ?? []).map((r) => ({ ...r })) };
 }

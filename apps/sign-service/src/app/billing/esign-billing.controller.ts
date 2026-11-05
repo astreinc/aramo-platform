@@ -9,6 +9,7 @@ import {
   Logger,
   Optional,
   Post,
+  Query,
   type RawBodyRequest,
   Req,
   UseFilters,
@@ -39,12 +40,17 @@ import {
   checkoutTermsDocument,
   FreePersonalPlanKey,
   type WebhookResult,
+  StoreBillingRefusedError,
+  StoreBillingService,
+  StoreVerificationError,
+  type StoreCaller,
+  type StorePlatform,
 } from '@aramo/subscription';
 import { Inject } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
-import { logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
+import { type SignWebhookSource, logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
 import { ESIGN_READ_SCOPE, SenderContextService } from '../sender/sender-context.service.js';
 
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
@@ -74,6 +80,15 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 //                         (per-unit quantities and amounts on the pinned plan version) (Sign read OR
 //                         billing authority). Built dark: while SIGN_USAGE_BILLING_ENABLED is not '1'
 //                         it answers { enabled: false } and the console shows nothing.
+//   M-A12 W1-G (Sign Mobile in-app purchase; dark unless SIGN_STORE_BILLING_ENABLED=1):
+//   POST store/intent     the tenant-bound purchase token (appAccountToken / obfuscatedAccountId)
+//   POST store/verify     one store purchase verified server-side, applied from the store's state
+//   POST store/restore    the device's store purchases, each verified and applied
+//   POST webhook/app-store    App Store Server Notifications v2 (signed payload verified; NO session)
+//   POST webhook/google-play  Google RTDN Pub/Sub push (OIDC bearer verified; NO session)
+//   GET plans is filtered to the caller's tenant kind (A5) and carries each plan's store products and
+//   the regional price for the caller's billing country (A1-3); GET account carries where the plan is
+//   managed and whether the caller may buy in the app (A1-2).
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only. CCP-C1: the
 //                         verified event is recorded in the webhook inbox before it is
@@ -183,6 +198,10 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     if (e.reason === 'PLAN_TENANT_KIND_MISMATCH') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'That plan isn’t available for this account', 409, { requestId, details: { reason: 'plan_tenant_kind_mismatch' } });
     }
+    if (e.reason === 'BILLING_MANAGED_ELSEWHERE') {
+      // M-A12 W1-G item 5 — the plan is billed through the App Store or Google Play.
+      return new AramoError('ESIGN_BILLING_CONFLICT', 'Your plan is managed in the app store. Manage it there.', 409, { requestId, details: { reason: 'billing_managed_elsewhere' } });
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }
@@ -194,6 +213,7 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
   if (e instanceof BillingProviderUnavailableError) {
     return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: 'PROVIDER_UNAVAILABLE' } });
   }
+  if (e instanceof StoreBillingRefusedError) return storeHttpError(e, requestId);
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', 'Billing request failed', 500, { requestId });
 }
 
@@ -212,6 +232,51 @@ const SELF_SERVICE_HTTP: Readonly<Record<SelfServiceRefusal, { code: ErrorCode; 
   PLAN_NOT_AVAILABLE: { code: 'VALIDATION_ERROR', status: 400, message: 'That plan is not available for a change.' },
   FINANCIAL_TREATMENT_UNDEFINED: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'This change can’t be made online. Contact Aramo to change your subscription.' },
 };
+
+// M-A12 W1-G — the tenant-facing copy of each store refusal (a stable reason; never a JWS, token or
+// store payload detail).
+const STORE_MESSAGES: Readonly<Record<StoreBillingRefusedError['reason'], string>> = {
+  store_billing_disabled: 'In-app purchase isn’t available right now.',
+  not_billing_manager: 'Ask your admin to change the plan.',
+  store_purchase_seats_unsupported: 'Manage your plan at sign.aramo.ai.',
+  billing_managed_elsewhere: 'Your plan is managed elsewhere. Manage it where you bought it.',
+  store_purchase_bound_elsewhere: 'This purchase belongs to another Aramo Sign account.',
+  store_purchase_invalid: 'We couldn’t verify this purchase.',
+  store_product_not_available: 'That plan isn’t available in the app.',
+  domain_verification_required: 'Verify your organization’s email domain before subscribing.',
+};
+
+export function storeHttpError(e: StoreBillingRefusedError, requestId: string): AramoError {
+  const code: ErrorCode =
+    e.status === 503 ? 'ESIGN_BILLING_UNAVAILABLE' : e.status === 403 ? 'INSUFFICIENT_PERMISSIONS' : e.status === 422 ? 'VALIDATION_ERROR' : 'ESIGN_BILLING_CONFLICT';
+  return new AramoError(code, STORE_MESSAGES[e.reason], e.status, { requestId, details: { reason: e.reason } });
+}
+
+const STORE_PLATFORMS: readonly StorePlatform[] = ['ios', 'android'];
+const STORE_PRODUCT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,149}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_STORE_TOKEN = 16_384;
+
+function badStoreBody(requestId: string, message: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', message, 400, { requestId });
+}
+
+function onlyKeys(body: unknown, keys: readonly string[], requestId: string): Record<string, unknown> {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) throw badStoreBody(requestId, 'A JSON object is required');
+  const o = body as Record<string, unknown>;
+  const extra = Object.keys(o).filter((k) => !keys.includes(k));
+  if (extra.length > 0) throw badStoreBody(requestId, `Unknown field(s): ${extra.slice(0, 5).join(', ')}`);
+  return o;
+}
+
+function storePlatform(v: unknown, requestId: string): StorePlatform {
+  if (typeof v !== 'string' || !(STORE_PLATFORMS as readonly string[]).includes(v)) throw badStoreBody(requestId, 'platform must be ios or android');
+  return v as StorePlatform;
+}
+
+function storeToken(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0 && v.length <= MAX_STORE_TOKEN;
+}
 
 export function selfServiceHttpError(e: unknown, requestId: string): AramoError {
   if (e instanceof SelfServiceRefusedError) {
@@ -242,7 +307,91 @@ export class EsignBillingController {
     @Optional() private readonly signups?: PersonalSignupRepository,
     // Sign Feature Parity D-2 (A1) — metered usage (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly usage?: MeteredUsageService,
+    // M-A12 W1-G — in-app store billing (SubscriptionModule provides it; unbound only in unit specs).
+    @Optional() private readonly store?: StoreBillingService,
   ) {}
+
+  /** M-A12 — the declared residence (ISO alpha-2) of a PERSONAL tenant's signup, or null. */
+  private async residenceOf(tenant_id: string): Promise<string | null> {
+    if (this.signups === undefined) return null;
+    try {
+      return (await this.signups.declaredResidenceOf(tenant_id)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private storeOf(requestId: string): StoreBillingService {
+    if (this.store === undefined) throw storeHttpError(new StoreBillingRefusedError('store_billing_disabled'), requestId);
+    return this.store;
+  }
+
+  /** M-A12 — the store caller (tenant kind, billing authority, Personal authoring) from the auth context. */
+  private async storeCaller(auth: AuthContextType, requestId: string): Promise<StoreCaller & { tenant: Awaited<ReturnType<SenderContextService['tenantOf']>> }> {
+    const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
+    return {
+      tenant,
+      tenant_id: auth.tenant_id,
+      user_id: auth.sub,
+      tenant_kind: tenant.kind,
+      can_manage: canManageBilling(auth.scopes),
+      personal_open: tenant.kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant),
+    };
+  }
+
+  /** The account view (GET account, and the answer of store verify / restore). */
+  private async accountView(auth: AuthContextType, requestId: string) {
+    const scopes = new Set(auth.scopes);
+    const can_manage = canManageBilling(auth.scopes);
+    const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
+    const kind = tenant.kind;
+    // Personal Free v1.1 §4 — a bound PERSONAL tenant's FREE subscription (mode not off).
+    const personalOpen = kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant);
+    if (personalOpen) await this.personal?.ensureFreeSubscription(tenant);
+    const view = await this.lifecycle.account(auth.tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
+    // Heal path: the subscribing owner whose role grant did not land at the
+    // webhook (e.g. a transient identity failure) receives it on their next read.
+    const owner = await this.lifecycle.sendingOwner(auth.tenant_id, SIGN_PRODUCT_KEY);
+    if (owner === auth.sub && !scopes.has(ESIGN_READ_SCOPE)) await this.owners.activate(auth.tenant_id, auth.sub, requestId);
+    // M-A12 W1-G / A1-2 — where the plan is managed and whether this caller may buy in the app.
+    const store =
+      this.store !== undefined
+        ? await this.store.accountView(
+            { tenant_id: auth.tenant_id, user_id: auth.sub, tenant_kind: kind, can_manage, personal_open: personalOpen },
+            SIGN_PRODUCT_KEY,
+            `${consoleBase()}${billingReturnPath(kind)}`,
+          )
+        : { managed_by: null, store_purchase_eligible: false, store_purchase_block_reason: 'store_billing_disabled' as const, manage_url: null };
+    return {
+      ...view,
+      // CCP-A6-R (Conversion Rule C-8) — a held self-service activation, as a safe billing-support
+      // state only (no flag, reason or contract detail; never an activation).
+      pending_activation: await this.lifecycle.tenantActivationState(auth.tenant_id, SIGN_PRODUCT_KEY),
+      tenant_kind: kind,
+      // Sign Catalog v2 §4.3 — a bound PERSONAL tenant (Personal sending on) self-serves too.
+      self_service_eligible: kind === 'BUSINESS' || personalOpen,
+      can_manage_billing: can_manage && (kind === 'BUSINESS' || personalOpen),
+      upgrade: kind === 'PERSONAL' ? await this.personalUpgrade(auth.tenant_id, view.subscription, can_manage && personalOpen) : null,
+      ...store,
+    };
+  }
+
+  /** After a store state is applied: the subscribing-owner role, and (Personal) the Free fallback. */
+  private async afterStoreApply(result: { outcome: string; tenant_id: string | null; activated_owner_user_id?: string }, requestId: string): Promise<void> {
+    if (result.tenant_id === null) return;
+    if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined) {
+      const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
+      this.log.log(`store subscription applied for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);
+    }
+    // M-A12 W1-G item 4 — an expired / refunded Personal store plan falls back to the Free plan (the
+    // FREE subscription opens only when no other subscription is open).
+    try {
+      const tenant = await this.ctx.tenantOf(result.tenant_id, requestId);
+      if (tenant.kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant)) await this.personal?.ensureFreeSubscription(tenant);
+    } catch (e) {
+      this.log.warn(`free fallback check failed for ${result.tenant_id}: ${e instanceof Error ? e.name : 'error'}`);
+    }
+  }
 
   /** Sign Catalog v2 §4.3 — the tenant's declared Personal signup residence is the US (fail closed). */
   private async personalUsResident(tenant_id: string): Promise<boolean> {
@@ -304,8 +453,11 @@ export class EsignBillingController {
 
   @Get('plans')
   @BillingBoundary()
-  plans(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+  plans(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Query('country') countryParam?: string) {
     return this.run(requestId, async () => {
+      // M-A12 A1-3 — the caller's billing country: the store storefront country the app sends
+      // (ISO alpha-2), else a PERSONAL tenant's declared residence; else none.
+      const queried = typeof countryParam === 'string' && /^[A-Za-z]{2}$/.test(countryParam.trim()) ? countryParam.trim().toUpperCase() : null;
       // A1 — the catalog for this tenant (eligibility evaluated), and the terms
       // a checkout must accept (null while no version is approved).
       // Sign Catalog v2 §4.3 — the tenant's kind selects the terms and what is purchasable.
@@ -315,8 +467,22 @@ export class EsignBillingController {
       // Sign Catalog v2 §4.3 — a Personal plan is purchasable only while the flag is on, and only
       // for a US resident.
       const personalSellable = kind === 'PERSONAL' && personalPaidCheckoutEnabled() && (await this.personalUsResident(auth.tenant_id));
+      const country = queried ?? (kind === 'PERSONAL' ? await this.residenceOf(auth.tenant_id) : null);
+      const offers = this.store !== undefined ? await this.store.planOffers(SIGN_PRODUCT_KEY, country) : new Map();
       return {
-        plans: catalog.map((p) => (p.tenant_kind === 'PERSONAL' && p.purchasable && !personalSellable ? { ...p, purchasable: false } : p)),
+        // M-A12 R-2 — `catalog` is already filtered to the caller's tenant kind (A5).
+        plans: catalog.map((p) => {
+          const plan = p.tenant_kind === 'PERSONAL' && p.purchasable && !personalSellable ? { ...p, purchasable: false } : p;
+          const offer = offers.get(p.key);
+          const regional = offer?.regional_prices ?? [];
+          return {
+            ...plan,
+            store_products: offer?.store_products ?? [],
+            // The monthly regional price when one exists, else the annual one; every interval in regional_prices.
+            regional_price: regional.find((r: { interval: string }) => r.interval === 'MONTH') ?? regional[0] ?? null,
+            regional_prices: regional,
+          };
+        }),
         terms: terms === null ? null : { version: terms.version, url: terms.url },
         sales_contact_url: salesContactUrl(),
       };
@@ -327,36 +493,114 @@ export class EsignBillingController {
   @BillingBoundary()
   account(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, async () => {
-      const scopes = new Set(auth.scopes);
-      const can_manage = canManageBilling(auth.scopes);
-      if (!can_manage && !scopes.has(ESIGN_READ_SCOPE)) {
+      if (!canManageBilling(auth.scopes) && !auth.scopes.includes(ESIGN_READ_SCOPE)) {
         throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing the plan needs Sign access or billing authority', 403, {
           requestId,
           details: { reason: 'billing_read_scope_missing' },
         });
       }
-      const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
-      const kind = tenant.kind;
-      // Personal Free v1.1 §4 — a bound PERSONAL tenant's FREE subscription (mode not off).
-      const personalOpen = kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant);
-      if (personalOpen) await this.personal?.ensureFreeSubscription(tenant);
-      const view = await this.lifecycle.account(auth.tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
-      // Heal path: the subscribing owner whose role grant did not land at the
-      // webhook (e.g. a transient identity failure) receives it on their next read.
-      const owner = await this.lifecycle.sendingOwner(auth.tenant_id, SIGN_PRODUCT_KEY);
-      if (owner === auth.sub && !scopes.has(ESIGN_READ_SCOPE)) await this.owners.activate(auth.tenant_id, auth.sub, requestId);
-      return {
-        ...view,
-        // CCP-A6-R (Conversion Rule C-8) — a held self-service activation, as a safe billing-support
-        // state only (no flag, reason or contract detail; never an activation).
-        pending_activation: await this.lifecycle.tenantActivationState(auth.tenant_id, SIGN_PRODUCT_KEY),
-        tenant_kind: kind,
-        // Sign Catalog v2 §4.3 — a bound PERSONAL tenant (Personal sending on) self-serves too.
-        self_service_eligible: kind === 'BUSINESS' || personalOpen,
-        can_manage_billing: can_manage && (kind === 'BUSINESS' || personalOpen),
-        upgrade: kind === 'PERSONAL' ? await this.personalUpgrade(auth.tenant_id, view.subscription, can_manage && personalOpen) : null,
-      };
+      return this.accountView(auth, requestId);
     });
+  }
+
+  // ---- M-A12 W1-G: in-app store billing ------------------------------------------------------
+
+  @Post('store/intent')
+  @HttpCode(HttpStatus.CREATED)
+  @BillingBoundary()
+  storeIntent(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: unknown) {
+    return this.run(requestId, async () => {
+      const b = onlyKeys(body, ['platform', 'product_id'], requestId);
+      const platform = storePlatform(b['platform'], requestId);
+      if (typeof b['product_id'] !== 'string' || !STORE_PRODUCT_ID.test(b['product_id'])) throw badStoreBody(requestId, 'product_id is required');
+      const caller = await this.storeCaller(auth, requestId);
+      return this.storeOf(requestId).createIntent(caller, SIGN_PRODUCT_KEY, { platform, product_id: b['product_id'] });
+    });
+  }
+
+  @Post('store/verify')
+  @HttpCode(HttpStatus.OK)
+  @BillingBoundary()
+  storeVerify(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: unknown) {
+    return this.run(requestId, async () => {
+      const b = onlyKeys(body, ['platform', 'product_id', 'intent_id', 'signed_transaction', 'purchase_token'], requestId);
+      const platform = storePlatform(b['platform'], requestId);
+      if (typeof b['product_id'] !== 'string' || !STORE_PRODUCT_ID.test(b['product_id'])) throw badStoreBody(requestId, 'product_id is required');
+      if (typeof b['intent_id'] !== 'string' || !UUID_RE.test(b['intent_id'])) throw badStoreBody(requestId, 'intent_id must be a uuid');
+      const signed_transaction = b['signed_transaction'];
+      const purchase_token = b['purchase_token'];
+      if (platform === 'ios' ? !storeToken(signed_transaction) : !storeToken(purchase_token)) {
+        throw badStoreBody(requestId, platform === 'ios' ? 'signed_transaction is required' : 'purchase_token is required');
+      }
+      const caller = await this.storeCaller(auth, requestId);
+      const result = await this.storeOf(requestId).verify(caller, SIGN_PRODUCT_KEY, {
+        platform,
+        product_id: b['product_id'],
+        intent_id: b['intent_id'].toLowerCase(),
+        ...(platform === 'ios' ? { signed_transaction: signed_transaction as string } : { purchase_token: purchase_token as string }),
+      });
+      await this.afterStoreApply(result, requestId);
+      return this.accountView(auth, requestId);
+    });
+  }
+
+  @Post('store/restore')
+  @HttpCode(HttpStatus.OK)
+  @BillingBoundary()
+  storeRestore(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: unknown) {
+    return this.run(requestId, async () => {
+      const b = onlyKeys(body, ['platform', 'signed_transactions', 'purchase_tokens'], requestId);
+      const platform = storePlatform(b['platform'], requestId);
+      const list = platform === 'ios' ? b['signed_transactions'] : b['purchase_tokens'];
+      if (!Array.isArray(list) || list.length > 10 || !list.every(storeToken)) {
+        throw badStoreBody(requestId, `${platform === 'ios' ? 'signed_transactions' : 'purchase_tokens'} must be an array of at most 10 entries`);
+      }
+      const caller = await this.storeCaller(auth, requestId);
+      const results = await this.storeOf(requestId).restore(caller, SIGN_PRODUCT_KEY, platform === 'ios' ? { platform, signed_transactions: list } : { platform, purchase_tokens: list });
+      for (const r of results) await this.afterStoreApply(r, requestId);
+      return this.accountView(auth, requestId);
+    });
+  }
+
+  @Post('webhook/app-store')
+  @HttpCode(HttpStatus.OK)
+  async appStoreWebhook(@Body() body: unknown, @RequestId() requestId: string): Promise<{ received: true; outcome: WebhookResult['outcome'] }> {
+    return this.storeWebhook('app_store_billing', requestId, (svc) =>
+      svc.receiveAppleNotification(typeof body === 'object' && body !== null ? (body as { signedPayload?: unknown }).signedPayload : undefined, SIGN_PRODUCT_KEY),
+    );
+  }
+
+  @Post('webhook/google-play')
+  @HttpCode(HttpStatus.OK)
+  async googlePlayWebhook(@Body() body: unknown, @Headers('authorization') authorization: string | undefined, @RequestId() requestId: string): Promise<{ received: true; outcome: WebhookResult['outcome'] }> {
+    return this.storeWebhook('google_play_billing', requestId, (svc) => svc.receiveGooglePush(authorization, body, SIGN_PRODUCT_KEY));
+  }
+
+  /**
+   * The store webhooks: NO session; authenticity is the verified signature / OIDC bearer. Disabled →
+   * 404 (no such endpoint while dark). Not authentic → 401. A processing failure → 5xx (the store
+   * redelivers). The state applied is re-fetched from the store (the inbox → lifecycle).
+   */
+  private async storeWebhook(
+    channel: SignWebhookSource,
+    requestId: string,
+    fn: (svc: StoreBillingService) => Promise<WebhookResult>,
+  ): Promise<{ received: true; outcome: WebhookResult['outcome'] }> {
+    if (this.store === undefined || !this.store.enabled()) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
+    let result: WebhookResult;
+    try {
+      result = await fn(this.store);
+    } catch (e) {
+      if (e instanceof StoreBillingRefusedError && e.reason === 'store_billing_disabled') throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
+      if (e instanceof StoreVerificationError) {
+        logWebhookRejected(this.log, channel, e.reason);
+        throw new AramoError('AUTH_REQUIRED', 'Webhook verification failed', 401, { requestId, details: { reason: e.reason } });
+      }
+      logWebhookFailed(this.log, channel, e);
+      throw billingHttpError(e, requestId);
+    }
+    if (result.outcome !== 'DUPLICATE') await this.afterStoreApply(result, requestId);
+    return { received: true, outcome: result.outcome };
   }
 
   @Post('checkout')

@@ -33,6 +33,16 @@ export interface CatalogVersionTerms {
    * (covered by content_checksum, the fingerprint Finance and the Owner approve). Empty = none sold.
    */
   unit_prices?: { unit_key: string; unit_price_minor: number }[];
+  /** Sign Mobile M-A12 A1-3 — the regional list prices in the version's content (e.g. IN / INR). */
+  regional_prices?: CatalogRegionalPrice[];
+}
+
+/** M-A12 A1-3 — one regional list price of a version (minor units of its currency). */
+export interface CatalogRegionalPrice {
+  country: string;
+  currency: string;
+  amount_minor: number;
+  interval: 'MONTH' | 'YEAR';
 }
 
 /** A4 D2 — one add-on (metered) unit a draft can price. */
@@ -127,6 +137,8 @@ export interface CatalogDraftEdits {
   storage_bytes?: number | null;
   /** A4 D2 — unit key → minor units (USD cents), or null to stop selling the unit on this draft. */
   unit_prices?: Record<string, number | null>;
+  /** M-A12 A1-3 — set (amount_minor) or remove (null) the (country, interval) regional price. */
+  regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
 }
 
 export interface CatalogChangeRequest {

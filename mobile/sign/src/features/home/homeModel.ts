@@ -8,8 +8,8 @@
 //   Assigned tasks — inbox items with `can_sign` ONLY (M-A2 claimed associations). Never
 //                    an email match (M-A4 §2.4).
 //   Activity       — the 5 most recent rows by activity
-//   Plan banner    — Personal only (allowance.ts returns null otherwise); copy rules below
-import { countFor, needsMe, relativeTime, type AgreementRow } from '../inbox/agreementsModel';
+//   Plan banner    — Personal and Business with a counted allowance (M-A12 W1-D.3); copy below
+import { countFor, needsMe, relativeTime, shortDate, type AgreementRow } from '../inbox/agreementsModel';
 import { allowanceChipText, allowanceModel, limitBanner } from '../inbox/allowance';
 import type { BillingAccount, InboxItem } from '../inbox/types';
 
@@ -97,29 +97,73 @@ export interface PlanBanner {
   readonly tone: 'plan' | 'limit';
   readonly title: string;
   readonly body: string | null;
+  /** M-A12 W1-D.3 — opens the Plans screen: "See plans ›" or, on a paid plan, "Manage plan ›". */
+  readonly action: 'See plans' | 'Manage plan';
+}
+
+/** M-A12 W1-D.3 — the copy when the monthly sends are used up (signing never counts). */
+export const NO_SENDS_LEFT = 'No sends left this month. Signing is always free.';
+
+function bannerAction(account: BillingAccount | null | undefined): PlanBanner['action'] {
+  const sub = account?.subscription;
+  return sub && sub.source !== 'FREE' && sub.ended_at == null ? 'Manage plan' : 'See plans';
+}
+
+/** A BUSINESS tenant's counted monthly allowance (null when unlimited or not subscribed). */
+function businessMonth(account: BillingAccount): { limit: number; remaining: number; resetsAt: string | null } | null {
+  const a = account.allowance as Record<string, unknown> | undefined;
+  if (!a || a['subscribed'] === false || a['unlimited'] === true) return null;
+  const limit = typeof a['limit'] === 'number' ? a['limit'] : null;
+  const used = typeof a['used'] === 'number' ? a['used'] : null;
+  if (limit === null || used === null) return null;
+  const remaining = typeof a['remaining'] === 'number' ? a['remaining'] : Math.max(0, limit - used);
+  return { limit, remaining, resetsAt: typeof a['period_end'] === 'string' ? a['period_end'] : null };
+}
+
+function noSendsLeft(resetsAt: string | null, action: PlanBanner['action']): PlanBanner {
+  return {
+    tone: 'limit',
+    title: NO_SENDS_LEFT,
+    body: resetsAt ? `Your allowance resets on ${shortDate(resetsAt)}.` : null,
+    action,
+  };
 }
 
 /**
- * The Personal plan banner (M-A4 §2.1). Null for Business tenants and for Personal
- * accounts without a counted allowance (allowanceModel returns null for those).
+ * The Home plan banner (M-A4 §2.1; M-A12 W1-D.3 for Personal AND Business). Null for
+ * accounts without a counted allowance (unlimited or not subscribed).
  *
  * Copy rules (directive C-3/C-4/C-5 unchanged):
- *   - at a limit: the existing allowance.ts limit banner (exact local time, never
- *     "tomorrow"; resets on {date});
+ *   - no monthly sends left: "No sends left this month. Signing is always free." with the
+ *     reset date (M-A12 D-1: self-signing never draws on the allowance);
+ *   - a daily limit: the existing allowance.ts limit banner (exact local time, never
+ *     "tomorrow");
  *   - prototype title "{n} of {limit} free sends left this month" only when the server
- *     reports a monthly window AND the subscription is the Free plan (source FREE), so
- *     both the count and the word "free" come from the server;
+ *     reports a monthly window AND the subscription is the Free plan (source FREE);
  *   - "Up to {d} a day." only when the server reports a day window (its limit);
- *   - "Signing is always free." only on that same Free plan: the server's allowance counts
- *     envelopes SENT only (C-4), so signing never draws on it;
- *   - anything else falls back to the existing allowance chip copy (allowance.ts).
+ *   - anything else falls back to the existing allowance chip copy (allowance.ts);
+ *   - every banner links to the Plans screen ("See plans ›" / "Manage plan ›").
  */
 export function planBanner(account: BillingAccount | null | undefined): PlanBanner | null {
+  if (!account) return null;
+  const action = bannerAction(account);
+  if (account.tenant_kind === 'BUSINESS') {
+    const m = businessMonth(account);
+    if (!m) return null;
+    if (m.remaining <= 0) return noSendsLeft(m.resetsAt, action);
+    return {
+      tone: 'plan',
+      title: `${m.remaining} of ${m.limit} sends left this month`,
+      body: 'Signing is always free.',
+      action,
+    };
+  }
   const m = allowanceModel(account);
   if (!m) return null;
+  if (m.month && m.month.remaining <= 0) return noSendsLeft(m.resetsAt, action);
   const limit = limitBanner(m);
-  if (limit) return { tone: 'limit', title: limit.title, body: limit.body };
-  const free = account?.subscription?.source === 'FREE';
+  if (limit) return { tone: 'limit', title: limit.title, body: limit.body, action };
+  const free = account.subscription?.source === 'FREE';
   if (free && m.month) {
     const body: string[] = [];
     if (m.day) body.push(`Up to ${m.day.limit} a day.`);
@@ -128,9 +172,10 @@ export function planBanner(account: BillingAccount | null | undefined): PlanBann
       tone: 'plan',
       title: `${m.month.remaining} of ${m.month.limit} free sends left this month`,
       body: body.join(' '),
+      action,
     };
   }
-  return { tone: 'plan', title: allowanceChipText(m), body: null };
+  return { tone: 'plan', title: allowanceChipText(m), body: null, action };
 }
 
 export interface HomeModel {

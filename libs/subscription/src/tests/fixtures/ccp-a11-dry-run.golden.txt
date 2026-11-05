@@ -37,8 +37,8 @@
 [ccp-a11]   entitlement."TenantEntitlement": 0
 [ccp-a11]   entitlement."TenantEntitlementEvent": 0
 [ccp-a11] planned records: 2
-[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=dacd7cb7-e557-72b6-8ac7-814fe3c48906 tenant=0190a11a-0000-7000-8000-00000000a57e subscription=0190a11b-0000-7000-8000-00000000a57e product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=ats:MIGRATION,core:MIGRATION,portal:MIGRATION,sign:MIGRATION state_checksum=5979c63a45046da81daf92b1841e1e88e6e35a8fa1bf33d94f2479dd15a6c282
-[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=200c4778-0952-7677-8304-ea6753495cc9 tenant=0190a11a-0000-7000-8000-00000000e70c subscription=0190a11b-0000-7000-8000-00000000e70c product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=core:MIGRATION,sign:MIGRATION:revoked state_checksum=ca359cce4cc703c924fc552a2aedd999688b189662636dffa4005a0bc9295f73
+[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=dacd7cb7-e557-72b6-8ac7-814fe3c48906 tenant=0190a11a-0000-7000-8000-00000000a57e subscription=0190a11b-0000-7000-8000-00000000a57e product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=ats:MIGRATION,core:MIGRATION,portal:MIGRATION,sign:MIGRATION state_checksum=df2714d9ef2bb1dd042689fd2400e124a0b2ae699f575d4f51b764ae05abbfc0
+[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=200c4778-0952-7677-8304-ea6753495cc9 tenant=0190a11a-0000-7000-8000-00000000e70c subscription=0190a11b-0000-7000-8000-00000000e70c product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=core:MIGRATION,sign:MIGRATION:revoked state_checksum=5f7bb875ea4c9689515ca544de0f29fdb780ab5b91ab29affaebc70940bdf15d
 [ccp-a11] exceptions: 1 (HALT 0, REVIEW 1)
 [ccp-a11]   REVIEW PRODUCT_CAPABILITY_REVOKED tenant=0190a11a-0000-7000-8000-00000000e70c subscription=0190a11b-0000-7000-8000-00000000e70c: sign is revoked; the backfill never re-grants (resurrection guard)
 [ccp-a11] OK: no HALT exception. Effective-service writes planned: 0.

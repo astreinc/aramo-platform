@@ -119,6 +119,11 @@ export {
   isPaymentField,
   isServerFilledName,
   PAYMENT_FIELD_TYPE,
+  PROFILE_TEXT_FIELD_TYPES,
+  PROFILE_TEXT_MAX,
+  isProfileTextField,
+  profileTextValueRefusal,
+  type ProfileTextFieldType,
   type CheckboxGroupRule,
   type SignerNameMode,
   type FieldRuleRow,
@@ -363,6 +368,22 @@ export {
   type SavedSignatureRow,
 } from './lib/sign-saved-signature.repository.js';
 export { SignContactRepository, SignContactDuplicateError, contactEmailKey, type SignContactRow } from './lib/sign-contact.repository.js';
+// Aramo Sign Mobile M-A12 W1-E / W1-F — the user's Sign profile, settings, app-issue
+// metadata and template favorites.
+export {
+  SignUserProfileRepository,
+  SIGN_DATE_FORMATS,
+  DEFAULT_SIGN_DATE_FORMAT,
+  SIGN_FIELD_SIZES,
+  DEFAULT_SIGN_FIELD_SIZE,
+  formatSignDate,
+  type SignDateFormat,
+  type SignFieldSize,
+  type SignUserProfileValue,
+  type SignUserProfileRow,
+  type SignUserSettingsValue,
+  type SignUserDataCounts,
+} from './lib/sign-user-profile.repository.js';
 export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup.
 export * from './lib/retention/sign-retention.repository.js';

@@ -27,6 +27,26 @@ export function isUnitPriceEditMap(v: unknown): v is Record<string, number | nul
   return entries.every(([k, p]) => UNIT_PRICE_EDIT_KEY.test(k) && (p === null || (typeof p === 'number' && Number.isSafeInteger(p) && p >= 0 && p <= 10_000_000)));
 }
 
+/** M-A12 A1-3 — the regional-price edit list: (country, interval) → currency + minor units, or null (remove). */
+export const MAX_REGIONAL_PRICE_EDITS = 50;
+export function isRegionalPriceEditList(v: unknown): v is { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[] {
+  if (!Array.isArray(v) || v.length === 0 || v.length > MAX_REGIONAL_PRICE_EDITS) return false;
+  return v.every((e) => {
+    if (typeof e !== 'object' || e === null || Array.isArray(e)) return false;
+    const o = e as Record<string, unknown>;
+    if (Object.keys(o).some((k) => !['country', 'interval', 'currency', 'amount_minor'].includes(k))) return false;
+    return (
+      typeof o['country'] === 'string' &&
+      /^[A-Z]{2}$/.test(o['country']) &&
+      o['country'] !== 'US' &&
+      (o['interval'] === 'MONTH' || o['interval'] === 'YEAR') &&
+      typeof o['currency'] === 'string' &&
+      /^[A-Z]{3}$/.test(o['currency']) &&
+      (o['amount_minor'] === null || (typeof o['amount_minor'] === 'number' && Number.isSafeInteger(o['amount_minor']) && o['amount_minor'] >= 0 && o['amount_minor'] <= 1_000_000_000))
+    );
+  });
+}
+
 export class UpdateCatalogDraftDto {
   @IsString() @Matches(/^[0-9a-f]{64}$/) expected_content_checksum!: string;
   /** Minor units (USD cents). */
@@ -40,6 +60,19 @@ export class UpdateCatalogDraftDto {
   @IsObject()
   @ValidateBy({ name: 'isUnitPriceEditMap', validator: { validate: (v: unknown) => isUnitPriceEditMap(v), defaultMessage: () => 'unit_prices must map 1..20 metered unit keys to an integer 0..10000000 or null' } })
   unit_prices?: Record<string, number | null>;
+  /**
+   * M-A12 A1-3 — regional list prices (e.g. IN / INR): each entry sets the (country, interval) price in
+   * the currency's minor units, or removes it (amount_minor null). Never US (the list price is US/USD).
+   */
+  @IsOptional()
+  @ValidateBy({
+    name: 'isRegionalPriceEditList',
+    validator: {
+      validate: (v: unknown) => isRegionalPriceEditList(v),
+      defaultMessage: () => 'regional_prices must list 1..50 { country (ISO alpha-2, not US), interval MONTH|YEAR, currency (ISO 4217), amount_minor integer 0..1000000000 or null }',
+    },
+  })
+  regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
@@ -57,6 +90,8 @@ export interface CatalogVersionTermsDto {
   storage_present: boolean;
   /** A3 D1 / A4 D2 — the add-on unit prices on the version (empty = no add-on sold). */
   unit_prices: { unit_key: string; unit_price_minor: number }[];
+  /** M-A12 A1-3 — the regional list prices on the version (empty = none). */
+  regional_prices: { country: string; currency: string; amount_minor: number; interval: 'MONTH' | 'YEAR' }[];
 }
 
 export interface CatalogOpenRequestDto {

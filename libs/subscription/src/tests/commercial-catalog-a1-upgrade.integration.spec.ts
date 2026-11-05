@@ -14,6 +14,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+import { M_A12_STORE_MIGRATION } from './fixtures/m-a12.js';
 import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // A1 review — ordered migration replay of the UPGRADE path: a database that
@@ -76,6 +77,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await pg.query(readFileSync(CCP_A4_MIGRATION, 'utf8'));
     // CCP-A5 — every plan (the legacy one included) gets its v1; the subscription is pinned to it.
     await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
+    // M-A12 — the store-billing columns the Prisma client reads (pins carry an interval).
+    await pg.query(readFileSync(M_A12_STORE_MIGRATION, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
   }, 180_000);

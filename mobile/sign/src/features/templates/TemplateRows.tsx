@@ -15,10 +15,13 @@ export function TemplateRows({
   rows,
   onUse,
   disabled,
+  onToggleFavorite,
 }: {
   readonly rows: readonly TemplateRowModel[];
   readonly onUse: (template: SenderTemplate) => void;
   readonly disabled?: boolean;
+  /** M-A12 W1-F — the star; shown only where the caller can save favorites. */
+  readonly onToggleFavorite?: (template: SenderTemplate) => void;
 }) {
   const t = useTheme();
   return (
@@ -58,6 +61,22 @@ export function TemplateRows({
               </Text>
             ) : null}
           </View>
+          {onToggleFavorite ? (
+            <Pressable
+              testID={`template-star-${i}`}
+              onPress={() => onToggleFavorite(r.template)}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel={r.template.favorite ? `Remove ${r.title} from favorites` : `Add ${r.title} to favorites`}
+              accessibilityState={{ selected: r.template.favorite === true, disabled: !!disabled }}
+              hitSlop={8}
+              style={styles.star}
+            >
+              <Text style={{ fontSize: 22, color: r.template.favorite ? '#F5A623' : t.color.textTertiary }}>
+                {r.template.favorite ? '★' : '☆'}
+              </Text>
+            </Pressable>
+          ) : null}
           <View style={[styles.use, { backgroundColor: t.color.accent, opacity: disabled ? 0.42 : 1 }]}>
             <Text style={{ color: t.color.white, fontSize: 14, fontWeight: '600', fontFamily: t.font.family }}>Use</Text>
           </View>
@@ -71,5 +90,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   tile: { width: 42, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, minWidth: 0, gap: 2 },
+  star: { minWidth: 36, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   use: { minHeight: 32, borderRadius: 16, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
 });

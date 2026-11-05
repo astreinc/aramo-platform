@@ -683,7 +683,10 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       // the Owner approve; the service fills it at creation and the apply refuses a version whose
       // content changed since (VERSION_CONTENT_CHANGED). Optional here so a request created before
       // A3 (no snapshot) still validates.
-      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY], errors);
+      // M-A12 W1-G — `store_products` pins the store products (App Store / Google Play product id
+      // and its interval) to the version in the same governed apply (storeProductPinErrors).
+      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY, 'store_products'], errors);
+      if (p['store_products'] !== undefined) errors.push(...storeProductPinErrors(p['store_products']));
       if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
       if (p[PLAN_TARGET_CHECKSUM_KEY] !== undefined && (typeof p[PLAN_TARGET_CHECKSUM_KEY] !== 'string' || !SHA256_HEX.test(p[PLAN_TARGET_CHECKSUM_KEY]))) {
         errors.push(`${PLAN_TARGET_CHECKSUM_KEY} must be a lowercase SHA-256 hex digest`);
@@ -791,4 +794,36 @@ export function subjectUserOf(action_type: string, payload: unknown): string | n
   if (action_type !== 'ROLE_GRANT' && action_type !== 'ROLE_REVOKE') return null;
   const v = (payload as Record<string, unknown> | null)?.['subject_user_id'];
   return typeof v === 'string' ? v : null;
+}
+
+/** M-A12 W1-G — the store product pins a PLAN_VERSION_PUBLISH may carry (closed shape). */
+export interface StoreProductPin {
+  provider: 'APP_STORE' | 'GOOGLE_PLAY';
+  product_id: string;
+  interval: 'MONTH' | 'YEAR';
+}
+
+/** A store product id: reverse-DNS-ish (App Store) or lower-case id (Play); 1..150 chars. */
+export const STORE_PRODUCT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,149}$/;
+
+export function storeProductPinErrors(v: unknown): string[] {
+  if (!Array.isArray(v) || v.length === 0 || v.length > 4) return ['store_products must be an array of 1..4 store product pins'];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  v.forEach((e, i) => {
+    const w = `store_products[${i}]`;
+    if (typeof e !== 'object' || e === null || Array.isArray(e)) {
+      errors.push(`${w} must be an object`);
+      return;
+    }
+    const o = e as Record<string, unknown>;
+    for (const k of Object.keys(o)) if (!['provider', 'product_id', 'interval'].includes(k)) errors.push(`${w}.${k} is not allowed`);
+    if (o['provider'] !== 'APP_STORE' && o['provider'] !== 'GOOGLE_PLAY') errors.push(`${w}.provider must be APP_STORE or GOOGLE_PLAY`);
+    if (typeof o['product_id'] !== 'string' || !STORE_PRODUCT_ID.test(o['product_id'])) errors.push(`${w}.product_id must be a store product id`);
+    if (o['interval'] !== 'MONTH' && o['interval'] !== 'YEAR') errors.push(`${w}.interval must be MONTH or YEAR`);
+    const key = `${String(o['provider'])}:${String(o['interval'])}`;
+    if (seen.has(key)) errors.push(`${w} repeats a provider and interval`);
+    seen.add(key);
+  });
+  return errors;
 }

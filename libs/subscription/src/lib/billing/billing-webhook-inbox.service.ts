@@ -4,7 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertProductKey, type ProductKey } from '../product-registry.js';
 
-import { BILLING_PROVIDER_PORT, type BillingProviderPort, type VerifiedBillingEvent } from './billing-provider.port.js';
+import { BILLING_PROVIDER_PORT, type BillingProviderKey, type BillingProviderPort, type VerifiedBillingEvent } from './billing-provider.port.js';
 import { BILLING_COMMAND_LEASE_MS, billingCommandBackoffMs } from './billing-provider-command.js';
 import { SubscriptionLifecycleService, type WebhookResult } from './subscription-lifecycle.service.js';
 
@@ -95,7 +95,8 @@ export class BillingWebhookInboxService {
   /** Record a verified event durably, then process it (at most one processor at a time). */
   async receive(evt: VerifiedBillingEvent, product_key: ProductKey, at: Date = new Date()): Promise<WebhookResult> {
     assertProductKey(product_key);
-    const provider = this.billing.provider;
+    // M-A12 W1-G item 4 — a store notification (App Store / Google Play) is recorded with its store.
+    const provider = evt.provider ?? this.billing.provider;
     await this.prisma.billingWebhookInbox.createMany({
       data: [
         {
@@ -172,6 +173,8 @@ export class BillingWebhookInboxService {
 
   private async process(row: BillingWebhookInboxRow, at: Date): Promise<WebhookResult> {
     const evt: VerifiedBillingEvent = {
+      // M-A12 — the row's provider routes the re-fetch (a store row is re-fetched from the store API).
+      ...(row.provider !== this.billing.provider ? { provider: row.provider as BillingProviderKey } : {}),
       id: row.provider_event_id,
       type: row.event_type,
       created: row.event_created_at,

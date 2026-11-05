@@ -54,6 +54,8 @@ export interface CreateEnvelopeInput {
   // Amendment M-A6 §3.6 — template provenance (from-template only; both or neither).
   template_ref?: string;
   template_version_ref?: string;
+  // Aramo Sign Mobile M-A12 W1-A — SELF: the caller signs alone (omitted ⇒ STANDARD).
+  envelope_mode?: 'STANDARD' | 'SELF';
 }
 
 // PX-V1 F1 — CORE_REF (legacy ATS: document_ref/document_revision_ref) OR OWNED
@@ -168,6 +170,7 @@ export class EsignRepository {
           ...(input.installation_id !== undefined && input.installation_id !== null ? { installation_id: input.installation_id } : {}),
           ...(input.origin_actor_kind !== undefined ? { origin_actor_kind: input.origin_actor_kind } : {}),
           ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
+          ...(input.envelope_mode === 'SELF' ? { envelope_mode: 'SELF' } : {}),
           ...(input.template_ref !== undefined && input.template_version_ref !== undefined
             ? { template_ref: input.template_ref, template_version_ref: input.template_version_ref }
             : {}),
@@ -179,7 +182,8 @@ export class EsignRepository {
         event_type: 'ENVELOPE_CREATED',
         actor_type: 'SERVICE',
         actor_ref: input.created_by,
-        payload: { execution_mode: input.execution_mode },
+        // M-A12 — a SELF envelope says so in its creation event (STANDARD payloads unchanged).
+        payload: { execution_mode: input.execution_mode, ...(input.envelope_mode === 'SELF' ? { envelope_mode: 'SELF' } : {}) },
       });
       return env;
     });

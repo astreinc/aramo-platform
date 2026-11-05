@@ -5,7 +5,7 @@
 // Screen readers get the field label and the selection panel's move/resize controls
 // (handoff §7) instead of gestures.
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '../../theme';
 import type { EditorAction, EditorField } from './editorReducer';
@@ -22,6 +22,14 @@ function alpha(hex: string, a: number): string {
   return /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${n}` : hex;
 }
 
+/**
+ * M-A12 W1-A — "Sign a document" fills each placed field immediately: the value shown in
+ * the box (the adopted signature / initials image, or the text).
+ */
+export type FieldFill =
+  | { readonly kind: 'image'; readonly uri: string }
+  | { readonly kind: 'text'; readonly text: string };
+
 export interface FieldBoxProps {
   readonly field: EditorField;
   readonly page: PageSize;
@@ -33,6 +41,8 @@ export interface FieldBoxProps {
   readonly dispatch: (a: EditorAction) => void;
   /** Lets the canvas stop scrolling while a field is dragged. */
   readonly onGesture?: (active: boolean) => void;
+  /** The value to show instead of the type label (self-sign). */
+  readonly fill?: FieldFill | null;
 }
 
 export function FieldBox({
@@ -44,6 +54,7 @@ export function FieldBox({
   accessibilityLabel,
   dispatch,
   onGesture,
+  fill,
 }: FieldBoxProps) {
   const t = useTheme();
   const [gestures] = useState(() => createFieldGestures(dispatch, onGesture));
@@ -79,14 +90,33 @@ export function FieldBox({
           : null,
       ]}
     >
-      <Text
-        numberOfLines={1}
-        style={[styles.label, { color, fontFamily: t.font.family }]}
-        maxFontSizeMultiplier={1.4}
-      >
-        {spec.label}
-        {field.required ? ' *' : ''}
-      </Text>
+      {fill?.kind === 'image' ? (
+        <Image
+          testID={`field-fill-${field.key}`}
+          source={{ uri: fill.uri }}
+          style={styles.fillImage}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      ) : fill?.kind === 'text' && fill.text ? (
+        <Text
+          testID={`field-fill-${field.key}`}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={{ color: '#0B1F6B', fontSize: Math.max(9, Math.min(16, box.height * 0.6)) }}
+        >
+          {fill.text}
+        </Text>
+      ) : (
+        <Text
+          numberOfLines={1}
+          style={[styles.label, { color, fontFamily: t.font.family }]}
+          maxFontSizeMultiplier={1.4}
+        >
+          {spec.label}
+          {field.required ? ' *' : ''}
+        </Text>
+      )}
       {selected ? (
         <View
           {...gestures.resize.panHandlers}
@@ -103,6 +133,7 @@ export function FieldBox({
 const styles = StyleSheet.create({
   box: { position: 'absolute', borderRadius: 3, justifyContent: 'center', paddingHorizontal: 4 },
   label: { fontSize: 11, fontWeight: '600' },
+  fillImage: { width: '100%', height: '100%' },
   handle: {
     position: 'absolute',
     right: -HANDLE / 2,

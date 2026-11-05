@@ -62,7 +62,7 @@ export type AgreementRow =
     };
 
 /** The status filter (a superset of the navigation AgreementsFilter; mapped at the screen). */
-export type ListFilter = 'all' | 'needs_me' | 'upcoming' | 'waiting' | 'drafts' | 'done';
+export type ListFilter = 'all' | 'needs_me' | 'upcoming' | 'waiting' | 'drafts' | 'done' | 'voided';
 /** Last activity range, applied on the device (M-A4 §3.2). */
 export type ListRange = '30d' | '6m' | '12m' | 'all';
 
@@ -73,7 +73,11 @@ export const FILTERS: readonly ListFilter[] = [
   'waiting',
   'drafts',
   'done',
+  'voided',
 ];
+
+/** The status chips (the Voided/Canceled filter is in the Filter sheet only, M-A12 W1-D.2). */
+export const CHIP_FILTERS: readonly ListFilter[] = FILTERS.filter((f) => f !== 'voided');
 
 /** Chip labels (handoff §2A "Status chips"). */
 export const FILTER_LABEL: Record<ListFilter, string> = {
@@ -83,6 +87,7 @@ export const FILTER_LABEL: Record<ListFilter, string> = {
   waiting: 'Waiting for others',
   drafts: 'Drafts',
   done: 'Completed',
+  voided: 'Voided/Canceled',
 };
 
 /** The filter name in the header row and the filter sheet. */
@@ -156,6 +161,7 @@ export const EMPTY_STATE: Record<ListFilter | 'search' | 'range', { title: strin
       title: 'Nothing finished yet',
       body: 'Completed, declined and expired envelopes show up here.',
     },
+    voided: { title: 'Nothing voided', body: 'Envelopes that were voided or canceled show up here.' },
     search: { title: 'No matches', body: 'Try a different search.' },
     range: { title: 'Nothing here', body: 'Try another status or a longer time range.' },
   };
@@ -248,6 +254,18 @@ export function awaitingYou(row: AgreementRow): boolean {
 }
 
 /**
+ * M-A12 W1-A.4 — the server says the caller is a recipient bound to them with can_sign
+ * (`can_self_sign_now`): "Sign now" opens a SELF session on the sender envelope.
+ */
+export function selfSignNow(row: AgreementRow): boolean {
+  return (
+    row.kind === 'sent' &&
+    OPEN_STATUSES.has(row.status) &&
+    (row.item as { can_self_sign_now?: boolean }).can_self_sign_now === true
+  );
+}
+
+/**
  * W2 — the inbox item id to sign a sent row that is waiting for the user: the server's
  * `my_inbox_item_id` (a binding id or a discovered-item handle), or null (open Needs me).
  */
@@ -256,7 +274,13 @@ export function inboxItemToSign(row: AgreementRow): string | null {
 }
 
 function waitingForOthers(row: AgreementRow): boolean {
-  if (!OPEN_STATUSES.has(row.status) || needsMe(row) || upcoming(row) || awaitingYou(row))
+  if (
+    !OPEN_STATUSES.has(row.status) ||
+    needsMe(row) ||
+    upcoming(row) ||
+    awaitingYou(row) ||
+    selfSignNow(row)
+  )
     return false;
   // R-8 — a received row the user signed is "Waiting for others" only for its sender.
   if (row.kind === 'received' && row.item.my_status === 'SIGNED') return row.item.i_am_sender;
@@ -277,6 +301,8 @@ export function matchesFilter(row: AgreementRow, filter: ListFilter): boolean {
       return row.status === 'DRAFT' && row.kind !== 'received';
     case 'done':
       return END_STATUSES.has(row.status);
+    case 'voided':
+      return row.status === 'VOIDED';
   }
 }
 
@@ -297,6 +323,51 @@ export function filterAgreements(
   );
 }
 
+// ── M-A12 W1-D.2 — sort ──────────────────────────────────────────────────────
+
+export type ListSort = 'newest' | 'oldest' | 'name' | 'status';
+
+export const SORTS: readonly ListSort[] = ['newest', 'oldest', 'name', 'status'];
+
+export const SORT_LABEL: Record<ListSort, string> = {
+  newest: 'Newest',
+  oldest: 'Oldest',
+  name: 'Name A–Z',
+  status: 'Status',
+};
+
+/** Status order for "Status": what needs the user first, then open, drafts, end states. */
+const STATUS_RANK: Record<string, number> = {
+  NEEDS_ME: 0,
+  SENT: 1,
+  IN_PROGRESS: 1,
+  DRAFT: 2,
+  COMPLETED: 3,
+  DECLINED: 4,
+  VOIDED: 5,
+  EXPIRED: 6,
+};
+
+export function sortAgreements(rows: readonly AgreementRow[], sort: ListSort): AgreementRow[] {
+  const byNewest = (a: AgreementRow, b: AgreementRow) =>
+    a.activityAt < b.activityAt ? 1 : a.activityAt > b.activityAt ? -1 : 0;
+  const out = [...rows];
+  switch (sort) {
+    case 'newest':
+      return out.sort(byNewest);
+    case 'oldest':
+      return out.sort((a, b) => -byNewest(a, b));
+    case 'name':
+      return out.sort(
+        (a, b) => a.subject.localeCompare(b.subject, undefined, { sensitivity: 'base' }) || byNewest(a, b),
+      );
+    case 'status':
+      return out.sort(
+        (a, b) => (STATUS_RANK[pillFor(a)] ?? 9) - (STATUS_RANK[pillFor(b)] ?? 9) || byNewest(a, b),
+      );
+  }
+}
+
 export function countFor(rows: readonly AgreementRow[], filter: ListFilter): number {
   return rows.filter((r) => matchesFilter(r, filter)).length;
 }
@@ -306,7 +377,7 @@ export function countFor(rows: readonly AgreementRow[], filter: ListFilter): num
  * W2 a sent envelope waiting only for the user), else its status (all 7).
  */
 export function pillFor(row: AgreementRow): EnvelopeStatus | 'NEEDS_ME' {
-  return needsMe(row) || awaitingYou(row) ? 'NEEDS_ME' : row.status;
+  return needsMe(row) || awaitingYou(row) || selfSignNow(row) ? 'NEEDS_ME' : row.status;
 }
 
 /**

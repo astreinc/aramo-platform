@@ -323,6 +323,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/documents/{documentId}/text-layer:
+    post:
+      operationId: getSignerDocumentTextLayer
+      summary: The signer's document words with normalised boxes, for Find in document (M-A12 W1-C.2).
+      description: >-
+        Aramo Sign Mobile M-A12 W1-C.2. POST with the signing session token in the body, the same transport and gates as
+        /v1/sign/signing/source (live session, any SMS code, accepted disclosure); LINK, INBOX, HOSTED and SELF sessions alike.
+        A document outside this session's envelope is 404. Cached per document version; the text is never logged.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTextLayer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Disclosure not yet accepted for this signer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/signing/document:
     post:
       operationId: getSignerDocumentView
@@ -424,6 +468,12 @@ paths:
                       available, the sender allowed delegation and this recipient may still hand the envelope to
                       someone else (a signer with an email who has not delegated or signed). The signer page offers
                       the hand-off only then; POST /v1/sign/signing/delegate re-checks every rule.
+                  date_format:
+                    type: [string, 'null']
+                    enum: [MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, null]
+                    description: >-
+                      Aramo Sign Mobile M-A12 W1-E.2 — the sender's format for SIGN_DATE values, stamped at send. Null for an
+                      envelope sent before formats were stamped (the date stays YYYY-MM-DD).
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -1293,6 +1343,12 @@ paths:
       summary: Create a DRAFT envelope.
       description: >
         Creates an empty DRAFT owned by the calling user. Refused for a PERSONAL tenant (personal_sending_not_enabled). Requires sign:envelope:create.
+        Aramo Sign Mobile M-A12 W1-A — `mode: "self"` creates a self-sign draft whose one recipient is the caller, created by
+        the server (a SIGNER with the caller's verified account email, bound to the caller; never client-supplied). Recipients
+        in the request, or any later recipient change, are refused 422 details.reason self_sign_single_recipient; without a
+        verified account email 403 self_sign_email_unverified. Sending a self-sign envelope invites no one, is not counted
+        against the sign.envelopes allowance (the "no sends left" refusal never applies; storage still does), and on
+        completion the executed copy goes to the caller only. Sign it with POST /v1/sign/sender/envelopes/{id}/self-sign-session.
       tags: [sender]
       security:
         - senderSession: []
@@ -1307,6 +1363,11 @@ paths:
                 subject:
                   type: string
                   maxLength: 200
+                mode:
+                  type: string
+                  enum: [standard, self]
+                  default: standard
+                  description: M-A12 W1-A — self creates a self-sign draft (one recipient, the caller).
       responses:
         '201':
           description: The created draft.
@@ -1320,6 +1381,8 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+        '422':
+          $ref: '#/components/responses/SelfSignSingleRecipient'
   /v1/sign/sender/envelopes/{id}:
     get:
       operationId: getSenderEnvelope
@@ -1697,6 +1760,34 @@ paths:
                 format: binary
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/{id}/documents/{documentId}/text-layer:
+    get:
+      operationId: getSenderDocumentTextLayer
+      summary: The document's words with normalised boxes, for Find in document (M-A12 W1-C.2).
+      description: >
+        Aramo Sign Mobile M-A12 W1-C.2. Requires sign:envelope:read and the same visibility as the source route - another
+        tenant's envelope, an envelope the caller may not see, or a document not in the envelope is 404. Cached per document
+        version; the text is never logged. Search and highlight happen on the device.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTextLayer'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -2769,6 +2860,52 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/templates/{id}/favorite:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: favoriteSenderTemplate
+      summary: Mark a template as one of the signed-in user's favorites (M-A12 W1-F).
+      description: >
+        Per user, idempotent. Requires document_template:read and the same plan gate as the template list. A template outside
+        the caller's list is 404.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '204':
+          description: Marked.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: unfavoriteSenderTemplate
+      summary: Remove a template from the signed-in user's favorites (M-A12 W1-F).
+      description: Per user, idempotent (204 also when it was not a favorite).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '204':
+          description: Removed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/sign/sender/templates/{id}/preview:
     post:
       operationId: previewSenderTemplate
@@ -3060,6 +3197,18 @@ paths:
                 message:
                   type: [string, 'null']
                   maxLength: 1000
+                mode:
+                  type: string
+                  enum: [standard, self]
+                  default: standard
+                  description: >-
+                    Aramo Sign Mobile M-A12 W1-A — self ("Sign a document" from a template): a SELF draft whose one
+                    recipient is the caller (verified account email, bound to them). The template's single signer
+                    role (the first needed one, when there are several) is bound to the caller and its fields are
+                    placed for them. signer, recipients, cc and routing_mode are refused (422
+                    self_sign_single_recipient); a template whose fields need more than one signer role is 422
+                    self_sign_single_recipient; no verified account email is 403 self_sign_email_unverified. No
+                    invitation and no allowance use at send (an active subscription is still required).
       responses:
         '201':
           description: The draft envelope (detail), the pinned template version, the template's signature areas and its signing roles.
@@ -3095,6 +3244,13 @@ paths:
                     oneOf:
                       - $ref: '#/components/schemas/SenderTemplateSigning'
                       - type: 'null'
+                  mode:
+                    type: string
+                    enum: [self]
+                    description: M-A12 — present for a self-mode create.
+                  bound_role_key:
+                    type: [string, 'null']
+                    description: M-A12 — the template signer role bound to the caller (null for a template without roles).
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3106,7 +3262,7 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
         '422':
-          description: A template value the Documents API refused.
+          description: A template value the Documents API refused, or (M-A12 self mode) self_sign_single_recipient.
           content:
             application/json:
               schema:
@@ -4493,10 +4649,20 @@ paths:
       summary: Sellable Aramo Sign plans and their included allowances.
       description: >
         Prices are held by the billing provider and shown on its checkout page. purchasable is false when online billing is not configured. Requires the esign consumer and the tenant esign capability.
+        Sign Mobile M-A12 R-2 (A5) — filtered to the caller's tenant kind: a PERSONAL tenant sees PERSONAL plans only, a BUSINESS tenant BUSINESS plans only (plans of no kind are listed for both).
+        Each plan carries its pinned store products (empty while store billing is off) and the regional list price for the caller's billing country (A1-3).
       tags: [billing]
       security:
         - senderSession: []
         - senderBearer: []
+      parameters:
+        - name: country
+          in: query
+          required: false
+          description: M-A12 A1-3 — the caller's billing country (the app sends the store storefront country, ISO 3166-1 alpha-2). Absent ⇒ a PERSONAL tenant's declared residence; else none.
+          schema:
+            type: string
+            pattern: '^[A-Za-z]{2}$'
       responses:
         '200':
           description: OK.
@@ -4712,6 +4878,270 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/store/intent:
+    post:
+      operationId: createStorePurchaseIntent
+      summary: Sign Mobile M-A12 — the tenant-bound token for one in-app store purchase.
+      description: >
+        Requires sign:billing:manage. Dark unless SIGN_STORE_BILLING_ENABLED=1 (503 store_billing_disabled). A1-2 — the tenant must have exactly one active member (the purchaser): PERSONAL buys Personal plans only, BUSINESS Business self-service plans only. An open Stripe or governed subscription refuses (409 billing_managed_elsewhere).
+        The app passes app_account_token to the store (iOS appAccountToken; Android obfuscatedAccountId). It equals intent_id.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [platform, product_id]
+              properties:
+                platform:
+                  type: string
+                  enum: [ios, android]
+                product_id:
+                  type: string
+                  maxLength: 150
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intent_id, app_account_token]
+                properties:
+                  intent_id:
+                    type: string
+                    format: uuid
+                  app_account_token:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/store/verify:
+    post:
+      operationId: verifyStorePurchase
+      summary: Sign Mobile M-A12 — verify one in-app store purchase server-side and apply it.
+      description: >
+        iOS — the signed transaction's x5c chain to Apple Root CA G3, bundle, environment and appAccountToken are verified, then the state is re-fetched from the App Store Server API. Android — purchases.subscriptionsv2.get for the package and the obfuscated account id (= intent_id); the purchase is acknowledged.
+        Idempotent on the store reference. A purchase bound to another tenant → 409 store_purchase_bound_elsewhere; an unverifiable purchase → 422 store_purchase_invalid. Answers the account view.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [platform, product_id, intent_id]
+              properties:
+                platform:
+                  type: string
+                  enum: [ios, android]
+                product_id:
+                  type: string
+                  maxLength: 150
+                intent_id:
+                  type: string
+                  format: uuid
+                signed_transaction:
+                  type: string
+                  description: iOS — the StoreKit 2 signed transaction (JWS). Required for ios.
+                purchase_token:
+                  type: string
+                  description: Android — the Play purchase token. Required for android.
+      responses:
+        '200':
+          description: The account view after the purchase is applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '422':
+          description: The purchase could not be verified (reason store_purchase_invalid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/store/restore:
+    post:
+      operationId: restoreStorePurchases
+      summary: Sign Mobile M-A12 — verify and apply the store purchases the device holds.
+      description: >
+        Each signed transaction (iOS) or purchase token (Android) is verified as in store/verify and must be bound to this tenant. At most 10. Answers the account view.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [platform]
+              properties:
+                platform:
+                  type: string
+                  enum: [ios, android]
+                signed_transactions:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+                purchase_tokens:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: The account view after the purchases are applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '422':
+          description: A purchase could not be verified (reason store_purchase_invalid).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/webhook/app-store:
+    post:
+      operationId: receiveAppStoreNotification
+      summary: App Store Server Notifications v2 receiver (Sign Mobile M-A12).
+      description: >
+        No session. Authenticity is the signedPayload's x5c chain to Apple Root CA G3 (and the bundle and environment). The verified event is recorded in the billing webhook inbox; the subscription state is re-fetched from the App Store Server API, never taken from the payload. 404 while store billing is off.
+      tags: [billing]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signedPayload]
+              properties:
+                signedPayload:
+                  type: string
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE]
+        '401':
+          description: The signed payload failed verification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store billing is off.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/webhook/google-play:
+    post:
+      operationId: receiveGooglePlayNotification
+      summary: Google Play Real-time Developer Notifications receiver, Pub/Sub push (Sign Mobile M-A12).
+      description: >
+        No session. Authenticity is the Pub/Sub push OIDC bearer (Google keys, issuer accounts.google.com, the configured audience and service account) and the package name. The verified event is recorded in the billing webhook inbox; the state is re-fetched with purchases.subscriptionsv2.get. 404 while store billing is off.
+      tags: [billing]
+      security: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: object
+                subscription:
+                  type: string
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE]
+        '401':
+          description: The push token or message failed verification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store billing is off.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/BillingUnavailable'
   /v1/sign/billing/webhook/stripe:
@@ -4939,6 +5369,152 @@ paths:
           $ref: '#/components/responses/NotFound'
   # ── Aramo Sign Mobile — notification feed, push device, push preferences ──
   # (Aramo-Sign-Unified-Product-Amendment-M-A3-Mobile-Owned-Data-Contracts-v1_0-LOCKED §1, §2, §9)
+  /v1/sign/me/profile:
+    get:
+      operationId: getSignProfile
+      summary: The signed-in user's Sign profile (M-A12 W1-E.1).
+      description: >
+        Session (sign consumer) only, keyed by the token's tenant and user; web and mobile. Used to prefill FIRST_NAME,
+        LAST_NAME, EMAIL, COMPANY and TITLE fields (the signer may edit).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUserProfile'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: putSignProfile
+      summary: Save (replace) the signed-in user's Sign profile.
+      description: >
+        Omitted optional fields are cleared. 400 details.reason invalid_body | unknown_field | invalid_display_name |
+        invalid_profile_field | invalid_country | invalid_phone.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUserProfileInput'
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/settings:
+    get:
+      operationId: getSignSettings
+      summary: The signed-in user's Sign settings (M-A12 W1-E.2; defaults MM/DD/YYYY and M).
+      description: Session (sign consumer) only, keyed by the token's tenant and user; the defaults until the first save.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUserSettings'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: putSignSettings
+      summary: Save the signed-in user's Sign settings.
+      description: 400 details.reason invalid_body | unknown_field | invalid_date_format | invalid_default_field_size.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUserSettings'
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUserSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/app-issues:
+    post:
+      operationId: reportSignAppIssue
+      summary: Report an app issue to Aramo support (M-A12 W1-E.3).
+      description: >
+        Emailed to support through the platform mailer; the message is never stored or logged (only its metadata, for the rate
+        limit). No document data, tokens or logs are accepted. 5 per user per rolling hour (429 details.reason
+        app_issue_rate_limited, retry_after_seconds). Extra properties are refused (400 unknown_field). 503
+        app_issues_unavailable while the support address is not configured, app_issue_delivery_failed when the email fails.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignAppIssueInput'
+      responses:
+        '202':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, reference]
+                properties:
+                  received: { type: boolean, enum: [true] }
+                  reference: { type: string, format: uuid }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '429':
+          description: Too many reports in the last hour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Reporting is not available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/me/notifications:
     get:
       operationId: listSignNotifications
@@ -7021,6 +7597,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    SelfSignSingleRecipient:
+      description: >-
+        Aramo Sign Mobile M-A12 W1-A — a self-sign envelope has exactly one recipient, the caller (details.reason
+        self_sign_single_recipient).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: The envelope was not found in the caller's tenant.
       content:
@@ -7403,6 +7987,44 @@ components:
                 description: Built and operational (launch availability).
         purchasable:
           type: boolean
+        store_products:
+          type: array
+          description: M-A12 W1-G — the store products pinned to the plan's published version (empty while store billing is off). The interval comes from the pin.
+          items:
+            type: object
+            required: [platform, product_id, interval]
+            properties:
+              platform:
+                type: string
+                enum: [ios, android]
+              product_id:
+                type: string
+              interval:
+                type: string
+                enum: [MONTH, YEAR]
+        regional_price:
+          description: M-A12 A1-3 — the published regional list price for the caller's billing country (the monthly one when both exist); null when none. Display only; the store charges its own localized price.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/BillingRegionalPrice'
+        regional_prices:
+          type: array
+          description: M-A12 A1-3 — every published regional price for the caller's billing country (MONTH and YEAR).
+          items:
+            $ref: '#/components/schemas/BillingRegionalPrice'
+    BillingRegionalPrice:
+      type: object
+      required: [country, currency, amount_minor, interval]
+      properties:
+        country:
+          type: string
+        currency:
+          type: string
+        amount_minor:
+          type: integer
+        interval:
+          type: string
+          enum: [MONTH, YEAR]
     TaxAvailability:
       type: object
       additionalProperties: false
@@ -7527,6 +8149,19 @@ components:
           type: boolean
         can_manage_billing:
           type: boolean
+        managed_by:
+          type: [string, 'null']
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          description: M-A12 W1-G item 5 — where the open self-service plan is billed (null without one).
+        store_purchase_eligible:
+          type: boolean
+          description: M-A12 A1-2 — the caller may buy a plan in the app now.
+        store_purchase_block_reason:
+          type: [string, 'null']
+          enum: [store_billing_disabled, not_billing_manager, store_purchase_seats_unsupported, billing_managed_elsewhere, null]
+        manage_url:
+          type: [string, 'null']
+          description: The store subscription-management page (App Store / Google Play) or the web billing page (Stripe); null without a self-service plan.
     SelfServiceActionState:
       type: object
       additionalProperties: false
@@ -8290,6 +8925,15 @@ components:
               template_id:
                 type: string
                 format: uuid
+              favorite:
+                type: boolean
+                description: Aramo Sign Mobile M-A12 W1-F — the signed-in user marked this template a favorite.
+              ownership:
+                type: string
+                enum: [mine, shared]
+                description: >-
+                  Aramo Sign Mobile M-A12 W1-F — from owner_scope - TENANT (the organization's or account's own template) is
+                  mine, PLATFORM (an Aramo default shared with every account) is shared.
               name:
                 type: string
               description:
@@ -8531,6 +9175,15 @@ components:
             step - the binding id when bound, otherwise a fresh discovered-item handle issued to this same user (the same
             verified current email rule; valid 30 minutes; refused for any other user). Use it with POST
             /v1/sign/inbox/{id}/sign. Null or absent otherwise.
+        mode:
+          $ref: '#/components/schemas/SenderEnvelopeMode'
+        can_self_sign_now:
+          type: boolean
+          description: >-
+            Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing
+            recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send).
+            Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the
+            verified email.
     SenderEnvelopeCounts:
       type: object
       description: >-
@@ -8859,6 +9512,104 @@ components:
           type: string
         subject:
           type: string
+        mode:
+          $ref: '#/components/schemas/SenderEnvelopeMode'
+    SenderEnvelopeMode:
+      type: string
+      enum: [standard, self]
+      description: >-
+        Aramo Sign Mobile M-A12 W1-A — standard, or self (a self-sign envelope - one recipient, the caller; no invitation;
+        not counted against the sign.envelopes allowance).
+    DocumentTextLayer:
+      type: object
+      description: >-
+        Aramo Sign Mobile M-A12 W1-C.2 — a document's words for Find in document. Boxes are normalised to 0..1 of the page,
+        origin top-left (x, y the top-left corner; w, h the size). An image-only page has no words; an unreadable document
+        has no pages. Extracted server-side from the stored PDF, cached per document version; the text is never logged.
+      required: [document_id, pages]
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        pages:
+          type: array
+          items:
+            type: object
+            required: [page, words]
+            properties:
+              page:
+                type: integer
+                minimum: 1
+                description: 1-based page number.
+              words:
+                type: array
+                items:
+                  type: object
+                  required: [t, x, y, w, h]
+                  properties:
+                    t: { type: string }
+                    x: { type: number, minimum: 0, maximum: 1 }
+                    y: { type: number, minimum: 0, maximum: 1 }
+                    w: { type: number, minimum: 0, maximum: 1 }
+                    h: { type: number, minimum: 0, maximum: 1 }
+    SignUserProfileInput:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        title: { type: [string, 'null'], maxLength: 200 }
+        company: { type: [string, 'null'], maxLength: 200 }
+        address_line1: { type: [string, 'null'], maxLength: 200 }
+        address_line2: { type: [string, 'null'], maxLength: 200 }
+        city: { type: [string, 'null'], maxLength: 200 }
+        region: { type: [string, 'null'], maxLength: 200 }
+        postal_code: { type: [string, 'null'], maxLength: 200 }
+        country:
+          type: [string, 'null']
+          pattern: '^[A-Za-z]{2}$'
+          description: ISO 3166-1 alpha-2 (stored upper-case).
+        phone:
+          type: [string, 'null']
+          maxLength: 200
+          description: E.164 (+ and up to 15 digits; spaces, dots, dashes and brackets are removed).
+    SignUserProfile:
+      description: >-
+        Aramo Sign Mobile M-A12 W1-E.1 — the signed-in user's own Sign profile (stored in the sign schema, owned by the user,
+        in the M-A8 deletion scope and the privacy inventory). Before the first save, display_name is the account's name and
+        every optional field is null (updated_at null). email is the account email, read-only (for EMAIL field auto-fill).
+      allOf:
+        - $ref: '#/components/schemas/SignUserProfileInput'
+        - type: object
+          required: [email, updated_at]
+          properties:
+            email: { type: [string, 'null'], readOnly: true }
+            updated_at: { type: [string, 'null'], format: date-time }
+    SignUserSettings:
+      type: object
+      additionalProperties: false
+      required: [date_format, default_field_size]
+      description: >-
+        Aramo Sign Mobile M-A12 W1-E.2 — date_format is stamped on envelopes the user sends and applies to SIGN_DATE;
+        default_field_size is the editor's default. Defaults MM/DD/YYYY and M.
+      properties:
+        date_format:
+          type: string
+          enum: [MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD]
+        default_field_size:
+          type: string
+          enum: [S, M, L]
+    SignAppIssueInput:
+      type: object
+      additionalProperties: false
+      required: [message, app_version, os, os_version, device_model]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 2000 }
+        app_version: { type: string, minLength: 1, maxLength: 50 }
+        os: { type: string, enum: [ios, android] }
+        os_version: { type: string, minLength: 1, maxLength: 50 }
+        device_model: { type: string, minLength: 1, maxLength: 100 }
+        screen: { type: [string, 'null'], maxLength: 100 }
     SenderEnvelopeDetail:
       type: object
       required: [id, subject, status, documents, recipients, fields, editable]
@@ -8910,6 +9661,19 @@ components:
         allow_delegation:
           type: boolean
           description: Feature-Parity §1.17 — a signer may hand their signature to another person (set in DRAFT, fixed at send).
+        mode:
+          $ref: '#/components/schemas/SenderEnvelopeMode'
+        can_self_sign_now:
+          type: boolean
+          description: >-
+            Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing
+            recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send).
+            Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the
+            verified email.
+        date_format:
+          type: [string, 'null']
+          enum: [MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, null]
+          description: M-A12 W1-E.2 — the SIGN_DATE format stamped at send from the sender's settings (null before send).
         revision:
           type: integer
           minimum: 1
@@ -8962,7 +9726,7 @@ components:
           format: uuid
         field_type:
           type: string
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT, PAYMENT]
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT, PAYMENT, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE]
         page_number:
           type: integer
           minimum: 0
@@ -9018,7 +9782,7 @@ components:
           format: uuid
         field_type:
           type: string
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE]
         page_number:
           type: integer
           minimum: 0
@@ -9061,8 +9825,11 @@ components:
             M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the
             service-to-service and Sign API paths keep all seven engine types). Sign 1.14 — PAYMENT
             is accepted only while payments are available to the organization (403
-            ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient.
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX, PAYMENT]
+            ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient. Aramo Sign Mobile M-A12 W1-C.4 —
+            FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the signer fills (apps prefill them from the
+            signer's own Sign profile; the signer may edit). A filled value is at most 200 characters; an EMAIL value is an
+            email address (400 details.reason profile_field_value_invalid / email_field_value_invalid on fill).
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX, PAYMENT, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE]
         page_number:
           type: integer
           minimum: 0

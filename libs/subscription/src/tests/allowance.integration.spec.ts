@@ -12,6 +12,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION, publishedVersionOf } from './fixtures/ccp-a5.js';
+import { M_A12_STORE_MIGRATION } from './fixtures/m-a12.js';
 
 // Multi-Provider directive §C — the transactional allowance invariants, proven on
 // real Postgres 17: 99/100 concurrency, idempotency, release, stale resolution,
@@ -26,7 +27,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION, M_A12_STORE_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const EVENT = 'sign.envelope.sent';

@@ -22,6 +22,7 @@ import { ESIGN_SCOPE, EsignSenderBoundary } from '@aramo/identity';
 import type { Request, Response } from 'express';
 
 import { clientIp } from '../personal/personal-send.gate.js';
+import { DocumentTextLayerService } from '../text-layer/document-text-layer.service.js';
 
 import { envelopeEtag, idempotencyKey, senderHttp } from './envelope-contracts.js';
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
@@ -46,6 +47,7 @@ export class EsignSenderController {
   constructor(
     private readonly ctx: SenderContextService,
     private readonly envelopes: SenderEnvelopeService,
+    private readonly textLayer: DocumentTextLayerService,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -99,7 +101,7 @@ export class EsignSenderController {
   @Post('envelopes')
   @HttpCode(HttpStatus.CREATED)
   @EsignSenderBoundary(ESIGN_CREATE_SCOPE)
-  create(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { subject?: unknown }) {
+  create(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { subject?: unknown; mode?: unknown; recipients?: unknown }) {
     return this.run(requestId, () => this.envelopes.create(auth, body, requestId));
   }
 
@@ -211,6 +213,18 @@ export class EsignSenderController {
   ): Promise<StreamableFile> {
     const bytes = await this.run(requestId, () => this.envelopes.source(auth, id, documentId, requestId));
     return new StreamableFile(Buffer.from(bytes), { type: 'application/pdf', disposition: 'inline' });
+  }
+
+  // Aramo Sign Mobile M-A12 W1-C.2 — "Find in document": the document's words with boxes
+  // normalised to 0..1 of the page (origin top-left), cached per document version. Same
+  // visibility as the source route (404 otherwise). The text is never logged.
+  @Get('envelopes/:id/documents/:documentId/text-layer')
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  textLayerOf(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('documentId') documentId: string) {
+    return this.run(requestId, async () => {
+      const v = await this.envelopes.documentVersion(auth, id, documentId, requestId);
+      return this.textLayer.forDocument(documentId, v.version, v.load);
+    });
   }
 
   @Put('envelopes/:id/recipients')

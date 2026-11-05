@@ -119,8 +119,8 @@ describe('recent activity', () => {
 });
 
 describe('plan banner', () => {
-  it('is null for Business tenants and uncounted Personal accounts', () => {
-    expect(planBanner(account({ kind: 'BUSINESS', allowance: FREE_ALLOWANCE }))).toBeNull();
+  it('is null for uncounted accounts (unlimited or not subscribed)', () => {
+    expect(planBanner(account({ kind: 'BUSINESS', allowance: { unlimited: true } }))).toBeNull();
     expect(planBanner(account({ allowance: { unlimited: true } }))).toBeNull();
     expect(planBanner(account({ allowance: { subscribed: false } }))).toBeNull();
     expect(planBanner(null)).toBeNull();
@@ -131,6 +131,7 @@ describe('plan banner', () => {
       tone: 'plan',
       title: '3 of 5 free sends left this month',
       body: 'Up to 2 a day. Signing is always free.',
+      action: 'See plans',
     });
   });
 
@@ -144,6 +145,7 @@ describe('plan banner', () => {
       tone: 'plan',
       title: '3 of 5 left this month · 1 of 2 left today',
       body: null,
+      action: 'Manage plan',
     });
   });
 
@@ -167,13 +169,28 @@ describe('plan banner', () => {
     expect(JSON.stringify(b)).not.toMatch(/tomorrow/i);
   });
 
-  it('shows the monthly limit first', () => {
+  it('M-A12 W1-D.3: no monthly sends left says signing is always free (first)', () => {
     const b = planBanner(account({ allowance: { ...FREE_ALLOWANCE, used: 5, remaining: 0 } }));
     expect(b).toEqual({
       tone: 'limit',
-      title: 'Monthly limit reached',
-      body: 'You’ve used all 5 documents this month. Your allowance resets on Nov 1, 2026.',
+      title: 'No sends left this month. Signing is always free.',
+      body: 'Your allowance resets on Nov 1, 2026.',
+      action: 'See plans',
     });
+  });
+
+  it('M-A12 W1-D.3: Business accounts with a counted allowance get the banner too', () => {
+    const counted = { limit: 50, used: 10, remaining: 40, period_end: '2026-11-01T00:00:00.000Z' };
+    expect(planBanner(account({ kind: 'BUSINESS', source: 'SELF_SERVICE', allowance: counted }))).toEqual({
+      tone: 'plan',
+      title: '40 of 50 sends left this month',
+      body: 'Signing is always free.',
+      action: 'Manage plan',
+    });
+    expect(
+      planBanner(account({ kind: 'BUSINESS', source: 'SELF_SERVICE', allowance: { ...counted, used: 50, remaining: 0 } }))
+        ?.title,
+    ).toBe('No sends left this month. Signing is always free.');
   });
 });
 

@@ -96,4 +96,26 @@ describe('HomeView', () => {
     rerender(<HomeView {...p} showHint={false} />);
     expect(screen.queryByTestId('home-hint-ok')).toBeNull();
   });
+
+  it('M-A12 W1-D: "See plans ›" opens Plans; "Assigned tasks" opens Tasks', () => {
+    const onPlans = jest.fn();
+    const onTasks = jest.fn();
+    render(<HomeView {...props({ onPlans, onTasks })} />);
+    expect(screen.getByText('See plans ›')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('home-plan-action'));
+    expect(onPlans).toHaveBeenCalled();
+    fireEvent.press(screen.getByTestId('home-tasks'));
+    expect(onTasks).toHaveBeenCalled();
+  });
+
+  it('M-A12 W1-D.3: no sends left — signing is always free', () => {
+    const billing = {
+      tenant_kind: 'PERSONAL',
+      subscription: { source: 'FREE' },
+      allowance: { limit: 5, used: 5, remaining: 0 },
+    } as unknown as BillingAccount;
+    const model = homeModel({ rows: [], displayName: null, billing, now: NOW });
+    render(<HomeView {...props({ model, onPlans: jest.fn() })} />);
+    expect(screen.getByText('No sends left this month. Signing is always free.')).toBeTruthy();
+  });
 });
