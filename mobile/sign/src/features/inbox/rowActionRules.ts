@@ -4,6 +4,7 @@
 //   Sent, waiting for you (W2)     -> Sign      (server `awaiting_you`; signs with the
 //                                                 server's `my_inbox_item_id`), then
 //                                                 Remind, Void as below
+//   Sent, can_self_sign_now (M-A12) -> Sign     (a SELF session on the envelope)
 //   Waiting, own sent              -> Remind, Void
 //   Draft                          -> Edit, Delete
 //   Completed with an artifact     -> Share     (COMPLETED only; never declined/voided/expired)
@@ -20,7 +21,7 @@
 //     only when the detail allows it (see listActions.ts).
 // Every swipe action is also an accessibility custom action (SwipeActions.tsx) and exists
 // on the detail screen, so no action is swipe-only (M-A4 §3.6).
-import { awaitingYou, type AgreementRow } from './agreementsModel';
+import { awaitingYou, selfSignNow, type AgreementRow } from './agreementsModel';
 import { OPEN_STATUSES, SIGN_APPLICATION, type SenderContext } from './types';
 
 export type SwipeActionKind = 'sign' | 'remind' | 'void' | 'edit' | 'delete' | 'share';
@@ -73,7 +74,7 @@ export function swipeActionsFor(row: AgreementRow, ctx: SwipeContext): SwipeActi
   if (OPEN_STATUSES.has(e.status)) {
     const manage =
       fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.remind, SWIPE_ACTION.void] : [];
-    return awaitingYou(row) ? [SWIPE_ACTION.sign, ...manage] : manage;
+    return awaitingYou(row) || selfSignNow(row) ? [SWIPE_ACTION.sign, ...manage] : manage;
   }
   if (e.status === 'COMPLETED') return [SWIPE_ACTION.share];
   return [];

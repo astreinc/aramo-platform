@@ -2,7 +2,11 @@
 // fields → signed, plus decline, adopt, text entry and the biometric confirmation.
 // Runs ONLY on a GuestSigningSession (capability-token transport). Used by the emailed
 // link flow (GuestSigningScreen) and by inbox signing (SigningScreen).
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+// M-A12 W1-C: "Page n of N" with up / down arrows; Find in document (the signer text
+// layer on the same token transport, searched and highlighted on the device); the header
+// overflow "…" (Find, Document details, Decline, Ask someone else to sign, Help); and the
+// profile field types, pre-filled from the signed-in signer's own profile (`prefill`).
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -25,6 +29,12 @@ import { biometricCapability, biometricConfirmPref, confirmLocally } from '../..
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { WEB_LINKS } from '../../config/env';
+import { FindBar, HighlightOverlay, PageNavigator } from '../find/FindBar';
+import { pageInView } from '../find/findModel';
+import { signerTextLayer } from '../find/textLayerApi';
+import { useFind, type FindDoc } from '../find/useFind';
+import * as WebBrowser from 'expo-web-browser';
 import { Sheet } from '../../components/Sheet';
 import { useToast } from '../../components/Toast';
 import { useTheme } from '../../theme';
@@ -34,7 +44,7 @@ import { CheckRow, ProgressBar, ReasonSheet } from '../inbox/ui';
 import { TextField } from '../send/ui';
 import { loadSavedMarks, saveDefaultMark, type AdoptTarget, type SavedMarks } from './adopt';
 import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
-import { boxOnPage, PdfPages, type PageLayout } from './PdfPages';
+import { boxOnPage, PdfPages, pageSizesFromBase64, type PageLayout } from './PdfPages';
 import {
   acceptAndLoad,
   classifySigningError,
@@ -62,6 +72,7 @@ import {
   displayOf,
   emptyCaption,
   fieldAnnouncement,
+  fieldLabel,
   initialState,
   isFilled,
   primaryAction,
@@ -114,6 +125,11 @@ export interface SigningFlowProps {
    * preference). Off for a hosted session: the device belongs to the host, not the signer.
    */
   readonly deviceConfirm?: boolean;
+  /**
+   * M-A12 W1-C.4 — the signed-in signer's own profile value for a profile field type
+   * (First name, Last name, Email, Company, Title), offered in the text sheet; editable.
+   */
+  readonly prefill?: (fieldType: string) => string | null;
 }
 
 /** The typed name must have at least this many characters (M-A5 §3.4). */
@@ -140,6 +156,7 @@ export function SigningFlow(props: SigningFlowProps) {
     onHeaderFinish,
     attestName = false,
     deviceConfirm = true,
+    prefill,
   } = props;
   const t = useTheme();
   const toast = useToast();
@@ -190,6 +207,22 @@ export function SigningFlow(props: SigningFlowProps) {
   const pageY = useRef<Record<string, Record<number, number>>>({});
   const layouts = useRef<Record<string, PageLayout>>({});
   const fieldRefs = useRef<Record<string, View | null>>({});
+  // M-A12 W1-C — page navigation, Find and the overflow menu.
+  const [pageIdx, setPageIdx] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const docIds = (view?.documents ?? []).map((d) => d.document_id).join('|');
+  const findDocs = useMemo<readonly FindDoc[]>(
+    () =>
+      docIds
+        ? docIds.split('|').map((id) => ({
+            docKey: id,
+            load: session ? () => signerTextLayer(session, id) : null,
+          }))
+        : [],
+    [docIds, session],
+  );
+  const find = useFind(findDocs);
 
   const fail = useCallback((e: unknown) => {
     const kind = classifySigningError(e);
@@ -280,7 +313,10 @@ export function SigningFlow(props: SigningFlowProps) {
   );
 
   function onTap(f: SigningField): void {
-    const { state: next, effect } = tapField(stateRef.current, f.field_id, { signerName });
+    const { state: next, effect } = tapField(stateRef.current, f.field_id, {
+      signerName,
+      ...(prefill ? { prefill } : {}),
+    });
     commit(next);
     if (effect.kind === 'adopt') setAdoptFor({ fieldId: effect.fieldId, target: effect.target });
     else if (effect.kind === 'text') {
@@ -659,10 +695,43 @@ export function SigningFlow(props: SigningFlowProps) {
   const done = requiredDone(state);
   const action = primaryAction(state);
   const docs = [...(view?.documents ?? [])].sort((a, b) => a.ordinal - b.ordinal);
+  const pageList: { docId: string; page: number }[] = [];
+  for (const doc of docs) {
+    const src = sources[doc.document_id];
+    const n = src ? (pageSizesFromBase64(src)?.length ?? 0) : 0;
+    for (let i = 0; i < n; i += 1) pageList.push({ docId: doc.document_id, page: i });
+  }
+  const pageTop = (docId: string, page: number) =>
+    ((docY.current[docId] ?? 0) + (pageY.current[docId]?.[page] ?? 0)) * zoomRef.current;
+  const onPagesScroll = (y: number, viewport: number) => {
+    if (pageList.length === 0) return;
+    const i = pageInView(pageList.map((p) => pageTop(p.docId, p.page)), y, viewport);
+    if (i !== pageIdx) setPageIdx(i);
+  };
+  const goToPage = (i: number) => {
+    const p = pageList[i];
+    if (!p) return;
+    setPageIdx(i);
+    scrollRef.current?.scrollTo({ y: Math.max(0, pageTop(p.docId, p.page) - 8), animated: !reduceMotion });
+  };
+  const showMatch = (m: ReturnType<typeof find.next>) => {
+    if (!m) return;
+    const layout = layouts.current[`${m.docKey}:${m.page}`];
+    const dy = layout ? (m.rects[0]?.y ?? 0) * layout.height * zoomRef.current : 0;
+    scrollRef.current?.scrollTo({ y: Math.max(0, pageTop(m.docKey, m.page) + dy - 120), animated: !reduceMotion });
+  };
+  const openMore = (fn: () => void) => () => {
+    setMoreOpen(false);
+    fn();
+  };
 
   function renderOverlay(documentId: string, index: number, layout: PageLayout) {
     layouts.current[`${documentId}:${index}`] = layout;
-    return state.fields
+    const marks = find.highlights(documentId, index);
+    const highlight = marks.length ? (
+      <HighlightOverlay key="find" rects={marks} width={layout.width} height={layout.height} />
+    ) : null;
+    return [highlight, ...state.fields
       .filter((f) => f.document_id === documentId && f.page_number === index)
       .map((f) => {
         const box = boxOnPage(f, layout);
@@ -732,7 +801,7 @@ export function SigningFlow(props: SigningFlowProps) {
             )}
           </Pressable>
         );
-      });
+      })];
   }
 
   return (
@@ -742,10 +811,46 @@ export function SigningFlow(props: SigningFlowProps) {
           <Banner tone="offline" body={SIGNING_COPY.offline} />
         </View>
       ) : null}
+      <View
+        style={[styles.toolbar, { backgroundColor: t.color.surface, borderBottomColor: t.color.separator }]}
+      >
+        {pageList.length > 0 ? (
+          <PageNavigator
+            current={pageIdx + 1}
+            total={pageList.length}
+            onPrev={() => goToPage(pageIdx - 1)}
+            onNext={() => goToPage(pageIdx + 1)}
+          />
+        ) : (
+          <View />
+        )}
+        <Pressable
+          testID="signing-more"
+          onPress={() => setMoreOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="More"
+          hitSlop={6}
+          style={{ minWidth: t.size.minTouch, minHeight: t.size.minTouch, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ color: t.color.text, fontSize: 22, fontWeight: '600' }}>…</Text>
+        </Pressable>
+      </View>
+      {find.open ? (
+        <FindBar
+          query={find.query}
+          onQuery={find.setQuery}
+          status={find.status}
+          canStep={find.matches.length > 1}
+          onPrev={() => showMatch(find.prev())}
+          onNext={() => showMatch(find.next())}
+          onClose={find.close}
+        />
+      ) : null}
       <ZoomablePages
         ref={scrollRef}
         contentContainerStyle={styles.pages}
         onZoomChange={(z) => (zoomRef.current = z)}
+        onScroll={onPagesScroll}
       >
         {docs.map((doc) => {
           const src = sources[doc.document_id];
@@ -823,19 +928,60 @@ export function SigningFlow(props: SigningFlowProps) {
             style={{ minWidth: 132 }}
           />
         </View>
+      </View>
+      <Sheet visible={moreOpen} onClose={() => setMoreOpen(false)} title="More">
+        <Button
+          testID="more-find"
+          title="Find"
+          variant="secondary"
+          onPress={openMore(() => find.show())}
+        />
+        <Button
+          testID="more-details"
+          title="Document details"
+          variant="secondary"
+          onPress={openMore(() => setDetailsOpen(true))}
+        />
+        <Button
+          testID="more-decline"
+          title="Decline to sign"
+          variant="secondary"
+          onPress={openMore(() => setDeclineOpen(true))}
+        />
         {view?.canDelegate ? (
           <Button
             testID="delegate-open"
             title="Ask someone else to sign"
-            variant="text"
-            onPress={() => {
+            variant="secondary"
+            onPress={openMore(() => {
               setDelegateError(null);
               setDelegateOpen(true);
-            }}
+            })}
           />
         ) : null}
-        <Button title="Decline to sign" variant="text" onPress={() => setDeclineOpen(true)} />
-      </View>
+        <Button
+          testID="more-help"
+          title="Help"
+          variant="secondary"
+          onPress={openMore(() => void WebBrowser.openBrowserAsync(WEB_LINKS.help).catch(() => undefined))}
+        />
+        <Button title="Close" variant="text" onPress={() => setMoreOpen(false)} />
+      </Sheet>
+      <Sheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} title="Document details">
+        {subject ? <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600' }}>{subject}</Text> : null}
+        <Text style={{ color: t.color.textSecondary, fontSize: 14 }}>{`From ${from}`}</Text>
+        {docs.map((d) => {
+          const src = sources[d.document_id];
+          const n = src ? (pageSizesFromBase64(src)?.length ?? 0) : 0;
+          return (
+            <Text key={d.document_id} style={{ color: t.color.text, fontSize: 15 }}>
+              {n > 0 ? `${d.title} · ${n} ${n === 1 ? 'page' : 'pages'}` : d.title}
+            </Text>
+          );
+        })}
+        <Text style={{ color: t.color.textSecondary, fontSize: 14 }}>{`${done} of ${req} required fields done`}</Text>
+        <Button title="Close" variant="text" onPress={() => setDetailsOpen(false)} />
+      </Sheet>
       <Sheet visible={delegateOpen} onClose={() => setDelegateOpen(false)} title="Ask someone else to sign">
         <Text style={{ color: t.color.textSecondary, fontSize: 14, lineHeight: 20 }}>
           They get their own link by email. This link stops working for you.
@@ -888,7 +1034,9 @@ export function SigningFlow(props: SigningFlowProps) {
         title={
           state.fields.find((f) => f.field_id === textFor?.fieldId)?.field_type === 'SIGNER_NAME'
             ? 'Enter your name'
-            : 'Enter text'
+            : textFor
+              ? `Enter ${fieldLabel(state.fields.find((f) => f.field_id === textFor.fieldId)?.field_type ?? 'TEXT').toLowerCase()}`
+              : 'Enter text'
         }
       >
         <TextInput
@@ -971,6 +1119,13 @@ const styles = StyleSheet.create({
   },
   fieldImage: { width: '100%', height: '100%' },
   bar: { paddingHorizontal: 16, paddingTop: 10, gap: 6 },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   offline: { padding: 12 },
   textInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 17, minHeight: 48 },

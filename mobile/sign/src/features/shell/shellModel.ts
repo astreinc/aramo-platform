@@ -22,7 +22,7 @@ export function badgeText(count: number): string | null {
   return count > 99 ? '99+' : String(Math.floor(count));
 }
 
-export type MenuItemKey = 'account' | 'templates' | 'notifications' | 'settings';
+export type MenuItemKey = 'account' | 'tasks' | 'templates' | 'notifications' | 'settings';
 
 export interface MenuItem {
   readonly key: MenuItemKey;
@@ -32,18 +32,25 @@ export interface MenuItem {
   readonly route:
     | { readonly name: 'Account'; readonly params?: RootStackParamList['Account'] }
     | { readonly name: 'Templates' }
+    | { readonly name: 'Tasks' }
     | { readonly name: 'Notifications' };
 }
 
-/** The side-menu items, in prototype order: Account · Templates · Notifications · Settings. */
+/**
+ * The side-menu items, in prototype order: Account · Tasks · Templates · Notifications ·
+ * Settings. M-A12: Tasks (W1-D.1, badge = what needs the user); Templates also for a
+ * Personal account without the capability, which shows the plans prompt there (W1-F).
+ */
 export function menuItems(input: {
   readonly context: SenderContext | null | undefined;
   readonly unread: number;
+  readonly needs?: number;
 }): MenuItem[] {
   const items: MenuItem[] = [
     { key: 'account', label: 'Account', badge: null, route: { name: 'Account' } },
+    { key: 'tasks', label: 'Tasks', badge: badgeText(input.needs ?? 0), route: { name: 'Tasks' } },
   ];
-  if (templatesAvailable(input.context ?? null))
+  if (templatesAvailable(input.context ?? null) || input.context?.tenant?.kind === 'PERSONAL')
     items.push({
       key: 'templates',
       label: 'Templates',
@@ -79,8 +86,9 @@ export interface PlusAction {
 }
 
 /**
- * The + button's actions. Both depend on the server's `can_send`; while it is false the
- * action is disabled with the allowance limit copy when a limit explains it.
+ * The + button's actions. Request signatures depends on the server's `can_send`; while it
+ * is false the action is disabled with the allowance limit copy when a limit explains it.
+ * Sign a document is never disabled by the allowance (M-A12 D-1).
  * "Sign a document" is omitted entirely unless the self-signing backend ships.
  */
 export function plusActions(input: {
@@ -93,8 +101,17 @@ export function plusActions(input: {
   const out: PlusAction[] = [
     { intent: 'request', label: 'Request signatures', disabled: !input.canSend, reason },
   ];
+  // M-A12 D-1: signing is always free. A self-signed document never uses the send
+  // allowance, so a used-up allowance never disables "Sign a document"; any other reason
+  // the server gives for no sending still does.
+  const selfBlocked = !input.canSend && banner === null;
   if (input.selfSign)
-    out.push({ intent: 'self', label: 'Sign a document', disabled: !input.canSend, reason });
+    out.push({
+      intent: 'self',
+      label: 'Sign a document',
+      disabled: selfBlocked,
+      reason: selfBlocked ? reason : null,
+    });
   return out;
 }
 

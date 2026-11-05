@@ -14,6 +14,8 @@ export type AgreementsRange = '30d' | '6m' | '12m' | 'all';
 /** How the Send flow was opened from the + button (M-A4 §1.3). 'self' needs FEATURES.selfSign. */
 export type SendFlowIntent = 'request' | 'self';
 export type EnvelopeDetailTab = 'recipients' | 'documents' | 'activity';
+/** Where the Plans screen was opened from (M-A12 W1-G.1). */
+export type PlansEntry = 'home' | 'templates' | 'settings' | 'limit';
 
 /**
  * The two root tabs (M-A4 §1.1). Search: the shared top bar's search pill on Home calls
@@ -39,6 +41,14 @@ export type RootStackParamList = {
   Account: { section?: 'settings' } | undefined;
   /** Templates list (M-A4 §6.4); the side-menu item shows only while sign.templates is available. */
   Templates: undefined;
+  /** M-A12 W1-A — "Sign a document": the self-sign flow (no Recipients step). */
+  SelfSign: undefined;
+  /** M-A12 W1-D — Tasks: Needs me + Upcoming, with filter and sort (Home "Assigned tasks"). */
+  Tasks: undefined;
+  /** M-A12 W1-G — Plans and in-app purchase; `from` sets the reason line and the way back. */
+  Plans: { from?: PlansEntry } | undefined;
+  /** M-A12 W1-E — the user's own Sign profile. */
+  Profile: undefined;
   EnvelopeDetail: { envelopeId: string; initialTab?: EnvelopeDetailTab };
   /**
    * Signing a claimed inbox envelope (consent -> fields -> signed). `envelopeId` is the

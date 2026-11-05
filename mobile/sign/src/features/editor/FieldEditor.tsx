@@ -8,7 +8,11 @@
 //            selection -> "{Type} · {Signer}", Done, Assign, Required/Optional,
 //            Settings (Name and Checkbox), move and resize controls (accessible
 //            placement, handoff §7), Delete.
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+//   M-A12 W1-C: "Page n of N" with up / down arrows, Find in document (the server's
+//            text layer, searched and highlighted on the device), the profile field
+//            types, and the user's default field size. W1-A: self-sign shows each
+//            placed field's value (fillFor) and its value editor (renderSelectionExtra).
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -39,7 +43,9 @@ import {
 } from './editorReducer';
 import { FIELD_TYPE_SPECS, MAX_LABEL, toolFieldTypes, type AuthoringFieldType } from './fieldTypes';
 import { scaleFor, screenToEditorPoint, type PageSize } from './geometry';
-import { FieldBox } from './FieldBox';
+import { FindBar, HighlightOverlay, PageNavigator } from '../find/FindBar';
+import { useFind, type FindDoc } from '../find/useFind';
+import { FieldBox, type FieldFill } from './FieldBox';
 import { PdfPageView } from './PdfPageView';
 
 export const ZOOM_LEVELS = [1, 1.5, 2] as const;
@@ -67,6 +73,20 @@ export interface FieldEditorProps {
   readonly initialFields: readonly EditorField[];
   readonly loadAsset: (docKey: string) => Promise<LoadedAsset>;
   readonly onFieldsChange: (fields: readonly EditorField[]) => void;
+  /** M-A12 W1-A — the value each placed field shows (self-sign fills fields at once). */
+  readonly fillFor?: (field: EditorField) => FieldFill | null;
+  /** Called before a tool is picked; false stops it (e.g. adopt a signature first). */
+  readonly onPickTool?: (type: AuthoringFieldType) => boolean;
+  /** Extra controls in the selection panel (self-sign: the field's value). */
+  readonly renderSelectionExtra?: (field: EditorField) => ReactNode;
+  /** M-A12 W1-E.2 — the starting size of a placed field (1 = the type's default). */
+  readonly fieldScale?: number;
+  /** M-A12 W1-C.2 — how Find reads each document's text (keyed like `documents`). */
+  readonly findDocs?: readonly FindDoc[];
+  /** One signer (self-sign): the recipient chips are hidden. */
+  readonly hideRecipients?: boolean;
+  /** Extra toolbar controls (self-sign: the "…" menu). */
+  readonly toolbarExtra?: ReactNode;
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
@@ -83,6 +103,13 @@ export function FieldEditor({
   initialFields,
   loadAsset,
   onFieldsChange,
+  fillFor,
+  onPickTool,
+  renderSelectionExtra,
+  fieldScale = 1,
+  findDocs,
+  hideRecipients = false,
+  toolbarExtra,
 }: FieldEditorProps) {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -95,7 +122,11 @@ export function FieldEditor({
   const [gesture, setGesture] = useState(false);
   const pageTops = useRef(new Map<string, PageRef>());
   const scrollY = useRef(0);
+  const viewport = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
   const [visible, setVisible] = useState<{ docKey: string; page: number } | null>(null);
+  const noFind = useMemo<readonly FindDoc[]>(() => [], []);
+  const find = useFind(findDocs ?? noFind);
 
   // Load every document's bytes + page sizes (once per document).
   const requested = useRef(new Set<string>());
@@ -166,6 +197,41 @@ export function FieldEditor({
     }
   };
 
+  // W1-C.1 — every loaded page in order, for "Page n of N" and the arrows.
+  const allPages: { docKey: string; page: number; size: PageSize }[] = [];
+  for (const d of documents) {
+    const a = assets[d.key];
+    if (a && a !== 'failed') a.pages.forEach((size, page) => allPages.push({ docKey: d.key, page, size }));
+  }
+  const currentIndex = Math.max(
+    0,
+    allPages.findIndex((p) => p.docKey === (visible?.docKey ?? documents[0]?.key) && p.page === (visible?.page ?? 0)),
+  );
+  const CANVAS_TOP = 16;
+  const scrollToPage = (docKey: string, page: number, dy = 0) => {
+    const top = pageTops.current.get(`${docKey}:${page}`);
+    if (!top) return;
+    setVisible({ docKey, page });
+    scrollRef.current?.scrollTo({ y: Math.max(0, top.y + CANVAS_TOP + dy), animated: true });
+  };
+  const stepPage = (dir: 1 | -1) => {
+    const target = allPages[currentIndex + dir];
+    if (target) scrollToPage(target.docKey, target.page);
+  };
+  const showMatch = (m: ReturnType<typeof find.next>) => {
+    if (!m) return;
+    const size = pageSizeOf(m.docKey, m.page);
+    const h = size ? scaleFor(size, pageWidth) * size.height : 0;
+    scrollToPage(m.docKey, m.page, Math.max(0, (m.rects[0]?.y ?? 0) * h - 80));
+  };
+  const firstMatch = find.matches[0];
+  const firstKey = firstMatch ? `${firstMatch.docKey}:${firstMatch.page}:${find.query}` : null;
+  useEffect(() => {
+    if (firstKey && firstMatch) showMatch(firstMatch);
+    // Scroll once when the first match of a new query appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstKey]);
+
   const placeAtCenter = () => {
     const target = visible ?? (documents[0] ? { docKey: documents[0].key, page: 0 } : null);
     if (!target) return;
@@ -177,6 +243,7 @@ export function FieldEditor({
       docKey: target.docKey,
       page: target.page,
       pageSize: size,
+      scale: fieldScale,
     });
   };
 
@@ -196,6 +263,7 @@ export function FieldEditor({
           { borderBottomColor: t.color.separator, backgroundColor: t.color.surface },
         ]}
       >
+        {hideRecipients ? null : (
         <View style={styles.chips} accessibilityRole="tablist">
           {recipients.map((r, i) => {
             const on = r.key === state.activeRecipient;
@@ -219,6 +287,27 @@ export function FieldEditor({
               </Pressable>
             );
           })}
+        </View>
+        )}
+        <View style={styles.toolbarRow}>
+          {allPages.length > 0 ? (
+            <PageNavigator
+              current={currentIndex + 1}
+              total={allPages.length}
+              onPrev={() => stepPage(-1)}
+              onNext={() => stepPage(1)}
+            />
+          ) : null}
+          {findDocs ? (
+            <Button
+              testID="editor-find"
+              title="Find"
+              variant="text"
+              accessibilityHint="Searches the text of the documents"
+              onPress={() => (find.open ? find.close() : find.show())}
+            />
+          ) : null}
+          {toolbarExtra}
         </View>
         <View style={styles.toolbarRow}>
           <Button
@@ -253,8 +342,22 @@ export function FieldEditor({
         </View>
       </View>
 
+      {find.open ? (
+        <FindBar
+          query={find.query}
+          onQuery={find.setQuery}
+          status={find.status}
+          canStep={find.matches.length > 1}
+          onPrev={() => showMatch(find.prev())}
+          onNext={() => showMatch(find.next())}
+          onClose={find.close}
+        />
+      ) : null}
+
       {/* Canvas */}
       <ScrollView
+        ref={scrollRef}
+        onLayout={(e: LayoutChangeEvent) => (viewport.current = e.nativeEvent.layout.height)}
         style={[styles.fill, { backgroundColor: t.color.documentBackdrop }]}
         contentContainerStyle={styles.canvas}
         scrollEnabled={!gesture}
@@ -327,12 +430,19 @@ export function FieldEditor({
                                 { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY },
                                 scale,
                               ),
+                              scale: fieldScale,
                             });
                           } else dispatch({ type: 'select', key: null });
                         }}
                       />
+                      <HighlightOverlay
+                        rects={find.highlights(d.key, pi)}
+                        width={pageWidth}
+                        height={scale * size.height}
+                      />
                       {fields.map((f) => (
                         <FieldBox
+                          fill={fillFor ? fillFor(f) : null}
                           key={f.key}
                           field={f}
                           page={size}
@@ -370,6 +480,7 @@ export function FieldEditor({
             signerName={nameOf(selected.recipientKey)}
             pageSize={pageSizeOf(selected.docKey, selected.page)}
             dispatch={dispatch}
+            extra={renderSelectionExtra ? renderSelectionExtra(selected) : null}
           />
         ) : (
           <View style={styles.panelBody}>
@@ -383,9 +494,10 @@ export function FieldEditor({
                   type={type}
                   active={state.tool === type}
                   disabled={recipients.length === 0}
-                  onPress={() =>
-                    dispatch({ type: 'pickTool', tool: state.tool === type ? null : type })
-                  }
+                  onPress={() => {
+                    if (state.tool !== type && onPickTool && !onPickTool(type)) return;
+                    dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
+                  }}
                 />
               ))}
             </View>
@@ -454,6 +566,7 @@ function SelectionPanel({
   signerName,
   pageSize,
   dispatch,
+  extra,
 }: {
   readonly field: EditorField;
   readonly fields: readonly EditorField[];
@@ -462,6 +575,7 @@ function SelectionPanel({
   readonly signerName: string;
   readonly pageSize: PageSize | undefined;
   readonly dispatch: (a: EditorAction) => void;
+  readonly extra?: ReactNode;
 }) {
   const t = useTheme();
   const keys = recipients.map((r) => r.key);
@@ -491,6 +605,7 @@ function SelectionPanel({
           onPress={() => dispatch({ type: 'select', key: null })}
         />
       </View>
+      {extra}
       <View style={styles.row}>
         <Button
           style={styles.grow}

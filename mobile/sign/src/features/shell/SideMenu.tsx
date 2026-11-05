@@ -24,7 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useServices } from '../../app/ServicesContext';
-import { useSenderContext } from '../inbox/queries';
+import { useInbox, useSenderContext } from '../inbox/queries';
 import { useUnreadCount } from '../notifications/queries';
 import { loadSavedMarks, type SavedMark } from '../signing/adopt';
 import { useReducedMotion } from '../signing/useReducedMotion';
@@ -33,6 +33,7 @@ import { ShellIcon, type ShellIconName } from './icons';
 import {
   initialsFor,
   menuItems,
+  needsSignatureCount,
   profileLines,
   type MenuItem,
   type MenuItemKey,
@@ -43,6 +44,7 @@ export const SAVED_MARKS_KEY = ['sign', 'me', 'signature'] as const;
 
 const ITEM_ICON: Record<MenuItemKey, ShellIconName> = {
   account: 'account',
+  tasks: 'needs',
   templates: 'templates',
   notifications: 'notifications',
   settings: 'settings',
@@ -81,6 +83,7 @@ export function SideMenu({
   const { workspace, signOut } = useServices();
   const ctx = useSenderContext();
   const unread = useUnreadCount().data ?? 0;
+  const inbox = useInbox();
   const saved = useQuery({
     queryKey: SAVED_MARKS_KEY,
     queryFn: () => loadSavedMarks(workspace),
@@ -104,7 +107,7 @@ export function SideMenu({
   }, [open, reduced, progress]);
 
   const profile = profileLines(ctx.data);
-  const items = menuItems({ context: ctx.data, unread });
+  const items = menuItems({ context: ctx.data, unread, needs: needsSignatureCount(inbox.data) });
   const signature = saved.data?.signature ?? null;
   // The menu previews the signature only; initials are managed under Account.
   const hasMark = signature !== null;
@@ -113,6 +116,7 @@ export function SideMenu({
     onClose();
     if (route.name === 'Account') navigation.navigate('Account', route.params);
     else if (route.name === 'Templates') navigation.navigate('Templates');
+    else if (route.name === 'Tasks') navigation.navigate('Tasks');
     else navigation.navigate('Notifications');
   }
 

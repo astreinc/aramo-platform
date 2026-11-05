@@ -35,6 +35,7 @@ import { FEATURES } from '../../config/features';
 import { startHosted } from '../../features/hosted/startHosted';
 import { createDocumentBytesStore } from '../../features/send/documentBytes';
 import { createSenderApi } from '../../features/send/senderApi';
+import { startSelfSign } from '../../features/send/selfSign';
 import { forgetLocalDrafts } from '../../features/send/localDrafts';
 import { dateTime, shortDate } from '../../features/inbox/agreementsModel';
 import {
@@ -144,6 +145,8 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const [voidError, setVoidError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [hostBusy, setHostBusy] = useState<string | null>(null);
+  const [selfBusy, setSelfBusy] = useState(false);
+  const [selfNote, setSelfNote] = useState<string | null>(null);
   const [hostNote, setHostNote] = useState<string | null>(null);
   const sharer = useShare();
 
@@ -224,6 +227,21 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
     } finally {
       setRemindBusy(false);
     }
+  }
+
+  // M-A12 W1-A.4 — "Sign now": a SELF session when the server says the caller is a bound
+  // recipient who can sign (`can_self_sign_now`). The route gets only the vault handle.
+  async function signNow(): Promise<void> {
+    setSelfBusy(true);
+    setSelfNote(null);
+    const r = await startSelfSign(createSenderApi(workspace), envelopeId, null);
+    setSelfBusy(false);
+    if (r.kind === 'refused') {
+      setSelfNote(r.message);
+      void q.refetch();
+      return;
+    }
+    navigation.navigate('GuestSigning', { handle: r.handle, mode: 'sign', origin: 'self', envelopeId });
   }
 
   // Start a hosted session; the token goes to the vault, the route gets only a handle.
@@ -434,6 +452,20 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
           </Card>
         ) : null}
 
+        {isOpen && (detail as { can_self_sign_now?: boolean }).can_self_sign_now === true ? (
+          <Button
+            testID="action-sign-now"
+            title="Sign now"
+            busy={selfBusy}
+            disabled={!online || selfBusy}
+            onPress={() => void signNow()}
+          />
+        ) : null}
+        {selfNote ? (
+          <Text accessibilityRole="alert" style={{ color: t.color.textSecondary, fontSize: 13 }} testID="self-note">
+            {selfNote}
+          </Text>
+        ) : null}
         {hostable.map((r) => (
           <Button
             key={r.id}

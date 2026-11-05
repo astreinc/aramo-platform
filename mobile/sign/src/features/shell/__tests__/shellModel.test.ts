@@ -45,7 +45,7 @@ describe('badgeText', () => {
 describe('menuItems', () => {
   it('Account · Notifications · Settings without the templates capability', () => {
     const items = menuItems({ context: ctx(), unread: 0 });
-    expect(items.map((i) => i.label)).toEqual(['Account', 'Notifications', 'Settings']);
+    expect(items.map((i) => i.label)).toEqual(['Account', 'Tasks', 'Notifications', 'Settings']);
     expect(items.find((i) => i.key === 'settings')?.route).toEqual({
       name: 'Account',
       params: { section: 'settings' },
@@ -59,6 +59,7 @@ describe('menuItems', () => {
     });
     expect(menuItems({ context: on, unread: 0 }).map((i) => i.label)).toEqual([
       'Account',
+      'Tasks',
       'Templates',
       'Notifications',
       'Settings',
@@ -68,6 +69,13 @@ describe('menuItems', () => {
       false,
     );
     expect(menuItems({ context: null, unread: 0 }).some((i) => i.key === 'templates')).toBe(false);
+  });
+
+  it('M-A12: Tasks carries the needs-me count; Personal always sees Templates (plans prompt)', () => {
+    const items = menuItems({ context: ctx(), unread: 0, needs: 3 });
+    expect(items.find((i) => i.key === 'tasks')).toMatchObject({ badge: '3', route: { name: 'Tasks' } });
+    const personal = ctx({ tenant: { ...CTX_OWNER.tenant, kind: 'PERSONAL' } });
+    expect(menuItems({ context: personal, unread: 0 }).some((i) => i.key === 'templates')).toBe(true);
   });
 
   it('puts the server unread count on Notifications only', () => {
@@ -105,6 +113,16 @@ describe('plusActions', () => {
     expect(a[0]?.disabled).toBe(true);
     expect(a[0]?.reason).toMatch(/^You’ve used all 5 documents this month\./);
     expect(a[0]?.reason).not.toMatch(/tomorrow/i);
+  });
+
+  it('M-A12 D-1: "no sends left" never blocks Sign a document', () => {
+    const billing = {
+      tenant_kind: 'PERSONAL',
+      allowance: { limit: 5, used: 5, remaining: 0, period_end: '2026-11-01T00:00:00.000Z' },
+    } as unknown as BillingAccount;
+    const a = plusActions({ canSend: false, allowance: allowanceModel(billing), selfSign: true });
+    expect(a.find((x) => x.intent === 'request')?.disabled).toBe(true);
+    expect(a.find((x) => x.intent === 'self')).toMatchObject({ disabled: false, reason: null });
   });
 
   it('falls back to a generic reason when no limit explains it', () => {

@@ -1,6 +1,7 @@
 // Runs an Agreements row action (M-A4 §3.5–§3.7) the way the detail screens do:
 //   Sign   -> the existing inbox signing route (W2: from a sent row waiting for the user,
-//             with the server's `my_inbox_item_id`; Needs me when the server gave none)
+//             with the server's `my_inbox_item_id`; Needs me when the server gave none);
+//             M-A12: a sent row with `can_self_sign_now` opens a SELF session
 //   Remind -> one reminder intent after reading the detail (listActions.remindFromList)
 //   Void   -> the reason sheet, then void with the detail's ETag (412 = refresh, never resubmit)
 //   Edit   -> Send flow with the envelope (after the server says it is `editable`), or
@@ -19,7 +20,9 @@ import { shareTargetFor } from '../share/shareCompleted';
 import { useShare } from '../share/useShare';
 import { createDocumentBytesStore } from '../send/documentBytes';
 import { forgetLocalDrafts } from '../send/localDrafts';
-import { inboxItemToSign, type AgreementRow } from './agreementsModel';
+import { createSenderApi } from '../send/senderApi';
+import { startSelfSign } from '../send/selfSign';
+import { inboxItemToSign, selfSignNow, type AgreementRow } from './agreementsModel';
 import { deleteDraftById, VOID_REASON_MIN } from './envelopeActions';
 import { checkEditable, remindFromList, voidFromList } from './listActions';
 import { OFFLINE_ACTION_REASON, putDetail, signKeys, useOnline, useSenderContext } from './queries';
@@ -134,7 +137,20 @@ export function useRowActions(): {
       case 'sign':
         if (row.kind === 'received')
           navigation.navigate('Signing', { envelopeId: row.inboxItemId });
-        else if (row.kind === 'sent') {
+        else if (row.kind === 'sent' && selfSignNow(row)) {
+          // M-A12 W1-A.4 — a SELF session; the route gets only the vault handle.
+          void once(async () => {
+            const r = await startSelfSign(createSenderApi(services.workspace), row.envelopeId, null);
+            if (r.kind === 'refused') toast.show(r.message);
+            else
+              navigation.navigate('GuestSigning', {
+                handle: r.handle,
+                mode: 'sign',
+                origin: 'self',
+                envelopeId: row.envelopeId,
+              });
+          });
+        } else if (row.kind === 'sent') {
           // W2 (A3.5) — the server names the user's own inbox item for this envelope.
           const id = inboxItemToSign(row);
           if (id !== null) navigation.navigate('Signing', { envelopeId: id });

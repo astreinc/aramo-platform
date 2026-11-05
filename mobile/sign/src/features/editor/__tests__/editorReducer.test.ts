@@ -31,11 +31,16 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
   it('is the four base tools plus Name and Checkbox; ACKNOWLEDGEMENT stays engine-only', () => {
     expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([
       'CHECKBOX',
+      'COMPANY',
+      'EMAIL',
+      'FIRST_NAME',
       'INITIALS',
+      'LAST_NAME',
       'SIGNATURE',
       'SIGNER_NAME',
       'SIGN_DATE',
       'TEXT',
+      'TITLE',
     ]);
     expect(Object.keys(FIELD_TYPE_SPECS).sort()).toEqual([...AUTHORING_FIELD_TYPES].sort());
     for (const other of ['ACKNOWLEDGEMENT', 'NAME', 'STAMP']) {
@@ -45,8 +50,8 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
 
   it('shows Name and Checkbox only behind FEATURES.extraFieldTypes (on in this build)', () => {
     expect(FEATURES.extraFieldTypes).toBe(true);
-    expect(toolFieldTypes(false)).toEqual(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT']);
-    expect(toolFieldTypes(true)).toEqual([
+    expect(toolFieldTypes(false, false)).toEqual(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT']);
+    expect(toolFieldTypes(true, false)).toEqual([
       'SIGNATURE',
       'INITIALS',
       'SIGN_DATE',
@@ -54,7 +59,32 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
       'SIGNER_NAME',
       'CHECKBOX',
     ]);
-    expect(toolFieldTypes()).toEqual(toolFieldTypes(true));
+    expect(toolFieldTypes()).toEqual(toolFieldTypes(true, true));
+  });
+
+  it('M-A12 W1-C.4: the profile auto-fill types are in the palette (FEATURES.profileFieldTypes)', () => {
+    expect(FEATURES.profileFieldTypes).toBe(true);
+    expect(toolFieldTypes(true, true).slice(-5)).toEqual([
+      'FIRST_NAME',
+      'LAST_NAME',
+      'EMAIL',
+      'COMPANY',
+      'TITLE',
+    ]);
+  });
+
+  it('M-A12 W1-E.2: a placed field starts at the default field size', () => {
+    let s = editorReducer(initialEditorState([], 'r1'), { type: 'pickTool', tool: 'TEXT' });
+    s = editorReducer(s, {
+      type: 'placeAt',
+      key: 'k',
+      docKey: 'd',
+      page: 0,
+      pageSize: { width: 612, height: 792 },
+      center: { x: 300, y: 300 },
+      scale: 1.2,
+    });
+    expect(s.fields[0]).toMatchObject({ width: Math.round(230 * 1.2), height: Math.round(22 * 1.2) });
   });
 
   it('refuses to pick or load an engine-only type', () => {

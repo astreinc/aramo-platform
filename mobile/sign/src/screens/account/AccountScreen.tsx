@@ -5,6 +5,8 @@
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
 // legal re-acceptance, Delete account / Request deletion (M-A7 §3.3), About, Sign out.
 // Remaining-Work A4 — "Manage billing or cancel" opens the web billing settings (owners of a billed plan).
+// M-A12 W1-E: My profile, the date format and default field size settings, Report app
+// issue, and the Plan row (W1-G Plans screen). A store-billed plan is managed in the store.
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
@@ -39,6 +41,20 @@ import {
   type NativeSession,
 } from '../../features/account/devices';
 import { billingSettingsLink, MANAGE_BILLING_LABEL } from '../../features/account/billing';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { DateFormat, FieldSize } from '../../api/m-a12-contract-types';
+import { planRowLabel } from '../../features/plans/plansModel';
+import {
+  DATE_FORMATS,
+  DEFAULT_SETTINGS,
+  FIELD_SIZES,
+  formatDate,
+  profileKeys,
+  saveSettings,
+  useSignSettings,
+} from '../../features/profile/signProfile';
+import { ReportIssueSheet } from '../../features/support/ReportIssueSheet';
 import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
 import { isPersonalAccountOwner } from '../../features/account/privacy';
 import { PrivacyRequestsSection } from '../../features/account/PrivacyRequestsSection';
@@ -95,6 +111,21 @@ export function AccountScreen() {
   const qc = useQueryClient();
   const { workspace, kv, signOut } = useServices();
   const route = useRoute<RouteProp<RootStackParamList, 'Account'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const settings = useSignSettings();
+  const [settingSheet, setSettingSheet] = useState<'date' | 'size' | null>(null);
+  const [issueOpen, setIssueOpen] = useState(false);
+  async function changeSetting(patch: { date_format?: DateFormat; default_field_size?: FieldSize }): Promise<void> {
+    const next = { ...(settings.data ?? DEFAULT_SETTINGS), ...patch };
+    qc.setQueryData(profileKeys.settings, next);
+    setSettingSheet(null);
+    try {
+      qc.setQueryData(profileKeys.settings, await saveSettings(workspace, next));
+    } catch {
+      toast.show('Couldn’t save the setting. Try again.');
+      void settings.refetch();
+    }
+  }
   const scrollRef = useRef<ScrollView>(null);
   // Side menu "Settings": scroll to the settings once their position is known.
   const wantsSettings = useRef(route.params?.section === 'settings');
@@ -269,15 +300,31 @@ export function AccountScreen() {
           </View>
         </Card>
 
+        <Card style={styles.card0}>
+          <SettingRow
+            testID="account-profile"
+            title="My profile"
+            subtitle="Name, title, company, address and phone"
+            onPress={() => navigation.navigate('Profile')}
+            last
+          />
+        </Card>
+
         <SectionTitle>Account</SectionTitle>
         <Card style={styles.card0}>
           <SettingRow
             title={
               personal
-                ? 'Personal · Free'
+                ? `Personal · ${billing.data?.subscription?.plan_name ?? 'Free'}`
                 : `${ctx.data?.tenant?.name ?? 'Organization'} · Business`
             }
             subtitle="Sign out to use another account"
+          />
+          <SettingRow
+            testID="account-plan"
+            title="Plan"
+            trailing={planRowLabel(billing.data ?? null)}
+            onPress={() => navigation.navigate('Plans', { from: 'settings' })}
             last
           />
         </Card>
@@ -440,6 +487,30 @@ export function AccountScreen() {
           ) : null}
         </Card>
 
+        <SectionTitle>Preferences</SectionTitle>
+        <Card style={styles.card0}>
+          <SettingRow
+            testID="setting-date-format"
+            title="Date format"
+            subtitle="How Date signed appears on envelopes you send"
+            trailing={(settings.data ?? DEFAULT_SETTINGS).date_format}
+            onPress={() => setSettingSheet('date')}
+            disabled={!online}
+          />
+          <SettingRow
+            testID="setting-field-size"
+            title="Default field size"
+            subtitle="The starting size of fields you place"
+            trailing={
+              FIELD_SIZES.find((x) => x.key === (settings.data ?? DEFAULT_SETTINGS).default_field_size)?.label ??
+              'Medium'
+            }
+            onPress={() => setSettingSheet('size')}
+            disabled={!online}
+            last
+          />
+        </Card>
+
         <SectionTitle>Push notifications</SectionTitle>
         <Card style={styles.card0}>
           {pushPermission === 'denied' ? (
@@ -496,6 +567,7 @@ export function AccountScreen() {
         <SectionTitle>About</SectionTitle>
         <Card style={styles.card0}>
           <SettingRow title="Help" onPress={() => open(WEB_LINKS.help)} />
+          <SettingRow testID="about-report-issue" title="Report app issue" onPress={() => setIssueOpen(true)} />
           <SettingRow title="Privacy" onPress={() => open(WEB_LINKS.privacy)} />
           <SettingRow title="Terms" onPress={() => open(WEB_LINKS.terms)} />
           {/* M-A7 §5.1 (G-6) — the one identity block (config/identity.ts). */}
@@ -556,6 +628,36 @@ export function AccountScreen() {
           onClose={() => setAdoptTarget(null)}
         />
       ) : null}
+
+      <Sheet
+        visible={settingSheet !== null}
+        onClose={() => setSettingSheet(null)}
+        title={settingSheet === 'date' ? 'Date format' : 'Default field size'}
+      >
+        {settingSheet === 'date'
+          ? DATE_FORMATS.map((f) => (
+              <SettingRow
+                key={f}
+                testID={`date-format-${f}`}
+                title={f}
+                subtitle={`Example: ${formatDate(new Date(2026, 10, 5), f)}`}
+                trailing={(settings.data ?? DEFAULT_SETTINGS).date_format === f ? '✓' : ''}
+                onPress={() => void changeSetting({ date_format: f })}
+              />
+            ))
+          : FIELD_SIZES.map((f) => (
+              <SettingRow
+                key={f.key}
+                testID={`field-size-${f.key}`}
+                title={f.label}
+                subtitle={f.hint}
+                trailing={(settings.data ?? DEFAULT_SETTINGS).default_field_size === f.key ? '✓' : ''}
+                onPress={() => void changeSetting({ default_field_size: f.key })}
+              />
+            ))}
+      </Sheet>
+
+      <ReportIssueSheet visible={issueOpen} onClose={() => setIssueOpen(false)} screen="Account" online={online} />
 
       <Sheet
         visible={revokeTarget !== null}

@@ -4,7 +4,7 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useTheme } from '../../theme';
-import { FILTER_LABEL, FILTERS, type ListFilter } from './agreementsModel';
+import { CHIP_FILTERS, FILTER_LABEL, type ListFilter } from './agreementsModel';
 
 export function StatusChips({
   value,
@@ -24,7 +24,7 @@ export function StatusChips({
       contentContainerStyle={styles.row}
       accessibilityRole="tablist"
     >
-      {FILTERS.map((k) => {
+      {CHIP_FILTERS.map((k) => {
         const on = k === value;
         const label =
           k === 'needs_me' && needsCount > 0 ? `${FILTER_LABEL[k]} ${needsCount}` : FILTER_LABEL[k];

@@ -13,6 +13,8 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -81,12 +83,18 @@ export interface ZoomablePagesProps {
   readonly contentContainerStyle?: StyleProp<ViewStyle>;
   /** Android: the current zoom, so callers can scale scroll targets. */
   readonly onZoomChange?: (zoom: number) => void;
+  /** M-A12 W1-C.1 — the vertical scroll position and viewport, for "Page n of N". */
+  readonly onScroll?: (y: number, viewport: number) => void;
 }
 
 export const ZoomablePages = forwardRef<ScrollView, ZoomablePagesProps>(function ZoomablePages(
-  { children, contentContainerStyle, onZoomChange },
+  { children, contentContainerStyle, onZoomChange, onScroll },
   ref,
 ) {
+  const scrolled = onScroll
+    ? (e: NativeSyntheticEvent<NativeScrollEvent>) =>
+        onScroll(e.nativeEvent.contentOffset.y, e.nativeEvent.layoutMeasurement.height)
+    : undefined;
   const [zoom, setZoom] = useState(1);
   const [start, setStart] = useState(1);
   if (Platform.OS === 'ios') {
@@ -97,6 +105,8 @@ export const ZoomablePages = forwardRef<ScrollView, ZoomablePagesProps>(function
         maximumZoomScale={MAX_ZOOM}
         minimumZoomScale={MIN_ZOOM}
         pinchGestureEnabled
+        onScroll={scrolled}
+        scrollEventThrottle={64}
       >
         {children}
       </ScrollView>
@@ -112,7 +122,7 @@ export const ZoomablePages = forwardRef<ScrollView, ZoomablePagesProps>(function
     });
   return (
     <GestureDetector gesture={pinch}>
-      <ScrollView ref={ref} scrollEnabled>
+      <ScrollView ref={ref} scrollEnabled onScroll={scrolled} scrollEventThrottle={64}>
         <ScrollView horizontal scrollEnabled={zoom > 1} showsHorizontalScrollIndicator={zoom > 1}>
           <ZoomFrame zoom={zoom}>
             <View style={contentContainerStyle}>{children}</View>

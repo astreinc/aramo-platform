@@ -29,6 +29,9 @@ import {
   DEFAULT_RANGE,
   EMPTY_STATE,
   filterAgreements,
+  sortAgreements,
+  SORT_LABEL,
+  type ListSort,
   listHeading,
   mergeAgreements,
   needsSignatureSummary,
@@ -75,6 +78,7 @@ export function AgreementsScreen() {
   const [filter, setFilter] = useState<ListFilter>(paramFilter ?? 'all');
   const [range, setRange] = useState<ListRange>(paramRange ?? DEFAULT_RANGE);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sort, setSort] = useState<ListSort>('newest');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const searchRef = useRef<TextInput>(null);
@@ -103,8 +107,8 @@ export function AgreementsScreen() {
     [sent.data, inbox.data, local.data],
   );
   const visible = useMemo(
-    () => filterAgreements(rows, filter, query, range),
-    [rows, filter, query, range],
+    () => sortAgreements(filterAgreements(rows, filter, query, range), sort),
+    [rows, filter, query, range, sort],
   );
   const needs = needsSignatureSummary(rows);
   const allowance = allowanceModel(billing.data ?? null);
@@ -251,7 +255,7 @@ export function AgreementsScreen() {
             fontFamily: t.font.family,
           }}
         >
-          {listHeading(filter, range)}
+          {sort === 'newest' ? listHeading(filter, range) : `${listHeading(filter, range)} · ${SORT_LABEL[sort]}`}
         </Text>
         <Pressable
           testID="agreements-filter"
@@ -334,6 +338,8 @@ export function AgreementsScreen() {
         onFilter={setFilter}
         onRange={setRange}
         onClose={() => setFilterOpen(false)}
+        sort={sort}
+        onSort={setSort}
       />
       {rowActions.sheets}
     </View>

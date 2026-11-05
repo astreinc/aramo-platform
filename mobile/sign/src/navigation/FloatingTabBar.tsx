@@ -123,7 +123,9 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         onClose={() => setPlusOpen(false)}
         onPick={(intent) => {
           setPlusOpen(false);
-          navigation.navigate('SendFlow', { intent });
+          // M-A12 W1-A — "Sign a document" is its own flow (no Recipients step).
+          if (intent === 'self') navigation.navigate('SelfSign');
+          else navigation.navigate('SendFlow', { intent });
         }}
       />
     </View>

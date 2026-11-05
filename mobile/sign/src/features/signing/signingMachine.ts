@@ -13,6 +13,9 @@
 //     exactly one for SELECT_ONE). A SIGNER_PROFILE name is filled by the server: it is
 //     shown read-only and never sent. Any other name is typed by the signer — it is
 //     never prefilled from the signed-in account.
+//   - M-A12 W1-C.4: FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the
+//     signer fills; when the signer is signed in, their own Sign profile pre-fills the
+//     text sheet (TapContext.prefill) and the signer may edit it before saving.
 
 export const FIELD_TYPES = [
   'SIGNATURE',
@@ -22,7 +25,21 @@ export const FIELD_TYPES = [
   'TEXT',
   'CHECKBOX',
   'ACKNOWLEDGEMENT',
+  'FIRST_NAME',
+  'LAST_NAME',
+  'EMAIL',
+  'COMPANY',
+  'TITLE',
 ] as const;
+
+/** M-A12 W1-C.4 — the profile auto-fill types (text-valued). */
+export const PROFILE_TEXT_TYPES: ReadonlySet<string> = new Set([
+  'FIRST_NAME',
+  'LAST_NAME',
+  'EMAIL',
+  'COMPANY',
+  'TITLE',
+]);
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 /** One field of POST /v1/sign/signing/document. */
@@ -90,6 +107,11 @@ export const FIELD_LABEL: Record<FieldType, string> = {
   TEXT: 'Text',
   CHECKBOX: 'Checkbox',
   ACKNOWLEDGEMENT: 'Acknowledgement',
+  FIRST_NAME: 'First name',
+  LAST_NAME: 'Last name',
+  EMAIL: 'Email',
+  COMPANY: 'Company',
+  TITLE: 'Title',
 };
 
 export const ACK_TEXT = '✓ I acknowledge and agree';
@@ -305,6 +327,11 @@ function withValue(s: SigningState, id: string, v: FieldValue | null): SigningSt
 export interface TapContext {
   readonly signerName: string;
   readonly today?: Date;
+  /**
+   * M-A12 W1-C.4 — the signer's own profile value for a profile field type, or null.
+   * Offered only to a signed-in signer; never another person's data.
+   */
+  readonly prefill?: (fieldType: string) => string | null;
 }
 
 /**
@@ -328,6 +355,17 @@ export function tapField(
     return {
       state: focused,
       effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' },
+    };
+  }
+  if (PROFILE_TEXT_TYPES.has(f.field_type)) {
+    const current = s.values[fieldId]?.value;
+    return {
+      state: focused,
+      effect: {
+        kind: 'text',
+        fieldId,
+        initial: current ?? ctx.prefill?.(f.field_type) ?? '',
+      },
     };
   }
   const filled = isFilled(s, fieldId);

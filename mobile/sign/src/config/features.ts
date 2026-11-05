@@ -16,6 +16,23 @@ export const FEATURES = {
   extraFieldTypes: true,
   /** Role binding when using a multi-role template (A4). */
   multiRoleTemplates: true,
+  /** M-A12 W1-C.4 — First name, Last name, Email, Company and Title fields. */
+  profileFieldTypes: true,
+  /**
+   * M-A12 W1-G — in-app purchase through the platform store. Built; the Plans screen still
+   * shows prices and purchase controls ONLY while the server reports store billing as
+   * available (`store_purchase_eligible` or plans with `store_products`).
+   */
+  storePurchase: true,
+  /**
+   * Kept hidden (M-A12 §3, D-4 HOLD and Wave 3): AI summary and AI field suggestion, cloud
+   * storage tiles, email-in, offline signing and sounds. No control of these renders.
+   */
+  aiControls: false,
+  cloudImports: false,
+  emailIn: false,
+  offlineSigning: false,
+  sounds: false,
 } as const;
 
 export type FeatureKey = keyof typeof FEATURES;

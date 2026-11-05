@@ -63,6 +63,7 @@ describe('signer delegation (B3)', () => {
   it('hands off: name, email and reason go with the token; the link then ends', async () => {
     const net = server(true, () => ({ status: 200, body: { delegated: true } }));
     await openFields(net);
+    fireEvent.press(screen.getByTestId('signing-more'));
     fireEvent.press(screen.getByTestId('delegate-open'));
     fireEvent.changeText(screen.getByTestId('delegate-name'), ' Ana Ruiz ');
     fireEvent.changeText(screen.getByTestId('delegate-email'), 'ana@example.com');
@@ -80,6 +81,7 @@ describe('signer delegation (B3)', () => {
       body: { error: { code: 'VALIDATION_ERROR', details: { reason: 'delegate_email_on_envelope' } } },
     }));
     await openFields(net);
+    fireEvent.press(screen.getByTestId('signing-more'));
     fireEvent.press(screen.getByTestId('delegate-open'));
     fireEvent.changeText(screen.getByTestId('delegate-name'), 'Ana Ruiz');
     fireEvent.changeText(screen.getByTestId('delegate-email'), 'ana@example.com');
@@ -94,6 +96,7 @@ describe('signer delegation (B3)', () => {
       body: { error: { code: 'ENVELOPE_ILLEGAL_TRANSITION', details: { reason: 'already_delegated' } } },
     }));
     await openFields(net);
+    fireEvent.press(screen.getByTestId('signing-more'));
     fireEvent.press(screen.getByTestId('delegate-open'));
     fireEvent.changeText(screen.getByTestId('delegate-name'), 'Ana Ruiz');
     fireEvent.changeText(screen.getByTestId('delegate-email'), 'not-an-email');
