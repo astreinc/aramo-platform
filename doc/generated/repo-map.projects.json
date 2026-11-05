@@ -2212,6 +2212,8 @@
       "CURRENT_DISCLOSURE_VERSION",
       "DEFAULT_ABUSE_REPORT_CONFIG",
       "DEFAULT_SIGN_BASE_URL",
+      "DEFAULT_SIGN_DATE_FORMAT",
+      "DEFAULT_SIGN_FIELD_SIZE",
       "DELETED_DRAFT_SUBJECT",
       "DISCLOSURE_V2_TEXT",
       "DOCUMENT_SEAL_SIGNING_PROVIDER",
@@ -2302,6 +2304,8 @@
       "PAYMENT_REFUND_REQUESTED",
       "PAYMENT_SUCCEEDED",
       "PII_PAYLOAD_KEYS",
+      "PROFILE_TEXT_FIELD_TYPES",
+      "PROFILE_TEXT_MAX",
       "PURGED_EVENT",
       "PURGE_DEQUEUED_EVENT",
       "PURGE_ELIGIBLE_STATUSES",
@@ -2348,7 +2352,9 @@
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
       "SIGN_BRANDING_PORT",
+      "SIGN_DATE_FORMATS",
       "SIGN_ENVELOPE_PURGE_EVENT_TYPE",
+      "SIGN_FIELD_SIZES",
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
       "SIGN_ID_VERIFICATION_ATTEMPT_METER",
@@ -2373,6 +2379,7 @@
       "SignPurgeRepository",
       "SignReportRepository",
       "SignSavedSignatureRepository",
+      "SignUserProfileRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
       "SignatureFieldValueRefusedError",
@@ -2418,6 +2425,7 @@
       "evaluateSignerFieldRules",
       "findDisclosure",
       "formatPaymentAmount",
+      "formatSignDate",
       "generateSigningToken",
       "hashAccessCode",
       "hashSigningToken",
@@ -2433,6 +2441,7 @@
       "isLinkSigner",
       "isParsableChain",
       "isPaymentField",
+      "isProfileTextField",
       "isPurgeLevel",
       "isServerFilledName",
       "isSigningRecipient",
@@ -2453,6 +2462,7 @@
       "parseEstampRequest",
       "paymentReceiptText",
       "pendingWitnessesOf",
+      "profileTextValueRefusal",
       "purgeStateFor",
       "qesSigningDigest",
       "qesView",
@@ -2561,12 +2571,20 @@
       "A6_APPLICABLE_ACTIONS",
       "ADJUSTMENT_PARAM_KEYS",
       "ADJUSTMENT_STEP",
+      "APPLE_APP_STORE_PORT",
+      "APPLE_MANAGE_SUBSCRIPTIONS_URL",
+      "APPLE_ROOT_CA_G3_PEM",
+      "APPLE_ROOT_CA_G3_SHA256",
+      "APPLE_SERVER_API_BASE",
       "APPLY_EXPIRABLE_ACTIONS",
       "APPLY_EXPLANATIONS",
       "APPLY_SERVICE_ACTIONS",
       "APPROVAL_REFUSALS",
       "ARR_MONTHS",
       "AllowanceService",
+      "AppleAppStoreAdapter",
+      "AppleJwsError",
+      "AppleJwsVerifier",
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
       "AramoSignStandardProfessionalPlanKey",
@@ -2728,7 +2746,9 @@
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
+      "GOOGLE_PLAY_PORT",
       "GOVERNED_SUBSCRIPTION_OPEN",
+      "GooglePlayAdapter",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
       "INITIAL_OBLIGATION_REF",
       "INVOICE_AMOUNT_FIELDS",
@@ -2747,6 +2767,8 @@
       "LegalChangeNoticeRefusedError",
       "LegalChangeNoticeRepository",
       "LegalChangeNoticeService",
+      "MAX_REGIONAL_PRICES",
+      "MAX_REGIONAL_PRICE_MINOR",
       "MAX_UNIT_PRICE_MINOR",
       "METERED_UNIT_KEYS",
       "METERED_USAGE_OPTIONS",
@@ -2843,6 +2865,9 @@
       "SIGN_PRODUCT_KEY",
       "SIGN_USAGE_BILLING_FLAG",
       "STORAGE_CAPACITY_KEY",
+      "STORE_BILLING_PROVIDERS",
+      "STORE_PRODUCT_ID",
+      "STORE_SUBSCRIPTION_READER",
       "STRIPE_API_VERSION",
       "STRIPE_READ_ADAPTER_METHODS",
       "SUBSCRIPTION_CANCEL_MODES",
@@ -2853,6 +2878,10 @@
       "SelfServiceRefusedError",
       "SignTemplateEntitlementService",
       "StaticUpcomingLegalChangeSource",
+      "StoreBillingRefusedError",
+      "StoreBillingService",
+      "StoreSubscriptionRegistry",
+      "StoreVerificationError",
       "StripeBillingProvider",
       "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
@@ -2862,6 +2891,7 @@
       "TAX_NOT_ENABLED_REASON",
       "TENANT_ACTIVATION_PENDING_MESSAGE",
       "TENANT_AMOUNT_KEYS",
+      "TENANT_MEMBERSHIP_PORT",
       "UPCOMING_LEGAL_CHANGES",
       "UPCOMING_LEGAL_CHANGE_SOURCE",
       "USAGE_MAX_AGE_MS",
@@ -2890,7 +2920,10 @@
       "addMonthsClamped",
       "adjustmentOperationOf",
       "aggregateLedger",
+      "appleStoreConfig",
+      "appleSubscriptionState",
       "applyCatalogDraftEdits",
+      "applyRegionalPriceEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
       "assertChainStillSatisfiableAtApply",
@@ -2953,6 +2986,9 @@
       "formatNoticeDate",
       "formatReconciliationReport",
       "formatRevenueReport",
+      "googleMoneyMinor",
+      "googlePlayConfig",
+      "googlePlayManageUrl",
       "graceStateAt",
       "inAppContextRef",
       "invoicePaymentState",
@@ -2973,6 +3009,7 @@
       "isMeteredUnitKey",
       "isPlatformLastOwnerViolation",
       "isProductKey",
+      "isStoreBillingProvider",
       "isWithinPastDueGrace",
       "legalChangeAudience",
       "legalEffectiveFrom",
@@ -3010,6 +3047,7 @@
       "planVersionContentFromRows",
       "planVersionEffectiveAt",
       "planVersionTerms",
+      "playSubscriptionState",
       "policyRangeErrors",
       "postTerminationExportDays",
       "priceFigure",
@@ -3018,6 +3056,7 @@
       "projectApprovalNotes",
       "projectChangeRequestFinance",
       "readPlatformSubject",
+      "reconcileStorePrices",
       "reconcileUsageLines",
       "refundBindingOf",
       "refundExecutionEnabled",
@@ -3026,6 +3065,7 @@
       "refundReportState",
       "refundReservations",
       "refundableRemainder",
+      "regionalPricesOf",
       "renderLegalChangeNotice",
       "renderRenewalNotice",
       "renewalNoticeLeadDays",
@@ -3034,9 +3074,16 @@
       "resolvePaymentRecordChain",
       "resolvePriceToVersion",
       "resolveRequiredChain",
+      "resolveStoreProductToVersion",
       "runPlatformOwnerBootstrap",
       "selfServiceCommandIdempotencyKey",
       "sendErrorCode",
+      "storeBillingEnabled",
+      "storePinInterval",
+      "storeProductPinErrors",
+      "storeProductsOfVersion",
+      "storeProviderOf",
+      "storePurchaseBlock",
       "stripeCheckoutSessionState",
       "stripeEventCheckoutSessionRef",
       "stripeEventSubscriptionRef",
@@ -3061,6 +3108,7 @@
       "validateRecordInput",
       "validateUsageInput",
       "verifyStripeSignature",
+      "withRegionalPrices",
       "withUnitPrices",
       "withholdAuditPayloadAmounts",
       "withholdChangeRequestAmounts",
@@ -4431,6 +4479,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a12-store-billing.controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4456,6 +4510,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-m-a12-gap-closure.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8329,6 +8389,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a12-store-billing.controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8402,6 +8468,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-m-a12-gap-closure.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8874,6 +8946,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/m-a12-store-lifecycle.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -11670,6 +11748,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a12-store-billing.controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13680,6 +13764,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-m-a12-gap-closure.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-messaging.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -14255,6 +14345,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a12-store-billing.controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -14316,6 +14412,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-metering-usage-recorder.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
