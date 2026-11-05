@@ -20,10 +20,13 @@ import {
   type BillingProviderAdjustmentPort,
   type BillingProviderCommandPort,
   type BillingProviderPort,
+  type BillingProviderKey,
   BillingProviderUnavailableError,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
+  isStoreBillingProvider,
 } from './billing-provider.port.js';
+import { STORE_SUBSCRIPTION_READER, type StoreSubscriptionReader } from './store/store-billing.port.js';
 import {
   BILLING_COMMAND_UNCONFIRMED_STATES,
   type BillingCommandConfirmation,
@@ -36,7 +39,7 @@ import {
 } from './billing-provider-command.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
-import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion } from './provider-price.js';
+import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion, resolveStoreProductToVersion, storePinInterval } from './provider-price.js';
 import { GOVERNED_SUBSCRIPTION_OPEN, isGovernedSubscription, takeBillingLock } from './governed-subscription.js';
 import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
@@ -155,7 +158,10 @@ export type BillingRefusal =
   | 'GOVERNED_SUBSCRIPTION_OPEN'
   // Sign Catalog v2 §4.3 (P-4) — a PERSONAL plan is sold only to a PERSONAL tenant, and a
   // BUSINESS plan never to one.
-  | 'PLAN_TENANT_KIND_MISMATCH';
+  | 'PLAN_TENANT_KIND_MISMATCH'
+  // M-A12 W1-G item 5 — the tenant's plan is billed by another channel (a store subscription
+  // refuses a Stripe checkout, and the reverse): `billing_managed_elsewhere`.
+  | 'BILLING_MANAGED_ELSEWHERE';
 
 /** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
 export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
@@ -176,8 +182,10 @@ type ActivationGuardReason = typeof BILLING_COUNTRY_NOT_SUPPORTED | typeof DOMAI
  * CCP-A6 — the checkout gate on the tenant's open BASE row of the product (C-1, C-5). Taken twice:
  * early (fail fast, before any provider side effect) and authoritatively under the billing lock (C-2).
  */
-function assertCheckoutAllowed(open: { source: string; status: string; ended_at: Date | null } | null): void {
+function assertCheckoutAllowed(open: { source: string; status: string; ended_at: Date | null; billing_provider?: string | null } | null): void {
   if (open === null) return;
+  // M-A12 W1-G item 5 — a store-billed plan is managed in the store, never through a Stripe checkout.
+  if (open.source === 'SELF_SERVICE' && isStoreBillingProvider(open.billing_provider)) throw new BillingRefusedError('BILLING_MANAGED_ELSEWHERE');
   // C-5 — a tenant already paying through the provider manages it in the portal.
   if (open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') throw new BillingRefusedError('ALREADY_SUBSCRIBED');
   // C-1 / C-4 — a governed subscription is converted only through a governed change request (C-11).
@@ -398,6 +406,9 @@ export class SubscriptionLifecycleService {
     // adjustment command is never confirmed here (fail-safe: it stays pending-provider, C-23).
     @Optional() @Inject(BILLING_PROVIDER_ADJUSTMENT_PORT) private readonly adjustments?: BillingProviderAdjustmentPort,
     @Optional() @Inject(CommercialBillingAdjustmentLedger) private readonly adjustmentLedger?: CommercialBillingAdjustmentLedger,
+    // M-A12 W1-G — the store re-fetch (App Store Server API / Android Publisher). Unbound: a store
+    // event or reconcile is IGNORED (nothing is applied from a payload).
+    @Optional() @Inject(STORE_SUBSCRIPTION_READER) private readonly stores?: StoreSubscriptionReader,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -421,7 +432,7 @@ export class SubscriptionLifecycleService {
   async billingAvailable(): Promise<boolean> {
     if (!this.billing.isConfigured()) return false;
     if (this.prices().size > 0) return true;
-    return (await this.prisma.planVersionPrice.count()) > 0;
+    return (await this.prisma.planVersionPrice.count({ where: { provider: 'STRIPE' } })) > 0;
   }
 
   /**
@@ -442,6 +453,9 @@ export class SubscriptionLifecycleService {
       const version = plan.versions[0];
       // A plan with no PUBLISHED version has nothing to present or sell.
       if (version === undefined) continue;
+      // M-A12 R-2 (A5: Personal stays Personal) — with the tenant's kind, only that kind's plans (and
+      // plans of no kind) are presented: a PERSONAL tenant never sees a BUSINESS plan, nor the reverse.
+      if (tenant_kind !== null && plan.tenant_kind !== null && plan.tenant_kind !== tenant_kind) continue;
       const terms = planVersionTerms(version);
       const p = terms.plan;
       const eligible = await this.eligible(tenant_id, p.eligibility);
@@ -518,8 +532,9 @@ export class SubscriptionLifecycleService {
               current_period_end: row.current_period_end,
               cancel_at_period_end: row.cancel_at_period_end,
               grace_until: row.grace_until,
-              billing_managed: row.billing_account_ref !== null,
-              commitment_months: terms?.commitment_months ?? null,
+              billing_managed: row.billing_account_ref !== null || isStoreBillingProvider(row.billing_provider),
+              // M-A12 A1-1 — a monthly store subscription carries no commitment.
+              commitment_months: row.store_interval === 'MONTH' ? null : (terms?.commitment_months ?? null),
               commitment_end: row.commitment_end,
               cancel_requested_within_commitment: row.cancel_requested_within_commitment,
               eligibility_state: row.eligibility_state,
@@ -747,7 +762,7 @@ export class SubscriptionLifecycleService {
   async portal(tenant_id: string, product_key: ProductKey, return_url: string): Promise<{ url: string }> {
     if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const row = await this.prisma.tenantSubscription.findFirst({
-      where: { tenant_id, product_key: assertProductKey(product_key), billing_account_ref: { not: null } },
+      where: { tenant_id, product_key: assertProductKey(product_key), billing_provider: this.billing.provider, billing_account_ref: { not: null } },
       orderBy: { started_at: 'desc' },
     });
     if (row?.billing_account_ref == null) throw new BillingRefusedError('NO_BILLING_ACCOUNT');
@@ -767,8 +782,10 @@ export class SubscriptionLifecycleService {
   /** A verified provider event for the product's billing webhook. At most once per provider event id. */
   async handleEvent(evt: VerifiedBillingEvent, product_key: ProductKey, at: Date = new Date()): Promise<WebhookResult> {
     assertProductKey(product_key);
+    // M-A12 — a store event names its store; every other event is the bound provider's (Stripe).
+    const provider: BillingProviderKey = evt.provider ?? this.billing.provider;
     const seen = await this.prisma.billingEvent.findUnique({
-      where: { provider_provider_event_id: { provider: this.billing.provider, provider_event_id: evt.id } },
+      where: { provider_provider_event_id: { provider, provider_event_id: evt.id } },
     });
     if (seen !== null) return { outcome: 'DUPLICATE', tenant_id: null };
 
@@ -778,7 +795,7 @@ export class SubscriptionLifecycleService {
     // A provider failure throws here: nothing is recorded, the redelivery retries.
     let result: ApplyResult =
       ref !== null
-        ? await this.syncSubscription(ref, product_key, at, confirmation)
+        ? await this.syncSubscription(ref, product_key, at, confirmation, provider)
         : evt.type === 'checkout.session.expired' && session !== null && this.providerCommands !== undefined
           ? await this.syncCheckoutSession(session, product_key, at, confirmation)
           : { outcome: 'IGNORED', detail: `event ${evt.type} carries no subscription`, tenant_id: null };
@@ -799,7 +816,7 @@ export class SubscriptionLifecycleService {
       data: [
         {
           id: uuidv7(),
-          provider: this.billing.provider,
+          provider,
           provider_event_id: evt.id,
           event_type: evt.type,
           event_created_at: evt.created,
@@ -816,6 +833,8 @@ export class SubscriptionLifecycleService {
   /** CCP-C4 — the pending adjustment commands a verified event concerns, each re-read and applied. */
   private async syncAdjustmentsForEvent(evt: VerifiedBillingEvent, product_key: ProductKey, at: Date, confirmation: BillingCommandConfirmation): Promise<ApplyResult[]> {
     if (this.adjustments === undefined || this.adjustmentLedger === undefined) return [];
+    // M-A12 — store events never concern a Stripe billing adjustment.
+    if (evt.provider !== undefined && evt.provider !== this.billing.provider) return [];
     const object_ref = evt.object_ref ?? null;
     const ors = [
       ...(object_ref !== null ? [{ provider_object_ref: object_ref }] : []),
@@ -867,9 +886,15 @@ export class SubscriptionLifecycleService {
     product_key: ProductKey,
     at: Date = new Date(),
     confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+    provider: BillingProviderKey = this.billing.provider,
   ): Promise<ApplyResult> {
     assertProductKey(product_key);
     // The provider read runs before (outside) the local transaction.
+    // M-A12 W1-G item 4 — a store subscription is re-fetched from the store API, never from a payload.
+    if (isStoreBillingProvider(provider)) {
+      if (this.stores === undefined || !this.stores.isConfigured(provider)) return { outcome: 'IGNORED', detail: `${provider} billing is not configured`, tenant_id: null };
+      return this.applyProviderState(await this.stores.retrieve(provider, subscription_ref), product_key, at, confirmation);
+    }
     const state = await this.billing.retrieveSubscription(subscription_ref);
     return this.applyProviderState(state, product_key, at, confirmation);
   }
@@ -981,7 +1006,8 @@ export class SubscriptionLifecycleService {
       where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
     });
     // A1 §2.6 — activation guard (fail closed: a missing country is not US).
-    const countryOk = billingCountrySupported(state.account_country);
+    // M-A12 A1-3 — Stripe stays US-only; a store is the merchant of record in its own countries.
+    const countryOk = isStoreBillingProvider(state.provider) || billingCountrySupported(state.account_country);
     // P3 §4 — and the domain guard (fail closed: not AUTHORITATIVE holds).
     const intent_id = intent?.id ?? null;
     await this.guardFlag(tx, tenant_id, state, intent_id, BILLING_COUNTRY_NOT_SUPPORTED, !countryOk, at);
@@ -1038,7 +1064,7 @@ export class SubscriptionLifecycleService {
     state: ProviderSubscriptionState,
     product_key: ProductKey,
   ) {
-    const resolved = await this.planForPrice(tx, state.price_ref, product_key);
+    const resolved = await this.planForPrice(tx, state.price_ref, product_key, state.provider);
     const plan_id = resolved?.plan_id ?? intent.plan_id;
     const version =
       resolved !== null && resolved.version_status === 'PUBLISHED'
@@ -1111,21 +1137,25 @@ export class SubscriptionLifecycleService {
     const grace_until = held
       ? row.grace_until
       : mapped.grace
-        ? row.status === 'PAST_DUE' && row.grace_until !== null
-          ? row.grace_until
-          : new Date(at.getTime() + graceDays() * 86_400_000)
+        ? // M-A12 — a store in its own grace period sets the grace end.
+          (state.store?.grace_until ??
+          (row.status === 'PAST_DUE' && row.grace_until !== null ? row.grace_until : new Date(at.getTime() + graceDays() * 86_400_000)))
         : null;
     // A plan change made in the provider (its price maps to another catalog plan or version).
     // CCP-A5 (N-17) — re-pin plan_version_id under a named reason; the DB trigger records it.
-    const pin = await this.repinTarget(tx, row, state.price_ref);
+    const pin = await this.repinTarget(tx, row, state.price_ref, state.provider);
     if (pin !== null) {
       await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_PROVIDER_PLAN_CHANGE}, true), set_config('aramo.subscription_pin_price_ref', ${state.price_ref ?? ''}, true)`;
     }
     // A1 — a cancellation that would end the subscription before the commitment
     // term is flagged for the (pending) annual-commitment terms; it is never
     // silently treated as month-to-month and no fee is invented.
+    // M-A12 A1-1 — a store product change inside the subscription (e.g. monthly → annual in the same
+    // store group) moves the billed interval: MONTH clears the commitment, YEAR starts the plan's.
+    const storeTerms = await this.storeIntervalUpdate(tx, row, state, pin?.plan_version_id ?? row.plan_version_id);
+    const commitment_end = storeTerms !== null && 'commitment_end' in storeTerms ? (storeTerms.commitment_end ?? null) : row.commitment_end;
     const cancelWithin =
-      state.cancel_at_period_end && row.commitment_end !== null && state.current_period_end.getTime() < row.commitment_end.getTime();
+      state.cancel_at_period_end && commitment_end !== null && state.current_period_end.getTime() < commitment_end.getTime();
     await tx.tenantSubscription.update({
       where: { id: row.id },
       data: {
@@ -1134,7 +1164,10 @@ export class SubscriptionLifecycleService {
         current_period_end: state.current_period_end,
         cancel_at_period_end: state.cancel_at_period_end,
         cancel_requested_within_commitment: cancelWithin,
-        billing_account_ref: state.account_ref,
+        // M-A12 — a store subscription has no provider billing account.
+        billing_account_ref: isStoreBillingProvider(state.provider) ? null : state.account_ref,
+        ...(state.store !== undefined ? { store_product_id: state.store.product_id, store_environment: state.store.environment } : {}),
+        ...(storeTerms ?? {}),
         provider_state_at: at,
         ended_at: mapped.ends ? at : null,
         ...(pin !== null ? { plan_id: pin.plan_id, plan_version_id: pin.plan_version_id } : {}),
@@ -1195,6 +1228,11 @@ export class SubscriptionLifecycleService {
     }
     const id = uuidv7();
     const anchor = state.current_period_start.getTime() > 0 ? state.current_period_start : at;
+    // M-A12 A1-1 — a store subscription's interval comes from its pinned product: MONTH carries no
+    // commitment (the user cancels any time in the store), YEAR the plan's commitment.
+    const store_interval = isStoreBillingProvider(state.provider) ? await storePinInterval(tx, state.provider, state.price_ref) : null;
+    if (isStoreBillingProvider(state.provider) && store_interval === null) return { outcome: 'IGNORED', detail: `${state.provider} product is not pinned to a plan`, tenant_id };
+    const commitment_months = store_interval === 'MONTH' ? null : terms.commitment_months;
     await tx.tenantSubscription.create({
       data: {
         id,
@@ -1203,8 +1241,8 @@ export class SubscriptionLifecycleService {
         plan_version_id: version.id,
         product_key,
         composition_role: BASE_COMPOSITION,
-        commitment_start: terms.commitment_months !== null ? anchor : null,
-        commitment_end: terms.commitment_months !== null ? addMonthsClamped(anchor, terms.commitment_months) : null,
+        commitment_start: commitment_months !== null ? anchor : null,
+        commitment_end: commitment_months !== null ? addMonthsClamped(anchor, commitment_months) : null,
         eligibility_state: terms.eligibility !== null ? 'OK' : null,
         eligibility_checked_at: terms.eligibility !== null ? at : null,
         period_anchor: anchor,
@@ -1212,10 +1250,13 @@ export class SubscriptionLifecycleService {
         created_by: intent.user_id,
         activated_by: intent.user_id,
         status: mapped.status,
-        grace_until: mapped.grace ? new Date(at.getTime() + graceDays() * 86_400_000) : null,
+        grace_until: mapped.grace ? (state.store?.grace_until ?? new Date(at.getTime() + graceDays() * 86_400_000)) : null,
         billing_provider: state.provider,
-        billing_account_ref: state.account_ref,
+        billing_account_ref: isStoreBillingProvider(state.provider) ? null : state.account_ref,
         billing_subscription_ref: state.subscription_ref,
+        ...(state.store !== undefined && store_interval !== null
+          ? { store_product_id: state.store.product_id, store_environment: state.store.environment, store_interval }
+          : {}),
         current_period_end: state.current_period_end,
         cancel_at_period_end: state.cancel_at_period_end,
         provider_state_at: at,
@@ -1243,13 +1284,33 @@ export class SubscriptionLifecycleService {
     };
   }
 
+  /** M-A12 A1-1 — the interval / commitment columns of a store row after a provider update (null: unchanged). */
+  private async storeIntervalUpdate(
+    tx: Tx,
+    row: { commitment_end: Date | null },
+    state: ProviderSubscriptionState,
+    plan_version_id: string,
+  ): Promise<{ store_interval: 'MONTH' | 'YEAR'; commitment_start?: Date | null; commitment_end?: Date | null } | null> {
+    if (!isStoreBillingProvider(state.provider)) return null;
+    const interval = await storePinInterval(tx, state.provider, state.price_ref);
+    if (interval === null) return null;
+    if (interval === 'MONTH') return { store_interval: 'MONTH', commitment_start: null, commitment_end: null };
+    if (row.commitment_end !== null) return { store_interval: 'YEAR' };
+    const version = await tx.planVersion.findUniqueOrThrow({ where: { id: plan_version_id } });
+    const months = planVersionTerms(version).plan.commitment_months;
+    const anchor = state.current_period_start.getTime() > 0 ? state.current_period_start : new Date();
+    return months === null ? { store_interval: 'YEAR' } : { store_interval: 'YEAR', commitment_start: anchor, commitment_end: addMonthsClamped(anchor, months) };
+  }
+
   /**
    * A provider price → a VERSION of a sellable plan of the SAME product (CCP-A4, CCP-A5 N-17),
    * else null: a version pin first, else the STRIPE_PLAN_PRICES cutover fallback onto the
    * plan's current (unpinned) PUBLISHED version.
    */
-  private async planForPrice(tx: Tx, price_ref: string | null, product_key: ProductKey): Promise<PriceResolution | null> {
+  private async planForPrice(tx: Tx, price_ref: string | null, product_key: ProductKey, provider: BillingProviderKey = this.billing.provider): Promise<PriceResolution | null> {
     if (price_ref === null) return null;
+    // M-A12 — a store product resolves through its store pins only (no env fallback).
+    if (isStoreBillingProvider(provider)) return resolveStoreProductToVersion(tx, provider, price_ref, product_key);
     return resolvePriceToVersion(tx, price_ref, product_key, this.prices());
   }
 
@@ -1259,10 +1320,17 @@ export class SubscriptionLifecycleService {
    * tell versions apart, so a grandfathered row stays on its version); a target that is not
    * PUBLISHED (a re-pin onto a RETIRED version is never made; the DB refuses it as well).
    */
-  private async repinTarget(tx: Tx, row: { plan_id: string; plan_version_id: string; product_key: string }, price_ref: string | null): Promise<PriceResolution | null> {
-    const r = await this.planForPrice(tx, price_ref, assertProductKey(row.product_key));
+  private async repinTarget(
+    tx: Tx,
+    row: { plan_id: string; plan_version_id: string; product_key: string },
+    price_ref: string | null,
+    provider: BillingProviderKey = this.billing.provider,
+  ): Promise<PriceResolution | null> {
+    const r = await this.planForPrice(tx, price_ref, assertProductKey(row.product_key), provider);
     if (r === null || r.plan_version_id === row.plan_version_id) return null;
-    if (r.source === 'ENV' && r.plan_id === row.plan_id) return null;
+    // M-A12 — a store product is stable across versions of its plan: the same plan keeps its pin
+    // (grandfathering), as with an env-mapped price.
+    if ((r.source === 'ENV' || r.source === 'STORE') && r.plan_id === row.plan_id) return null;
     if (r.version_status !== 'PUBLISHED') {
       this.log.warn(`provider price ${price_ref ?? ''} maps to a ${r.version_status} version; subscription pin kept`);
       return null;
@@ -1305,7 +1373,7 @@ export class SubscriptionLifecycleService {
   async reconcile(product_key: ProductKey, at: Date = new Date(), limit = 200): Promise<{ checked: number; applied: number; failed: number; results: ApplyResult[] }> {
     const rows = await this.prisma.tenantSubscription.findMany({
       where: { product_key: assertProductKey(product_key), ended_at: null, billing_subscription_ref: { not: null } },
-      select: { billing_subscription_ref: true },
+      select: { billing_subscription_ref: true, billing_provider: true },
       orderBy: { provider_state_at: { sort: 'asc', nulls: 'first' } },
       take: limit,
     });
@@ -1313,7 +1381,9 @@ export class SubscriptionLifecycleService {
     for (const r of rows) {
       tally.checked += 1;
       try {
-        const res = await this.syncSubscription(r.billing_subscription_ref as string, product_key, at);
+        // M-A12 — each row is re-fetched from its own provider (a store row from the store API).
+        const provider = (r.billing_provider ?? this.billing.provider) as BillingProviderKey;
+        const res = await this.syncSubscription(r.billing_subscription_ref as string, product_key, at, REFETCH_CONFIRMATION, provider);
         if (res.outcome === 'APPLIED') tally.applied += 1;
         tally.results.push(res);
       } catch (err) {

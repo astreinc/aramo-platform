@@ -1019,3 +1019,56 @@ export {
   type RenewalNoticeRecipientPort,
   type RenewalNoticeRunCounts,
 } from './lib/billing/renewal-notice.js';
+
+// Aramo Sign Mobile M-A12 W1-G with Amendment A1 — in-app store billing (App Store, Google Play),
+// regional list prices (A1-3) and the store price reconciliation.
+export { STORE_BILLING_PROVIDERS, isStoreBillingProvider, type StoreBillingProviderKey } from './lib/billing/billing-provider.port.js';
+export {
+  StoreBillingService,
+  StoreBillingRefusedError,
+  TENANT_MEMBERSHIP_PORT,
+  storePurchaseBlock,
+  storeProviderOf,
+  type StoreAccountView,
+  type StoreCaller,
+  type StorePlanOffer,
+  type StorePlatform,
+  type StorePurchaseBlockReason,
+  type StoreRefusalReason,
+  type TenantMembershipPort,
+} from './lib/billing/store/store-billing.service.js';
+export {
+  APPLE_APP_STORE_PORT,
+  GOOGLE_PLAY_PORT,
+  STORE_SUBSCRIPTION_READER,
+  StoreSubscriptionRegistry,
+  StoreVerificationError,
+  type StoreFetch,
+  type StoreSubscriptionPort,
+  type StoreSubscriptionReader,
+} from './lib/billing/store/store-billing.port.js';
+export { AppleAppStoreAdapter, APPLE_SERVER_API_BASE, type AppleVerifiedTransaction } from './lib/billing/store/apple-app-store.adapter.js';
+export { AppleJwsError, AppleJwsVerifier, type AppleJwsFailure } from './lib/billing/store/apple-jws.verifier.js';
+export { APPLE_ROOT_CA_G3_PEM, APPLE_ROOT_CA_G3_SHA256 } from './lib/billing/store/apple-root-ca.js';
+export { GooglePlayAdapter, googleMoneyMinor, type PlayStoreRegionalPrice } from './lib/billing/store/google-play.adapter.js';
+export {
+  APPLE_MANAGE_SUBSCRIPTIONS_URL,
+  appleStoreConfig,
+  googlePlayConfig,
+  googlePlayManageUrl,
+  storeBillingEnabled,
+  type AppleStoreConfig,
+  type GooglePlayConfig,
+} from './lib/billing/store/store-billing.config.js';
+export { appleSubscriptionState, playSubscriptionState, type PlaySubscriptionPurchaseV2 } from './lib/billing/store/store-state.js';
+export { reconcileStorePrices, type StorePriceReconciliationEntry, type StorePriceReconciliationStatus } from './lib/billing/store/store-price-reconciliation.js';
+export { resolveStoreProductToVersion, storePinInterval, storeProductsOfVersion } from './lib/billing/provider-price.js';
+export {
+  MAX_REGIONAL_PRICE_MINOR,
+  MAX_REGIONAL_PRICES,
+  regionalPricesOf,
+  withRegionalPrices,
+  type PlanVersionRegionalPriceTerm,
+} from './lib/plan-version.js';
+export { applyRegionalPriceEdits, type CatalogRegionalPriceEdit } from './lib/commercial/commercial-catalog.js';
+export { STORE_PRODUCT_ID, storeProductPinErrors, type StoreProductPin } from './lib/commercial/commercial-change-request.js';

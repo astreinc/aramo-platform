@@ -203,4 +203,36 @@ export class PlanVersionRepository {
     };
     return db !== undefined ? run(db) : this.prisma.$transaction(run);
   }
+
+  /**
+   * M-A12 W1-G — pin a store product (App Store / Google Play product id) with its interval to a
+   * version, once per (version, provider, interval). Re-pinning the SAME product is idempotent; a
+   * different product for the same slot is refused (a new version). A store product id is stable
+   * across versions of ONE plan and one interval (the DB trigger refuses another plan or interval).
+   */
+  async pinStoreProduct(
+    input: { plan_version_id: string; provider: 'APP_STORE' | 'GOOGLE_PLAY'; product_id: string; interval: 'MONTH' | 'YEAR'; created_by: string; at?: Date },
+    db?: Tx,
+  ): Promise<{ created: boolean }> {
+    const ref = input.product_id.trim();
+    if (ref === '') throw new PlanVersionContentError('product_id must be non-empty');
+    const run = async (tx: Tx): Promise<{ created: boolean }> => {
+      const existing = await tx.planVersionPrice.findFirst({ where: { plan_version_id: input.plan_version_id, provider: input.provider, interval: input.interval } });
+      if (existing !== null) {
+        if (existing.provider_price_ref !== ref) throw new PlanVersionStateError(`plan version ${input.plan_version_id} is already pinned to another ${input.provider} ${input.interval} product`);
+        return { created: false };
+      }
+      const version = await tx.planVersion.findUnique({ where: { id: input.plan_version_id }, select: { plan_id: true } });
+      if (version === null) throw new PlanVersionStateError(`unknown plan version ${input.plan_version_id}`);
+      const elsewhere = await tx.planVersionPrice.findFirst({ where: { provider: input.provider, provider_price_ref: ref }, include: { plan_version: { select: { plan_id: true } } } });
+      if (elsewhere !== null && (elsewhere.plan_version.plan_id !== version.plan_id || elsewhere.interval !== input.interval)) {
+        throw new PlanVersionStateError(`${input.provider} product ${ref} belongs to another plan or interval`);
+      }
+      await tx.planVersionPrice.create({
+        data: { id: uuidv7(), plan_version_id: input.plan_version_id, provider: input.provider, provider_price_ref: ref, interval: input.interval, created_by: input.created_by, created_at: input.at ?? new Date() },
+      });
+      return { created: true };
+    };
+    return db !== undefined ? run(db) : this.prisma.$transaction(run);
+  }
 }

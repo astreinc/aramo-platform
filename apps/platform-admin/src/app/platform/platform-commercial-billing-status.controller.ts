@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Optional, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
@@ -9,6 +9,9 @@ import {
   BillingStatusReadService,
   FINANCE_AMOUNT_WITHHELD,
   paymentFlags,
+  SIGN_PRODUCT_KEY,
+  StoreBillingService,
+  type StorePriceReconciliationEntry,
   type BillingPortalConfigurationStatus,
   type BillingStatusInvoice,
   type TenantBillingStatus,
@@ -135,7 +138,24 @@ export function billingPortalConfigurationDto(s: BillingPortalConfigurationStatu
 @Controller('platform/commercial')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PlatformCommercialBillingStatusController {
-  constructor(private readonly status: BillingStatusReadService) {}
+  constructor(
+    private readonly status: BillingStatusReadService,
+    // M-A12 A1-3 — the store price reconciliation (SubscriptionModule provides it).
+    @Optional() private readonly store?: StoreBillingService,
+  ) {}
+
+  /**
+   * Aramo Sign Mobile M-A12 Amendment A1-3 — the reconciliation report: every store product pinned to a
+   * PUBLISHED plan version against the version's published regional prices (MATCH / MISMATCH /
+   * NO_REGIONAL_PRICE / NOT_IN_STORE / STORE_PRICE_UNAVAILABLE). Read only: nothing is blocked at
+   * runtime (the store always charges its own localized price).
+   */
+  @Get('store-price-reconciliation')
+  @RequireScopes('platform:billing:read')
+  async storePriceReconciliation(@AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ product_key: string; entries: StorePriceReconciliationEntry[] }> {
+    assertPlatform(auth, requestId);
+    return { product_key: SIGN_PRODUCT_KEY, entries: this.store === undefined ? [] : await this.store.priceReconciliation(SIGN_PRODUCT_KEY) };
+  }
 
   @Get('tenants/:tenant_id/billing-status')
   @RequireScopes('platform:billing:read')

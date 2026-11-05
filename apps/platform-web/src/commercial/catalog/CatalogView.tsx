@@ -34,6 +34,7 @@ import {
   type EditorFieldKey,
 } from './catalog-model';
 import { NewPlanDialog } from './NewPlanDialog';
+import { RegionalPricesEditor, type RegionalPriceEdit } from './RegionalPricesEditor';
 import { pendingPlanCreateLine, planCreateApplyable } from './new-plan-model';
 import './catalog.css';
 
@@ -243,6 +244,27 @@ export function CatalogView({ session }: { readonly session: Session }) {
           delete rest[unit_key];
           return rest;
         });
+      } catch (e) {
+        setSaveError(errorText(e, 'The draft couldn’t be saved. Try again.'));
+      }
+    })();
+    saving.current = run;
+    await run;
+    if (saving.current === run) saving.current = null;
+  };
+
+  /** M-A12 A1-3 — sets or removes regional prices on the DRAFT (catalog manager only). */
+  const saveRegional = async (edits: RegionalPriceEdit[]): Promise<void> => {
+    if (!version || version.status !== 'DRAFT' || !canDraft) return;
+    const prior = saving.current;
+    const run = (async () => {
+      if (prior) await prior;
+      const current = latest.current;
+      if (!current || current.id !== version.id) return;
+      try {
+        await catalogApi.updateDraft(current.id, current.content_checksum, { regional_prices: edits });
+        setSaveError(null);
+        await load();
       } catch (e) {
         setSaveError(errorText(e, 'The draft couldn’t be saved. Try again.'));
       }
@@ -520,6 +542,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                       </div>
                     </div>
                   ) : null}
+                  <RegionalPricesEditor version={version} canDraft={canDraft} onSave={saveRegional} />
                   {version.status === 'DRAFT' && lastPublished(plan, version) ? (
                     <>
                       <div className="pc-caps pc-caps--16">{`Compared with published v${String(lastPublished(plan, version)?.version_number ?? '')}`}</div>

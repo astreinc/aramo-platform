@@ -125,7 +125,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
     'platform-commercial-governance.controller.ts': { handlers: ['listPolicyVersions', 'createPolicyDraft', 'updatePolicyDraft', 'exportAudit', 'listOperators'], serializes: 'policy (no financial text); B5 CSV export built in the lib by buildAuditCsv (withholdAuditPayloadAmounts)' },
     'platform-commercial-billing.controller.ts': { handlers: ['listCommands', 'listInbox'], serializes: 'commands (billingCommandDto: item 3); webhook inbox (no W field)' },
     'platform-commercial-refund-report.controller.ts': { handlers: ['list'], serializes: 'refund rows (evidenceVisible)' },
-    'platform-commercial-billing-status.controller.ts': { handlers: ['tenantBillingStatus', 'portalConfiguration'], serializes: 'C3 (R3 amounts; no W field)' },
+    'platform-commercial-billing-status.controller.ts': { handlers: ['tenantBillingStatus', 'portalConfiguration', 'storePriceReconciliation'], serializes: 'C3 (R3 amounts; no W field); M-A12 A1-3 store price reconciliation (catalog regional list prices and public store prices: no W field)' },
     'platform-commercial-finance.controller.ts': { handlers: ['renewals', 'outstanding', 'reconciliation'], serializes: 'C6 (R3 amounts; catalog list prices W-1; no W field)' },
     'platform-commercial-revenue.controller.ts': { handlers: ['report'], serializes: 'D2 (R3 amounts; no W field)' },
     'platform-commercial-observability.controller.ts': { handlers: ['listBillingAlerts', 'listApprovalAlerts', 'billingMetrics', 'approvalMetrics'], serializes: 'D3 alerts / metrics (no W field; evidence scanned in R3W-SCAN-5)' },
@@ -150,7 +150,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
       expect(handlers.sort(), f).toEqual([...ROUTES[f]!.handlers].sort());
     }
     expect(total).toBe(Object.values(ROUTES).reduce((n, r) => n + r.handlers.length, 0));
-    expect(total).toBe(45); // 44 + C8-PR contractPayments (TD-MERGE-50)
+    expect(total).toBe(46); // 44 + C8-PR contractPayments (TD-MERGE-50) + Sign Mobile M-A12 A1-3 storePriceReconciliation
   });
 
   it('R3W-SCAN-4 lib side: the audit stream is read out only by the A2 repository (feed + export, both through withholdAuditPayloadAmounts); the other readers select no requester text', () => {

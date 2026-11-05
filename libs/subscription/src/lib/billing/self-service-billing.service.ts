@@ -189,7 +189,8 @@ export class SelfServiceBillingService {
     const release = await db.commercialConversionRelease.findFirst({ where: { tenant_id, product_key, state: { in: ['RELEASED', 'CONSUMED'] } }, select: { id: true } });
     if (conversion !== null || release !== null) throw new SelfServiceRefusedError('CONVERSION_IN_PROGRESS');
     const row = await db.tenantSubscription.findFirst({
-      where: { ...openBaseSubscription(tenant_id, product_key), source: 'SELF_SERVICE', billing_provider: { not: null }, billing_subscription_ref: { not: null } },
+      // M-A12 — a store-billed row is managed in the store, never through a Stripe command.
+      where: { ...openBaseSubscription(tenant_id, product_key), source: 'SELF_SERVICE', billing_provider: 'STRIPE', billing_subscription_ref: { not: null } },
       include: { plan: { select: { key: true } } },
     });
     if (row === null) throw new SelfServiceRefusedError('NO_SELF_SERVICE_SUBSCRIPTION');

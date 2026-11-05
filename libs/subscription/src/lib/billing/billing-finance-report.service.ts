@@ -98,6 +98,8 @@ export interface OutstandingItem extends PriceFigure {
   readonly plan_key: string;
   readonly version_number: number;
   readonly billing_subscription_ref: string | null;
+  /** M-A12 W1-G item 8 — the billing channel (STRIPE | APP_STORE | GOOGLE_PLAY), null when not provider-billed. */
+  readonly billing_provider: string | null;
   readonly status_since: Date | null;
   readonly grace_until: Date | null;
   readonly grace_state: GraceState;
@@ -137,6 +139,8 @@ export interface ReconciledSubscription extends PriceFigure {
   readonly version_status: string;
   readonly grandfathered: boolean;
   readonly billing_subscription_ref: string | null;
+  /** M-A12 W1-G item 8 — the billing channel (STRIPE | APP_STORE | GOOGLE_PLAY), null when not provider-billed. */
+  readonly billing_provider: string | null;
   readonly provider_price_ref: string | null;
   readonly entitlement: { readonly expected: string[]; readonly present: string[]; readonly missing: string[] };
   readonly open_flag_reasons: string[];
@@ -243,6 +247,7 @@ interface SubscriptionRow {
   commitment_end: Date | null;
   cancel_requested_within_commitment: boolean;
   billing_subscription_ref: string | null;
+  billing_provider: string | null;
   provider_state_at: Date | null;
   plan_key: string;
   plan_name: string;
@@ -329,7 +334,7 @@ export class BillingFinanceReportService {
     return tx.$queryRawUnsafe<SubscriptionRow[]>(
       `SELECT ts.id::text AS subscription_id, ts.tenant_id::text AS tenant_id, t.name AS tenant_name, ts.product_key, ts.source, ts.status,
               ts.current_period_end, ts.cancel_at_period_end, ts.grace_until, ts.commitment_end, ts.cancel_requested_within_commitment,
-              ts.billing_subscription_ref, ts.provider_state_at,
+              ts.billing_subscription_ref, ts.billing_provider, ts.provider_state_at,
               p.key AS plan_key, p.name AS plan_name,
               v.id::text AS plan_version_id, v.version_number, v.status AS version_status, v.content, v.content_checksum,
               (SELECT pr.provider_price_ref FROM subscription."PlanVersionPrice" pr WHERE pr.plan_version_id = v.id AND pr.provider = 'STRIPE') AS provider_price_ref
@@ -410,6 +415,7 @@ export class BillingFinanceReportService {
       plan_key: r.plan_key,
       version_number: r.version_number,
       billing_subscription_ref: r.billing_subscription_ref,
+      billing_provider: r.billing_provider,
       status_since: r.provider_state_at,
       grace_until: r.grace_until,
       grace_state: graceStateAt(r.grace_until, as_of),
@@ -538,6 +544,7 @@ export class BillingFinanceReportService {
         version_status: r.version_status,
         grandfathered: r.version_status === 'RETIRED',
         billing_subscription_ref: r.billing_subscription_ref,
+        billing_provider: r.billing_provider,
         provider_price_ref: r.provider_price_ref,
         entitlement: { expected, present, missing },
         open_flag_reasons: [...(flagsOf.get(r.tenant_id) ?? [])].sort(),

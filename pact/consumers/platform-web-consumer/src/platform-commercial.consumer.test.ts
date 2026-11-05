@@ -132,6 +132,8 @@ const INBOX = '/platform/commercial/billing-webhook-inbox';
 const C3_TENANT = 'cca10000-0000-7000-8000-0000000000c3';
 const BILLING_STATUS = `/platform/commercial/tenants/${C3_TENANT}/billing-status`;
 const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
+// Sign Mobile M-A12 A1-3 — the store price reconciliation report.
+const STORE_PRICE_REC = '/platform/commercial/store-price-reconciliation';
 const RENEWALS = '/platform/commercial/finance/renewals';
 const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
 const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
@@ -287,6 +289,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET finance/refunds', method: 'GET', path: REFUND_REPORT, scope: 'platform:billing:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
+  { name: 'GET store-price-reconciliation', method: 'GET', path: STORE_PRICE_REC, scope: 'platform:billing:read' },
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
   { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
   { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
@@ -1752,6 +1755,42 @@ describe('platform-web → GET /platform/commercial/billing-portal-configuration
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${PORTAL_CONFIG}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/store-price-reconciliation (Sign Mobile M-A12 A1-3)', () => {
+  it('read_only_auditor reads the store price reconciliation report (200; no store product pinned ⇒ no entry)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a store price reconciliation read by read_only_auditor')
+      .withRequest('GET', STORE_PRICE_REC, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ product_key: 'sign', entries: [] });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${STORE_PRICE_REC}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a store price reconciliation read by a role missing the billing read scope')
+      .withRequest('GET', STORE_PRICE_REC, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${STORE_PRICE_REC}`, 'GET', platformSession('catalog_manager'));
         expect(res.status).toBe(403);
       });
   });

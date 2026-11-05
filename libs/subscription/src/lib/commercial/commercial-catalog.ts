@@ -1,4 +1,13 @@
-import { MAX_UNIT_PRICE_MINOR, type PlanVersionContent, PlanVersionContentError, parsePlanVersionContent, withUnitPrices } from '../plan-version.js';
+import {
+  MAX_REGIONAL_PRICE_MINOR,
+  MAX_UNIT_PRICE_MINOR,
+  type PlanVersionContent,
+  PlanVersionContentError,
+  type PlanVersionRegionalPriceTerm,
+  parsePlanVersionContent,
+  withRegionalPrices,
+  withUnitPrices,
+} from '../plan-version.js';
 import { isMeteredUnitKey } from '../usage/metered-units.js';
 
 // CCP-B2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.3 row B2; MP-A2 N-15, N-16) — the
@@ -19,6 +28,11 @@ import { isMeteredUnitKey } from '../usage/metered-units.js';
 //                content fingerprint covers them and they publish only through the existing
 //                PLAN_VERSION_PUBLISH chain (Finance → Owner). A unit of the plan's product only;
 //                null removes the price (the unit is not sold on that version).
+//   regional     Aramo Sign Mobile M-A12 Amendment A1-3 — the regional list prices (e.g. IN / INR,
+//   prices       monthly and annual) of a DRAFT, edited the same way: part of the version content,
+//                covered by its fingerprint, published only through PLAN_VERSION_PUBLISH (Finance →
+//                Owner) and immutable once published. An entry is keyed by (country, interval);
+//                amount_minor null removes it. US is never a regional price (the list price is US/USD).
 
 /** The Sign envelope allowance the editor's "Envelopes per month" reads and edits. */
 export const CATALOG_ENVELOPE_ALLOWANCE_KEY = 'sign.envelopes';
@@ -59,6 +73,16 @@ export interface CatalogVersionTerms {
   readonly storage_present: boolean;
   /** A3 D1 / A4 D2 — the add-on unit prices on the version (sorted by unit_key; empty = none sold). */
   readonly unit_prices: readonly { readonly unit_key: string; readonly unit_price_minor: number }[];
+  /** M-A12 A1-3 — the regional list prices on the version (sorted by country, interval; empty = none). */
+  readonly regional_prices: readonly PlanVersionRegionalPriceTerm[];
+}
+
+/** M-A12 A1-3 — one regional-price edit: set (amount_minor) or remove (null) the (country, interval) entry. */
+export interface CatalogRegionalPriceEdit {
+  readonly country: string;
+  readonly interval: 'MONTH' | 'YEAR';
+  readonly currency: string;
+  readonly amount_minor: number | null;
 }
 
 export interface CatalogDraftEdits {
@@ -73,6 +97,8 @@ export interface CatalogDraftEdits {
    * not sold), keyed by metered unit key. Units not named keep their price.
    */
   readonly unit_prices?: Readonly<Record<string, number | null>>;
+  /** M-A12 A1-3 — regional prices to set or remove; entries not named keep their price. */
+  readonly regional_prices?: readonly CatalogRegionalPriceEdit[];
 }
 
 export function isContractPriced(content: PlanVersionContent): boolean {
@@ -103,6 +129,7 @@ export function catalogTermsOf(content: PlanVersionContent): CatalogVersionTerms
     storage_unlimited: sto?.unlimited ?? false,
     storage_present: sto !== undefined,
     unit_prices: (content.unit_prices ?? []).map((u) => ({ unit_key: u.unit_key, unit_price_minor: u.unit_price_minor })),
+    regional_prices: (content.regional_prices ?? []).map((r) => ({ country: r.country, currency: r.currency, amount_minor: r.amount_minor, interval: r.interval })),
   };
 }
 
@@ -137,7 +164,38 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
     capacities = capacities.map((c) => (c.capacity_key === CATALOG_STORAGE_CAPACITY_KEY ? { ...c, limit_quantity: v, unlimited: v === null } : c));
   }
   const edited = parsePlanVersionContent({ ...content, plan, allowances, capacities });
-  return edits.unit_prices === undefined ? edited : applyUnitPriceEdits(edited, edits.unit_prices);
+  const priced = edits.unit_prices === undefined ? edited : applyUnitPriceEdits(edited, edits.unit_prices);
+  return edits.regional_prices === undefined ? priced : applyRegionalPriceEdits(priced, edits.regional_prices);
+}
+
+/** M-A12 A1-3 — the regional-price edits of a DRAFT (fails closed: a bad country, currency, interval or amount). */
+export function applyRegionalPriceEdits(content: PlanVersionContent, edits: readonly CatalogRegionalPriceEdit[]): PlanVersionContent {
+  if (!Array.isArray(edits)) throw new CatalogDraftEditError('term_missing', 'regional_prices must be an array of regional price edits');
+  if (isContractPriced(content)) throw new CatalogDraftEditError('contract_priced', 'this plan is contract-priced: it has no regional list price');
+  const byKey = new Map<string, PlanVersionRegionalPriceTerm>((content.regional_prices ?? []).map((r) => [`${r.country}:${r.interval}`, r]));
+  for (const e of edits) {
+    const country = typeof e?.country === 'string' ? e.country.trim().toUpperCase() : '';
+    const currency = typeof e?.currency === 'string' ? e.currency.trim().toUpperCase() : '';
+    if (!/^[A-Z]{2}$/.test(country)) throw new CatalogDraftEditError('term_missing', 'a regional price needs an ISO 3166-1 alpha-2 country');
+    if (country === 'US') throw new CatalogDraftEditError('term_missing', 'US is the plan list price, not a regional price', { term: 'US' });
+    if (e.interval !== 'MONTH' && e.interval !== 'YEAR') throw new CatalogDraftEditError('term_missing', 'a regional price interval is MONTH or YEAR', { term: country });
+    const key = `${country}:${e.interval}`;
+    if (e.amount_minor === null) {
+      byKey.delete(key);
+      continue;
+    }
+    if (!/^[A-Z]{3}$/.test(currency)) throw new CatalogDraftEditError('term_missing', 'a regional price needs an ISO 4217 currency', { term: country });
+    if (!nonNegInt(e.amount_minor) || e.amount_minor > MAX_REGIONAL_PRICE_MINOR) {
+      throw new CatalogDraftEditError('term_missing', `the regional price for ${country} must be an integer 0..${MAX_REGIONAL_PRICE_MINOR} (minor units)`, { term: country });
+    }
+    byKey.set(key, { country, currency, amount_minor: e.amount_minor, interval: e.interval });
+  }
+  try {
+    return withRegionalPrices(content, [...byKey.values()]);
+  } catch (e) {
+    if (e instanceof PlanVersionContentError) throw new CatalogDraftEditError('term_missing', e.message);
+    throw e;
+  }
 }
 
 /** A4 D2 — the unit-price edits of a DRAFT (fails closed: an unknown unit, another product's unit, a bad price). */

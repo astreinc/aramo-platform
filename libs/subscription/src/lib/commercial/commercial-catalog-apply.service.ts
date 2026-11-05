@@ -16,7 +16,7 @@ import {
   recordApplyFailure,
 } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type B2CatalogApplyAction, PLAN_TARGET_CHECKSUM_KEY, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
+import { type B2CatalogApplyAction, PLAN_TARGET_CHECKSUM_KEY, type StoreProductPin, isCatalogApplicable, validatePayload } from './commercial-change-request.js';
 import { type PlanCreatePayload, planCreateContent, planRowOf } from './commercial-plan-create.js';
 import {
   COMMERCIAL_CLOCK,
@@ -252,6 +252,17 @@ export class CommercialCatalogApplyService {
           await this.versions.pinProviderPrice({ plan_version_id: version.id, provider: 'STRIPE', provider_price_ref: price, created_by: actor.user_id, at: now }, tx);
         } catch (e) {
           if (e instanceof PlanVersionStateError) throw new ApplyFailure('PRICE_PIN_CONFLICT', { plan_version_id: version.id, provider_price_ref: price, error: e.message });
+          throw e;
+        }
+      }
+      // M-A12 W1-G — the store products (App Store / Google Play) the approvers approved, pinned to the
+      // version in this same transaction (a store product belongs to one plan and interval: trigger).
+      const storeProducts = Array.isArray(p['store_products']) ? (p['store_products'] as StoreProductPin[]) : [];
+      for (const sp of storeProducts) {
+        try {
+          await this.versions.pinStoreProduct({ plan_version_id: version.id, provider: sp.provider, product_id: sp.product_id, interval: sp.interval, created_by: actor.user_id, at: now }, tx);
+        } catch (e) {
+          if (e instanceof PlanVersionStateError) throw new ApplyFailure('PRICE_PIN_CONFLICT', { plan_version_id: version.id, store_product: sp.product_id, error: e.message });
           throw e;
         }
       }

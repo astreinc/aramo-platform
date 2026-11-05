@@ -116,13 +116,19 @@ model PlanVersion {
 model PlanVersionPrice {
   id                 String      @id @db.Uuid
   plan_version_id    String      @db.Uuid
-  // CHECK: STRIPE
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY (M-A12 W1-G: a store pin's ref is the store product id)
   provider           String
   provider_price_ref String
+  // M-A12 A1-1 — CHECK: MONTH | YEAR (a Stripe pin is MONTH). Migration 20261104100000.
+  interval           String      @default("MONTH")
   created_by         String
   created_at         DateTime    @db.Timestamptz(3)
   plan_version       PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
+  // M-A12 — both unique indexes are PARTIAL in SQL (WHERE provider = 'STRIPE'): one Stripe pin per
+  // version, and a Stripe price belongs to one version. Store pins are unique per
+  // (plan_version_id, provider, interval) (PlanVersionPrice_store_version_interval_key) and a store
+  // product may pin several versions of ONE plan (trigger). Store pins are read with findFirst/findMany.
   @@unique([plan_version_id, provider])
   @@unique([provider, provider_price_ref])
   @@schema("subscription")
@@ -197,7 +203,7 @@ model TenantSubscription {
   created_by                         String
   // Aramo Sign launch — CHECK: TRIALING | ACTIVE | PAST_DUE | CANCELED | INCOMPLETE.
   status                             String      @default("ACTIVE")
-  // CHECK: STRIPE (null for MANUAL / DEVELOPMENT).
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY (M-A12; null for MANUAL / DEVELOPMENT / FREE).
   billing_provider                   String?
   billing_account_ref                String?
   billing_subscription_ref           String?
@@ -230,6 +236,12 @@ model TenantSubscription {
   // in migration 20261025160000. A new or changed pin must be PUBLISHED; a change is recorded in
   // SubscriptionVersionPinEvent by trigger. NO default.
   plan_version_id                    String      @db.Uuid
+  // M-A12 W1-G — the store subscription references (null unless billing_provider is a store):
+  // the store product, the store environment (Sandbox | Production) and the billed interval
+  // (MONTH | YEAR; a MONTH store row carries no commitment, A1-1). CHECKs in migration 20261104100000.
+  store_product_id                   String?
+  store_environment                  String?
+  store_interval                     String?
   plan                               Plan        @relation(fields: [plan_id], references: [id])
   plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
   // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.
@@ -273,9 +285,12 @@ model CheckoutIntent {
   tenant_id            String    @db.Uuid
   user_id              String
   plan_id              String    @db.Uuid
-  // CHECK: STRIPE
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY (M-A12: a store purchase intent; its id is the
+  // appAccountToken / obfuscatedExternalAccountId the app passes to the store)
   provider             String
   provider_session_ref String?
+  // M-A12 — the store product of a store intent (null for STRIPE; CHECK).
+  store_product_id     String?
   // CHECK: CREATED | COMPLETED | EXPIRED
   status               String    @default("CREATED")
   created_at           DateTime  @default(now()) @db.Timestamptz(6)
@@ -1000,7 +1015,7 @@ model BillingProviderCommand {
 // terminal, DELETE rejected (trigger, migration 20261026020000).
 model BillingWebhookInbox {
   id                   String    @id @db.Uuid
-  // CHECK: STRIPE
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY (M-A12)
   provider             String
   provider_event_id    String
   event_type           String

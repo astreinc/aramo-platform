@@ -6,7 +6,18 @@ export const BILLING_PROVIDER_PORT = 'BILLING_PROVIDER_PORT';
 
 import type { OrganizationBillingAddress } from './organization-billing-profile.port.js';
 
-export type BillingProviderKey = 'STRIPE';
+// M-A12 W1-G — the platform stores (Apple In-App Purchase, Google Play Billing) are billing
+// providers too. Every Stripe-only port below (checkout, portal, commands, read, adjustments) keeps
+// its `provider` = 'STRIPE' in practice; a store is reached only through the store ports
+// (billing/store/store-billing.port.ts).
+export type BillingProviderKey = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+
+export const STORE_BILLING_PROVIDERS = ['APP_STORE', 'GOOGLE_PLAY'] as const;
+export type StoreBillingProviderKey = (typeof STORE_BILLING_PROVIDERS)[number];
+
+export function isStoreBillingProvider(p: string | null | undefined): p is StoreBillingProviderKey {
+  return p === 'APP_STORE' || p === 'GOOGLE_PLAY';
+}
 
 // A1 §2.6 — what Aramo writes onto the provider billing account (from the US
 // organization profile). The provider's copy is the tax-relevant billing location
@@ -52,10 +63,21 @@ export interface ProviderSubscriptionState {
   intent_id: string | null;
   // A1 §2.6 — the billing account's country as the provider holds it now (ISO
   // alpha-2), or null when absent. Only 'US' may activate (fail closed).
+  // M-A12 A1-3 — not applied to a store provider (the store is the merchant of record).
   account_country: string | null;
+  // M-A12 W1-G — a store subscription only (absent for Stripe): the store product, the store
+  // environment and the store's own grace end (billing retry with a grace period). The billed
+  // interval (A1-1) is read from the product's pin, never from the store payload.
+  store?: {
+    product_id: string;
+    environment: 'Sandbox' | 'Production' | null;
+    grace_until: Date | null;
+  };
 }
 
 export interface VerifiedBillingEvent {
+  // M-A12 — the provider the event came from; absent = the bound BillingProviderPort's (Stripe).
+  provider?: BillingProviderKey;
   id: string;
   type: string;
   created: Date;

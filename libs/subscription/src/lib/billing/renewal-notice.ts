@@ -163,7 +163,8 @@ export class RenewalNoticeRepository {
       where: {
         ended_at: null,
         source: 'SELF_SERVICE',
-        billing_provider: { not: null },
+        // M-A12 — the store sends its own renewal notices for a store-billed subscription.
+        billing_provider: 'STRIPE',
         billing_subscription_ref: { not: null },
         cancel_at_period_end: false,
         status: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },

@@ -29,6 +29,16 @@ import { METERED_UNIT_KEYS, isMeteredUnitKey } from './usage/metered-units.js';
 //                       one entry per unit. A document without it is byte-identical to the format-1
 //                       content written before A3, so every existing version keeps its checksum. A
 //                       unit absent from unit_prices is NOT SOLD on that version.
+//   regional_prices     Aramo Sign Mobile M-A12 Amendment A1-3 (LOCKED) — the regional list prices of a
+//                       version: (country ISO alpha-2, currency ISO 4217, amount_minor, interval MONTH |
+//                       YEAR), e.g. IN / INR. Part of the version TERMS on the same footing as
+//                       unit_prices: an OPTIONAL key (present only when at least one regional price is
+//                       set, never an empty array), sorted by (country, interval), one entry per
+//                       (country, interval), covered by the content checksum, drafted and published
+//                       through the governed PLAN_VERSION_PUBLISH chain, immutable once published.
+//                       The plan's list_price_minor + currency stays the US / USD price: a regional
+//                       entry for US is refused. Display and reconciliation only: the store charges its
+//                       own localized price, and Stripe stays US-only.
 
 export const PLAN_VERSION_CONTENT_FORMAT = 1;
 export const PLAN_VERSION_STATUSES = ['DRAFT', 'PUBLISHED', 'RETIRED'] as const;
@@ -101,7 +111,26 @@ export interface PlanVersionContent {
   readonly features: readonly PlanVersionFeature[];
   /** A3 D1 — absent = no add-on unit is sold on this version (never an empty array). */
   readonly unit_prices?: readonly PlanVersionUnitPriceTerm[];
+  /** M-A12 A1-3 — absent = no regional price on this version (never an empty array). */
+  readonly regional_prices?: readonly PlanVersionRegionalPriceTerm[];
 }
+
+/** M-A12 A1-3 — one regional list price of a version. */
+export interface PlanVersionRegionalPriceTerm {
+  /** ISO 3166-1 alpha-2, upper case; never US (the plan's list price is the US price). */
+  readonly country: string;
+  /** ISO 4217, upper case. */
+  readonly currency: string;
+  /** Minor units of `currency`; 0..MAX_REGIONAL_PRICE_MINOR. */
+  readonly amount_minor: number;
+  readonly interval: 'MONTH' | 'YEAR';
+}
+
+/** The upper bound of a regional price (minor units). */
+export const MAX_REGIONAL_PRICE_MINOR = 1_000_000_000;
+/** At most this many regional prices on one version. */
+export const MAX_REGIONAL_PRICES = 200;
+export const REGIONAL_PRICE_INTERVALS = ['MONTH', 'YEAR'] as const;
 
 export class PlanVersionContentError extends Error {
   constructor(message: string) {
@@ -238,7 +267,7 @@ const PLAN_KEYS = [
 export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   if (!isObj(raw)) throw new PlanVersionContentError('content must be an object');
   const CONTENT_KEYS = ['format', 'plan', 'allowances', 'allowance_windows', 'capacities', 'features'];
-  exactKeys(raw, 'unit_prices' in raw ? [...CONTENT_KEYS, 'unit_prices'] : CONTENT_KEYS, 'content');
+  exactKeys(raw, [...CONTENT_KEYS, ...('unit_prices' in raw ? ['unit_prices'] : []), ...('regional_prices' in raw ? ['regional_prices'] : [])], 'content');
   if (raw['format'] !== PLAN_VERSION_CONTENT_FORMAT) throw new PlanVersionContentError(`content.format must be ${PLAN_VERSION_CONTENT_FORMAT}`);
   const p = raw['plan'];
   if (!isObj(p)) throw new PlanVersionContentError('content.plan must be an object');
@@ -289,9 +318,69 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
     if (new Set(keys).size !== keys.length) throw new PlanVersionContentError(`content.${name} has a duplicate key`);
   }
   const unit_prices = 'unit_prices' in raw ? parseUnitPrices(raw, plan.product_key) : undefined;
-  return unit_prices === undefined
-    ? { format: 1, plan, allowances, allowance_windows, capacities, features }
-    : { format: 1, plan, allowances, allowance_windows, capacities, features, unit_prices };
+  const regional_prices = 'regional_prices' in raw ? parseRegionalPrices(raw) : undefined;
+  return {
+    format: 1,
+    plan,
+    allowances,
+    allowance_windows,
+    capacities,
+    features,
+    ...(unit_prices === undefined ? {} : { unit_prices }),
+    ...(regional_prices === undefined ? {} : { regional_prices }),
+  };
+}
+
+const COUNTRY = /^[A-Z]{2}$/;
+const CURRENCY = /^[A-Z]{3}$/;
+
+/** M-A12 A1-3 — the strict regional_prices parser: non-empty, sorted by (country, interval), unique, never US. */
+function parseRegionalPrices(raw: Obj): PlanVersionRegionalPriceTerm[] {
+  const rows = arr(raw, 'regional_prices');
+  if (rows.length === 0) throw new PlanVersionContentError('content.regional_prices must be omitted when no regional price is set (never empty)');
+  if (rows.length > MAX_REGIONAL_PRICES) throw new PlanVersionContentError(`content.regional_prices holds at most ${MAX_REGIONAL_PRICES} entries`);
+  const out = rows.map((a, i) => {
+    const w = `content.regional_prices[${i}]`;
+    exactKeys(a, ['country', 'currency', 'amount_minor', 'interval'], w);
+    const country = str(a, 'country', w);
+    if (!COUNTRY.test(country)) throw new PlanVersionContentError(`${w}.country must be an upper-case ISO 3166-1 alpha-2 code`);
+    if (country === 'US') throw new PlanVersionContentError(`${w}.country US is the plan's list price, not a regional price`);
+    const currency = str(a, 'currency', w);
+    if (!CURRENCY.test(currency)) throw new PlanVersionContentError(`${w}.currency must be an upper-case ISO 4217 code`);
+    const amount_minor = int(a, 'amount_minor', w);
+    if (amount_minor < 0 || amount_minor > MAX_REGIONAL_PRICE_MINOR) throw new PlanVersionContentError(`${w}.amount_minor must be 0..${MAX_REGIONAL_PRICE_MINOR}`);
+    const interval = a['interval'];
+    if (interval !== 'MONTH' && interval !== 'YEAR') throw new PlanVersionContentError(`${w}.interval must be MONTH or YEAR`);
+    return { country, currency, amount_minor, interval } as PlanVersionRegionalPriceTerm;
+  });
+  for (let i = 1; i < out.length; i += 1) {
+    if (regionalKey(out[i - 1] as PlanVersionRegionalPriceTerm) >= regionalKey(out[i] as PlanVersionRegionalPriceTerm)) {
+      throw new PlanVersionContentError('content.regional_prices must be sorted by country then interval with no duplicate');
+    }
+  }
+  return out;
+}
+
+const regionalKey = (r: { country: string; interval: string }): string => `${r.country}\u0000${r.interval}`;
+
+/**
+ * M-A12 A1-3 — the canonical regional_prices of a content document: sorted by (country, interval);
+ * the key is omitted when no regional price is set, so such a document stays byte-identical to its
+ * pre-A1-3 form (every existing version keeps its checksum).
+ */
+export function withRegionalPrices(content: PlanVersionContent, prices: readonly PlanVersionRegionalPriceTerm[]): PlanVersionContent {
+  const { regional_prices: _drop, ...rest } = content;
+  void _drop;
+  if (prices.length === 0) return parsePlanVersionContent(rest);
+  const sorted = [...prices].sort((a, b) => (regionalKey(a) < regionalKey(b) ? -1 : regionalKey(a) > regionalKey(b) ? 1 : 0));
+  return parsePlanVersionContent({ ...rest, regional_prices: sorted.map((r) => ({ country: r.country, currency: r.currency, amount_minor: r.amount_minor, interval: r.interval })) });
+}
+
+/** M-A12 A1-3 — the version's regional prices for a country (both intervals, MONTH first). */
+export function regionalPricesOf(content: PlanVersionContent, country: string | null): PlanVersionRegionalPriceTerm[] {
+  if (country === null) return [];
+  const c = country.trim().toUpperCase();
+  return (content.regional_prices ?? []).filter((r) => r.country === c);
 }
 
 /** A3 D1 — the strict unit_prices parser: non-empty, sorted by unit_key, unique, registry units of the plan's product. */

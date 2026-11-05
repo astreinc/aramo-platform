@@ -199,6 +199,19 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     expect(input.expected_content_checksum).toBe('c'.repeat(64));
   });
 
+  it('M-A12-A1-3-RT-1 PATCH passes the regional-price edits through as draft edits (null removes); the version terms carry regional_prices', async () => {
+    const r = ROUTES[3] as Route;
+    const edits = [
+      { country: 'IN', interval: 'MONTH', currency: 'INR', amount_minor: 89900 },
+      { country: 'IN', interval: 'YEAR', currency: 'INR', amount_minor: null },
+    ];
+    const res = await call(r, 'catalog_manager', { body: { expected_content_checksum: 'c'.repeat(64), regional_prices: edits } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const [, , input] = svcMock.updateDraft.mock.calls[0] as unknown as [unknown, string, { edits: object }];
+    expect(input.edits).toEqual({ regional_prices: edits });
+    expect(res.body.version.terms.regional_prices).toEqual([]);
+  });
+
   it('A4-D2-RT-1 PATCH passes the unit-price edits through as draft edits (null = stop selling the unit); GET lists the priceable units and the version prices', async () => {
     const r = ROUTES[4] as Route;
     const res = await call(r, 'catalog_manager');
@@ -233,6 +246,13 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     ['patch: unit price above the cap', ROUTES[3] as Route, { ...PATCH_BODY, unit_prices: { 'sign.sms_message': 10_000_001 } }],
     ['patch: unit price as a string', ROUTES[3] as Route, { ...PATCH_BODY, unit_prices: { 'sign.sms_message': '5' } }],
     ['patch: unit key malformed', ROUTES[3] as Route, { ...PATCH_BODY, unit_prices: { SMS: 5 } }],
+    // Sign Mobile M-A12 A1-3 — regional prices: never US, ISO codes, MONTH | YEAR, integer minor units.
+    ['patch: regional price for US', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'US', interval: 'MONTH', currency: 'USD', amount_minor: 1 }] }],
+    ['patch: regional price lower-case country', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'in', interval: 'MONTH', currency: 'INR', amount_minor: 1 }] }],
+    ['patch: regional price interval', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'IN', interval: 'WEEK', currency: 'INR', amount_minor: 1 }] }],
+    ['patch: regional price fractional', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'IN', interval: 'MONTH', currency: 'INR', amount_minor: 0.5 }] }],
+    ['patch: regional prices empty', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [] }],
+    ['patch: regional price extra key', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'IN', interval: 'MONTH', currency: 'INR', amount_minor: 1, store: 'x' }] }],
   ];
   for (const [name, r, body] of bad) {
     it(`B2-RT-400 ${name}`, async () => {

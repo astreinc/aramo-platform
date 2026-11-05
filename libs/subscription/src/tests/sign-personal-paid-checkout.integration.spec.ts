@@ -145,7 +145,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(plans.filter((p) => p.purchasable).map((p) => p.key)).toEqual([STANDARD]);
     expect(plans.find((p) => p.key === STANDARD)).toMatchObject({ tenant_kind: 'PERSONAL', price: { amount_minor: 1000, currency: 'USD' }, commitment_months: 12 });
     const business = await svc.catalog('sign', t, 'BUSINESS');
-    expect(business.find((p) => p.key === STANDARD)!.purchasable).toBe(false);
+    // Sign Mobile M-A12 R-2 (A5) — a BUSINESS tenant's catalog no longer lists the Personal plan at all.
+    expect(business.find((p) => p.key === STANDARD)).toBeUndefined();
     expect(business.find((p) => p.key === AramoSignStandardBusinessPlanKey)!.purchasable).toBe(true);
   });
 
