@@ -56,6 +56,8 @@ import {
   awaitingYouSteps,
   inboxHandleKey,
   mintInboxHandle,
+  PROFILE_TEXT_FIELD_TYPES,
+  SignUserProfileRepository,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -75,7 +77,7 @@ import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 
-import { SenderContextService } from './sender-context.service.js';
+import { ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
 
 // PX-1 — the authenticated sender workspace (esign.aramo.ai). tenant_id and the
@@ -95,7 +97,9 @@ import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './en
 // envelope, signing in parallel or in order (ROUTING_MODES).
 // M-A6 §2.1 — SIGNER_NAME and CHECKBOX are added to the sender authoring types;
 // ACKNOWLEDGEMENT stays engine-only (the S2S and Sign API keep all seven).
-export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX'] as const;
+// Aramo Sign Mobile M-A12 W1-C.4 — + the profile auto-fill text types (FIRST_NAME,
+// LAST_NAME, EMAIL, COMPANY, TITLE): placed by the sender, filled by the signer.
+export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', ...PROFILE_TEXT_FIELD_TYPES] as const;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
 const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
 const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
@@ -103,7 +107,7 @@ const MAX_LABEL = 200;
 const MAX_GROUP_KEY = 64;
 const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
 // The seven engine field types (the S2S and Sign API paths accept all of them).
-const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT']);
+const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT', ...PROFILE_TEXT_FIELD_TYPES]);
 export const MAX_SIGNERS = 10;
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
@@ -126,6 +130,49 @@ export const ENVELOPE_TABS: Record<string, readonly string[] | undefined> = {
 
 function bad(requestId: string, message: string, details?: Record<string, unknown>): AramoError {
   return new AramoError('VALIDATION_ERROR', message, 400, { requestId, ...(details !== undefined ? { details } : {}) });
+}
+
+// Aramo Sign Mobile M-A12 W1-A — the envelope mode (API value) and the self-sign refusals.
+export const ENVELOPE_MODES = ['standard', 'self'] as const;
+export type EnvelopeMode = (typeof ENVELOPE_MODES)[number];
+
+export function envelopeModeOf(env: { envelope_mode?: string | null }): EnvelopeMode {
+  return env.envelope_mode === 'SELF' ? 'self' : 'standard';
+}
+
+function selfSignSingleRecipient(requestId: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', 'A document you sign yourself has exactly one recipient: you', 422, {
+    requestId,
+    details: { reason: 'self_sign_single_recipient' },
+  });
+}
+
+// M-A12 W1-A.4 — "Sign now": the caller may open a self-sign session on this envelope now
+// (the same rules the session route enforces: the caller's own signing recipient, bound to
+// them by Assign to me or self mode, still to sign, their turn, a Sign envelope they may act
+// on, and sign:envelope:send). The verified email is re-checked when the session is issued.
+export function canSelfSignNow(
+  auth: Pick<AuthContextType, 'sub' | 'scopes'>,
+  env: {
+    status: string;
+    routing_mode: string;
+    created_by: string;
+    source_application: string;
+    signers: ReadonlyArray<{ id: string; status: string; signing_order: number; bound_user_id: string | null; recipient_kind?: string | null; witness_for_signer_id?: string | null }>;
+  },
+): boolean {
+  if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') return false;
+  if (!auth.scopes.includes(ESIGN_SEND_SCOPE) || env.source_application !== SIGN_APPLICATION) return false;
+  if (env.created_by !== auth.sub && !auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return false;
+  const turn = env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
+  return signingRecipients(env.signers).some(
+    (s) =>
+      s.bound_user_id === auth.sub &&
+      recipientKindOf(s) !== 'IN_PERSON_SIGNER' &&
+      (s.status === 'PENDING' || s.status === 'VIEWED') &&
+      (env.routing_mode !== 'SEQUENTIAL' || s.id === turn) &&
+      witnessReady(env.signers, s),
+  );
 }
 
 function iso(d: Date | null | undefined): string | null {
@@ -172,6 +219,9 @@ export class SenderEnvelopeService {
     @Optional() private readonly estamp?: EstampWorkflowService,
     // Aramo Sign W2 §A3.5 — the caller's proven current email, for `awaiting_you`.
     @Optional() private readonly inbox?: RecipientInboxRepository,
+    // Aramo Sign Mobile M-A12 W1-A / W1-E — the caller's Sign profile name (self mode) and
+    // date-format setting (stamped at send).
+    @Optional() private readonly userData?: SignUserProfileRepository,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
@@ -344,6 +394,9 @@ export class SenderEnvelopeService {
         // by them, through the full discovery revalidation). Null when there is none to sign
         // through (e.g. assigned but neither bound nor proven, or discovery off).
         my_inbox_item_id: mine.get(e.id) ?? null,
+        // M-A12 W1-A — the envelope mode and whether the caller may "Sign now".
+        mode: envelopeModeOf(e),
+        can_self_sign_now: canSelfSignNow(auth, e),
         purge: purgeViewOf(e),
       })),
       counts,
@@ -369,8 +422,9 @@ export class SenderEnvelopeService {
     // M-A5 §1.3 — the shared current-turn rule (a copy recipient never takes a turn).
     const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
     // M-A5 §1.2 / §3 — only a SIGNER holds an emailed link, so only a SIGNER is reminded.
+    // M-A12 W1-A — a SELF envelope invites no one, so no one is reminded.
     const canRemind = (s: { id: string; status: string; recipient_kind?: string | null; witness_for_signer_id?: string | null }): boolean =>
-      open && isLinkSigner(s) && witnessReady(env.signers, s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
+      open && env.envelope_mode !== 'SELF' && isLinkSigner(s) && witnessReady(env.signers, s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
     // Sign Mobile M-A3 §7 — when each remindable signer may next be reminded (the
     // later of their 60-minute cooldown and the envelope's rolling 24-hour limit).
     const now = new Date();
@@ -420,6 +474,13 @@ export class SenderEnvelopeService {
       next_signer_id: nextSignerId,
       // Feature-Parity §1.17 — whether a signer may delegate (set in DRAFT, fixed at send).
       allow_delegation: env.allow_delegation,
+      // Aramo Sign Mobile M-A12 W1-A — standard | self, and whether the caller may "Sign now"
+      // (open a self-sign session) on this envelope.
+      mode: envelopeModeOf(env),
+      can_self_sign_now: canSelfSignNow(auth, env),
+      // M-A12 W1-E.2 — the SIGN_DATE format stamped at send (null before send: the sender's
+      // setting applies when the envelope is sent).
+      date_format: env.signer_date_format ?? null,
       documents: env.documents.map((d) => ({
         id: d.id,
         title: d.title,
@@ -677,6 +738,27 @@ export class SenderEnvelopeService {
     if (!(await store.remove(auth.tenant_id, auth.sub, id))) throw new AramoError('NOT_FOUND', 'Contact not found', 404, { requestId });
   }
 
+  // Aramo Sign Mobile M-A12 W1-C.2 — the version key and a byte loader for a document the
+  // caller may view (the same visibility as the source route: another tenant's envelope,
+  // another member's envelope without read-all, or a document not in this envelope reads
+  // as not found). The version is the stored source sha256 (or the frozen revision ref).
+  async documentVersion(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string): Promise<{ version: string; load: () => Promise<Uint8Array> }> {
+    await this.describe(auth, envelope_id, requestId, false);
+    const doc = await this.repo.getDocument(auth.tenant_id, envelope_id, document_id);
+    const version = doc.source_sha256 ?? doc.document_revision_ref ?? doc.id;
+    return {
+      version,
+      load: () =>
+        this.sources.getSourcePdf({
+          tenant_id: auth.tenant_id,
+          source_mode: doc.source_mode as EnvelopeDocumentSourceMode,
+          document_ref: doc.document_ref,
+          document_revision_ref: doc.document_revision_ref,
+          source_object_key: doc.source_object_key,
+        }),
+    };
+  }
+
   async source(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string): Promise<Uint8Array> {
     await this.describe(auth, envelope_id, requestId, false);
     const doc = await this.repo.getDocument(auth.tenant_id, envelope_id, document_id);
@@ -716,12 +798,50 @@ export class SenderEnvelopeService {
 
   // ── DRAFT authoring ────────────────────────────────────────────────────────
 
-  async create(auth: AuthContextType, body: { subject?: unknown }, requestId: string) {
+  // Aramo Sign Mobile M-A12 W1-A — `mode: "self"` creates a draft whose one recipient is the
+  // caller: a SIGNER the server creates from the caller's verified account email and binds
+  // to them (bound_user_id = auth.sub, never client-supplied). Client-supplied recipients
+  // are refused (422 self_sign_single_recipient); no verified email ⇒ 403.
+  async create(auth: AuthContextType, body: { subject?: unknown; mode?: unknown; recipients?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const modeRaw = body?.mode ?? 'standard';
+    if (typeof modeRaw !== 'string' || !(ENVELOPE_MODES as readonly string[]).includes(modeRaw)) {
+      throw bad(requestId, 'mode must be standard or self', { field: 'mode', reason: 'invalid_mode' });
+    }
+    const mode = modeRaw as EnvelopeMode;
     const subject = typeof body?.subject === 'string' && body.subject.trim().length > 0 ? body.subject.trim() : 'Untitled envelope';
     if (subject.length > MAX_TITLE) throw bad(requestId, `subject must be at most ${MAX_TITLE} characters`);
-    const env = await this.repo.createDraft({ tenant_id: auth.tenant_id, subject, created_by: auth.sub });
-    return { id: env.id, status: env.status, subject: env.subject };
+    if (mode === 'standard') {
+      const env = await this.repo.createDraft({ tenant_id: auth.tenant_id, subject, created_by: auth.sub });
+      return { id: env.id, status: env.status, subject: env.subject, mode };
+    }
+    if (body?.recipients !== undefined) throw selfSignSingleRecipient(requestId);
+    const me = await this.selfRecipient(auth, requestId);
+    const env = await this.repo.createDraft({ tenant_id: auth.tenant_id, subject, created_by: auth.sub, envelope_mode: 'SELF' });
+    await this.repo.replaceDraftRecipients({
+      tenant_id: auth.tenant_id,
+      envelope_id: env.id,
+      recipients: [{ name: me.name, email: me.email, recipient_kind: 'SIGNER', copy_delivery: null, bound_user_id: auth.sub, witness_for_index: null }],
+    });
+    return { id: env.id, status: env.status, subject: env.subject, mode };
+  }
+
+  // M-A12 W1-A — the caller as their own recipient: the verified account email (as stored)
+  // and the Sign profile display name, else the account display name, else the email.
+  private async selfRecipient(auth: AuthContextType, requestId: string): Promise<{ name: string; email: string }> {
+    const verified = await this.verifiedAccountEmail(auth);
+    const user = verified === null ? null : await this.identity.findUserById(auth.sub).catch(() => null);
+    const email = user?.email?.trim() ?? '';
+    if (verified === null || email.length === 0 || !EMAIL_RE.test(email)) {
+      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Signing a document yourself needs a verified account email', 403, {
+        requestId,
+        details: { reason: 'self_sign_email_unverified' },
+      });
+    }
+    const profileName = (await this.userData?.getProfile(auth.tenant_id, auth.sub).catch(() => null))?.display_name ?? null;
+    const names = [profileName, user?.display_name ?? null, email];
+    const name = (names.find((n): n is string => typeof n === 'string' && n.trim().length > 0) ?? email).trim().slice(0, MAX_TITLE);
+    return { name, email };
   }
 
   async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown; allow_delegation?: unknown }, requestId: string, ifMatch?: string) {
@@ -891,6 +1011,8 @@ export class SenderEnvelopeService {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
+    // M-A12 W1-A — a self-sign envelope's one recipient is fixed by the server.
+    if ((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).envelope_mode === 'SELF') throw selfSignSingleRecipient(requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
     // M-A5 §1.4 — at most MAX_SIGNERS signing recipients and MAX_COPY_RECIPIENTS copies.
     if (body.recipients.length > MAX_SIGNERS + MAX_COPY_RECIPIENTS) {
@@ -1200,8 +1322,17 @@ export class SenderEnvelopeService {
     // and a live e-stamp order must be attached, its certificate first.
     await this.qes?.assertSendable(auth.tenant_id, envelope_id);
     await this.estamp?.assertSendable(auth.tenant_id, envelope_id);
-    // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
-    if (tenant.kind === 'PERSONAL') {
+    // M-A12 W1-A / D-1 — a self-sign envelope reaches no one but the caller and never uses
+    // the send allowance: the Personal gate keeps the legal acceptance and the risk gate
+    // (and opens the FREE subscription) but not the allowance-bound young-account checks.
+    const selfMode = d.mode === 'self';
+    if (selfMode && tenant.kind === 'PERSONAL') {
+      if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
+      await this.personal.assertLegalAccepted(tenant, auth.sub, requestId);
+      await this.personal.ensureFreeSubscription(tenant);
+      await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);
+    } else if (tenant.kind === 'PERSONAL') {
+      // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
       if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
       const detail = d;
       await this.personal.assertLegalAccepted(tenant, auth.sub, requestId);
@@ -1222,10 +1353,13 @@ export class SenderEnvelopeService {
       // them in the workspace (nothing is owed while no Business document is effective).
       await this.personal?.assertLegalAccepted(tenant, auth.sub, requestId);
     }
+    // M-A12 W1-E.2 — the sender's date format is stamped on the envelope for SIGN_DATE.
+    const settings = await this.userData?.getSettings(auth.tenant_id, auth.sub).catch(() => null);
     const rev = await this.repo.updateDraft({
       tenant_id: auth.tenant_id,
       envelope_id,
       execution_mode: signingRecipients(d.recipients).length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
+      ...(settings !== undefined && settings !== null ? { signer_date_format: settings.date_format } : {}),
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     if (expected !== undefined) expected = rev;
@@ -1245,6 +1379,10 @@ export class SenderEnvelopeService {
     // Multi-Signer M-3a — remind one signer, or (omitted) everyone who may sign now.
     const signer_id = body?.signer_id;
     if (signer_id !== undefined && typeof signer_id !== 'string') throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
+    // M-A12 W1-A — a self-sign envelope sends no emails, so there is no one to remind.
+    if ((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).envelope_mode === 'SELF') {
+      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'A document you sign yourself has no one to remind', 409, { requestId, details: { reason: 'self_sign_no_reminders' } });
+    }
     return this.idempotent(auth, `remind:${envelope_id}`, meta.idempotencyKey, { envelope_id, signer_id: signer_id ?? null }, 200, async () => {
       // Personal Free v1.1 §6.3 / §6.6 — a reminder is a new email: the risk gate applies.
       if (tenant?.kind === 'PERSONAL' && this.personal !== undefined) await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);

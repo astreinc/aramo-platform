@@ -23,6 +23,7 @@ import {
   SignNotificationRepository,
   SignPrivacyRepository,
   SignSavedSignatureRepository,
+  SignUserProfileRepository,
   type DocumentStoragePort,
 } from '@aramo/sign';
 
@@ -119,6 +120,8 @@ export class SignPrivacyExecutionService {
     @Inject(IDENTITY_RETIREMENT_PORT) private readonly idp: IdentityRetirementPort,
     @Optional() @Inject(DOCUMENT_STORAGE_PORT) private readonly storage?: DocumentStoragePort,
     @Optional() private readonly storageGate?: AramoSignStorageGate,
+    // M-A12 W1-E — the user's Sign profile data (deletion scope).
+    @Optional() private readonly userData?: SignUserProfileRepository,
   ) {}
 
   enabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -302,7 +305,13 @@ export class SignPrivacyExecutionService {
     const push = await this.notifications.purgeOwner(owner, PRIVACY_DELETION_REASON);
     const saved_signatures_deleted = await this.signatures.removeAllForUser(owner.tenant_id, owner.user_id);
     const contacts_deleted = await this.contacts.removeAllForUser(owner.tenant_id, owner.user_id);
-    return { ...push, saved_signatures_deleted, contacts_deleted };
+    // Aramo Sign Mobile M-A12 W1-E — the Sign profile, settings, app-issue metadata and
+    // template favorites (counts only).
+    const own = await this.userData?.removeAllForUser(owner.tenant_id, owner.user_id);
+    const userData: Record<string, number> = own === undefined
+      ? {}
+      : { sign_profiles_deleted: own.profiles, sign_settings_deleted: own.settings, app_issue_reports_deleted: own.app_issue_reports, template_favorites_deleted: own.template_favorites };
+    return { ...push, saved_signatures_deleted, contacts_deleted, ...userData };
   }
 
   private async closeTenant(ctx: PrivacySubjectContext, now: Date): Promise<boolean> {

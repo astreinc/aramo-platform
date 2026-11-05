@@ -64,7 +64,7 @@ import {
 } from './domain/recipients.js';
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
-import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isPaymentField, isServerFilledName } from './domain/field-rules.js';
+import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isPaymentField, isServerFilledName, profileTextValueRefusal } from './domain/field-rules.js';
 import { assertQesSatisfied } from './regulated/qes-guard.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
@@ -179,6 +179,10 @@ export interface SignerDocumentView {
   // email, not yet delegated, not yet signed). The signer route ANDs it with the
   // sign.delegate_signing launch availability; the delegate call re-checks everything.
   can_delegate: boolean;
+  // Aramo Sign Mobile M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send
+  // (MM/DD/YYYY | DD/MM/YYYY | YYYY-MM-DD). null for an envelope sent before formats
+  // were stamped (the signer page keeps its earlier YYYY-MM-DD date).
+  date_format: string | null;
 }
 
 // Server-side source descriptor (NOT returned to the client) used by the
@@ -260,7 +264,9 @@ export class EsignService {
       // the previous one completes (completeSigner records a durable intent).
       // M-A5 §1/§3 — copy recipients are never invited; an in-person signer is started
       // by the host (hosted session), never emailed a link.
-      const invited = invitedAtSend(full.routing_mode, full.signers);
+      // M-A12 W1-A — a SELF envelope invites no one: its one recipient is the caller, who
+      // signs through the self-sign session (no LINK session, no signing email).
+      const invited = full.envelope_mode === 'SELF' ? [] : invitedAtSend(full.routing_mode, full.signers);
       for (const signer of invited) {
         const minted = generateSigningToken();
         const sessionId = randomUUID();
@@ -630,6 +636,10 @@ export class EsignService {
       if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
         throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
       }
+      // M-A12 W1-C.4 — FIRST_NAME / LAST_NAME / EMAIL / COMPANY / TITLE are text (at most
+      // 200 characters); an EMAIL field holds an email address.
+      const profileRefusal = profileTextValueRefusal(field.field_type, input.value);
+      if (profileRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, profileRefusal);
       await tx.signatureField.update({
         where: { id: fieldId },
         data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
@@ -692,7 +702,8 @@ export class EsignService {
       me.email !== null &&
       (me.delegated_at ?? null) === null &&
       (me.status === 'PENDING' || me.status === 'VIEWED');
-    return { documents, fields, message: full.message ?? null, can_delegate };
+    const date_format = full.signer_date_format ?? null;
+    return { documents, fields, message: full.message ?? null, can_delegate, date_format };
   }
 
   // Sign 1.14 — the signer's own PAYMENT field, for starting a payment. The same guards

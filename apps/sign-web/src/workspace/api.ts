@@ -15,7 +15,8 @@ const BASE = '/v1/sign/sender';
 export type EnvelopeStatus = 'DRAFT' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'VOIDED' | 'EXPIRED';
 export type RecipientStatus = 'PENDING' | 'VIEWED' | 'SIGNED' | 'DECLINED';
 // Sign 1.14 — PAYMENT: paid by the signer on Stripe's hosted page (only while features.payments).
-export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT' | 'PAYMENT';
+// M-A12 W1-C.4 — + the profile text fields FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE.
+export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT' | 'PAYMENT' | 'FIRST_NAME' | 'LAST_NAME' | 'EMAIL' | 'COMPANY' | 'TITLE';
 
 export interface SenderContext {
   user: { id: string; email: string | null; display_name: string | null };
@@ -238,7 +239,7 @@ export function validAccessCode(code: string): boolean {
 
 // M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
 // Sign 1.14 — PAYMENT is authored too (the server refuses it while payments are not available).
-export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'PAYMENT']);
+export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'PAYMENT', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE']);
 
 export interface EnvelopeField {
   id?: string;

@@ -115,6 +115,14 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // parameter is the port's typed actor, unused inside sign-service.)
   async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string, _actor?: SignatureActor, opts: { expected_revision?: number } = {}): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
+    // Aramo Sign Mobile M-A12 D-1 (amends M-A5 §4.4) — signing is always free: a SELF
+    // envelope is not counted against the sign.envelopes allowance, so the "no sends left"
+    // refusal never applies to it. It invites no one (the engine mints no LINK session),
+    // so there is no signer email and no copy to dispatch either.
+    if (env.envelope_mode === 'SELF') {
+      await this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by, opts);
+      return this.summarize(tenant_id, envelope_id);
+    }
     const { sessions, copies } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
       this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by, opts),
     );

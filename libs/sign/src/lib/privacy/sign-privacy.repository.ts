@@ -29,6 +29,12 @@ export interface SignPrivacyInventory {
   push_devices: number;
   notifications: number;
   notification_preferences: number;
+  // Aramo Sign Mobile M-A12 W1-E / W1-F — the Sign profile, settings, app-issue metadata
+  // and template favorites (the user's own data, in deletion scope).
+  sign_profiles: number;
+  sign_settings: number;
+  app_issue_reports: number;
+  template_favorites: number;
   draft_envelopes: number;
   sent_envelopes: number;
   completed_envelopes: number;
@@ -64,13 +70,17 @@ export class SignPrivacyRepository {
         ])
       : [null, null];
     const owned = s === null
-      ? { saved_signatures: zero, contacts: zero, push_devices: zero, notifications: zero, notification_preferences: zero, draft_envelopes: zero, sent_envelopes: zero, completed_envelopes: zero }
+      ? { saved_signatures: zero, contacts: zero, push_devices: zero, notifications: zero, notification_preferences: zero, sign_profiles: zero, sign_settings: zero, app_issue_reports: zero, template_favorites: zero, draft_envelopes: zero, sent_envelopes: zero, completed_envelopes: zero }
       : {
           saved_signatures: await this.prisma.signSavedSignature.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           contacts: await this.prisma.signContact.count({ where: { tenant_id: s.tenant_id, owner_user_id: s.user_id } }),
           push_devices: await this.prisma.signPushDevice.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           notifications: await this.prisma.signUserNotification.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           notification_preferences: await this.prisma.signNotificationPreference.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
+          sign_profiles: await this.prisma.signUserProfile.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
+          sign_settings: await this.prisma.signUserSettings.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
+          app_issue_reports: await this.prisma.signAppIssueReport.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
+          template_favorites: await this.prisma.signUserFavorite.count({ where: { tenant_id: s.tenant_id, user_id: s.user_id } }),
           draft_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: 'DRAFT', deleted_at: null } }),
           sent_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: { notIn: ['DRAFT', 'COMPLETED'] } } }),
           completed_envelopes: await this.prisma.signatureEnvelope.count({ where: { tenant_id: s.tenant_id, created_by: s.user_id, status: 'COMPLETED' } }),

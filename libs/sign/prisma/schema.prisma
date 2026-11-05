@@ -75,6 +75,11 @@ model SignatureEnvelope {
   purge_due_at        DateTime? @db.Timestamptz
   purge_waiting_until DateTime? @db.Timestamptz
   purge_executed_at   DateTime? @db.Timestamptz
+  // M-A12 W1-A (migration 20261104100000) — STANDARD | SELF (CHECK). SELF: one recipient,
+  // the caller (bound), no invitation, not counted against the sign.envelopes allowance.
+  envelope_mode       String    @default("STANDARD")
+  // M-A12 W1-E.2 — the sender's SIGN_DATE format, stamped at send (CHECK). NULL = MM/DD/YYYY.
+  signer_date_format  String?
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -197,7 +202,7 @@ model SignatureField {
   tenant_id            String    @db.Uuid
   envelope_document_id String    @db.Uuid
   signer_id            String?   @db.Uuid
-  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT
+  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT|FIRST_NAME|LAST_NAME|EMAIL|COMPANY|TITLE (M-A12)
   signature_method     String? // CHECK (nullable): TYPED|DRAWN|UPLOADED|DIGITAL_CERTIFICATE
   page_number          Int
   x                    Float
@@ -1392,5 +1397,67 @@ model SignEstampOrder {
   attached_document EnvelopeDocument? @relation(fields: [attached_document_id], references: [id], onDelete: SetNull)
 
   @@index([tenant_id, envelope_id], map: "SignEstampOrder_envelope_idx")
+  @@schema("sign")
+}
+
+// M-A12 W1-E.1 (migration 20261104100000) — the user's own Sign profile, one per (tenant,
+// user). In M-A8 deletion scope and the privacy inventory. Only display_name is required.
+model SignUserProfile {
+  tenant_id     String   @db.Uuid
+  user_id       String   @db.Uuid
+  display_name  String
+  title         String?
+  company       String?
+  address_line1 String?
+  address_line2 String?
+  city          String?
+  region        String?
+  postal_code   String?
+  country       String?
+  phone         String?
+  created_at    DateTime @default(now()) @db.Timestamptz
+  updated_at    DateTime @default(now()) @db.Timestamptz
+
+  @@id([tenant_id, user_id])
+  @@schema("sign")
+}
+
+// M-A12 W1-E.2 — the user's Sign settings (CHECKs: date_format, default_field_size S|M|L).
+model SignUserSettings {
+  tenant_id          String   @db.Uuid
+  user_id            String   @db.Uuid
+  date_format        String   @default("MM/DD/YYYY")
+  default_field_size String   @default("M")
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @default(now()) @db.Timestamptz
+
+  @@id([tenant_id, user_id])
+  @@schema("sign")
+}
+
+// M-A12 W1-E.3 — a reported app issue's metadata (the message is emailed to support and
+// never stored), for the per-user rate limit.
+model SignAppIssueReport {
+  id          String   @id @db.Uuid
+  tenant_id   String   @db.Uuid
+  user_id     String   @db.Uuid
+  os          String
+  app_version String
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, user_id, created_at], map: "SignAppIssueReport_owner_created_idx")
+  @@schema("sign")
+}
+
+// M-A12 W1-F — a user's favorites: item_kind TEMPLATE (CHECK) + an opaque Documents
+// template id (no FK). A marker only: Sign stores no template.
+model SignUserFavorite {
+  tenant_id  String   @db.Uuid
+  user_id    String   @db.Uuid
+  item_kind  String
+  item_ref   String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@id([tenant_id, user_id, item_kind, item_ref])
   @@schema("sign")
 }

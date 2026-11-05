@@ -292,7 +292,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(res.body.retained.map((r: { key: string }) => r.key)).toEqual(expect.arrayContaining(['signing_evidence', 'legal_acceptances', 'security_logs', 'abuse_reports', 'legal_hold']));
 
     const r = await row(res.body.reference);
-    expect(r['inventory']).toMatchObject({ native_sessions_active: 1, refresh_tokens_active: 2, saved_signatures: 2, contacts: 1, push_devices: 1, draft_envelopes: 1, completed_envelopes: 1, legal_hold: false });
+    expect(r['inventory']).toMatchObject({ native_sessions_active: 1, refresh_tokens_active: 2, saved_signatures: 2, contacts: 1, push_devices: 1, sign_profiles: 0, sign_settings: 0, app_issue_reports: 0, template_favorites: 0, draft_envelopes: 1, completed_envelopes: 1, legal_hold: false });
     expect((await events(res.body.reference)).map((e) => e.to_status)).toEqual(['RECEIVED', 'IDENTITY_VALIDATED', 'DATA_INVENTORY', 'DATA_INVENTORY']);
 
     // The close step: sending stops and convenience data is purged …

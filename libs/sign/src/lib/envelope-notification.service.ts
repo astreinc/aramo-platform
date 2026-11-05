@@ -75,6 +75,9 @@ export class EnvelopeNotificationService {
         ...(isCopyRecipient(signer) ? { recipient_role: 'COPY' as const } : {}),
       });
     }
+    // M-A12 W1-A — a SELF envelope's one recipient is the sender: the executed copy above
+    // is the only delivery (no second "completed" notice to the same person).
+    if (env.envelope_mode === 'SELF') return;
     await this.toSender(env, { kind: 'SIGNATURE_COMPLETED' });
   }
 

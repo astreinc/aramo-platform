@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { EsignSenderRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
+import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 
@@ -110,6 +110,8 @@ export class SenderTemplatesService {
     private readonly envelopes: SenderEnvelopeService,
     // Feature-Parity 1.1 — whether the tenant's Sign plan includes templates (P-6).
     private readonly entitlements: SignTemplateEntitlementService,
+    // M-A12 W1-F — per-user template favorites.
+    @Optional() private readonly userData?: SignUserProfileRepository,
   ) {}
 
   // Launch availability first (an unavailable feature is unavailable to everyone), then the
@@ -135,9 +137,32 @@ export class SenderTemplatesService {
     }
   }
 
+  // Aramo Sign Mobile M-A12 W1-F — each item also carries `favorite` (this user's) and
+  // `ownership`, read from the list's own owner_scope: TENANT (the organization's or account's
+  // own template) = "mine", PLATFORM (an Aramo default shared with every account) = "shared".
   async list(auth: AuthContextType, requestId: string) {
     await this.assertMayUse(auth, requestId);
-    return this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    const out = await this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    const favorites = (await this.userData?.favoriteTemplateIds(auth.tenant_id, auth.sub).catch(() => null)) ?? new Set<string>();
+    return {
+      ...out,
+      items: out.items.map((t) => ({ ...t, favorite: favorites.has(t.template_id), ownership: t.owner_scope === 'TENANT' ? ('mine' as const) : ('shared' as const) })),
+    };
+  }
+
+  // M-A12 W1-F — mark / unmark a template the caller can see as a favorite (per user,
+  // idempotent). A template outside the caller's list reads as not found.
+  async setFavorite(auth: AuthContextType, template_id: string, favorite: boolean, requestId: string): Promise<void> {
+    await this.assertMayUse(auth, requestId);
+    if (!UUID_RE.test(template_id)) throw bad(requestId, 'template id must be a uuid', { field: 'id' });
+    if (this.userData === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Favorites are not available', 503, { requestId, details: { reason: 'favorites_unavailable' } });
+    if (!favorite) {
+      await this.userData.removeFavorite(auth.tenant_id, auth.sub, template_id);
+      return;
+    }
+    const visible = await this.documents.list({ tenant_id: auth.tenant_id, requestId });
+    if (!visible.items.some((t) => t.template_id === template_id)) throw new AramoError('NOT_FOUND', 'Template not found', 404, { requestId });
+    await this.userData.addFavorite(auth.tenant_id, auth.sub, template_id);
   }
 
   async preview(auth: AuthContextType, template_id: string, body: { values?: unknown }, requestId: string) {

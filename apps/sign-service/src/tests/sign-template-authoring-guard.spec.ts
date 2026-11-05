@@ -41,7 +41,11 @@ const TEMPLATE_PRODUCT_1_ROUTES = [
   'POST v1/sign/sender/templates/studio/versions/:versionId/preview',
   'POST v1/sign/sender/templates/studio/versions/:versionId/activate',
 ];
-const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES]);
+// Aramo-Sign-Mobile-Amendment-M-A12 (LOCKED) §2 W1-F — per-user Favorites: a marker on a
+// template the caller can already use (an opaque template id in SignUserFavorite). Sign still
+// creates, edits and stores no template.
+const M_A12_FAVORITE_ROUTES = ['PUT v1/sign/sender/templates/:id/favorite', 'DELETE v1/sign/sender/templates/:id/favorite'];
+const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES, ...M_A12_FAVORITE_ROUTES]);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

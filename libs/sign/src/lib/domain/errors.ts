@@ -100,7 +100,11 @@ export class SignatureFieldValueRefusedError extends Error {
       ? 'This name is filled from the signer profile and cannot be entered'
       : reason === 'payment_field_server_filled'
         ? 'A payment field is completed by paying, not by entering a value'
-        : 'A check box value must be true or false');
+        : reason === 'profile_field_value_invalid'
+          ? 'Enter at most 200 characters'
+          : reason === 'email_field_value_invalid'
+            ? 'Enter a valid email address'
+            : 'A check box value must be true or false');
     this.name = 'SignatureFieldValueRefusedError';
   }
 }

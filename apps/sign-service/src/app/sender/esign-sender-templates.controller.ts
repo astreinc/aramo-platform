@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseFilters } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, UseFilters } from '@nestjs/common';
 import { AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
 import { EsignSenderBoundary } from '@aramo/identity';
@@ -14,6 +14,7 @@ import { SenderTemplatesService, type FromTemplateBody } from './sender-template
 //
 //   GET  v1/sign/sender/templates                   document_template:read
 //   POST v1/sign/sender/templates/:id/preview       document_template:read
+//   PUT|DELETE v1/sign/sender/templates/:id/favorite  document_template:read (M-A12 W1-F, 204)
 //   POST v1/sign/sender/envelopes/from-template     sign:envelope:create (+ document_template:read,
 //                                                   checked in the service)
 //
@@ -44,6 +45,21 @@ export class EsignSenderTemplatesController {
   @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
   preview(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { values?: unknown }) {
     return this.run(requestId, () => this.templates.preview(auth, id, body ?? {}, requestId));
+  }
+
+  // Aramo Sign Mobile M-A12 W1-F — per-user template favorites (204, idempotent).
+  @Put('templates/:id/favorite')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  favorite(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.templates.setFavorite(auth, id, true, requestId));
+  }
+
+  @Delete('templates/:id/favorite')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  unfavorite(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.templates.setFavorite(auth, id, false, requestId));
   }
 
   @Post('envelopes/from-template')
