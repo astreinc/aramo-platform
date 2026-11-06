@@ -10714,6 +10714,11 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
+      "from": "apps/sign-service/src/ops/executed-document-reissue.ts",
+      "status": "production",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
       "excludedBy": "src/sign-negative-control/**",
       "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
       "status": "excluded",
@@ -10730,6 +10735,12 @@
       "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/m-a13-sender-tabs.spec.ts",
+      "status": "excluded",
+      "to": "openapi/sign.yaml"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -30010,6 +30021,11 @@
     {
       "from": "doc/runbooks/sign/feature-activation-guide.md",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/word-conversion/libreoffice-word-converter.adapter.ts"
+    },
+    {
+      "from": "doc/runbooks/sign/feature-activation-guide.md",
+      "status": "unscoped",
       "to": "apps/sign-web/src/guest/App.tsx"
     },
     {
@@ -35565,6 +35581,11 @@
     {
       "from": "package.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/ops/executed-document-reissue.ts"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/ops/validate-artifact-custody.ts"
     },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-api-spec-location.ts" },
@@ -39080,6 +39101,7 @@
         { "kind": "prose", "path": "scripts/run-script-tests.sh" }
       ]
     },
+    { "name": "sign:executed-reissue", "references": [] },
     { "name": "sign:validate-artifact-custody", "references": [] },
     {
       "name": "test",
@@ -39205,6 +39227,7 @@
     "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
+    "sign:executed-reissue",
     "sign:validate-artifact-custody",
     "tests:integration",
     "usage:rollup"
