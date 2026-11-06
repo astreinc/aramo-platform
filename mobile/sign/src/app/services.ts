@@ -29,6 +29,7 @@ import { encryptedStore } from '../state/platformStorage';
 import {
   createEncryptedPersister,
   createQueryClient,
+  noteServerResponse,
   wireOnlineManager,
 } from '../state/queryClient';
 import { jwtSubject } from '../util/jwt';
@@ -54,10 +55,16 @@ export interface AppServices {
   signOut(): Promise<void>;
 }
 
+function seenServer(res: Response): Response {
+  noteServerResponse();
+  return res;
+}
+
 export function createAppServices(): AppServices {
   // Two DISTINCT fetch bindings so no shared wrapper can ever add headers to both.
-  const workspaceFetch: FetchFn = (url, init) => fetch(url, init);
-  const guestFetch: FetchFn = (url, init) => fetch(url, init);
+  // M-A13 #4: a response (any status) proves connectivity; the response is untouched.
+  const workspaceFetch: FetchFn = (url, init) => fetch(url, init).then(seenServer);
+  const guestFetch: FetchFn = (url, init) => fetch(url, init).then(seenServer);
   const authFetch: FetchFn = (url, init) => fetch(url, init);
   const signupFetch: FetchFn = (url, init) => fetch(url, init);
 
@@ -79,7 +86,7 @@ export function createAppServices(): AppServices {
   const drafts = createDraftStore(store);
   const queryClient = createQueryClient();
   const persister = createEncryptedPersister(store);
-  wireOnlineManager();
+  wireOnlineManager(queryClient);
 
   session.onBeforeSignOut(() => unregisterPush(workspace));
   wireDocumentTempCleanup(session, documentTempFiles);

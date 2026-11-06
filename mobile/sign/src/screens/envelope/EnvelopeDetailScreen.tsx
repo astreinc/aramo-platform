@@ -63,6 +63,7 @@ import {
   useEnvelopeDetail,
   useEnvelopeEvents,
   useOnline,
+  useRecheckOnline,
   useSenderContext,
 } from '../../features/inbox/queries';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
@@ -132,6 +133,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const { workspace } = services;
   const [deleteBusy, setDeleteBusy] = useState(false);
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const ctx = useSenderContext();
   const q = useEnvelopeDetail(envelopeId);
   const [tab, setTab] = useState<EnvelopeDetailTab>(initialTab ?? 'recipients');
@@ -200,7 +202,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
 
   async function refresh(): Promise<void> {
     setRefreshing(true);
-    await Promise.allSettled([q.refetch(), events.refetch()]);
+    await Promise.allSettled([recheckOnline(), q.refetch(), events.refetch()]);
     setRefreshing(false);
   }
 

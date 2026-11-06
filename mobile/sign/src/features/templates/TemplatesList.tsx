@@ -22,7 +22,7 @@ import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
-import { signKeys, useOnline, useSenderContext } from '../inbox/queries';
+import { signKeys, useOnline, useRecheckOnline, useSenderContext } from '../inbox/queries';
 import { EmptyState, Segments } from '../inbox/ui';
 import {
   createFromTemplate,
@@ -49,6 +49,7 @@ import { useToast } from '../../components/Toast';
 export function TemplatesList() {
   const t = useTheme();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const qc = useQueryClient();
   const { workspace } = useServices();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -98,7 +99,7 @@ export function TemplatesList() {
     <ScrollView
       style={{ flex: 1, backgroundColor: t.color.screen }}
       contentContainerStyle={styles.body}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetch} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void Promise.allSettled([recheckOnline(), refetch()])} />}
     >
       {!online ? <OfflineBanner /> : null}
       {view.kind === 'upsell' ? null : <Text style={text}>{copy.intro}</Text>}

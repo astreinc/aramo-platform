@@ -9,7 +9,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { OfflineBanner } from '../../components/Banner';
 import { Card } from '../../components/Card';
 import { mergeAgreements } from '../../features/inbox/agreementsModel';
-import { useInbox, useOnline } from '../../features/inbox/queries';
+import { useInbox, useOnline, useRecheckOnline } from '../../features/inbox/queries';
 import { EmptyState, Segments } from '../../features/inbox/ui';
 import {
   TASK_FILTERS,
@@ -26,6 +26,7 @@ export function TasksScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const inbox = useInbox();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const [filter, setFilter] = useState<TaskFilter>('all');
   const [sort, setSort] = useState<TaskSort>('newest');
   const rows = useMemo(() => mergeAgreements(null, inbox.data ?? null), [inbox.data]);
@@ -37,7 +38,7 @@ export function TasksScreen() {
       sort={sort}
       online={online}
       refreshing={inbox.isRefetching}
-      onRefresh={() => void inbox.refetch()}
+      onRefresh={() => void Promise.allSettled([recheckOnline(), inbox.refetch()])}
       onFilter={setFilter}
       onSort={setSort}
       onOpen={(c) =>

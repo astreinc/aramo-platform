@@ -26,6 +26,7 @@ import {
   useInbox,
   useLocalDrafts,
   useOnline,
+  useRecheckOnline,
   useSenderContext,
   useSenderEnvelopes,
 } from '../inbox/queries';
@@ -49,6 +50,7 @@ export function HomeBody() {
   const t = useTheme();
   const navigation = useNavigation();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const sent = useSenderEnvelopes();
   const inbox = useInbox();
   const billing = useBillingAccount();
@@ -84,6 +86,7 @@ export function HomeBody() {
   async function refresh(): Promise<void> {
     setRefreshing(true);
     await Promise.allSettled([
+      recheckOnline(),
       sent.refetch(),
       inbox.refetch(),
       billing.refetch(),
