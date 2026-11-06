@@ -16,6 +16,7 @@ import {
 import { IdentityRepository } from '@aramo/identity';
 
 import { PUSH_DELIVERY_PORT, type PushDeliveryPort } from './push-delivery.port.js';
+import { recipientSenderLabel } from '../sender-label.js';
 
 // Aramo Sign Mobile — the notification fan-out (M-A3 §1, §2; directive §8). Drains
 // the notification outbox (written in the ledger-event transaction) into feed rows
@@ -220,7 +221,7 @@ export class NotificationFanoutService {
   private async claimedDrafts(row: OutboxRow, env: FanoutEnvelope, type: SignNotificationType, signer_ids: string[]): Promise<NotificationDraft[]> {
     const bindings = await this.repo.activeBindings(env.id, signer_ids);
     if (bindings.length === 0) return [];
-    const org = await this.senderOrganization(env.tenant_id);
+    const org = await this.senderOrganization(env.tenant_id, env.created_by);
     const out: NotificationDraft[] = [];
     for (const b of bindings) {
       if (b.user_id === env.created_by) continue; // the sender reminding / sending to themselves
@@ -240,10 +241,10 @@ export class NotificationFanoutService {
     return out;
   }
 
-  // The sender's organization display name — what the recipient inbox shows as "from".
-  private async senderOrganization(tenant_id: string): Promise<string | null> {
+  // The sender label — what the recipient inbox shows as "from" (M-A13 R-3: a PERSONAL
+  // sender's own name, never the stored tenant handle).
+  private async senderOrganization(tenant_id: string, created_by: string): Promise<string | null> {
     if (this.identity === undefined) return null;
-    const t = await this.identity.findTenantNameById(tenant_id).catch(() => null);
-    return t?.display_name ?? t?.name ?? null;
+    return recipientSenderLabel(this.identity, tenant_id, created_by);
   }
 }
