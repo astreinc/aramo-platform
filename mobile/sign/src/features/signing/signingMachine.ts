@@ -77,13 +77,25 @@ export interface FieldValue {
   /** What the fill call sends: PNG data URL, ISO date, text, or 'true' / 'false'. */
   readonly value: string;
   readonly method?: SignatureMethod;
+  /** M-A13 #1 — what the page shows when it differs from the value (a TYPED mark's script image). */
+  readonly display?: string;
   /** Already stored server-side from an earlier visit (no need to resubmit unchanged). */
   readonly fromServer?: boolean;
 }
 
 export interface AdoptedMark {
+  /** The PNG shown on the page and saved as the default (the script rendering for TYPED). */
   readonly dataUrl: string;
   readonly method: SignatureMethod;
+  /** M-A13 #1 (R-1a) — what the fill call sends: the typed text for TYPED, the PNG for DRAWN. */
+  readonly value: string;
+}
+
+/** The field value an adopted mark fills: send `value`, show the PNG. */
+export function markValue(mark: AdoptedMark): FieldValue {
+  return mark.value === mark.dataUrl
+    ? { value: mark.value, method: mark.method }
+    : { value: mark.value, method: mark.method, display: mark.dataUrl };
 }
 
 export interface SigningState {
@@ -276,10 +288,15 @@ export function displayDate(iso: string): string {
 export function displayOf(
   f: SigningField,
   v: FieldValue | undefined,
-): { kind: 'image' | 'text' | 'mark'; text: string } | null {
+): { kind: 'image' | 'text' | 'mark' | 'script'; text: string } | null {
   if (!v) return null;
+  if (v.display?.startsWith('data:image/')) return { kind: 'image', text: v.display };
   if (v.value.startsWith('data:image/')) return { kind: 'image', text: v.value };
   switch (f.field_type) {
+    case 'SIGNATURE':
+    case 'INITIALS':
+      // M-A13 #1 — a typed mark (e.g. stored on an earlier visit) shows in the script face.
+      return { kind: 'script', text: v.value };
     case 'CHECKBOX':
       return v.value === 'true' ? { kind: 'mark', text: '✓' } : null;
     case 'ACKNOWLEDGEMENT':
@@ -377,7 +394,7 @@ export function tapField(
       if (!mark)
         return { state: focused, effect: { kind: 'adopt', fieldId, target: f.field_type } };
       return {
-        state: withValue(s, fieldId, { value: mark.dataUrl, method: mark.method }),
+        state: withValue(s, fieldId, markValue(mark)),
         effect: { kind: 'none' },
       };
     }
@@ -436,7 +453,7 @@ export function adopt(
   fieldId: string | null,
 ): SigningState {
   const next: SigningState = { ...s, adopted: { ...s.adopted, [target]: mark } };
-  return fieldId ? withValue(next, fieldId, { value: mark.dataUrl, method: mark.method }) : next;
+  return fieldId ? withValue(next, fieldId, markValue(mark)) : next;
 }
 
 /** Start / Next field: focus the next empty required field. */

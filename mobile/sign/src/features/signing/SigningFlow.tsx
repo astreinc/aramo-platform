@@ -42,7 +42,13 @@ import { dateTime } from '../inbox/agreementsModel';
 import { useOnline } from '../inbox/queries';
 import { CheckRow, ProgressBar, ReasonSheet } from '../inbox/ui';
 import { TextField } from '../send/ui';
-import { loadSavedMarks, saveDefaultMark, type AdoptTarget, type SavedMarks } from './adopt';
+import {
+  loadSavedMarks,
+  saveDefaultMark,
+  SCRIPT_FONT,
+  type AdoptTarget,
+  type SavedMarks,
+} from './adopt';
 import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
 import { boxOnPage, PdfPages, pageSizesFromBase64, type PageLayout } from './PdfPages';
 import {
@@ -782,7 +788,11 @@ export function SigningFlow(props: SigningFlowProps) {
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                style={{ color: '#0B1F6B', fontSize: Math.max(9, Math.min(16, box.height * 0.6)) }}
+                style={{
+                  color: '#0B1F6B',
+                  fontSize: Math.max(9, Math.min(16, box.height * 0.6)),
+                  ...(shown.kind === 'script' ? { fontFamily: SCRIPT_FONT } : null),
+                }}
               >
                 {shown.text}
               </Text>

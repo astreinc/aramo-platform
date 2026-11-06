@@ -1,5 +1,5 @@
 // "Adopt your signature" / "initials" sheet (handoff §4.4) with Type | Draw. Both tabs
-// rasterize to PNG on the device (C-19). Used by signing and by Account → Default
+// rasterize to PNG on the device (C-19) for display; a typed mark sends its text (M-A13 #1). Used by signing and by Account → Default
 // signature ("Save signature").
 import { useRef, useState, type RefObject } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -11,8 +11,8 @@ import { Sheet } from '../../components/Sheet';
 import { SIGNATURE_INK, useTheme } from '../../theme';
 import {
   captureViewAsPng,
-  initialsOf,
   markFromSaved,
+  typedValue,
   SCRIPT_FONT,
   type AdoptTarget,
   type Capture,
@@ -74,8 +74,8 @@ export function AdoptSignatureSheet({
   const drawRef = useRef<View>(null);
 
   const isInitials = target === 'INITIALS';
-  const typedText = isInitials ? initialsOf(name) : name.trim();
-  const savedMark = markFromSaved(saved ?? null);
+  const typedText = typedValue(target, name);
+  const savedMark = markFromSaved(saved ?? null, target);
 
   // The stroke in progress lives in this closure (created once), not in a ref. A native
   // pan (not a JS PanResponder) so the stroke claims the finger on touch-down, before the
@@ -122,7 +122,10 @@ export function AdoptSignatureSheet({
       const ref = (tab === 'type' ? typedRef : drawRef) as RefObject<unknown>;
       const dataUrl = await capture(ref);
       await onAdopt({
-        mark: { dataUrl, method: tab === 'type' ? 'TYPED' : 'DRAWN' },
+        mark:
+          tab === 'type'
+            ? { dataUrl, method: 'TYPED', value: typedText }
+            : { dataUrl, method: 'DRAWN', value: dataUrl },
         typedName: name.trim(),
         saveDefault: mode === 'account' || (canSaveDefault && saveDefault),
       });

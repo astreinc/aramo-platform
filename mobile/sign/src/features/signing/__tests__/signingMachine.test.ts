@@ -75,11 +75,17 @@ describe('signing state machine', () => {
     // SIGNATURE without an adopted mark opens the adopt sheet.
     let r = tapField(s, 'f1', ctx);
     expect(r.effect).toEqual({ kind: 'adopt', fieldId: 'f1', target: 'SIGNATURE' });
-    s = adopt(r.state, 'SIGNATURE', { dataUrl: PNG, method: 'DRAWN' }, 'f1');
+    s = adopt(r.state, 'SIGNATURE', { dataUrl: PNG, method: 'DRAWN', value: PNG }, 'f1');
     expect(s.values['f1']).toEqual({ value: PNG, method: 'DRAWN' });
     r = tapField(s, 'f2', ctx);
     expect(r.effect.kind).toBe('adopt');
-    s = adopt(r.state, 'INITIALS', { dataUrl: PNG, method: 'TYPED' }, 'f2');
+    s = adopt(r.state, 'INITIALS', { dataUrl: PNG, method: 'TYPED', value: 'JS' }, 'f2');
+    // M-A13 #1 — TYPED sends the text, shows the script PNG.
+    expect(s.values['f2']).toEqual({ value: 'JS', method: 'TYPED', display: PNG });
+    expect(displayOf(s.fields.find((f) => f.field_id === 'f2')!, s.values['f2'])).toEqual({
+      kind: 'image',
+      text: PNG,
+    });
     s = tapField(s, 'f3', ctx).state;
     expect(s.values['f3']?.value).toBe('2026-10-24');
     // M-A6 §2.2 — a signer-typed name opens the text sheet, never prefilled from the
@@ -105,10 +111,10 @@ describe('signing state machine', () => {
   it('an adopted signature is reused for the rest of the session', () => {
     const fields = [field('f1', 'SIGNATURE'), field('f2', 'SIGNATURE')];
     let s = initialState(fields);
-    s = adopt(s, 'SIGNATURE', { dataUrl: PNG, method: 'TYPED' }, 'f1');
+    s = adopt(s, 'SIGNATURE', { dataUrl: PNG, method: 'TYPED', value: 'Jo Signer' }, 'f1');
     const r = tapField(s, 'f2', ctx);
     expect(r.effect.kind).toBe('none');
-    expect(r.state.values['f2']?.value).toBe(PNG);
+    expect(r.state.values['f2']).toEqual({ value: 'Jo Signer', method: 'TYPED', display: PNG });
   });
 
   it('after each fill the current field moves to the next empty required field', () => {
@@ -202,6 +208,14 @@ describe('Name and Checkbox (M-A6 §2)', () => {
     expect(fillsToSubmit(forced).map((f) => f.fieldId)).toEqual(['f2']);
   });
 
+  it('M-A13 #1 — a typed signature stored on an earlier visit shows in the script face', () => {
+    const s = initialState([field('f1', 'SIGNATURE', { filled: true, value: 'Jo Signer' })]);
+    expect(displayOf(s.fields[0]!, s.values['f1'])).toEqual({ kind: 'script', text: 'Jo Signer' });
+    // A legacy image value still shows as an image.
+    const t = initialState([field('f1', 'SIGNATURE', { filled: true, value: PNG })]);
+    expect(displayOf(t.fields[0]!, t.values['f1'])).toEqual({ kind: 'image', text: PNG });
+  });
+
   it('a legacy name (name_mode null) is typed by the signer', () => {
     const s = initialState([field('f1', 'SIGNER_NAME', { name_mode: null })]);
     expect(tapField(s, 'f1', ctx).effect).toEqual({ kind: 'text', fieldId: 'f1', initial: '' });
@@ -277,7 +291,7 @@ describe('Name and Checkbox (M-A6 §2)', () => {
 describe('Finish submit: fill then complete, on the guest transport', () => {
   function filledState() {
     let s = initialState([field('f1', 'SIGNATURE'), field('f2', 'CHECKBOX')]);
-    s = adopt(s, 'SIGNATURE', { dataUrl: PNG, method: 'DRAWN' }, 'f1');
+    s = adopt(s, 'SIGNATURE', { dataUrl: PNG, method: 'DRAWN', value: PNG }, 'f1');
     return tapField(s, 'f2', ctx).state;
   }
 

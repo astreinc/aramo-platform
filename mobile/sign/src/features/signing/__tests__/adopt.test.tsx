@@ -5,7 +5,14 @@ import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import { workspaceWith } from '../../inbox/__tests__/fixtures';
-import { MAX_IMAGE_BYTES, pngDataUrl, saveDefaultMark, SCRIPT_FONT_KEY } from '../adopt';
+import {
+  markFromSaved,
+  MAX_IMAGE_BYTES,
+  pngDataUrl,
+  saveDefaultMark,
+  SCRIPT_FONT_KEY,
+  type SavedMark,
+} from '../adopt';
 import { AdoptSignatureSheet } from '../AdoptSignatureSheet';
 
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn() }));
@@ -59,7 +66,8 @@ describe('AdoptSignatureSheet', () => {
     fireEvent.press(screen.getByTestId('adopt-confirm'));
     await waitFor(() => expect(onAdopt).toHaveBeenCalled());
     expect(onAdopt).toHaveBeenCalledWith({
-      mark: { dataUrl: `data:image/png;base64,${PNG_B64}`, method: 'TYPED' },
+      // M-A13 #1 (R-1a): the fill value is the typed text; the PNG is for display only.
+      mark: { dataUrl: `data:image/png;base64,${PNG_B64}`, method: 'TYPED', value: 'Jo Signer' },
       typedName: 'Jo Signer',
       saveDefault: true,
     });
@@ -141,6 +149,104 @@ describe('AdoptSignatureSheet', () => {
     await waitFor(() =>
       expect(onAdopt).toHaveBeenCalledWith(expect.objectContaining({ saveDefault: true })),
     );
+  });
+});
+
+describe('M-A13 #1 typed values', () => {
+  const IMG = `data:image/png;base64,${PNG_B64}`;
+  const saved = (over: Partial<SavedMark>): SavedMark => ({
+    kind: 'TYPED',
+    typed_name: 'Jo Q Signer',
+    font_key: SCRIPT_FONT_KEY,
+    image_data_url: IMG,
+    updated_at: '2026-11-01T00:00:00Z',
+    ...over,
+  });
+
+  it('Type on the initials sheet sends the initials as text', async () => {
+    const onAdopt = jest.fn();
+    render(
+      <AdoptSignatureSheet
+        visible
+        target="INITIALS"
+        mode="sign"
+        defaultName="Jo Signer"
+        canSaveDefault={false}
+        onAdopt={onAdopt}
+        onClose={jest.fn()}
+        capture={async () => IMG}
+      />,
+    );
+    fireEvent.press(screen.getByTestId('adopt-confirm'));
+    await waitFor(() => expect(onAdopt).toHaveBeenCalled());
+    expect(onAdopt.mock.calls[0][0].mark).toEqual({ dataUrl: IMG, method: 'TYPED', value: 'JS' });
+  });
+
+  it('Draw keeps the PNG as the value', async () => {
+    const onAdopt = jest.fn();
+    render(
+      <AdoptSignatureSheet
+        visible
+        target="SIGNATURE"
+        mode="sign"
+        defaultName="Jo"
+        canSaveDefault={false}
+        onAdopt={onAdopt}
+        onClose={jest.fn()}
+        capture={async () => IMG}
+      />,
+    );
+    fireEvent.press(screen.getByTestId('adopt-tab-draw'));
+    act(() => {
+      fireGestureHandler(getByGestureTestId('signature-pad'), [
+        { state: State.BEGAN, x: 10, y: 20 },
+        { state: State.ACTIVE, x: 30, y: 25 },
+        { state: State.END, x: 30, y: 25 },
+      ]);
+    });
+    fireEvent.press(screen.getByTestId('adopt-confirm'));
+    await waitFor(() => expect(onAdopt).toHaveBeenCalled());
+    expect(onAdopt.mock.calls[0][0].mark).toEqual({ dataUrl: IMG, method: 'DRAWN', value: IMG });
+  });
+
+  it('a saved TYPED mark sends its typed_name (initials derived for INITIALS)', () => {
+    expect(markFromSaved(saved({}), 'SIGNATURE')).toEqual({
+      dataUrl: IMG,
+      method: 'TYPED',
+      value: 'Jo Q Signer',
+    });
+    expect(markFromSaved(saved({}), 'INITIALS')?.value).toBe('JQS');
+    // No name stored: the image is sent; the server draws it as an image (R-2).
+    expect(markFromSaved(saved({ typed_name: null }), 'SIGNATURE')?.value).toBe(IMG);
+    expect(markFromSaved(saved({ kind: 'DRAWN', typed_name: null }), 'SIGNATURE')).toEqual({
+      dataUrl: IMG,
+      method: 'DRAWN',
+      value: IMG,
+    });
+    expect(markFromSaved(saved({ image_data_url: 'nope' }), 'SIGNATURE')).toBeNull();
+  });
+
+  it('"Use my saved signature" adopts the typed text', () => {
+    const onAdopt = jest.fn();
+    render(
+      <AdoptSignatureSheet
+        visible
+        target="SIGNATURE"
+        mode="sign"
+        defaultName="Jo"
+        canSaveDefault
+        saved={saved({})}
+        onAdopt={onAdopt}
+        onClose={jest.fn()}
+        capture={jest.fn()}
+      />,
+    );
+    fireEvent.press(screen.getByText('Use my saved signature'));
+    expect(onAdopt.mock.calls[0][0].mark).toEqual({
+      dataUrl: IMG,
+      method: 'TYPED',
+      value: 'Jo Q Signer',
+    });
   });
 });
 

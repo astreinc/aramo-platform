@@ -19,7 +19,11 @@ import {
 import type { SelfContext, SelfDoc } from '../selfSignModel';
 
 const PAGE = { width: 612, height: 792 };
-const MARK = { dataUrl: 'data:image/png;base64,AAA', method: 'DRAWN' as const };
+const MARK = {
+  dataUrl: 'data:image/png;base64,AAA',
+  method: 'DRAWN' as const,
+  value: 'data:image/png;base64,AAA',
+};
 
 function server() {
   let revision = 1;
