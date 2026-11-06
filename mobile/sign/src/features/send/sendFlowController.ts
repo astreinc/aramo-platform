@@ -59,6 +59,37 @@ import { syncDraft, SendFlowError } from './syncDraft';
 
 export const CHANGED_ELSEWHERE = 'This envelope changed elsewhere. Showing the latest version.';
 
+/** The four steps in order (the stepper and Next). */
+export const SEND_STEP_ORDER: readonly SendStep[] = ['documents', 'recipients', 'fields', 'review'];
+
+/** What stops Next on a step (null = Next may go on). Next and the stepper share it. */
+export function stepBlocker(step: SendStep, p: SendDraftPayload): string | null {
+  if (step === 'documents' && p.documents.length === 0) return 'Add a document first.';
+  if (step === 'recipients' && p.recipients.length === 0) return 'Add at least one recipient first.';
+  return null;
+}
+
+/**
+ * M-A13 #12 (R-6) — where a tap on a step label goes. Back is always allowed. Forward
+ * only when every step before the target passes the check Next runs; otherwise the
+ * first failing step, with its message. Nothing moves forward while a save is running.
+ */
+export function stepTarget(
+  from: SendStep,
+  to: SendStep,
+  p: SendDraftPayload,
+  busy = false,
+): { readonly step: SendStep; readonly message: string | null } {
+  const target = SEND_STEP_ORDER.indexOf(to);
+  if (target <= SEND_STEP_ORDER.indexOf(from)) return { step: to, message: null };
+  if (busy) return { step: from, message: null };
+  for (const step of SEND_STEP_ORDER.slice(0, target)) {
+    const message = stepBlocker(step, p);
+    if (message) return { step, message };
+  }
+  return { step: to, message: null };
+}
+
 export interface SendFlowDeps {
   readonly drafts: DraftStore;
   readonly bytes: DocumentBytesStore;

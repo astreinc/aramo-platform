@@ -1,8 +1,10 @@
 // The Send flow stepper (handoff §4.6): four 4px segments, Documents · Recipients ·
 // Fields · Review. Finished steps are accent and tappable (to go back); the current
-// step's label is bold.
+// step's label is bold. M-A13 #12 (R-6): later steps are tappable too; the screen
+// decides how far forward a tap may go (stepTarget).
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { SEND_STEP_ORDER } from '../../features/send/sendFlowController';
 import type { SendStep } from '../../state/draftStore';
 import { useTheme } from '../../theme';
 
@@ -13,7 +15,7 @@ export const STEP_LABELS: Record<SendStep, string> = {
   review: 'Review',
 };
 
-const ORDER: readonly SendStep[] = ['documents', 'recipients', 'fields', 'review'];
+const ORDER = SEND_STEP_ORDER;
 
 export function Stepper({
   step,
@@ -32,11 +34,11 @@ export function Stepper({
         return (
           <Pressable
             key={s}
-            disabled={!done}
+            disabled={current}
             onPress={() => onStep(s)}
             accessibilityRole="tab"
             accessibilityLabel={`Step ${i + 1} of 4, ${STEP_LABELS[s]}${done ? ', done' : ''}`}
-            accessibilityState={{ selected: current, disabled: !done && !current }}
+            accessibilityState={{ selected: current }}
             style={[styles.item, { minHeight: t.size.minTouch }]}
           >
             <View
