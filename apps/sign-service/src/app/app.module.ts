@@ -81,6 +81,8 @@ import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adap
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
 import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
+import { WORD_CONVERSION_PORT } from './word-conversion/word-conversion.port.js';
+import { wordConverterFromEnv } from './word-conversion/libreoffice-word-converter.adapter.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
 import { EsignBillingCommandWorker } from './billing/esign-billing-command.worker.js';
@@ -320,6 +322,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     AramoSignAllowanceGate,
     SenderContextService,
     SenderEnvelopeService,
+    // M-A13 R-4 — Word to PDF conversion (dark unless SIGN_WORD_CONVERSION_ENABLED=1 + SIGN_WORD_CONVERTER_URL).
+    { provide: WORD_CONVERSION_PORT, useFactory: () => wordConverterFromEnv(process.env) },
     EsignOwnerActivationService,
     EsignBillingReconcileWorker,
     // CCP-C1 — Stripe command outbox + webhook inbox worker (SIGN_BILLING_COMMANDS_ENABLED=1; off by default).

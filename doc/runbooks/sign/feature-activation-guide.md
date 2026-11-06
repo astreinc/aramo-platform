@@ -954,6 +954,31 @@ verification · Rollback/turn-off · Open decisions.
 
 ---
 
+### 3.23 Word upload (M-A13 R-4, Word to PDF conversion)
+
+- **What it does.** The sender document upload accepts `.docx` / `.doc` files and converts them to PDF on the
+  server; the PDF becomes the document source (the Word file is not kept) and the title keeps the file name.
+  The sender context reports `word_conversion_enabled`; the apps offer Word files only when it is true.
+- **Switches (both required; dark otherwise).** `SIGN_WORD_CONVERSION_ENABLED=1` and
+  `SIGN_WORD_CONVERTER_URL=http://<converter>:3000` on the sign-service
+  (`apps/sign-service/src/app/word-conversion/libreoffice-word-converter.adapter.ts`).
+- **The converter.** A pinned, LibreOffice-based converter that runs as its own service with a Gotenberg-style
+  API (`POST /forms/libreoffice/convert`, multipart field `files`). It must have **no network egress**; macros
+  are never executed (LibreOffice default macro security). Limits in the adapter: 20 MB input, 60 s timeout.
+  Refusals: 413 `word_too_large`, 422 `word_password_protected`, 422 `word_conversion_failed`.
+- **Not authorized by M-A13.** Adding the container to the box and enabling the flag each need PO
+  authorization. Illustrative only (not part of any compose file):
+
+  ```yaml
+  # sign-word-converter:
+  #   image: gotenberg/gotenberg:<pinned-version>@sha256:<digest>
+  #   command: ["gotenberg", "--chromium-disable-routes=true", "--api-timeout=60s"]
+  #   networks: [sign-internal]   # internal network only: no egress
+  ```
+
+- **Real-container test.** `SIGN_WORD_CONVERTER_TEST_URL=http://localhost:3000 npx vitest run --root apps/sign-service
+  src/tests/m-a13-word-conversion.spec.ts` (skipped without the variable).
+
 ## 4. Cross-cutting prerequisites
 
 ### 4.1 Stripe live (Aramo's own billing)

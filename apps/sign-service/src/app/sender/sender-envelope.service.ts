@@ -77,6 +77,7 @@ import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 
+import { WORD_CONVERSION_PORT, WordConversionError, disabledWordConversion, isWordFilename, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 import { ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
 
@@ -224,6 +225,8 @@ export class SenderEnvelopeService {
     // Aramo Sign Mobile M-A12 W1-A / W1-E — the caller's Sign profile name (self mode) and
     // date-format setting (stamped at send).
     @Optional() private readonly userData?: SignUserProfileRepository,
+    // M-A13 R-4 — Word to PDF conversion (absent or disabled ⇒ Word uploads keep today's refusal).
+    @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
@@ -903,13 +906,19 @@ export class SenderEnvelopeService {
   private async uploadOnce(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string, expected: number | undefined) {
     if (typeof body?.content_base64 !== 'string' || body.content_base64.length === 0) throw bad(requestId, 'content_base64 is required');
     // M-A3 §8 — PDF only; a Word document is refused with a stable reason.
+    // M-A13 R-4 — unless Word conversion is on: a .docx / .doc is converted to PDF and the
+    // PDF becomes the source (the Word file is never stored); the title keeps the file name.
+    const words = this.wordConversion ?? disabledWordConversion;
     const fname = typeof body.filename === 'string' ? body.filename.toLowerCase() : '';
-    if (/\.(docx?|dotx?|rtf|odt)$/.test(fname)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
-    const filename = typeof body.filename === 'string' && body.filename.length > 0 ? body.filename : 'document.pdf';
+    const word = isWordFilename(fname);
+    if (/\.(dotx?|rtf|odt)$/.test(fname) || (word && !words.enabled)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
+    const given = typeof body.filename === 'string' && body.filename.length > 0 ? body.filename : 'document.pdf';
+    const filename = word ? `${given.replace(/\.(docx|doc)$/i, '')}.pdf` : given;
     const rawTitle = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : filename.replace(/\.pdf$/i, '');
     const title = rawTitle.slice(0, MAX_TITLE);
-    const bytes = new Uint8Array(Buffer.from(body.content_base64, 'base64'));
-    if (isWordDocument(bytes)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
+    let bytes: Uint8Array = new Uint8Array(Buffer.from(body.content_base64, 'base64'));
+    if (word) bytes = await this.convertWord(words, bytes, given, requestId);
+    else if (isWordDocument(bytes)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
     let accepted: Uint8Array;
     try {
       accepted = await this.safePdf.accept(bytes);
@@ -952,6 +961,23 @@ export class SenderEnvelopeService {
     // Sign Mobile D-W6-1 — the envelope revision after this upload (the controller
     // sets ETag "{envelope_id}.{revision}"), so the next write chains its If-Match.
     return { id: row.id, envelope_id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages, revision: row.revision };
+  }
+
+  // M-A13 R-4 — the Word refusals carry details.reason (too large 413; password-protected
+  // and could-not-convert 422) so the apps show a plain message.
+  private async convertWord(words: WordConversionPort, bytes: Uint8Array, filename: string, requestId: string): Promise<Uint8Array> {
+    try {
+      return await words.convert({ bytes, filename });
+    } catch (e) {
+      if (!(e instanceof WordConversionError)) throw e;
+      const message =
+        e.reason === 'word_too_large'
+          ? 'This Word file is over 20 MB.'
+          : e.reason === 'word_password_protected'
+            ? 'This Word file is password-protected. Remove the password, then try again.'
+            : "We couldn't convert this Word file. Save it as a PDF, then choose the PDF.";
+      throw new AramoError('VALIDATION_ERROR', message, e.reason === 'word_too_large' ? 413 : 422, { requestId, details: { reason: e.reason } });
+    }
   }
 
   async renameDocument(auth: AuthContextType, envelope_id: string, document_id: string, body: { title?: unknown }, requestId: string, ifMatch?: string) {
