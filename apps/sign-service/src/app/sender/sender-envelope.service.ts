@@ -126,6 +126,8 @@ export const ENVELOPE_TABS: Record<string, readonly string[] | undefined> = {
   declined: ['DECLINED'],
   voided: ['VOIDED'],
   expired: ['EXPIRED'],
+  // M-A13 #13 — the web dashboard's "Declined or expired" card.
+  follow_up: ['DECLINED', 'EXPIRED'],
 };
 
 function bad(requestId: string, message: string, details?: Record<string, unknown>): AramoError {

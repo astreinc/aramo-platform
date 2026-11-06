@@ -7464,7 +7464,7 @@ components:
       description: Status tab.
       schema:
         type: string
-        enum: [all, drafts, waiting, completed, declined, voided, expired]
+        enum: [all, drafts, waiting, completed, declined, voided, expired, follow_up]
     SenderQuery:
       name: q
       in: query
