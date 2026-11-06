@@ -80,6 +80,7 @@ import { usePhotoEditor } from '../../features/send/photoEdit/PhotoEditor';
 import { pickPhotosToPdf } from '../../features/send/photos';
 import { createSenderApi } from '../../features/send/senderApi';
 import { pickPdf, scanToPdf, type SourceResult } from '../../features/send/sources';
+import { wordUploadEnabled } from '../../features/send/fileValidation';
 import { useSaveCopy, useShare } from '../../features/share/useShare';
 import { loadSavedMarks, type AdoptTarget, type SavedMarks } from '../../features/signing/adopt';
 import { AdoptSignatureSheet, type AdoptResult } from '../../features/signing/AdoptSignatureSheet';
@@ -154,8 +155,19 @@ export function SelfSignScreen() {
 
   const api = useMemo(() => createSenderApi(workspace), [workspace]);
   const deps = useMemo(
-    () => ({ api, createSelf: createSelfEnvelope(workspace), openSession: (tok: string) => guest.open(tok) }),
-    [api, workspace, guest],
+    () => ({
+      api,
+      createSelf: createSelfEnvelope(workspace),
+      openSession: (tok: string) => guest.open(tok),
+      // M-A13 R-4 — a converted Word upload is read back as its PDF.
+      fetchSource: (envId: string, docId: string) =>
+        fetchSourcePdf(
+          { baseUrl: services.env.apiBaseUrl, fetch: (u, i) => fetch(u, i), session: services.session },
+          envId,
+          docId,
+        ),
+    }),
+    [api, workspace, guest, services],
   );
 
   useEffect(() => {
@@ -189,7 +201,11 @@ export function SelfSignScreen() {
     try {
       let r: SourceResult;
       try {
-        r = await (key === 'photos' ? pickPhotosToPdf(new Date(), photoEditor.edit) : RUN[key]());
+        r = await (key === 'photos'
+          ? pickPhotosToPdf(new Date(), photoEditor.edit)
+          : key === 'files'
+            ? pickPdf({ wordAllowed: wordUploadEnabled(ctx.data) }) // M-A13 R-4
+            : RUN[key]());
       } catch {
         setError(SOURCE_UNAVAILABLE);
         return;

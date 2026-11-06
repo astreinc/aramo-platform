@@ -18,11 +18,13 @@ import { useServices } from '../../app/ServicesContext';
 import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
 import { useTheme } from '../../theme';
+import { useSenderContext } from '../inbox/queries';
 import { EmptyState } from '../inbox/ui';
 import { TemplateRows } from '../templates/TemplateRows';
 import { landingStep } from '../templates/roleBindingModel';
 import { TemplateUseForm } from '../templates/TemplateUseForm';
 import { useTemplatesView } from '../templates/useTemplates';
+import { wordUploadEnabled } from './fileValidation';
 import { usePhotoEditor } from './photoEdit/PhotoEditor';
 import { pickPhotosToPdf } from './photos';
 import type { SendFlowController } from './sendFlowController';
@@ -32,6 +34,8 @@ import { ErrorText } from './ui';
 import type { SendStep } from '../../state/draftStore';
 
 export const FILES_NOTE = 'A PDF from this phone, OneDrive or Google Drive';
+/** M-A13 R-4 — while the server converts Word files. */
+export const FILES_NOTE_WORD = 'A PDF or Word file from this phone, OneDrive or Google Drive';
 export const SOURCE_UNAVAILABLE = 'That source isn’t available on this phone.';
 
 export type AddSourceKey = 'scan' | 'photos' | 'templates' | 'files';
@@ -75,7 +79,7 @@ export function addSourceTiles(templatesEnabled: boolean): readonly AddSourceTil
  * null when the source was cancelled or the document was added.
  */
 export async function addFromSource(
-  controller: Pick<SendFlowController, 'addDocument' | 'snapshot'>,
+  controller: Pick<SendFlowController, 'addDocument' | 'addWordDocument' | 'snapshot'>,
   get: () => Promise<SourceResult>,
 ): Promise<{ readonly added: boolean; readonly refusal: string | null }> {
   let r: SourceResult;
@@ -86,6 +90,11 @@ export async function addFromSource(
   }
   if (r.kind === 'cancelled') return { added: false, refusal: null };
   if (r.kind === 'refused') return { added: false, refusal: r.message };
+  if (r.word) {
+    // M-A13 R-4 — uploaded now; the server converts it to PDF.
+    await controller.addWordDocument({ title: r.title, filename: r.filename, bytes: r.bytes });
+    return { added: !controller.snapshot.error, refusal: null };
+  }
   await controller.addDocument({
     title: r.title,
     filename: r.filename,
@@ -170,6 +179,8 @@ export function AddDocumentsSheet({
   const templates = useTemplatesView(visible && templatesEnabled && mode.kind !== 'sources');
   // M-A13 #9 — chosen photos get a crop / straighten / rotate step before the PDF.
   const photoEditor = usePhotoEditor();
+  // M-A13 R-4 — Word files only while the server advertises conversion.
+  const wordAllowed = wordUploadEnabled(useSenderContext().data);
 
   const close = () => {
     setMode({ kind: 'sources' });
@@ -183,7 +194,11 @@ export function AddDocumentsSheet({
     try {
       const out = await addFromSource(
         controller,
-        key === 'photos' ? () => pickPhotosToPdf(new Date(), photoEditor.edit) : RUN[key],
+        key === 'photos'
+          ? () => pickPhotosToPdf(new Date(), photoEditor.edit)
+          : key === 'files'
+            ? () => pickPdf({ wordAllowed })
+            : RUN[key],
       );
       if (out.refusal) setRefusal(out.refusal);
       if (out.added) {
@@ -217,7 +232,7 @@ export function AddDocumentsSheet({
           {disabled ? <ActivityIndicator color={t.color.accent} accessibilityLabel="Adding the document" /> : null}
           <ErrorText>{refusal ?? error}</ErrorText>
           <Text style={[styles.caption, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
-            {`Files: ${FILES_NOTE}.`}
+            {`Files: ${wordAllowed ? FILES_NOTE_WORD : FILES_NOTE}.`}
           </Text>
           <Button title="Close" variant="text" onPress={close} />
           {photoEditor.element}

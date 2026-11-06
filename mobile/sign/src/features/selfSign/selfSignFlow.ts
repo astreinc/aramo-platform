@@ -50,6 +50,11 @@ export interface SelfSignDeps {
   /** Opens the capability-token transport on a SELF session token. */
   readonly openSession: (token: string) => GuestSigningSession;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * M-A13 R-4 — the server's PDF of an uploaded document (GET …/source). A Word file is
+   * converted on upload, so its PDF is read back to place fields on.
+   */
+  readonly fetchSource?: (envelopeId: string, documentId: string) => Promise<Uint8Array>;
 }
 
 /** Where the envelope stands on the server. */
@@ -130,7 +135,12 @@ export async function createAndUpload(
     if (before !== null && v.env.revision !== null && v.env.revision !== before + 1)
       throw revisionMismatch(v.env.revision);
     const pages = up.pages.length > 0 ? up.pages : d.pages;
-    out = out.map((x) => (x.key === d.key ? { ...x, serverId: up.id, pages, base64: x.base64 } : x));
+    // M-A13 R-4 — a Word upload became a PDF on the server: place fields on that PDF.
+    const base64 =
+      isWordUpload(d.filename) && deps.fetchSource
+        ? base64Encode(await deps.fetchSource(envelopeId, up.id))
+        : d.base64;
+    out = out.map((x) => (x.key === d.key ? { ...x, serverId: up.id, pages, base64 } : x));
     p = { ...p, etag: v.etag, signerId: p.signerId ?? v.env.recipients[0]?.id ?? null };
     onProgress(p, out);
   }
@@ -146,6 +156,10 @@ export async function removeUploaded(
   if (!progress.envelopeId || !progress.etag) return progress;
   const v = await deps.api.removeDocument(progress.envelopeId, progress.etag, documentId);
   return { ...progress, etag: v.etag };
+}
+
+function isWordUpload(filename: string): boolean {
+  return /\.(docx|doc)$/i.test(filename.trim());
 }
 
 function revisionOf(etag: string | null): number | null {

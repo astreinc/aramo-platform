@@ -178,3 +178,33 @@ describe('self-sign sequence', () => {
     expect(net.calls[0]?.url).toMatch(/self-sign-session$/);
   });
 });
+
+describe('Word upload (M-A13 R-4)', () => {
+  it('a .docx is uploaded as is; fields are placed on the PDF the server made', async () => {
+    const { net, workspace } = workspaceWith(server());
+    const fetchSource = jest.fn(async () => new Uint8Array(Buffer.from('%PDF-1.4 converted', 'latin1')));
+    const deps = {
+      api: createSenderApi(workspace),
+      createSelf: createSelfEnvelope(workspace),
+      openSession: (token: string) =>
+        createGuestSigningClient({ baseUrl: 'https://sign.aramo.ai', fetch: net.fetch }).open(token),
+      sleep: async () => undefined,
+      fetchSource,
+    };
+    const word = Buffer.from([0x50, 0x4b, 0x03, 0x04]).toString('base64');
+    const docs: SelfDoc[] = [
+      { key: 'w', title: 'Lease', filename: 'Lease.docx', base64: word, pages: null, serverId: null },
+      { key: 'p', title: 'Annex', filename: 'annex.pdf', base64: 'JVBERi0xLjQ=', pages: [PAGE], serverId: null },
+    ];
+    const up = await createAndUpload(deps, NO_PROGRESS, docs, 'Lease');
+    const upload = net.calls.find((r) => r.method === 'POST' && r.url.endsWith('/documents'));
+    expect(upload?.body?.['filename']).toBe('Lease.docx');
+    expect(upload?.body?.['content_base64']).toBe(word);
+    expect(fetchSource).toHaveBeenCalledTimes(1);
+    expect(fetchSource).toHaveBeenCalledWith('env-1', 'doc-srv');
+    expect(up.docs[0]?.base64).toBe(Buffer.from('%PDF-1.4 converted', 'latin1').toString('base64'));
+    expect(up.docs[0]?.pages).toEqual([PAGE]);
+    // A PDF keeps its own bytes.
+    expect(up.docs[1]?.base64).toBe('JVBERi0xLjQ=');
+  });
+});

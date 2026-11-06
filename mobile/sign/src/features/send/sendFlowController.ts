@@ -10,6 +10,7 @@
 //     envelope changed elsewhere", and never overwrites it.
 //   - Send is an explicit user action, online only. Nothing is ever sent silently.
 import { ApiError, isApiError } from '../../api/errors';
+import { WORD_COPY } from '../../api/refusalMessages';
 import { newIdempotencyKey } from '../../api/workspaceClient';
 import type { DraftStore, SendStep } from '../../state/draftStore';
 import { base64Decode, base64Encode } from '../../util/bytes';
@@ -152,6 +153,9 @@ export interface DocumentAsset {
 
 type Listener = (s: SendFlowState) => void;
 
+const OFFLINE_SAVED = 'You’re offline. Your changes are saved on this phone.';
+export const WORD_NEEDS_CONNECTION = 'Connect to the internet to add a Word file.';
+
 function messageFor(e: unknown): string {
   if (e instanceof SendFlowError) {
     if (e.reason === 'document_bytes_missing')
@@ -161,9 +165,11 @@ function messageFor(e: unknown): string {
     return 'The recipients changed while saving. Check them and try again.';
   }
   if (isApiError(e)) {
-    if (e.isNetwork) return 'You’re offline. Your changes are saved on this phone.';
+    if (e.isNetwork) return OFFLINE_SAVED;
     if (e.reason === 'unsupported_file_type')
       return 'Word files can’t be sent. Save the document as a PDF, then choose the PDF.';
+    // M-A13 R-4 — Word conversion refusals (too large, password-protected, not converted).
+    if (e.reason in WORD_COPY) return WORD_COPY[e.reason as keyof typeof WORD_COPY];
     if (e.reason === 'unsafe_pdf') return 'This PDF can’t be used. Try another file.';
     if (e.reason === 'too_many_signers')
       return `An envelope can have at most ${MAX_RECIPIENTS} signers.`;
@@ -399,7 +405,7 @@ export class SendFlowController {
     readonly filename: string;
     readonly bytes: Uint8Array;
     readonly pages?: readonly PageSize[];
-  }): Promise<void> {
+  }): Promise<string | null> {
     this.set({ busy: 'adding', error: null });
     try {
       let pages: readonly PageSize[] | null = input.pages ?? null;
@@ -428,11 +434,42 @@ export class SendFlowController {
           },
         ],
       }));
+      return key;
     } catch (e) {
       this.set({ error: messageFor(e) });
+      return null;
     } finally {
       this.set({ busy: null });
     }
+  }
+
+  /**
+   * M-A13 R-4 (#8) — a Word file (.docx / .doc) is converted to PDF by the server, so it
+   * is uploaded right away (it can't be shown or prepared on the phone). A refused or
+   * failed upload removes it again and says why; the uploaded PDF then renders from the
+   * server like any uploaded document.
+   */
+  async addWordDocument(input: {
+    readonly title: string;
+    readonly filename: string;
+    readonly bytes: Uint8Array;
+  }): Promise<void> {
+    if (!this.deps.isOnline()) {
+      this.set({ error: WORD_NEEDS_CONNECTION });
+      return;
+    }
+    const key = await this.addDocument(input);
+    if (key === null) return;
+    // Never render the Word bytes: the asset comes from the server once uploaded.
+    this.assets.delete(key);
+    const synced = await this.sync();
+    const doc = this.payload.documents.find((d) => d.key === key);
+    if (!doc || doc.pendingUpload === null) return;
+    const error = this.state.error;
+    await this.removeDocument(key);
+    this.set({
+      error: synced || error === null || error === OFFLINE_SAVED ? WORD_NEEDS_CONNECTION : error,
+    });
   }
 
   /** Remove a document and its fields. An uploaded one is removed on the server (If-Match). */
