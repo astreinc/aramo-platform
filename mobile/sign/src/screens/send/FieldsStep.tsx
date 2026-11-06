@@ -4,6 +4,7 @@
 // layer); a placed field starts at the user's default field size.
 import { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useServices } from '../../app/ServicesContext';
 import { FieldEditor } from '../../features/editor/FieldEditor';
@@ -26,6 +27,8 @@ export function FieldsStep({
   const t = useTheme();
   const { workspace } = useServices();
   const settings = useSignSettings();
+  // M-A13 #2 — the editor is the bottom of this screen: keep its panel above the system bar.
+  const insets = useSafeAreaInsets();
   const p = state.draft?.payload;
   const envelopeId = state.draft?.envelopeId ?? null;
   const uploaded = (p?.documents ?? [])
@@ -78,6 +81,7 @@ export function FieldsStep({
       onFieldsChange={onFieldsChange}
       findDocs={findDocs}
       fieldScale={sizeScale(settings.data?.default_field_size)}
+      bottomInset={insets.bottom}
     />
   );
 }

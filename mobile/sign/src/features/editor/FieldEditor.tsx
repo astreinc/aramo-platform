@@ -1,6 +1,6 @@
 // Step 3 "Fields" — the full field editor (handoff §4.6; directive §5 "Fields"; §10).
 //   Toolbar: signer chips (dot, first name, field count), Undo (30 steps), zoom
-//            100 / 150 / 200 %. Wraps at large text sizes.
+//            Fit / 150 / 200 % (M-A13 #11, R-5). Wraps at large text sizes.
 //   Canvas:  real PDF pages (PdfPageView) scrolling both ways; a picked tool outlines
 //            the pages; tap to place (centred on the tap, inside the page).
 //   Panel:   no selection -> hint + the tools (C-13's four, plus Name and Checkbox
@@ -12,6 +12,10 @@
 //            text layer, searched and highlighted on the device), the profile field
 //            types, and the user's default field size. W1-A: self-sign shows each
 //            placed field's value (fillFor) and its value editor (renderSelectionExtra).
+//   M-A13 #2: the panel is capped at 40% of the editor and scrolls; the canvas keeps at
+//            least 50%; more than 8 tools collapse behind "More fields"; "Place at
+//            center" stays pinned above the bottom inset. #3: placeRequest places and
+//            selects a field at the centre of the page in view.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -41,7 +45,14 @@ import {
   type EditorAction,
   type EditorField,
 } from './editorReducer';
-import { FIELD_TYPE_SPECS, MAX_LABEL, toolFieldTypes, type AuthoringFieldType } from './fieldTypes';
+import {
+  FIELD_TYPE_SPECS,
+  MAX_LABEL,
+  toolFieldTypes,
+  visibleTools,
+  zoomLabel,
+  type AuthoringFieldType,
+} from './fieldTypes';
 import { scaleFor, screenToEditorPoint, type PageSize } from './geometry';
 import { FindBar, HighlightOverlay, PageNavigator } from '../find/FindBar';
 import { useFind, type FindDoc } from '../find/useFind';
@@ -87,6 +98,10 @@ export interface FieldEditorProps {
   readonly hideRecipients?: boolean;
   /** Extra toolbar controls (self-sign: the "…" menu). */
   readonly toolbarExtra?: ReactNode;
+  /** M-A13 #3 — place this type at the centre of the page in view and select it (once per id). */
+  readonly placeRequest?: { readonly type: AuthoringFieldType; readonly id: number } | null;
+  /** M-A13 #2 — the system bottom inset when nothing below the editor already clears it. */
+  readonly bottomInset?: number;
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
@@ -110,6 +125,8 @@ export function FieldEditor({
   findDocs,
   hideRecipients = false,
   toolbarExtra,
+  placeRequest = null,
+  bottomInset = 0,
 }: FieldEditorProps) {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -118,6 +135,7 @@ export function FieldEditor({
   );
   const dispatch = useCallback((a: EditorAction) => rawDispatch(a), []);
   const [zoomIndex, setZoomIndex] = useState(0);
+  const [moreTools, setMoreTools] = useState(false);
   const [assets, setAssets] = useState<Record<string, LoadedAsset | 'failed'>>({});
   const [gesture, setGesture] = useState(false);
   const pageTops = useRef(new Map<string, PageRef>());
@@ -232,11 +250,12 @@ export function FieldEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstKey]);
 
-  const placeAtCenter = () => {
+  const placeAtCenter = (tool?: AuthoringFieldType) => {
     const target = visible ?? (documents[0] ? { docKey: documents[0].key, page: 0 } : null);
     if (!target) return;
     const size = pageSizeOf(target.docKey, target.page);
     if (!size) return;
+    if (tool) dispatch({ type: 'pickTool', tool });
     dispatch({
       type: 'placeAtCenter',
       key: randomId(),
@@ -246,6 +265,18 @@ export function FieldEditor({
       scale: fieldScale,
     });
   };
+
+  // M-A13 #3 — e.g. after adopting a signature that was picked as a tool.
+  const placeId = placeRequest?.id ?? null;
+  useEffect(() => {
+    if (placeRequest) placeAtCenter(placeRequest.type);
+    // Once per request id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeId]);
+
+  const allTools = toolFieldTypes();
+  const tools = visibleTools(allTools, moreTools, state.tool);
+  const collapsible = tools.length < allTools.length || moreTools;
 
   const hint = state.tool
     ? `Tap the page to place ${FIELD_TYPE_SPECS[state.tool].noun} for ${firstName(active?.name ?? '')}`
@@ -327,9 +358,9 @@ export function FieldEditor({
             />
             <Text
               style={[text, styles.zoomText]}
-              accessibilityLabel={`Zoom ${Math.round(zoom * 100)} percent`}
+              accessibilityLabel={zoomLabel(zoom).accessibility}
             >
-              {`${Math.round(zoom * 100)}%`}
+              {zoomLabel(zoom).text}
             </Text>
             <Button
               title="+"
@@ -358,7 +389,7 @@ export function FieldEditor({
       <ScrollView
         ref={scrollRef}
         onLayout={(e: LayoutChangeEvent) => (viewport.current = e.nativeEvent.layout.height)}
-        style={[styles.fill, { backgroundColor: t.color.documentBackdrop }]}
+        style={[styles.fill, styles.canvasMin, { backgroundColor: t.color.documentBackdrop }]}
         contentContainerStyle={styles.canvas}
         scrollEnabled={!gesture}
         onScroll={onScroll}
@@ -463,52 +494,75 @@ export function FieldEditor({
         </ScrollView>
       </ScrollView>
 
-      {/* Bottom panel */}
+      {/* Bottom panel: at most 40% of the editor, scrolling (M-A13 #2). */}
       <View
+        testID="editor-panel"
         style={[
           styles.panel,
-          { backgroundColor: t.color.surface, borderTopColor: t.color.separator },
+          {
+            backgroundColor: t.color.surface,
+            borderTopColor: t.color.separator,
+            paddingBottom: 12 + bottomInset,
+          },
         ]}
       >
-        {selected ? (
-          <SelectionPanel
-            key={selected.key}
-            field={selected}
-            fields={state.fields}
-            recipients={recipients}
-            color={colorOf(selected.recipientKey)}
-            signerName={nameOf(selected.recipientKey)}
-            pageSize={pageSizeOf(selected.docKey, selected.page)}
-            dispatch={dispatch}
-            extra={renderSelectionExtra ? renderSelectionExtra(selected) : null}
-          />
-        ) : (
-          <View style={styles.panelBody}>
-            <Text style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
-              {hint}
-            </Text>
-            <View style={styles.tools}>
-              {toolFieldTypes().map((type) => (
-                <ToolButton
-                  key={type}
-                  type={type}
-                  active={state.tool === type}
-                  disabled={recipients.length === 0}
-                  onPress={() => {
-                    if (state.tool !== type && onPickTool && !onPickTool(type)) return;
-                    dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
-                  }}
-                />
-              ))}
-            </View>
-            <Button
-              title="Place at center"
-              variant="secondary"
-              disabled={state.tool === null}
-              accessibilityHint="Places the picked field in the middle of the page in view"
-              onPress={placeAtCenter}
+        <ScrollView
+          style={styles.panelScroll}
+          contentContainerStyle={styles.panelBody}
+          keyboardShouldPersistTaps="handled"
+        >
+          {selected ? (
+            <SelectionPanel
+              key={selected.key}
+              field={selected}
+              fields={state.fields}
+              recipients={recipients}
+              color={colorOf(selected.recipientKey)}
+              signerName={nameOf(selected.recipientKey)}
+              pageSize={pageSizeOf(selected.docKey, selected.page)}
+              dispatch={dispatch}
+              extra={renderSelectionExtra ? renderSelectionExtra(selected) : null}
             />
-          </View>
+          ) : (
+            <>
+              <Text style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
+                {hint}
+              </Text>
+              <View style={styles.tools}>
+                {tools.map((type) => (
+                  <ToolButton
+                    key={type}
+                    type={type}
+                    active={state.tool === type}
+                    disabled={recipients.length === 0}
+                    onPress={() => {
+                      if (state.tool !== type && onPickTool && !onPickTool(type)) return;
+                      dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
+                    }}
+                  />
+                ))}
+              </View>
+              {collapsible ? (
+                <Button
+                  testID="editor-more-fields"
+                  title={moreTools ? 'Fewer fields' : 'More fields'}
+                  variant="text"
+                  accessibilityHint={moreTools ? 'Shows only the common fields' : 'Shows every field type'}
+                  onPress={() => setMoreTools((m) => !m)}
+                />
+              ) : null}
+            </>
+          )}
+        </ScrollView>
+        {/* Pinned below the scrolling tools, so it is never scrolled or inset away. */}
+        {selected ? null : (
+          <Button
+            title="Place at center"
+            variant="secondary"
+            disabled={state.tool === null}
+            accessibilityHint="Places the picked field in the middle of the page in view"
+            onPress={() => placeAtCenter()}
+          />
         )}
       </View>
     </View>
@@ -902,6 +956,7 @@ const styles = StyleSheet.create({
   zoom: { flexDirection: 'row', alignItems: 'center' },
   zoomText: { minWidth: 48, textAlign: 'center', fontSize: 15 },
   canvas: { paddingVertical: 16 },
+  canvasMin: { minHeight: '50%' },
   hscroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16 },
   pages: { gap: 12 },
   loading: { height: 240, alignItems: 'center', justifyContent: 'center', padding: 24 },
@@ -909,8 +964,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 12,
+    maxHeight: '40%',
+    gap: 10,
   },
+  panelScroll: { flexGrow: 0, flexShrink: 1 },
   panelBody: { gap: 10 },
   hint: { fontSize: 14, lineHeight: 19 },
   tools: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

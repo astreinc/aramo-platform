@@ -320,9 +320,13 @@ export function SelfSignScreen() {
     [docs, envelopeId, workspace],
   );
 
+  // M-A13 #3 — adopting that started from picking the tool places the mark when done.
+  const placeAfterAdopt = useRef(false);
+  const [placeRequest, setPlaceRequest] = useState<{ type: AdoptTarget; id: number } | null>(null);
   const onPickTool = useCallback(
     (type: string) => {
       if ((type === 'SIGNATURE' || type === 'INITIALS') && !adopted[type]) {
+        placeAfterAdopt.current = true;
         setAdoptFor(type);
         toast.show(type === 'INITIALS' ? 'Adopt your initials first' : 'Adopt your signature first');
         return false;
@@ -336,6 +340,8 @@ export function SelfSignScreen() {
     const target = adoptFor ?? 'SIGNATURE';
     setAdopted((a) => ({ ...a, [target]: r.mark as AdoptedMark }));
     setAdoptFor(null);
+    if (placeAfterAdopt.current) setPlaceRequest((p) => ({ type: target, id: (p?.id ?? 0) + 1 }));
+    placeAfterAdopt.current = false;
   }
 
   const renderValue = (f: EditorField) => {
@@ -554,6 +560,7 @@ export function SelfSignScreen() {
           fieldScale={sizeScale(settings.data?.default_field_size)}
           findDocs={findDocs}
           hideRecipients
+          placeRequest={placeRequest}
         />
         <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 12), borderTopColor: t.color.separator, backgroundColor: t.color.surface }]}>
           <Button title="Back" variant="text" onPress={() => setStage({ kind: 'docs' })} />
@@ -603,7 +610,10 @@ export function SelfSignScreen() {
           canSaveDefault={false}
           saved={adoptFor === 'INITIALS' ? saved?.initials : saved?.signature}
           onAdopt={onAdopted}
-          onClose={() => setAdoptFor(null)}
+          onClose={() => {
+            placeAfterAdopt.current = false;
+            setAdoptFor(null);
+          }}
         />
       </View>
     );
