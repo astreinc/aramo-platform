@@ -10,7 +10,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner, OfflineBanner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -261,7 +261,9 @@ export function SendFlowScreen({ navigation, route }: Props) {
     ) : null;
 
   return (
-    <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // M-A13 #5: 'padding' on Android too — the edge-to-edge window is not resized by the
+    // keyboard, so the inline access-code / name inputs need the same lift as on iOS.
+    <KeyboardAvoidingView style={styles.fill} behavior="padding">
       <Stepper step={state.step} onStep={onStepLabel} />
       <View style={styles.banners}>
         {!online ? <OfflineBanner /> : null}

@@ -5,12 +5,13 @@
 // native-stack route with `presentation: 'formSheet'` + `sheetAllowedDetents` instead
 // (see navigation/RootNavigator.tsx). Modal content is its own root, so it gets its own
 // GestureHandlerRootView for gesture-handler gestures inside the sheet.
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
+import { androidSheetPlacement, useFocusFallback, useKeyboardHeight } from './sheetKeyboard';
 
 export interface SheetProps {
   readonly visible: boolean;
@@ -24,6 +25,10 @@ export interface SheetProps {
 export function Sheet({ visible, onClose, title, children, scrollEnabled = true }: SheetProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  // M-A13 #5 — keyboard-aware (see sheetKeyboard.ts).
+  const keyboard = useKeyboardHeight(visible && Platform.OS === 'android');
+  const fallback = useFocusFallback(keyboard);
+  const [heights, setHeights] = useState({ full: 0, current: 0 });
   const grabber = (
     <View
       style={[
@@ -58,13 +63,24 @@ export function Sheet({ visible, onClose, title, children, scrollEnabled = true 
         >
           {grabber}
           {header}
-          <ScrollView contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            scrollEnabled={scrollEnabled}
+            automaticallyAdjustKeyboardInsets
+            keyboardShouldPersistTaps="handled"
+          >
             {children}
           </ScrollView>
         </GestureHandlerRootView>
       </Modal>
     );
   }
+  const placement = androidSheetPlacement({
+    keyboard,
+    fullHeight: heights.full,
+    rootHeight: heights.current,
+    focusedWithoutEvent: fallback.focusedWithoutEvent,
+  });
   return (
     <Modal
       visible={visible}
@@ -73,7 +89,13 @@ export function Sheet({ visible, onClose, title, children, scrollEnabled = true 
       animationType="fade"
       statusBarTranslucent
     >
-      <GestureHandlerRootView style={styles.fill}>
+      <GestureHandlerRootView
+        style={styles.fill}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          setHeights((prev) => ({ full: Math.max(prev.full, h), current: h }));
+        }}
+      >
         <Pressable
           style={styles.scrim}
           onPress={onClose}
@@ -81,19 +103,31 @@ export function Sheet({ visible, onClose, title, children, scrollEnabled = true 
           accessibilityRole="button"
         />
         <View
+          testID="sheet-android"
+          onFocus={fallback.onFocus}
+          onBlur={fallback.onBlur}
           style={[
             styles.androidSheet,
+            placement.kind === 'top'
+              ? { top: insets.top + 8, bottom: undefined }
+              : { bottom: placement.lift },
             {
               backgroundColor: t.color.sheet,
               borderTopLeftRadius: t.size.sheetTopRadius,
               borderTopRightRadius: t.size.sheetTopRadius,
-              paddingBottom: insets.bottom + 16,
+              // Over the keyboard the navigation bar inset is already covered.
+              paddingBottom:
+                (placement.kind === 'bottom' && placement.lift > 0 ? 0 : insets.bottom) + 16,
             },
           ]}
         >
           {grabber}
           {header}
-          <ScrollView contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            scrollEnabled={scrollEnabled}
+            keyboardShouldPersistTaps="handled"
+          >
             {children}
           </ScrollView>
         </View>
