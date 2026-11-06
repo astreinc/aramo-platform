@@ -30,6 +30,8 @@ const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] 
   { key: 'declined', label: 'Declined', statuses: ['DECLINED'] },
   { key: 'voided', label: 'Voided', statuses: ['VOIDED'] },
   { key: 'expired', label: 'Expired', statuses: ['EXPIRED'] },
+  // M-A13 #13 — the dashboard's "Declined or expired" card.
+  { key: 'follow_up', label: 'Declined or expired', statuses: ['DECLINED', 'EXPIRED'] },
 ];
 
 export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {

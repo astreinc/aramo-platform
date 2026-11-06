@@ -54,10 +54,11 @@ export function Dashboard() {
       {summary !== null ? (
         <>
           <div className="sg-grid sg-grid--4" style={{ marginTop: 22 }}>
-            <Stat label="Awaiting signatures" n={summary.awaiting_signatures} sub="envelopes in progress" color="var(--ink)" />
-            <Stat label="Requires your action" n={summary.counts.draft} sub="drafts to finish" color="var(--accent)" />
-            <Stat label="Completed this month" n={summary.completed_this_month} sub="fully executed" color="var(--ok)" />
-            <Stat label="Declined or expired" n={summary.declined_or_expired} sub="need a follow-up" color="var(--bad)" />
+            {/* M-A13 #13 — each card opens the matching envelope list. */}
+            <Stat to={`${base}/envelopes?tab=waiting`} label="Awaiting signatures" n={summary.awaiting_signatures} sub="envelopes in progress" color="var(--ink)" />
+            <Stat to={`${base}/envelopes?tab=drafts`} label="Requires your action" n={summary.counts.draft} sub="drafts to finish" color="var(--accent)" />
+            <Stat to={`${base}/envelopes?tab=completed`} label="Completed this month" n={summary.completed_this_month} sub="fully executed" color="var(--ok)" />
+            <Stat to={`${base}/envelopes?tab=follow_up`} label="Declined or expired" n={summary.declined_or_expired} sub="need a follow-up" color="var(--bad)" />
           </div>
           <div className="sg-grid sg-grid--main" style={{ marginTop: 14 }}>
             <section className="sg-card">
@@ -145,15 +146,15 @@ export function Dashboard() {
   );
 }
 
-function Stat({ label, n, sub, color }: { label: string; n: number; sub: string; color: string }) {
+function Stat({ to, label, n, sub, color }: { to: string; label: string; n: number; sub: string; color: string }) {
   return (
-    <div className="sg-card sg-stat">
+    <Link to={to} className="sg-card sg-stat" aria-label={`${label}: ${n} ${sub}`}>
       <div className="sg-stat__l">{label}</div>
       <div className="sg-stat__n" style={{ color }}>
         {n}
       </div>
       <div className="sg-stat__s">{sub}</div>
-    </div>
+    </Link>
   );
 }
 
