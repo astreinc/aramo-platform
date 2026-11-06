@@ -69,7 +69,7 @@ import {
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
 import { sentShareTarget } from '../../features/share/shareCompleted';
-import { useShare } from '../../features/share/useShare';
+import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
 import { recipientColor, useTheme } from '../../theme';
 
@@ -151,6 +151,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const [selfNote, setSelfNote] = useState<string | null>(null);
   const [hostNote, setHostNote] = useState<string | null>(null);
   const sharer = useShare();
+  const saver = useSaveCopy();
 
   // A later navigation here with another tab (e.g. a notification) selects it.
   const [seenTab, setSeenTab] = useState(initialTab);
@@ -499,6 +500,26 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             busy={deleteBusy}
             disabled={!online}
             onPress={confirmDelete}
+          />
+        ) : null}
+        {/* M-A13 #7: a completed envelope offers View signed copy and Save a copy too. */}
+        {shareTarget ? (
+          <Button
+            testID="action-view-signed"
+            title="View signed copy"
+            variant="secondary"
+            disabled={!online}
+            onPress={() => navigation.navigate('DocumentViewer', { envelopeId, kind: 'executed' })}
+          />
+        ) : null}
+        {shareTarget ? (
+          <Button
+            testID="action-save"
+            title="Save a copy"
+            variant="secondary"
+            busy={saver.busy}
+            disabled={!online}
+            onPress={() => saver.save(shareTarget)}
           />
         ) : null}
         {shareTarget ? (

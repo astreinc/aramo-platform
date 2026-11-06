@@ -5,7 +5,9 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { SHARE_TEMP_DIR } from '../../security/documentTempFiles';
+import { base64Decode } from '../../util/bytes';
 import { randomId } from '../../util/ids';
+import type { SaveFolderPort } from './saveCopy';
 import type { ShareFilePort, ShareSheetPort } from './shareCompleted';
 
 // Also wiped at app start and sign-out with the viewer temp files (security/documentTempFiles.ts).
@@ -51,3 +53,32 @@ export const nativeShareSheet: ShareSheetPort = {
   open: (uri, { mimeType, dialogTitle }) =>
     Sharing.shareAsync(uri, { mimeType, dialogTitle, UTI: 'com.adobe.pdf' }),
 };
+
+/**
+ * M-A13 #7 — Android "Save a copy": the system folder picker (Storage Access Framework).
+ * The PDF is written straight into the chosen folder; the picker resolves to a folder the
+ * app may write to for this session only.
+ */
+export const nativeSaveFolder: SaveFolderPort = {
+  async pick() {
+    let dir: Directory;
+    try {
+      dir = await Directory.pickDirectoryAsync();
+    } catch (e) {
+      if (isPickerCancel(e)) return null;
+      throw e;
+    }
+    return {
+      async writePdf(filename, base64) {
+        const file = dir.createFile(filename, 'application/pdf');
+        file.write(base64Decode(base64));
+      },
+    };
+  },
+};
+
+function isPickerCancel(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  const message = e instanceof Error ? e.message : '';
+  return (typeof code === 'string' && /CANCEL/i.test(code)) || /cancel/i.test(message);
+}

@@ -79,7 +79,7 @@ import { newIdempotencyKey } from '../../api/workspaceClient';
 import { pickPhotosToPdf } from '../../features/send/photos';
 import { createSenderApi } from '../../features/send/senderApi';
 import { pickPdf, scanToPdf, type SourceResult } from '../../features/send/sources';
-import { useShare } from '../../features/share/useShare';
+import { useSaveCopy, useShare } from '../../features/share/useShare';
 import { loadSavedMarks, type AdoptTarget, type SavedMarks } from '../../features/signing/adopt';
 import { AdoptSignatureSheet, type AdoptResult } from '../../features/signing/AdoptSignatureSheet';
 import { classifySigningError, SIGNING_COPY, type Disclosure } from '../../features/signing/signingApi';
@@ -122,6 +122,7 @@ export function SelfSignScreen() {
   const profile = useSignProfile();
   const settings = useSignSettings();
   const sharer = useShare();
+  const saver = useSaveCopy();
 
   const [stage, setStage] = useState<Stage>({ kind: 'docs' });
   const [docs, setDocs] = useState<SelfDoc[]>([]);
@@ -475,9 +476,25 @@ export function SelfSignScreen() {
         </Text>
         {stage.completed && id ? (
           <>
+            {/* M-A13 #7: View signed copy and Save a copy, beside Share PDF and the certificate. */}
+            <Button
+              testID="self-view-signed"
+              title="View signed copy"
+              disabled={!online}
+              onPress={() => navigation.navigate('DocumentViewer', { envelopeId: id, kind: 'executed' })}
+            />
+            <Button
+              testID="self-save"
+              title="Save a copy"
+              variant="secondary"
+              busy={saver.busy}
+              disabled={!online}
+              onPress={() => saver.save({ kind: 'sent', envelopeId: id, subject: selfSubject(docs) })}
+            />
             <Button
               testID="self-share"
               title="Share PDF"
+              variant="secondary"
               busy={sharer.busy}
               disabled={!online}
               onPress={() => sharer.share({ kind: 'sent', envelopeId: id, subject: selfSubject(docs) })}
