@@ -15,8 +15,9 @@ import {
 } from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
 
-import { PUSH_DELIVERY_PORT, type PushDeliveryPort } from './push-delivery.port.js';
 import { recipientSenderLabel } from '../sender-label.js';
+
+import { PUSH_DELIVERY_PORT, type PushDeliveryPort } from './push-delivery.port.js';
 
 // Aramo Sign Mobile — the notification fan-out (M-A3 §1, §2; directive §8). Drains
 // the notification outbox (written in the ledger-event transaction) into feed rows

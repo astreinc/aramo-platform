@@ -23,8 +23,8 @@ import {
   SignFeatureGate,
 } from '../sign-feature.gate.js';
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
-
 import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
+
 import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
