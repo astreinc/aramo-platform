@@ -23,6 +23,7 @@ import { TemplateRows } from '../templates/TemplateRows';
 import { landingStep } from '../templates/roleBindingModel';
 import { TemplateUseForm } from '../templates/TemplateUseForm';
 import { useTemplatesView } from '../templates/useTemplates';
+import { usePhotoEditor } from './photoEdit/PhotoEditor';
 import { pickPhotosToPdf } from './photos';
 import type { SendFlowController } from './sendFlowController';
 import { pickPdf, scanToPdf, type SourceResult } from './sources';
@@ -167,6 +168,8 @@ export function AddDocumentsSheet({
   const [running, setRunning] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const templates = useTemplatesView(visible && templatesEnabled && mode.kind !== 'sources');
+  // M-A13 #9 — chosen photos get a crop / straighten / rotate step before the PDF.
+  const photoEditor = usePhotoEditor();
 
   const close = () => {
     setMode({ kind: 'sources' });
@@ -178,7 +181,10 @@ export function AddDocumentsSheet({
     setRefusal(null);
     setRunning(true);
     try {
-      const out = await addFromSource(controller, RUN[key]);
+      const out = await addFromSource(
+        controller,
+        key === 'photos' ? () => pickPhotosToPdf(new Date(), photoEditor.edit) : RUN[key],
+      );
       if (out.refusal) setRefusal(out.refusal);
       if (out.added) {
         close();
@@ -214,6 +220,7 @@ export function AddDocumentsSheet({
             {`Files: ${FILES_NOTE}.`}
           </Text>
           <Button title="Close" variant="text" onPress={close} />
+          {photoEditor.element}
         </>
       ) : mode.kind === 'templates' ? (
         <>

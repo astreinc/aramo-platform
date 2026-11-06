@@ -76,6 +76,7 @@ import { fetchSourcePdf } from '../../features/editor/sourcePdf';
 import { TemplateRows } from '../../features/templates/TemplateRows';
 import { useTemplatesView } from '../../features/templates/useTemplates';
 import { newIdempotencyKey } from '../../api/workspaceClient';
+import { usePhotoEditor } from '../../features/send/photoEdit/PhotoEditor';
 import { pickPhotosToPdf } from '../../features/send/photos';
 import { createSenderApi } from '../../features/send/senderApi';
 import { pickPdf, scanToPdf, type SourceResult } from '../../features/send/sources';
@@ -123,6 +124,8 @@ export function SelfSignScreen() {
   const settings = useSignSettings();
   const sharer = useShare();
   const saver = useSaveCopy();
+  // M-A13 #9 — chosen photos get a crop / straighten / rotate step before the PDF.
+  const photoEditor = usePhotoEditor();
 
   const [stage, setStage] = useState<Stage>({ kind: 'docs' });
   const [docs, setDocs] = useState<SelfDoc[]>([]);
@@ -186,7 +189,7 @@ export function SelfSignScreen() {
     try {
       let r: SourceResult;
       try {
-        r = await RUN[key]();
+        r = await (key === 'photos' ? pickPhotosToPdf(new Date(), photoEditor.edit) : RUN[key]());
       } catch {
         setError(SOURCE_UNAVAILABLE);
         return;
@@ -758,6 +761,7 @@ export function SelfSignScreen() {
           variant="text"
           onPress={() => (pickMode === 'sources' ? closePicker() : setPickMode(pickMode === 'templates' ? 'sources' : 'templates'))}
         />
+        {photoEditor.element}
       </Sheet>
       <Sheet visible={menuFor !== null && renaming === null} onClose={() => setMenuFor(null)} title="Document">
         {menu?.rename ? (

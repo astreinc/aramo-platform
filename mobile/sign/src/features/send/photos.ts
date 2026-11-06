@@ -7,11 +7,16 @@
 // PNG are re-encoded), and Android's compressed export is JPEG (EXIF orientation applied
 // by the loader). The composition honours any EXIF orientation still present. Temporary
 // copies the picker made are deleted as soon as they are read.
+//
+// M-A13 #9: when the screen supplies `edit`, each chosen photo gets a crop / straighten /
+// rotate step (photoEdit/PhotoEditor.tsx) before the PDF is built. A photo left
+// unchanged keeps its original bytes.
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 
 import { base64Decode } from '../../util/bytes';
 import { MAX_UPLOAD_BYTES } from './fileValidation';
+import type { PhotoEditFn } from './photoEdit/PhotoEditor';
 import { composeScanPdf } from './scanToPdf';
 import type { SourceResult } from './sources';
 
@@ -49,7 +54,10 @@ async function photoBytes(asset: ImagePicker.ImagePickerAsset): Promise<Uint8Arr
 }
 
 /** Pick photos and compose them, in the order chosen, into one PDF. */
-export async function pickPhotosToPdf(now: Date = new Date()): Promise<SourceResult> {
+export async function pickPhotosToPdf(
+  now: Date = new Date(),
+  edit?: PhotoEditFn,
+): Promise<SourceResult> {
   const res = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsMultipleSelection: true,
@@ -69,6 +77,13 @@ export async function pickPhotosToPdf(now: Date = new Date()): Promise<SourceRes
       const bytes = await photoBytes(a);
       if (!isJpeg(bytes)) return { kind: 'refused', message: PHOTO_NOT_READABLE };
       jpegs.push(bytes);
+    }
+    if (edit) {
+      const edited = await edit(assets.map((a) => ({ uri: a.uri })));
+      if (!edited) return { kind: 'cancelled' };
+      edited.forEach((b, i) => {
+        if (b && isJpeg(b)) jpegs[i] = b;
+      });
     }
     let pdf: ReturnType<typeof composeScanPdf>;
     try {
