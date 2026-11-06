@@ -129,6 +129,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 §2 Name and
     expect(JSON.stringify(view)).not.toContain(TENANT);
   });
 
+  // M-A13 #1 (R-2) — old apps send a SIGNATURE / INITIALS as TYPED with an image data URL.
+  // The fill accepts that combination and stores it unchanged (the evidence does not change);
+  // the executed document draws it as an image.
+  it('M-A13: accepts TYPED with an image data URL and stores value and method unchanged', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const { ctx, ids } = await signerA([
+      { key: 'sig', field_type: 'SIGNATURE' },
+      { key: 'ini', field_type: 'INITIALS' },
+    ]);
+    await service.fillField(ctx, ids.get('sig')!, { value: png, signature_method: 'TYPED' });
+    await service.fillField(ctx, ids.get('ini')!, { value: png, signature_method: 'TYPED' });
+    for (const key of ['sig', 'ini']) {
+      const row = await prisma.signatureField.findUnique({ where: { id: ids.get(key)! } });
+      expect(row).toMatchObject({ value: png, signature_method: 'TYPED' });
+      expect(row?.filled_at).not.toBeNull();
+    }
+  });
+
   it('refuses a client value for a SIGNER_PROFILE name and a non-boolean check box value; unchecking is allowed', async () => {
     const { ctx, ids } = await signerA([
       { key: 'name', field_type: 'SIGNER_NAME', name_mode: 'SIGNER_PROFILE' },

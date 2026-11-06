@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its fifty-six tables', async () => {
+  it('creates the sign schema with its fifty-eight tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -140,6 +140,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignUserSettings',
         'SignAppIssueReport',
         'SignUserFavorite',
+        // Aramo Sign Mobile M-A13 R-1b — the append-only corrected reissue.
+        'ExecutedDocumentReissue',
+        'ExecutionCertificateReissue',
       ].sort(),
     );
   });

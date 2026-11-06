@@ -361,6 +361,9 @@ export class SignPurgeRepository {
       // Documents (every level): bytes go, rows / hashes / custody records stay (LD-3, LD-4).
       const documents = await tx.executedDocument.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { executed_bytes: null, purged_at: now } });
       const certificates = await tx.executionCertificate.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { certificate_bytes: null, purged_at: now } });
+      // M-A13 R-1b — a corrected reissue's bytes go with the originals' (rows and hashes stay).
+      await tx.executedDocumentReissue.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { executed_bytes: null, purged_at: now } });
+      await tx.executionCertificateReissue.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { certificate_bytes: null, purged_at: now } });
       // Feature-Parity §1.15 — the seal tail of a sealed copy goes with the executed bytes.
       await tx.executedDocumentSeal.updateMany({ where: { tenant_id, envelope_id, purged_at: null }, data: { seal_tail: null, purged_at: now } });
       const docIds = (await tx.envelopeDocument.findMany({ where: { tenant_id, envelope_id }, select: { id: true } })).map((d) => d.id);

@@ -390,22 +390,41 @@ export class EsignRepository {
 
   // DOC-4 (R-4-7) — executed artifacts for the write-back pull. Each executed
   // document is joined to its EnvelopeDocument for the Documents refs.
+  //
+  // M-A13 R-1b — where an executed document has an append-only corrected reissue, the
+  // corrected copy is the one served (same shape); the original row is kept unchanged.
   async listExecutedDocuments(tenant_id: string, envelope_id: string) {
     const rows = await this.prisma.executedDocument.findMany({ where: { tenant_id, envelope_id } });
+    const reissues = await this.prisma.executedDocumentReissue.findMany({ where: { tenant_id, envelope_id } });
+    const reissued = new Map(reissues.map((r) => [r.original_executed_document_id, r]));
     const docs = await this.prisma.envelopeDocument.findMany({ where: { envelope_id } });
     const byId = new Map(docs.map((d) => [d.id, d]));
-    return rows.map((r) => ({
-      envelope_document_id: r.envelope_document_id,
-      document_ref: byId.get(r.envelope_document_id)?.document_ref ?? null,
-      document_revision_ref: byId.get(r.envelope_document_id)?.document_revision_ref ?? null,
-      executed_sha256: r.executed_sha256,
-      byte_size: r.byte_size,
-      executed_bytes: r.executed_bytes,
-    }));
+    return rows.map((r) => {
+      const served = reissued.get(r.id) ?? r;
+      return {
+        envelope_document_id: r.envelope_document_id,
+        document_ref: byId.get(r.envelope_document_id)?.document_ref ?? null,
+        document_revision_ref: byId.get(r.envelope_document_id)?.document_revision_ref ?? null,
+        executed_sha256: served.executed_sha256,
+        byte_size: served.byte_size,
+        executed_bytes: served.executed_bytes,
+      };
+    });
   }
 
+  // M-A13 R-1b — the reissued certificate (noting the correction) is served when one exists.
   async getExecutionCertificate(tenant_id: string, envelope_id: string) {
-    return this.prisma.executionCertificate.findFirst({ where: { tenant_id, envelope_id } });
+    const original = await this.prisma.executionCertificate.findFirst({ where: { tenant_id, envelope_id } });
+    if (original === null) return null;
+    const reissue = await this.prisma.executionCertificateReissue.findFirst({ where: { tenant_id, envelope_id, original_certificate_id: original.id } });
+    if (reissue === null) return original;
+    return {
+      ...original,
+      certificate_sha256: reissue.certificate_sha256,
+      byte_size: reissue.byte_size,
+      certificate_bytes: reissue.certificate_bytes,
+      purged_at: reissue.purged_at ?? original.purged_at,
+    };
   }
 
   // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the NON-TERMINAL envelope(s) for a

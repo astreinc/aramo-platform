@@ -72,6 +72,17 @@ export {
   type ExecutedProductionResult,
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
+// M-A13 R-1b — read-only inventory + append-only corrected reissue of executed documents.
+export {
+  findReissueInventory,
+  ExecutedDocumentReissueRefusedError,
+  REISSUE_MARK_FIELD_TYPES,
+  type AffectedExecutedDocument,
+  type ReissueInventory,
+  type ReissueOutcome,
+  type ReissuedDocument,
+  type ReissueRefusalReason,
+} from './lib/executed-document-reissue.js';
 // Feature-Parity Directive v1.0 §1.15 — the PAdES document seal (dark unless a provider is bound).
 export {
   DOCUMENT_SEAL_SIGNING_PROVIDER,
@@ -170,6 +181,8 @@ export {
   EXECUTED_DOCUMENT_RECORDED,
   EXECUTION_CERTIFICATE_RECORDED,
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
+  EXECUTED_DOCUMENT_REISSUED,
+  EXECUTION_CERTIFICATE_REISSUED,
   ExecutedArtifactIntegrityConflictError,
   ExecutedArtifactLedgerMismatchError,
   type ExecutedArtifactKind,
