@@ -3,6 +3,7 @@
 // Notifications and Account are root-stack screens now (RootNavigator).
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
+import { SignNextHost } from '../features/selfSign/SignNextHost';
 import { ShellProvider } from '../features/shell/ShellProvider';
 import { useUnreadCount } from '../features/notifications/queries';
 import { usePushLifecycle } from '../features/notifications/usePushLifecycle';
@@ -28,6 +29,8 @@ export function MainTabs() {
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Agreements" component={AgreementsScreen} />
       </Tab.Navigator>
+      {/* M-A14 §1 item 8 — "Want to sign another document?" after Sign Document's Done. */}
+      <SignNextHost />
     </ShellProvider>
   );
 }
