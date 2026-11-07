@@ -799,6 +799,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/envelopes/{id}/documents/{documentId}/field-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggested signature and date boxes for a document (M-A14 R-3, "Auto suggest fields").
+         * @description Aramo Sign Mobile M-A14 R-3 / §2. Deterministic, no model: the server reads the document's existing text layer (the text-layer route's extraction and cache) and proposes SIGNATURE and SIGN_DATE boxes on or after signature and date labels ("Signature", "Signed", "Signed by", "Sign here", "Date", "Dated", "Date signed"; whole words, any case; on the underline that follows or sits above the label when there is one). Only pages that hold a signature suggestion, the last such pages first; overlaps removed; at most 6. Boxes use the PUT fields frame (SenderFieldInput): page_number 0-based, PDF points, origin bottom-left, (x, y) the lower-left corner, inside the page's MediaBox; `page` is the same page 1-based. A rotated page gets none. Requires sign:envelope:read and the same visibility as the source route (another tenant's envelope, an envelope the caller may not see, or a document not in the envelope is 404); after that, any failure is 200 with an empty list. No document text leaves the platform or is logged.
+         */
+        get: operations["getSenderDocumentFieldSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/recipients": {
         parameters: {
             query?: never;
@@ -2650,6 +2670,26 @@ export interface paths {
          * @description 400 details.reason invalid_body | unknown_field | invalid_date_format | invalid_default_field_size.
          */
         put: operations["putSignSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/signing-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's own signing counts (M-A14 R-4, "You're helping save paper").
+         * @description Aramo Sign Mobile M-A14 R-4. Session (sign consumer) only, no Sign role scope; keyed by the token's tenant and user. Counts the envelopes this account signed (its own recipient row SIGNED): self-signed envelopes in the caller's tenant (a recipient bound to the caller) plus envelopes received at the caller's verified identity, matched exactly as the recipient inbox matches them (bindings, and discovered items while inbox discovery is on), deduplicated by envelope. documents_signed = those envelopes; pages_signed = the pages of their documents (a document whose page count was never measured counts as 1). Counts only - no titles, parties or other accounts' figures.
+         */
+        get: operations["getSignSigningStats"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4627,6 +4667,26 @@ export interface components {
                     h: number;
                 }[];
             }[];
+        };
+        /** @description Aramo Sign Mobile M-A14 R-3 — deterministic SIGNATURE / SIGN_DATE suggestions for one document, in the PUT fields frame (page_number 0-based, PDF points, origin bottom-left, (x, y) the box's lower-left corner). At most 6; empty when nothing was found or the document could not be read. */
+        DocumentFieldSuggestions: {
+            suggestions: {
+                /** @enum {string} */
+                type: "SIGNATURE" | "SIGN_DATE";
+                /** @description 1-based page number (as in the text layer). */
+                page: number;
+                /** @description 0-based page index, exactly the PUT fields page_number. */
+                page_number: number;
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }[];
+        };
+        /** @description Aramo Sign Mobile M-A14 R-4 — the signed-in account's own counts: envelopes it signed (self-signed in its tenant and received at its verified identity, as the inbox matches them) and their pages. Counts only. */
+        SignSigningStats: {
+            documents_signed: number;
+            pages_signed: number;
         };
         SignUserProfileInput: {
             display_name: string;
@@ -6968,6 +7028,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentTextLayer"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSenderDocumentFieldSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+                /** @description The envelope document id (UUID). */
+                documentId: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK (possibly an empty list). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFieldSuggestions"];
                 };
             };
             401: components["responses"]["SenderUnauthorized"];
@@ -10127,6 +10215,28 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    getSignSigningStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignSigningStats"];
+                };
+            };
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
         };

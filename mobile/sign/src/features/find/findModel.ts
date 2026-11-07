@@ -33,6 +33,9 @@ export interface FindMatch {
   /** 0-based page index. */
   readonly page: number;
   readonly rects: readonly NormRect[];
+  /** M-A14 — the first matched word on the page, and how many words matched. */
+  readonly word?: number;
+  readonly count?: number;
 }
 
 function fold(s: string): string {
@@ -65,6 +68,8 @@ export function findMatches(
             docKey: d.docKey,
             page: p.page - 1,
             rects: p.words.slice(i, i + terms.length).map(({ x, y, w, h }) => ({ x, y, w, h })),
+            word: i,
+            count: terms.length,
           });
         }
       }
@@ -96,6 +101,47 @@ export function findStatus(input: {
   if (input.query.trim().length < MIN_QUERY) return FIND_COPY.tooShort;
   if (input.matches.length === 0) return FIND_COPY.none;
   return `${input.index + 1} of ${input.matches.length}`;
+}
+
+/**
+ * M-A14 "Find in Document" sheet (a10): "Type at least 2 letters", "No matches" or
+ * "N matches · highlighted on the page" (no current-match counter; matches are listed).
+ */
+export function findListStatus(input: {
+  readonly query: string;
+  readonly matches: readonly FindMatch[];
+  readonly searchable: boolean;
+}): string {
+  if (!input.searchable) return FIND_COPY.noText;
+  if (input.query.trim().length < MIN_QUERY) return FIND_COPY.tooShort;
+  const n = input.matches.length;
+  if (n === 0) return FIND_COPY.none;
+  return `${n} ${n === 1 ? 'match' : 'matches'} · highlighted on the page`;
+}
+
+export interface MatchSnippet {
+  readonly pre: string;
+  readonly hit: string;
+  readonly post: string;
+}
+
+const SNIPPET_BEFORE = 26;
+const SNIPPET_AFTER = 38;
+
+/** The words around a match on its page: up to 26 characters before and 38 after. */
+export function matchSnippet(
+  words: readonly { readonly t: string }[],
+  word: number,
+  count: number,
+): MatchSnippet {
+  const before = words.slice(0, word).map((w) => w.t).join(' ');
+  const hit = words.slice(word, word + count).map((w) => w.t).join(' ');
+  const after = words.slice(word + count).map((w) => w.t).join(' ');
+  const preText = before ? `${before} ` : '';
+  const postText = after ? ` ${after}` : '';
+  const pre = preText.length > SNIPPET_BEFORE ? `…${preText.slice(-SNIPPET_BEFORE)}` : preText;
+  const post = postText.length > SNIPPET_AFTER ? `${postText.slice(0, SNIPPET_AFTER)}…` : postText;
+  return { pre, hit, post };
 }
 
 /** The next index (wraps), `dir` +1 or -1. */

@@ -12,6 +12,7 @@ import { allowanceModel } from '../features/inbox/allowance';
 import { useBillingAccount, useSenderContext } from '../features/inbox/queries';
 import { ShellIcon } from '../features/shell/icons';
 import { PLUS_SIZE, PlusMenu } from '../features/shell/PlusMenu';
+import { SelfSignEntrySheet } from '../features/selfSign/SelfSignEntrySheet';
 import { plusActions } from '../features/shell/shellModel';
 import { useTheme } from '../theme';
 import type { MainTabParamList } from './types';
@@ -40,6 +41,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottom = barBottom(insets.bottom);
   const [plusOpen, setPlusOpen] = useState(false);
+  // M-A14 §1 item 1 — Sign Document opens the Add Documents sheet over Home.
+  const [addDocsOpen, setAddDocsOpen] = useState(false);
   const ctx = useSenderContext();
   const billing = useBillingAccount();
   const canSend = ctx.data?.can_send === true;
@@ -123,11 +126,13 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
         onClose={() => setPlusOpen(false)}
         onPick={(intent) => {
           setPlusOpen(false);
-          // M-A12 W1-A — "Sign a document" is its own flow (no Recipients step).
-          if (intent === 'self') navigation.navigate('SelfSign');
+          // M-A12 W1-A — Sign Document is its own flow (no Recipients step); M-A14 starts
+          // it on the Add Documents sheet over Home.
+          if (intent === 'self') setAddDocsOpen(true);
           else navigation.navigate('SendFlow', { intent });
         }}
       />
+      <SelfSignEntrySheet visible={addDocsOpen} onClose={() => setAddDocsOpen(false)} />
     </View>
   );
 }

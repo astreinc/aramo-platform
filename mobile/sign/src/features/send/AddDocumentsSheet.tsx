@@ -7,11 +7,17 @@
 // Not built (M-A4 §5.4): Email-in, Google Drive, OneDrive, Box, Dropbox and AI tiles.
 // They are not rendered in any build.
 //
+// M-A14 §1 item 2: `AddDocumentsSourceSheet` is the "Sign Document" presentation of the
+// same sources (a03 / a07): a white bottom sheet with "Add Documents", ⓘ (what each
+// source does) and ✕, and outlined circles on a 3-column grid. It only presents; the
+// caller runs the source. The Send flow keeps `AddDocumentsSheet` below unchanged.
+//
 // Every source adds its document through the Send flow controller, exactly as step 1
 // did before. Templates are picked inside this sheet (rows, then the sender-variable
 // form) and become this flow's draft through the existing from-template route.
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { useServices } from '../../app/ServicesContext';
@@ -102,6 +108,172 @@ export async function addFromSource(
     ...(r.pages ? { pages: r.pages } : {}),
   });
   return { added: !controller.snapshot.error, refusal: null };
+}
+
+// ── M-A14 "Sign Document" presentation (a03, a07) ───────────────────────────
+
+const INK = '#0D1B4C';
+const SECONDARY = '#4A5578';
+
+/** The prototype's source glyphs (24-unit paths, 1.8 stroke). */
+const SELF_SOURCE_ICONS: Record<AddSourceKey, string> = {
+  scan: 'M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 9h8v6H8zM6 12h12',
+  photos: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3',
+  templates: 'M4 4h16v16H4zM4 9h16M10 9v11',
+  files: 'M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z',
+};
+
+const ICON_PATHS = {
+  info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-5M12 8h.01',
+  close: 'M18 6 6 18M6 6l12 12',
+} as const;
+
+function Glyph({ d, size, color, width = 1.8 }: { d: string; size: number; color: string; width?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
+      <Path d={d} />
+    </Svg>
+  );
+}
+
+export function AddDocumentsSourceSheet({
+  visible,
+  tiles,
+  onPick,
+  onClose,
+  busy = false,
+  error = null,
+  filesNote,
+  upgradeKeys = [],
+  children,
+}: {
+  readonly visible: boolean;
+  readonly tiles: readonly AddSourceTile[];
+  readonly onPick: (key: AddSourceKey) => void;
+  readonly onClose: () => void;
+  /** A source is running. */
+  readonly busy?: boolean;
+  readonly error?: string | null;
+  /** What Files accepts (PDF, or PDF and Word while the server converts). */
+  readonly filesNote?: string;
+  /** Tiles the plan doesn't include: shown with an "Upgrade" tag (they open Plans). */
+  readonly upgradeKeys?: readonly AddSourceKey[];
+  /** Rendered inside the sheet's modal (e.g. the photo edit step). */
+  readonly children?: ReactNode;
+}) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const ios = Platform.OS === 'ios';
+  const [info, setInfo] = useState(false);
+  const close = () => {
+    setInfo(false);
+    onClose();
+  };
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={close} statusBarTranslucent navigationBarTranslucent>
+      <View style={styles.sheetRoot}>
+        <Pressable
+          testID="add-docs-scrim"
+          onPress={close}
+          accessible={false}
+          importantForAccessibility="no"
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(40,40,48,0.32)' }]}
+        />
+        <View
+          accessibilityViewIsModal
+          onAccessibilityEscape={close}
+          testID="add-docs-sheet"
+          style={[
+            styles.sheet,
+            {
+              borderTopLeftRadius: ios ? 40 : 28,
+              borderTopRightRadius: ios ? 40 : 28,
+              paddingBottom: Math.max(insets.bottom, ios ? 0 : 12) + (ios ? 24 : 24),
+            },
+          ]}
+        >
+          <View style={styles.sheetHead}>
+            <View style={styles.sheetSide} />
+            <View style={styles.sheetTitleRow}>
+              <Text accessibilityRole="header" style={[styles.sheetTitle, { fontFamily: t.font.family }]}>
+                Add Documents
+              </Text>
+              <Pressable
+                testID="add-docs-info"
+                onPress={() => setInfo((i) => !i)}
+                accessibilityRole="button"
+                accessibilityLabel="About these sources"
+                hitSlop={12}
+              >
+                <Glyph d={ICON_PATHS.info} size={20} color={SECONDARY} width={2} />
+              </Pressable>
+            </View>
+            <View style={[styles.sheetSide, { alignItems: 'flex-end' }]}>
+              <Pressable
+                testID="add-docs-close"
+                onPress={close}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={styles.sheetClose}
+              >
+                <Glyph d={ICON_PATHS.close} size={20} color={INK} width={2.2} />
+              </Pressable>
+            </View>
+          </View>
+          {info ? (
+            <View testID="add-docs-info-body" style={styles.info}>
+              {tiles.map((tile) => (
+                <Text key={tile.key} style={[styles.infoLine, { fontFamily: t.font.family }]}>
+                  <Text style={{ fontWeight: '600' }}>{tile.label}</Text>
+                  {` · ${tile.key === 'files' && filesNote ? filesNote : tile.hint}`}
+                </Text>
+              ))}
+              <Button title="Got it" variant="text" onPress={() => setInfo(false)} />
+            </View>
+          ) : (
+            <View style={styles.selfGrid}>
+              {tiles.map((tile) => (
+                <Pressable
+                  key={tile.key}
+                  testID={`self-source-${tile.key}`}
+                  onPress={() => onPick(tile.key)}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel={upgradeKeys.includes(tile.key) ? `${tile.label}, available with upgrade` : tile.label}
+                  accessibilityHint={
+                    upgradeKeys.includes(tile.key)
+                      ? 'Available on paid plans. Opens Plans.'
+                      : tile.key === 'files' && filesNote
+                        ? filesNote
+                        : tile.hint
+                  }
+                  accessibilityState={{ disabled: busy }}
+                  style={[styles.selfTile, { opacity: busy ? 0.42 : 1 }]}
+                >
+                  <View style={styles.selfCircle}>
+                    <Glyph d={SELF_SOURCE_ICONS[tile.key]} size={28} color={INK} />
+                    {upgradeKeys.includes(tile.key) ? (
+                      <View testID={`upgrade-tag-${tile.key}`} style={styles.upgradeTag}>
+                        <Text style={[styles.upgradeText, { fontFamily: t.font.family }]}>Upgrade</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.selfLabel, { fontFamily: t.font.family }]}>{tile.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {busy ? <ActivityIndicator color={t.color.accent} accessibilityLabel="Adding the document" style={{ marginTop: 16 }} /> : null}
+          {error ? (
+            <Text accessibilityRole="alert" style={[styles.selfError, { color: t.color.destructive, fontFamily: t.font.family }]}>
+              {error}
+            </Text>
+          ) : null}
+        </View>
+        {children}
+      </View>
+    </Modal>
+  );
 }
 
 const RUN: Record<Exclude<AddSourceKey, 'templates'>, () => Promise<SourceResult>> = {
@@ -284,4 +456,20 @@ const styles = StyleSheet.create({
   tile: { width: '33.33%', alignItems: 'center', gap: 7, minHeight: 48 },
   circle: { width: 70, height: 70, borderRadius: 35, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   caption: { fontSize: 12.5, lineHeight: 18, textAlign: 'center' },
+  sheetRoot: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#FFFFFF', paddingTop: 28 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 26 },
+  sheetSide: { width: 52 },
+  sheetTitleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  sheetTitle: { fontSize: 23, fontWeight: '700', color: INK },
+  sheetClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ECECF1', alignItems: 'center', justifyContent: 'center' },
+  selfGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignSelf: 'center', width: 300, rowGap: 20 },
+  selfTile: { width: 100, alignItems: 'center', gap: 8 },
+  selfCircle: { width: 74, height: 74, borderRadius: 37, borderWidth: 1.5, borderColor: INK, alignItems: 'center', justifyContent: 'center' },
+  selfLabel: { fontSize: 15, fontWeight: '500', color: INK, textAlign: 'center' },
+  upgradeTag: { position: 'absolute', top: -8, right: -14, backgroundColor: INK, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  upgradeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  selfError: { fontSize: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 14 },
+  info: { paddingHorizontal: 24, gap: 10 },
+  infoLine: { fontSize: 15, lineHeight: 21, color: INK },
 });

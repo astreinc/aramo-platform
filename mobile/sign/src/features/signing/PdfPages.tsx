@@ -119,8 +119,11 @@ function PdfPage({
       onLayout={(e) => onLayoutY?.(e.nativeEvent.layout.y)}
       style={[styles.page, { width, height, backgroundColor: t.color.white }]}
     >
+      {/* The native PDF view would swallow pans on iOS and pin the page list: touches
+          pass through to the scroll view (as in the editor's PdfPageView). */}
       <View
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
         accessible
         accessibilityRole="image"
         accessibilityLabel={`${title}, page ${index + 1}`}

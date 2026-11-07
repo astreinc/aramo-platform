@@ -218,7 +218,8 @@ export function RootNavigator() {
             <Stack.Screen
               name="SelfSign"
               component={SelfSignScreen}
-              options={{ title: 'Sign a document', headerBackTitle: 'Home' }}
+              // M-A14 — Sign Document draws its own headers (a06, a08).
+              options={{ title: 'Sign Document', headerShown: false }}
             />
             <Stack.Screen name="Tasks" component={TasksScreen} options={{ title: 'Tasks', headerBackTitle: 'Home' }} />
             <Stack.Screen name="Plans" component={PlansScreen} options={{ title: 'Plans', headerBackTitle: 'Back' }} />

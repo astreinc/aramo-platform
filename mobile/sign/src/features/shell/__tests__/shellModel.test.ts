@@ -92,15 +92,15 @@ describe('plusActions', () => {
   it('offers only Request signatures while self-signing is not shipped', () => {
     const a = plusActions({ canSend: true, allowance: null, selfSign: false });
     expect(a).toEqual([
-      { intent: 'request', label: 'Request signatures', disabled: false, reason: null },
+      { intent: 'request', label: 'Request Signatures', disabled: false, reason: null },
     ]);
   });
 
   it('adds Sign a document when FEATURES.selfSign is on', () => {
     const a = plusActions({ canSend: true, allowance: null, selfSign: true });
     expect(a.map((x) => [x.intent, x.label])).toEqual([
-      ['request', 'Request signatures'],
-      ['self', 'Sign a document'],
+      ['request', 'Request Signatures'],
+      ['self', 'Sign Document'],
     ]);
   });
 
@@ -135,7 +135,7 @@ describe('plusActions', () => {
       expect(a.find((x) => x.intent === 'request')?.disabled).toBe(true);
       expect(a.find((x) => x.intent === 'self')).toEqual({
         intent: 'self',
-        label: 'Sign a document',
+        label: 'Sign Document',
         disabled: false,
         reason: null,
       });

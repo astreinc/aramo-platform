@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   Patch,
   Post,
@@ -23,6 +24,7 @@ import type { Request, Response } from 'express';
 
 import { clientIp } from '../personal/personal-send.gate.js';
 import { DocumentTextLayerService } from '../text-layer/document-text-layer.service.js';
+import { FieldSuggestionsService } from '../text-layer/field-suggestions.service.js';
 
 import { envelopeEtag, idempotencyKey, senderHttp } from './envelope-contracts.js';
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
@@ -48,6 +50,8 @@ export class EsignSenderController {
     private readonly ctx: SenderContextService,
     private readonly envelopes: SenderEnvelopeService,
     private readonly textLayer: DocumentTextLayerService,
+    // Aramo Sign Mobile M-A14 R-3 — "Auto suggest fields" (deterministic; no model).
+    @Optional() private readonly suggestions?: FieldSuggestionsService,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -224,6 +228,21 @@ export class EsignSenderController {
     return this.run(requestId, async () => {
       const v = await this.envelopes.documentVersion(auth, id, documentId, requestId);
       return this.textLayer.forDocument(documentId, v.version, v.load);
+    });
+  }
+
+  // Aramo Sign Mobile M-A14 R-3 / §2 — "Auto suggest fields": SIGNATURE / SIGN_DATE boxes next
+  // to the document's signature and date labels, found deterministically in the text layer
+  // above (no model; nothing leaves the platform). Same scope and visibility as the text-layer
+  // route (404 otherwise); in the PUT fields frame (page_number 0-based, points, origin
+  // bottom-left); at most 6; any failure after the visibility check is an empty list.
+  @Get('envelopes/:id/documents/:documentId/field-suggestions')
+  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  fieldSuggestionsOf(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('documentId') documentId: string) {
+    return this.run(requestId, async () => {
+      const v = await this.envelopes.documentVersion(auth, id, documentId, requestId);
+      if (this.suggestions === undefined) return { suggestions: [] };
+      return this.suggestions.suggest(documentId, v.version, v.load);
     });
   }
 

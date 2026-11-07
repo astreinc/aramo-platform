@@ -5,7 +5,8 @@
 // Screen readers get the field label and the selection panel's move/resize controls
 // (handoff §7) instead of gestures.
 import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { useTheme } from '../../theme';
 import type { EditorAction, EditorField } from './editorReducer';
@@ -43,7 +44,36 @@ export interface FieldBoxProps {
   readonly onGesture?: (active: boolean) => void;
   /** The value to show instead of the type label (self-sign). */
   readonly fill?: FieldFill | null;
+  /**
+   * M-A14 — 'self' is the Sign Document look (a09, b02): no signer colour; Date, Name,
+   * First Name, Company, Title and Text (and Last Name, Email) on the yellow fill; a
+   * selected field shows grey corner handles (the bottom-right one resizes) and a red ✕.
+   */
+  readonly look?: 'send' | 'self';
 }
+
+/** M-A14 — the text-like types drawn on the yellow fill in Sign Document. */
+export const YELLOW_FILL_TYPES: ReadonlySet<string> = new Set([
+  'SIGN_DATE',
+  'SIGNER_NAME',
+  'TEXT',
+  'FIRST_NAME',
+  'LAST_NAME',
+  'EMAIL',
+  'COMPANY',
+  'TITLE',
+]);
+export const SELF_FIELD_COLORS = {
+  yellow: '#FFF59D',
+  yellowBorder: '#CFC68A',
+  handle: '#9A9EA8',
+  remove: '#D0021B',
+  checkbox: '#6B7280',
+  text: '#1B2730',
+  ink: '#0D1B4C',
+} as const;
+const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: undefined });
+const DOT = 10;
 
 export function FieldBox({
   field,
@@ -55,6 +85,7 @@ export function FieldBox({
   dispatch,
   onGesture,
   fill,
+  look = 'send',
 }: FieldBoxProps) {
   const t = useTheme();
   const [gestures] = useState(() => createFieldGestures(dispatch, onGesture));
@@ -65,6 +96,93 @@ export function FieldBox({
   const box = editorToScreenBox(field, scale);
 
   const spec = FIELD_TYPE_SPECS[field.type];
+  if (look === 'self') {
+    const C = SELF_FIELD_COLORS;
+    const yellow = YELLOW_FILL_TYPES.has(field.type);
+    const border = selected
+      ? { borderWidth: 1, borderColor: C.handle }
+      : yellow
+        ? { borderWidth: 1, borderColor: C.yellowBorder }
+        : field.type === 'CHECKBOX'
+          ? { borderWidth: 1.5, borderColor: C.checkbox }
+          : { borderWidth: 1, borderColor: 'transparent' };
+    const centred = field.type === 'CHECKBOX' || field.type === 'INITIALS' || field.type === 'SIGNATURE';
+    return (
+      <View
+        {...gestures.move.panHandlers}
+        testID={`field-${field.key}`}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ selected }}
+        accessibilityHint={selected ? undefined : 'Selects the field'}
+        accessibilityActions={[{ name: 'delete', label: 'Remove field' }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === 'delete') dispatch({ type: 'delete', key: field.key });
+        }}
+        onAccessibilityTap={() => dispatch({ type: 'select', key: field.key })}
+        style={[
+          styles.selfBox,
+          border,
+          {
+            left: box.x,
+            top: box.y,
+            width: box.width,
+            height: box.height,
+            backgroundColor: yellow ? C.yellow : 'transparent',
+            alignItems: centred ? 'center' : 'flex-start',
+          },
+        ]}
+      >
+        {fill?.kind === 'image' ? (
+          <Image
+            testID={`field-fill-${field.key}`}
+            source={{ uri: fill.uri }}
+            style={styles.fillImage}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        ) : fill?.kind === 'text' && fill.text ? (
+          <Text
+            testID={`field-fill-${field.key}`}
+            numberOfLines={1}
+            style={{ color: C.text, fontFamily: MONO, fontSize: Math.max(8, 11.5 * scale) }}
+          >
+            {fill.text}
+          </Text>
+        ) : field.type === 'CHECKBOX' ? null : (
+          <Text numberOfLines={1} style={[styles.selfLabel, { fontFamily: t.font.family }]} maxFontSizeMultiplier={1.4}>
+            {spec.label}
+          </Text>
+        )}
+        {selected ? (
+          <>
+            <View pointerEvents="none" style={[styles.dot, { left: -DOT / 2, top: -DOT / 2 }]} />
+            <View pointerEvents="none" style={[styles.dot, { left: -DOT / 2, bottom: -DOT / 2 }]} />
+            <View
+              {...gestures.resize.panHandlers}
+              accessible={false}
+              importantForAccessibility="no"
+              hitSlop={14}
+              style={[styles.dot, { right: -DOT / 2, bottom: -DOT / 2 }]}
+            />
+            <Pressable
+              testID="field-remove"
+              onPress={() => dispatch({ type: 'delete', key: field.key })}
+              accessibilityRole="button"
+              accessibilityLabel="Remove field"
+              hitSlop={10}
+              style={styles.remove}
+            >
+              <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round">
+                <Path d="M18 6 6 18M6 6l12 12" />
+              </Svg>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View
       {...gestures.move.panHandlers}
@@ -134,6 +252,26 @@ const styles = StyleSheet.create({
   box: { position: 'absolute', borderRadius: 3, justifyContent: 'center', paddingHorizontal: 4 },
   label: { fontSize: 11, fontWeight: '600' },
   fillImage: { width: '100%', height: '100%' },
+  selfBox: { position: 'absolute', justifyContent: 'center', paddingHorizontal: 4 },
+  selfLabel: { fontSize: 11, fontWeight: '600', color: SELF_FIELD_COLORS.ink },
+  dot: {
+    position: 'absolute',
+    width: DOT,
+    height: DOT,
+    borderRadius: DOT / 2,
+    backgroundColor: SELF_FIELD_COLORS.handle,
+  },
+  remove: {
+    position: 'absolute',
+    right: -12,
+    top: -12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: SELF_FIELD_COLORS.remove,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   handle: {
     position: 'absolute',
     right: -HANDLE / 2,

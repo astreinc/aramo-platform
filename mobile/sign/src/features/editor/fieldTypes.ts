@@ -127,3 +127,40 @@ export type FieldSizeKey = keyof typeof FIELD_SIZE_SCALE;
 export function sizeScale(size: string | null | undefined): number {
   return size === 'S' || size === 'M' || size === 'L' ? FIELD_SIZE_SCALE[size] : 1;
 }
+
+/**
+ * M-A14 R-6 — the Sign Document tool row: one horizontally scrolling row of circles in the
+ * prototype's order (Signature, Initials, Date, Textbox, Name, First Name, Company, Title,
+ * Checkbox), then Last Name and Email, which the backend supports (D-5). Replaces "More
+ * fields" in self-sign only; the Send flow editor is unchanged. Types this build does not
+ * author (FEATURES) are left out.
+ */
+export const SELF_SIGN_TOOLS: readonly {
+  readonly type: AuthoringFieldType;
+  readonly label: string;
+  /** 24-unit stroke path. */
+  readonly icon: string;
+}[] = [
+  { type: 'SIGNATURE', label: 'Signature', icon: 'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4M3 22h18' },
+  { type: 'INITIALS', label: 'Initials', icon: 'M3 17 7 6l4 11M4.5 13h5M14 6h7l-7 11h7M3 21h18' },
+  { type: 'SIGN_DATE', label: 'Date', icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h2M12 14h2M16 14h0' },
+  { type: 'TEXT', label: 'Textbox', icon: 'M5 5h14M12 5v15' },
+  { type: 'SIGNER_NAME', label: 'Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
+  { type: 'FIRST_NAME', label: 'First Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M17 4h4' },
+  {
+    type: 'COMPANY',
+    label: 'Company',
+    icon: 'M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M14 10h5a1 1 0 0 1 1 1v10M2 21h20M8 9h2M8 13h2',
+  },
+  { type: 'TITLE', label: 'Title', icon: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16' },
+  { type: 'CHECKBOX', label: 'Checkbox', icon: 'M5 5h14v14H5zM8.5 12l2.5 2.5 4.5-5' },
+  { type: 'LAST_NAME', label: 'Last Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M3 4h4' },
+  { type: 'EMAIL', label: 'Email', icon: 'M3 6h18v12H3zM3 7l9 6 9-6' },
+];
+
+/** The self-sign tool row for this build (R-6 order). */
+export function selfSignTools(
+  available: readonly AuthoringFieldType[] = toolFieldTypes(),
+): typeof SELF_SIGN_TOOLS {
+  return SELF_SIGN_TOOLS.filter((x) => available.includes(x.type));
+}
