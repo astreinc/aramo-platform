@@ -20,6 +20,7 @@ import { IdentityRepository } from '@aramo/identity';
 import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPurgeService } from '../retention/sign-purge.service.js';
+import { recipientSenderLabel } from '../sender-label.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — "Waiting for
@@ -125,7 +126,8 @@ export class RecipientInboxService {
   }
 
   private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id) {
-    const org = await this.identity.findTenantNameById(r.envelope_tenant_id).catch(() => null);
+    // M-A13 R-3 — a PERSONAL sender is shown by their own name, never the stored tenant handle.
+    const from = await recipientSenderLabel(this.identity, r.envelope_tenant_id, r.envelope.created_by ?? null);
     const signable = SIGNABLE.has(r.envelope.status) && PENDING_SIGNER.has(r.signer.status) && (r.envelope.expires_at === null || r.envelope.expires_at.getTime() > Date.now());
     const purge = purgeViewOf(r.envelope);
     const upcoming = signable && r.turn === 'later';
@@ -138,7 +140,7 @@ export class RecipientInboxService {
       // W2 (orchestrator addition) — the signed-in user sent this envelope (a boolean only).
       i_am_sender: r.envelope.created_by === user_id,
       subject: r.envelope.subject,
-      from: org?.display_name ?? org?.name ?? null,
+      from,
       envelope_status: r.envelope.status,
       my_status: upcoming ? 'upcoming' : r.signer.status,
       sent_at: r.envelope.sent_at?.toISOString() ?? null,

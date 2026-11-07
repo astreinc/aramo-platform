@@ -6,6 +6,7 @@
 import { QueryClient, onlineManager, type Query } from '@tanstack/react-query';
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 import * as Network from 'expo-network';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { ApiError } from '../api/errors';
 import type { EncryptedStore } from './encryptedStore';
@@ -53,12 +54,63 @@ export function createEncryptedPersister(store: EncryptedStore): Persister {
   };
 }
 
-/** Feed connectivity into TanStack's online manager (offline => paused, cached data shown). */
-export function wireOnlineManager(): void {
+/** Connected and not known to be cut off from the internet. */
+export function isReachable(s: Network.NetworkState): boolean {
+  return s.isConnected !== false && s.isInternetReachable !== false;
+}
+
+/**
+ * M-A13 #4 — re-read the network state instead of waiting for a listener event (one can
+ * be missed while the app is in the background). Online => resume paused mutations and
+ * paused fetches, and refetch the active queries. Returns the online state it settled on.
+ */
+export async function recheckOnline(
+  qc: QueryClient,
+  read: () => Promise<Network.NetworkState> = Network.getNetworkStateAsync,
+): Promise<boolean> {
+  let online: boolean;
+  try {
+    online = isReachable(await read());
+  } catch {
+    return onlineManager.isOnline();
+  }
+  onlineManager.setOnline(online);
+  if (online) {
+    await Promise.allSettled([
+      qc.resumePausedMutations(),
+      // cancelRefetch: false joins (and un-pauses) a fetch already in flight.
+      qc.refetchQueries({ type: 'active' }, { cancelRefetch: false }),
+    ]);
+  }
+  return online;
+}
+
+/** M-A13 #4 — any answer from the server proves the app is online. */
+export function noteServerResponse(): void {
+  if (!onlineManager.isOnline()) onlineManager.setOnline(true);
+}
+
+interface AppStateSource {
+  addEventListener(
+    type: 'change',
+    listener: (state: AppStateStatus) => void,
+  ): { remove(): void };
+}
+
+/**
+ * Feed connectivity into TanStack's online manager (offline => paused, cached data shown).
+ * M-A13 #4: also re-check on every return to the foreground.
+ */
+export function wireOnlineManager(
+  qc: QueryClient,
+  appState: AppStateSource = AppState,
+): () => void {
   onlineManager.setEventListener((setOnline) => {
-    const sub = Network.addNetworkStateListener((s) =>
-      setOnline(s.isConnected !== false && s.isInternetReachable !== false),
-    );
+    const sub = Network.addNetworkStateListener((s) => setOnline(isReachable(s)));
     return () => sub.remove();
   });
+  const sub = appState.addEventListener('change', (next) => {
+    if (next === 'active') void recheckOnline(qc);
+  });
+  return () => sub.remove();
 }

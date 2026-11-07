@@ -706,7 +706,7 @@ export interface paths {
         put?: never;
         /**
          * Upload a PDF to a DRAFT envelope (E-Sign-owned source).
-         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write.
+         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write. M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed. With the capability off a Word file keeps the 400 unsupported_file_type refusal.
          */
         post: operations["uploadSenderDocument"];
         delete?: never;
@@ -4091,6 +4091,8 @@ export interface components {
             template_studio?: boolean;
             /** @description TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" is offered (the person holds document_template:manage and the plan includes templates). */
             template_use_as_is?: boolean;
+            /** @description Aramo-Sign-Mobile-Amendment-M-A13 R-4 — the sender document upload accepts Word files (.docx, .doc), converted to PDF on the server. False unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured; the apps offer Word files only when true. */
+            word_conversion_enabled?: boolean;
         };
         /** @description TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign). */
         SenderTemplateGallery: {
@@ -5188,6 +5190,15 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
+        /** @description 413 — details.reason word_too_large; the Word file is over 20 MB. */
+        WordTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description 429 ESIGN_REMINDER_NOT_ALLOWED — details.reason reminder_cooldown (under 60 minutes since this signer was reminded) or reminder_daily_limit (5 reminders on this envelope in the rolling 24 hours); details.retry_after_seconds and details.retry_at (ISO 8601) tell when to try again. */
         ReminderLimited: {
             headers: {
@@ -5285,7 +5296,7 @@ export interface components {
         /** @description The envelope document id (UUID). */
         DocumentId: string;
         /** @description Status tab. */
-        SenderTab: "all" | "drafts" | "waiting" | "completed" | "declined" | "voided" | "expired";
+        SenderTab: "all" | "drafts" | "waiting" | "completed" | "declined" | "voided" | "expired" | "follow_up";
         /** @description Free text matched against subject and recipient name or email. */
         SenderQuery: string;
         /** @description Only envelopes created within this many days. */
@@ -6776,7 +6787,16 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             412: components["responses"]["RevisionMismatch"];
-            422: components["responses"]["IdempotencyKeyReuse"];
+            413: components["responses"]["WordTooLarge"];
+            /** @description 422 — details.reason idempotency_key_reuse (the Idempotency-Key was used with a different request), or (M-A13 R-4) word_password_protected / word_conversion_failed (the Word file could not be converted to PDF). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             428: components["responses"]["PreconditionRequired"];
         };
     };

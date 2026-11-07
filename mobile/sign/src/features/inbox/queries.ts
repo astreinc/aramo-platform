@@ -1,11 +1,12 @@
 // Server reads for Agreements, envelope detail and the received view. List and detail
 // queries persist (encrypted) for offline reads (directive §9); signing data never does.
-import { onlineManager, useQuery, type QueryClient } from '@tanstack/react-query';
-import { useSyncExternalStore } from 'react';
+import { onlineManager, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useCallback, useSyncExternalStore } from 'react';
 
 import { isApiError } from '../../api/errors';
 import type { WorkspaceClient } from '../../api/workspaceClient';
 import { useServices } from '../../app/ServicesContext';
+import { recheckOnline } from '../../state/queryClient';
 import type {
   BillingAccount,
   InboxList,
@@ -144,6 +145,12 @@ export function useOnline(): boolean {
     () => onlineManager.isOnline(),
     () => true,
   );
+}
+
+/** M-A13 #4 — every pull-to-refresh re-reads the network state (and resumes when online). */
+export function useRecheckOnline(): () => Promise<boolean> {
+  const qc = useQueryClient();
+  return useCallback(() => recheckOnline(qc), [qc]);
 }
 
 export const OFFLINE_ACTION_REASON = 'You’re offline. Connect to do this.';

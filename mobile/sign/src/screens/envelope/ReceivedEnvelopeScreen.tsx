@@ -36,7 +36,7 @@ import {
   hasBindingActions,
   signedCopyToken,
 } from '../../features/inbox/inboxSigning';
-import { OFFLINE_ACTION_REASON, signKeys, useInbox, useOnline } from '../../features/inbox/queries';
+import { OFFLINE_ACTION_REASON, signKeys, useInbox, useOnline, useRecheckOnline } from '../../features/inbox/queries';
 import type { InboxItem } from '../../features/inbox/types';
 import { EmptyState } from '../../features/inbox/ui';
 import { stashGuestToken } from '../../links/guestTokenVault';
@@ -182,6 +182,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const qc = useQueryClient();
   const { workspace } = useServices();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const inbox = useInbox();
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -256,7 +257,9 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
           refreshing={refreshing}
           onRefresh={() => {
             setRefreshing(true);
-            void inbox.refetch().finally(() => setRefreshing(false));
+            void Promise.allSettled([recheckOnline(), inbox.refetch()]).then(() =>
+              setRefreshing(false),
+            );
           }}
           tintColor={t.color.accent}
         />

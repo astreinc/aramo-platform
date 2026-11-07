@@ -42,7 +42,7 @@ const field = (key: string, type: EditorField['type'], over: Partial<EditorField
   required: true,
   ...over,
 });
-const MARK = { dataUrl: 'data:image/png;base64,AAA', method: 'TYPED' as const };
+const MARK = { dataUrl: 'data:image/png;base64,AAA', method: 'TYPED' as const, value: 'Priya Raman' };
 const ctx = (over: Partial<SelfContext> = {}): SelfContext => ({
   profile: { display_name: 'Priya Raman', company: 'Northwind', title: 'Recruiter' },
   email: 'priya@example.com',
@@ -101,7 +101,8 @@ describe('W1-A values', () => {
 
   it('sends ISO dates, the adopted mark, check states; never a server-filled name', () => {
     expect(fillValue(field('d', 'SIGN_DATE'), ctx(), {})).toEqual({ value: '2026-11-05' });
-    expect(fillValue(field('s', 'SIGNATURE'), ctx(), {})).toEqual({ value: MARK.dataUrl, method: 'TYPED' });
+    // M-A13 #1 — a TYPED mark sends its text; the page still shows the script PNG.
+    expect(fillValue(field('s', 'SIGNATURE'), ctx(), {})).toEqual({ value: 'Priya Raman', method: 'TYPED' });
     expect(fillValue(field('k', 'CHECKBOX'), ctx(), {})).toEqual({ value: 'true' });
     expect(fillValue(field('k', 'CHECKBOX'), ctx(), { k: 'false' })).toEqual({ value: 'false' });
     expect(fillValue(field('n', 'SIGNER_NAME'), ctx(), {})).toBeNull();

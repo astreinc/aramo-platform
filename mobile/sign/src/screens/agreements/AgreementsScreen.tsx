@@ -51,6 +51,7 @@ import {
   useInbox,
   useLocalDrafts,
   useOnline,
+  useRecheckOnline,
   useSenderContext,
   useSenderEnvelopes,
 } from '../../features/inbox/queries';
@@ -67,6 +68,7 @@ export function AgreementsScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<MainTabParamList, 'Agreements'>>();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const sent = useSenderEnvelopes();
   const inbox = useInbox();
   const billing = useBillingAccount();
@@ -119,6 +121,7 @@ export function AgreementsScreen() {
   async function refresh(): Promise<void> {
     setRefreshing(true);
     await Promise.allSettled([
+      recheckOnline(),
       sent.refetch(),
       inbox.refetch(),
       billing.refetch(),

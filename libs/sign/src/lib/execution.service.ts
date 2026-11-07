@@ -32,6 +32,8 @@ import {
   EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
   EXECUTED_DOCUMENT_RECORDED,
   EXECUTION_CERTIFICATE_RECORDED,
+  EXECUTED_DOCUMENT_REISSUED,
+  EXECUTION_CERTIFICATE_REISSUED,
   ExecutedArtifactIntegrityConflictError,
   type ExecutedArtifactKind,
   type ExecutedArtifactRecordedPayload,
@@ -40,6 +42,12 @@ import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from
 import { SIGN_BRANDING_PORT, type CertificateBranding, type SignBrandingPort } from './ports/sign-branding.port.js';
 import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
 import { DocumentSealService, type DocumentSealSummary } from './document-seal/document-seal.service.js';
+import {
+  ExecutedDocumentReissueRefusedError,
+  REISSUE_MARK_FIELD_TYPES,
+  type ReissueOutcome,
+  type ReissuedDocument,
+} from './executed-document-reissue.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -70,6 +78,68 @@ function parseImageDataUrl(value: string): { bytes: Uint8Array; format: 'PNG' | 
   return { bytes: new Uint8Array(Buffer.from(b64, 'base64')), format };
 }
 
+// M-A13 R-1a / R-2 — the placement of one filled, non-check-box field.
+//   - A SIGNATURE or INITIALS value that is a valid image data URL is drawn as an
+//     IMAGE whatever its signature_method: Android vc2/vc3 and older iOS builds send
+//     TYPED with an image value, and that must never print as text.
+//   - DRAWN / UPLOADED with a malformed image value is skipped (no typed fallback).
+//   - Any other SIGNATURE / INITIALS value is typed text, drawn in the script font.
+//   - Every other field is plain text.
+// Presentation only: the stored value and signature_method are never changed.
+export type PlacementField = {
+  id: string;
+  field_type: string;
+  signer_id: string | null;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number | null;
+  height: number | null;
+  value: string | null;
+  signature_method: string | null;
+};
+
+export function valuePlacement(
+  f: PlacementField,
+  stampFor: (signer_id: string | null) => { label: string; id: string },
+): PreparedField | null {
+  if (f.value === null) return null;
+  const isMark = f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS';
+  const declaredImage = f.signature_method === 'DRAWN' || f.signature_method === 'UPLOADED';
+  const parsed = isMark || declaredImage ? parseImageDataUrl(f.value) : null;
+  if (parsed !== null) {
+    return {
+      field_key: f.id,
+      page_number: f.page_number,
+      x: f.x,
+      y: f.y,
+      kind: 'IMAGE',
+      image_bytes: parsed.bytes,
+      image_format: parsed.format,
+      width: f.width ?? undefined,
+      height: f.height ?? undefined,
+      ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
+    };
+  }
+  if (declaredImage) return null; // malformed image value → skip (typed fallback not applied)
+  if (isMark) {
+    // PX-2 — typed signatures / initials render in the handwriting font, a
+    // signature inside the DocuSign-style "Signed by:" stamp.
+    return {
+      field_key: f.id,
+      page_number: f.page_number,
+      x: f.x,
+      y: f.y,
+      value: f.value,
+      font: 'SCRIPT',
+      ...(f.width !== null ? { width: f.width } : {}),
+      ...(f.height !== null ? { height: f.height } : {}),
+      ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
+    };
+  }
+  return { field_key: f.id, page_number: f.page_number, x: f.x, y: f.y, value: f.value };
+}
+
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2002';
 }
@@ -77,6 +147,8 @@ function isUniqueViolation(e: unknown): boolean {
 // SX-1 — the certificate is rendered and inserted under the envelope row lock, so
 // allow more than Prisma's 5 s interactive-transaction default.
 const ARTIFACT_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
+type EnvelopeFull = Awaited<ReturnType<EsignRepository['getEnvelopeFull']>>;
 
 type ArtifactTx = LockingTx & Pick<PrismaService, 'executedDocument' | 'executionCertificate'>;
 
@@ -243,22 +315,7 @@ export class ExecutionService implements ExecutionProducerPort {
     const results: ExecutedProductionResult[] = [];
     // Feature-Parity §1.15 — only documents executed by THIS produce are sealed.
     const inserted: string[] = [];
-    // PX-2 — each signer's Signature ID is the hash of their SIGNER_SIGNED entry
-    // in the append-only, hash-chained ledger. The stamp prints its first 15
-    // characters; the execution certificate prints it in full beside the signer,
-    // so a signature on the page can be matched to the certificate and ledger.
-    const signedEvents = await this.prisma.signatureEvent.findMany({
-      where: { tenant_id, envelope_id, event_type: 'SIGNER_SIGNED' },
-      select: { signer_id: true, event_hash: true },
-    });
-    const signatureIds = new Map<string, string>();
-    // The ledger stores the hash base64url-encoded; the Signature ID is the same
-    // bytes as uppercase hex (lossless, DocuSign-style).
-    for (const e of signedEvents) if (e.signer_id !== null) signatureIds.set(e.signer_id, Buffer.from(e.event_hash, 'base64url').toString('hex').toUpperCase());
-    const stampFor = (signer_id: string | null): { label: string; id: string } => {
-      const full = signer_id !== null ? signatureIds.get(signer_id) : undefined;
-      return { label: 'Signed by:', id: full !== undefined ? `${full.slice(0, 15)}...` : '' };
-    };
+    const { signatureIds, stampFor } = await this.signatureStamps(tenant_id, envelope_id);
 
     for (const doc of full.documents) {
       // SX-1 item 1 — an executed document is written once. A repeated produce for
@@ -272,74 +329,7 @@ export class ExecutionService implements ExecutionProducerPort {
         continue;
       }
 
-      const sourcePdf = await this.source.getSourcePdf({
-        tenant_id,
-        source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
-        document_ref: doc.document_ref,
-        document_revision_ref: doc.document_revision_ref,
-        source_object_key: doc.source_object_key,
-      });
-      const source_sha256 = sha256Hex(sourcePdf);
-
-      // M-A6 §1 — check boxes (CHECKBOX, ACKNOWLEDGEMENT) are drawn whether or not
-      // they were touched: an unchecked or never-checked box prints as an empty box.
-      const fields = await this.prisma.signatureField.findMany({
-        where: { tenant_id, envelope_document_id: doc.id, OR: [{ filled_at: { not: null } }, { field_type: { in: [...MARK_FIELD_TYPES] } }] },
-      });
-      const placements: PreparedField[] = [];
-      for (const f of fields) {
-        if (MARK_FIELD_TYPES.has(f.field_type)) {
-          // M-A6 §1 — a vector check box, never the stored value as text.
-          placements.push({
-            field_key: f.id,
-            page_number: f.page_number,
-            x: f.x,
-            y: f.y,
-            kind: 'MARK',
-            checked: f.filled_at !== null && f.value === 'true',
-            ...(f.width !== null ? { width: f.width } : {}),
-            ...(f.height !== null ? { height: f.height } : {}),
-          });
-          continue;
-        }
-        if (f.value === null) continue;
-        const isImage = f.signature_method === 'DRAWN' || f.signature_method === 'UPLOADED';
-        if (isImage) {
-          const parsed = parseImageDataUrl(f.value);
-          if (parsed === null) continue; // malformed image value → skip (typed fallback not applied)
-          placements.push({
-            field_key: f.id,
-            page_number: f.page_number,
-            x: f.x,
-            y: f.y,
-            kind: 'IMAGE',
-            image_bytes: parsed.bytes,
-            image_format: parsed.format,
-            width: f.width ?? undefined,
-            height: f.height ?? undefined,
-            ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
-          });
-        } else if (f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS') {
-          // PX-2 — typed signatures / initials render in the handwriting font, a
-          // signature inside the DocuSign-style "Signed by:" stamp. Presentation
-          // only: the stored value and the evidence are unchanged.
-          placements.push({
-            field_key: f.id,
-            page_number: f.page_number,
-            x: f.x,
-            y: f.y,
-            value: f.value,
-            font: 'SCRIPT',
-            ...(f.width !== null ? { width: f.width } : {}),
-            ...(f.height !== null ? { height: f.height } : {}),
-            ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
-          });
-        } else {
-          placements.push({ field_key: f.id, page_number: f.page_number, x: f.x, y: f.y, value: f.value });
-        }
-      }
-
-      const rendered = await this.rendering.prepareFromSource(sourcePdf, placements);
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor);
 
       const kept = await this.insertExecutedDocument(tenant_id, envelope_id, doc.id, {
         source_sha256,
@@ -374,6 +364,109 @@ export class ExecutionService implements ExecutionProducerPort {
     const seals = new Map<string, DocumentSealSummary>();
     for (const s of (await this.sealer?.sealProduced(tenant_id, envelope_id, inserted).catch(() => [])) ?? []) seals.set(s.envelope_document_id, s);
 
+    const blocksFor = await this.certificateBlocks(tenant_id, envelope_id, full, results, signatureIds, seals, timestamps);
+
+    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results, await this.certificateBranding(tenant_id));
+    if (!certificate.inserted) return results;
+
+    await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.byte_size);
+    // SX-2 item 7 — post-commit custody upload; never fails completion (reconcile retries).
+    await this.custody?.recordCompletion(tenant_id, envelope_id).catch(() => undefined);
+
+    // Completion notifications (best-effort; a delivery failure never corrupts the
+    // executed record — every attempt is recorded in NotificationDelivery).
+    if (this.notifications !== undefined) {
+      try {
+        await this.notifications.envelopeCompleted(tenant_id, envelope_id);
+      } catch {
+        // swallowed — delivery is retryable, not an envelope-corruption condition
+      }
+    }
+
+    return results;
+  }
+
+  // PX-2 — each signer's Signature ID (full, for the certificate) and the stamp label.
+  private async signatureStamps(tenant_id: string, envelope_id: string): Promise<{
+    signatureIds: Map<string, string>;
+    stampFor: (signer_id: string | null) => { label: string; id: string };
+  }> {
+    // PX-2 — each signer's Signature ID is the hash of their SIGNER_SIGNED entry
+    // in the append-only, hash-chained ledger. The stamp prints its first 15
+    // characters; the execution certificate prints it in full beside the signer,
+    // so a signature on the page can be matched to the certificate and ledger.
+    const signedEvents = await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: 'SIGNER_SIGNED' },
+      select: { signer_id: true, event_hash: true },
+    });
+    const signatureIds = new Map<string, string>();
+    // The ledger stores the hash base64url-encoded; the Signature ID is the same
+    // bytes as uppercase hex (lossless, DocuSign-style).
+    for (const e of signedEvents) if (e.signer_id !== null) signatureIds.set(e.signer_id, Buffer.from(e.event_hash, 'base64url').toString('hex').toUpperCase());
+    const stampFor = (signer_id: string | null): { label: string; id: string } => {
+      const full = signer_id !== null ? signatureIds.get(signer_id) : undefined;
+      return { label: 'Signed by:', id: full !== undefined ? `${full.slice(0, 15)}...` : '' };
+    };
+    return { signatureIds, stampFor };
+  }
+
+  // DOC-4 (R-4-3) — render one envelope document with its stored field values. Used by
+  // produce and (M-A13 R-1b) by the corrected reissue, so both render identically.
+  private async renderExecutedDocument(
+    tenant_id: string,
+    doc: EnvelopeFull['documents'][number],
+    stampFor: (signer_id: string | null) => { label: string; id: string },
+  ): Promise<{ source_sha256: string; rendered: { bytes: Uint8Array; sha256: string } }> {
+    const sourcePdf = await this.source.getSourcePdf({
+      tenant_id,
+      source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
+      document_ref: doc.document_ref,
+      document_revision_ref: doc.document_revision_ref,
+      source_object_key: doc.source_object_key,
+    });
+    const source_sha256 = sha256Hex(sourcePdf);
+
+    // M-A6 §1 — check boxes (CHECKBOX, ACKNOWLEDGEMENT) are drawn whether or not
+    // they were touched: an unchecked or never-checked box prints as an empty box.
+    const fields = await this.prisma.signatureField.findMany({
+      where: { tenant_id, envelope_document_id: doc.id, OR: [{ filled_at: { not: null } }, { field_type: { in: [...MARK_FIELD_TYPES] } }] },
+    });
+    const placements: PreparedField[] = [];
+    for (const f of fields) {
+      if (MARK_FIELD_TYPES.has(f.field_type)) {
+        // M-A6 §1 — a vector check box, never the stored value as text.
+        placements.push({
+          field_key: f.id,
+          page_number: f.page_number,
+          x: f.x,
+          y: f.y,
+          kind: 'MARK',
+          checked: f.filled_at !== null && f.value === 'true',
+          ...(f.width !== null ? { width: f.width } : {}),
+          ...(f.height !== null ? { height: f.height } : {}),
+        });
+        continue;
+      }
+      const placed = valuePlacement(f, stampFor);
+      if (placed !== null) placements.push(placed);
+    }
+
+    const rendered = await this.rendering.prepareFromSource(sourcePdf, placements);
+    return { source_sha256, rendered };
+  }
+
+  // DOC-4 (R-4-6) — the certificate's blocks (given the event-chain hash at render time).
+  // `extra` blocks (M-A13 R-1b correction notice) are appended at the end.
+  private async certificateBlocks(
+    tenant_id: string,
+    envelope_id: string,
+    full: EnvelopeFull,
+    results: ExecutedProductionResult[],
+    signatureIds: Map<string, string>,
+    seals: Map<string, DocumentSealSummary>,
+    timestamps: TrustedTimestampView[] | null,
+    extra: RenderBlock[] = [],
+  ): Promise<(chainHash: string) => RenderBlock[]> {
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
     // Feature-Parity §1.9 — when each recipient with an access code entered it (the ledger).
     const codeVerified = new Map<string, Date>();
@@ -392,7 +485,7 @@ export class ExecutionService implements ExecutionProducerPort {
     // Sign 1.14 — each signer's payment (status and Stripe reference) on the certificate.
     const payments = await this.prisma.signPayment.findMany({ where: { tenant_id, envelope_id }, orderBy: { created_at: 'asc' } });
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
-    const blocksFor = (chainHash: string): RenderBlock[] => [
+    return (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
       { type: 'TEXT', text: `Subject: ${full.subject}` },
       { type: 'TEXT', text: `Completed at: ${full.completed_at ? full.completed_at.toISOString() : 'pending'}` },
@@ -440,26 +533,192 @@ export class ExecutionService implements ExecutionProducerPort {
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
       ...(timestamps !== null ? trustedTimestampBlocks(results, timestamps) : []),
+      ...extra,
     ];
+  }
 
-    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results, await this.certificateBranding(tenant_id));
-    if (!certificate.inserted) return results;
+  // M-A13 R-1b — the append-only corrected reissue of an envelope's executed documents
+  // produced with the typed-signature defect (TYPED + image data URL drawn as text).
+  //   - the original ExecutedDocument / ExecutionCertificate rows are never changed;
+  //   - each affected document is rendered again from the UNCHANGED stored field values
+  //     (same source PDF, same placements code as produce) and kept in
+  //     ExecutedDocumentReissue, recorded as EXECUTED_DOCUMENT_REISSUED (old + new
+  //     SHA-256, reason) in the hash-chained ledger;
+  //   - a reissued certificate notes the correction and lists both hashes, kept in
+  //     ExecutionCertificateReissue and recorded as EXECUTION_CERTIFICATE_REISSUED.
+  // `apply: false` (the default for the ops command) renders and reports the hashes and
+  // writes nothing. One reissue per envelope: a second run reports already_reissued.
+  async reissueCorrected(
+    tenant_id: string,
+    envelope_id: string,
+    input: { reason: string; apply: boolean },
+  ): Promise<ReissueOutcome> {
+    const reason = input.reason.trim();
+    if (reason.length === 0) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'reason_required');
+    const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    if (full.status !== 'COMPLETED') throw new ExecutedDocumentReissueRefusedError(envelope_id, 'envelope_not_completed');
+    const originals = await this.prisma.executedDocument.findMany({
+      where: { tenant_id, envelope_id },
+      select: { id: true, envelope_document_id: true, source_sha256: true, executed_sha256: true, byte_size: true, purged_at: true },
+    });
+    const originalCert = await this.prisma.executionCertificate.findFirst({
+      where: { tenant_id, envelope_id },
+      select: { id: true, certificate_sha256: true, purged_at: true },
+    });
+    if (originalCert === null || originals.length === 0) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'not_executed');
+    if (originalCert.purged_at !== null || originals.some((o) => o.purged_at !== null)) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'purged');
 
-    await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.byte_size);
-    // SX-2 item 7 — post-commit custody upload; never fails completion (reconcile retries).
-    await this.custody?.recordCompletion(tenant_id, envelope_id).catch(() => undefined);
+    const prior = await this.prisma.executionCertificateReissue.findUnique({ where: { envelope_id }, select: { id: true } });
+    if (prior !== null) return { envelope_id, status: 'already_reissued', documents: [], certificate: null };
 
-    // Completion notifications (best-effort; a delivery failure never corrupts the
-    // executed record — every attempt is recorded in NotificationDelivery).
-    if (this.notifications !== undefined) {
-      try {
-        await this.notifications.envelopeCompleted(tenant_id, envelope_id);
-      } catch {
-        // swallowed — delivery is retryable, not an envelope-corruption condition
-      }
+    const affected = await this.prisma.signatureField.findMany({
+      where: {
+        tenant_id,
+        envelope_document_id: { in: originals.map((o) => o.envelope_document_id) },
+        signature_method: 'TYPED',
+        field_type: { in: [...REISSUE_MARK_FIELD_TYPES] },
+        value: { startsWith: 'data:image' },
+      },
+      select: { envelope_document_id: true },
+    });
+    const affectedDocs = new Set(affected.map((f) => f.envelope_document_id));
+    if (affectedDocs.size === 0) return { envelope_id, status: 'not_affected', documents: [], certificate: null };
+
+    const { signatureIds, stampFor } = await this.signatureStamps(tenant_id, envelope_id);
+    const byDoc = new Map(originals.map((o) => [o.envelope_document_id, o]));
+    const corrected: Array<{ original: (typeof originals)[number]; source_sha256: string; bytes: Uint8Array; sha256: string }> = [];
+    for (const doc of full.documents) {
+      const original = byDoc.get(doc.id);
+      if (original === undefined || !affectedDocs.has(doc.id)) continue;
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor);
+      // The corrected copy is drawn on the same frozen source as the original.
+      if (source_sha256 !== original.source_sha256) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'source_changed');
+      if (rendered.sha256 === original.executed_sha256) continue;
+      corrected.push({ original, source_sha256, bytes: rendered.bytes, sha256: rendered.sha256 });
     }
+    if (corrected.length === 0) return { envelope_id, status: 'not_affected', documents: [], certificate: null };
 
-    return results;
+    const preview = (ids: Map<string, string> | null): ReissuedDocument[] =>
+      corrected.map((c) => ({
+        envelope_document_id: c.original.envelope_document_id,
+        original_artifact_id: c.original.id,
+        original_sha256: c.original.executed_sha256,
+        artifact_id: ids?.get(c.original.envelope_document_id) ?? null,
+        sha256: c.sha256,
+        byte_size: c.bytes.byteLength,
+      }));
+    if (!input.apply) return { envelope_id, status: 'dry_run', documents: preview(null), certificate: null };
+
+    // The certificate lists every executed document: the corrected hash where reissued.
+    const correctedByDoc = new Map(corrected.map((c) => [c.original.envelope_document_id, c]));
+    const results: ExecutedProductionResult[] = full.documents.flatMap((d) => {
+      const o = byDoc.get(d.id);
+      if (o === undefined) return [];
+      const c = correctedByDoc.get(d.id);
+      return [{ envelope_document_id: d.id, source_sha256: o.source_sha256, executed_sha256: c?.sha256 ?? o.executed_sha256, byte_size: c?.bytes.byteLength ?? o.byte_size }];
+    });
+    const reissuedAt = new Date();
+    const correction: RenderBlock[] = [
+      { type: 'HEADING', text: 'Correction' },
+      { type: 'TEXT', text: `This certificate was reissued at ${reissuedAt.toISOString()}. Reason: ${reason}` },
+      { type: 'TEXT', text: `It replaces certificate ${originalCert.certificate_sha256}, which is kept unchanged.` },
+      ...corrected.map((c): RenderBlock => ({
+        type: 'TEXT',
+        text: `Doc ${c.original.envelope_document_id}: original executed document ${c.original.executed_sha256} (kept unchanged); corrected executed document ${c.sha256}`,
+      })),
+      { type: 'TEXT', text: 'The corrected documents were rendered again from the unchanged stored signature values. The signing evidence is unchanged.' },
+    ];
+    const blocksFor = await this.certificateBlocks(tenant_id, envelope_id, full, results, signatureIds, new Map(), null, correction);
+    const branding = await this.certificateBranding(tenant_id);
+
+    const written = await this.prisma.$transaction(async (tx) => {
+      await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+      const raced = await tx.executionCertificateReissue.findUnique({ where: { envelope_id }, select: { id: true } });
+      if (raced !== null) return null;
+      const ids = new Map<string, string>();
+      for (const c of corrected) {
+        const id = randomUUID();
+        ids.set(c.original.envelope_document_id, id);
+        await tx.executedDocumentReissue.create({
+          data: {
+            id,
+            tenant_id,
+            envelope_id,
+            envelope_document_id: c.original.envelope_document_id,
+            original_executed_document_id: c.original.id,
+            original_sha256: c.original.executed_sha256,
+            source_sha256: c.source_sha256,
+            executed_sha256: c.sha256,
+            byte_size: c.bytes.byteLength,
+            executed_bytes: Buffer.from(c.bytes),
+            reason,
+            reissued_at: reissuedAt,
+          },
+        });
+        await this.repo.appendEvent(tx, {
+          tenant_id,
+          envelope_id,
+          event_type: EXECUTED_DOCUMENT_REISSUED,
+          actor_type: 'SYSTEM',
+          payload: {
+            artifact_kind: 'EXECUTED_DOCUMENT',
+            artifact_id: id,
+            original_artifact_id: c.original.id,
+            envelope_document_id: c.original.envelope_document_id,
+            original_sha256: c.original.executed_sha256,
+            sha256: c.sha256,
+            byte_size: c.bytes.byteLength,
+            source_sha256: c.source_sha256,
+            reason,
+          },
+        });
+      }
+      const terminal = await tx.signatureEvent.findFirst({
+        where: { tenant_id, envelope_id },
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { event_hash: true },
+      });
+      const certificate = await this.renderCertificate(blocksFor(terminal?.event_hash ?? ''), branding);
+      const certificateId = randomUUID();
+      await tx.executionCertificateReissue.create({
+        data: {
+          id: certificateId,
+          tenant_id,
+          envelope_id,
+          original_certificate_id: originalCert.id,
+          original_sha256: originalCert.certificate_sha256,
+          certificate_sha256: certificate.sha256,
+          byte_size: certificate.bytes.byteLength,
+          certificate_bytes: Buffer.from(certificate.bytes),
+          reason,
+          reissued_at: reissuedAt,
+        },
+      });
+      await this.repo.appendEvent(tx, {
+        tenant_id,
+        envelope_id,
+        event_type: EXECUTION_CERTIFICATE_REISSUED,
+        actor_type: 'SYSTEM',
+        payload: {
+          artifact_kind: 'EXECUTION_CERTIFICATE',
+          artifact_id: certificateId,
+          original_artifact_id: originalCert.id,
+          envelope_document_id: null,
+          original_sha256: originalCert.certificate_sha256,
+          sha256: certificate.sha256,
+          byte_size: certificate.bytes.byteLength,
+          reissued_document_artifact_ids: [...ids.values()],
+          reason,
+        },
+      });
+      return { ids, certificate: { original_artifact_id: originalCert.id, original_sha256: originalCert.certificate_sha256, artifact_id: certificateId, sha256: certificate.sha256, byte_size: certificate.bytes.byteLength } };
+    }, ARTIFACT_TX_OPTIONS);
+    if (written === null) return { envelope_id, status: 'already_reissued', documents: [], certificate: null };
+
+    for (const c of corrected) await this.recordKept(tenant_id, `esign:executed-reissue:${written.ids.get(c.original.envelope_document_id) ?? ''}`, c.bytes.byteLength);
+    await this.recordKept(tenant_id, `esign:certificate-reissue:${written.certificate.artifact_id}`, written.certificate.byte_size);
+    const { byte_size: _size, ...certificate } = written.certificate;
+    return { envelope_id, status: 'reissued', documents: preview(written.ids), certificate };
   }
 
   // SX-1 items 1 and 3 — insert one executed document, never overwrite. Under the

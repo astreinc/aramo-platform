@@ -16,6 +16,12 @@ export type ExecutedArtifactKind = 'EXECUTED_DOCUMENT' | 'EXECUTION_CERTIFICATE'
 export const EXECUTED_DOCUMENT_RECORDED = 'EXECUTED_DOCUMENT_RECORDED';
 export const EXECUTION_CERTIFICATE_RECORDED = 'EXECUTION_CERTIFICATE_RECORDED';
 export const EXECUTED_ARTIFACT_INTEGRITY_CONFLICT = 'EXECUTED_ARTIFACT_INTEGRITY_CONFLICT';
+// M-A13 R-1b — the append-only corrected reissue (the one exception to SX-1 item 1).
+// The originals keep their *_RECORDED records; these events record the corrected
+// copy beside them (old and new SHA-256 and the reason). They are not artifact
+// *_RECORDED events, so the evidence manifest keeps the original artifacts' hashes.
+export const EXECUTED_DOCUMENT_REISSUED = 'EXECUTED_DOCUMENT_REISSUED';
+export const EXECUTION_CERTIFICATE_REISSUED = 'EXECUTION_CERTIFICATE_REISSUED';
 
 // The hashed ledger payload of an *_RECORDED event.
 export interface ExecutedArtifactRecordedPayload {

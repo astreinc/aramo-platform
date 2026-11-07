@@ -156,14 +156,16 @@ export class IdentityRepository {
   // Returns the workspace `name` + the optional branding `display_name`
   // (the email greeting prefers display_name and falls back to name, the
   // same precedence GET /v1/me uses). Returns null for an unknown tenant.
+  // M-A13 R-3 — also the tenant `kind` (additive), so Sign can show a PERSONAL sender's
+  // own name instead of the stored "<name> (Personal xxxxxxxx)" handle.
   async findTenantNameById(
     tenant_id: string,
-  ): Promise<{ name: string; display_name: string | null } | null> {
+  ): Promise<{ name: string; display_name: string | null; kind: string } | null> {
     const row = await this.prisma.tenant.findUnique({
       where: { id: tenant_id },
-      select: { name: true, display_name: true },
+      select: { name: true, display_name: true, kind: true },
     });
-    return row === null ? null : { name: row.name, display_name: row.display_name };
+    return row === null ? null : { name: row.name, display_name: row.display_name, kind: row.kind };
   }
 
   // IC-3 PR-7 — the tenant access state the re-enable leg checks before it

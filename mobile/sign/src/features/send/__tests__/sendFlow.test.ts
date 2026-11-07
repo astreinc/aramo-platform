@@ -4,7 +4,7 @@ import { memoryFiles, memoryKv, nodeAesGcm, type RecordedRequest } from '../../.
 import { createDocumentBytesStore } from '../documentBytes';
 import type { SendDraftPayload } from '../draftModel';
 import { createSenderApi } from '../senderApi';
-import { CHANGED_ELSEWHERE, SendFlowController } from '../sendFlowController';
+import { CHANGED_ELSEWHERE, SendFlowController, WORD_NEEDS_CONNECTION } from '../sendFlowController';
 import { UPLOAD_ATTEMPTS } from '../syncDraft';
 import { fakeSenderServer } from './fakeSenderServer';
 
@@ -22,6 +22,7 @@ function setup(
     dropFirstUploadResponse?: boolean;
     refuseFirstUploads?: number;
     accountEmail?: string;
+    refuseWord?: { readonly status: number; readonly reason: string };
   } = {},
 ) {
   const kv = memoryKv();
@@ -501,5 +502,50 @@ describe('Recipient kinds, copy timing and Assign to me on the wire (M-A5 §1, �
     const other = t.make();
     await other.open({ intent: 'request' });
     expect(other.snapshot.draft!.payload.selfSign).toBeUndefined();
+  });
+});
+
+describe('Word upload (M-A13 R-4)', () => {
+  const DOCX = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]);
+
+  it('uploads the Word file as is right away; the server PDF is the document', async () => {
+    const t = setup();
+    const c = t.make();
+    await c.open();
+    await c.addWordDocument({ title: 'Offer', filename: 'Offer.docx', bytes: DOCX });
+    const doc = c.snapshot.draft!.payload.documents[0]!;
+    expect(c.snapshot.error).toBeNull();
+    expect(doc.pendingUpload).toBeNull();
+    expect(doc.serverId).toBe('doc-1');
+    expect(doc.pages).toEqual([{ width: 612, height: 792 }]);
+    const up = t.server.calls.find((r) => r.method === 'POST' && /\/documents$/.test(r.url))!;
+    expect(up.body?.['filename']).toBe('Offer.docx');
+    expect(up.body?.['content_base64']).toBe(Buffer.from(DOCX).toString('base64'));
+    // Rendering reads the converted PDF from the server, never the Word bytes.
+    expect((await c.documentAsset(doc.key)).pages).toEqual([{ width: 612, height: 792 }]);
+  });
+
+  it.each([
+    [422, 'word_password_protected', 'This Word file is password-protected. Remove the password, then try again.'],
+    [413, 'word_too_large', 'This Word file is over 20 MB.'],
+    [422, 'word_conversion_failed', 'We couldn’t convert this Word file. Save it as a PDF, then choose the PDF.'],
+    [400, 'unsupported_file_type', 'Word files can’t be sent. Save the document as a PDF, then choose the PDF.'],
+  ])('a %i %s refusal removes the file and says why', async (status, reason, message) => {
+    const t = setup({ refuseWord: { status, reason } });
+    const c = t.make();
+    await c.open();
+    await c.addWordDocument({ title: 'Offer', filename: 'Offer.docx', bytes: DOCX });
+    expect(c.snapshot.draft!.payload.documents).toEqual([]);
+    expect(c.snapshot.error).toBe(message);
+  });
+
+  it('offline: nothing is added', async () => {
+    const t = setup({ online: false });
+    const c = t.make();
+    await c.open();
+    await c.addWordDocument({ title: 'Offer', filename: 'Offer.docx', bytes: DOCX });
+    expect(c.snapshot.draft!.payload.documents).toEqual([]);
+    expect(c.snapshot.error).toBe(WORD_NEEDS_CONNECTION);
+    expect(writes(t.server.calls)).toEqual([]);
   });
 });

@@ -2244,8 +2244,10 @@
       "EXECUTED_ARTIFACT_CUSTODY_PORT",
       "EXECUTED_ARTIFACT_INTEGRITY_CONFLICT",
       "EXECUTED_DOCUMENT_RECORDED",
+      "EXECUTED_DOCUMENT_REISSUED",
       "EXECUTED_DOCUMENT_SEALED",
       "EXECUTION_CERTIFICATE_RECORDED",
+      "EXECUTION_CERTIFICATE_REISSUED",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeAmbiguousError",
@@ -2262,6 +2264,7 @@
       "EstampWorkflowService",
       "ExecutedArtifactIntegrityConflictError",
       "ExecutedArtifactLedgerMismatchError",
+      "ExecutedDocumentReissueRefusedError",
       "ExecutionService",
       "HOSTED_SESSION_STARTED_EVENT",
       "HOSTED_SESSION_TTL_MS",
@@ -2329,6 +2332,7 @@
       "RECIPIENT_INBOX_SESSION_EVENT",
       "RECIPIENT_KINDS",
       "RECIPIENT_SESSION_TTL_MS",
+      "REISSUE_MARK_FIELD_TYPES",
       "RETENTION_DAYS_MAX",
       "RETENTION_DAYS_MIN",
       "RSA_SHA256_SIGNATURE_OID",
@@ -2424,6 +2428,7 @@
       "estampView",
       "evaluateSignerFieldRules",
       "findDisclosure",
+      "findReissueInventory",
       "formatPaymentAmount",
       "formatSignDate",
       "generateSigningToken",
@@ -4480,6 +4485,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a12-store-billing.controller.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a13-word-conversion.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8299,6 +8310,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/m-a13-executed-reissue.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/multi-signer.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -9868,6 +9885,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/m-a13-executed-reissue.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/m-a13-typed-signature-render.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/trusted-timestamp.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -11105,6 +11134,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/CancelSubscription.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Dashboard.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },

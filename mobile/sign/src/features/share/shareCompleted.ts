@@ -77,7 +77,7 @@ export const SHARE_NOT_ALLOWED = 'Only a completed agreement can be shared.';
 
 const PDF = 'application/pdf';
 
-interface Pdf {
+export interface Pdf {
   readonly title: string;
   readonly base64: string;
 }
@@ -100,7 +100,10 @@ async function senderPdfs(workspace: WorkspaceClient, envelopeId: string): Promi
   return r.documents.map((d) => ({ title: d.title, base64: d.executed_base64 }));
 }
 
-async function recipientPdfs(deps: ShareDeps, inboxItemId: string): Promise<Pdf[] | null> {
+async function recipientPdfs(
+  deps: Pick<ShareDeps, 'workspace' | 'guest'>,
+  inboxItemId: string,
+): Promise<Pdf[] | null> {
   const token = await signedCopyToken(deps.workspace, inboxItemId);
   if (!token) return null;
   const session = deps.guest.open(token);
@@ -114,7 +117,20 @@ async function recipientPdfs(deps: ShareDeps, inboxItemId: string): Promise<Pdf[
   }
 }
 
-function refusal(e: unknown): ShareOutcome {
+/**
+ * The authorized executed PDFs of a completed agreement (sender or recipient side).
+ * M-A13 #7: shared by Share PDF and Save a copy. Throws the server's refusal.
+ */
+export async function loadCompletedPdfs(
+  target: ShareTarget,
+  deps: Pick<ShareDeps, 'workspace' | 'guest'>,
+): Promise<Pdf[] | null> {
+  return target.kind === 'sent'
+    ? senderPdfs(deps.workspace, target.envelopeId)
+    : recipientPdfs(deps, target.inboxItemId);
+}
+
+export function refusal(e: unknown): { readonly kind: 'refused'; readonly message: string } {
   if (isApiError(e) && e.status === 409) return { kind: 'refused', message: SHARE_NOT_READY };
   return {
     kind: 'refused',
@@ -132,10 +148,7 @@ export async function shareCompleted(
   if (!(await deps.sheet.available())) return { kind: 'refused', message: SHARE_UNAVAILABLE };
   let pdfs: Pdf[] | null;
   try {
-    pdfs =
-      target.kind === 'sent'
-        ? await senderPdfs(deps.workspace, target.envelopeId)
-        : await recipientPdfs(deps, target.inboxItemId);
+    pdfs = await loadCompletedPdfs(target, deps);
   } catch (e) {
     return refusal(e);
   }

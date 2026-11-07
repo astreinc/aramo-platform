@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, RoleService, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
@@ -23,6 +23,7 @@ import {
   SignFeatureGate,
 } from '../sign-feature.gate.js';
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
+import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 
 import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
 
@@ -133,6 +134,9 @@ export interface SenderContextView {
   // TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" (adopt + approve the unchanged copy): the person
   // holds document_template:manage (a Personal owner; a Business tenant_owner / tenant_admin).
   template_use_as_is: boolean;
+  // M-A13 R-4 — the sender upload accepts .docx / .doc (converted to PDF on the server). False
+  // unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured.
+  word_conversion_enabled: boolean;
 }
 
 // A Personal account's workspace label, shown wherever the Sign apps name the
@@ -163,6 +167,8 @@ export class SenderContextService {
     // grants (absent ⇒ template_plan null, no Studio, no "Use as it is").
     @Optional() private readonly templatePlans?: SignTemplateEntitlementService,
     @Optional() private readonly roles?: RoleService,
+    // M-A13 R-4 — Word upload capability (absent ⇒ false).
+    @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
   ) {}
 
   // TEMPLATE-PRODUCT-1 §8.1 / §8.5 — read only while sign.templates is available (every template
@@ -308,6 +314,7 @@ export class SenderContextService {
       app_home_url: tenantBase !== null ? `${tenantBase}/` : null,
       personal_account_owner,
       ...templates,
+      word_conversion_enabled: this.wordConversion?.enabled === true,
     };
   }
 }

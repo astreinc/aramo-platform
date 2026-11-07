@@ -15,7 +15,18 @@ export const NO_ACCOUNT_WEB =
 const NO_SIGN_ACCESS =
   'Your account doesn’t have access to Aramo Sign. Ask your Aramo administrator to add you.';
 
+// M-A13 R-4 (#8) — Word upload refusals (server converts .docx/.doc to PDF when enabled).
+// word_conversion_disabled keeps today's Word message.
+export const WORD_COPY = {
+  word_too_large: 'This Word file is over 20 MB.',
+  word_password_protected:
+    'This Word file is password-protected. Remove the password, then try again.',
+  word_conversion_failed: 'We couldn’t convert this Word file. Save it as a PDF, then choose the PDF.',
+  word_conversion_disabled: 'Word files can’t be sent. Save the document as a PDF, then choose the PDF.',
+} as const;
+
 const COPY: Record<string, string> = {
+  ...WORD_COPY,
   // C-9 — a Personal tenant is Google-only (AUTH-SIGNIN-1 R1).
   idp_not_permitted_for_tenant: 'Personal accounts sign in with Google.',
   invalid_grant: 'Sign-in didn’t finish. Try again.',

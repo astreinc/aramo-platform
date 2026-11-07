@@ -10,7 +10,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner, OfflineBanner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -23,6 +23,7 @@ import { templatesAvailable } from '../../features/send/templates';
 import { messagingOffered, sendFeaturesOf } from '../../features/send/sendFeatures';
 import { startSelfSign } from '../../features/send/selfSign';
 import { createSenderApi } from '../../features/send/senderApi';
+import { stepBlocker, stepTarget } from '../../features/send/sendFlowController';
 import { useSendFlow } from '../../features/send/useSendFlow';
 import { FEATURES } from '../../config/features';
 import { useServices } from '../../app/ServicesContext';
@@ -112,14 +113,18 @@ export function SendFlowScreen({ navigation, route }: Props) {
   );
 
   const nextStep = NEXT[state.step];
-  const nextEnabled =
-    !!p &&
-    state.busy === null &&
-    (state.step === 'documents'
-      ? p.documents.length > 0
-      : state.step === 'recipients'
-        ? p.recipients.length > 0
-        : state.step === 'fields');
+  const nextEnabled = !!p && state.busy === null && stepBlocker(state.step, p) === null;
+
+  // M-A13 #12 (R-6) — a step label goes forward only as far as Next would.
+  const onStepLabel = useCallback(
+    (to: SendStep) => {
+      if (!p) return;
+      const r = stepTarget(state.step, to, p, state.busy !== null);
+      if (r.step !== state.step) goTo(r.step);
+      if (r.message) toast.show(r.message);
+    },
+    [p, state.step, state.busy, goTo, toast],
+  );
 
   // Leaving with nothing added: no question, and no empty local draft left behind.
   const dropIfEmpty = useCallback(() => {
@@ -256,8 +261,10 @@ export function SendFlowScreen({ navigation, route }: Props) {
     ) : null;
 
   return (
-    <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Stepper step={state.step} onStep={goTo} />
+    // M-A13 #5: 'padding' on Android too — the edge-to-edge window is not resized by the
+    // keyboard, so the inline access-code / name inputs need the same lift as on iOS.
+    <KeyboardAvoidingView style={styles.fill} behavior="padding">
+      <Stepper step={state.step} onStep={onStepLabel} />
       <View style={styles.banners}>
         {!online ? <OfflineBanner /> : null}
         {state.notice ? (

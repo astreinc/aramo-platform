@@ -1,6 +1,6 @@
-// Adopted signatures and initials are PNG only (directive §6, §7 C-19; M-A3 §4): typed
-// names and drawn strokes are both rendered on the device and rasterized with
-// react-native-view-shot. The saved default (/v1/sign/me/signature, /me/initials) is a
+// Adopted signatures and initials are rendered on the device and rasterized with
+// react-native-view-shot (directive §6, §7 C-19; M-A3 §4) for display and the saved
+// default. M-A13 #1 (R-1a): a TYPED mark's fill value is the typed text, not the PNG. The saved default (/v1/sign/me/signature, /me/initials) is a
 // convenience; every signing still submits its value through the fill call.
 import type { RefObject } from 'react';
 import { Platform } from 'react-native';
@@ -74,7 +74,7 @@ export async function loadSavedMarks(workspace: WorkspaceClient): Promise<SavedM
 export async function saveDefaultMark(
   workspace: WorkspaceClient,
   target: AdoptTarget,
-  mark: AdoptedMark,
+  mark: Pick<AdoptedMark, 'dataUrl' | 'method'>,
   typedName?: string,
 ): Promise<void> {
   const body =
@@ -98,9 +98,24 @@ export async function deleteDefaultMark(
   else await workspace.call('/v1/sign/me/initials', 'delete', {});
 }
 
-export function markFromSaved(saved: SavedMark | null): AdoptedMark | null {
+/** The text a TYPED mark sends (M-A13 #1, R-1a): the full name, or its initials. */
+export function typedValue(target: AdoptTarget, typedName: string): string {
+  return target === 'INITIALS' ? initialsOf(typedName) : typedName.trim();
+}
+
+/**
+ * A saved default as an adopted mark. A TYPED default sends its typed_name (initials
+ * derived for INITIALS, as the sheet showed them); one without a name falls back to its
+ * image, which the server draws as an image (M-A13 R-2).
+ */
+export function markFromSaved(saved: SavedMark | null, target: AdoptTarget): AdoptedMark | null {
   if (!saved || !/^data:image\/(png|jpeg);base64,/.test(saved.image_data_url)) return null;
-  return { dataUrl: saved.image_data_url, method: saved.kind };
+  const typed = saved.kind === 'TYPED' ? typedValue(target, saved.typed_name ?? '') : '';
+  return {
+    dataUrl: saved.image_data_url,
+    method: saved.kind,
+    value: typed || saved.image_data_url,
+  };
 }
 
 export function savedKindLabel(saved: SavedMark | null): string {

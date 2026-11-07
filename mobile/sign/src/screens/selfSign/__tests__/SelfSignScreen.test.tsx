@@ -195,4 +195,31 @@ describe('Sign a document', () => {
     expect(call?.body).not.toHaveProperty('signer');
     expect(screen.getByText('1 page · 1 field placed')).toBeTruthy();
   });
+
+  it('M-A13 #3: adopting from the Signature tool places the mark at the centre, selected', async () => {
+    templatesOn = true;
+    mockSource.mockResolvedValue(pdf(1));
+    jest
+      .mocked(jest.requireMock('react-native-view-shot').captureRef)
+      .mockResolvedValue(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      );
+    renderScreen();
+    fireEvent.press(screen.getByTestId('self-add'));
+    await waitFor(() => expect(screen.getByTestId('self-source-templates')).toBeTruthy(), WAIT);
+    fireEvent.press(screen.getByTestId('self-source-templates'));
+    await waitFor(() => expect(screen.getByText('Lease template')).toBeTruthy(), WAIT);
+    fireEvent.press(screen.getByTestId('template-0'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('self-template-use'));
+    });
+    await waitFor(() => expect(screen.getByTestId('self-place')).toBeTruthy(), WAIT);
+    fireEvent.press(screen.getByLabelText('Signature field'));
+    await waitFor(() => expect(screen.getByText('Adopt your signature')).toBeTruthy(), WAIT);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('adopt-confirm'));
+    });
+    await waitFor(() => expect(screen.getByText('1 page · 2 fields placed')).toBeTruthy(), WAIT);
+    expect(screen.getByText(/^Signature · /)).toBeTruthy();
+  });
 });

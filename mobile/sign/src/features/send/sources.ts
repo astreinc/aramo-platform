@@ -11,7 +11,12 @@ import DocumentScanner, {
 } from 'react-native-document-scanner-plugin';
 
 import type { PageSize } from '../editor/geometry';
-import { checkPickedFile, PICKER_TYPES, titleFromFilename } from './fileValidation';
+import {
+  checkPickedFile,
+  convertibleWordName,
+  PICKER_TYPES,
+  titleFromFilename,
+} from './fileValidation';
 import { composeScanPdf } from './scanToPdf';
 
 export type SourceResult =
@@ -21,6 +26,8 @@ export type SourceResult =
       readonly filename: string;
       readonly bytes: Uint8Array;
       readonly pages?: readonly PageSize[];
+      /** M-A13 R-4 — a .docx / .doc the server converts to PDF on upload. */
+      readonly word?: true;
     }
   | { readonly kind: 'refused'; readonly message: string }
   | { readonly kind: 'cancelled' };
@@ -39,7 +46,8 @@ function deleteQuietly(uri: string): void {
   }
 }
 
-export async function pickPdf(): Promise<SourceResult> {
+/** Choose a file. M-A13 R-4: `wordAllowed` (sender context) also accepts .docx / .doc. */
+export async function pickPdf(opts: { readonly wordAllowed?: boolean } = {}): Promise<SourceResult> {
   const res = await DocumentPicker.getDocumentAsync({
     type: PICKER_TYPES,
     copyToCacheDirectory: true,
@@ -55,8 +63,14 @@ export async function pickPdf(): Promise<SourceResult> {
       mimeType: asset.mimeType,
       size: asset.size ?? bytes.length,
       head: bytes.subarray(0, 1024),
+      wordAllowed: opts.wordAllowed === true,
     });
     if (!check.ok) return { kind: 'refused', message: check.message };
+    if (check.word) {
+      // Uploaded as is (the server converts it); the name keeps its Word extension.
+      const name = convertibleWordName(asset.name, asset.mimeType) ?? asset.name;
+      return { kind: 'document', title: titleFromFilename(name), filename: name, bytes, word: true };
+    }
     const filename = /\.pdf$/i.test(asset.name) ? asset.name : `${asset.name}.pdf`;
     return { kind: 'document', title: titleFromFilename(asset.name), filename, bytes };
   } finally {

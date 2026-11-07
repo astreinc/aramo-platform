@@ -1551,6 +1551,10 @@ paths:
         Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create.
         Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload
         returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write.
+        M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF
+        on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same
+        as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed.
+        With the capability off a Word file keeps the 400 unsupported_file_type refusal.
       tags: [sender]
       security:
         - senderSession: []
@@ -1597,8 +1601,16 @@ paths:
           $ref: '#/components/responses/RevisionMismatch'
         '428':
           $ref: '#/components/responses/PreconditionRequired'
+        '413':
+          $ref: '#/components/responses/WordTooLarge'
         '422':
-          $ref: '#/components/responses/IdempotencyKeyReuse'
+          description: >-
+            422 — details.reason idempotency_key_reuse (the Idempotency-Key was used with a different request), or (M-A13 R-4)
+            word_password_protected / word_conversion_failed (the Word file could not be converted to PDF).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/sender/envelopes/{id}/documents/order:
     put:
       operationId: reorderSenderDocuments
@@ -7464,7 +7476,7 @@ components:
       description: Status tab.
       schema:
         type: string
-        enum: [all, drafts, waiting, completed, declined, voided, expired]
+        enum: [all, drafts, waiting, completed, declined, voided, expired, follow_up]
     SenderQuery:
       name: q
       in: query
@@ -7566,6 +7578,13 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     IdempotencyKeyReuse:
       description: 422 — details.reason idempotency_key_reuse; the Idempotency-Key was used with a different request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    # Aramo-Sign-Mobile-Amendment-M-A13 R-4
+    WordTooLarge:
+      description: 413 — details.reason word_too_large; the Word file is over 20 MB.
       content:
         application/json:
           schema:
@@ -8598,6 +8617,12 @@ components:
         template_use_as_is:
           type: boolean
           description: TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" is offered (the person holds document_template:manage and the plan includes templates).
+        word_conversion_enabled:
+          type: boolean
+          description: >-
+            Aramo-Sign-Mobile-Amendment-M-A13 R-4 — the sender document upload accepts Word files
+            (.docx, .doc), converted to PDF on the server. False unless SIGN_WORD_CONVERSION_ENABLED=1
+            and a converter is configured; the apps offer Word files only when true.
     SenderTemplateGallery:
       type: object
       description: TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign).

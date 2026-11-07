@@ -68,6 +68,8 @@ PODS:
   - ExpoIap (5.8.3):
     - ExpoModulesCore
     - openiap (= 3.6.1)
+  - ExpoImageManipulator (57.0.21):
+    - ExpoModulesCore
   - ExpoImagePicker (57.0.20):
     - ExpoModulesCore
   - ExpoKeepAwake (57.0.2):
@@ -2207,6 +2209,7 @@ DEPENDENCIES:
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios/ExpoFileSystem.podspec`)
   - ExpoFont (from `../node_modules/expo/node_modules/expo-font/ios/ExpoFont.podspec`)
   - ExpoIap (from `../node_modules/expo-iap/ios`)
+  - ExpoImageManipulator (from `../node_modules/expo-image-manipulator/ios/ExpoImageManipulator.podspec`)
   - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
   - ExpoKeepAwake (from `../node_modules/expo/node_modules/expo-keep-awake/ios`)
   - ExpoLocalAuthentication (from `../node_modules/expo-local-authentication/ios`)
@@ -2333,6 +2336,8 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/expo/node_modules/expo-font/ios/ExpoFont.podspec"
   ExpoIap:
     :path: "../node_modules/expo-iap/ios"
+  ExpoImageManipulator:
+    :podspec: "../node_modules/expo-image-manipulator/ios/ExpoImageManipulator.podspec"
   ExpoImagePicker:
     :path: "../node_modules/expo-image-picker/ios"
   ExpoKeepAwake:
@@ -2538,11 +2543,12 @@ SPEC CHECKSUMS:
   ExpoFileSystem: 28778f942725170102f7c6cf4dee05a526ddacd0
   ExpoFont: f8198a952ba2ff53c9b393b5269ea435f232cfc3
   ExpoIap: 00f855b87efa91c519c6f39edaa899798ee21eeb
+  ExpoImageManipulator: 9dc637d77a29941bbbff5ec9cfc6ef3d6772d875
   ExpoImagePicker: 661e13a7616fbcea630cfb9409b7483094978e02
   ExpoKeepAwake: 72af0b3be3615e59bc819d26061ff4e06b155ee0
   ExpoLocalAuthentication: 1e4aef156a3a1f953f8278b8d8309f6118919640
   ExpoLogBox: 80957303325cd4439137765c90a87d7f22aaf2ff
-  ExpoModulesCore: d430679bf486efa14f55bb5f1eb585576ab8b635
+  ExpoModulesCore: 91d65b1cac6197111fedcae410b2e90e2f90620d
   ExpoModulesJSI: b767422763350d2b248fb218f71bbb286fd2ee77
   ExpoModulesWorklets: 1916bfde983876e6caf849398b91a0b492b73869
   ExpoNetwork: 7a7a7e0123d1ac5efc742b7b29e43102be5634bf

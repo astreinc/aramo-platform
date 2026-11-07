@@ -184,7 +184,7 @@ export function fillValue(
     case 'SIGNATURE':
     case 'INITIALS': {
       const m = ctx.adopted[f.type];
-      return m ? { value: m.dataUrl, method: m.method } : null;
+      return m ? { value: m.value, method: m.method } : null;
     }
     case 'SIGN_DATE': {
       // ISO on the wire; the server renders it in the envelope's stamped date format.

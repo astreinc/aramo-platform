@@ -76,10 +76,12 @@ import { fetchSourcePdf } from '../../features/editor/sourcePdf';
 import { TemplateRows } from '../../features/templates/TemplateRows';
 import { useTemplatesView } from '../../features/templates/useTemplates';
 import { newIdempotencyKey } from '../../api/workspaceClient';
+import { usePhotoEditor } from '../../features/send/photoEdit/PhotoEditor';
 import { pickPhotosToPdf } from '../../features/send/photos';
 import { createSenderApi } from '../../features/send/senderApi';
 import { pickPdf, scanToPdf, type SourceResult } from '../../features/send/sources';
-import { useShare } from '../../features/share/useShare';
+import { wordUploadEnabled } from '../../features/send/fileValidation';
+import { useSaveCopy, useShare } from '../../features/share/useShare';
 import { loadSavedMarks, type AdoptTarget, type SavedMarks } from '../../features/signing/adopt';
 import { AdoptSignatureSheet, type AdoptResult } from '../../features/signing/AdoptSignatureSheet';
 import { classifySigningError, SIGNING_COPY, type Disclosure } from '../../features/signing/signingApi';
@@ -122,6 +124,9 @@ export function SelfSignScreen() {
   const profile = useSignProfile();
   const settings = useSignSettings();
   const sharer = useShare();
+  const saver = useSaveCopy();
+  // M-A13 #9 — chosen photos get a crop / straighten / rotate step before the PDF.
+  const photoEditor = usePhotoEditor();
 
   const [stage, setStage] = useState<Stage>({ kind: 'docs' });
   const [docs, setDocs] = useState<SelfDoc[]>([]);
@@ -150,8 +155,19 @@ export function SelfSignScreen() {
 
   const api = useMemo(() => createSenderApi(workspace), [workspace]);
   const deps = useMemo(
-    () => ({ api, createSelf: createSelfEnvelope(workspace), openSession: (tok: string) => guest.open(tok) }),
-    [api, workspace, guest],
+    () => ({
+      api,
+      createSelf: createSelfEnvelope(workspace),
+      openSession: (tok: string) => guest.open(tok),
+      // M-A13 R-4 — a converted Word upload is read back as its PDF.
+      fetchSource: (envId: string, docId: string) =>
+        fetchSourcePdf(
+          { baseUrl: services.env.apiBaseUrl, fetch: (u, i) => fetch(u, i), session: services.session },
+          envId,
+          docId,
+        ),
+    }),
+    [api, workspace, guest, services],
   );
 
   useEffect(() => {
@@ -185,7 +201,11 @@ export function SelfSignScreen() {
     try {
       let r: SourceResult;
       try {
-        r = await RUN[key]();
+        r = await (key === 'photos'
+          ? pickPhotosToPdf(new Date(), photoEditor.edit)
+          : key === 'files'
+            ? pickPdf({ wordAllowed: wordUploadEnabled(ctx.data) }) // M-A13 R-4
+            : RUN[key]());
       } catch {
         setError(SOURCE_UNAVAILABLE);
         return;
@@ -320,9 +340,13 @@ export function SelfSignScreen() {
     [docs, envelopeId, workspace],
   );
 
+  // M-A13 #3 — adopting that started from picking the tool places the mark when done.
+  const placeAfterAdopt = useRef(false);
+  const [placeRequest, setPlaceRequest] = useState<{ type: AdoptTarget; id: number } | null>(null);
   const onPickTool = useCallback(
     (type: string) => {
       if ((type === 'SIGNATURE' || type === 'INITIALS') && !adopted[type]) {
+        placeAfterAdopt.current = true;
         setAdoptFor(type);
         toast.show(type === 'INITIALS' ? 'Adopt your initials first' : 'Adopt your signature first');
         return false;
@@ -336,6 +360,8 @@ export function SelfSignScreen() {
     const target = adoptFor ?? 'SIGNATURE';
     setAdopted((a) => ({ ...a, [target]: r.mark as AdoptedMark }));
     setAdoptFor(null);
+    if (placeAfterAdopt.current) setPlaceRequest((p) => ({ type: target, id: (p?.id ?? 0) + 1 }));
+    placeAfterAdopt.current = false;
   }
 
   const renderValue = (f: EditorField) => {
@@ -469,9 +495,25 @@ export function SelfSignScreen() {
         </Text>
         {stage.completed && id ? (
           <>
+            {/* M-A13 #7: View signed copy and Save a copy, beside Share PDF and the certificate. */}
+            <Button
+              testID="self-view-signed"
+              title="View signed copy"
+              disabled={!online}
+              onPress={() => navigation.navigate('DocumentViewer', { envelopeId: id, kind: 'executed' })}
+            />
+            <Button
+              testID="self-save"
+              title="Save a copy"
+              variant="secondary"
+              busy={saver.busy}
+              disabled={!online}
+              onPress={() => saver.save({ kind: 'sent', envelopeId: id, subject: selfSubject(docs) })}
+            />
             <Button
               testID="self-share"
               title="Share PDF"
+              variant="secondary"
               busy={sharer.busy}
               disabled={!online}
               onPress={() => sharer.share({ kind: 'sent', envelopeId: id, subject: selfSubject(docs) })}
@@ -554,6 +596,7 @@ export function SelfSignScreen() {
           fieldScale={sizeScale(settings.data?.default_field_size)}
           findDocs={findDocs}
           hideRecipients
+          placeRequest={placeRequest}
         />
         <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 12), borderTopColor: t.color.separator, backgroundColor: t.color.surface }]}>
           <Button title="Back" variant="text" onPress={() => setStage({ kind: 'docs' })} />
@@ -603,7 +646,10 @@ export function SelfSignScreen() {
           canSaveDefault={false}
           saved={adoptFor === 'INITIALS' ? saved?.initials : saved?.signature}
           onAdopt={onAdopted}
-          onClose={() => setAdoptFor(null)}
+          onClose={() => {
+            placeAfterAdopt.current = false;
+            setAdoptFor(null);
+          }}
         />
       </View>
     );
@@ -731,6 +777,7 @@ export function SelfSignScreen() {
           variant="text"
           onPress={() => (pickMode === 'sources' ? closePicker() : setPickMode(pickMode === 'templates' ? 'sources' : 'templates'))}
         />
+        {photoEditor.element}
       </Sheet>
       <Sheet visible={menuFor !== null && renaming === null} onClose={() => setMenuFor(null)} title="Document">
         {menu?.rename ? (

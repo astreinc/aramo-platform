@@ -41,6 +41,8 @@ export function fakeSenderServer(
     refuseFirstUploads?: number;
     /** The caller's verified account email (Assign to me binds only this one). */
     accountEmail?: string;
+    /** M-A13 R-4 — how a .docx / .doc upload is refused (absent = converted). */
+    refuseWord?: { readonly status: number; readonly reason: string };
   } = {},
 ) {
   const accountEmail = (opts.accountEmail ?? 'priya@northwind.example').toLowerCase();
@@ -169,6 +171,9 @@ export function fakeSenderServer(
       if (refusedUploads < (opts.refuseFirstUploads ?? 0)) {
         refusedUploads += 1;
         return refuse(503, 'service_unavailable');
+      }
+      if (opts.refuseWord && /\.(docx|doc)$/i.test(String(r.body?.['filename'] ?? ''))) {
+        return refuse(opts.refuseWord.status, opts.refuseWord.reason);
       }
       const doc = {
         id: `doc-${++seq}`,

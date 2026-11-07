@@ -135,3 +135,36 @@ describe('Photos -> one PDF (A12)', () => {
     expect(await pickPhotosToPdf(NOW)).toEqual({ kind: 'cancelled' });
   });
 });
+
+describe('Photos crop step (M-A13 #9)', () => {
+  it('hands every chosen photo to the edit step and uses the edited bytes', async () => {
+    launch.mockResolvedValue({
+      canceled: false,
+      assets: [asset('file:///c/a.jpg', jpeg(1224, 1584)), asset('file:///c/b.jpg', jpeg(3000, 2000))],
+    });
+    const edit = jest.fn(async () => [jpeg(2000, 3000), null]);
+    const r = await pickPhotosToPdf(NOW, edit);
+    expect(edit).toHaveBeenCalledWith([{ uri: 'file:///c/a.jpg' }, { uri: 'file:///c/b.jpg' }]);
+    if (r.kind !== 'document') throw new Error(`expected a document, got ${r.kind}`);
+    // Page 1 is the edited (now portrait 2000x3000) photo; page 2 is unchanged.
+    expect(r.pages).toEqual([
+      { width: 528, height: 792 },
+      { width: 792, height: 528 },
+    ]);
+    expect(mockDeleted.sort()).toEqual(['file:///c/a.jpg', 'file:///c/b.jpg']);
+  });
+
+  it('cancelling the edit step cancels the whole selection and cleans up', async () => {
+    launch.mockResolvedValue({ canceled: false, assets: [asset('file:///c/a.jpg', jpeg(100, 100))] });
+    expect(await pickPhotosToPdf(NOW, async () => null)).toEqual({ kind: 'cancelled' });
+    expect(mockDeleted).toEqual(['file:///c/a.jpg']);
+  });
+
+  it('a refused photo never reaches the edit step', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    launch.mockResolvedValue({ canceled: false, assets: [asset('file:///c/b.png', png)] });
+    const edit = jest.fn();
+    expect(await pickPhotosToPdf(NOW, edit)).toEqual({ kind: 'refused', message: PHOTO_NOT_READABLE });
+    expect(edit).not.toHaveBeenCalled();
+  });
+});

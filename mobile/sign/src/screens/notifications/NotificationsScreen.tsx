@@ -19,7 +19,7 @@ import Svg, { Path } from 'react-native-svg';
 import { OfflineBanner } from '../../components/Banner';
 import { useToast } from '../../components/Toast';
 import { relativeTime } from '../../features/inbox/agreementsModel';
-import { OFFLINE_ACTION_REASON, useOnline } from '../../features/inbox/queries';
+import { OFFLINE_ACTION_REASON, useOnline, useRecheckOnline } from '../../features/inbox/queries';
 import { EmptyState } from '../../features/inbox/ui';
 import {
   iconFor,
@@ -78,6 +78,7 @@ export function NotificationsScreen() {
   const navigation = useNavigation();
   const toast = useToast();
   const online = useOnline();
+  const recheckOnline = useRecheckOnline();
   const feed = useFeed();
   const unread = useUnreadCount();
   const mark = useMarkRead();
@@ -248,7 +249,7 @@ export function NotificationsScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void Promise.allSettled([feed.refetch(), unread.refetch()]).then(() =>
+              void Promise.allSettled([recheckOnline(), feed.refetch(), unread.refetch()]).then(() =>
                 setRefreshing(false),
               );
             }}

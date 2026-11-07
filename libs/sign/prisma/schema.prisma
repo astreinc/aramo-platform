@@ -465,6 +465,50 @@ model ExecutionCertificate {
   @@schema("sign")
 }
 
+/// M-A13 R-1b — the append-only corrected reissue of an executed document. The original
+/// ExecutedDocument is never changed; the corrected copy is rendered again from the
+/// unchanged stored field values. Write-once (same trigger as ExecutedDocument).
+model ExecutedDocumentReissue {
+  id                            String    @id @db.Uuid
+  tenant_id                     String    @db.Uuid
+  envelope_id                   String    @db.Uuid
+  envelope_document_id          String    @db.Uuid
+  original_executed_document_id String    @unique @db.Uuid
+  original_sha256               String
+  source_sha256                 String
+  executed_sha256               String
+  byte_size                     Int
+  // NULL only once purged (purged_at set; DB-enforced).
+  executed_bytes                Bytes?
+  reason                        String
+  reissued_at                   DateTime  @default(now()) @db.Timestamptz
+  purged_at                     DateTime? @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([envelope_id])
+  @@schema("sign")
+}
+
+/// M-A13 R-1b — the reissued certificate: notes the correction and lists the original
+/// and corrected hashes. The original ExecutionCertificate is never changed.
+model ExecutionCertificateReissue {
+  id                      String    @id @db.Uuid
+  tenant_id               String    @db.Uuid
+  envelope_id             String    @unique @db.Uuid
+  original_certificate_id String    @unique @db.Uuid
+  original_sha256         String
+  certificate_sha256      String
+  byte_size               Int
+  // NULL only once purged (purged_at set; DB-enforced).
+  certificate_bytes       Bytes?
+  reason                  String
+  reissued_at             DateTime  @default(now()) @db.Timestamptz
+  purged_at               DateTime? @db.Timestamptz
+
+  @@index([tenant_id])
+  @@schema("sign")
+}
+
 /// A time-limited capability that lets a signer download the executed document and
 /// certificate of a COMPLETED envelope (sent in the completion email). Only
 /// sha256(base64url) of the raw token is stored, exactly like SigningSession.
