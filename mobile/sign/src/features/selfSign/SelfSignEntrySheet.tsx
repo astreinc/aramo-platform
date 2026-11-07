@@ -80,6 +80,7 @@ export function SelfSignEntrySheet({ visible, onClose }: { readonly visible: boo
       busy={busy}
       error={error}
       filesNote={wordAllowed ? FILES_NOTE_WORD : FILES_NOTE}
+      upgradeKeys={tpl.show && !tpl.allowed ? ['templates'] : []}
     >
       {photoEditor.element}
     </AddDocumentsSourceSheet>

@@ -74,6 +74,20 @@ describe('Add Documents sheet over Home (a03)', () => {
     expect(mockNavigate).toHaveBeenCalledWith('Plans', { from: 'templates' });
   });
 
+  it('Templates on a Free Personal account carries the Upgrade tag', async () => {
+    renderSheet();
+    await waitFor(() => expect(screen.getByTestId('upgrade-tag-templates')).toBeTruthy(), WAIT);
+    expect(screen.getByText('Upgrade')).toBeTruthy();
+    expect(screen.getByLabelText('Templates, available with upgrade')).toBeTruthy();
+  });
+
+  it('no Upgrade tag when the plan includes templates', async () => {
+    templates = true;
+    renderSheet();
+    await waitFor(() => expect(screen.getByTestId('self-source-templates')).toBeTruthy(), WAIT);
+    expect(screen.queryByTestId('upgrade-tag-templates')).toBeNull();
+  });
+
   it('a picked file is handed to Sign Document, which opens', async () => {
     const pdf = new Uint8Array(Buffer.from('%PDF-1.4\n%%EOF\n', 'latin1'));
     mockPick.mockResolvedValueOnce({ kind: 'document', title: 'Lease', filename: 'Lease.pdf', bytes: pdf });

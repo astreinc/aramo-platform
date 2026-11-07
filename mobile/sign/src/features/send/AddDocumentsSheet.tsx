@@ -144,6 +144,7 @@ export function AddDocumentsSourceSheet({
   busy = false,
   error = null,
   filesNote,
+  upgradeKeys = [],
   children,
 }: {
   readonly visible: boolean;
@@ -155,6 +156,8 @@ export function AddDocumentsSourceSheet({
   readonly error?: string | null;
   /** What Files accepts (PDF, or PDF and Word while the server converts). */
   readonly filesNote?: string;
+  /** Tiles the plan doesn't include: shown with an "Upgrade" tag (they open Plans). */
+  readonly upgradeKeys?: readonly AddSourceKey[];
   /** Rendered inside the sheet's modal (e.g. the photo edit step). */
   readonly children?: ReactNode;
 }) {
@@ -236,13 +239,24 @@ export function AddDocumentsSourceSheet({
                   onPress={() => onPick(tile.key)}
                   disabled={busy}
                   accessibilityRole="button"
-                  accessibilityLabel={tile.label}
-                  accessibilityHint={tile.key === 'files' && filesNote ? filesNote : tile.hint}
+                  accessibilityLabel={upgradeKeys.includes(tile.key) ? `${tile.label}, available with upgrade` : tile.label}
+                  accessibilityHint={
+                    upgradeKeys.includes(tile.key)
+                      ? 'Available on paid plans. Opens Plans.'
+                      : tile.key === 'files' && filesNote
+                        ? filesNote
+                        : tile.hint
+                  }
                   accessibilityState={{ disabled: busy }}
                   style={[styles.selfTile, { opacity: busy ? 0.42 : 1 }]}
                 >
                   <View style={styles.selfCircle}>
                     <Glyph d={SELF_SOURCE_ICONS[tile.key]} size={28} color={INK} />
+                    {upgradeKeys.includes(tile.key) ? (
+                      <View testID={`upgrade-tag-${tile.key}`} style={styles.upgradeTag}>
+                        <Text style={[styles.upgradeText, { fontFamily: t.font.family }]}>Upgrade</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={[styles.selfLabel, { fontFamily: t.font.family }]}>{tile.label}</Text>
                 </Pressable>
@@ -453,6 +467,8 @@ const styles = StyleSheet.create({
   selfTile: { width: 100, alignItems: 'center', gap: 8 },
   selfCircle: { width: 74, height: 74, borderRadius: 37, borderWidth: 1.5, borderColor: INK, alignItems: 'center', justifyContent: 'center' },
   selfLabel: { fontSize: 15, fontWeight: '500', color: INK, textAlign: 'center' },
+  upgradeTag: { position: 'absolute', top: -8, right: -14, backgroundColor: INK, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  upgradeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
   selfError: { fontSize: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 14 },
   info: { paddingHorizontal: 24, gap: 10 },
   infoLine: { fontSize: 15, lineHeight: 21, color: INK },
