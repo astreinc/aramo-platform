@@ -35,6 +35,7 @@
     "expo-image-manipulator": "57.0.21",
     "expo-image-picker": "57.0.20",
     "expo-local-authentication": "57.0.3",
+    "expo-mail-composer": "57.0.2",
     "expo-network": "57.0.2",
     "expo-notifications": "57.0.22",
     "expo-screen-capture": "57.0.4",

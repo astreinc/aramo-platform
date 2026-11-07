@@ -78,6 +78,8 @@ PODS:
     - ExpoModulesCore
   - ExpoLogBox (57.0.4):
     - React-Core
+  - ExpoMailComposer (57.0.2):
+    - ExpoModulesCore
   - ExpoModulesCore (57.0.21):
     - ExpoModulesJSI
     - hermes-engine
@@ -2214,6 +2216,7 @@ DEPENDENCIES:
   - ExpoKeepAwake (from `../node_modules/expo/node_modules/expo-keep-awake/ios`)
   - ExpoLocalAuthentication (from `../node_modules/expo-local-authentication/ios`)
   - "ExpoLogBox (from `../node_modules/expo/node_modules/@expo/log-box`)"
+  - ExpoMailComposer (from `../node_modules/expo-mail-composer/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core/ExpoModulesCore.podspec`)
   - ExpoModulesJSI (from `../node_modules/expo-modules-jsi/apple`)
   - ExpoModulesWorklets (from `../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
@@ -2346,6 +2349,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-local-authentication/ios"
   ExpoLogBox:
     :path: "../node_modules/expo/node_modules/@expo/log-box"
+  ExpoMailComposer:
+    :path: "../node_modules/expo-mail-composer/ios"
   ExpoModulesCore:
     :podspec: "../node_modules/expo-modules-core/ExpoModulesCore.podspec"
   ExpoModulesJSI:
@@ -2548,6 +2553,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 72af0b3be3615e59bc819d26061ff4e06b155ee0
   ExpoLocalAuthentication: 1e4aef156a3a1f953f8278b8d8309f6118919640
   ExpoLogBox: 80957303325cd4439137765c90a87d7f22aaf2ff
+  ExpoMailComposer: 664b85b27b64b4cfadc982a58c83272c080b04b7
   ExpoModulesCore: 91d65b1cac6197111fedcae410b2e90e2f90620d
   ExpoModulesJSI: b767422763350d2b248fb218f71bbb286fd2ee77
   ExpoModulesWorklets: 1916bfde983876e6caf849398b91a0b492b73869
