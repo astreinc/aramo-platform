@@ -43,7 +43,8 @@ export function wordUploadEnabled(ctx: unknown): boolean {
  * The picker filter. Word types are listed on purpose so a Word file can be chosen and
  * then refused with an explanation, instead of silently not being selectable.
  */
-export const PICKER_TYPES = ['application/pdf', ...WORD_MIME];
+export const PDF_PICKER_TYPES = ['application/pdf'];
+export const PICKER_TYPES = [...PDF_PICKER_TYPES, ...WORD_MIME];
 
 export type FileCheck =
   /** `word`: a .docx / .doc to upload as is (only when Word upload is enabled). */

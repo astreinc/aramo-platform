@@ -14,6 +14,7 @@ import type { PageSize } from '../editor/geometry';
 import {
   checkPickedFile,
   convertibleWordName,
+  PDF_PICKER_TYPES,
   PICKER_TYPES,
   titleFromFilename,
 } from './fileValidation';
@@ -48,8 +49,9 @@ function deleteQuietly(uri: string): void {
 
 /** Choose a file. M-A13 R-4: `wordAllowed` (sender context) also accepts .docx / .doc. */
 export async function pickPdf(opts: { readonly wordAllowed?: boolean } = {}): Promise<SourceResult> {
+  // Only list what can be added: PDFs, plus Word files while the server converts them.
   const res = await DocumentPicker.getDocumentAsync({
-    type: PICKER_TYPES,
+    type: opts.wordAllowed === true ? PICKER_TYPES : PDF_PICKER_TYPES,
     copyToCacheDirectory: true,
     multiple: false,
   });
