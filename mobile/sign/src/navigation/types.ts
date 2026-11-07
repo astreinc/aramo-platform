@@ -41,8 +41,11 @@ export type RootStackParamList = {
   Account: { section?: 'settings' } | undefined;
   /** Templates list (M-A4 §6.4); the side-menu item shows only while sign.templates is available. */
   Templates: undefined;
-  /** M-A12 W1-A — "Sign a document": the self-sign flow (no Recipients step). */
-  SelfSign: undefined;
+  /**
+   * M-A12 W1-A — "Sign a document": the self-sign flow (no Recipients step). M-A14: opened
+   * from the Add Documents sheet over Home; `start: 'templates'` opens the template picker.
+   */
+  SelfSign: { start?: 'templates' } | undefined;
   /** M-A12 W1-D — Tasks: Needs me + Upcoming, with filter and sort (Home "Assigned tasks"). */
   Tasks: undefined;
   /** M-A12 W1-G — Plans and in-app purchase; `from` sets the reason line and the way back. */
