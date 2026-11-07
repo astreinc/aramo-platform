@@ -7241,6 +7241,7 @@
     "mobile/sign/src/features/send/__tests__/localDrafts.test.ts",
     "mobile/sign/src/features/send/__tests__/photoOrientation.test.ts",
     "mobile/sign/src/features/send/__tests__/photos.test.ts",
+    "mobile/sign/src/features/send/__tests__/pickerTypes.test.ts",
     "mobile/sign/src/features/send/__tests__/recipientRoles.test.ts",
     "mobile/sign/src/features/send/__tests__/reviewWarnings.test.ts",
     "mobile/sign/src/features/send/__tests__/sendFlow.test.ts",
