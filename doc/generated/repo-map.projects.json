@@ -4496,6 +4496,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a14-signing-stats.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -5312,6 +5318,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a14-signing-stats.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11789,6 +11801,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a14-signing-stats.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13692,6 +13710,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a14-signing-stats.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
