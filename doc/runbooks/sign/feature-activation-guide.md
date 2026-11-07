@@ -966,16 +966,18 @@ verification · Rollback/turn-off · Open decisions.
   API (`POST /forms/libreoffice/convert`, multipart field `files`). It must have **no network egress**; macros
   are never executed (LibreOffice default macro security). Limits in the adapter: 20 MB input, 60 s timeout.
   Refusals: 413 `word_too_large`, 422 `word_password_protected`, 422 `word_conversion_failed`.
-- **Not authorized by M-A13.** Adding the container to the box and enabling the flag each need PO
-  authorization. Illustrative only (not part of any compose file):
-
-  ```yaml
-  # sign-word-converter:
-  #   image: gotenberg/gotenberg:<pinned-version>@sha256:<digest>
-  #   command: ["gotenberg", "--chromium-disable-routes=true", "--api-timeout=60s"]
-  #   networks: [sign-internal]   # internal network only: no egress
-  ```
-
+- **Launched (PO 2026-11-07, counsel confirmed; PR #1085).** `docker-compose.prod.yml` runs
+  `sign-word-converter` (Gotenberg 8.39.0, LibreOffice-only variant, pinned by digest) on the internal-only
+  `sign-convert` network shared with sign-service alone: no published port, no egress. sign-service gets
+  `SIGN_WORD_CONVERSION_ENABLED=1` and `SIGN_WORD_CONVERTER_URL=http://sign-word-converter:3000` by default.
+  - **Deploy.** Pull the converter image and bring the service up with sign-service
+    (`docker compose -f docker-compose.prod.yml up -d sign-word-converter sign-service`); check
+    `docker ps` shows it healthy. sign-service does not depend on it.
+  - **Turn off.** Set `SIGN_WORD_CONVERSION_ENABLED=0` in `.env` and recreate sign-service; the apps then
+    refuse Word files as before. Stopping the converter alone makes Word uploads fail with
+    `word_conversion_failed`; PDFs are unaffected.
+  - **Legal.** Counsel confirmed the conversion on 2026-11-07 (PO). An uploaded Word file is converted to PDF;
+    the PDF is the document placed, signed and sealed, and the Word file is not kept.
 - **Real-container test.** `SIGN_WORD_CONVERTER_TEST_URL=http://localhost:3000 npx vitest run --root apps/sign-service
   src/tests/m-a13-word-conversion.spec.ts` (skipped without the variable).
 

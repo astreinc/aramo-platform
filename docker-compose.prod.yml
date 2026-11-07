@@ -727,12 +727,43 @@ services:
       - SIGN_PRIVACY_DELETION_EXECUTION_ENABLED
       - PRIVACY_REQUEST_EMAIL_KEY
       - AUTH_COGNITO_TENANT_USER_POOL_ID
+      # M-A13 R-4 / M-A14 — Word upload: .docx / .doc are converted to PDF by the
+      # sign-word-converter service below (PO-authorized launch 2026-11-07, counsel
+      # confirmed). ON by default; set SIGN_WORD_CONVERSION_ENABLED=0 in .env to turn it
+      # off (the apps then refuse Word files as before). Both values are required.
+      - SIGN_WORD_CONVERSION_ENABLED=${SIGN_WORD_CONVERSION_ENABLED:-1}
+      - SIGN_WORD_CONVERTER_URL=${SIGN_WORD_CONVERTER_URL:-http://sign-word-converter:3000}
     volumes:
       - /opt/aramo/geoip:/geoip:ro
       - /opt/aramo/secrets:/opt/aramo/secrets:ro
+    # `default` keeps every existing link; `sign-convert` is the converter's internal-only
+    # network (no egress).
+    networks:
+      - default
+      - sign-convert
     depends_on:
       postgres:
         condition: service_healthy
+
+  sign-word-converter:
+    logging: *aramo-logging
+    # M-A13 R-4 — LibreOffice-only Word → PDF converter (Gotenberg 8, no browser engine),
+    # pinned by digest. Reachable ONLY from sign-service on the internal `sign-convert`
+    # network: no published port and no internet egress. Macros are never run (LibreOffice
+    # default macro security). The adapter enforces 20 MB input and a 60 s timeout.
+    # sign-service does not depend on it: if it is down, Word uploads fail with
+    # word_conversion_failed and PDFs are unaffected.
+    image: gotenberg/gotenberg:8.39.0-libreoffice@sha256:4c0eb92ef22e5d5fb0a49eac924b63d85d0b0334ea3365a1f5ca428f367b3054
+    container_name: aramo-prod-sign-word-converter
+    restart: unless-stopped
+    command: ['gotenberg', '--api-timeout=60s', '--webhook-disable=true', '--api-disable-download-from=true']
+    networks:
+      - sign-convert
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
   talent-intelligence-service:
     logging: *aramo-logging
@@ -952,3 +983,9 @@ volumes:
   aramo-prod-pgdata:
   # Front-Door (ADR-0023) — the certbot-owned wildcard cert store (certbot rw, nginx ro).
   aramo-prod-letsencrypt:
+
+networks:
+  # M-A13 R-4 — the Word converter's network: internal only (no route out of the box),
+  # shared with sign-service alone.
+  sign-convert:
+    internal: true
