@@ -5,12 +5,15 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { TextLayer } from '../../api/m-a12-contract-types';
 import {
   FIND_COPY,
+  findListStatus,
   findMatches,
   findStatus,
   hasText,
   pageHighlights,
+  matchSnippet,
   stepMatch,
   type FindMatch,
+  type MatchSnippet,
 } from './findModel';
 
 export interface FindDoc {
@@ -25,17 +28,24 @@ export interface FindState {
   readonly matches: readonly FindMatch[];
   readonly index: number;
   readonly status: string;
+  /** M-A14 — the Find in Document sheet's line ("N matches · highlighted on the page"). */
+  readonly listStatus: string;
   readonly current: FindMatch | null;
   show(): void;
   close(): void;
+  /** M-A14 — close the sheet but keep the matches highlighted (a match was picked). */
+  hide(): void;
   setQuery(q: string): void;
   next(): FindMatch | null;
   prev(): FindMatch | null;
   highlights(docKey: string, page: number): ReturnType<typeof pageHighlights>;
+  /** M-A14 — the text around a match, for the list of matches by page. */
+  snippet(m: FindMatch): MatchSnippet | null;
 }
 
 export function useFind(docs: readonly FindDoc[]): FindState {
   const [open, setOpen] = useState(false);
+  const [kept, setKept] = useState(false);
   const [query, setQueryState] = useState('');
   const [index, setIndex] = useState(0);
   const [layers, setLayers] = useState<Record<string, TextLayer | 'failed' | 'loading'>>({});
@@ -75,12 +85,19 @@ export function useFind(docs: readonly FindDoc[]): FindState {
       ? FIND_COPY.failed
       : findStatus({ query, matches, index: safeIndex, searchable });
 
+  const listStatus = loading
+    ? FIND_COPY.loading
+    : !searchable && failed
+      ? FIND_COPY.failed
+      : findListStatus({ query, matches, searchable });
+
   return {
     open,
     query,
     matches,
     index: safeIndex,
     status,
+    listStatus,
     current: matches[safeIndex] ?? null,
     show() {
       setOpen(true);
@@ -88,8 +105,13 @@ export function useFind(docs: readonly FindDoc[]): FindState {
     },
     close() {
       setOpen(false);
+      setKept(false);
       setQueryState('');
       setIndex(0);
+    },
+    hide() {
+      setOpen(false);
+      setKept(true);
     },
     setQuery(q) {
       setQueryState(q);
@@ -106,7 +128,13 @@ export function useFind(docs: readonly FindDoc[]): FindState {
       return matches[i] ?? null;
     },
     highlights(docKey, page) {
-      return open ? pageHighlights(matches, safeIndex, docKey, page) : [];
+      return open || kept ? pageHighlights(matches, safeIndex, docKey, page) : [];
+    },
+    snippet(m) {
+      if (m.word === undefined || m.count === undefined) return null;
+      const layer = ready.find((r) => r.docKey === m.docKey)?.layer;
+      const page = layer?.pages.find((p) => p.page === m.page + 1);
+      return page ? matchSnippet(page.words, m.word, m.count) : null;
     },
   };
 }

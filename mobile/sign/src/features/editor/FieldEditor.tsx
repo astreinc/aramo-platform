@@ -16,6 +16,11 @@
 //            least 50%; more than 8 tools collapse behind "More fields"; "Place at
 //            center" stays pinned above the bottom inset. #3: placeRequest places and
 //            selects a field at the centre of the page in view.
+//   M-A14:   `selfSign` switches to the Sign Document look (a08–a10, b01, b02) — the
+//            suggestion banner or a Find-only toolbar, full-width pages, the Find in
+//            Document sheet, and a bottom sheet with the R-6 tool row, the armed-tool
+//            hint, ▲▼ page buttons and Finish. The Send flow never sets it and is
+//            unchanged.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -48,13 +53,18 @@ import {
 import {
   FIELD_TYPE_SPECS,
   MAX_LABEL,
+  selfSignTools,
   toolFieldTypes,
   visibleTools,
   zoomLabel,
   type AuthoringFieldType,
 } from './fieldTypes';
 import { scaleFor, screenToEditorPoint, type PageSize } from './geometry';
-import { FindBar, HighlightOverlay, PageNavigator } from '../find/FindBar';
+import { FindBar, HighlightOverlay, ICON_DOWN, ICON_UP, PageNavigator } from '../find/FindBar';
+import { FindSheet } from '../find/FindSheet';
+import { pageLabel } from '../find/findModel';
+import { useKeyboardHeight } from '../../components/sheetKeyboard';
+import Svg, { Path } from 'react-native-svg';
 import { useFind, type FindDoc } from '../find/useFind';
 import { FieldBox, type FieldFill } from './FieldBox';
 import { PdfPageView } from './PdfPageView';
@@ -102,7 +112,27 @@ export interface FieldEditorProps {
   readonly placeRequest?: { readonly type: AuthoringFieldType; readonly id: number } | null;
   /** M-A13 #2 — the system bottom inset when nothing below the editor already clears it. */
   readonly bottomInset?: number;
+  /** M-A14 — the Sign Document look; never set by the Send flow. */
+  readonly selfSign?: SelfSignChrome;
 }
+
+export interface SelfSignChrome {
+  /** The suggestion banner; null shows the Find toolbar instead (§1 item 4). */
+  readonly banner: ReactNode | null;
+  readonly onFinish: () => void;
+  readonly finishDisabled?: boolean;
+  /** Arm this tool (once per id): Finish without a signature arms Signature. */
+  readonly armRequest?: { readonly type: AuthoringFieldType; readonly id: number } | null;
+  /** A placed field was tapped (e.g. an unadopted signature opens the adopt sheet). */
+  readonly onFieldTap?: (field: EditorField) => void;
+}
+
+const SELF_INK = '#0D1B4C';
+const SELF_SECONDARY = '#4A5578';
+const SELF_BACKDROP = '#F4F4F6';
+const SELF_TOOL_CIRCLE = '#DCE4FF';
+/** The tool sheet's rounded top overlaps the canvas by this much. */
+const SELF_SHEET_OVERLAP = 26;
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -127,6 +157,7 @@ export function FieldEditor({
   toolbarExtra,
   placeRequest = null,
   bottomInset = 0,
+  selfSign,
 }: FieldEditorProps) {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -184,8 +215,27 @@ export function FieldEditor({
     });
   }, [recipientKeys, dispatch]);
 
-  const zoom = ZOOM_LEVELS[zoomIndex] ?? 1;
-  const baseWidth = Math.max(240, windowWidth - 32);
+  // M-A14 — a tapped field is reported (stable dispatch for the field gestures).
+  const fieldsRef = useRef(state.fields);
+  const onFieldTapRef = useRef(selfSign?.onFieldTap);
+  const onFieldTap = selfSign?.onFieldTap;
+  useEffect(() => {
+    fieldsRef.current = state.fields;
+    onFieldTapRef.current = onFieldTap;
+  }, [state.fields, onFieldTap]);
+  const boxDispatch = useCallback(
+    (a: EditorAction) => {
+      dispatch(a);
+      if (a.type === 'select' && a.key) {
+        const f = fieldsRef.current.find((x) => x.key === a.key);
+        if (f) onFieldTapRef.current?.(f);
+      }
+    },
+    [dispatch],
+  );
+
+  const zoom = selfSign ? 1 : (ZOOM_LEVELS[zoomIndex] ?? 1);
+  const baseWidth = selfSign ? Math.max(240, windowWidth) : Math.max(240, windowWidth - 32);
   const pageWidth = baseWidth * zoom;
   const colorOf = (key: string) =>
     recipientColor(
@@ -225,7 +275,7 @@ export function FieldEditor({
     0,
     allPages.findIndex((p) => p.docKey === (visible?.docKey ?? documents[0]?.key) && p.page === (visible?.page ?? 0)),
   );
-  const CANVAS_TOP = 16;
+  const CANVAS_TOP = selfSign ? 0 : 16;
   const scrollToPage = (docKey: string, page: number, dy = 0) => {
     const top = pageTops.current.get(`${docKey}:${page}`);
     if (!top) return;
@@ -274,6 +324,15 @@ export function FieldEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeId]);
 
+  // M-A14 — Finish without a signature arms Signature (once per request id).
+  const armId = selfSign?.armRequest?.id ?? null;
+  useEffect(() => {
+    const req = selfSign?.armRequest;
+    if (req) dispatch({ type: 'pickTool', tool: req.type });
+    // Once per request id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [armId]);
+
   const allTools = toolFieldTypes();
   const tools = visibleTools(allTools, moreTools, state.tool);
   const collapsible = tools.length < allTools.length || moreTools;
@@ -284,6 +343,145 @@ export function FieldEditor({
 
   const text = { color: t.color.text, fontFamily: t.font.family };
   const secondary = { color: t.color.textSecondary, fontFamily: t.font.family };
+
+  const canvas = (
+    <ScrollView
+      ref={scrollRef}
+      onLayout={(e: LayoutChangeEvent) => (viewport.current = e.nativeEvent.layout.height)}
+      style={[styles.fill, styles.canvasMin, { backgroundColor: selfSign ? SELF_BACKDROP : t.color.documentBackdrop }]}
+      contentContainerStyle={selfSign ? styles.selfCanvas : styles.canvas}
+      scrollEnabled={!gesture}
+      onScroll={onScroll}
+      scrollEventThrottle={64}
+    >
+      <ScrollView
+        horizontal
+        scrollEnabled={!gesture && zoom > 1}
+        contentContainerStyle={selfSign ? styles.selfHscroll : styles.hscroll}
+      >
+        <View style={selfSign ? styles.selfPages : styles.pages}>
+          {documents.map((d) => {
+            const a = assets[d.key];
+            if (!a) {
+              return (
+                <View key={d.key} style={[styles.loading, { width: pageWidth }]}>
+                  <ActivityIndicator
+                    color={t.color.accent}
+                    accessibilityLabel={`Loading ${d.title}`}
+                  />
+                </View>
+              );
+            }
+            if (a === 'failed') {
+              return (
+                <View key={d.key} style={[styles.loading, { width: pageWidth }]}>
+                  <Text
+                    style={secondary}
+                  >{`${d.title} couldn’t be shown. Check your connection and try again.`}</Text>
+                </View>
+              );
+            }
+            return a.pages.map((size, pi) => {
+              const scale = scaleFor(size, pageWidth);
+              const fields = state.fields.filter((f) => f.docKey === d.key && f.page === pi);
+              const id = `${d.key}:${pi}`;
+              return (
+                <View
+                  key={id}
+                  onLayout={(e: LayoutChangeEvent) =>
+                    pageTops.current.set(id, {
+                      docKey: d.key,
+                      page: pi,
+                      y: e.nativeEvent.layout.y,
+                    })
+                  }
+                >
+                  <PdfPageView
+                    base64={a.base64}
+                    pageIndex={pi}
+                    page={size}
+                    width={pageWidth}
+                    highlighted={state.tool !== null}
+                    label={`${d.title}, page ${pi + 1} of ${a.pages.length}`}
+                  >
+                    <Pressable
+                      style={StyleSheet.absoluteFill}
+                      accessible={false}
+                      importantForAccessibility="no"
+                      onPress={(e) => {
+                        if (state.tool) {
+                          dispatch({
+                            type: 'placeAt',
+                            key: randomId(),
+                            docKey: d.key,
+                            page: pi,
+                            pageSize: size,
+                            center: screenToEditorPoint(
+                              { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY },
+                              scale,
+                            ),
+                            scale: fieldScale,
+                          });
+                        } else dispatch({ type: 'select', key: null });
+                      }}
+                    />
+                    <HighlightOverlay
+                      rects={find.highlights(d.key, pi)}
+                      width={pageWidth}
+                      height={scale * size.height}
+                    />
+                    {fields.map((f) => (
+                      <FieldBox
+                        fill={fillFor ? fillFor(f) : null}
+                        key={f.key}
+                        field={f}
+                        page={size}
+                        scale={scale}
+                        color={colorOf(f.recipientKey)}
+                        selected={f.key === state.selected}
+                        accessibilityLabel={fieldAccessibilityLabel(f, nameOf(f.recipientKey))}
+                        dispatch={selfSign ? boxDispatch : dispatch}
+                        onGesture={setGesture}
+                        look={selfSign ? 'self' : 'send'}
+                      />
+                    ))}
+                  </PdfPageView>
+                </View>
+              );
+            });
+          })}
+        </View>
+      </ScrollView>
+    </ScrollView>
+  );
+
+  if (selfSign) {
+    return (
+      <SelfSignLayout
+        chrome={selfSign}
+        canvas={canvas}
+        find={find}
+        findEnabled={!!findDocs}
+        tool={state.tool}
+        extra={selected && renderSelectionExtra ? renderSelectionExtra(selected) : null}
+        page={allPages.length > 0 ? pageLabel(currentIndex + 1, allPages.length) : null}
+        canPrev={currentIndex > 0}
+        canNext={currentIndex < allPages.length - 1}
+        onPrev={() => stepPage(-1)}
+        onNext={() => stepPage(1)}
+        onShowMatch={(m) => {
+          find.hide();
+          showMatch(m);
+        }}
+        onPickTool={(type) => {
+          if (state.tool !== type && onPickTool && !onPickTool(type)) return;
+          dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
+        }}
+        onPlaceAtCenter={() => placeAtCenter()}
+        bottomInset={bottomInset}
+      />
+    );
+  }
 
   return (
     <View style={styles.fill}>
@@ -385,114 +583,7 @@ export function FieldEditor({
         />
       ) : null}
 
-      {/* Canvas */}
-      <ScrollView
-        ref={scrollRef}
-        onLayout={(e: LayoutChangeEvent) => (viewport.current = e.nativeEvent.layout.height)}
-        style={[styles.fill, styles.canvasMin, { backgroundColor: t.color.documentBackdrop }]}
-        contentContainerStyle={styles.canvas}
-        scrollEnabled={!gesture}
-        onScroll={onScroll}
-        scrollEventThrottle={64}
-      >
-        <ScrollView
-          horizontal
-          scrollEnabled={!gesture && zoom > 1}
-          contentContainerStyle={styles.hscroll}
-        >
-          <View style={styles.pages}>
-            {documents.map((d) => {
-              const a = assets[d.key];
-              if (!a) {
-                return (
-                  <View key={d.key} style={[styles.loading, { width: pageWidth }]}>
-                    <ActivityIndicator
-                      color={t.color.accent}
-                      accessibilityLabel={`Loading ${d.title}`}
-                    />
-                  </View>
-                );
-              }
-              if (a === 'failed') {
-                return (
-                  <View key={d.key} style={[styles.loading, { width: pageWidth }]}>
-                    <Text
-                      style={secondary}
-                    >{`${d.title} couldn’t be shown. Check your connection and try again.`}</Text>
-                  </View>
-                );
-              }
-              return a.pages.map((size, pi) => {
-                const scale = scaleFor(size, pageWidth);
-                const fields = state.fields.filter((f) => f.docKey === d.key && f.page === pi);
-                const id = `${d.key}:${pi}`;
-                return (
-                  <View
-                    key={id}
-                    onLayout={(e: LayoutChangeEvent) =>
-                      pageTops.current.set(id, {
-                        docKey: d.key,
-                        page: pi,
-                        y: e.nativeEvent.layout.y,
-                      })
-                    }
-                  >
-                    <PdfPageView
-                      base64={a.base64}
-                      pageIndex={pi}
-                      page={size}
-                      width={pageWidth}
-                      highlighted={state.tool !== null}
-                      label={`${d.title}, page ${pi + 1} of ${a.pages.length}`}
-                    >
-                      <Pressable
-                        style={StyleSheet.absoluteFill}
-                        accessible={false}
-                        importantForAccessibility="no"
-                        onPress={(e) => {
-                          if (state.tool) {
-                            dispatch({
-                              type: 'placeAt',
-                              key: randomId(),
-                              docKey: d.key,
-                              page: pi,
-                              pageSize: size,
-                              center: screenToEditorPoint(
-                                { x: e.nativeEvent.locationX, y: e.nativeEvent.locationY },
-                                scale,
-                              ),
-                              scale: fieldScale,
-                            });
-                          } else dispatch({ type: 'select', key: null });
-                        }}
-                      />
-                      <HighlightOverlay
-                        rects={find.highlights(d.key, pi)}
-                        width={pageWidth}
-                        height={scale * size.height}
-                      />
-                      {fields.map((f) => (
-                        <FieldBox
-                          fill={fillFor ? fillFor(f) : null}
-                          key={f.key}
-                          field={f}
-                          page={size}
-                          scale={scale}
-                          color={colorOf(f.recipientKey)}
-                          selected={f.key === state.selected}
-                          accessibilityLabel={fieldAccessibilityLabel(f, nameOf(f.recipientKey))}
-                          dispatch={dispatch}
-                          onGesture={setGesture}
-                        />
-                      ))}
-                    </PdfPageView>
-                  </View>
-                );
-              });
-            })}
-          </View>
-        </ScrollView>
-      </ScrollView>
+      {canvas}
 
       {/* Bottom panel: at most 40% of the editor, scrolling (M-A13 #2). */}
       <View
@@ -564,6 +655,204 @@ export function FieldEditor({
             onPress={() => placeAtCenter()}
           />
         )}
+      </View>
+    </View>
+  );
+}
+
+function SelfGlyph({ d, color, size = 22, width = 1.8 }: { d: string; color: string; size?: number; width?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round">
+      <Path d={d} />
+    </Svg>
+  );
+}
+
+const ICON_SEARCH = 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-3.5-3.5';
+
+/** M-A14 §1 item 4 — the Sign Document chrome around the shared canvas. */
+function SelfSignLayout({
+  chrome,
+  canvas,
+  find,
+  findEnabled,
+  tool,
+  extra,
+  page,
+  canPrev,
+  canNext,
+  onPrev,
+  onNext,
+  onShowMatch,
+  onPickTool,
+  onPlaceAtCenter,
+  bottomInset,
+}: {
+  readonly chrome: SelfSignChrome;
+  readonly canvas: ReactNode;
+  readonly find: ReturnType<typeof useFind>;
+  readonly findEnabled: boolean;
+  readonly tool: AuthoringFieldType | null;
+  readonly extra: ReactNode;
+  readonly page: string | null;
+  readonly canPrev: boolean;
+  readonly canNext: boolean;
+  readonly onPrev: () => void;
+  readonly onNext: () => void;
+  readonly onShowMatch: (m: ReturnType<typeof useFind>['matches'][number]) => void;
+  readonly onPickTool: (type: AuthoringFieldType) => void;
+  readonly onPlaceAtCenter: () => void;
+  readonly bottomInset: number;
+}) {
+  const t = useTheme();
+  const font = { fontFamily: t.font.family };
+  const tools = selfSignTools();
+  const armed = tools.find((x) => x.type === tool) ?? null;
+  // Keyboard-aware Find sheet (M-A13 #5): lifted by whatever of the keyboard is not
+  // already absorbed by a resized window or covered by the tool sheet.
+  // The field-value input in the tool sheet is lifted the same way.
+  const keyboard = useKeyboardHeight(true);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const [heights, setHeights] = useState({ full: 0, current: 0 });
+  const resizedBy = Math.max(0, heights.full - heights.current);
+  const findBottom = Math.max(0, keyboard - resizedBy - sheetHeight);
+  const sheetLift = find.open ? 0 : Math.max(0, keyboard - resizedBy - bottomInset);
+  return (
+    <View
+      style={styles.fill}
+      testID="self-editor"
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        setHeights((x) => ({ full: Math.max(x.full, h), current: h }));
+      }}
+    >
+      {chrome.banner ?? (
+        <View style={styles.selfToolbar}>
+          {findEnabled ? (
+            <Pressable
+              testID="editor-find"
+              onPress={() => (find.open ? find.close() : find.show())}
+              accessibilityRole="button"
+              accessibilityLabel="Find in document"
+              accessibilityState={{ expanded: find.open }}
+              style={[styles.selfFindBtn, { backgroundColor: find.open ? '#1B1037' : 'transparent' }]}
+            >
+              <SelfGlyph d={ICON_SEARCH} color={find.open ? '#FFFFFF' : SELF_INK} size={22} width={2.2} />
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+      <View style={[styles.fill, styles.canvasMin]}>
+        {canvas}
+        {page && !find.open ? (
+          <Text
+            testID="self-page-label"
+            pointerEvents="none"
+            accessibilityLiveRegion="polite"
+            style={[styles.selfPageLabel, font, { bottom: SELF_SHEET_OVERLAP + 4 }]}
+          >
+            {page}
+          </Text>
+        ) : null}
+        {find.open ? <FindSheet find={find} bottom={SELF_SHEET_OVERLAP + findBottom} onGo={onShowMatch} /> : null}
+      </View>
+      <View
+        testID="editor-panel"
+        onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height - SELF_SHEET_OVERLAP - sheetLift)}
+        style={[styles.selfSheet, { paddingBottom: 12 + bottomInset + sheetLift }]}
+      >
+        <View style={styles.selfHandle} />
+        {extra ? (
+          <View testID="self-selection" style={styles.selfExtra}>
+            {extra}
+          </View>
+        ) : null}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.selfTools}
+          testID="self-tools"
+        >
+          {tools.map((x) => {
+            const on = tool === x.type;
+            return (
+              <Pressable
+                key={x.type}
+                testID={`self-tool-${x.type}`}
+                onPress={() => onPickTool(x.type)}
+                accessibilityRole="button"
+                accessibilityLabel={`${x.label} field`}
+                accessibilityState={{ selected: on }}
+                style={styles.selfTool}
+              >
+                <View
+                  style={[
+                    styles.selfToolCircle,
+                    { backgroundColor: on ? SELF_INK : SELF_TOOL_CIRCLE },
+                    on ? styles.selfToolRing : null,
+                  ]}
+                >
+                  <SelfGlyph d={x.icon} color={on ? '#FFFFFF' : SELF_INK} />
+                </View>
+                <Text numberOfLines={1} style={[styles.selfToolLabel, font]}>
+                  {x.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        {armed ? (
+          <View style={styles.selfHintRow}>
+            <Text testID="self-hint" accessibilityLiveRegion="polite" style={[styles.selfHint, font]}>
+              {`Tap the document where the ${armed.label.toLowerCase()} goes`}
+            </Text>
+            <Pressable
+              testID="self-place-center"
+              onPress={onPlaceAtCenter}
+              accessibilityRole="button"
+              accessibilityHint="Places the picked field in the middle of the page in view"
+              hitSlop={8}
+            >
+              <Text style={[styles.selfCenter, font, { color: t.color.accent }]}>Place at center</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.selfActions}>
+          <Pressable
+            testID="self-page-prev"
+            onPress={onPrev}
+            disabled={!canPrev}
+            accessibilityRole="button"
+            accessibilityLabel="Previous page"
+            accessibilityState={{ disabled: !canPrev }}
+            style={styles.selfPageBtn}
+          >
+            <SelfGlyph d={ICON_UP} color={SELF_INK} size={22} width={2.4} />
+          </Pressable>
+          <Pressable
+            testID="self-page-next"
+            onPress={onNext}
+            disabled={!canNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next page"
+            accessibilityState={{ disabled: !canNext }}
+            style={styles.selfPageBtn}
+          >
+            <SelfGlyph d={ICON_DOWN} color={SELF_INK} size={22} width={2.4} />
+          </Pressable>
+          <View style={styles.fill} />
+          <Pressable
+            testID="self-finish"
+            onPress={chrome.onFinish}
+            disabled={chrome.finishDisabled}
+            accessibilityRole="button"
+            accessibilityLabel="Finish"
+            accessibilityState={{ disabled: !!chrome.finishDisabled }}
+            style={[styles.selfFinish, { opacity: chrome.finishDisabled ? 0.4 : 1 }]}
+          >
+            <Text style={[styles.selfFinishText, font]}>Finish</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -983,4 +1272,67 @@ const styles = StyleSheet.create({
   selTitle: { flex: 1, fontSize: 15, fontWeight: '600' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   grow: { flexGrow: 1 },
+  // M-A14 Sign Document
+  selfCanvas: { paddingBottom: SELF_SHEET_OVERLAP + 28 },
+  selfHscroll: { flexGrow: 1, justifyContent: 'center' },
+  selfPages: { gap: 10 },
+  selfToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: SELF_BACKDROP,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E3E5EB',
+    minHeight: 57,
+  },
+  selfFindBtn: { width: 40, height: 40, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  selfPageLabel: { position: 'absolute', left: 0, right: 0, textAlign: 'center', fontSize: 11, color: '#8A949C' },
+  selfSheet: {
+    marginTop: -SELF_SHEET_OVERLAP,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 10,
+    shadowColor: SELF_INK,
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 16,
+    zIndex: 8,
+  },
+  selfHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#9A9EA8', alignSelf: 'center', marginBottom: 14 },
+  selfExtra: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  selfTools: { paddingHorizontal: 6, paddingBottom: 6 },
+  selfTool: { width: 74, alignItems: 'center', gap: 8 },
+  selfToolCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  selfToolRing: { borderWidth: 3, borderColor: 'rgba(13,27,76,0.18)' },
+  selfToolLabel: { fontSize: 14.5, color: SELF_INK },
+  selfHintRow: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 2, gap: 4 },
+  selfHint: { fontSize: 13, color: SELF_SECONDARY, textAlign: 'center' },
+  selfCenter: { fontSize: 13, fontWeight: '600' },
+  selfActions: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 14, paddingHorizontal: 16 },
+  selfPageBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: SELF_INK,
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  selfFinish: {
+    width: 112,
+    height: 50,
+    borderRadius: 4,
+    backgroundColor: SELF_INK,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selfFinishText: { color: '#FFFFFF', fontSize: 18, fontWeight: '500' },
 });
