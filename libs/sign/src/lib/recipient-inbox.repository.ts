@@ -276,6 +276,29 @@ export class RecipientInboxRepository {
     });
   }
 
+  // Aramo Sign Mobile M-A14 R-4 — the envelopes this user signed in their OWN tenant through a
+  // recipient bound to them (self-sign / "Assign to me": Signer.bound_user_id is set by the
+  // server to the caller, never client-supplied). Keyed by (tenant, user): never another
+  // account's rows. Deleted (draft-deleted) envelopes are left out.
+  async selfSignedEnvelopeIds(tenant_id: string, user_id: string): Promise<string[]> {
+    const rows = await this.prisma.signer.findMany({
+      where: { tenant_id, bound_user_id: user_id, status: 'SIGNED', envelope: { deleted_at: null } },
+      select: { envelope_id: true },
+    });
+    return [...new Set(rows.map((r) => r.envelope_id))];
+  }
+
+  // M-A14 R-4 — each document of the given envelopes with its stored page count (null when the
+  // page sizes were never measured). Counts only: no title, party or content is read.
+  async documentPageCounts(envelope_ids: readonly string[]): Promise<Array<{ envelope_id: string; pages: number | null }>> {
+    if (envelope_ids.length === 0) return [];
+    const docs = await this.prisma.envelopeDocument.findMany({
+      where: { envelope_id: { in: [...envelope_ids] } },
+      select: { envelope_id: true, page_sizes: { select: { pages: true } } },
+    });
+    return docs.map((d) => ({ envelope_id: d.envelope_id, pages: Array.isArray(d.page_sizes?.pages) && d.page_sizes.pages.length > 0 ? d.page_sizes.pages.length : null }));
+  }
+
   getForUser(user_id: string, id: string): Promise<RecipientInboxRow | null> {
     return this.prisma.signRecipientBinding.findFirst({
       where: { id, user_id, revoked_at: null },

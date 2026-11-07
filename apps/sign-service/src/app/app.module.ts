@@ -132,7 +132,10 @@ import { SavedSignatureController } from './me/signature/saved-signature.control
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
 import { SavedDataPurgeService } from './me/signature/saved-data-purge.service.js';
 import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
+import { FieldSuggestionsService } from './text-layer/field-suggestions.service.js';
 import { SignMeProfileService } from './me/profile/sign-me-profile.service.js';
+import { SignMeSigningStatsController } from './me/stats/sign-me-signing-stats.controller.js';
+import { SignMeSigningStatsService } from './me/stats/sign-me-signing-stats.service.js';
 // Aramo Sign Mobile (M-A3 §1, §2, §9) — notification feed, push devices, preferences, push delivery.
 import { SignMeNotificationsController } from './me/notifications/sign-me-notifications.controller.js';
 import { SignMeNotificationsService } from './me/notifications/sign-me-notifications.service.js';
@@ -316,7 +319,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -375,6 +378,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // Aramo Sign Mobile M-A12 — Find in document, and the user's profile / settings / app issues.
     DocumentTextLayerService,
     SignMeProfileService,
+    // Aramo Sign Mobile M-A14 — "Auto suggest fields" (R-3) and the user's own signing stats (R-4).
+    FieldSuggestionsService,
+    SignMeSigningStatsService,
     // Aramo Sign Mobile (M-A3 §1, §2, §9) — feed, devices, preferences; the outbox
     // fan-out + push delivery worker (PUSH_DELIVERY_PORT, SIGN_PUSH_DELIVERY, default
     // disabled); the account-close convenience-data purge.

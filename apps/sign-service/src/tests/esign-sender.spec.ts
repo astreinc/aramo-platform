@@ -18,7 +18,8 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 // (Lead Host & Workspace Ruling v1.0), and fail-closed input validation.
 
 // M-A12 W1-C.2 — Find in document (textLayerOf) has the source route's read scope.
-const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'textLayerOf', 'executed', 'evidence', 'documents', 'activity'] as const;
+// M-A14 R-3 — Auto suggest fields (fieldSuggestionsOf) has the text-layer route's read scope.
+const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'textLayerOf', 'fieldSuggestionsOf', 'executed', 'evidence', 'documents', 'activity'] as const;
 // Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
 const CONTACTS = ['contacts'] as const;
 // ORG-UX-1 §6 — the Sign member routes are retired (no MEMBERS group).
