@@ -14,6 +14,8 @@ import { ApiError, productByKey, safeErrorMessage, type ProductAvailabilityView 
 
 import type { RoleCatalogView } from '../roles/roles-catalog-api';
 
+import { SEAT_LIMIT_WHERE, seatLimitOf, seatLimitText } from './seat-limit';
+
 export type RoleGroupKey = 'org' | 'ats' | 'sign';
 
 export const OWNER_ROLE_KEY = 'tenant_owner';
@@ -101,6 +103,9 @@ export function roleWriteErrorMessage(err: unknown): string {
     if (err.code === 'TENANT_LAST_OWNER') return LAST_OWNER_409;
     const reason = typeof err.details?.['reason'] === 'string' ? err.details['reason'] : null;
     if (reason === 'owner_role_requires_owner') return OWNER_ONLY_HINT;
+    // Per-seat directive §3.7 — the Sign seat cap (surfaces that can link show SeatLimitAlert instead).
+    const seat = seatLimitOf(err);
+    if (seat !== null) return `${seatLimitText(seat.purchased)} ${SEAT_LIMIT_WHERE}`;
     if (reason === 'empty_role_keys') return 'Select at least one role.';
     if (reason === 'self_disable_forbidden') return 'You can’t disable yourself.';
     if (reason === 'invertible_role_union') return 'These roles can’t be combined. Choose roles that don’t overlap on compensation visibility.';

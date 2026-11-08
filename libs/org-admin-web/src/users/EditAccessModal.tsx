@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useToast } from '@aramo/fe-foundation';
+import { useToast, type ProductAvailabilityView } from '@aramo/fe-foundation';
 
 import { OrgModal } from '../ui/OrgPage';
 
 import { personName } from './directory';
 import { KEEP_ONE_ROLE_HINT, roleWriteErrorMessage, type RoleGroup } from './role-groups';
 import { RoleGroupsPicker } from './RoleGroupsPicker';
+import { SeatLimitAlert, seatLimitOf, signBillingHref, type SeatLimit } from './seat-limit';
 import type { TenantUserView } from './types';
 import { assignTenantUserRoles } from './users-api';
 
@@ -20,6 +21,7 @@ export function EditAccessModal({
   callerIsOwner,
   onOpenChange,
   onSaved,
+  products = null,
 }: {
   /** The person being edited; null = closed. */
   readonly user: TenantUserView | null;
@@ -27,15 +29,19 @@ export function EditAccessModal({
   readonly callerIsOwner: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSaved: () => void;
+  /** The tenant's products (the Aramo Sign → Billing link of the seat-cap message). */
+  readonly products?: ProductAvailabilityView | null;
 }) {
   const toast = useToast();
   const [draft, setDraft] = useState<readonly string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seatLimit, setSeatLimit] = useState<SeatLimit | null>(null);
 
   useEffect(() => {
     setDraft(user?.role_keys ?? []);
     setError(null);
+    setSeatLimit(null);
     setSaving(false);
   }, [user]);
 
@@ -47,13 +53,17 @@ export function EditAccessModal({
     if (none || saving) return;
     setSaving(true);
     setError(null);
+    setSeatLimit(null);
     try {
       await assignTenantUserRoles({ userId: user.user_id, body: { role_keys: draft } });
       toast.show('Access updated. Each app shows the new roles read-only.');
       onSaved();
       onOpenChange(false);
     } catch (err: unknown) {
-      setError(roleWriteErrorMessage(err));
+      // Per-seat directive §3.7 — the Sign seat cap links to Aramo Sign → Billing.
+      const seat = seatLimitOf(err);
+      if (seat !== null) setSeatLimit(seat);
+      else setError(roleWriteErrorMessage(err));
       setSaving(false);
     }
   };
@@ -85,6 +95,7 @@ export function EditAccessModal({
           {error}
         </div>
       ) : null}
+      {seatLimit !== null ? <SeatLimitAlert limit={seatLimit} billingHref={signBillingHref(products)} /> : null}
     </OrgModal>
   );
 }

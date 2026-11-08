@@ -16,6 +16,8 @@ import {
   parseFieldInput,
   pinnedLine,
   planRow,
+  PRICE_UNIT_CONTRACT_TITLE,
+  pricePerSeatOf,
   storageGb,
   versionActions,
 } from './catalog-model';
@@ -52,16 +54,15 @@ describe('CCP-B2 catalog model', () => {
     }
   });
 
-  it('a DRAFT is editable only by a drafter; seats (no backing term) never; a contract price never', () => {
+  it('a DRAFT is editable only by a drafter; a contract price never', () => {
     const ed = editorOf(TEAM, draft, true);
     expect(ed.lockText).toBeNull();
     expect(ed.fields.map((f) => [f.key, f.readOnly])).toEqual([
       ['price', false],
       ['envelopes', false],
-      ['seats', true],
       ['storage', false],
     ]);
-    expect(ed.fields.map((f) => f.value)).toEqual(['69', '1000', '', '50']);
+    expect(ed.fields.map((f) => f.value)).toEqual(['69', '1000', '50']);
     expect(editorOf(TEAM, draft, false).fields.every((f) => f.readOnly)).toBe(true);
     expect(editorOf(TEAM, draft, false).lockText).toBe(LOCK_TEXT_VIEW_ONLY);
     const entDraft = { ...ENTERPRISE.versions[0]!, status: 'DRAFT' as const };
@@ -99,7 +100,7 @@ describe('CCP-B2 catalog model', () => {
     expect(rows.map((r) => [r.field, r.before, r.after, r.changed])).toEqual([
       ['Price', '$59', '$69', true],
       ['Envelopes', '750', '1,000', true],
-      ['Seats', '—', '—', false],
+      ['Pricing unit', 'Per organization', 'Per organization', false],
       ['Storage', '50 GB', '50 GB', false],
     ]);
     expect(pinnedLine(draft, null)).toBe('None — drafts take no subscriptions.');
@@ -148,5 +149,32 @@ describe('A4 D2 add-on unit prices', () => {
     expect(rows.slice(4)).toEqual([{ field: 'Add-on · SMS delivery', before: NOT_SOLD, after: '$0.05', changed: true }]);
     expect(draftDiff(TERMS, TERMS, 'dialog', UNITS)).toHaveLength(4);
     expect(unitPriceText(150)).toBe('$1.50');
+  });
+});
+
+// Sign Business per-seat directive §3.4 — the "Priced per seat" toggle and the "Pricing unit" diff row.
+describe('per-seat pricing unit', () => {
+  const [draft, published] = TEAM.versions as [(typeof TEAM.versions)[0], (typeof TEAM.versions)[0]];
+  const seatTerms = { ...TERMS, price_unit: 'SEAT' as const };
+
+  it('PS-U-1 editable only on a DRAFT of a BUSINESS self-service plan for a catalog manager', () => {
+    expect(pricePerSeatOf(TEAM, draft, true)).toEqual({ checked: false, readOnly: false, editable: true, title: undefined });
+    expect(pricePerSeatOf(TEAM, { ...draft, terms: seatTerms }, true)?.checked).toBe(true);
+    expect(pricePerSeatOf(TEAM, draft, false)).toMatchObject({ readOnly: true, title: NEEDS_CATALOG_MANAGER });
+    expect(pricePerSeatOf(TEAM, published, true)).toMatchObject({ readOnly: true, title: LOCK_TEXT_PUBLISHED });
+    const entDraft = { ...ENTERPRISE.versions[0]!, status: 'DRAFT' as const };
+    expect(pricePerSeatOf(ENTERPRISE, entDraft, true)).toMatchObject({ readOnly: true, title: PRICE_UNIT_CONTRACT_TITLE });
+  });
+
+  it('PS-U-2 hidden for a PERSONAL plan and when the plan kind is unknown', () => {
+    expect(pricePerSeatOf({ ...TEAM, tenant_kind: 'PERSONAL' }, draft, true)).toBeNull();
+    const noKind = { ...TEAM };
+    delete noKind.tenant_kind;
+    expect(pricePerSeatOf(noKind, draft, true)).toBeNull();
+  });
+
+  it('PS-U-3 the diff row reads Per organization / Per seat and is left out when the unit does not apply', () => {
+    expect(draftDiff(TERMS, seatTerms, 'editor').find((r) => r.field === 'Pricing unit')).toEqual({ field: 'Pricing unit', before: 'Per organization', after: 'Per seat', changed: true });
+    expect(draftDiff(TERMS, TERMS, 'editor', [], { pricingUnit: false }).map((r) => r.field)).toEqual(['Price', 'Envelopes', 'Storage']);
   });
 });

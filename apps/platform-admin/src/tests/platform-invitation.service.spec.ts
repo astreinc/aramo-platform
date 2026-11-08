@@ -527,7 +527,8 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     // soft-disables for an RTR template reason.
     // Domain-Enforcement P3 adds the domain-claim dependency (5 → 6); still no documents dependency.
     // CCP-A9 adds the commercial operator repository (6 → 7).
-    expect(PlatformInvitationService.length).toBe(7);
+    // Sign Business per-seat pricing adds the optional seat-limit port (7 → 8); still no documents dependency.
+    expect(PlatformInvitationService.length).toBe(8);
     expect(mocks.tenantSvc.deactivateTenant).not.toHaveBeenCalled();
     expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledWith('tenant-z');
     expect(mocks.tenantSvc.recordOwnerInviteSent).toHaveBeenCalledTimes(1);

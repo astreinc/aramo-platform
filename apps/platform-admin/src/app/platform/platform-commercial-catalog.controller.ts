@@ -39,8 +39,8 @@ class UuidShapePipe implements PipeTransform<string, string> {
 // CommercialCatalogService is the authority: a human principal; DRAFT only (a PUBLISHED or
 // RETIRED version is refused 409 COMMERCIAL_CATALOG_CONFLICT `not_draft` — and the N-16 DB
 // trigger refuses it anyway); one DRAFT per plan; only price, envelopes per month, storage,
-// (Sign Feature Parity Amendment A4 D2) the add-on unit prices and (Sign Mobile M-A12 A1-3) the
-// regional list prices are editable.
+// (Sign Feature Parity Amendment A4 D2) the add-on unit prices, (Sign Mobile M-A12 A1-3) the
+// regional list prices and (Sign Business per-seat pricing) the price unit are editable.
 //
 // There is deliberately NO publish, retire or apply route: publishing and retiring are
 // PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests (POST /platform/commercial/change-requests,
@@ -115,6 +115,8 @@ export class PlatformCommercialCatalogController {
     if (body.unit_prices !== undefined) edits.unit_prices = { ...body.unit_prices };
     // M-A12 A1-3 — regional list prices on the DRAFT's content (published through PLAN_VERSION_PUBLISH only).
     if (body.regional_prices !== undefined) edits.regional_prices = body.regional_prices.map((r) => ({ ...r }));
+    // Sign per-seat pricing (directive v1.0 §3.4) — the DRAFT's price unit (SEAT: BUSINESS self-service only, else 422).
+    if (body.price_unit !== undefined) edits.price_unit = body.price_unit;
     const v = await run(requestId, () =>
       this.catalog.updateDraft(actorOf(auth), versionId, { expected_content_checksum: body.expected_content_checksum, edits, ...(body.note !== undefined ? { note: body.note } : {}) }, ctxOf(requestId)),
     );
@@ -155,6 +157,8 @@ export function toCatalogAramoError(err: unknown, requestId: string): unknown {
         return new AramoError('VALIDATION_ERROR', err.message, 400, { requestId, details: err.details });
       case 'CONFLICT':
         return new AramoError('COMMERCIAL_CATALOG_CONFLICT', err.message, 409, { requestId, details: err.details });
+      case 'UNPROCESSABLE':
+        return new AramoError('VALIDATION_ERROR', err.message, 422, { requestId, details: err.details });
     }
   }
   return err;

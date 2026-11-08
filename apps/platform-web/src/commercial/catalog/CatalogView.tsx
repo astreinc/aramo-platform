@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ApiError, Button, Input, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
+import { ApiError, Button, Checkbox, Input, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
 
 import { ChainPreview, CommercialRequestDialog, RequestField, SkeletonPanel, shortId, type CommercialDiffRow } from '../../components';
 import { COMMERCIAL_PERMISSIONS as CP } from '../../components/permissions';
@@ -25,6 +25,10 @@ import {
   parseFieldInput,
   parseUnitPriceInput,
   pinnedLine,
+  PRICED_PER_SEAT_LABEL,
+  PRICE_UNIT_TEXT,
+  pricePerSeatOf,
+  pricingUnitApplies,
   planRow,
   unitPriceFields,
   versionActions,
@@ -183,9 +187,10 @@ export function CatalogView({ session }: { readonly session: Session }) {
   };
 
   const editor = useMemo(() => (plan && version ? editorOf(plan, version, canDraft, inputs) : null), [plan, version, canDraft, inputs]);
+  const perSeat = plan && version ? pricePerSeatOf(plan, version, canDraft) : null;
 
   /** Saves one draft field when it loses focus (only a DRAFT seen by a catalog manager). */
-  const saveField = async (key: Exclude<EditorFieldKey, 'seats'>): Promise<void> => {
+  const saveField = async (key: EditorFieldKey): Promise<void> => {
     if (!version || version.status !== 'DRAFT' || !canDraft) return;
     const raw = inputs[key];
     if (raw === undefined) return;
@@ -244,6 +249,28 @@ export function CatalogView({ session }: { readonly session: Session }) {
           delete rest[unit_key];
           return rest;
         });
+      } catch (e) {
+        setSaveError(errorText(e, 'The draft couldn’t be saved. Try again.'));
+      }
+    })();
+    saving.current = run;
+    await run;
+    if (saving.current === run) saving.current = null;
+  };
+
+  /** Per-seat directive §3.4 — "Priced per seat" on a DRAFT of a BUSINESS self-service plan (catalog manager only). */
+  const savePriceUnit = async (seat: boolean): Promise<void> => {
+    if (!plan || !version || version.status !== 'DRAFT' || !canDraft) return;
+    if (pricePerSeatOf(plan, version, canDraft)?.editable !== true) return;
+    const prior = saving.current;
+    const run = (async () => {
+      if (prior) await prior;
+      const current = latest.current;
+      if (!current || current.id !== version.id) return;
+      try {
+        await catalogApi.updateDraft(current.id, current.content_checksum, { price_unit: seat ? 'SEAT' : 'ACCOUNT' });
+        setSaveError(null);
+        await load();
       } catch (e) {
         setSaveError(errorText(e, 'The draft couldn’t be saved. Try again.'));
       }
@@ -358,7 +385,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
     if (dialog === null) return [];
     if (dialog.kind === 'retire') return [{ field: versionTitle(dialog.plan, dialog.version), before: 'Published', after: 'Retired', changed: true }];
     const pub = lastPublished(dialog.plan, dialog.version);
-    return pub ? draftDiff(pub.terms, dialog.version.terms, 'dialog', meteredUnits) : [];
+    return pub ? draftDiff(pub.terms, dialog.version.terms, 'dialog', meteredUnits, { pricingUnit: pricingUnitApplies(dialog.plan) }) : [];
   })();
 
   return (
@@ -499,12 +526,25 @@ export function CatalogView({ session }: { readonly session: Session }) {
                           readOnly={f.readOnly}
                           aria-invalid={invalid === f.key || undefined}
                           onChange={(e) => setInputs((m) => ({ ...m, [f.key]: e.target.value }))}
-                          onBlur={() => {
-                            if (f.key !== 'seats') void saveField(f.key);
-                          }}
+                          onBlur={() => void saveField(f.key)}
                         />
                       </label>
                     ))}
+                    {perSeat !== null ? (
+                      <label className="pc-field" title={perSeat.title}>
+                        <span className="pc-field__label">{PRICED_PER_SEAT_LABEL}</span>
+                        <span className={`pc-input pc-toggle${perSeat.editable ? ' pc-input--editable' : ''}`} data-testid="price-unit-field">
+                          <Checkbox
+                            unstyled
+                            aria-label={PRICED_PER_SEAT_LABEL}
+                            checked={perSeat.checked}
+                            disabled={perSeat.readOnly || busy}
+                            onChange={(e) => void savePriceUnit(e.target.checked)}
+                          />
+                          <span>{perSeat.checked ? PRICE_UNIT_TEXT.SEAT : PRICE_UNIT_TEXT.ACCOUNT}</span>
+                        </span>
+                      </label>
+                    ) : null}
                     {editor.locks.map((l) => (
                       <label key={l.label} className="pc-field" title={V1_LOCK_TITLE}>
                         <span className="pc-field__label pc-field__label--lock">
@@ -547,7 +587,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     <>
                       <div className="pc-caps pc-caps--16">{`Compared with published v${String(lastPublished(plan, version)?.version_number ?? '')}`}</div>
                       <div className="pc-diff" role="table" aria-label="Draft compared with the published version">
-                        {draftDiff((lastPublished(plan, version) as CatalogVersion).terms, version.terms, 'editor', meteredUnits).map((d) => (
+                        {draftDiff((lastPublished(plan, version) as CatalogVersion).terms, version.terms, 'editor', meteredUnits, { pricingUnit: pricingUnitApplies(plan) }).map((d) => (
                           <div key={d.field} role="row" className={`pc-diff__row${d.changed ? ' pc-diff__row--changed' : ''}`}>
                             <span role="cell" className="pc-diff__mark">
                               {d.changed ? '~' : ''}

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { ApiError } from '@aramo/fe-foundation';
 
-import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type Money } from '../api';
-import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
+import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type BillingSeats, type Money } from '../api';
+import { MAX_SEATS, parseSeats, seatsUsedText } from '../catalog';
+import { Btn, Check, ErrorBox, Loading, TextIn, fmtDate } from '../ui';
+import { useOptionalWorkspace } from '../workspace';
 
 import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
@@ -24,6 +26,11 @@ import { UsageCharges } from './UsageCharges';
 // Catalog v2 directive (fc755040…): prices are per organization; no comparison
 // (strikethrough) price is ever shown (P-2); unbuilt features appear only in the
 // separate "Coming soon" card (P-1).
+// Sign Business per-seat directive (v1.0 LOCKED) §3.5: a plan whose `price_unit` is SEAT reads
+// "$15 / user / month" (a per-account plan keeps "per organization"); checkout of a SEAT plan
+// sends the seat count; the current SEAT subscription shows "N of M seats used" and, for the
+// owner / an admin (`can_manage_seats`, O-3), Add a seat / Change seats (POST …/billing/seats:
+// an increase is prorated now, a decrease applies at the period end, never below the seats in use).
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   TRIALING: ['Trial', 'blue'],
@@ -44,9 +51,23 @@ function go(url: string): void {
   window.location.assign(url);
 }
 
+function amountText(m: Money): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: m.currency, minimumFractionDigits: m.amount_minor % 100 === 0 ? 0 : 2 }).format(m.amount_minor / 100);
+}
+
 export function money(m: Money): string {
-  const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: m.currency, minimumFractionDigits: m.amount_minor % 100 === 0 ? 0 : 2 }).format(m.amount_minor / 100);
+  const amount = amountText(m);
   return m.interval === 'MONTH' ? `${amount}/month` : amount;
+}
+
+/** Per-seat directive §3.5.1 — "$15 / user / month". */
+export function perUserMoney(m: Money): string {
+  return `${amountText(m)} / user${m.interval === 'MONTH' ? ' / month' : ''}`;
+}
+
+/** The price as the unit says: per user for SEAT, else the per-account price. */
+export function priceText(m: Money, unit: string | null | undefined): string {
+  return unit === 'SEAT' ? perUserMoney(m) : money(m);
 }
 
 export function bytes(n: number): string {
@@ -157,15 +178,22 @@ function PlanCard({
   termsAccepted,
   needsTerms,
   salesUrl,
+  defaultSeats = 1,
 }: {
   plan: BillingPlan;
   canBuy: boolean;
-  onBuy: () => void;
+  /** `seats` is given for a SEAT plan only. */
+  onBuy: (seats?: number) => void;
   busy: boolean;
   termsAccepted: boolean;
   needsTerms: boolean;
   salesUrl: string | null;
+  defaultSeats?: number;
 }) {
+  const perSeat = plan.price_unit === 'SEAT';
+  const seatsId = useId();
+  const [seatsRaw, setSeatsRaw] = useState(String(Math.max(1, defaultSeats)));
+  const seats = perSeat ? parseSeats(seatsRaw, 1) : null;
   const lines = [
     allowanceLine(plan, 'sign.envelopes', 'E-Signs'),
     allowanceLine(plan, 'sign.forms', 'forms'),
@@ -188,8 +216,8 @@ function PlanCard({
             <strong>Contact sales</strong>
           ) : plan.price !== null ? (
             <>
-              <strong>{money(plan.price)}</strong>
-              {plan.tenant_kind === 'BUSINESS' ? <span className="sg-muted"> per organization</span> : null}
+              <strong>{priceText(plan.price, plan.price_unit)}</strong>
+              {plan.tenant_kind === 'BUSINESS' && !perSeat ? <span className="sg-muted"> per organization</span> : null}
               <div className="sg-muted">
                 {plan.commitment_months !== null ? `${plan.commitment_months}-month commitment, billed monthly` : 'Month to month'} · plus applicable tax
               </div>
@@ -225,7 +253,37 @@ function PlanCard({
         ) : null}
         {!contactSales && canBuy && plan.eligible ? (
           <>
-            <Btn variant="primary" disabled={busy || !plan.purchasable || (needsTerms && !termsAccepted)} onClick={onBuy} data-testid={`billing-subscribe-${plan.key}`}>
+            {perSeat && plan.purchasable ? (
+              <div className="sg-grid" style={{ gap: 4 }}>
+                <label htmlFor={seatsId}>
+                  <strong>Seats</strong>
+                </label>
+                <TextIn
+                  id={seatsId}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={MAX_SEATS}
+                  value={seatsRaw}
+                  onChange={(e) => setSeatsRaw(e.target.value)}
+                  aria-invalid={seats === null || undefined}
+                  data-testid={`billing-seats-${plan.key}`}
+                />
+                <p className="sg-help" style={{ margin: 0 }}>
+                  {seats === null
+                    ? `Enter a number of seats from 1 to ${MAX_SEATS}.`
+                    : plan.price !== null
+                      ? `${seats} seat${seats === 1 ? '' : 's'} · ${money({ ...plan.price, amount_minor: plan.price.amount_minor * seats })}. Everyone who sends documents uses a seat, including you.`
+                      : 'Everyone who sends documents uses a seat, including you.'}
+                </p>
+              </div>
+            ) : null}
+            <Btn
+              variant="primary"
+              disabled={busy || !plan.purchasable || (needsTerms && !termsAccepted) || (perSeat && seats === null)}
+              onClick={() => onBuy(perSeat && seats !== null ? seats : undefined)}
+              data-testid={`billing-subscribe-${plan.key}`}
+            >
               {busy ? 'Opening checkout…' : 'Subscribe'}
             </Btn>
             {!plan.purchasable ? <p className="sg-help">Online checkout isn’t available yet.</p> : <p className="sg-help">Enter payment details on the secure Stripe checkout page.</p>}
@@ -233,6 +291,109 @@ function PlanCard({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/** Per-seat directive §3.5.1 — the change-seats confirmation after a successful POST …/billing/seats. */
+export function seatsChangedText(r: { purchased: number; pending_purchased: number | null; effective: 'NOW' | 'PERIOD_END' }): string {
+  if (r.effective === 'PERIOD_END' && r.pending_purchased !== null) return `Your seats drop to ${r.pending_purchased} at the end of the current billing period.`;
+  return `You now have ${r.purchased} seat${r.purchased === 1 ? '' : 's'}. The added seats are charged for the rest of this billing period.`;
+}
+
+/**
+ * Per-seat directive §3.5.1 — "N of M seats used" (+ the decrease scheduled for the period end) and,
+ * for the owner / an admin, Add a seat / Change seats in a small dialog (min = the seats in use,
+ * max 1000).
+ */
+function SeatsBlock({ seats, canManage, periodEnd, onChanged }: { seats: BillingSeats; canManage: boolean; periodEnd: string | null; onChanged: (message: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [raw, setRaw] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputId = useId();
+  const titleId = useId();
+  const full = seats.used >= seats.purchased;
+  const current = seats.pending_purchased ?? seats.purchased;
+  const min = Math.max(1, seats.used);
+  const value = parseSeats(raw, min);
+
+  const openDialog = (start: number) => {
+    setRaw(String(Math.min(MAX_SEATS, start)));
+    setError(null);
+    setOpen(true);
+  };
+  const submit = () => {
+    if (value === null) return;
+    setSending(true);
+    setError(null);
+    billingApi
+      .seats(value)
+      .then((r) => {
+        setOpen(false);
+        onChanged(seatsChangedText(r));
+      })
+      .catch((e: unknown) => setError(errorMessage(e, 'Could not change your seats.')))
+      .finally(() => setSending(false));
+  };
+
+  return (
+    <div className="sg-grid" style={{ gap: 8 }} data-testid="billing-seats">
+      <div>
+        <strong data-testid="billing-seats-used">{seatsUsedText(seats.used, seats.purchased)}</strong>
+        {seats.pending_purchased !== null ? (
+          <div className="sg-muted" data-testid="billing-seats-pending">
+            Drops to {seats.pending_purchased} seat{seats.pending_purchased === 1 ? '' : 's'} {periodEnd !== null ? `on ${fmtDate(periodEnd)}` : 'at the end of the current billing period'}.
+          </div>
+        ) : null}
+        <Meter used={seats.used} limit={seats.purchased} testId="billing-seats-meter" />
+        <p className="sg-help">Everyone in your organization who can send documents uses a seat. Pending invitations and signers don’t.</p>
+      </div>
+      {canManage && !open ? (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {full ? (
+            <Btn variant="primary" onClick={() => openDialog(current + 1)} data-testid="billing-seats-add">
+              Add a seat
+            </Btn>
+          ) : null}
+          <Btn onClick={() => openDialog(current)} data-testid="billing-seats-change">
+            Change seats
+          </Btn>
+        </div>
+      ) : null}
+      {canManage && open ? (
+        <div className="sg-note" role="dialog" aria-labelledby={titleId} data-testid="billing-seats-dialog">
+          <strong id={titleId}>Change seats</strong>
+          <div className="sg-grid" style={{ gap: 4, margin: '8px 0' }}>
+            <label htmlFor={inputId}>Number of seats</label>
+            <TextIn
+              id={inputId}
+              type="number"
+              inputMode="numeric"
+              min={min}
+              max={MAX_SEATS}
+              value={raw}
+              onChange={(e) => setRaw(e.target.value)}
+              aria-invalid={value === null || undefined}
+              data-testid="billing-seats-input"
+            />
+            <p className="sg-help" style={{ margin: 0 }}>
+              {value === null
+                ? `Enter a number from ${min} to ${MAX_SEATS}. ${seats.used} ${seats.used === 1 ? 'person is' : 'people are'} using seats.`
+                : 'Added seats are charged now for the rest of the billing period. Removed seats end at the end of the period; there’s no refund.'}
+            </p>
+          </div>
+          {error !== null ? <ErrorBox>{error}</ErrorBox> : null}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn variant="primary" disabled={sending || value === null || value === current} onClick={submit} data-testid="billing-seats-save">
+              {sending ? 'Saving…' : 'Save'}
+            </Btn>
+            <Btn disabled={sending} onClick={() => setOpen(false)} data-testid="billing-seats-cancel">
+              Cancel
+            </Btn>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -254,6 +415,9 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
   const [terms, setTerms] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [domainRequired, setDomainRequired] = useState(false);
+  const [seatsNotice, setSeatsNotice] = useState<string | null>(null);
+  // The workspace toast when the panel is inside the workspace (the setup page renders it without one).
+  const workspace = useOptionalWorkspace();
 
   useEffect(() => {
     billingApi
@@ -325,7 +489,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
             <>
               <div>
                 <strong>{sub.plan_name}</strong>
-                {sub.list_price != null ? <span className="sg-muted"> · {money(sub.list_price)}</span> : null}
+                {sub.list_price != null ? <span className="sg-muted"> · {priceText(sub.list_price, account.price_unit)}</span> : null}
                 {sub.source !== 'SELF_SERVICE' ? <span className="sg-muted"> · arranged with Aramo</span> : null}
               </div>
               {sub.commitment_end != null ? (
@@ -359,6 +523,23 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
               ) : null}
             </>
           )}
+          {account.seats != null ? (
+            <SeatsBlock
+              seats={account.seats}
+              canManage={account.can_manage_seats === true}
+              periodEnd={sub?.current_period_end ?? null}
+              onChanged={(m) => {
+                if (workspace !== null) workspace.toast(m);
+                else setSeatsNotice(m);
+                reload();
+              }}
+            />
+          ) : null}
+          {seatsNotice !== null ? (
+            <div className="sg-note" role="status" data-testid="billing-seats-notice">
+              {seatsNotice}
+            </div>
+          ) : null}
           <Usage a={account} />
           {account.can_manage_billing && sub?.billing_managed === true ? (
             <div>
@@ -402,7 +583,8 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
                 needsTerms={needsTerms}
                 termsAccepted={terms}
                 salesUrl={catalog?.sales_contact_url ?? null}
-                onBuy={() => act(() => billingApi.checkout(p.key, needsTerms ? terms : undefined))}
+                defaultSeats={account.seats?.used ?? 1}
+                onBuy={(seats) => act(() => billingApi.checkout(p.key, needsTerms ? terms : undefined, seats))}
               />
             ))}
           </div>

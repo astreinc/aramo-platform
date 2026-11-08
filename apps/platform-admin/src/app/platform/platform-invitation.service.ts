@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import {
@@ -22,6 +22,7 @@ import {
   normalizeEmail,
 } from '@aramo/identity';
 import { COMMERCIAL_ROLE_CHANGE_ROLE_KEYS, CommercialOperatorRepository, PLATFORM_OWNER_ROLE_KEY } from '@aramo/subscription';
+import { SEAT_LIMIT_PORT, type SeatGuard, type SeatLimitPort, holdsSignSendAccess, seatGuardOf } from '@aramo/identity';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
@@ -125,7 +126,16 @@ export class PlatformInvitationService {
     // mint a commercial role keep compiling; without it a commercial-role invite is refused
     // (fail closed), never minted unattested.
     @Optional() private readonly operators?: CommercialOperatorRepository,
+    // Sign Business per-seat pricing (directive v1.0 §3.2.4) — the seat limit of a console invite into a
+    // tenant (PlatformModule binds it; unbound = no limit).
+    @Optional() @Inject(SEAT_LIMIT_PORT) private readonly seatLimit?: SeatLimitPort,
   ) {}
+
+  /** Sign per-seat pricing — the seat guard of a tenant-pool write that gives Sign send access to someone without it. */
+  private seatGuard(pool: 'tenant' | 'platform', tenant_id: string, takesSeat: boolean): { seat_guard?: SeatGuard } {
+    const guard = pool === 'tenant' && takesSeat ? seatGuardOf(this.seatLimit, tenant_id) : undefined;
+    return guard === undefined ? {} : { seat_guard: guard };
+  }
 
   async provisionTenantAndInviteOwner(args: {
     name: string;
@@ -614,7 +624,14 @@ export class PlatformInvitationService {
       // Same-tenant role replacement (Lead ruling 8 case 2).
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
+      // Sign per-seat pricing — granting Sign send access needs a free seat.
+      const grantsSeat =
+        args.pool === 'tenant' &&
+        this.seatLimit !== undefined &&
+        holdsSignSendAccess(args.role_keys) &&
+        !holdsSignSendAccess(await this.identitySvc.findRoleKeysForMembership(membership.id));
       await this.identitySvc.replaceMembershipRoles({
+        ...this.seatGuard(args.pool, args.tenant_id, grantsSeat),
         // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
         owner_role_authority: 'platform',
         membership_id: membership.id,
@@ -661,6 +678,8 @@ export class PlatformInvitationService {
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
         allow_platform_roles: args.pool === 'platform',
+        // Sign per-seat pricing (§3.2.4) — a console invite with Sign send access needs a free seat.
+        ...this.seatGuard(args.pool, args.tenant_id, holdsSignSendAccess(args.role_keys)),
       });
       return {
         tenant_id: args.tenant_id,
@@ -719,6 +738,8 @@ export class PlatformInvitationService {
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
         allow_platform_roles: args.pool === 'platform',
+        // Sign per-seat pricing (§3.2.4) — a console invite with Sign send access needs a free seat.
+        ...this.seatGuard(args.pool, args.tenant_id, holdsSignSendAccess(args.role_keys)),
       });
     } catch (err) {
       await this.compensateCognito({

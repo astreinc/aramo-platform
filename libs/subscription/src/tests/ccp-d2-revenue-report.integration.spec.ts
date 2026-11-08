@@ -9,6 +9,7 @@ import { BillingRevenueReportService, REVENUE_EXCLUSION_REASONS, formatRevenueRe
 import { planVersionChecksum } from '../lib/plan-version.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, ENTERPRISE, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C1Harness, c1Harness } from './support/ccp-c1.js';
@@ -91,6 +92,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     prisma = new PrismaService(url);
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS}=price_business`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     h = c1Harness(prisma, () => T0);
     revenue = new BillingRevenueReportService(prisma, h.billing);
     OPS = await addOperator(pg, ['commercial_ops']);
@@ -100,7 +103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     T['A'] = await newTenant(pg);
     S['A'] = await governedOpen(T['A'], INCLUDED);
     await pg.query(`UPDATE subscription."TenantSubscription" SET commitment_start = $2, commitment_end = $3 WHERE id = $1`, [S['A'], at(-345), at(20)]);
-    // B — self-service ACTIVE, Standard Business USD 2000 / MONTH → included; provider period end.
+    // B — self-service ACTIVE, Standard Business USD 1500 / MONTH → included; provider period end.
     T['B'] = await newTenant(pg);
     S['B'] = (await selfService(T['B'])).id;
     // C — self-service PAST_DUE (still recurring revenue) → included.
@@ -109,7 +112,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     S['C'] = c.id;
     h.billing.subs.set(c.ref, { ...h.billing.subs.get(c.ref)!, provider_status: 'past_due' });
     await h.lifecycle.syncSubscription(c.ref, 'sign', T0);
-    // P — raw MANUAL Standard Professional USD 1500 / MONTH → included; commitment ends in 45 days.
+    // P — raw MANUAL Standard Professional USD 2000 / MONTH → included; commitment ends in 45 days.
     T['P'] = await newTenant(pg);
     S['P'] = await rawSubscription(pg, T['P'], { source: 'MANUAL', plan: PROFESSIONAL });
     await pg.query(`UPDATE subscription."TenantSubscription" SET commitment_end = $2 WHERE id = $1`, [S['P'], at(45)]);
@@ -239,14 +242,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     const r = await revenue.revenue({ as_of: T0 });
     expect(r).toMatchObject({ currency: 'USD', billing_interval: 'MONTH', basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE', billing_provider_mode: 'test' });
     expect(summary(r)).toEqual(await oracle(T0, 12));
-    // Fixture facts: B 2000 + C 2000 + P 1500 + G 2000.
-    expect(r.mrr_minor).toBe(7500);
-    expect(r.arr_minor).toBe(90000);
+    // Fixture facts (per-seat migration 20261108100000 prices: Business 1500, Professional 2000; seat_quantity
+    // NULL counts once): B 1500 + C 1500 + P 2000 + G 1500.
+    expect(r.mrr_minor).toBe(6500);
+    expect(r.arr_minor).toBe(78000);
     expect(r.arr_minor).toBe(r.mrr_minor * 12);
-    expect(r.by_product).toEqual([{ product_key: 'sign', subscriptions: 4, mrr_minor: 7500, arr_minor: 90000 }]);
+    expect(r.by_product).toEqual([{ product_key: 'sign', subscriptions: 4, mrr_minor: 6500, arr_minor: 78000 }]);
     expect(r.included.map((l) => l.subscription_id).sort()).toEqual([S['B'], S['C'], S['P'], S['G']].sort());
-    expect(r.included.find((l) => l.subscription_id === S['C'])).toMatchObject({ status: 'PAST_DUE', monthly_minor: 2000 });
-    expect(r.included.find((l) => l.subscription_id === S['P'])).toMatchObject({ plan_key: PROFESSIONAL, monthly_minor: 1500 });
+    expect(r.included.find((l) => l.subscription_id === S['C'])).toMatchObject({ status: 'PAST_DUE', monthly_minor: 1500 });
+    expect(r.included.find((l) => l.subscription_id === S['P'])).toMatchObject({ plan_key: PROFESSIONAL, monthly_minor: 2000 });
     // The output (acceptance evidence), tenant and subscription ids replaced by the fixture letters.
     const subLetter = new Map(Object.entries(S).map(([k, v]) => [v, `S${k}`]));
     process.stdout.write(`${formatRevenueReport(r).join('\n')}\n`);
@@ -269,9 +273,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
       excluded_by_reason: { STATUS_NOT_REVENUE_BEARING: 1, PLAN_VERSION_INTEGRITY: 0, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 1, NON_MONTHLY_INTERVAL: 1 },
       not_commercial_by_source: { DEVELOPMENT: 1 },
     });
-    // K's pinned version carries a USD list price (2000), yet a contract-linked row is never revenue at list price.
+    // K's pinned version carries a USD list price (1500), yet a contract-linked row is never revenue at list price.
     const k = await pg.query(`SELECT (v.content->'plan'->>'list_price_minor')::int AS p FROM subscription."TenantSubscription" ts JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id WHERE ts.id = $1`, [S['K']]);
-    expect(k.rows[0].p).toBe(2000);
+    expect(k.rows[0].p).toBe(1500);
     expect(r.included.some((l) => [S['V'], S['X']].includes(l.subscription_id)) || r.excluded.some((e) => [S['V'], S['X']].includes(e.subscription_id))).toBe(false);
     expect(JSON.stringify(r)).not.toContain('EUR');
   });
@@ -282,11 +286,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     expect(r.renewal_pipeline).toMatchObject({ months: 12, from_month: '2026-10', through_month: '2027-09' });
     expect(r.renewal_pipeline.lapsed).toEqual(o.pipeline.lapsed);
     expect(r.renewal_pipeline.by_month).toEqual(o.pipeline.by_month);
-    // Fixture facts: G lapsed (2000); A commitment 2026-11-15 (unpriced); B + C period end 2026-11-25 (2 × 2000); I period end 2026-11-25 (unpriced); P commitment 2026-12-10 (1500).
-    expect(r.renewal_pipeline.lapsed).toMatchObject({ events: 1, commitment_end: 1, priced_events: 1, mrr_minor: 2000 });
+    // Fixture facts: G lapsed (1500); A commitment 2026-11-15 (unpriced); B + C period end 2026-11-25 (2 × 1500); I period end 2026-11-25 (unpriced); P commitment 2026-12-10 (2000).
+    expect(r.renewal_pipeline.lapsed).toMatchObject({ events: 1, commitment_end: 1, priced_events: 1, mrr_minor: 1500 });
     const nov = r.renewal_pipeline.by_month.find((b) => b.month === '2026-11')!;
-    expect(nov).toMatchObject({ commitment_end: 1, period_end: 3, events: 4, priced_events: 2, unpriced_events: 2, mrr_minor: 4000 });
-    expect(r.renewal_pipeline.by_month.find((b) => b.month === '2026-12')).toMatchObject({ commitment_end: 1, events: 1, priced_events: 1, mrr_minor: 1500 });
+    expect(nov).toMatchObject({ commitment_end: 1, period_end: 3, events: 4, priced_events: 2, unpriced_events: 2, mrr_minor: 3000 });
+    expect(r.renewal_pipeline.by_month.find((b) => b.month === '2026-12')).toMatchObject({ commitment_end: 1, events: 1, priced_events: 1, mrr_minor: 2000 });
     const short = await revenue.revenue({ as_of: T0, months: 2 });
     expect({ lapsed: short.renewal_pipeline.lapsed, by_month: short.renewal_pipeline.by_month }).toEqual((await oracle(T0, 2)).pipeline);
     expect(short.renewal_pipeline.by_month.map((b) => b.month)).toEqual(['2026-10', '2026-11']);
@@ -299,7 +303,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     const t = await newTenant(pg);
     const id = await rawSubscription(pg, t, { source: 'MANUAL', plan: PROFESSIONAL });
     const after = await revenue.revenue({ as_of: T0 });
-    expect(after.mrr_minor - before.mrr_minor).toBe(1500);
+    expect(after.mrr_minor - before.mrr_minor).toBe(2000);
     expect(summary(after)).toEqual(await oracle(T0, 12));
     await pg.query(`UPDATE subscription."TenantSubscription" SET ended_at = now() WHERE id = $1`, [id]);
     expect((await revenue.revenue({ as_of: T0 })).mrr_minor).toBe(before.mrr_minor);

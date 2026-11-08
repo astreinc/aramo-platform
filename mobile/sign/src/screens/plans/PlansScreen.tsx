@@ -242,7 +242,7 @@ export function PlansView({
             <Text testID="plan-price" style={[text, { fontSize: 30, fontWeight: '700' }]}>
               {info.displayPrice}
             </Text>
-            <Text style={[secondary, { fontSize: 15 }]}>{perInterval(chosen)}</Text>
+            <Text style={[secondary, { fontSize: 15 }]}>{perInterval(chosen, plan)}</Text>
           </View>
         ) : null}
         {action.kind === 'buy' && info ? (

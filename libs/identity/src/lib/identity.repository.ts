@@ -11,6 +11,7 @@ import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { assertPersonalSeatFreeTx, personalTenantSeatTaken } from './tenant-user/personal-single-user.js';
+import { countSignSeatsTx, type SeatGuard } from './tenant-user/seat-limit.port.js';
 import { rethrowTenantLastOwner } from './util/tenant-last-owner.js';
 
 // Repository for User / ExternalIdentity reads + (AUTHZ-2) the FIRST
@@ -497,6 +498,8 @@ export class IdentityRepository {
     provider_subject: string;
     tenant_id: string;
     role_ids: readonly string[];
+    // Sign per-seat pricing (directive v1.0 §3.2) — the seat-limit guard, run first under the tenant-row lock.
+    seat_guard?: SeatGuard;
   }): Promise<{
     user: UserDto;
     external_identity_id: string;
@@ -510,6 +513,8 @@ export class IdentityRepository {
     return this.prisma.$transaction(async (tx) => {
       // Sign Personal is single-user: authoritative backstop (locks the tenant row).
       await assertPersonalSeatFreeTx(tx, args.tenant_id);
+      // Sign per-seat pricing — the seat limit (tenant row locked FOR UPDATE inside the guard).
+      if (args.seat_guard !== undefined) await args.seat_guard(tx);
       const user = await tx.user.create({
         data: {
           id: args.user_id,
@@ -609,6 +614,8 @@ export class IdentityRepository {
     // usable at their first federated sign-in (email already verified by the
     // signup link), so it is created ACTIVE. Default: the invite path's INVITED.
     invite_status?: 'INVITED' | 'ACTIVE';
+    // Sign per-seat pricing (directive v1.0 §3.2) — the seat-limit guard, run first under the tenant-row lock.
+    seat_guard?: SeatGuard;
   }): Promise<{
     user: UserDto;
     membership_id: string;
@@ -620,6 +627,8 @@ export class IdentityRepository {
     return this.prisma.$transaction(async (tx) => {
       // Sign Personal is single-user: authoritative backstop (locks the tenant row).
       await assertPersonalSeatFreeTx(tx, args.tenant_id);
+      // Sign per-seat pricing — the seat limit (tenant row locked FOR UPDATE inside the guard).
+      if (args.seat_guard !== undefined) await args.seat_guard(tx);
       const user = await tx.user.create({
         data: {
           id: args.user_id,
@@ -879,31 +888,49 @@ export class IdentityRepository {
   // after the identity flip committed; restores is_active=true and
   // clears deactivated_at so the prior state is recovered cleanly.
   // Also idempotent. Returns the membership_id (or null when missing).
+  // Sign per-seat pricing (directive v1.0 §3.2) — `seat_guard` (the tenant-user re-enable of a member
+  // holding Sign send access) runs first, in the same transaction, under the tenant-row lock. The disable
+  // saga's compensation passes none.
   async reEnableMembership(args: {
     user_id: string;
     tenant_id: string;
+    seat_guard?: SeatGuard;
   }): Promise<{ membership_id: string } | null> {
-    const existing = await this.prisma.userTenantMembership.findUnique({
-      where: {
-        user_id_tenant_id: {
-          user_id: args.user_id,
-          tenant_id: args.tenant_id,
+    type Db = PrismaService | Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
+    const reEnable = async (db: Db): Promise<{ membership_id: string } | null> => {
+      const existing = await db.userTenantMembership.findUnique({
+        where: {
+          user_id_tenant_id: {
+            user_id: args.user_id,
+            tenant_id: args.tenant_id,
+          },
         },
-      },
-      select: { id: true },
+        select: { id: true },
+      });
+      if (existing === null) return null;
+      await db.userTenantMembership.update({
+        where: { id: existing.id },
+        data: { is_active: true, deactivated_at: null },
+      });
+      // HF-AUTH-1 — re-enabling restores effective scopes; bump so the change is
+      // reflected immediately (also keeps the version monotonic across the saga).
+      await bumpPrincipalVersion(db, {
+        tenant_id: args.tenant_id,
+        principal_id: args.user_id,
+      });
+      return { membership_id: existing.id };
+    };
+    const guard = args.seat_guard;
+    if (guard === undefined) return reEnable(this.prisma);
+    return this.prisma.$transaction(async (tx) => {
+      await guard(tx);
+      return reEnable(tx);
     });
-    if (existing === null) return null;
-    await this.prisma.userTenantMembership.update({
-      where: { id: existing.id },
-      data: { is_active: true, deactivated_at: null },
-    });
-    // HF-AUTH-1 — re-enabling restores effective scopes; bump so the change is
-    // reflected immediately (also keeps the version monotonic across the saga).
-    await bumpPrincipalVersion(this.prisma, {
-      tenant_id: args.tenant_id,
-      principal_id: args.user_id,
-    });
-    return { membership_id: existing.id };
+  }
+
+  // Sign per-seat pricing (directive v1.0 §3.2, S-4) — the tenant's seats in use (a plain read).
+  async countSignSeats(tenant_id: string): Promise<number> {
+    return countSignSeatsTx(this.prisma, tenant_id);
   }
 
   // AUTHZ-2: same-tenant role replacement (Lead ruling 8 case 2). The
@@ -915,8 +942,11 @@ export class IdentityRepository {
     membership_id: string;
     role_ids: readonly string[];
     request_id?: string;
+    // Sign per-seat pricing (directive v1.0 §3.2) — set when the change grants Sign send access; runs first.
+    seat_guard?: SeatGuard;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
     return this.prisma.$transaction(async (tx) => {
+      if (args.seat_guard !== undefined) await args.seat_guard(tx);
       const existing = await tx.userTenantMembershipRole.findMany({
         where: { membership_id: args.membership_id },
         select: { role_id: true },

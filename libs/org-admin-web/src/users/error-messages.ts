@@ -23,6 +23,8 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { safeErrorMessage } from '@aramo/fe-foundation';
 
+import { SEAT_LIMIT_WHERE, seatLimitOf, seatLimitText } from './seat-limit';
+
 // Settings Rebuild D5 — role labels come from the catalog (passed in by the
 // caller, which holds the fetched roles), not a hand-mirror. `labelOf` falls
 // back to the raw key when the catalog is not loaded / lacks the role.
@@ -115,6 +117,9 @@ export function messageForInviteError(
   if (reason === 'invalid_email') {
     return { title: 'Please enter a valid email address.' };
   }
+  // Per-seat directive §3.7 — the Sign seat cap.
+  const seat = seatLimitOf(err);
+  if (seat !== null) return { title: seatLimitText(seat.purchased), detail: SEAT_LIMIT_WHERE };
   if (reason === 'missing_body') {
     return { title: 'Please complete the form.' };
   }

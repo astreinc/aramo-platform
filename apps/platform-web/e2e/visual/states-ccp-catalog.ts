@@ -25,20 +25,22 @@ const SAMPLE: readonly Mask[] = [
   swap('DV-B2-02', '5 plans · SAMPLE', '5 plans'),
 ];
 
-/** DV-B2-03 — Seats: the Sign plan model stores no seat limit (R-13): the build shows the
- * designed disabled field with no value, and "—" in the diff row. */
+/** DV-B2-03 — CLOSED by the Sign Business per-seat directive (v1.0 LOCKED, §3.4): the design's
+ * seat-count field is the "Priced per seat" toggle (the pricing unit of the version) and its diff row
+ * reads "Pricing unit" ("Per organization" / "Per seat"). The design draws a seat count there, so the
+ * region stays masked (a sanctioned replacement, not a data gap). */
 const SEATS: readonly Mask[] = [
-  { proto: (p) => p.locator('label').filter({ hasText: /^Seats$/ }).locator('input'), build: (p) => p.getByLabel('Seats', { exact: true }), divergence: 'DV-B2-03' },
+  { proto: (p) => p.locator('label').filter({ hasText: /^Seats$/ }).locator('input'), build: (p) => p.getByTestId('price-unit-field'), divergence: 'DV-B2-03' },
 ];
 const SEATS_DIFF: Mask = {
   // The diff row is the last (deepest) div holding a "Seats" cell.
   proto: (p) => p.locator('main div').filter({ has: p.getByText('Seats', { exact: true }) }).last(),
-  build: (p) => p.locator('.pc-diff__row').filter({ hasText: 'Seats' }),
+  build: (p) => p.locator('.pc-diff__row').filter({ hasText: 'Pricing unit' }),
   divergence: 'DV-B2-03',
 };
 const SEATS_DIALOG_DIFF: Mask = {
   proto: (p) => p.getByRole('dialog').locator('div').filter({ has: p.getByText(/^~?\s*Seats$/) }).last(),
-  build: (p) => p.locator('.pw-crd__diff-row').filter({ hasText: 'Seats' }),
+  build: (p) => p.locator('.pw-crd__diff-row').filter({ hasText: 'Pricing unit' }),
   divergence: 'DV-B2-03',
 };
 

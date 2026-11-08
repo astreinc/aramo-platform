@@ -35,7 +35,15 @@ export interface CatalogVersionTerms {
   unit_prices?: { unit_key: string; unit_price_minor: number }[];
   /** Sign Mobile M-A12 A1-3 — the regional list prices in the version's content (e.g. IN / INR). */
   regional_prices?: CatalogRegionalPrice[];
+  /**
+   * Sign Business per-seat directive §3.4 — the version's pricing unit (content key `price_unit`,
+   * covered by content_checksum). ACCOUNT (or absent) = per organization; SEAT = per seat.
+   */
+  price_unit?: CatalogPriceUnit;
 }
+
+/** Per-seat directive §3.1 — how a version's list price is charged. */
+export type CatalogPriceUnit = 'ACCOUNT' | 'SEAT';
 
 /** M-A12 A1-3 — one regional list price of a version (minor units of its currency). */
 export interface CatalogRegionalPrice {
@@ -82,6 +90,8 @@ export interface CatalogPlanSummary {
   name: string;
   status: string;
   sales_model: string;
+  /** Per-seat directive §3.4 — BUSINESS | PERSONAL; the "Priced per seat" toggle shows for BUSINESS only. */
+  tenant_kind?: string;
   sellable: boolean;
   display_order: number;
 }
@@ -139,6 +149,8 @@ export interface CatalogDraftEdits {
   unit_prices?: Record<string, number | null>;
   /** M-A12 A1-3 — set (amount_minor) or remove (null) the (country, interval) regional price. */
   regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
+  /** Per-seat directive §3.4 — SEAT prices the draft per seat; ACCOUNT per organization (BUSINESS self-service only). */
+  price_unit?: CatalogPriceUnit;
 }
 
 export interface CatalogChangeRequest {

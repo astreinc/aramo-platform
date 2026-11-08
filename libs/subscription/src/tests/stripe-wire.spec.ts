@@ -25,7 +25,7 @@ import {
 // account_ref). Vocabulary-exempt together with stripe-wire.ts because the
 // fixtures are Stripe-shaped; no Aramo logic lives here.
 
-const ARAMO_KEYS = ['provider', 'subscription_ref', 'account_ref', 'provider_status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'price_ref', 'tenant_id', 'intent_id', 'account_country'];
+const ARAMO_KEYS = ['provider', 'subscription_ref', 'account_ref', 'provider_status', 'current_period_start', 'current_period_end', 'cancel_at_period_end', 'price_ref', 'tenant_id', 'intent_id', 'account_country', 'item_ref', 'quantity'];
 
 describe('Stripe wire → Aramo', () => {
   it('reads the account id from a string or an expanded object', () => {

@@ -3800,7 +3800,9 @@ paths:
         must equal the draft's current checksum (`stale` otherwise). Only the version's
         existing terms are editable (`term_missing` otherwise); a contract-priced plan has
         no list price (`contract_priced`). The currency and billing interval are v1 locks
-        and have no field. Requires `platform:catalog:draft`; audited.
+        and have no field. `price_unit` SEAT (Sign Business per-seat pricing) is accepted only on a
+        BUSINESS self-service plan with a list price (422 `price_unit_not_applicable`).
+        Requires `platform:catalog:draft`; audited.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -3829,6 +3831,14 @@ paths:
           $ref: '#/components/responses/CommercialCatalogNotFound'
         '409':
           $ref: '#/components/responses/CommercialCatalogConflict'
+        '422':
+          description: >-
+            VALIDATION_ERROR price_unit_not_applicable — price_unit SEAT on a plan that is not a BUSINESS
+            self-service plan with a list price (Sign Business per-seat pricing).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/CommercialPolicyUnavailable'
 
@@ -10769,8 +10779,17 @@ components:
     CommercialCatalogVersionTerms:
       type: object
       additionalProperties: false
-      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices]
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices, price_unit, tenant_kind]
       properties:
+        price_unit:
+          type: string
+          enum: [ACCOUNT, SEAT]
+          description: >-
+            Sign Business per-seat pricing — SEAT when the version's list price is per seat (per Sign-sending
+            member) per interval; ACCOUNT (the content carries no price_unit) when per organization.
+        tenant_kind:
+          type: [string, 'null']
+          description: The plan's tenant kind (BUSINESS | PERSONAL | null); per-seat pricing applies to a BUSINESS self-service plan only.
         list_price_minor:
           type: [integer, 'null']
           description: Minor units (USD cents); null when contract-priced.
@@ -10884,7 +10903,7 @@ components:
     CommercialCatalogPlan:
       type: object
       additionalProperties: false
-      required: [id, key, product_key, name, status, sales_model, sellable, display_order]
+      required: [id, key, product_key, name, status, tenant_kind, sales_model, sellable, display_order]
       properties:
         id:
           type: string
@@ -10898,6 +10917,9 @@ components:
           type: string
         status:
           type: string
+        tenant_kind:
+          type: [string, 'null']
+          description: BUSINESS | PERSONAL | null — the console offers per-seat pricing only on a BUSINESS self-service plan.
         sales_model:
           type: string
         sellable:
@@ -11082,6 +11104,13 @@ components:
         expected_content_checksum:
           type: string
           pattern: '^[0-9a-f]{64}$'
+        price_unit:
+          type: string
+          enum: [ACCOUNT, SEAT]
+          description: >-
+            Sign Business per-seat pricing — price the DRAFT per seat (SEAT) or per organization (ACCOUNT). SEAT
+            is refused 422 VALIDATION_ERROR price_unit_not_applicable unless the plan is a BUSINESS self-service
+            plan with a list price. Published only through the PLAN_VERSION_PUBLISH change request.
         list_price_minor:
           type: integer
           minimum: 0

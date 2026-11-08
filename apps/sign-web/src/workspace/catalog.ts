@@ -47,3 +47,19 @@ export function usd(minor: number): string {
   const amount = minor / 100;
   return `$${Number.isInteger(amount) ? amount : amount.toFixed(2)}`;
 }
+
+/** Per-seat directive §3.5 — the most seats one organization buys online (the API's bound). */
+export const MAX_SEATS = 1000;
+
+/** "3 of 5 seats used". */
+export function seatsUsedText(used: number, purchased: number): string {
+  return `${used} of ${purchased} seat${purchased === 1 ? '' : 's'} used`;
+}
+
+/** A seat count typed by the owner: a whole number between `min` and MAX_SEATS, else null. */
+export function parseSeats(raw: string, min: number): number | null {
+  const t = raw.trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return n >= Math.max(1, min) && n <= MAX_SEATS ? n : null;
+}

@@ -1,10 +1,14 @@
 import {
   MAX_REGIONAL_PRICE_MINOR,
   MAX_UNIT_PRICE_MINOR,
+  type PlanPriceUnit,
   type PlanVersionContent,
   PlanVersionContentError,
   type PlanVersionRegionalPriceTerm,
   parsePlanVersionContent,
+  priceUnitOf,
+  seatPriceUnitRefusal,
+  withPriceUnit,
   withRegionalPrices,
   withUnitPrices,
 } from '../plan-version.js';
@@ -33,6 +37,10 @@ import { isMeteredUnitKey } from '../usage/metered-units.js';
 //                covered by its fingerprint, published only through PLAN_VERSION_PUBLISH (Finance →
 //                Owner) and immutable once published. An entry is keyed by (country, interval);
 //                amount_minor null removes it. US is never a regional price (the list price is US/USD).
+//   price unit   Sign Business per-seat pricing (directive v1.0 §3.4) — a DRAFT of a BUSINESS self-service
+//                plan with a list price may be priced per seat ("SEAT") or per account ("ACCOUNT", the key
+//                omitted). Part of the content, published only through PLAN_VERSION_PUBLISH. Refused with
+//                `price_unit_not_applicable` on any other plan.
 
 /** The Sign envelope allowance the editor's "Envelopes per month" reads and edits. */
 export const CATALOG_ENVELOPE_ALLOWANCE_KEY = 'sign.envelopes';
@@ -42,7 +50,7 @@ export const CATALOG_STORAGE_CAPACITY_KEY = 'sign.storage_bytes';
 export const CATALOG_V1_CURRENCY = 'USD';
 export const CATALOG_V1_BILLING_INTERVAL = 'MONTH';
 
-export type CatalogConflictReason = 'not_draft' | 'draft_exists' | 'stale' | 'plan_mismatch' | 'contract_priced' | 'term_missing';
+export type CatalogConflictReason = 'not_draft' | 'draft_exists' | 'stale' | 'plan_mismatch' | 'contract_priced' | 'term_missing' | 'price_unit_not_applicable';
 
 export class CatalogDraftEditError extends Error {
   constructor(
@@ -75,6 +83,10 @@ export interface CatalogVersionTerms {
   readonly unit_prices: readonly { readonly unit_key: string; readonly unit_price_minor: number }[];
   /** M-A12 A1-3 — the regional list prices on the version (sorted by country, interval; empty = none). */
   readonly regional_prices: readonly PlanVersionRegionalPriceTerm[];
+  /** Per-seat pricing — ACCOUNT when the content carries no price_unit. */
+  readonly price_unit: PlanPriceUnit;
+  /** The plan's tenant kind (BUSINESS | PERSONAL | null): the console offers per-seat only for BUSINESS. */
+  readonly tenant_kind: string | null;
 }
 
 /** M-A12 A1-3 — one regional-price edit: set (amount_minor) or remove (null) the (country, interval) entry. */
@@ -99,6 +111,8 @@ export interface CatalogDraftEdits {
   readonly unit_prices?: Readonly<Record<string, number | null>>;
   /** M-A12 A1-3 — regional prices to set or remove; entries not named keep their price. */
   readonly regional_prices?: readonly CatalogRegionalPriceEdit[];
+  /** Per-seat pricing — SEAT (a BUSINESS self-service plan with a list price only) or ACCOUNT. */
+  readonly price_unit?: PlanPriceUnit;
 }
 
 export function isContractPriced(content: PlanVersionContent): boolean {
@@ -130,6 +144,8 @@ export function catalogTermsOf(content: PlanVersionContent): CatalogVersionTerms
     storage_present: sto !== undefined,
     unit_prices: (content.unit_prices ?? []).map((u) => ({ unit_key: u.unit_key, unit_price_minor: u.unit_price_minor })),
     regional_prices: (content.regional_prices ?? []).map((r) => ({ country: r.country, currency: r.currency, amount_minor: r.amount_minor, interval: r.interval })),
+    price_unit: priceUnitOf(content),
+    tenant_kind: content.plan.tenant_kind,
   };
 }
 
@@ -165,7 +181,18 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
   }
   const edited = parsePlanVersionContent({ ...content, plan, allowances, capacities });
   const priced = edits.unit_prices === undefined ? edited : applyUnitPriceEdits(edited, edits.unit_prices);
-  return edits.regional_prices === undefined ? priced : applyRegionalPriceEdits(priced, edits.regional_prices);
+  const regional = edits.regional_prices === undefined ? priced : applyRegionalPriceEdits(priced, edits.regional_prices);
+  return edits.price_unit === undefined ? regional : applyPriceUnitEdit(regional, edits.price_unit);
+}
+
+/** Per-seat pricing — the price unit of a DRAFT (SEAT only on a BUSINESS self-service plan with a list price). */
+export function applyPriceUnitEdit(content: PlanVersionContent, unit: PlanPriceUnit): PlanVersionContent {
+  if (unit !== 'SEAT' && unit !== 'ACCOUNT') throw new CatalogDraftEditError('term_missing', 'price_unit must be ACCOUNT or SEAT');
+  if (unit === 'SEAT') {
+    const refusal = seatPriceUnitRefusal(content.plan);
+    if (refusal !== null) throw new CatalogDraftEditError('price_unit_not_applicable', `this plan cannot be priced per seat: ${refusal}`, { tenant_kind: content.plan.tenant_kind, sales_model: content.plan.sales_model });
+  }
+  return withPriceUnit(content, unit);
 }
 
 /** M-A12 A1-3 — the regional-price edits of a DRAFT (fails closed: a bad country, currency, interval or amount). */

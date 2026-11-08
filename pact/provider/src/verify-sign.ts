@@ -1070,6 +1070,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       for (const m of [...migrationsOf('metering'), ...migrationsOf('subscription')]) {
         await db.query(readFileSync(m, 'utf8'));
       }
+      // Sign Business per-seat pricing (Amendment A1-5) — the migration-published per-seat Standard
+      // Business version carries no Stripe pin and never sells on the env (per-account) price map, so
+      // checkout would refuse BILLING_UNAVAILABLE before the governed-subscription decision. Pin the
+      // pact test price to it, as the governed console path does before any per-seat sale.
+      await db.query(
+        `INSERT INTO subscription."PlanVersionPrice" (id, plan_version_id, provider, provider_price_ref, created_by, created_at)
+         SELECT gen_random_uuid(), v.id, 'STRIPE', 'price_pact_business', 'pact:per-seat-pin', now()
+           FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id
+          WHERE p.key = 'aramo-sign-standard-business-v1' AND v.status = 'PUBLISHED' AND v.content->>'price_unit' = 'SEAT'`,
+      );
 
       // PX-1 — a deterministic one-page US-Letter source PDF for the OWNED fixtures.
       const pdf = await PDFDocument.create({ updateMetadata: false });

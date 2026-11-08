@@ -208,7 +208,7 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
           // Merge train (TD-MERGE-43): the generic object also carries a payment and an amount paid,
           // so the CCP-C4 refund calls reach every request they make. It names no paying account, so
           // the refund request below binds the empty account the wire mapper then reads.
-          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [] }, payment_intent: 'pi_c5', currency: 'usd', amount_paid: 4900 }),
+          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [{ id: 'si_c5', quantity: 1 }] }, payment_intent: 'pi_c5', currency: 'usd', amount_paid: 4900 }),
           { status: 200 },
         );
       }),
@@ -264,6 +264,11 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     readPaymentPicture: (p) => p.readPaymentPicture('in_c5'),
     // Sign usage metering (Feature Parity D-2, A1/A3): one Billing Meter Event per ledger entry.
     reportMeterEvent: (p) => p.reportMeterEvent({ event_name: 'aramo_sign_sms_message', account_ref: 'acct_c5', value: 1, identifier: 'entry-c5', occurred_at: new Date('2026-11-01T00:00:00Z') }),
+    // Sign Business per-seat pricing: the seat quantity, prorated (increase) and not (decrease).
+    updateSubscriptionQuantity: async (p) => {
+      await p.updateSubscriptionQuantity('sub_c5', 3, 'create_prorations', 'k-seats-1');
+      await p.updateSubscriptionQuantity('sub_c5', 2, 'none', 'k-seats-2');
+    },
   };
   const READ_CALLS: Record<string, (a: StripeBillingReadAdapter) => Promise<unknown>> = {
     retrieveSubscription: (a) => a.retrieveSubscription('sub_c5'),
@@ -293,8 +298,9 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     // reverse 1 each, discount apply 2 (coupon + subscription), discount remove 1, refund 2 (invoice
     // re-verify + refund)), readAdjustmentEffect 12 (2 reads each for the 2 credit, 2 discount and
     // refund operations: credit 1 + 1, discount 1 + 1, refund 2 + 2) and readPaymentPicture 3, plus
-    // (Sign usage metering) reportMeterEvent 1.
-    expect(recorded.length).toBe(37);
+    // (Sign usage metering) reportMeterEvent 1, plus (Sign Business per-seat pricing)
+    // updateSubscriptionQuantity 6 (2 changes, each GET + POST + GET).
+    expect(recorded.length).toBe(43);
     for (const w of ['POST /v1/refunds', 'POST /v1/coupons', 'GET /v1/disputes', 'GET /v1/refunds']) expect(recorded.map((r) => `${r.method} ${r.path}`), w).toContain(w);
     expect(new Set(recorded.map((r) => `${r.method} ${r.path}`)).size).toBeGreaterThanOrEqual(9);
     for (const r of recorded) {

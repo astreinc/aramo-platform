@@ -1,5 +1,6 @@
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
+import { priceUnitOf, type PlanPriceUnit, type PlanVersionContent } from '../plan-version.js';
 import type { ProductKey } from '../product-registry.js';
 
 // CCP-A5 (MP-A2 N-17; Charter D3 "moved into PlanVersion data, with an env-parity check during
@@ -40,9 +41,11 @@ export type EffectivePrice =
   | { readonly ok: false; readonly reason: 'NO_PRICE' | 'PARITY_MISMATCH' };
 
 /** The checkout price of a plan's CURRENT (PUBLISHED) version under the cutover rule. */
-export async function effectiveProviderPrice(db: Db, version_id: string, plan_key: string, env: ReadonlyMap<string, string>): Promise<EffectivePrice> {
+export async function effectiveProviderPrice(db: Db, version_id: string, plan_key: string, env: ReadonlyMap<string, string>, price_unit: PlanPriceUnit = 'ACCOUNT'): Promise<EffectivePrice> {
   const pin = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: version_id, provider: BILLING_PRICE_PROVIDER } } });
-  const envRef = env.get(plan_key);
+  // Per-seat Implementation A1-5 — a per-seat version sells only on its pinned price: the env map
+  // carries per-account prices, which would bill the old price once per seat.
+  const envRef = price_unit === 'SEAT' ? undefined : env.get(plan_key);
   if (pin !== null) {
     if (envRef !== undefined && envRef !== pin.provider_price_ref) return { ok: false, reason: 'PARITY_MISMATCH' };
     return { ok: true, ref: pin.provider_price_ref, source: 'PIN' };
@@ -118,6 +121,8 @@ export async function resolvePriceToVersion(db: Db, price_ref: string, product_k
     if (current === null) continue;
     const pinned = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: current.id, provider: BILLING_PRICE_PROVIDER } } });
     if (pinned !== null) continue;
+    // A1-5 — a per-seat version never resolves through the env (per-account) map.
+    if (priceUnitOf(current.content as Pick<PlanVersionContent, 'price_unit'>) === 'SEAT') continue;
     return { plan_id: plan.id, plan_version_id: current.id, version_status: current.status, source: 'ENV' };
   }
   return null;

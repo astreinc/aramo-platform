@@ -10081,6 +10081,15 @@ paths:
             `INVITATION_ALREADY_EXISTS` — the email is already a member of this
             tenant; or `EMAIL_UNAVAILABLE` — the email is already registered to
             a user owned by another tenant (`details` is exactly `{}`).
+            Or `ESIGN_BILLING_CONFLICT` with `details.reason` `seat_limit_reached`
+            and `details.used` / `details.purchased` (integers) — Sign Business
+            per-seat pricing (directive v1.0 §3.2): the tenant's subscription is
+            priced per seat and every purchased seat is in use, so a person with
+            Sign send access (sign_admin, sign_sender, tenant_owner, tenant_admin)
+            cannot be added until a seat is added in Sign Billing. The same 409
+            is answered by `PATCH /v1/tenant/users/{user_id}/roles` (granting
+            Sign send access) and `POST /v1/tenant/users/{user_id}/enable`
+            (re-enabling a member who holds it).
           content:
             application/json:
               schema:

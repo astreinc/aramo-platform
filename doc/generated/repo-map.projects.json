@@ -1192,6 +1192,8 @@
       "RoleRepository",
       "RoleService",
       "SCOPE_KEY_FORMAT",
+      "SEAT_LIMIT_PORT",
+      "SEAT_LIMIT_REACHED_REASON",
       "SEED_ROLE_KEYS",
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
@@ -1207,8 +1209,10 @@
       "SIGN_PLAY_INTEGRITY_DEFAULT_MAX_AGE_SECONDS",
       "SIGN_PLAY_INTEGRITY_DEFAULT_PACKAGE",
       "SIGN_PLAY_INTEGRITY_FUTURE_SKEW_MS",
+      "SIGN_SEAT_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SMS_VERIFICATION_PORT",
+      "SeatLimitReachedError",
       "SignCustomRoleService",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
@@ -1234,6 +1238,7 @@
       "TurnstileRobotCheckAdapter",
       "US_STATE_CODES",
       "UnconfiguredNativeIntegrityCheck",
+      "assertSeatAvailableTx",
       "authorityStatement",
       "bumpPrincipalVersion",
       "bumpPrincipalsWithRoleVersion",
@@ -1244,6 +1249,7 @@
       "cognitoCreateUserAttributes",
       "composableScopesOf",
       "consumerAllowedForTenantKind",
+      "countSignSeatsTx",
       "decisionForPoints",
       "decodeCursor",
       "decryptPrivacyEmail",
@@ -1266,6 +1272,7 @@
       "geoEvidenceOf",
       "hashPersonalInviteCode",
       "hashPersonalOtp",
+      "holdsSignSendAccess",
       "identityRetirementFromEnv",
       "initialRiskState",
       "isComposableSignScope",
@@ -1311,6 +1318,8 @@
       "robotCheckAdapterFromEnv",
       "safeGeoLookup",
       "scopesActorLacks",
+      "seatGuardOf",
+      "seatLimitReachedError",
       "sendLocation",
       "signEntryActivated",
       "signEntryUrl",
@@ -2609,6 +2618,7 @@
       "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
       "BILLING_PROVIDER_READ_PORT",
+      "BILLING_PROVIDER_SEAT_PORT",
       "BILLING_READ_SCOPE",
       "BILLING_STATUS_AVAILABILITY",
       "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
@@ -2774,6 +2784,7 @@
       "LegalChangeNoticeService",
       "MAX_REGIONAL_PRICES",
       "MAX_REGIONAL_PRICE_MINOR",
+      "MAX_SEATS",
       "MAX_UNIT_PRICE_MINOR",
       "METERED_UNIT_KEYS",
       "METERED_USAGE_OPTIONS",
@@ -2808,6 +2819,7 @@
       "PLAN_ELIGIBILITY_PORT",
       "PLAN_KEY_PATTERN",
       "PLAN_KEY_TAKEN",
+      "PLAN_PRICE_UNITS",
       "PLAN_TARGET_CHECKSUM_KEY",
       "PLAN_VERSION_CONTENT_FORMAT",
       "PLAN_VERSION_ID_REQUIRED",
@@ -2879,6 +2891,8 @@
       "SUPPORT_EXTENSION_INELIGIBLE",
       "SUPPORT_EXTENSION_INELIGIBLE_EVENT",
       "SUPPORT_EXTENSION_SCOPE",
+      "SeatBillingService",
+      "SeatChangeRefusedError",
       "SelfServiceBillingService",
       "SelfServiceRefusedError",
       "SignTemplateEntitlementService",
@@ -2928,6 +2942,7 @@
       "appleStoreConfig",
       "appleSubscriptionState",
       "applyCatalogDraftEdits",
+      "applyPriceUnitEdit",
       "applyRegionalPriceEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
@@ -2979,6 +2994,7 @@
       "effectivePersonalLegalDocument",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
+      "effectivePurchasedSeats",
       "effectiveReleaseState",
       "enabledRefundPolicyIdentity",
       "entitlementGapSubject",
@@ -3056,6 +3072,7 @@
       "policyRangeErrors",
       "postTerminationExportDays",
       "priceFigure",
+      "priceUnitOf",
       "productOfMeteredKey",
       "productOfMeteredUnit",
       "projectApprovalNotes",
@@ -3081,6 +3098,8 @@
       "resolveRequiredChain",
       "resolveStoreProductToVersion",
       "runPlatformOwnerBootstrap",
+      "seatColumnsAfterProviderState",
+      "seatPriceUnitRefusal",
       "selfServiceCommandIdempotencyKey",
       "sendErrorCode",
       "storeBillingEnabled",
@@ -3108,11 +3127,13 @@
       "usageMetricOf",
       "usageMetricsOf",
       "usageReportBackoffMs",
+      "validSeatCount",
       "validateContractBlocks",
       "validatePayload",
       "validateRecordInput",
       "validateUsageInput",
       "verifyStripeSignature",
+      "withPriceUnit",
       "withRegionalPrices",
       "withUnitPrices",
       "withholdAuditPayloadAmounts",
@@ -4521,6 +4542,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-business-per-seat.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8992,6 +9019,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-business-per-seat.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/sign-catalog-v2.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -11132,6 +11165,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/workspace/api-seats.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/AccountClose.spec.tsx",
         "project": "aramo-sign-web",
@@ -11380,6 +11419,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sign-seat-limit.adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -11751,6 +11796,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-seat-limit-console-invite.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11862,6 +11913,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-business-per-seat.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12407,6 +12464,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/roles1-owner-grant-rule.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/sign-seat-limit.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -14441,6 +14504,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-branding.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-business-per-seat.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

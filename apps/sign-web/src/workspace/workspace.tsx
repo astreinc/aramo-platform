@@ -26,6 +26,11 @@ export function useWorkspace(): WorkspaceValue {
   return v;
 }
 
+/** The workspace when rendered inside one, else null (a panel the setup page also renders). */
+export function useOptionalWorkspace(): WorkspaceValue | null {
+  return useContext(WorkspaceCtx);
+}
+
 export function WorkspaceProvider({ ctx, children }: { ctx: SenderContext; children: ReactNode }) {
   const [awaiting, setAwaiting] = useState(0);
   const [tick, setTick] = useState(0);

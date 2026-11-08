@@ -11,6 +11,7 @@ import { CommercialChangeRequestError } from '../lib/commercial/commercial-chang
 import { ConversionApplyFailedError } from '../lib/commercial/commercial-conversion.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { publishTestPlanV1 } from './fixtures/ccp-a5.js';
 import { addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
@@ -60,6 +61,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 governed m
     prisma = new PrismaService(url);
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS}=price_business`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     h = c2Harness(prisma, clock);
     h.billing.attachProbe(probe);
     OPS = await addOperator(pg, ['commercial_ops']);

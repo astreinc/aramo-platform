@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiError, fetchMyProducts, safeErrorMessage, useToast } from '@aramo/fe-foundation';
+import { ApiError, fetchMyProducts, safeErrorMessage, useToast, type ProductAvailabilityView } from '@aramo/fe-foundation';
 
 import { fetchMe } from '../me-api';
 import { fetchRolesCatalog } from '../roles/roles-catalog-api';
@@ -8,6 +8,7 @@ import { OrgModal } from '../ui/OrgPage';
 import { messageForInviteError } from './error-messages';
 import { buildRoleGroups, subscribedApps, type RoleGroup } from './role-groups';
 import { RoleGroupsPicker } from './RoleGroupsPicker';
+import { SeatLimitAlert, seatLimitOf, signBillingHref, type SeatLimit } from './seat-limit';
 import type { TenantUserView } from './types';
 import { fetchTenantUsers, inviteTenantUser } from './users-api';
 
@@ -29,7 +30,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type Loaded =
   | { readonly status: 'loading' }
   | { readonly status: 'error' }
-  | { readonly status: 'ready'; readonly groups: readonly RoleGroup[]; readonly users: readonly TenantUserView[]; readonly callerIsOwner: boolean };
+  | {
+      readonly status: 'ready';
+      readonly groups: readonly RoleGroup[];
+      readonly users: readonly TenantUserView[];
+      readonly callerIsOwner: boolean;
+      readonly products: ProductAvailabilityView | null;
+    };
 
 export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserModalProps) {
   const toast = useToast();
@@ -39,6 +46,8 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
   const [roles, setRoles] = useState<readonly string[]>([]);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Per-seat directive §3.7 — the Sign seat cap, shown with a link to Aramo Sign → Billing.
+  const [seatLimit, setSeatLimit] = useState<SeatLimit | null>(null);
   const [sending, setSending] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
@@ -49,6 +58,7 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
     setRoles([]);
     setEmailError(null);
     setFormError(null);
+    setSeatLimit(null);
     setSending(false);
     let cancelled = false;
     setLoaded({ status: 'loading' });
@@ -62,6 +72,7 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
           groups: buildRoleGroups(catalog, subscribedApps(products)),
           users: list.items,
           callerIsOwner: self?.role_keys.includes('tenant_owner') === true,
+          products,
         });
       })
       .catch(() => {
@@ -89,6 +100,7 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
     }
     setSending(true);
     setFormError(null);
+    setSeatLimit(null);
     try {
       await inviteTenantUser({ email: em, display_name: name.trim().length > 0 ? name.trim() : null, role_keys: roles });
       toast.show(`Invitation sent to ${em}.`);
@@ -96,6 +108,11 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
       onOpenChange(false);
     } catch (err: unknown) {
       setSending(false);
+      const seat = seatLimitOf(err);
+      if (seat !== null) {
+        setSeatLimit(seat);
+        return;
+      }
       if (err instanceof ApiError && err.status === 409) {
         setEmailError('This person is already in your organization.');
         return;
@@ -170,6 +187,7 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
           onChange={(next) => {
             setRoles(next);
             setFormError(null);
+            setSeatLimit(null);
           }}
           callerIsOwner={loaded.callerIsOwner}
         />
@@ -179,6 +197,7 @@ export function InviteUserModal({ open, onOpenChange, onInvited }: InviteUserMod
           {formError}
         </div>
       ) : null}
+      {seatLimit !== null ? <SeatLimitAlert limit={seatLimit} billingHref={signBillingHref(loaded.status === 'ready' ? loaded.products : null)} /> : null}
     </OrgModal>
   );
 }

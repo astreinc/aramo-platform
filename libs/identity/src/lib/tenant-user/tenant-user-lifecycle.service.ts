@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 
@@ -26,6 +26,7 @@ import {
   renderInviteEmail,
 } from './invite-emails.js';
 import { deriveDisplayedStatus } from './invitation-token.js';
+import { SEAT_LIMIT_PORT, type SeatGuard, type SeatLimitPort, holdsSignSendAccess, seatGuardOf } from './seat-limit.port.js';
 
 // Settings S4 — the narrow role-key whose grant is policy-gated by the
 // tenant's `audit.financials_enabled` KNOWN_SETTING. Exported as a const
@@ -135,7 +136,16 @@ export class TenantUserLifecycleService {
     // (sent at INVITED). MailerModule binds MAILER_PORT in IdentityModule's
     // scope (a clean static leaf import — no forRoot, no multi-instance risk).
     @Inject(MAILER_PORT) private readonly mailer: MailerPort,
+    // Sign Business per-seat pricing (directive v1.0 §3.2) — the seat limit. apps/api binds it
+    // (IdentityModule.forRoot); unbound = no limit.
+    @Optional() @Inject(SEAT_LIMIT_PORT) private readonly seatLimit?: SeatLimitPort,
   ) {}
+
+  /** Sign per-seat pricing — the identity write's seat guard, when the change takes a seat and a limit port is bound. */
+  private seatGuardArg(tenant_id: string, takesSeat: boolean): { seat_guard?: SeatGuard } {
+    const guard = takesSeat ? seatGuardOf(this.seatLimit, tenant_id) : undefined;
+    return guard === undefined ? {} : { seat_guard: guard };
+  }
 
   // INVITE — Pattern-2 (no-sub) flow.
   //   step 0: validate role_keys is non-empty.
@@ -242,6 +252,8 @@ export class TenantUserLifecycleService {
       request_id: args.request_id,
       // ROLES-1 PR-1 (§4.2) — inviting someone as tenant_owner needs an owner caller.
       owner_role_authority: { actor_user_id: args.actor_user_id },
+      // Sign per-seat pricing (§3.2.4) — an invite with Sign send access needs a free seat (409 seat_limit_reached).
+      ...this.seatGuardArg(args.tenant_id, holdsSignSendAccess(args.role_keys)),
     });
 
     // Step 3 — send the invite email (S1 mailer). BEST-EFFORT: the user +
@@ -530,6 +542,9 @@ export class TenantUserLifecycleService {
       request_id: args.request_id,
       // ROLES-1 PR-1 (§4.2) — granting or removing tenant_owner needs an owner caller.
       owner_role_authority: { actor_user_id: args.actor_user_id },
+      // Sign per-seat pricing (§3.2.4) — GRANTING Sign send access needs a free seat; a change that keeps
+      // (or removes) it never does (O-6: removing frees the seat at once).
+      ...this.seatGuardArg(args.tenant_id, holdsSignSendAccess(args.role_keys) && !holdsSignSendAccess(before_role_keys)),
     });
 
     // Step 5 — compute key-set delta. We compute from keys rather than
@@ -701,9 +716,18 @@ export class TenantUserLifecycleService {
     // grants owner authority back: only a tenant_owner caller may do it (403
     // owner_role_requires_owner), before any write.
     await this.assertOwnerTargetAuthority({ ...args, action: 'enable' });
+    // Sign per-seat pricing (§3.2.4) — re-enabling a disabled member who holds Sign send access needs a
+    // free seat (409 seat_limit_reached); re-enabling an active member is the idempotent no-op.
+    const takesSeat =
+      this.seatLimit !== undefined &&
+      wasActive !== null &&
+      wasActive.is_active !== true &&
+      holdsSignSendAccess(await this.identitySvc.findRoleKeysForMembership(wasActive.id));
     const result = await this.identitySvc.reEnableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
+      ...this.seatGuardArg(args.tenant_id, takesSeat),
+      ...(takesSeat ? { request_id: args.request_id } : {}),
     });
     if (result === null) {
       throw new AramoError(

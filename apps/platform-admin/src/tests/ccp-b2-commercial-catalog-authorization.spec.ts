@@ -212,6 +212,17 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     expect(res.body.version.terms.regional_prices).toEqual([]);
   });
 
+  it('PER-SEAT-RT-1 PATCH passes price_unit through as a draft edit (SEAT and ACCOUNT)', async () => {
+    const r = ROUTES[3] as Route;
+    for (const price_unit of ['SEAT', 'ACCOUNT'] as const) {
+      svcMock.updateDraft.mockClear();
+      const res = await call(r, 'catalog_manager', { body: { expected_content_checksum: 'c'.repeat(64), price_unit } });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const [, , input] = svcMock.updateDraft.mock.calls[0] as unknown as [unknown, string, { edits: object }];
+      expect(input.edits).toEqual({ price_unit });
+    }
+  });
+
   it('A4-D2-RT-1 PATCH passes the unit-price edits through as draft edits (null = stop selling the unit); GET lists the priceable units and the version prices', async () => {
     const r = ROUTES[4] as Route;
     const res = await call(r, 'catalog_manager');
@@ -253,6 +264,9 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     ['patch: regional price fractional', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'IN', interval: 'MONTH', currency: 'INR', amount_minor: 0.5 }] }],
     ['patch: regional prices empty', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [] }],
     ['patch: regional price extra key', ROUTES[3] as Route, { ...PATCH_BODY, regional_prices: [{ country: 'IN', interval: 'MONTH', currency: 'INR', amount_minor: 1, store: 'x' }] }],
+    // Sign Business per-seat pricing — price_unit is ACCOUNT | SEAT only (seats stays refused above).
+    ['patch: price_unit unknown value', ROUTES[3] as Route, { ...PATCH_BODY, price_unit: 'PER_USER' }],
+    ['patch: price_unit lower-case', ROUTES[3] as Route, { ...PATCH_BODY, price_unit: 'seat' }],
   ];
   for (const [name, r, body] of bad) {
     it(`B2-RT-400 ${name}`, async () => {
@@ -275,6 +289,8 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     ['not human', new CommercialCatalogError('NOT_HUMAN', 'm'), 403, 'INSUFFICIENT_PERMISSIONS', { reason: 'not_human' }],
     ['scope missing', new CommercialCatalogError('SCOPE_MISSING', 'm', { missing_scopes: [DRAFT] }), 403, 'INSUFFICIENT_PERMISSIONS', { reason: 'scope_missing' }],
     ['policy unavailable', new CommercialPolicyUnavailableError('MISSING'), 503, 'COMMERCIAL_POLICY_UNAVAILABLE', { reason: 'MISSING' }],
+    // Sign Business per-seat pricing — SEAT on a PERSONAL / contract plan.
+    ['price unit not applicable', new CommercialCatalogError('UNPROCESSABLE', 'm', { reason: 'price_unit_not_applicable', tenant_kind: 'PERSONAL' }), 422, 'VALIDATION_ERROR', { reason: 'price_unit_not_applicable' }],
   ];
   for (const [name, err, status, code, details] of mapping) {
     it(`B2-RT-MAP ${name} → ${status} ${code}`, async () => {

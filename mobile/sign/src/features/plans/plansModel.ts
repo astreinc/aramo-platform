@@ -176,8 +176,19 @@ export function intervalLabel(i: StoreInterval): string {
   return i === 'YEAR' ? 'Yearly' : 'Monthly';
 }
 
-export function perInterval(i: StoreInterval): string {
-  return i === 'YEAR' ? '/ year' : '/ month';
+/**
+ * Sign Business per-seat directive (v1.0 LOCKED) §3.6 — whether the server prices the plan per
+ * seat (`price_unit === 'SEAT'`). Read defensively: the field may be absent from the plan (older
+ * servers, or before the generated type carries it); absent = per account.
+ */
+export function isSeatPriced(plan: object | null | undefined): boolean {
+  return plan != null && 'price_unit' in plan && plan.price_unit === 'SEAT';
+}
+
+/** "/ month", "/ year"; "/ user / month" for a per-seat plan (§3.6). */
+export function perInterval(i: StoreInterval, plan?: object | null): string {
+  const per = i === 'YEAR' ? 'year' : 'month';
+  return isSeatPriced(plan) ? `/ user / ${per}` : `/ ${per}`;
 }
 
 /** Account › Plan: the current plan's name, else "See plans". */

@@ -13,6 +13,7 @@ import { BillingRefusedError } from '../lib/billing/subscription-lifecycle.servi
 import { CommercialApplyFailedError } from '../lib/commercial/commercial-apply.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, INCLUDED, a6Harness, as, newTenant, publishedVersion, rawSubscription, waitForAdvisoryWaiter, type A6Harness } from './support/ccp-a6.js';
 
@@ -48,6 +49,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 governed-s
     prisma = new PrismaService(url);
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS}=price_business`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     h = a6Harness(prisma, () => T0);
     OPS = await addOperator(pg, ['commercial_ops']);
     FA = await addOperator(pg, ['finance_admin']);
