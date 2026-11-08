@@ -497,6 +497,24 @@ export interface BillingPlan {
   capacities: { capacity_key: string; limit: number | null; unlimited: boolean; available?: boolean }[];
   features: { feature_key: string; enabled: boolean; available?: boolean }[];
   purchasable: boolean;
+  // Sign Business per-seat directive §3.3.4 — how the list price is charged (SEAT = per user).
+  // Optional only for older backends; absent reads as ACCOUNT (per organization).
+  price_unit?: PriceUnit;
+}
+
+/** Per-seat directive §3.1 — ACCOUNT = per organization; SEAT = per user (seat). */
+export type PriceUnit = 'ACCOUNT' | 'SEAT';
+
+/** Per-seat directive §3.3.4 — the seats of a SEAT subscription (`pending_purchased` = a decrease scheduled for the period end). */
+export interface BillingSeats {
+  purchased: number;
+  used: number;
+  pending_purchased: number | null;
+}
+
+/** Per-seat directive §3.3.3 — POST /v1/sign/billing/seats. */
+export interface BillingSeatsChange extends BillingSeats {
+  effective: 'NOW' | 'PERIOD_END';
 }
 
 export interface BillingCatalog {
@@ -554,13 +572,27 @@ export interface BillingAccount {
   // the backend offers one. Absent on older backends; null when the feature is off or no upgrade
   // applies; `reason` says why it isn't available (e.g. not_available_in_country).
   upgrade?: { available: boolean; plan_key: string; price_minor: number | null; commitment_months: number | null; reason?: string | null } | null;
+  // Sign Business per-seat directive §3.3.4 — the pinned version's pricing unit (null: no
+  // subscription), its seats (null unless SEAT), and whether the caller may change them (owner /
+  // admin, Stripe-billed, SEAT; O-3). Optional only for older backends.
+  price_unit?: PriceUnit | null;
+  seats?: BillingSeats | null;
+  can_manage_seats?: boolean;
 }
 
 export const billingApi = {
   plans: () => apiClient.get<BillingCatalog>(`${BILLING}/plans`),
   account: () => apiClient.get<BillingAccount>(`${BILLING}/account`),
-  checkout: (plan_key: string, accept_terms?: boolean) =>
-    apiClient.post<{ url: string }>(`${BILLING}/checkout`, accept_terms === undefined ? { plan_key } : { plan_key, accept_terms }),
+  // Per-seat directive §3.3.1 — `seats` only for a SEAT plan (the backend refuses it otherwise).
+  checkout: (plan_key: string, accept_terms?: boolean, seats?: number) =>
+    apiClient.post<{ url: string }>(`${BILLING}/checkout`, {
+      plan_key,
+      ...(accept_terms === undefined ? {} : { accept_terms }),
+      ...(seats === undefined ? {} : { seats }),
+    }),
+  // Per-seat directive §3.3.3 — change the seat count (owner / admin): an increase is prorated now,
+  // a decrease applies at the period end; never below the seats in use.
+  seats: (seats: number) => apiClient.post<BillingSeatsChange>(`${BILLING}/seats`, { seats }),
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
   // CCP-C7 — tenant self-service. Remaining-Work A4: Settings → Billing → Cancel subscription uses
   // selfService + selfServiceCancel (CancelSubscription.tsx); selfServiceUpgrade has no screen yet.
@@ -902,7 +934,7 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
       return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can manage the plan in Settings → Plan & billing.`;
     }
     // Catalog v2 (fc755040…) §4.3 — checkout / portal refusals with a stable reason.
-    const billing = billingRefusalMessage(e.details?.['reason']);
+    const billing = billingRefusalMessage(e.details?.['reason'], e.details);
     if (billing !== null) return billing;
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing or cancel to change it.';
@@ -942,7 +974,26 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   return fallback;
 }
 
-function billingRefusalMessage(reason: unknown): string | null {
+/** Per-seat directive §3.5.2 — the member cap of a per-seat plan (409, details.reason = seat_limit_reached). */
+export const SEAT_LIMIT_REASON = 'seat_limit_reached';
+export function isSeatLimitReached(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.details?.['reason'] === SEAT_LIMIT_REASON;
+}
+export function seatLimitMessage(purchased: unknown): string {
+  return `All ${typeof purchased === 'number' ? `${purchased} ` : ''}seats are in use. Add a seat to invite more people.`;
+}
+
+function billingRefusalMessage(reason: unknown, details?: Record<string, unknown>): string | null {
+  // Per-seat directive §3.3 / §3.5 — seat refusals.
+  if (reason === SEAT_LIMIT_REASON) return seatLimitMessage(details?.['purchased']);
+  if (reason === 'seats_below_usage') {
+    const used = details?.['used'];
+    return typeof used === 'number'
+      ? `${used} people are using seats, so you need at least ${used} seats. Remove someone’s Aramo Sign access first to go lower.`
+      : 'You can’t have fewer seats than the people using them. Remove someone’s Aramo Sign access first to go lower.';
+  }
+  if (reason === 'seats_not_applicable') return 'Seats can’t be changed for this subscription.';
+  if (reason === 'seats_unchanged') return 'That’s already your number of seats.';
   if (reason === 'TERMS_NOT_ACCEPTED') return 'Check “I agree” to accept the terms before you continue.';
   if (reason === 'PORTAL_NOT_CONFIGURED') return 'Billing management will be available soon; contact support@aramo.ai.';
   if (reason === 'personal_paid_checkout_not_enabled') return 'Upgrading to Standard isn’t available yet.';

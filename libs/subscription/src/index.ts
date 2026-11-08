@@ -1072,3 +1072,18 @@ export {
 } from './lib/plan-version.js';
 export { applyRegionalPriceEdits, type CatalogRegionalPriceEdit } from './lib/commercial/commercial-catalog.js';
 export { STORE_PRODUCT_ID, storeProductPinErrors, type StoreProductPin } from './lib/commercial/commercial-change-request.js';
+
+// Aramo Sign Business Per-Seat Pricing (Implementation Directive v1.0 LOCKED, Amendment A1) — the version
+// price unit, the seat limit and seat changes.
+export { PLAN_PRICE_UNITS, priceUnitOf, seatPriceUnitRefusal, withPriceUnit, type PlanPriceUnit } from './lib/plan-version.js';
+export { applyPriceUnitEdit } from './lib/commercial/commercial-catalog.js';
+export { BILLING_PROVIDER_SEAT_PORT, type BillingProviderSeatPort, type SeatProrationBehavior } from './lib/billing/billing-provider.port.js';
+export { MAX_SEATS, seatColumnsAfterProviderState, validSeatCount } from './lib/billing/subscription-lifecycle.service.js';
+export {
+  SeatBillingService,
+  SeatChangeRefusedError,
+  effectivePurchasedSeats,
+  type SeatChangeRefusal,
+  type SeatChangeResult,
+  type SeatState,
+} from './lib/billing/seat-billing.service.js';

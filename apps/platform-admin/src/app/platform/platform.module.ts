@@ -4,7 +4,7 @@ import { AramoExceptionFilter, CommonModule } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
-import { AuthorizationResolverModule, IdentityCoreModule } from '@aramo/identity';
+import { AuthorizationResolverModule, IdentityCoreModule, SEAT_LIMIT_PORT } from '@aramo/identity';
 import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
@@ -44,6 +44,7 @@ import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
 import { PlatformPrivacyRequestsController } from './platform-privacy-requests.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
+import { SignSeatLimitAdapter } from './sign-seat-limit.adapter.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
 import { UsageRollupWorker } from './usage-rollup-worker.service.js';
 
@@ -112,6 +113,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
     SignPrivacyRepository,
     CognitoAdminService,
     PlatformInvitationService,
+    // Sign Business per-seat pricing (directive v1.0 §3.2.4) — the seat limit of console invites.
+    { provide: SEAT_LIMIT_PORT, useClass: SignSeatLimitAdapter },
     // ADR-0024 PR-4a-2 — policy-store access for the provisioning-time
     // template copy (scope:platform → scope:boundary is wall-legal). PolicyStore
     // takes the policy-store PrismaService (its own generated client; lazy

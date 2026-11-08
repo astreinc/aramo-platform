@@ -270,6 +270,11 @@
   font-family: var(--pw-font);
   font-size: var(--pw-fs-13-5);
 }
+.pc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .pc-input--editable {
   background: var(--pw-surface);
 }

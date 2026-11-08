@@ -13,7 +13,7 @@ import { apiError, ATS_ONLY, CATALOG, PRODUCTS, user } from './users.fixture';
 
 const GROUPS = buildRoleGroups(CATALOG, subscribedApps(PRODUCTS));
 
-function renderEdit(opts: { owner: boolean; roleKeys?: string[]; onSaved?: () => void }) {
+function renderEdit(opts: { owner: boolean; roleKeys?: string[]; onSaved?: () => void; products?: typeof PRODUCTS | null }) {
   return render(
     <ToastProvider>
       <EditAccessModal
@@ -22,6 +22,7 @@ function renderEdit(opts: { owner: boolean; roleKeys?: string[]; onSaved?: () =>
         callerIsOwner={opts.owner}
         onOpenChange={() => undefined}
         onSaved={opts.onSaved ?? (() => undefined)}
+        products={opts.products ?? null}
       />
     </ToastProvider>,
   );
@@ -90,15 +91,35 @@ describe('EditAccessModal', () => {
     fireEvent.click(screen.getByTestId('save-access'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Your organization must keep at least one owner.');
   });
+
+  // Per-seat directive §3.7 — the Sign seat cap links to Aramo Sign → Billing.
+  it('maps 409 seat_limit_reached to the seat message with a link to Sign Billing', async () => {
+    stubFetch(({ method }) => (method === 'PATCH' ? apiError(409, 'TENANT_USER_CONFLICT', { reason: 'seat_limit_reached', used: 3, purchased: 3 }) : undefined));
+    renderEdit({ owner: true, products: PRODUCTS });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sign Sender' }));
+    fireEvent.click(screen.getByTestId('save-access'));
+    expect(await screen.findByTestId('seat-limit-alert')).toHaveTextContent('All 3 seats are in use. Add a seat to invite more people.');
+    expect(screen.getByTestId('seat-limit-billing-link').getAttribute('href')).toContain('sign.aramo.test');
+    expect(screen.getByTestId('seat-limit-billing-link').getAttribute('href')).toContain(encodeURIComponent('/sign/settings/billing'));
+  });
+
+  it('without a known Sign host the seat message says where to add seats (no link)', async () => {
+    stubFetch(({ method }) => (method === 'PATCH' ? apiError(409, 'TENANT_USER_CONFLICT', { reason: 'seat_limit_reached', used: 2, purchased: 2 }) : undefined));
+    renderEdit({ owner: true, products: null });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Sign Sender' }));
+    fireEvent.click(screen.getByTestId('save-access'));
+    expect(await screen.findByTestId('seat-limit-alert')).toHaveTextContent('All 2 seats are in use. Add a seat to invite more people. Add seats in Aramo Sign → Billing.');
+    expect(screen.queryByTestId('seat-limit-billing-link')).toBeNull();
+  });
 });
 
 describe('InviteUserModal', () => {
-  function renderInvite(onInvited = vi.fn()) {
+  function renderInvite(onInvited = vi.fn(), invite: { status?: number; body?: unknown } = { body: { user_id: 'n', membership_id: 'm', invite_status: 'INVITED', invitation_id: 'i' } }) {
     const calls = stubFetch(({ url, method }) => {
       if (url.startsWith('/v1/tenant/roles-catalog')) return { body: { roles: CATALOG } };
       if (url.startsWith('/v1/me/products')) return { body: PRODUCTS };
       if (method === 'GET' && url.startsWith('/v1/tenant/users')) return { body: { items: [user('o', { email: 'o@acme.test', role_keys: ['tenant_admin'] })] } };
-      if (method === 'POST' && url.endsWith('/invitations')) return { body: { user_id: 'n', membership_id: 'm', invite_status: 'INVITED', invitation_id: 'i' } };
+      if (method === 'POST' && url.endsWith('/invitations')) return invite;
       return undefined;
     });
     render(
@@ -131,5 +152,19 @@ describe('InviteUserModal', () => {
     await waitFor(() => expect(onInvited).toHaveBeenCalled());
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ email: 'new@acme.test', display_name: 'New Person', role_keys: ['recruiter'] });
     expect(await screen.findByText('Invitation sent to new@acme.test.')).toBeInTheDocument();
+  });
+
+  // Per-seat directive §3.7 — a 409 seat_limit_reached is the seat message (not "already in your organization").
+  it('409 seat_limit_reached shows "All N seats are in use" with a link to Sign Billing', async () => {
+    const onInvited = vi.fn();
+    renderInvite(onInvited, apiError(409, 'TENANT_USER_CONFLICT', { reason: 'seat_limit_reached', used: 5, purchased: 5 }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Sign Sender' }));
+    fireEvent.change(screen.getByTestId('invite-email'), { target: { value: 'new@acme.test' } });
+    fireEvent.click(screen.getByTestId('send-invitation'));
+    const alert = await screen.findByTestId('seat-limit-alert');
+    expect(alert).toHaveTextContent('All 5 seats are in use. Add a seat to invite more people.');
+    expect(screen.queryByText('This person is already in your organization.')).toBeNull();
+    expect(within(alert).getByRole('link', { name: 'Go to Aramo Sign → Billing' }).getAttribute('href')).toContain(encodeURIComponent('/sign/settings/billing'));
+    expect(onInvited).not.toHaveBeenCalled();
   });
 });

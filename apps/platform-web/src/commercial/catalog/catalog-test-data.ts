@@ -39,6 +39,7 @@ export const TEAM: CatalogPlan = {
   name: 'Team',
   status: 'ACTIVE',
   sales_model: 'SELF_SERVICE',
+  tenant_kind: 'BUSINESS',
   sellable: true,
   display_order: 20,
   versions: [
@@ -55,6 +56,7 @@ export const ENTERPRISE: CatalogPlan = {
   name: 'Enterprise',
   status: 'ACTIVE',
   sales_model: 'CONTACT_SALES',
+  tenant_kind: 'BUSINESS',
   sellable: false,
   display_order: 40,
   versions: [

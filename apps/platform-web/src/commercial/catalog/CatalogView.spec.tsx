@@ -188,13 +188,74 @@ describe('CCP-B2 Catalog screen', () => {
     await screen.findByText('Sign Team v3');
     const price = screen.getByLabelText('Price per month (USD)');
     expect(price).toBeEnabled();
-    expect(screen.getByLabelText('Seats')).toBeDisabled();
+    // Per-seat directive §3.4 (closes DV-B2-03): the former read-only Seats field is the "Priced per seat" toggle.
+    expect(screen.queryByLabelText('Seats')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Priced per seat' })).toBeEnabled();
     fireEvent.change(price, { target: { value: '72' } });
     fireEvent.blur(price);
     await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
     const patch = calls.find((c) => c.method === 'PATCH');
     expect(new URL(patch!.url, 'http://x').pathname).toBe('/platform/commercial/catalog/versions/team-3');
     expect(patch?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), list_price_minor: 7200 });
+  });
+
+  // Sign Business per-seat directive §3.4: "Priced per seat" on a DRAFT of a BUSINESS self-service plan.
+  describe('per-seat pricing unit', () => {
+    const withTeam = (over: Partial<typeof TEAM>): Catalog => ({ ...CATALOG, products: [{ product_key: 'sign', plans: [{ ...TEAM, ...over }] }] });
+
+    it('PS-W-1 a catalog manager turns on per-seat pricing on a BUSINESS DRAFT; the PATCH carries the read checksum and only price_unit', async () => {
+      mockApi('catalog_manager');
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+      await screen.findByText('Sign Team v3');
+      const toggle = screen.getByRole('checkbox', { name: 'Priced per seat' });
+      expect(toggle).not.toBeChecked();
+      expect(screen.getByText('Pricing unit')).toBeInTheDocument();
+      fireEvent.click(toggle);
+      await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+      const patch = calls.find((c) => c.method === 'PATCH');
+      expect(new URL(patch!.url, 'http://x').pathname).toBe('/platform/commercial/catalog/versions/team-3');
+      expect(patch?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), price_unit: 'SEAT' });
+    });
+
+    it('PS-W-2 turning it off on a per-seat DRAFT sends ACCOUNT; the diff reads Per organization → Per seat', async () => {
+      const seatDraft = { ...TEAM.versions[0]!, terms: { ...TEAM.versions[0]!.terms, price_unit: 'SEAT' as const } };
+      mockApi('catalog_manager', withTeam({ versions: [seatDraft, ...TEAM.versions.slice(1)] }));
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+      await screen.findByText('Sign Team v3');
+      const row = screen.getByText('Pricing unit').closest('[role="row"]') as HTMLElement;
+      expect(within(row).getByText('Per organization')).toBeInTheDocument();
+      expect(within(row).getByText('Per seat')).toBeInTheDocument();
+      const toggle = screen.getByRole('checkbox', { name: 'Priced per seat' });
+      expect(toggle).toBeChecked();
+      fireEvent.click(toggle);
+      await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+      expect(calls.find((c) => c.method === 'PATCH')?.body).toEqual({ expected_content_checksum: 'c'.repeat(64), price_unit: 'ACCOUNT' });
+    });
+
+    it('PS-W-3 read-only on a PUBLISHED version and for a role without catalog:draft; never sends a PATCH', async () => {
+      mockApi('catalog_manager');
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
+      await screen.findByText('Sign Team v2');
+      const toggle = screen.getByRole('checkbox', { name: 'Priced per seat' });
+      expect(toggle).toBeDisabled();
+      fireEvent.click(toggle);
+      expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    });
+
+    it('PS-W-4 hidden for a PERSONAL plan (no toggle, no Pricing unit diff row)', async () => {
+      mockApi('catalog_manager', withTeam({ tenant_kind: 'PERSONAL' }));
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+      await screen.findByText('Sign Team v3');
+      expect(screen.queryByRole('checkbox', { name: 'Priced per seat' })).toBeNull();
+      expect(screen.queryByText('Pricing unit')).toBeNull();
+    });
+
+    it('PS-W-5 view-only role: disabled on a DRAFT', async () => {
+      mockApi('finance_admin');
+      renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+      await screen.findByText('Sign Team v3');
+      expect(screen.getByRole('checkbox', { name: 'Priced per seat' })).toBeDisabled();
+    });
   });
 
   // Sign Feature Parity Amendment A4 (D2): add-on unit prices are draft content edited by the catalog role only.

@@ -76,6 +76,8 @@ const TERMS = like({
   envelopes_present: boolean(true),
   storage_unlimited: boolean(false),
   storage_present: boolean(true),
+  // Sign Business per-seat pricing — ACCOUNT | SEAT (always present; ACCOUNT when the content has no price_unit).
+  price_unit: like('ACCOUNT'),
 });
 
 function versionBody(o: { id?: unknown; status?: 'DRAFT' | 'PUBLISHED' | 'RETIRED'; version_number?: number } = {}): Record<string, unknown> {
@@ -288,6 +290,43 @@ describe('platform-web → PATCH /platform/commercial/catalog/versions/{versionI
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CAT}/versions/${EX_DRAFT_ID}`, 'PATCH', platformJson('catalog_manager'), PATCH_BODY);
         expect(res.status).toBe(200);
+      });
+  });
+
+  // Sign Business per-seat pricing (directive v1.0 §3.4.2) — the draft's price unit. The provider's draft
+  // plan has no tenant kind: ACCOUNT is accepted; SEAT is refused 422 price_unit_not_applicable (only a
+  // BUSINESS self-service plan with a list price may be priced per seat).
+  it('catalog_manager sets the draft price unit to ACCOUNT (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a draft plan version exists')
+      .uponReceiving('a draft price-unit edit to per organization by a catalog manager')
+      .withRequest('PATCH', fromProviderState(`${CAT}/versions/\${versionId}`, `${CAT}/versions/${EX_DRAFT_ID}`), (b) => {
+        b.headers(platformJson('catalog_manager')).jsonBody({ expected_content_checksum: fromProviderState('${checksum}', EX_CHECKSUM), price_unit: 'ACCOUNT' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ version: { ...versionBody({ id: uuid(EX_DRAFT_ID), status: 'DRAFT', version_number: 2 }), terms: like({ price_unit: 'ACCOUNT' }) } });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/versions/${EX_DRAFT_ID}`, 'PATCH', platformJson('catalog_manager'), { expected_content_checksum: EX_CHECKSUM, price_unit: 'ACCOUNT' });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('SEAT on a plan that is not a BUSINESS self-service plan → 422 VALIDATION_ERROR price_unit_not_applicable', async () => {
+    await provider
+      .addInteraction()
+      .given('a draft plan version exists')
+      .uponReceiving('a per-seat price unit on a draft of a plan with no tenant kind')
+      .withRequest('PATCH', fromProviderState(`${CAT}/versions/\${versionId}`, `${CAT}/versions/${EX_DRAFT_ID}`), (b) => {
+        b.headers(platformJson('catalog_manager')).jsonBody({ expected_content_checksum: fromProviderState('${checksum}', EX_CHECKSUM), price_unit: 'SEAT' });
+      })
+      .willRespondWith(422, (b) => {
+        b.jsonBody(errorBody('VALIDATION_ERROR', { reason: 'price_unit_not_applicable' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/versions/${EX_DRAFT_ID}`, 'PATCH', platformJson('catalog_manager'), { expected_content_checksum: EX_CHECKSUM, price_unit: 'SEAT' });
+        expect(res.status).toBe(422);
       });
   });
 

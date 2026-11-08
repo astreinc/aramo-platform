@@ -90,6 +90,8 @@ function plans(o: CatalogFixtureOptions) {
     name: p.name,
     status: 'ACTIVE',
     sales_model: p.contractOnly ? 'CONTACT_SALES' : 'SELF_SERVICE',
+    // Per-seat directive §3.4: the prototype's plans are Business plans (the "Priced per seat" toggle shows).
+    tenant_kind: 'BUSINESS',
     sellable: !p.contractOnly,
     display_order: (i + 1) * 10,
     versions: [...p.vers].reverse().map((s) => version(p, s, o)),
@@ -112,7 +114,7 @@ export function catalogHandlers(o: CatalogFixtureOptions = {}): [string, RegExp,
           const v = p.versions.find((x) => x.id === id);
           if (v) {
             const seed = P0.find((x) => x.id === p.id)?.vers.find((x) => x.v === v.version_number);
-            const plan = { id: p.id, key: p.key, product_key: p.product_key, name: p.name, status: p.status, sales_model: p.sales_model, sellable: p.sellable, display_order: p.display_order };
+            const plan = { id: p.id, key: p.key, product_key: p.product_key, name: p.name, status: p.status, sales_model: p.sales_model, tenant_kind: p.tenant_kind, sellable: p.sellable, display_order: p.display_order };
             return json({ version: v, plan, content: {}, pinned_tenants: (seed?.pinned ?? []).map((name, i) => ({ tenant_id: `t-${String(i)}`, name })) });
           }
         }

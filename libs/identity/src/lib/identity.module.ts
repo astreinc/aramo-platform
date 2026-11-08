@@ -18,6 +18,8 @@ import {
   type TenantCognitoPort,
 } from './tenant-user/tenant-cognito.port.js';
 import { TenantUserLifecycleService } from './tenant-user/tenant-user-lifecycle.service.js';
+// Sign Business per-seat pricing — the optional seat-limit port.
+import { SEAT_LIMIT_PORT, type SeatLimitPort } from './tenant-user/seat-limit.port.js';
 import { TenantUserManagementController } from './tenant-user/tenant-user-management.controller.js';
 // Invite-S2 (Pattern-2) — the public acceptance flow's lifecycle service.
 import { InvitationLifecycleService } from './tenant-user/invitation-lifecycle.service.js';
@@ -64,6 +66,9 @@ export interface IdentityModuleOptions {
   cognitoAdapter: Type<TenantCognitoPort>;
   auditFinancialsGate: Type<AuditFinancialsGate>;
   imports?: ModuleMetadata['imports'];
+  // Sign Business per-seat pricing (directive v1.0 §3.2) — the SeatLimitPort implementation (apps/api's
+  // libs/subscription-backed adapter; its module goes through `imports`). Optional: absent = no seat limit.
+  seatLimit?: Type<SeatLimitPort>;
 }
 
 // IdentityModule — the apps/api-ONLY tenant-user invite/role surface
@@ -199,6 +204,7 @@ export class IdentityModule {
           provide: AUDIT_FINANCIALS_GATE,
           useClass: options.auditFinancialsGate,
         },
+        ...(options.seatLimit !== undefined ? [{ provide: SEAT_LIMIT_PORT, useClass: options.seatLimit }] : []),
       ],
     };
   }

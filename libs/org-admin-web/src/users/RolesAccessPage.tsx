@@ -6,6 +6,7 @@ import { OrgAvatar, OrgPageHeader } from '../ui/OrgPage';
 
 import { isOwner, personName, useDirectory } from './directory';
 import { RemoveSignAccess } from './RemoveSignAccess';
+import { SeatLimitAlert, seatLimitOf, signBillingHref, type SeatLimit } from './seat-limit';
 import {
   buildRoleGroups,
   KEEP_ONE_ROLE_HINT,
@@ -65,6 +66,8 @@ export function RolesAccessPage({ session, products }: { readonly session?: Sess
   const [addPick, setAddPick] = useState('');
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
+  // Per-seat directive §3.7 — the Sign seat cap, shown with a link to Aramo Sign → Billing.
+  const [rowSeatLimit, setRowSeatLimit] = useState<SeatLimit | null>(null);
 
   const users = dir.status === 'ready' ? dir.users : NO_USERS;
   const catalog = dir.status === 'ready' ? dir.catalog : NO_ROLES;
@@ -82,6 +85,7 @@ export function RolesAccessPage({ session, products }: { readonly session?: Sess
 
   const toggleRow = (key: string, others: readonly TenantUserView[]) => {
     setRowError(null);
+    setRowSeatLimit(null);
     if (openKey === key) {
       setOpenKey(null);
       return;
@@ -93,12 +97,15 @@ export function RolesAccessPage({ session, products }: { readonly session?: Sess
   const write = async (u: TenantUserView, next: readonly string[], ok: string) => {
     setBusy(true);
     setRowError(null);
+    setRowSeatLimit(null);
     try {
       await assignTenantUserRoles({ userId: u.user_id, body: { role_keys: next } });
       toast.show(ok);
       dir.reload();
     } catch (err: unknown) {
-      setRowError(roleWriteErrorMessage(err));
+      const seat = seatLimitOf(err);
+      if (seat !== null) setRowSeatLimit(seat);
+      else setRowError(roleWriteErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -276,6 +283,7 @@ export function RolesAccessPage({ session, products }: { readonly session?: Sess
                             {rowError}
                           </div>
                         ) : null}
+                        {rowSeatLimit !== null ? <SeatLimitAlert limit={rowSeatLimit} billingHref={signBillingHref(products)} /> : null}
                       </div>
                     ) : null}
                   </div>

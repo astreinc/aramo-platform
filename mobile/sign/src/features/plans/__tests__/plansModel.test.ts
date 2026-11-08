@@ -5,7 +5,9 @@ import {
   featureLines,
   initialPlanKey,
   intervals,
+  isSeatPriced,
   MANAGE_ON_WEB,
+  perInterval,
   planAction,
   PLANS_COPY,
   productFor,
@@ -83,5 +85,21 @@ describe('refusals and actions', () => {
     expect(reasonLine('settings', [], null)).toBe(PLANS_COPY.signingFree);
     expect(STORE_NOTE.ios).toMatch(/Apple Account/);
     expect(STORE_NOTE.android).toMatch(/Google Play › Subscriptions/);
+  });
+});
+
+// Sign Business per-seat directive (v1.0 LOCKED) §3.6 — the server's price_unit; no purchase change.
+describe('per-seat price unit', () => {
+  it('renders "/ user / month" for a SEAT plan and "/ month" otherwise (absent field = per account)', () => {
+    const seat = { ...plan('business', { tenant_kind: 'BUSINESS' }), price_unit: 'SEAT' };
+    const account_ = { ...plan('business', { tenant_kind: 'BUSINESS' }), price_unit: 'ACCOUNT' };
+    expect(isSeatPriced(seat)).toBe(true);
+    expect(perInterval('MONTH', seat)).toBe('/ user / month');
+    expect(perInterval('YEAR', seat)).toBe('/ user / year');
+    expect(perInterval('MONTH', account_)).toBe('/ month');
+    expect(perInterval('MONTH', plan('standard'))).toBe('/ month');
+    expect(perInterval('YEAR')).toBe('/ year');
+    expect(isSeatPriced(null)).toBe(false);
+    expect(isSeatPriced({ price_unit: 'seat' })).toBe(false);
   });
 });

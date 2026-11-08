@@ -17,8 +17,10 @@ const ROOT = resolve(__dirname, '../../../..');
 const SUB_DIR = resolve(ROOT, 'libs/subscription/prisma/migrations');
 const ALL = [
   resolve(ROOT, 'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql'),
+  // The chain up to and including Catalog v2: this spec asserts the catalog v2 produced (later catalog
+  // data, e.g. 20261108100100_sign_business_per_seat_catalog, has its own spec).
   ...readdirSync(SUB_DIR)
-    .filter((n) => /^\d/.test(n))
+    .filter((n) => /^\d/.test(n) && n <= '20261101120000_sign_catalog_v2')
     .sort()
     .map((n) => resolve(SUB_DIR, n, 'migration.sql')),
 ];

@@ -46,7 +46,8 @@ export const CATALOG_DRAFT_SCOPE = 'platform:catalog:draft';
 export const CATALOG_ACTION_TYPES = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'] as const;
 export type CatalogActionType = (typeof CATALOG_ACTION_TYPES)[number];
 
-export type CommercialCatalogErrorCode = 'NOT_FOUND' | 'NOT_HUMAN' | 'SCOPE_MISSING' | 'CONFLICT' | 'INVALID_INPUT';
+// UNPROCESSABLE — Sign per-seat pricing: a well-formed edit the plan cannot take (price_unit_not_applicable, 422).
+export type CommercialCatalogErrorCode = 'NOT_FOUND' | 'NOT_HUMAN' | 'SCOPE_MISSING' | 'CONFLICT' | 'INVALID_INPUT' | 'UNPROCESSABLE';
 
 export class CommercialCatalogError extends Error {
   constructor(
@@ -89,6 +90,8 @@ export interface CatalogPlanView {
   product_key: ProductKey;
   name: string;
   status: string;
+  /** BUSINESS | PERSONAL | null — the console offers per-seat pricing only on a BUSINESS self-service plan. */
+  tenant_kind: string | null;
   sales_model: string;
   sellable: boolean;
   display_order: number;
@@ -285,6 +288,9 @@ export class CommercialCatalogService {
       const pins = await this.pinCounts([row.id]);
       return summaryOf(row, pins.get(row.id) ?? 0, (await this.openCatalogRequests(new Date())).get(row.id) ?? []);
     } catch (e) {
+      if (e instanceof CatalogDraftEditError && e.reason === 'price_unit_not_applicable') {
+        throw new CommercialCatalogError('UNPROCESSABLE', e.message, { reason: e.reason, ...e.detail });
+      }
       if (e instanceof CatalogDraftEditError) throw conflict(e.reason, e.message, e.detail);
       // A concurrent publish between the read and the write: the repository (and the N-16
       // trigger) refuse; report it as the same not_draft conflict.
@@ -404,8 +410,8 @@ function conflict(reason: CatalogConflictReason, message: string, details: Recor
   return new CommercialCatalogError('CONFLICT', message, { reason, ...details });
 }
 
-function planOf(p: { id: string; key: string; product_key: string; name: string; status: string; sales_model: string; sellable: boolean; display_order: number }): Omit<CatalogPlanView, 'versions'> {
-  return { id: p.id, key: p.key, product_key: p.product_key as ProductKey, name: p.name, status: p.status, sales_model: p.sales_model, sellable: p.sellable, display_order: p.display_order };
+function planOf(p: { id: string; key: string; product_key: string; name: string; status: string; tenant_kind: string | null; sales_model: string; sellable: boolean; display_order: number }): Omit<CatalogPlanView, 'versions'> {
+  return { id: p.id, key: p.key, product_key: p.product_key as ProductKey, name: p.name, status: p.status, tenant_kind: p.tenant_kind, sales_model: p.sales_model, sellable: p.sellable, display_order: p.display_order };
 }
 
 function summaryOf(r: PlanVersionRow, pinned: number, open: CatalogOpenRequest[]): CatalogVersionSummary {

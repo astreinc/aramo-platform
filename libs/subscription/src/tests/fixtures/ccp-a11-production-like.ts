@@ -6,6 +6,8 @@ import type { Client } from 'pg';
 
 import { libMigrations } from '../support/ccp-a3-database.js';
 
+import { SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION } from './ccp-a8.js';
+
 // CCP-A11 (PBD §5.1 row A11 "dry-run on a production-like fixture") — the production shape,
 // seeded on the PRE-CCP schema (production today runs it), then carried through every CCP
 // migration exactly as a release would:
@@ -55,8 +57,11 @@ const cut = (chain: string[], first: string): [string[], string[]] => {
 const [ENT_PRE, ENT_CCP] = cut(entitlementChain, ENTITLEMENT_A7);
 const [SUB_PRE, SUB_CCP] = cut(subscriptionChain, SUBSCRIPTION_A2);
 
+// Sign Business per-seat (directive 00225bad, Amendment A1): its catalog data refuses a database that
+// holds a Business subscription (A1-3), as this fixture's STRIPE tenant does (production carried no
+// such subscriber at that release), so this CCP dry-run skips that data migration (its schema applies).
 async function run(pg: Client, files: readonly string[]): Promise<void> {
-  for (const f of files) await pg.query(readFileSync(f, 'utf8'));
+  for (const f of files) if (resolve(f) !== SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION) await pg.query(readFileSync(f, 'utf8'));
 }
 
 /** The pre-CCP schema (production today): identity, metering, entitlement and subscription before CCP. */

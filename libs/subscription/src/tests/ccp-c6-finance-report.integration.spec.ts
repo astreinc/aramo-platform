@@ -87,7 +87,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     T['A'] = await newTenant(pg);
     S['A'] = await governedOpen(T['A']);
     await pg.query(`UPDATE subscription."TenantSubscription" SET commitment_start = $2, commitment_end = $3 WHERE id = $1`, [S['A'], at(-345), at(20)]);
-    // B — self-service ACTIVE (Standard Business, USD 2000 / MONTH); the signup grant core + sign.
+    // B — self-service ACTIVE (Standard Business, USD 1500 / MONTH); the signup grant core + sign.
     T['B'] = await newTenant(pg);
     S['B'] = (await selfService(T['B'])).id;
     await grant(T['B'], ['core', 'sign']);
@@ -189,11 +189,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     const got = r.items.map((i) => ({ subscription_id: i.subscription_id, kind: i.renewal_kind, at: i.renewal_at.toISOString(), amount_minor: i.list_price?.amount_minor ?? null }));
     expect(got).toEqual(await oracleRenewals(90));
     expect(r.counts.items).toBe(r.items.length);
-    // Fixture facts: A (commitment +20 d, no list price), G (lapsed −3 d, USD 2000), B and C (period end 2026-11-25).
+    // Fixture facts: A (commitment +20 d, no list price), G (lapsed −3 d, USD 1500), B and C (period end 2026-11-25).
     const a = r.items.find((i) => i.subscription_id === S['A'])!;
     expect(a).toMatchObject({ renewal_kind: 'COMMITMENT_END', days_until: 20, lapsed: false, list_price: null, unpriced_reason: 'NO_LIST_PRICE', price_source: 'PINNED_PLAN_VERSION', source: 'MANUAL' });
     const g = r.items.find((i) => i.subscription_id === S['G'])!;
-    expect(g).toMatchObject({ renewal_kind: 'COMMITMENT_END', days_until: -3, lapsed: true, list_price: { amount_minor: 2000, currency: 'USD', billing_interval: 'MONTH' } });
+    expect(g).toMatchObject({ renewal_kind: 'COMMITMENT_END', days_until: -3, lapsed: true, list_price: { amount_minor: 1500, currency: 'USD', billing_interval: 'MONTH' } });
     for (const id of [S['B'], S['C']]) {
       expect(r.items.filter((i) => i.subscription_id === id && i.renewal_kind === 'PERIOD_END').map((i) => i.renewal_at.toISOString())).toEqual(['2026-11-25T00:00:00.000Z']);
     }
@@ -212,7 +212,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     expect(r.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     expect(r.items.map((i) => ({ subscription_id: i.subscription_id, status: i.status, grace_state: i.grace_state, amount_minor: i.list_price?.amount_minor ?? null }))).toEqual(await oracleOutstanding());
     const c = r.items.find((i) => i.subscription_id === S['C'])!;
-    expect(c).toMatchObject({ status: 'PAST_DUE', grace_state: 'IN_GRACE', amount_due: null, amount_due_reason: 'INVOICE_READ_NOT_DELIVERED', list_price: { amount_minor: 2000, currency: 'USD' } });
+    expect(c).toMatchObject({ status: 'PAST_DUE', grace_state: 'IN_GRACE', amount_due: null, amount_due_reason: 'INVOICE_READ_NOT_DELIVERED', list_price: { amount_minor: 1500, currency: 'USD' } });
     expect(c.grace_until!.getTime()).toBeGreaterThan(T0.getTime());
     expect(r.items.every((i) => i.amount_due === null)).toBe(true);
     // Eight days later the same record is GRACE_ENDED (7-day policy grace); nothing else changes.
@@ -235,7 +235,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     expect(r.entitled_without_subscription.map((e) => e.tenant_id)).toEqual(o.orphan);
     // Fixture facts.
     expect(r.subscriptions.find((s) => s.subscription_id === S['A'])).toMatchObject({ entitlement: { expected: ['core', 'sign'], present: ['core', 'sign'], missing: [] }, discrepancies: [] });
-    expect(r.subscriptions.find((s) => s.subscription_id === S['B'])).toMatchObject({ discrepancies: [], list_price: { amount_minor: 2000, currency: 'USD' } });
+    expect(r.subscriptions.find((s) => s.subscription_id === S['B'])).toMatchObject({ discrepancies: [], list_price: { amount_minor: 1500, currency: 'USD' } });
     expect(r.subscriptions.find((s) => s.subscription_id === S['C'])).toMatchObject({ status: 'PAST_DUE', entitlement: { missing: ['sign'] }, discrepancies: ['ENTITLEMENT_MISSING'] });
     expect(r.subscriptions.find((s) => s.subscription_id === S['G'])).toMatchObject({ entitlement: { missing: ['core', 'sign'] }, discrepancies: ['ENTITLEMENT_MISSING'] });
     expect(r.entitled_without_subscription).toContainEqual(expect.objectContaining({ tenant_id: T['E'], product_key: 'sign', capabilities: ['sign'] }));
@@ -266,7 +266,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
       governed_subscription_id: S['D'],
       governed_plan_key: INCLUDED,
       held_plan_key: BUSINESS,
-      held_price: { list_price: { amount_minor: 2000, currency: 'USD', billing_interval: 'MONTH' }, price_source: 'CURRENT_PUBLISHED_PLAN_VERSION' },
+      held_price: { list_price: { amount_minor: 1500, currency: 'USD', billing_interval: 'MONTH' }, price_source: 'CURRENT_PUBLISHED_PLAN_VERSION' },
       unconfirmed_commands: [],
       resolution: 'UNRESOLVED',
     });

@@ -261,6 +261,138 @@ describe('BillingPanel', () => {
   });
 });
 
+// Sign Business per-seat directive (v1.0 LOCKED) §3.5 — per-user prices, seats and checkout seats.
+describe('BillingPanel — per-seat plans', () => {
+  const assign = vi.fn();
+  const SEAT_PLAN: BillingPlan = { ...BUSINESS, key: 'aramo-sign-standard-business-v2', name: 'Standard Business', price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' }, price_unit: 'SEAT' };
+  const SEAT_ACTIVE = (seats: BillingAccount['seats'], over: Partial<BillingAccount> = {}): BillingAccount => ({
+    ...ACTIVE,
+    subscription: { ...ACTIVE.subscription!, plan_key: SEAT_PLAN.key, list_price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' } },
+    price_unit: 'SEAT',
+    seats,
+    can_manage_seats: true,
+    ...over,
+  });
+  beforeEach(() => {
+    configureAuthConsumer('sign');
+    vi.stubGlobal('location', { ...window.location, search: '', assign });
+    catalogFor = () => ({ ...CATALOG, plans: [BUSINESS, SEAT_PLAN] });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    assign.mockReset();
+    catalogFor = () => CATALOG;
+  });
+
+  it('PS-1 a SEAT plan reads "$15 / user / month" (no "per organization"); a per-account plan keeps "per organization"', async () => {
+    vi.stubGlobal('fetch', stub([account()]));
+    render(<BillingPanel />);
+    const seat = await screen.findByTestId(`billing-plan-${SEAT_PLAN.key}`);
+    expect(seat.querySelector('[data-testid="billing-plan-price"] strong')).toHaveTextContent(/^\$15 \/ user \/ month$/);
+    expect(seat).not.toHaveTextContent('per organization');
+    expect(screen.getByTestId(`billing-plan-${BUSINESS.key}`)).toHaveTextContent('$20/month per organization');
+  });
+
+  it('PS-2 checkout of a SEAT plan asks for the seat count (default 1) and sends `seats`; a per-account plan sends none', async () => {
+    const fetch = stub([account()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_s' }, 201) : undefined));
+    vi.stubGlobal('fetch', fetch);
+    render(<BillingPanel />);
+    const input = await screen.findByTestId(`billing-seats-${SEAT_PLAN.key}`);
+    expect(input).toHaveValue(1);
+    expect(screen.queryByTestId(`billing-seats-${BUSINESS.key}`)).toBeNull();
+    fireEvent.change(input, { target: { value: '3' } });
+    expect(screen.getByTestId(`billing-plan-${SEAT_PLAN.key}`)).toHaveTextContent('3 seats · $45/month');
+    fireEvent.click(screen.getByTestId(`billing-subscribe-${SEAT_PLAN.key}`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/cs_s'));
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ plan_key: SEAT_PLAN.key, seats: 3 });
+  });
+
+  it('PS-3 an invalid seat count disables Subscribe', async () => {
+    vi.stubGlobal('fetch', stub([account()]));
+    render(<BillingPanel />);
+    const input = await screen.findByTestId(`billing-seats-${SEAT_PLAN.key}`);
+    for (const bad of ['0', '1001', '']) {
+      fireEvent.change(input, { target: { value: bad } });
+      expect(screen.getByTestId(`billing-subscribe-${SEAT_PLAN.key}`)).toBeDisabled();
+    }
+  });
+
+  it('PS-4 the current SEAT subscription shows "N of M seats used", the per-user price and the scheduled decrease', async () => {
+    vi.stubGlobal('fetch', stub([SEAT_ACTIVE({ purchased: 5, used: 3, pending_purchased: 4 })]));
+    render(<BillingPanel />);
+    expect(await screen.findByTestId('billing-seats-used')).toHaveTextContent('3 of 5 seats used');
+    expect(screen.getByTestId('billing-current')).toHaveTextContent('$15 / user / month');
+    expect(screen.getByTestId('billing-seats-pending')).toHaveTextContent('Drops to 4 seats on');
+    expect(screen.getByTestId('billing-seats-change')).toBeInTheDocument();
+    // Not full: no "Add a seat" shortcut.
+    expect(screen.queryByTestId('billing-seats-add')).toBeNull();
+  });
+
+  it('PS-5 Change seats posts the new count and confirms; Save stays disabled below the seats in use', async () => {
+    const accounts = [SEAT_ACTIVE({ purchased: 5, used: 3, pending_purchased: null }), SEAT_ACTIVE({ purchased: 7, used: 3, pending_purchased: null })];
+    const fetch = stub(accounts, (url) => (url.endsWith('/v1/sign/billing/seats') ? json({ purchased: 7, used: 3, pending_purchased: null, effective: 'NOW' }) : undefined));
+    vi.stubGlobal('fetch', fetch);
+    render(<BillingPanel />);
+    fireEvent.click(await screen.findByTestId('billing-seats-change'));
+    const dialog = screen.getByRole('dialog', { name: 'Change seats' });
+    const input = screen.getByTestId('billing-seats-input');
+    expect(input).toHaveValue(5);
+    expect(input).toHaveAttribute('min', '3');
+    expect(input).toHaveAttribute('max', '1000');
+    expect(screen.getByTestId('billing-seats-save')).toBeDisabled();
+    fireEvent.change(input, { target: { value: '2' } });
+    expect(screen.getByTestId('billing-seats-save')).toBeDisabled();
+    expect(dialog).toHaveTextContent('Enter a number from 3 to 1000.');
+    fireEvent.change(input, { target: { value: '7' } });
+    fireEvent.click(screen.getByTestId('billing-seats-save'));
+    expect(await screen.findByTestId('billing-seats-notice')).toHaveTextContent('You now have 7 seats.');
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/v1/sign/billing/seats'))!;
+    expect((call[1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ seats: 7 });
+    expect(await screen.findByText('3 of 7 seats used')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Change seats' })).toBeNull();
+  });
+
+  it('PS-6 at the limit "Add a seat" opens the dialog one above; a decrease confirms the period-end change', async () => {
+    const fetch = stub([SEAT_ACTIVE({ purchased: 3, used: 3, pending_purchased: null })], (url) =>
+      url.endsWith('/v1/sign/billing/seats') ? json({ purchased: 3, used: 3, pending_purchased: 3, effective: 'PERIOD_END' }) : undefined,
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(<BillingPanel />);
+    fireEvent.click(await screen.findByTestId('billing-seats-add'));
+    expect(screen.getByTestId('billing-seats-input')).toHaveValue(4);
+    fireEvent.click(screen.getByTestId('billing-seats-save'));
+    expect(await screen.findByTestId('billing-seats-notice')).toHaveTextContent('Your seats drop to 3 at the end of the current billing period.');
+  });
+
+  it('PS-7 409 seats_below_usage is explained in the dialog', async () => {
+    const refusal = { error: { code: 'ESIGN_BILLING_CONFLICT', message: 'x', details: { reason: 'seats_below_usage', used: 4 } } };
+    vi.stubGlobal('fetch', stub([SEAT_ACTIVE({ purchased: 6, used: 3, pending_purchased: null })], (url) => (url.endsWith('/v1/sign/billing/seats') ? json(refusal, 409) : undefined)));
+    render(<BillingPanel />);
+    fireEvent.click(await screen.findByTestId('billing-seats-change'));
+    fireEvent.change(screen.getByTestId('billing-seats-input'), { target: { value: '3' } });
+    fireEvent.click(screen.getByTestId('billing-seats-save'));
+    expect(await screen.findByText('4 people are using seats, so you need at least 4 seats. Remove someone’s Aramo Sign access first to go lower.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Change seats' })).toBeInTheDocument();
+  });
+
+  it('PS-8 without can_manage_seats the seats show but cannot be changed', async () => {
+    vi.stubGlobal('fetch', stub([SEAT_ACTIVE({ purchased: 3, used: 3, pending_purchased: null }, { can_manage_seats: false })]));
+    render(<BillingPanel />);
+    expect(await screen.findByTestId('billing-seats-used')).toHaveTextContent('3 of 3 seats used');
+    expect(screen.queryByTestId('billing-seats-add')).toBeNull();
+    expect(screen.queryByTestId('billing-seats-change')).toBeNull();
+  });
+
+  it('PS-9 a per-account subscription shows no seats', async () => {
+    vi.stubGlobal('fetch', stub([{ ...ACTIVE, price_unit: 'ACCOUNT', seats: null, can_manage_seats: false }]));
+    render(<BillingPanel />);
+    await screen.findByText('185 envelopes sent this period · unlimited');
+    expect(screen.queryByTestId('billing-seats')).toBeNull();
+  });
+});
+
 describe('Journey A — organization owner without Sign access', () => {
   beforeEach(() => configureAuthConsumer('sign'));
   afterEach(() => vi.unstubAllGlobals());

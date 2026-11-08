@@ -39,6 +39,14 @@ import { METERED_UNIT_KEYS, isMeteredUnitKey } from './usage/metered-units.js';
 //                       The plan's list_price_minor + currency stays the US / USD price: a regional
 //                       entry for US is refused. Display and reconciliation only: the store charges its
 //                       own localized price, and Stripe stays US-only.
+//   price_unit          Aramo Sign Business Per-Seat Pricing (Implementation Directive v1.0 LOCKED §3.1;
+//                       Catalog v2 Amendment A1, TD-1) — an OPTIONAL format-1 key, present only as
+//                       "SEAT": the version's list price is per seat (per Sign-sending member) per
+//                       interval. Absent = per account (every version written before it, so every
+//                       existing checksum is unchanged). Same footing as unit_prices / regional_prices:
+//                       covered by the content checksum, drafted and published through the governed
+//                       PLAN_VERSION_PUBLISH chain, immutable once published. Only a BUSINESS
+//                       SELF_SERVICE plan with a list price may carry it.
 
 export const PLAN_VERSION_CONTENT_FORMAT = 1;
 export const PLAN_VERSION_STATUSES = ['DRAFT', 'PUBLISHED', 'RETIRED'] as const;
@@ -113,7 +121,13 @@ export interface PlanVersionContent {
   readonly unit_prices?: readonly PlanVersionUnitPriceTerm[];
   /** M-A12 A1-3 — absent = no regional price on this version (never an empty array). */
   readonly regional_prices?: readonly PlanVersionRegionalPriceTerm[];
+  /** Per-seat pricing — present only as "SEAT"; absent = priced per account. */
+  readonly price_unit?: 'SEAT';
 }
+
+/** Per-seat pricing — the price unit of a version as the APIs present it. */
+export type PlanPriceUnit = 'ACCOUNT' | 'SEAT';
+export const PLAN_PRICE_UNITS: readonly PlanPriceUnit[] = ['ACCOUNT', 'SEAT'];
 
 /** M-A12 A1-3 — one regional list price of a version. */
 export interface PlanVersionRegionalPriceTerm {
@@ -267,7 +281,11 @@ const PLAN_KEYS = [
 export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   if (!isObj(raw)) throw new PlanVersionContentError('content must be an object');
   const CONTENT_KEYS = ['format', 'plan', 'allowances', 'allowance_windows', 'capacities', 'features'];
-  exactKeys(raw, [...CONTENT_KEYS, ...('unit_prices' in raw ? ['unit_prices'] : []), ...('regional_prices' in raw ? ['regional_prices'] : [])], 'content');
+  exactKeys(
+    raw,
+    [...CONTENT_KEYS, ...(['unit_prices', 'regional_prices', 'price_unit'] as const).filter((k) => k in raw)],
+    'content',
+  );
   if (raw['format'] !== PLAN_VERSION_CONTENT_FORMAT) throw new PlanVersionContentError(`content.format must be ${PLAN_VERSION_CONTENT_FORMAT}`);
   const p = raw['plan'];
   if (!isObj(p)) throw new PlanVersionContentError('content.plan must be an object');
@@ -319,6 +337,7 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   }
   const unit_prices = 'unit_prices' in raw ? parseUnitPrices(raw, plan.product_key) : undefined;
   const regional_prices = 'regional_prices' in raw ? parseRegionalPrices(raw) : undefined;
+  if ('price_unit' in raw) assertSeatPriceUnitAllowed(raw['price_unit'], plan);
   return {
     format: 1,
     plan,
@@ -328,7 +347,38 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
     features,
     ...(unit_prices === undefined ? {} : { unit_prices }),
     ...(regional_prices === undefined ? {} : { regional_prices }),
+    ...('price_unit' in raw ? { price_unit: 'SEAT' as const } : {}),
   };
+}
+
+/** Why a plan may not be priced per seat (null = it may). */
+export function seatPriceUnitRefusal(plan: Pick<PlanVersionPlanTerms, 'tenant_kind' | 'sales_model' | 'list_price_minor'>): string | null {
+  if (plan.tenant_kind !== 'BUSINESS') return 'only a BUSINESS plan may be priced per seat';
+  if (plan.sales_model !== 'SELF_SERVICE') return 'only a self-service plan may be priced per seat';
+  if (plan.list_price_minor === null) return 'a contract-priced plan may not be priced per seat';
+  return null;
+}
+
+/** Per-seat pricing — the strict price_unit check: the literal "SEAT", on a plan that may carry it. */
+function assertSeatPriceUnitAllowed(v: unknown, plan: PlanVersionPlanTerms): void {
+  if (v !== 'SEAT') throw new PlanVersionContentError('content.price_unit must be omitted (per account) or "SEAT"');
+  const refusal = seatPriceUnitRefusal(plan);
+  if (refusal !== null) throw new PlanVersionContentError(`content.price_unit: ${refusal}`);
+}
+
+/** Per-seat pricing — the price unit of a version's terms. */
+export function priceUnitOf(content: Pick<PlanVersionContent, 'price_unit'>): PlanPriceUnit {
+  return content.price_unit === 'SEAT' ? 'SEAT' : 'ACCOUNT';
+}
+
+/**
+ * Per-seat pricing — the content document with the given price unit. ACCOUNT omits the key, so the
+ * document stays byte-identical to its per-account form (and keeps its checksum).
+ */
+export function withPriceUnit(content: PlanVersionContent, unit: PlanPriceUnit): PlanVersionContent {
+  const { price_unit: _drop, ...rest } = content;
+  void _drop;
+  return parsePlanVersionContent(unit === 'SEAT' ? { ...rest, price_unit: 'SEAT' } : rest);
 }
 
 const COUNTRY = /^[A-Z]{2}$/;

@@ -1,6 +1,6 @@
 import type { PillSpec } from '../../components';
 
-import type { CatalogMeteredUnit, CatalogOpenRequest, CatalogPlan, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
+import type { CatalogMeteredUnit, CatalogOpenRequest, CatalogPlan, CatalogPriceUnit, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
 
 // CCP-B2 — the pure view model of the Catalog screen (handoff §5.4; Commercial Control Plane
 // v1.0.dc.html "// catalog"): every label, line and enabled/disabled decision is computed here
@@ -133,9 +133,8 @@ export function versionMeta(v: CatalogVersion): string {
 export const LOCK_TEXT_PUBLISHED = 'Published versions are immutable. To change pricing or allowances, create a new draft.';
 export const LOCK_TEXT_VIEW_ONLY = 'View only — editing a draft needs the Catalog manager role.';
 export const V1_LOCK_TITLE = 'v1 release limitation — the schema supports more';
-export const SEATS_TITLE = 'Not part of the Aramo Sign plan model: no seat limit is stored for Sign plans.';
 
-export type EditorFieldKey = 'price' | 'envelopes' | 'seats' | 'storage';
+export type EditorFieldKey = 'price' | 'envelopes' | 'storage';
 
 export interface EditorField {
   readonly key: EditorFieldKey;
@@ -168,23 +167,20 @@ function termValue(key: EditorFieldKey, t: CatalogVersionTerms): { value: string
       return { value: t.envelopes_per_month === null ? '' : String(t.envelopes_per_month), placeholder: t.envelopes_unlimited ? 'Unlimited' : '' };
     case 'storage':
       return { value: t.storage_bytes === null ? '' : String(storageGb(t.storage_bytes)), placeholder: t.storage_unlimited ? 'Unlimited' : '' };
-    case 'seats':
-      return { value: '', placeholder: '' };
   }
 }
 
 const FIELD_LABEL: Readonly<Record<EditorFieldKey, string>> = {
   price: 'Price per month (USD)',
   envelopes: 'Envelopes per month',
-  seats: 'Seats',
   storage: 'Storage (GB)',
 };
-const FIELD_ORDER: readonly EditorFieldKey[] = ['price', 'envelopes', 'seats', 'storage'];
+const FIELD_ORDER: readonly EditorFieldKey[] = ['price', 'envelopes', 'storage'];
 
 /**
  * The version editor. `canDraft` = the caller holds platform:catalog:draft. Only a DRAFT seen by a
- * drafter has editable fields; the price of a contract-priced plan, a term the version does not
- * carry and the seats field (no backing term) are never editable.
+ * drafter has editable fields; the price of a contract-priced plan and a term the version does not
+ * carry are never editable. The per-seat pricing unit is its own control (`pricePerSeatOf`).
  */
 export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean, overrides: Partial<Record<EditorFieldKey, string>> = {}): EditorModel {
   const isDraft = v.status === 'DRAFT';
@@ -193,7 +189,7 @@ export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean
   const fields = FIELD_ORDER.map((key): EditorField => {
     const base = termValue(key, v.terms);
     const missing = (key === 'envelopes' && !v.terms.envelopes_present) || (key === 'storage' && !v.terms.storage_present);
-    const readOnly = !editable || key === 'seats' || (key === 'price' && contractOnly) || missing;
+    const readOnly = !editable || (key === 'price' && contractOnly) || missing;
     return {
       key,
       label: FIELD_LABEL[key],
@@ -201,7 +197,6 @@ export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean
       placeholder: base.placeholder,
       readOnly,
       editable,
-      ...(key === 'seats' ? { title: SEATS_TITLE } : {}),
     };
   });
   return {
@@ -215,6 +210,52 @@ export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean
       { label: 'Billing interval', value: 'Monthly' },
     ],
   };
+}
+
+// ── Sign Business per-seat pricing (directive §3.4): the "Priced per seat" control ────────────
+
+export const PRICED_PER_SEAT_LABEL = 'Priced per seat';
+export const PRICE_UNIT_TEXT: Readonly<Record<CatalogPriceUnit, string>> = { ACCOUNT: 'Per organization', SEAT: 'Per seat' };
+export const PRICE_UNIT_CONTRACT_TITLE = 'Contract plans are priced by contract, not per seat.';
+
+/** A version's pricing unit (an absent `price_unit` = per organization). */
+export function priceUnitOf(t: CatalogVersionTerms): CatalogPriceUnit {
+  return t.price_unit === 'SEAT' ? 'SEAT' : 'ACCOUNT';
+}
+export function pricingUnitText(t: CatalogVersionTerms): string {
+  return PRICE_UNIT_TEXT[priceUnitOf(t)];
+}
+
+/** The pricing unit applies to Business plans only; it is hidden for PERSONAL (and when the plan kind is unknown). */
+export function pricingUnitApplies(plan: Pick<CatalogPlan, 'tenant_kind'>): boolean {
+  return plan.tenant_kind === 'BUSINESS';
+}
+
+export interface PricePerSeatModel {
+  readonly checked: boolean;
+  /** True = the toggle cannot be changed. */
+  readonly readOnly: boolean;
+  readonly editable: boolean;
+  readonly title: string | undefined;
+}
+
+/**
+ * The "Priced per seat" toggle, or null when hidden (a PERSONAL plan). It can be changed only on a
+ * DRAFT of a BUSINESS self-service plan, by a catalog manager; a PUBLISHED or RETIRED version shows
+ * it read-only (immutable), as does a contract-priced plan.
+ */
+export function pricePerSeatOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean): PricePerSeatModel | null {
+  if (!pricingUnitApplies(plan)) return null;
+  const selfService = plan.sales_model === 'SELF_SERVICE' && !isContractOnly(plan);
+  const editable = v.status === 'DRAFT' && canDraft && selfService;
+  const title = editable
+    ? undefined
+    : v.status !== 'DRAFT'
+      ? LOCK_TEXT_PUBLISHED
+      : !selfService
+        ? PRICE_UNIT_CONTRACT_TITLE
+        : NEEDS_CATALOG_MANAGER;
+  return { checked: priceUnitOf(v.terms) === 'SEAT', readOnly: !editable, editable, title };
 }
 
 export interface DiffRowModel {
@@ -238,14 +279,22 @@ function priceDiffText(t: CatalogVersionTerms): string {
 
 /**
  * Draft vs the latest published version (handoff §5.4 "Draft diff"). `labels` = 'editor' (the
- * card: Price / Envelopes / Seats / Storage) or 'dialog' (the publish dialog: "Envelopes per
- * month"). Seats have no backing term, so their row is "—" on both sides (never changed).
+ * card: Price / Envelopes / Pricing unit / Storage) or 'dialog' (the publish dialog: "Envelopes
+ * per month"). Sign Business per-seat directive §3.4: the "Pricing unit" row ("Per organization" /
+ * "Per seat") replaces the former always-empty Seats row (DV-B2-03); it is left out for a plan the
+ * unit does not apply to (`pricingUnit: false`, a PERSONAL plan).
  */
-export function draftDiff(before: CatalogVersionTerms, after: CatalogVersionTerms, labels: 'editor' | 'dialog', units: readonly CatalogMeteredUnit[] = []): DiffRowModel[] {
+export function draftDiff(
+  before: CatalogVersionTerms,
+  after: CatalogVersionTerms,
+  labels: 'editor' | 'dialog',
+  units: readonly CatalogMeteredUnit[] = [],
+  opts: { readonly pricingUnit?: boolean } = {},
+): DiffRowModel[] {
   const rows: [string, string, string][] = [
     ['Price', priceDiffText(before), priceDiffText(after)],
     [labels === 'dialog' ? 'Envelopes per month' : 'Envelopes', envelopesText(before), envelopesText(after)],
-    ['Seats', '—', '—'],
+    ...(opts.pricingUnit === false ? [] : [['Pricing unit', pricingUnitText(before), pricingUnitText(after)] as [string, string, string]]),
     ['Storage', storageText(before), storageText(after)],
     // A4 D2 — every add-on unit priced on either side (a published price change is visible to the approvers).
     ...unitPriceDiff(before, after, units),
@@ -395,7 +444,7 @@ export interface FieldParse {
 }
 
 /** A field's text → the PATCH value (minor units / count / bytes; '' = unlimited). */
-export function parseFieldInput(key: Exclude<EditorFieldKey, 'seats'>, raw: string): FieldParse {
+export function parseFieldInput(key: EditorFieldKey, raw: string): FieldParse {
   const s = raw.trim();
   if (s === '') return key === 'price' ? { ok: false } : { ok: true, value: null };
   const n = Number(s);

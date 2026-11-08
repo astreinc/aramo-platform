@@ -242,6 +242,12 @@ model TenantSubscription {
   store_product_id                   String?
   store_environment                  String?
   store_interval                     String?
+  // Sign Business per-seat pricing (directive v1.0 §3.1) — the purchased seats of a subscription whose
+  // pinned version is priced per seat (the provider subscription item quantity), and a decrease
+  // scheduled for the end of the current period (O-2). NULL = not seat-priced. CHECKs (>= 1) in
+  // migration 20261108100000.
+  seat_quantity                      Int?
+  seat_pending_quantity              Int?
   plan                               Plan        @relation(fields: [plan_id], references: [id])
   plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
   // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.
@@ -298,6 +304,8 @@ model CheckoutIntent {
   // A1 — the terms version (and text sha256) accepted at checkout, if any.
   terms_version        String?
   terms_sha256         String?
+  // Sign Business per-seat pricing — the seats bought at checkout (NULL = not seat-priced; CHECK >= 1).
+  seat_quantity        Int?
   plan                 Plan      @relation(fields: [plan_id], references: [id])
 
   @@index([tenant_id])

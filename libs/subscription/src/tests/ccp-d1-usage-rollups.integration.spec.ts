@@ -16,6 +16,7 @@ import { UsageRollupService, type UsageReconciliation } from '../lib/usage/usage
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { seedCorpus, SUBS, T } from './fixtures/ccp-a4-sign-corpus.js';
 import { publishedVersionOf } from './fixtures/ccp-a5.js';
+import { SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION } from './fixtures/ccp-a8.js';
 import {
   CCP_D1_COMPENSATING,
   CCP_D1_MIGRATION,
@@ -96,6 +97,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     for (const f of POST_A4) {
       // TD-D1-3 ruling evidence: the ledger's own definition just before D1.
       if (f === CCP_D1_MIGRATION) ledgerBeforeD1 = await ledgerDefinition(pg);
+      // The Business per-seat catalog data is skipped (it refuses the corpus's Business subscriptions, A1-3).
+      if (f === SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION) continue;
       await pg.query(readFileSync(f, 'utf8'));
     }
     expect(POST_A4).toContain(CCP_D1_MIGRATION);

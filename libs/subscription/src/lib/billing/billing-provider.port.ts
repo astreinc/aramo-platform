@@ -43,6 +43,9 @@ export interface CheckoutSessionRequest {
   // Remaining-Work A1 — a Business checkout carries its renewal disclosure too (no address collection).
   collect_address?: boolean;
   disclosure?: string;
+  // Sign Business per-seat pricing (directive v1.0 §3.3) — the line-item quantity (seats) of a per-seat
+  // version; absent = 1 (every per-account checkout).
+  quantity?: number;
 }
 
 // The provider's view of one subscription, as fetched from the provider (never
@@ -73,6 +76,10 @@ export interface ProviderSubscriptionState {
     environment: 'Sandbox' | 'Production' | null;
     grace_until: Date | null;
   };
+  // Sign Business per-seat pricing (directive v1.0 §3.3) — the first subscription item and its quantity
+  // (Stripe only; absent for a store). The quantity is the purchased seats of a per-seat version.
+  item_ref?: string | null;
+  quantity?: number | null;
 }
 
 export interface VerifiedBillingEvent {
@@ -314,4 +321,25 @@ export interface BillingProviderAdjustmentPort {
   readAdjustmentEffect(req: ProviderAdjustmentRequest, object_ref: string | null): Promise<ProviderAdjustmentEffect>;
   /** CCP-C4-P — read the payment picture of one invoice (READ ONLY; never changes provider state). */
   readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture>;
+}
+
+// ---------------------------------------------------------------------------------------
+// Sign Business per-seat pricing (Implementation Directive v1.0 LOCKED §3.3) — the seat quantity of a
+// provider subscription. A separate port (bound to the same Stripe adapter) so every existing port and
+// fake is unchanged. Called OUTSIDE any local DB transaction, with an idempotency key.
+// ---------------------------------------------------------------------------------------
+
+export const BILLING_PROVIDER_SEAT_PORT = 'BILLING_PROVIDER_SEAT_PORT';
+
+/**
+ * `create_prorations` — an increase, prorated now (O-2, the provider's default). `none` — no proration:
+ * a decrease billed from the next period (no refund, O-2), or restoring the paid quantity.
+ */
+export type SeatProrationBehavior = 'create_prorations' | 'none';
+
+export interface BillingProviderSeatPort {
+  readonly provider: BillingProviderKey;
+  isConfigured(): boolean;
+  /** Set the quantity of the subscription's (single) item. Returns the provider's state after the change. */
+  updateSubscriptionQuantity(subscription_ref: string, quantity: number, proration: SeatProrationBehavior, idempotency_key: string): Promise<ProviderSubscriptionState>;
 }

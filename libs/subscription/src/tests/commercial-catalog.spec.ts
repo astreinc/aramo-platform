@@ -60,6 +60,9 @@ describe('CCP-B2 catalog model', () => {
       unit_prices: [],
       // Sign Mobile M-A12 A1-3 — no regional price on the version.
       regional_prices: [],
+      // Sign Business per-seat pricing — no price_unit key: per account; the plan's tenant kind.
+      price_unit: 'ACCOUNT',
+      tenant_kind: 'BUSINESS',
     });
     expect(catalogTermsOf(ENTERPRISE)).toMatchObject({ contract_priced: true, envelopes_present: false, storage_present: false, list_price_minor: null });
     expect(isContractPriced(ENTERPRISE)).toBe(true);

@@ -436,6 +436,7 @@ export function UsersInvitationsPage({ session, products }: { readonly session?:
         user={editing}
         groups={groups}
         callerIsOwner={callerIsOwner}
+        products={products ?? null}
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}

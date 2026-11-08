@@ -1,4 +1,4 @@
-import { IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
 
 /**
  * The 8-4-4-4-12 hex SHAPE of a uuid, without the RFC 9562 version/variant check: the CCP-A5
@@ -73,6 +73,8 @@ export class UpdateCatalogDraftDto {
     },
   })
   regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
+  /** Sign per-seat pricing — SEAT (BUSINESS self-service plans only; else 422 price_unit_not_applicable) or ACCOUNT. */
+  @IsOptional() @IsIn(['ACCOUNT', 'SEAT']) price_unit?: 'ACCOUNT' | 'SEAT';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
@@ -92,6 +94,10 @@ export interface CatalogVersionTermsDto {
   unit_prices: { unit_key: string; unit_price_minor: number }[];
   /** M-A12 A1-3 — the regional list prices on the version (empty = none). */
   regional_prices: { country: string; currency: string; amount_minor: number; interval: 'MONTH' | 'YEAR' }[];
+  /** Sign per-seat pricing — ACCOUNT when the version carries no price_unit. */
+  price_unit: 'ACCOUNT' | 'SEAT';
+  /** The plan's tenant kind (BUSINESS | PERSONAL | null). */
+  tenant_kind: string | null;
 }
 
 export interface CatalogOpenRequestDto {
@@ -123,6 +129,8 @@ export interface CatalogPlanDto {
   product_key: string;
   name: string;
   status: string;
+  /** BUSINESS | PERSONAL | null — the console offers per-seat pricing only on a BUSINESS self-service plan. */
+  tenant_kind: string | null;
   sales_model: string;
   sellable: boolean;
   display_order: number;

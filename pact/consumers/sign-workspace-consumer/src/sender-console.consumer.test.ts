@@ -47,6 +47,7 @@ const { like, uuid, integer, eachLike, regex, boolean, fromProviderState } = Mat
 //      details.reason governed_subscription_open (CCP-A6, Conversion Rule C-1 / C-4: the
 //      Settings → Plan & billing checkout of apps/sign-web/src/workspace/api.ts)
 //  11. GET  /v1/sign/billing/account (held activation)      200 pending_activation (CCP-A6-R, C-8)
+//      POST /v1/sign/billing/seats (not owner / admin)       403 seat_manage_role_required (per-seat pricing)
 //  12. GET  /v1/sign/billing/self-service                   200 every action unavailable,
 //      reason SELF_SERVICE_TERMS_NOT_APPROVED (CCP-C7: the designed disabled state, PBD §10;
 //      billingApi.selfService of apps/sign-web/src/workspace/api.ts)
@@ -830,6 +831,10 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
           tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           tenant_kind: 'BUSINESS',
           can_manage_billing: true,
+          // Sign Business per-seat pricing — a governed per-organization subscription: no seats to manage.
+          price_unit: 'ACCOUNT',
+          seats: null,
+          can_manage_seats: false,
         });
       })
       .executeTest(async (mock) => {
@@ -837,6 +842,39 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
         expect(res.status).toBe(200);
         const body = (await res.json()) as { pending_activation: { state: string } };
         expect(body.pending_activation.state).toBe('PENDING');
+      });
+  });
+});
+
+// Sign Business per-seat pricing (directive v1.0 §3.3.3, O-3) — only the organization owner or an
+// admin (tenant_owner / tenant_admin) changes the seats: a billing principal without an organization
+// role is refused 403 seat_manage_role_required before any seat or provider read.
+describe('sign-workspace → POST /v1/sign/billing/seats (not the owner or an admin)', () => {
+  it('is refused 403 INSUFFICIENT_PERMISSIONS reason seat_manage_role_required', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE, 'Content-Type': 'application/json' };
+    const body = { seats: 3 };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a seat change by a billing principal who is not the organization owner or an admin')
+      .withRequest('POST', '/v1/sign/billing/seats', (b) => {
+        b.headers(headers).jsonBody(body);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INSUFFICIENT_PERMISSIONS',
+            message: like('Only the organization owner or an admin can change seats'),
+            request_id: like('req-1'),
+            details: { reason: 'seat_manage_role_required' },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/seats`, { method: 'POST', headers, body: JSON.stringify(body) });
+        expect(res.status).toBe(403);
+        const out = (await res.json()) as { error: { details: { reason: string } } };
+        expect(out.error.details.reason).toBe('seat_manage_role_required');
       });
   });
 });

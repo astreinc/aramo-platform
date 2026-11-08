@@ -11,7 +11,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only shared migration helper (TD-A3-19 precedent; CLAUDE.md "one shared test helper")
-import { applyRemainingSubscriptionMigrations } from '../../../../libs/subscription/src/tests/fixtures/ccp-a8.js';
+import { SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION, applyRemainingSubscriptionMigrations } from '../../../../libs/subscription/src/tests/fixtures/ccp-a8.js';
 import { SignatureAvailabilityService } from '../document-signing/signature-availability.service.js';
 import { SignatureRoutingService } from '../document-signing/signature-routing.service.js';
 
@@ -104,8 +104,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
     if (!CAPTURE) {
       await pg.query(readFileSync(A4, 'utf8'));
       await pg.query(readFileSync(A5, 'utf8'));
-      // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema.
-      await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, A4, A5]);
+      // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema. The Business
+      // per-seat catalog data is skipped (it refuses the seeded Business subscriptions, A1-3).
+      await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, A4, A5], [SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION]);
     }
     prisma = new SubscriptionPrismaService(container.getConnectionUri());
     await prisma.$connect();

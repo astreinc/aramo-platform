@@ -31,8 +31,11 @@ import {
   ESIGN_ENVELOPE_ALLOWANCE,
   MeteredUsageService,
   SIGN_PRODUCT_KEY,
+  SeatBillingService,
+  SeatChangeRefusedError,
   SelfServiceBillingService,
   SelfServiceRefusedError,
+  validSeatCount,
   type SelfServiceRefusal,
   SubscriptionLifecycleService,
   TENANT_ACTIVATION_PENDING_MESSAGE,
@@ -89,6 +92,12 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 //   GET plans is filtered to the caller's tenant kind (A5) and carries each plan's store products and
 //   the regional price for the caller's billing country (A1-3); GET account carries where the plan is
 //   managed and whether the caller may buy in the app (A1-2).
+//   POST seats            Sign Business per-seat pricing (directive v1.0 §3.3.3): the owner or an admin
+//                         changes the purchased seats of a Stripe-billed per-seat subscription; an increase
+//                         is prorated now, a decrease applies at period end (no refund), never below the
+//                         seats in use (409 seats_below_usage). GET account carries price_unit, seats
+//                         { purchased, used, pending_purchased } and can_manage_seats; GET plans each
+//                         plan's price_unit; checkout takes `seats` for a per-seat plan.
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only. CCP-C1: the
 //                         verified event is recorded in the webhook inbox before it is
@@ -202,6 +211,10 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
       // M-A12 W1-G item 5 — the plan is billed through the App Store or Google Play.
       return new AramoError('ESIGN_BILLING_CONFLICT', 'Your plan is managed in the app store. Manage it there.', 409, { requestId, details: { reason: 'billing_managed_elsewhere' } });
     }
+    if (e.reason === 'SEATS_NOT_APPLICABLE') {
+      // Sign Business per-seat pricing — `seats` for a plan priced per organization.
+      return new AramoError('VALIDATION_ERROR', 'This plan is priced per organization; it has no seat count', 422, { requestId, details: { reason: 'seats_not_applicable' } });
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }
@@ -214,8 +227,23 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: 'PROVIDER_UNAVAILABLE' } });
   }
   if (e instanceof StoreBillingRefusedError) return storeHttpError(e, requestId);
+  if (e instanceof SeatChangeRefusedError) return seatHttpError(e, requestId);
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', 'Billing request failed', 500, { requestId });
 }
+
+// Sign Business per-seat pricing — the tenant-facing copy of each seat-change refusal (409, stable reason).
+const SEAT_MESSAGES: Readonly<Record<SeatChangeRefusedError['reason'], string>> = {
+  seats_not_applicable: 'Your plan isn’t priced per seat, or its seats can’t be changed online.',
+  seats_below_usage: 'You can’t have fewer seats than the people who use Aramo Sign. Remove someone’s access first.',
+  seats_unchanged: 'You already have that many seats.',
+};
+
+export function seatHttpError(e: SeatChangeRefusedError, requestId: string): AramoError {
+  return new AramoError('ESIGN_BILLING_CONFLICT', SEAT_MESSAGES[e.reason], 409, { requestId, details: { reason: e.reason, ...e.details } });
+}
+
+/** Sign Business per-seat pricing (O-3) — the organization owner or an admin manages the seats. */
+export const SEAT_MANAGER_ROLE_KEYS: readonly string[] = ['tenant_owner', 'tenant_admin'];
 
 // CCP-C7 — the tenant-facing copy of each self-service refusal: a stable reason, never an internal
 // conflict, flag or contract detail (TD-A6-R-3). The terms-not-approved state is the designed
@@ -309,7 +337,27 @@ export class EsignBillingController {
     @Optional() private readonly usage?: MeteredUsageService,
     // M-A12 W1-G — in-app store billing (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly store?: StoreBillingService,
+    // Sign Business per-seat pricing — seats (SubscriptionModule provides it; unbound only in unit specs).
+    @Optional() private readonly seats?: SeatBillingService,
   ) {}
+
+  /** O-3 — whether the caller is the organization owner or an admin (their live role keys in this tenant). */
+  private async managesSeats(auth: AuthContextType): Promise<boolean> {
+    const membership = await this.identity.findMembership({ user_id: auth.sub, tenant_id: auth.tenant_id });
+    if (membership === null || !membership.is_active) return false;
+    const keys = await this.identity.findRoleKeysForMembership(membership.id);
+    return keys.some((k) => SEAT_MANAGER_ROLE_KEYS.includes(k));
+  }
+
+  /** Sign Business per-seat pricing — the account's seat view (null unless the pinned version is per seat). */
+  private async seatView(auth: AuthContextType, kind: string): Promise<{ seats: { purchased: number; used: number; pending_purchased: number | null } | null; can_manage_seats: boolean }> {
+    const state = this.seats === undefined || kind !== 'BUSINESS' ? null : await this.seats.seatState(auth.tenant_id, SIGN_PRODUCT_KEY);
+    if (state === null || state.price_unit !== 'SEAT' || state.purchased === null) return { seats: null, can_manage_seats: false };
+    return {
+      seats: { purchased: state.purchased, used: await this.identity.countSignSeats(auth.tenant_id), pending_purchased: state.pending_purchased },
+      can_manage_seats: state.changeable && (await this.managesSeats(auth)),
+    };
+  }
 
   /** M-A12 — the declared residence (ISO alpha-2) of a PERSONAL tenant's signup, or null. */
   private async residenceOf(tenant_id: string): Promise<string | null> {
@@ -373,6 +421,8 @@ export class EsignBillingController {
       can_manage_billing: can_manage && (kind === 'BUSINESS' || personalOpen),
       upgrade: kind === 'PERSONAL' ? await this.personalUpgrade(auth.tenant_id, view.subscription, can_manage && personalOpen) : null,
       ...store,
+      // Sign Business per-seat pricing (directive v1.0 §3.3.4).
+      ...(await this.seatView(auth, kind)),
     };
   }
 
@@ -606,7 +656,7 @@ export class EsignBillingController {
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
   @BillingBoundary()
-  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown }) {
+  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown; seats?: unknown }) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
       // Sign Catalog v2 §4.3 — BUSINESS, or a bound PERSONAL tenant while Personal sending is on
@@ -614,6 +664,10 @@ export class EsignBillingController {
       const tenant = await this.ctx.assertCanAuthorTenant(auth, requestId);
       if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
         throw new AramoError('VALIDATION_ERROR', 'plan_key is required', 400, { requestId });
+      }
+      // Sign Business per-seat pricing (§3.3.1) — seats is an integer 1..1000 (a per-seat plan only).
+      if (body.seats !== undefined && !validSeatCount(body.seats)) {
+        throw new AramoError('VALIDATION_ERROR', 'seats must be an integer from 1 to 1000', 400, { requestId, details: { reason: 'seats_invalid' } });
       }
       if (tenant.kind === 'PERSONAL') {
         // Sign Catalog v2 §4.3 — dark unless enabled; then US residents only. Both before any
@@ -644,7 +698,33 @@ export class EsignBillingController {
         cancel_url: `${base}?checkout=canceled`,
         accept_terms: body.accept_terms === true,
         tenant_kind: tenant.kind,
+        ...(body.seats !== undefined ? { seats: body.seats as number } : {}),
       });
+    });
+  }
+
+  /**
+   * Sign Business per-seat pricing (directive v1.0 §3.3.3, O-2, O-3) — the owner or an admin changes the
+   * purchased seats. Increase: prorated now. Decrease: at period end, never below the seats in use.
+   */
+  @Post('seats')
+  @HttpCode(HttpStatus.OK)
+  @BillingBoundary()
+  changeSeats(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { seats?: unknown }) {
+    return this.run(requestId, async () => {
+      await this.ctx.assertBusiness(auth, requestId);
+      if (!(await this.managesSeats(auth))) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Only the organization owner or an admin can change seats', 403, {
+          requestId,
+          details: { reason: 'seat_manage_role_required' },
+        });
+      }
+      if (!validSeatCount(body?.seats)) {
+        throw new AramoError('VALIDATION_ERROR', 'seats must be an integer from 1 to 1000', 400, { requestId, details: { reason: 'seats_invalid' } });
+      }
+      if (this.seats === undefined) throw seatHttpError(new SeatChangeRefusedError('seats_not_applicable'), requestId);
+      const used = await this.identity.countSignSeats(auth.tenant_id);
+      return this.seats.changeSeats({ tenant_id: auth.tenant_id, product_key: SIGN_PRODUCT_KEY, seats: body.seats, used });
     });
   }
 

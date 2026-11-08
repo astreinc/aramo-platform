@@ -7,6 +7,7 @@ import {
   type BillingProviderAdjustmentPort,
   type BillingProviderCommandPort,
   type BillingProviderPort,
+  type BillingProviderSeatPort,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type CheckoutSessionRequest,
@@ -15,6 +16,7 @@ import {
   type ProviderCheckoutSessionState,
   type ProviderPaymentPicture,
   type ProviderSubscriptionState,
+  type SeatProrationBehavior,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
 import type { MeterEventReport, UsageMeterReportPort } from './usage-meter.port.js';
@@ -78,7 +80,9 @@ function asDate(v: unknown): Date {
 }
 
 export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderSubscriptionState {
-  const items = (obj['items'] as { data?: Array<{ price?: { id?: string }; current_period_start?: number; current_period_end?: number }> } | undefined)?.data ?? [];
+  const items =
+    (obj['items'] as { data?: Array<{ id?: string; quantity?: number; price?: { id?: string }; current_period_start?: number; current_period_end?: number }> } | undefined)?.data ?? [];
+  const quantity = items[0]?.quantity;
   const metadata = (obj['metadata'] as Record<string, unknown> | undefined) ?? {};
   // Period fields live on the subscription in the pinned API version; newer
   // versions moved them onto the items — accept either.
@@ -96,6 +100,9 @@ export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderS
     tenant_id: asString(metadata['tenant_id']),
     intent_id: asString(metadata['intent_id']),
     account_country: wireAccountCountry(obj),
+    // Sign Business per-seat pricing — the first item and its quantity (the purchased seats).
+    item_ref: asString(items[0]?.id),
+    quantity: typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity >= 1 ? quantity : null,
   };
 }
 
@@ -157,7 +164,7 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
 }
 
 @Injectable()
-export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort, UsageMeterReportPort {
+export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort, UsageMeterReportPort, BillingProviderSeatPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
@@ -222,7 +229,8 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
     const body = form({
       mode: 'subscription',
       'line_items[0][price]': req.price_ref,
-      'line_items[0][quantity]': '1',
+      // Sign Business per-seat pricing (directive v1.0 §3.3) — the seats of a per-seat version, else 1.
+      'line_items[0][quantity]': String(req.quantity ?? 1),
       success_url: req.success_url,
       cancel_url: req.cancel_url,
       client_reference_id: req.intent_id,
@@ -267,6 +275,25 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
     // provider's cancel (no proration or invoice parameters are sent: their defaults apply).
     if (opts.at_period_end) await this.call('POST', path, form({ cancel_at_period_end: 'true' }), idempotency_key);
     else await this.call('DELETE', path, undefined, idempotency_key);
+  }
+
+  /**
+   * Sign Business per-seat pricing (directive v1.0 §3.3) — set the quantity of the subscription's item:
+   * `create_prorations` for an increase (prorated now), `none` for a decrease billed from the next
+   * period (no refund) or for restoring the paid quantity. The item is read from the subscription.
+   */
+  async updateSubscriptionQuantity(subscription_ref: string, quantity: number, proration: SeatProrationBehavior, idempotency_key: string): Promise<ProviderSubscriptionState> {
+    if (!Number.isSafeInteger(quantity) || quantity < 1) throw new BillingProviderUnavailableError('seat quantity must be a positive integer', false);
+    const path = `/v1/subscriptions/${encodeURIComponent(subscription_ref)}`;
+    const current = stripeSubscriptionState(await this.call('GET', `${path}?${wireSubscriptionQuery()}`));
+    if (current.item_ref === null || current.item_ref === undefined) throw new BillingProviderUnavailableError('subscription without an item', false);
+    await this.call(
+      'POST',
+      path,
+      form({ 'items[0][id]': current.item_ref, 'items[0][quantity]': String(quantity), proration_behavior: proration, 'metadata[aramo_seat_quantity]': String(quantity) }),
+      idempotency_key,
+    );
+    return stripeSubscriptionState(await this.call('GET', `${path}?${wireSubscriptionQuery()}`));
   }
 
   async expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void> {

@@ -523,3 +523,21 @@ export {
   normalizeCustomRoleText,
   scopesActorLacks,
 } from './lib/sign-custom-role/sign-custom-role.policy.js';
+
+// Aramo Sign Business Per-Seat Pricing (Implementation Directive v1.0 LOCKED §3.2) — the seat-limit port
+// (implemented in the apps with libs/subscription; no libs/identity → libs/subscription edge) and the S-4 count.
+export {
+  SEAT_LIMIT_PORT,
+  SEAT_LIMIT_REACHED_REASON,
+  SIGN_SEAT_ROLE_KEYS,
+  SeatLimitReachedError,
+  assertSeatAvailableTx,
+  countSignSeatsTx,
+  holdsSignSendAccess,
+  seatGuardOf,
+  seatLimitReachedError,
+  type SeatGuard,
+  type SeatLimitCheck,
+  type SeatLimitPort,
+  type SeatLimitTx,
+} from './lib/tenant-user/seat-limit.port.js';

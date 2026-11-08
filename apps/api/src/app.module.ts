@@ -66,6 +66,7 @@ import {
   ResumeExtractionDraftWorkerModule,
 } from '@aramo/talent-record';
 import { TaskModule } from '@aramo/task';
+import { SubscriptionModule } from '@aramo/subscription';
 
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
@@ -176,6 +177,7 @@ import { TalentPresetResolverService } from './talent-enrichment/talent-preset-r
 // TenantSettingService; bridges libs/identity's port to libs/settings'
 // service without coupling either lib).
 import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.adapter.js';
+import { SignSeatLimitAdapter } from './billing/sign-seat-limit.adapter.js';
 // Tasks backend — live TASK_ASSIGNEE_VALIDATOR adapter (validates an
 // assignee is an active within-tenant member via IdentityService).
 import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
@@ -672,7 +674,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     IdentityModule.forRoot({
       cognitoAdapter: TenantCognitoAdapter,
       auditFinancialsGate: AuditFinancialsGateAdapter,
-      imports: [SettingsModule],
+      // Sign Business per-seat pricing (directive v1.0 §3.2.3) — the seat limit of the tenant-user invite,
+      // role grant and re-enable; SubscriptionModule (already in this graph) provides SeatBillingService.
+      seatLimit: SignSeatLimitAdapter,
+      imports: [SettingsModule, SubscriptionModule],
     }),
     // Settings S1 — SettingsModule (NEW LEAF lib, depends only on
     // @aramo/common). Tenant-configuration foundation: the TenantSetting

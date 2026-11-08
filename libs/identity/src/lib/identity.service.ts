@@ -22,6 +22,7 @@ import {
   PERSONAL_SINGLE_USER_REASON,
   PersonalTenantSeatTakenError,
 } from './tenant-user/personal-single-user.js';
+import { rethrowSeatLimitReached, type SeatGuard } from './tenant-user/seat-limit.port.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
 import {
@@ -726,6 +727,8 @@ export class IdentityService {
     provisioning_capabilities?: readonly string[];
     // ROLES-1 PR-1 (§4.2) — required to grant tenant_owner.
     owner_role_authority?: OwnerRoleAuthority;
+    // Sign per-seat pricing (directive v1.0 §3.2) — the seat-limit guard (platform-console invites).
+    seat_guard?: SeatGuard;
   }): Promise<{ user: UserDto; membership_id: string }> {
     await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
@@ -763,9 +766,11 @@ export class IdentityService {
           provider_subject: args.provider_subject,
           tenant_id: args.tenant_id,
           role_ids: args.role_ids,
+          ...(args.seat_guard !== undefined ? { seat_guard: args.seat_guard } : {}),
         });
     } catch (err) {
       rethrowPersonalSeatTaken(err, args.request_id);
+      rethrowSeatLimitReached(err, args.request_id);
       // Race backstop: a User.email P2002 lost after the pre-check maps to
       // the governed 409s (never a raw P2002 / HTTP 500).
       await this.mapUserEmailCollision(err, guardArgs);
@@ -893,6 +898,8 @@ export class IdentityService {
     request_id: string;
     // ROLES-1 PR-1 (§4.2) — required to invite someone as tenant_owner.
     owner_role_authority?: OwnerRoleAuthority;
+    // Sign per-seat pricing (directive v1.0 §3.2) — the seat-limit guard (an invite with Sign send access).
+    seat_guard?: SeatGuard;
   }): Promise<{
     user: UserDto;
     membership_id: string;
@@ -934,9 +941,11 @@ export class IdentityService {
         display_name: args.display_name,
         tenant_id: args.tenant_id,
         role_ids: args.role_ids,
+        ...(args.seat_guard !== undefined ? { seat_guard: args.seat_guard } : {}),
       });
     } catch (err) {
       rethrowPersonalSeatTaken(err, args.request_id);
+      rethrowSeatLimitReached(err, args.request_id);
       // Race backstop: a User.email P2002 lost after the pre-check maps to
       // the governed 409s (never a raw P2002 / HTTP 500).
       await this.mapUserEmailCollision(err, guardArgs);
@@ -1195,6 +1204,8 @@ export class IdentityService {
     allow_platform_roles?: boolean;
     // ROLES-1 PR-1 (§4.2) — required when the change grants or removes tenant_owner.
     owner_role_authority?: OwnerRoleAuthority;
+    // Sign per-seat pricing (directive v1.0 §3.2) — set when the change grants Sign send access.
+    seat_guard?: SeatGuard;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
     // ROLES-1 PR-1 (§4.2) — the membership's CURRENT keys decide whether this change
     // grants or removes tenant_owner (read live). The platform tier and system paths are
@@ -1212,11 +1223,17 @@ export class IdentityService {
 
     // §4.1 — the DB last-owner trigger is the backstop; the repository maps its refusal
     // to 409 TENANT_LAST_OWNER.
-    return this.identityRepo.replaceMembershipRoles({
-      membership_id: args.membership_id,
-      role_ids: args.role_ids,
-      request_id: args.request_id,
-    });
+    try {
+      return await this.identityRepo.replaceMembershipRoles({
+        membership_id: args.membership_id,
+        role_ids: args.role_ids,
+        request_id: args.request_id,
+        ...(args.seat_guard !== undefined ? { seat_guard: args.seat_guard } : {}),
+      });
+    } catch (err) {
+      rethrowSeatLimitReached(err, args.request_id);
+      throw err;
+    }
   }
 
   // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — remove one product's role keys from a
@@ -1298,11 +1315,25 @@ export class IdentityService {
   async reEnableMembership(args: {
     user_id: string;
     tenant_id: string;
+    // Sign per-seat pricing (directive v1.0 §3.2) — the tenant-user re-enable of a Sign sender only.
+    seat_guard?: SeatGuard;
+    request_id?: string;
   }): Promise<{ membership_id: string } | null> {
-    return this.identityRepo.reEnableMembership({
-      user_id: args.user_id,
-      tenant_id: args.tenant_id,
-    });
+    try {
+      return await this.identityRepo.reEnableMembership({
+        user_id: args.user_id,
+        tenant_id: args.tenant_id,
+        ...(args.seat_guard !== undefined ? { seat_guard: args.seat_guard } : {}),
+      });
+    } catch (err) {
+      rethrowSeatLimitReached(err, args.request_id ?? 'tenant-user.enable');
+      throw err;
+    }
+  }
+
+  // Sign per-seat pricing (directive v1.0 §3.2, S-4) — the tenant's seats in use.
+  async countSignSeats(tenant_id: string): Promise<number> {
+    return this.identityRepo.countSignSeats(tenant_id);
   }
 }
 

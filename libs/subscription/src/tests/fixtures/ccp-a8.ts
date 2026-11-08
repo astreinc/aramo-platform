@@ -17,6 +17,14 @@ const SUB_DIR = resolve(__dirname, '../../../prisma/migrations');
 /** Sign Catalog v2 (directive fc755040): catalog DATA only, no schema. The A4/A5 goldens skip it. */
 export const SIGN_CATALOG_V2_MIGRATION = resolve(SUB_DIR, '20261101120000_sign_catalog_v2/migration.sql');
 
+/**
+ * Sign Business per-seat pricing (directive 00225bad, Amendment A1 46ac663d): catalog DATA only (the schema
+ * is the preceding 20261108100000 migration). It refuses a database that already holds a Standard Business
+ * or Professional subscription (A1-3), so a spec that seeds such subscriptions first, or asserts the
+ * pre-per-seat catalog, skips it.
+ */
+export const SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION = resolve(SUB_DIR, '20261108100100_sign_business_per_seat_catalog/migration.sql');
+
 /** Every subscription migration not in `applied` (absolute paths), in name order. */
 export function remainingSubscriptionMigrations(applied: readonly string[]): string[] {
   const done = new Set(applied.map((p) => resolve(p)));

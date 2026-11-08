@@ -8,7 +8,7 @@ import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-bill
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
-import { PIN_REASON_PROVIDER_PLAN_CHANGE, planVersionTerms } from '../plan-version.js';
+import { PIN_REASON_PROVIDER_PLAN_CHANGE, type PlanPriceUnit, planVersionTerms, priceUnitOf } from '../plan-version.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
@@ -161,7 +161,16 @@ export type BillingRefusal =
   | 'PLAN_TENANT_KIND_MISMATCH'
   // M-A12 W1-G item 5 — the tenant's plan is billed by another channel (a store subscription
   // refuses a Stripe checkout, and the reverse): `billing_managed_elsewhere`.
-  | 'BILLING_MANAGED_ELSEWHERE';
+  | 'BILLING_MANAGED_ELSEWHERE'
+  // Sign Business per-seat pricing (directive v1.0 §3.3) — `seats` given for a plan priced per account,
+  // or out of range (422 seats_not_applicable).
+  | 'SEATS_NOT_APPLICABLE';
+
+/** Sign Business per-seat pricing — the seats a checkout or a seat change may name. */
+export const MAX_SEATS = 1000;
+export function validSeatCount(n: unknown): n is number {
+  return typeof n === 'number' && Number.isSafeInteger(n) && n >= 1 && n <= MAX_SEATS;
+}
 
 /** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
 export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
@@ -290,6 +299,8 @@ export interface CatalogPlanView {
   capacities: { capacity_key: string; limit: number | null; unlimited: boolean; available: boolean }[];
   features: { feature_key: string; enabled: boolean; available: boolean }[];
   purchasable: boolean;
+  // Sign Business per-seat pricing (directive v1.0 §3.3.4) — the PUBLISHED version's price unit.
+  price_unit: PlanPriceUnit;
 }
 
 export interface SubscriptionView {
@@ -323,6 +334,8 @@ export interface AccountView {
   billing_available: boolean;
   // CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10).
   tax: TaxAvailability;
+  // Sign Business per-seat pricing (directive v1.0 §3.3.4) — the shown subscription's pinned price unit (null: none).
+  price_unit: PlanPriceUnit | null;
 }
 
 export interface ApplyResult {
@@ -459,7 +472,7 @@ export class SubscriptionLifecycleService {
       const terms = planVersionTerms(version);
       const p = terms.plan;
       const eligible = await this.eligible(tenant_id, p.eligibility);
-      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices);
+      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, priceUnitOf(terms));
       out.push({
         key: plan.key,
         name: plan.name,
@@ -492,6 +505,7 @@ export class SubscriptionLifecycleService {
         // Sign Catalog v2 §4.3 — with the tenant's kind, only a plan of that kind is purchasable.
         purchasable:
           plan.sellable && plan.status === 'ACTIVE' && this.billing.isConfigured() && price.ok && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind)),
+        price_unit: priceUnitOf(terms),
       });
     }
     return out;
@@ -549,6 +563,7 @@ export class SubscriptionLifecycleService {
       storage: storage.subscribed ? { capacity_key: storage.capacity_key, limit: storage.limit, unlimited: storage.unlimited, used: storage.used } : null,
       billing_available: await this.billingAvailable(),
       tax: taxAvailability(),
+      price_unit: row === null ? null : priceUnitOf(planVersionTerms(row.plan_version)),
     };
   }
 
@@ -600,6 +615,9 @@ export class SubscriptionLifecycleService {
     accept_terms?: boolean;
     // Sign Catalog v2 §4.3 (P-4) — the tenant's kind (identity); BUSINESS when omitted.
     tenant_kind?: string;
+    // Sign Business per-seat pricing (directive v1.0 §3.3.1) — the seats of a per-seat version (default 1);
+    // refused (SEATS_NOT_APPLICABLE) for a version priced per account.
+    seats?: number;
     at?: Date;
   }): Promise<{ url: string }> {
     const at = input.at ?? new Date();
@@ -616,8 +634,14 @@ export class SubscriptionLifecycleService {
     }
     if (!planMatchesTenantKind(plan.tenant_kind, tenant_kind)) throw new BillingRefusedError('PLAN_TENANT_KIND_MISMATCH');
     if (!(await this.eligible(input.tenant_id, planVersionTerms(version).plan.eligibility))) throw new BillingRefusedError('PLAN_NOT_ELIGIBLE');
+    // Sign Business per-seat pricing — a per-seat version sells `seats` (default 1); a per-account one never names seats.
+    const perSeat = priceUnitOf(planVersionTerms(version)) === 'SEAT';
+    if (input.seats !== undefined && (!perSeat || !validSeatCount(input.seats))) {
+      throw new BillingRefusedError('SEATS_NOT_APPLICABLE', perSeat ? `seats must be an integer 1..${MAX_SEATS}` : 'this plan is priced per organization, not per seat');
+    }
+    const seat_quantity = perSeat ? (input.seats ?? 1) : null;
     // CCP-A5 (D3) — the version's pinned price, else the env (cutover); a pin/env disagreement fails closed.
-    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices());
+    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices(), perSeat ? 'SEAT' : 'ACCOUNT');
     if (!effective.ok) {
       throw new BillingRefusedError('BILLING_UNAVAILABLE', effective.reason === 'PARITY_MISMATCH' ? 'provider price parity mismatch for the plan version' : 'no provider price configured for the plan');
     }
@@ -665,6 +689,7 @@ export class SubscriptionLifecycleService {
           provider: this.billing.provider,
           terms_version: terms?.version ?? null,
           terms_sha256: terms?.sha256 ?? null,
+          seat_quantity,
         },
       });
       if (terms !== null) {
@@ -695,6 +720,7 @@ export class SubscriptionLifecycleService {
       account_ref,
       success_url: input.success_url,
       cancel_url: input.cancel_url,
+      ...(seat_quantity !== null ? { quantity: seat_quantity } : {}),
       // Remaining-Work A1 — a Business checkout shows its renewal disclosure at submit too.
       ...(personal
         ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }
@@ -1116,6 +1142,9 @@ export class SubscriptionLifecycleService {
       ended_at: Date | null;
       activated_by: string | null;
       commitment_end: Date | null;
+      current_period_end: Date | null;
+      seat_quantity: number | null;
+      seat_pending_quantity: number | null;
     },
     state: ProviderSubscriptionState,
     provider: ReturnType<typeof mapProviderStatus>,
@@ -1156,6 +1185,9 @@ export class SubscriptionLifecycleService {
     const commitment_end = storeTerms !== null && 'commitment_end' in storeTerms ? (storeTerms.commitment_end ?? null) : row.commitment_end;
     const cancelWithin =
       state.cancel_at_period_end && commitment_end !== null && state.current_period_end.getTime() < commitment_end.getTime();
+    // Sign Business per-seat pricing (directive v1.0 §3.3.2) — the purchased seats follow the provider item
+    // quantity on a per-seat version (a decrease scheduled for period end keeps the paid seats until then).
+    const seats = await this.seatColumns(tx, pin?.plan_version_id ?? row.plan_version_id, state, row);
     await tx.tenantSubscription.update({
       where: { id: row.id },
       data: {
@@ -1171,6 +1203,7 @@ export class SubscriptionLifecycleService {
         provider_state_at: at,
         ended_at: mapped.ends ? at : null,
         ...(pin !== null ? { plan_id: pin.plan_id, plan_version_id: pin.plan_version_id } : {}),
+        ...seats,
       },
     });
     const reactivated = !SENDING.has(row.status) && SENDING.has(mapped.status);
@@ -1195,7 +1228,7 @@ export class SubscriptionLifecycleService {
     tx: Tx,
     tenant_id: string,
     product_key: ProductKey,
-    intent: { id: string; user_id: string; plan_id: string; plan: { key: string } },
+    intent: { id: string; user_id: string; plan_id: string; plan: { key: string }; seat_quantity?: number | null },
     state: ProviderSubscriptionState,
     mapped: ReturnType<typeof mapProviderStatus>,
     at: Date,
@@ -1210,6 +1243,12 @@ export class SubscriptionLifecycleService {
     if (plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout plan belongs to another product than ${product_key}`, tenant_id };
     if (version === null) return { outcome: 'IGNORED', detail: `plan ${plan.key} has no published version`, tenant_id };
     const terms = planVersionTerms(version).plan;
+    // Sign Business per-seat pricing (directive v1.0 §3.3.2) — the purchased seats of a per-seat version:
+    // the provider item quantity, else the checkout's seats, else 1 (a store purchase is one seat, R-4).
+    const seat_quantity =
+      priceUnitOf(planVersionTerms(version)) === 'SEAT'
+        ? (isStoreBillingProvider(state.provider) ? 1 : (state.quantity ?? intent.seat_quantity ?? 1))
+        : null;
     const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
     // CCP-A6 (C-6) — defence in depth: applyProviderState holds a governed conflict before this
     // point; openRow itself never ends a governed row either.
@@ -1260,6 +1299,7 @@ export class SubscriptionLifecycleService {
         current_period_end: state.current_period_end,
         cancel_at_period_end: state.cancel_at_period_end,
         provider_state_at: at,
+        seat_quantity,
       },
     });
     await tx.checkoutIntent.update({ where: { id: intent.id }, data: { status: 'COMPLETED', completed_at: at } });
@@ -1282,6 +1322,25 @@ export class SubscriptionLifecycleService {
       subscription_id: id,
       ...(sends ? { activated_owner_user_id: intent.user_id } : {}),
     };
+  }
+
+  /**
+   * Sign Business per-seat pricing — the seat columns of a row after a provider update. Not per seat: both
+   * null. Per seat: the provider quantity (a store row is one seat), except while a decrease is scheduled
+   * for period end: the paid seats are kept until the period rolls over (the provider period end moves past
+   * the stored one), then the provider quantity applies and the schedule clears. A provider quantity other
+   * than the scheduled one (a change made elsewhere) replaces both.
+   */
+  private async seatColumns(
+    tx: Tx,
+    plan_version_id: string,
+    state: ProviderSubscriptionState,
+    row: { current_period_end: Date | null; seat_quantity: number | null; seat_pending_quantity: number | null },
+  ): Promise<{ seat_quantity: number | null; seat_pending_quantity: number | null }> {
+    const version = await tx.planVersion.findUniqueOrThrow({ where: { id: plan_version_id } });
+    if (priceUnitOf(planVersionTerms(version)) !== 'SEAT') return { seat_quantity: null, seat_pending_quantity: null };
+    const quantity = isStoreBillingProvider(state.provider) ? 1 : (state.quantity ?? row.seat_quantity ?? 1);
+    return seatColumnsAfterProviderState({ ...row, provider_quantity: quantity, provider_period_end: state.current_period_end });
   }
 
   /** M-A12 A1-1 — the interval / commitment columns of a store row after a provider update (null: unchanged). */
@@ -1393,4 +1452,21 @@ export class SubscriptionLifecycleService {
     }
     return tally;
   }
+}
+
+/**
+ * Sign Business per-seat pricing (directive v1.0 §3.3, O-2) — the seat columns after a provider state, for
+ * a per-seat version (pure; see SubscriptionLifecycleService.seatColumns).
+ */
+export function seatColumnsAfterProviderState(r: {
+  current_period_end: Date | null;
+  seat_quantity: number | null;
+  seat_pending_quantity: number | null;
+  provider_quantity: number;
+  provider_period_end: Date;
+}): { seat_quantity: number; seat_pending_quantity: number | null } {
+  if (r.seat_pending_quantity === null || r.seat_quantity === null) return { seat_quantity: r.provider_quantity, seat_pending_quantity: null };
+  const rolled = r.current_period_end !== null && r.provider_period_end.getTime() > r.current_period_end.getTime();
+  if (rolled || r.provider_quantity !== r.seat_pending_quantity) return { seat_quantity: r.provider_quantity, seat_pending_quantity: null };
+  return { seat_quantity: r.seat_quantity, seat_pending_quantity: r.seat_pending_quantity };
 }

@@ -2333,6 +2333,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/billing/seats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Business per-seat pricing — change the organization's purchased seats.
+         * @description Directive v1.0 §3.3.3 (O-2, O-3). The organization owner or an admin (tenant_owner / tenant_admin; else 403 seat_manage_role_required) of a BUSINESS tenant whose Stripe-billed self-service subscription is priced per seat. An increase changes the provider quantity with proration now (effective NOW); a decrease applies at the end of the current period with no refund (effective PERIOD_END; pending_purchased until then) and is refused below the seats in use (409 seats_below_usage, details used). A plan priced per organization, a store-billed or a contract subscription is refused (409 seats_not_applicable); the current count is refused (409 seats_unchanged).
+         */
+        post: operations["changeBillingSeats"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/billing/portal": {
         parameters: {
             query?: never;
@@ -3736,6 +3756,11 @@ export interface components {
         };
         /** @description A catalog plan (Commercial Plans Amendment A1). Prices are display values in minor units; the charge is the provider price. reference_price is present only when substantiated. */
         BillingPlan: {
+            /**
+             * @description Sign Business per-seat pricing — SEAT when price is per seat (per Sign-sending member) per interval; ACCOUNT when per organization.
+             * @enum {string}
+             */
+            price_unit: "ACCOUNT" | "SEAT";
             key: string;
             name: string;
             description?: string | null;
@@ -3801,6 +3826,14 @@ export interface components {
             /** @enum {string} */
             interval: "MONTH" | "YEAR";
         };
+        /** @description Sign Business per-seat pricing — the seats after a change (POST /v1/sign/billing/seats). */
+        BillingSeatChange: {
+            purchased: number;
+            used: number;
+            pending_purchased: number | null;
+            /** @enum {string} */
+            effective: "NOW" | "PERIOD_END";
+        };
         /** @description CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax registration. Always enabled=false with reason STRIPE_TAX_NOT_REGISTERED; no setting enables it, and no tax is calculated, collected or shown. */
         TaxAvailability: {
             /** @enum {boolean} */
@@ -3809,6 +3842,19 @@ export interface components {
             reason: "STRIPE_TAX_NOT_REGISTERED";
         };
         BillingAccount: {
+            /**
+             * @description Sign Business per-seat pricing — the shown subscription's pinned price unit (null without a subscription).
+             * @enum {string|null}
+             */
+            price_unit: "ACCOUNT" | "SEAT" | null;
+            /** @description Sign Business per-seat pricing — null unless the open subscription is priced per seat. purchased is the seat limit now; used the active, accepted members holding Sign send access (S-4); pending_purchased a decrease scheduled for the end of the current period (null when none). */
+            seats: {
+                purchased: number;
+                used: number;
+                pending_purchased: number | null;
+            } | null;
+            /** @description The caller is the owner or an admin and the per-seat subscription is billed through Stripe (POST seats). */
+            can_manage_seats: boolean;
             tax: components["schemas"]["TaxAvailability"];
             /** @description CCP-A6-R (Conversion Rule C-8) — a self-service activation is held because the organization's subscription is managed by Aramo. A safe billing-support state only: it never reports an activation and exposes no internal reason. */
             pending_activation?: {
@@ -5331,7 +5377,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description ESIGN_BILLING_CONFLICT (details.reason) — already subscribed (ALREADY_SUBSCRIBED), no billing account yet (NO_BILLING_ACCOUNT), an incomplete or non-US organization profile, an unverified domain, a plan that needs ATS (PLAN_NOT_ELIGIBLE), or an open governed subscription managed by Aramo (governed_subscription_open; CCP-A6, Conversion Rule C-1 and C-4: a conversion is a governed change request, never a checkout). CCP-C7 self-service actions add (lower-case reasons): governed_subscription_open, activation_pending, conversion_in_progress, no_self_service_subscription, provider_change_pending, already_canceling and financial_treatment_undefined. */
+        /** @description ESIGN_BILLING_CONFLICT (details.reason) — already subscribed (ALREADY_SUBSCRIBED), no billing account yet (NO_BILLING_ACCOUNT), an incomplete or non-US organization profile, an unverified domain, a plan that needs ATS (PLAN_NOT_ELIGIBLE), or an open governed subscription managed by Aramo (governed_subscription_open; CCP-A6, Conversion Rule C-1 and C-4: a conversion is a governed change request, never a checkout). CCP-C7 self-service actions add (lower-case reasons): governed_subscription_open, activation_pending, conversion_in_progress, no_self_service_subscription, provider_change_pending, already_canceling and financial_treatment_undefined. Sign Business per-seat pricing adds seats_not_applicable, seats_below_usage (details used) and seats_unchanged (POST seats). */
         BillingConflict: {
             headers: {
                 [name: string]: unknown;
@@ -9531,6 +9577,8 @@ export interface operations {
                     plan_key: string;
                     /** @description Required true when an approved Terms of Service version exists. */
                     accept_terms?: boolean;
+                    /** @description Sign Business per-seat pricing (directive v1.0 §3.3.1) — the seats to buy on a plan whose price_unit is SEAT (default 1; the provider line-item quantity). Given for a plan priced per organization → 422 seats_not_applicable. */
+                    seats?: number;
                 };
             };
         };
@@ -9542,6 +9590,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BillingRedirect"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["BillingConflict"];
+            /** @description VALIDATION_ERROR seats_not_applicable — `seats` was given for a plan priced per organization. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    changeBillingSeats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    seats: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingSeatChange"];
                 };
             };
             400: components["responses"]["BadRequest"];

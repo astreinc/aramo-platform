@@ -671,7 +671,8 @@ describe('sign-mobile → billing and store (M-A12 W1-G)', () => {
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
-          plans: eachLike({ key: like('aramo-sign-standard-business-v1'), name: like('Business'), purchasable: boolean(false), store_products: [], regional_price: null, regional_prices: [] }),
+          // Sign Business per-seat pricing — each plan's price unit (ACCOUNT | SEAT; "/ user / month" for SEAT).
+          plans: eachLike({ key: like('aramo-sign-standard-business-v1'), name: like('Business'), purchasable: boolean(false), store_products: [], regional_price: null, regional_prices: [], price_unit: like('SEAT') }),
         });
       })
       .executeTest(async (mock) => {
@@ -698,6 +699,10 @@ describe('sign-mobile → billing and store (M-A12 W1-G)', () => {
           store_purchase_eligible: false,
           store_purchase_block_reason: 'store_billing_disabled',
           manage_url: null,
+          // Sign Business per-seat pricing — the sender's plan is priced per organization: no seats.
+          price_unit: 'ACCOUNT',
+          seats: null,
+          can_manage_seats: false,
         });
       })
       .executeTest(async (mock) => {

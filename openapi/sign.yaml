@@ -4776,6 +4776,14 @@ paths:
                 accept_terms:
                   type: boolean
                   description: Required true when an approved Terms of Service version exists.
+                seats:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  description: >-
+                    Sign Business per-seat pricing (directive v1.0 §3.3.1) — the seats to buy on a plan whose
+                    price_unit is SEAT (default 1; the provider line-item quantity). Given for a plan priced per
+                    organization → 422 seats_not_applicable.
       responses:
         '201':
           description: Created.
@@ -4783,6 +4791,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BillingRedirect'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '422':
+          description: VALIDATION_ERROR seats_not_applicable — `seats` was given for a plan priced per organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/seats:
+    post:
+      operationId: changeBillingSeats
+      summary: Sign Business per-seat pricing — change the organization's purchased seats.
+      description: >
+        Directive v1.0 §3.3.3 (O-2, O-3). The organization owner or an admin (tenant_owner / tenant_admin;
+        else 403 seat_manage_role_required) of a BUSINESS tenant whose Stripe-billed self-service subscription
+        is priced per seat. An increase changes the provider quantity with proration now (effective NOW); a
+        decrease applies at the end of the current period with no refund (effective PERIOD_END;
+        pending_purchased until then) and is refused below the seats in use (409 seats_below_usage, details
+        used). A plan priced per organization, a store-billed or a contract subscription is refused (409
+        seats_not_applicable); the current count is refused (409 seats_unchanged).
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seats]
+              properties:
+                seats:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingSeatChange'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7711,7 +7770,8 @@ components:
         governed change request, never a checkout). CCP-C7 self-service actions add (lower-case
         reasons): governed_subscription_open, activation_pending, conversion_in_progress,
         no_self_service_subscription, provider_change_pending, already_canceling and
-        financial_treatment_undefined.
+        financial_treatment_undefined. Sign Business per-seat pricing adds seats_not_applicable,
+        seats_below_usage (details used) and seats_unchanged (POST seats).
       content:
         application/json:
           schema:
@@ -7976,8 +8036,12 @@ components:
     BillingPlan:
       type: object
       description: A catalog plan (Commercial Plans Amendment A1). Prices are display values in minor units; the charge is the provider price. reference_price is present only when substantiated.
-      required: [key, name, sales_model, status, price, reference_price, commitment_months, eligibility, eligible, allowances, capacities, features, purchasable]
+      required: [key, name, sales_model, status, price, reference_price, commitment_months, eligibility, eligible, allowances, capacities, features, purchasable, price_unit]
       properties:
+        price_unit:
+          type: string
+          enum: [ACCOUNT, SEAT]
+          description: Sign Business per-seat pricing — SEAT when price is per seat (per Sign-sending member) per interval; ACCOUNT when per organization.
         key:
           type: string
         name:
@@ -8104,6 +8168,24 @@ components:
         interval:
           type: string
           enum: [MONTH, YEAR]
+    BillingSeatChange:
+      type: object
+      additionalProperties: false
+      description: Sign Business per-seat pricing — the seats after a change (POST /v1/sign/billing/seats).
+      required: [purchased, used, pending_purchased, effective]
+      properties:
+        purchased:
+          type: integer
+          minimum: 1
+        used:
+          type: integer
+          minimum: 0
+        pending_purchased:
+          type: [integer, 'null']
+          minimum: 1
+        effective:
+          type: string
+          enum: [NOW, PERIOD_END]
     TaxAvailability:
       type: object
       additionalProperties: false
@@ -8121,8 +8203,32 @@ components:
           enum: [STRIPE_TAX_NOT_REGISTERED]
     BillingAccount:
       type: object
-      required: [subscription, allowance, storage, billing_available, tax, tenant_kind, self_service_eligible, can_manage_billing]
+      required: [subscription, allowance, storage, billing_available, tax, tenant_kind, self_service_eligible, can_manage_billing, price_unit, seats, can_manage_seats]
       properties:
+        price_unit:
+          type: [string, 'null']
+          enum: [ACCOUNT, SEAT, null]
+          description: Sign Business per-seat pricing — the shown subscription's pinned price unit (null without a subscription).
+        seats:
+          type: [object, 'null']
+          description: >-
+            Sign Business per-seat pricing — null unless the open subscription is priced per seat. purchased is the
+            seat limit now; used the active, accepted members holding Sign send access (S-4); pending_purchased a
+            decrease scheduled for the end of the current period (null when none).
+          required: [purchased, used, pending_purchased]
+          properties:
+            purchased:
+              type: integer
+              minimum: 1
+            used:
+              type: integer
+              minimum: 0
+            pending_purchased:
+              type: [integer, 'null']
+              minimum: 1
+        can_manage_seats:
+          type: boolean
+          description: The caller is the owner or an admin and the per-seat subscription is billed through Stripe (POST seats).
         tax:
           $ref: '#/components/schemas/TaxAvailability'
         pending_activation:
