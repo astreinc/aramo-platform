@@ -191,7 +191,7 @@ describe('Commercial routes — in-shell access denied, never a redirect', () =>
     renderConsole('super_admin', route);
     const denied = await screen.findByTestId('access-denied');
     expect(within(denied).getByRole('heading', { level: 1 })).toHaveTextContent(`This account can't open ${label}`);
-    expect(within(denied).getByText('Super admin holds no commercial authority. Commercial screens are open only to people with a commercial role.')).toBeInTheDocument();
+    expect(await within(denied).findByText('Super admin holds no commercial authority. Commercial screens are open only to people with a commercial role.')).toBeInTheDocument();
   });
 
   it('super_admin tenant operations are unchanged (the Tenants list still opens)', async () => {
