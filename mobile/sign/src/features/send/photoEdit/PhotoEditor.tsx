@@ -5,7 +5,7 @@
 // caller renders inside its own tree, so on iOS it presents over the sheet it was opened
 // from. Each photo resolves to new JPEG bytes, or null when it was left unchanged (the
 // original bytes are then used, with no re-encode). Cancel drops the whole selection.
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -48,10 +48,16 @@ export type PhotoEditFn = (
 export const PHOTO_EDIT_FAILED = 'This photo couldn’t be edited. Tap Next to add it as it is.';
 const CORNER = 28;
 const MIN_CROP_PT = 48;
+// The result waits for the slide-out; this caps the wait if onDismiss never comes.
+const DISMISS_FALLBACK_MS = 600;
+
+type EditResult = readonly (Uint8Array | null)[] | null;
 
 interface Session {
   readonly photos: readonly PickedPhoto[];
-  readonly resolve: (r: readonly (Uint8Array | null)[] | null) => void;
+  readonly resolve: (r: EditResult) => void;
+  /** Set once the editor is done: the modal hides first, then the caller gets this. */
+  readonly result?: { readonly value: EditResult };
 }
 
 export function usePhotoEditor(
@@ -59,6 +65,21 @@ export function usePhotoEditor(
   quality = 0.85,
 ): { readonly edit: PhotoEditFn; readonly element: ReactElement | null } {
   const [session, setSession] = useState<Session | null>(null);
+  // iOS: the caller may close its own sheet and navigate as soon as this resolves. Tearing
+  // the editor out while it is still presented over that closing sheet can leave an
+  // invisible layer that swallows every touch on the next screen, so hide it and resolve
+  // only once it has gone.
+  const finish = useCallback(() => {
+    setSession((s) => {
+      if (s?.result) queueMicrotask(() => s.resolve(s.result!.value));
+      return s?.result ? null : s;
+    });
+  }, []);
+  useEffect(() => {
+    if (!session?.result) return;
+    const h = setTimeout(finish, DISMISS_FALLBACK_MS);
+    return () => clearTimeout(h);
+  }, [session, finish]);
   const edit = useMemo<PhotoEditFn>(
     () => (photos) =>
       photos.length === 0
@@ -71,10 +92,9 @@ export function usePhotoEditor(
       photos={session.photos}
       port={port}
       quality={quality}
-      onDone={(r) => {
-        setSession(null);
-        session.resolve(r);
-      }}
+      closing={session.result !== undefined}
+      onDismissed={finish}
+      onDone={(r) => setSession((s) => (s && !s.result ? { ...s, result: { value: r } } : s))}
     />
   ) : null;
   return { edit, element };
@@ -84,12 +104,16 @@ function PhotoEditModal({
   photos,
   port,
   quality,
+  closing,
+  onDismissed,
   onDone,
 }: {
   readonly photos: readonly PickedPhoto[];
   readonly port: PhotoEditPort;
   readonly quality: number;
-  readonly onDone: (r: readonly (Uint8Array | null)[] | null) => void;
+  readonly closing: boolean;
+  readonly onDismissed: () => void;
+  readonly onDone: (r: EditResult) => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -167,7 +191,13 @@ function PhotoEditModal({
 
   const last = index + 1 >= photos.length;
   return (
-    <Modal visible animationType="slide" onRequestClose={cancel} presentationStyle="fullScreen">
+    <Modal
+      visible={!closing}
+      animationType="slide"
+      onRequestClose={cancel}
+      onDismiss={onDismissed}
+      presentationStyle="fullScreen"
+    >
       {/* Modal content is its own root: it needs its own gesture-handler root. */}
       <GestureHandlerRootView
         testID="photo-edit"

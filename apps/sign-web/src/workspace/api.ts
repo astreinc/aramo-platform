@@ -748,6 +748,8 @@ export const senderApi = {
   // Retention and Purge (DocuSign parity). Delete hides the envelope for this organization only
   // (the Deleted folder); Restore brings it back until a purge has run.
   deleteEnvelope: (id: string) => apiClient.post<{ deleted: true }>(`${BASE}/envelopes/${enc(id)}/delete`, {}),
+  // A draft is removed outright with its documents (409 envelope_not_draft once sent).
+  deleteDraft: (id: string) => apiClient.delete<undefined>(`${BASE}/envelopes/${enc(id)}`),
   restoreEnvelope: (id: string) => apiClient.post<{ restored: true }>(`${BASE}/envelopes/${enc(id)}/restore`, {}),
   queuePurge: (id: string, level: PurgeLevel) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge`, { level }),
   dequeuePurge: (id: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge/dequeue`, {}),

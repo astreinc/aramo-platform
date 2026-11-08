@@ -1,6 +1,7 @@
 // M-A14 §1 items 1–2 — "+ › Sign Document" opens the Add Documents sheet over Home: Scan,
 // Photos, Templates (Personal: the plans paywall), Files; never Email or a cloud tile
 // (R-7). A picked document is handed to Sign Document in memory.
+import { StyleSheet } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
@@ -23,11 +24,13 @@ const WAIT = { timeout: 10_000 } as const;
 
 let kind: 'PERSONAL' | 'BUSINESS' = 'PERSONAL';
 let templates = false;
+let templatePlan: string | null = null;
 let qc: QueryClient;
 afterEach(() => qc?.clear());
 beforeEach(() => {
   kind = 'PERSONAL';
   templates = false;
+  templatePlan = null;
   takePendingSelfDocs();
 });
 
@@ -41,6 +44,7 @@ function renderSheet() {
       can_send: true,
       features: { templates },
       permissions: { templates },
+      template_plan: templatePlan,
     },
   }));
   const onClose = jest.fn();
@@ -81,8 +85,18 @@ describe('Add Documents sheet over Home (a03)', () => {
     expect(screen.getByLabelText('Templates, available with upgrade')).toBeTruthy();
   });
 
+  it('Free plan with templates switched on (Catalog v2 P-6): greyed circle, Upgrade tag, opens Plans', async () => {
+    templates = true;
+    templatePlan = 'FREE_PLAN';
+    renderSheet();
+    await waitFor(() => expect(screen.getByTestId('upgrade-tag-templates')).toBeTruthy(), WAIT);
+    expect(StyleSheet.flatten(screen.getByTestId('self-circle-templates').props.style).borderColor).toBe('#9AA0AE');
+    expect(StyleSheet.flatten(screen.getByTestId('self-circle-scan').props.style).borderColor).not.toBe('#9AA0AE');
+  });
+
   it('no Upgrade tag when the plan includes templates', async () => {
     templates = true;
+    templatePlan = 'INCLUDED';
     renderSheet();
     await waitFor(() => expect(screen.getByTestId('self-source-templates')).toBeTruthy(), WAIT);
     expect(screen.queryByTestId('upgrade-tag-templates')).toBeNull();
@@ -118,5 +132,8 @@ describe('selfTemplatesTile', () => {
     expect(selfTemplatesTile(ctx('BUSINESS', true))).toEqual({ allowed: true, show: true });
     expect(selfTemplatesTile(ctx('PERSONAL', false))).toEqual({ allowed: false, show: true });
     expect(selfTemplatesTile(ctx('BUSINESS', false))).toEqual({ allowed: false, show: false });
+    // TEMPLATE-PRODUCT-1 §8.1 — the plan side (Catalog v2 P-6).
+    const free = { tenant: { kind: 'PERSONAL' }, features: { templates: true }, permissions: { templates: true }, template_plan: 'FREE_PLAN' } as never;
+    expect(selfTemplatesTile(free)).toEqual({ allowed: false, show: true });
   });
 });

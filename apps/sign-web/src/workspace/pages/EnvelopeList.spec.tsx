@@ -12,6 +12,7 @@ import type { EnvelopeRow } from '../api';
 const list = vi.fn();
 const del = vi.fn();
 const restore = vi.fn();
+const delDraft = vi.fn();
 const detail = vi.fn();
 const selfSign = vi.fn();
 const navigate = vi.fn();
@@ -29,6 +30,7 @@ vi.mock('../api', async (orig) => {
       list: (...a: unknown[]) => list(...a),
       deleteEnvelope: (...a: unknown[]) => del(...a),
       restoreEnvelope: (...a: unknown[]) => restore(...a),
+      deleteDraft: (...a: unknown[]) => delDraft(...a),
       detail: (...a: unknown[]) => detail(...a),
       selfSignSession: (...a: unknown[]) => selfSign(...a),
     },
@@ -70,6 +72,30 @@ describe('Envelope list — Deleted folder', () => {
     fireEvent.click(screen.getByTestId('confirm-envelope-action'));
     await waitFor(() => expect(del).toHaveBeenCalledWith('a'));
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Moved to Deleted'));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it('a draft gets the trash icon: confirm, then it is deleted outright (not moved to Deleted)', async () => {
+    list.mockResolvedValue({
+      items: [
+        row('f', { status: 'DRAFT', sent_at: null, completed_at: null }),
+        row('g', { status: 'DRAFT', sent_at: null, completed_at: null, source_application: 'aramo-ats' }),
+      ],
+      counts: { DRAFT: 2 },
+    });
+    delDraft.mockResolvedValue(undefined);
+    show();
+    const icon = await screen.findByTestId('delete-draft-f');
+    expect(icon).toHaveAccessibleName('Delete draft Agreement f');
+    expect(screen.queryByTestId('delete-f')).toBeNull();
+    // A draft owned by another application is not deleted from here.
+    expect(screen.queryByTestId('delete-draft-g')).toBeNull();
+    fireEvent.click(icon);
+    expect(await screen.findByText(/removed permanently/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('confirm-envelope-action'));
+    await waitFor(() => expect(delDraft).toHaveBeenCalledWith('f'));
+    expect(del).not.toHaveBeenCalled();
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('Draft deleted'));
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 

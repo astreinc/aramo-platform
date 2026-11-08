@@ -75,7 +75,15 @@ describe('menuItems', () => {
     const items = menuItems({ context: ctx(), unread: 0, needs: 3 });
     expect(items.find((i) => i.key === 'tasks')).toMatchObject({ badge: '3', route: { name: 'Tasks' } });
     const personal = ctx({ tenant: { ...CTX_OWNER.tenant, kind: 'PERSONAL' } });
-    expect(menuItems({ context: personal, unread: 0 }).some((i) => i.key === 'templates')).toBe(true);
+    expect(menuItems({ context: personal, unread: 0 }).find((i) => i.key === 'templates')?.upgrade).toBe(true);
+  });
+
+  it('Catalog v2 P-6: a Free plan shows Templates greyed with Upgrade even with templates switched on', () => {
+    const on = { features: { templates: true }, permissions: { ...CTX_OWNER.permissions, templates: true } };
+    const free = ctx({ ...on, tenant: { ...CTX_OWNER.tenant, kind: 'PERSONAL' }, template_plan: 'FREE_PLAN' } as never);
+    expect(menuItems({ context: free, unread: 0 }).find((i) => i.key === 'templates')?.upgrade).toBe(true);
+    const paid = ctx({ ...on, tenant: { ...CTX_OWNER.tenant, kind: 'PERSONAL' }, template_plan: 'INCLUDED' } as never);
+    expect(menuItems({ context: paid, unread: 0 }).find((i) => i.key === 'templates')?.upgrade).toBeUndefined();
   });
 
   it('puts the server unread count on Notifications only', () => {

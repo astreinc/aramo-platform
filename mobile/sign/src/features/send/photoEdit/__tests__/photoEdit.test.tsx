@@ -1,6 +1,7 @@
 // M-A13 #9 — the per-photo crop / straighten / rotate step.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { useEffect } from 'react';
+import { Modal } from 'react-native';
 
 import {
   cropBounds,
@@ -158,6 +159,27 @@ describe('PhotoEditor', () => {
     expect(f.applied).toEqual([{ uri: 'file:///a.jpg#up', quarter: 90, straighten: 0 }]);
     // Upright working copies are deleted.
     expect(f.discarded.sort()).toEqual(['file:///a.jpg#up', 'file:///b.jpg#up']);
+    expect(screen.queryByTestId('photo-edit')).toBeNull();
+  });
+
+  it('hides first and resolves once dismissed (iOS: no stuck layer over the next screen)', async () => {
+    const f = fakePort();
+    const { pending } = await start(f.port, ['file:///a.jpg']);
+    await waitFor(() => expect(screen.getByTestId('photo-edit-next').props.accessibilityState?.disabled).not.toBe(true));
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('photo-edit-next'));
+    });
+    // Still mounted but hidden: the caller has not been told yet.
+    expect(screen.UNSAFE_getByType(Modal).props.visible).toBe(false);
+    expect(settled).toBe(false);
+    await act(async () => {
+      screen.UNSAFE_getByType(Modal).props.onDismiss();
+    });
+    expect(await pending).toEqual([null]);
     expect(screen.queryByTestId('photo-edit')).toBeNull();
   });
 
