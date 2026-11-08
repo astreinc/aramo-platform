@@ -9,6 +9,7 @@ import { BillingRevenueReportService, REVENUE_EXCLUSION_REASONS, formatRevenueRe
 import { planVersionChecksum } from '../lib/plan-version.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, ENTERPRISE, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C1Harness, c1Harness } from './support/ccp-c1.js';
@@ -91,6 +92,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
     prisma = new PrismaService(url);
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS}=price_business`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     h = c1Harness(prisma, () => T0);
     revenue = new BillingRevenueReportService(prisma, h.billing);
     OPS = await addOperator(pg, ['commercial_ops']);

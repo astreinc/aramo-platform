@@ -23,6 +23,7 @@ import {
   type ProductKey,
 } from '../lib/product-registry.js';
 
+import { pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { CCP_A4_COMPENSATING, CCP_A4_MIGRATION, ISOLATION_TEST_PRODUCT_KEY, registerIsolationTestProduct } from './fixtures/ccp-a4.js';
 import { publishTestPlanV1, publishedVersionOf } from './fixtures/ccp-a5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
@@ -146,6 +147,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
     const eligibility: PlanEligibilityPort = { isEligible: async () => eligibleAnswer };
     lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, LEGAL_DOCUMENTS_BEFORE_TOS_V20, new FakeOrganizationBillingProfile());
     process.env['STRIPE_PLAN_PRICES'] = `${BUSINESS_KEY}=price_business,${ISO_PLAN_KEY}=price_iso`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     delete process.env['BILLING_PAST_DUE_GRACE_DAYS'];
   }, 240_000);
 

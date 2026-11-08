@@ -17,7 +17,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile, US_PROFILE } from './fixtures/organization-billing-profile.fake.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
-import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
+import { applyRemainingSubscriptionMigrations, pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
@@ -119,6 +119,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${AramoSignStandardBusinessPlanKey}=price_business,aramo-sign-standard-professional-v1=price_professional`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
     delete process.env['BILLING_PAST_DUE_GRACE_DAYS'];
   }, 180_000);
 

@@ -25,7 +25,7 @@ import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 import { CCP_A5_COMPENSATING, CCP_A5_MIGRATION, publishedVersionOf } from './fixtures/ccp-a5.js';
 import { SIGN_BUSINESS_PER_SEAT_CATALOG_MIGRATION, SIGN_CATALOG_V2_MIGRATION, applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
-import { withoutDisabledTax } from './fixtures/ccp-c5.js';
+import { withoutAccountPriceUnit, withoutDisabledTax } from './fixtures/ccp-c5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
@@ -228,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A5 — PlanVe
       capacityReserve: (i) => capacity.reserve({ ...i, product_key: P }),
       capacityRelease: (i) => capacity.release({ ...i, product_key: P }),
       // CCP-C5 — the additive disabled `tax` state is checked and stripped (fixtures/ccp-c5.ts).
-      account: async (t, k, at) => withoutDisabledTax(await plainLifecycle.account(t, P, k, at)),
+      account: async (t, k, at) => withoutAccountPriceUnit(withoutDisabledTax(await plainLifecycle.account(t, P, k, at))),
       sendingOwner: (t, at) => plainLifecycle.sendingOwner(t, P, at),
     };
     observation = await observe(ops);

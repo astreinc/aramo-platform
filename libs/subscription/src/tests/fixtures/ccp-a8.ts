@@ -41,3 +41,31 @@ export async function applyRemainingSubscriptionMigrations(pg: Client, applied: 
   for (const m of rest) await pg.query(readFileSync(m, 'utf8'));
   return rest;
 }
+
+/**
+ * Sign Business per-seat pricing, Amendment A1-5 — the migration-published per-seat Standard Business /
+ * Professional versions carry NO Stripe pin, and a per-seat version never sells on the env (per-account)
+ * map: checkout and the plans read refuse it until a Stripe price is pinned through the governed console
+ * path. A spec that sells those plans after the per-seat catalog migration does what an operator does
+ * before any per-seat sale: it pins each `plan_key=price_ref` of the env map (STRIPE_PLAN_PRICES format) to
+ * the plan's PUBLISHED version — only where that version is priced per seat (an ACCOUNT version keeps
+ * selling on the env map unchanged). ONE shared helper (CLAUDE.md), called by each such spec. Returns the
+ * number of pins written.
+ */
+export async function pinPerSeatTestPrices(pg: Client, prices: string = process.env['STRIPE_PLAN_PRICES'] ?? ''): Promise<number> {
+  let n = 0;
+  for (const entry of prices.split(',').map((e) => e.trim()).filter((e) => e !== '')) {
+    const [plan_key, price_ref] = entry.split('=').map((s) => s.trim());
+    if (plan_key === undefined || price_ref === undefined || plan_key === '' || price_ref === '') continue;
+    const r = await pg.query(
+      `INSERT INTO subscription."PlanVersionPrice" (id, plan_version_id, provider, provider_price_ref, created_by, created_at)
+       SELECT gen_random_uuid(), v.id, 'STRIPE', $2, 'test:per-seat-pin', now()
+         FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id
+        WHERE p.key = $1 AND v.status = 'PUBLISHED' AND v.content->>'price_unit' = 'SEAT'
+          AND NOT EXISTS (SELECT 1 FROM subscription."PlanVersionPrice" x WHERE x.plan_version_id = v.id AND x.provider = 'STRIPE')`,
+      [plan_key, price_ref],
+    );
+    n += r.rowCount ?? 0;
+  }
+  return n;
+}

@@ -12,3 +12,15 @@ export function withoutDisabledTax(view: AccountView): Omit<AccountView, 'tax'> 
   }
   return rest;
 }
+
+// Sign Business per-seat pricing (directive v1.0 §3.3.4) — the account read gains the additive
+// `price_unit` (the shown subscription's pinned price unit; null without one). The equality corpus
+// skips the per-seat catalog data, so every corpus account is per account: the replay adapters strip
+// the field after checking exactly that, and the goldens stay byte-for-byte proofs.
+export function withoutAccountPriceUnit<V extends { price_unit: AccountView['price_unit'] }>(view: V): Omit<V, 'price_unit'> {
+  const { price_unit, ...rest } = view;
+  if (price_unit !== null && price_unit !== 'ACCOUNT') {
+    throw new Error(`per-seat: an equality-corpus account must be priced per account, got ${JSON.stringify(price_unit)}`);
+  }
+  return rest;
+}

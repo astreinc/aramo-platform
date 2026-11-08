@@ -16,7 +16,7 @@ import { FreePersonalPlanKey, FreePersonalSubscriptionService } from '../lib/fre
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
-import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
+import { applyRemainingSubscriptionMigrations, pinPerSeatTestPrices } from './fixtures/ccp-a8.js';
 import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Sign Catalog v2 §4.3 (P-4) — the Personal paid checkout on real Postgres 17: Personal-only
@@ -106,6 +106,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${AramoSignStandardBusinessPlanKey}=price_business,${STANDARD}=price_personal`;
+    // Per-seat A1-5 — the per-seat Business versions sell only on a pinned Stripe price.
+    await pinPerSeatTestPrices(pg);
   }, 240_000);
 
   afterAll(async () => {
