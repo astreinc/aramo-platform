@@ -95,7 +95,14 @@ function rec(v: unknown): Record<string, unknown> {
 /** The backend's availability signal (never derived on the device). */
 export function templatesAvailable(context: unknown): boolean {
   const c = rec(context);
-  return rec(c['features'])['templates'] === true && rec(c['permissions'])['templates'] === true;
+  // TEMPLATE-PRODUCT-1 §8.1 — the plan side too (Catalog v2 P-6: the Free plan never has
+  // templates); null / absent = not read, as on the web.
+  const plan = c['template_plan'];
+  return (
+    rec(c['features'])['templates'] === true &&
+    rec(c['permissions'])['templates'] === true &&
+    (plan === undefined || plan === null || plan === 'INCLUDED')
+  );
 }
 
 function parseTemplate(raw: unknown): SenderTemplate {

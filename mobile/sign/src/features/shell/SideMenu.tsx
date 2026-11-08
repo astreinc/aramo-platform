@@ -42,6 +42,8 @@ import {
 /** Same key as the Account screen, so saving a default there refreshes the menu. */
 export const SAVED_MARKS_KEY = ['sign', 'me', 'signature'] as const;
 
+// Not on this plan: greyed, with "Upgrade" (as on the Add Documents sheet).
+const UPGRADE_OFF = '#9AA0AE';
 const ITEM_ICON: Record<MenuItemKey, ShellIconName> = {
   account: 'account',
   tasks: 'needs',
@@ -270,14 +272,21 @@ export function SideMenu({
               testID={`side-menu-${m.key}`}
               onPress={() => go(m.route)}
               accessibilityRole="button"
-              accessibilityLabel={m.badge ? `${m.label}, ${m.badge} unread` : m.label}
+              accessibilityLabel={
+                m.upgrade ? `${m.label}, available with upgrade` : m.badge ? `${m.label}, ${m.badge} unread` : m.label
+              }
               android_ripple={ios ? undefined : { color: t.color.fill }}
               style={[styles.item, { minHeight: t.size.minTouch + 4 }]}
             >
-              <ShellIcon name={ITEM_ICON[m.key]} color={t.color.text} strokeWidth={1.8} />
-              <Text style={[styles.itemLabel, { color: t.color.text, fontFamily: t.font.family }]}>
+              <ShellIcon name={ITEM_ICON[m.key]} color={m.upgrade ? UPGRADE_OFF : t.color.text} strokeWidth={1.8} />
+              <Text style={[styles.itemLabel, { color: m.upgrade ? UPGRADE_OFF : t.color.text, fontFamily: t.font.family }]}>
                 {m.label}
               </Text>
+              {m.upgrade ? (
+                <View testID={`side-menu-upgrade-${m.key}`} style={styles.upgradeTag}>
+                  <Text style={[styles.upgradeText, { fontFamily: t.font.family }]}>Upgrade</Text>
+                </View>
+              ) : null}
               {m.badge ? (
                 <View style={[styles.badge, { backgroundColor: t.color.accent }]}>
                   <Text style={styles.badgeText}>{m.badge}</Text>
@@ -370,4 +379,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  upgradeTag: { backgroundColor: '#0D1B4C', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  upgradeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
 });

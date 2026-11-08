@@ -29,6 +29,8 @@ export interface MenuItem {
   readonly label: string;
   /** Unread count text (Notifications only), or null. */
   readonly badge: string | null;
+  /** Not on this plan: shown greyed with "Upgrade" (Templates on Free, Catalog v2 P-6). */
+  readonly upgrade?: boolean;
   readonly route:
     | { readonly name: 'Account'; readonly params?: RootStackParamList['Account'] }
     | { readonly name: 'Templates' }
@@ -50,12 +52,14 @@ export function menuItems(input: {
     { key: 'account', label: 'Account', badge: null, route: { name: 'Account' } },
     { key: 'tasks', label: 'Tasks', badge: badgeText(input.needs ?? 0), route: { name: 'Tasks' } },
   ];
-  if (templatesAvailable(input.context ?? null) || input.context?.tenant?.kind === 'PERSONAL')
+  const templatesOn = templatesAvailable(input.context ?? null);
+  if (templatesOn || input.context?.tenant?.kind === 'PERSONAL')
     items.push({
       key: 'templates',
       label: 'Templates',
       badge: null,
       route: { name: 'Templates' },
+      ...(templatesOn ? {} : { upgrade: true }),
     });
   items.push(
     {

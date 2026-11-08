@@ -3,13 +3,16 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
-import { Btn, Check, ErrorBox, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
+import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
 // Retention and Purge (DocuSign parity) — Delete moves a completed, declined, voided or
 // expired envelope to this organization's Deleted folder only (other parties keep theirs);
 // Restore brings it back until a purge has run. The backend decides; these mirror it.
 const DELETABLE: ReadonlySet<EnvelopeStatus> = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
+// A draft (never sent) is deleted outright with its documents, as on mobile; there is no
+// Deleted folder copy to restore.
+type PendingAction = 'delete' | 'restore' | 'delete-draft';
 
 // Envelopes — tabs All / Drafts / Waiting for others / Completed / Declined /
 // Voided / Expired (prototype), with a subject/recipient filter, a date range and
@@ -40,7 +43,7 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
   const deleted = folder === 'deleted';
   const [params, setParams] = useSearchParams();
   const tab = !deleted && TABS.some((t) => t.key === params.get('tab')) ? (params.get('tab') as string) : 'all';
-  const [pending, setPending] = useState<{ row: EnvelopeRow; action: 'delete' | 'restore' } | null>(null);
+  const [pending, setPending] = useState<{ row: EnvelopeRow; action: PendingAction } | null>(null);
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
@@ -82,8 +85,9 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
     setActionError('');
     try {
       if (pending.action === 'delete') await senderApi.deleteEnvelope(pending.row.id);
+      else if (pending.action === 'delete-draft') await senderApi.deleteDraft(pending.row.id);
       else await senderApi.restoreEnvelope(pending.row.id);
-      toast(pending.action === 'delete' ? 'Moved to Deleted' : 'Envelope restored');
+      toast(pending.action === 'delete' ? 'Moved to Deleted' : pending.action === 'delete-draft' ? 'Draft deleted' : 'Envelope restored');
       setPending(null);
       setReload((n) => n + 1);
       refreshCounts();
@@ -269,8 +273,13 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                         </LinkBtn>
                       ) : null}
                       {!deleted && DELETABLE.has(e.status) ? (
-                        <LinkBtn bad onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
-                          Delete
+                        <LinkBtn bad aria-label={`Delete ${e.subject}`} title="Delete" onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
+                          <Icon name="trash" />
+                        </LinkBtn>
+                      ) : null}
+                      {!deleted && e.status === 'DRAFT' && ctx.can_send && sourceLabel(e.source_application) === null ? (
+                        <LinkBtn bad aria-label={`Delete draft ${e.subject}`} title="Delete draft" onClick={() => setPending({ row: e, action: 'delete-draft' })} data-testid={`delete-draft-${e.id}`}>
+                          <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
                     </td>
@@ -295,11 +304,13 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
             setActionError('');
           }
         }}
-        title={pending?.action === 'restore' ? 'Restore this envelope?' : 'Delete this envelope?'}
+        title={pending?.action === 'restore' ? 'Restore this envelope?' : pending?.action === 'delete-draft' ? 'Delete this draft?' : 'Delete this envelope?'}
         description={
           pending?.action === 'restore'
             ? 'It moves back to your envelopes.'
-            : 'It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged.'
+            : pending?.action === 'delete-draft'
+              ? 'The draft and its documents are removed permanently. It was never sent, so no one else has a copy.'
+              : 'It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged.'
         }
         size="sm"
         footer={

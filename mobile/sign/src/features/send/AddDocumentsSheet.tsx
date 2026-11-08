@@ -113,6 +113,8 @@ export async function addFromSource(
 // ── M-A14 "Sign Document" presentation (a03, a07) ───────────────────────────
 
 const INK = '#0D1B4C';
+// A source the plan doesn't include (shown, greyed, with "Upgrade").
+const OFF = '#9AA0AE';
 const SECONDARY = '#4A5578';
 
 /** The prototype's source glyphs (24-unit paths, 1.8 stroke). */
@@ -250,15 +252,16 @@ export function AddDocumentsSourceSheet({
                   accessibilityState={{ disabled: busy }}
                   style={[styles.selfTile, { opacity: busy ? 0.42 : 1 }]}
                 >
-                  <View style={styles.selfCircle}>
-                    <Glyph d={SELF_SOURCE_ICONS[tile.key]} size={28} color={INK} />
+                  {/* Not on this plan: a greyed circle with "Upgrade" above it (still opens Plans). */}
+                  <View testID={`self-circle-${tile.key}`} style={[styles.selfCircle, upgradeKeys.includes(tile.key) && styles.selfCircleOff]}>
+                    <Glyph d={SELF_SOURCE_ICONS[tile.key]} size={28} color={upgradeKeys.includes(tile.key) ? OFF : INK} />
                     {upgradeKeys.includes(tile.key) ? (
                       <View testID={`upgrade-tag-${tile.key}`} style={styles.upgradeTag}>
                         <Text style={[styles.upgradeText, { fontFamily: t.font.family }]}>Upgrade</Text>
                       </View>
                     ) : null}
                   </View>
-                  <Text style={[styles.selfLabel, { fontFamily: t.font.family }]}>{tile.label}</Text>
+                  <Text style={[styles.selfLabel, upgradeKeys.includes(tile.key) && { color: OFF }, { fontFamily: t.font.family }]}>{tile.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -467,7 +470,8 @@ const styles = StyleSheet.create({
   selfTile: { width: 100, alignItems: 'center', gap: 8 },
   selfCircle: { width: 74, height: 74, borderRadius: 37, borderWidth: 1.5, borderColor: INK, alignItems: 'center', justifyContent: 'center' },
   selfLabel: { fontSize: 15, fontWeight: '500', color: INK, textAlign: 'center' },
-  upgradeTag: { position: 'absolute', top: -8, right: -14, backgroundColor: INK, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  selfCircleOff: { borderColor: OFF, backgroundColor: '#F2F3F7' },
+  upgradeTag: { position: 'absolute', top: -11, alignSelf: 'center', backgroundColor: INK, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   upgradeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
   selfError: { fontSize: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 14 },
   info: { paddingHorizontal: 24, gap: 10 },
