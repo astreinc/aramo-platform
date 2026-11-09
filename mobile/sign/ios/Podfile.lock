@@ -51,6 +51,10 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - ExpoAppIntegrity (57.0.2):
+    - ExpoModulesCore
+  - ExpoAppleAuthentication (57.0.2):
+    - ExpoModulesCore
   - ExpoAsset (57.0.19):
     - ExpoModulesCore
   - ExpoCrypto (57.0.3):
@@ -2203,6 +2207,8 @@ DEPENDENCIES:
   - EXApplication (from `../node_modules/expo-application/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - Expo (from `../node_modules/expo`)
+  - "ExpoAppIntegrity (from `../node_modules/@expo/app-integrity/ios`)"
+  - ExpoAppleAuthentication (from `../node_modules/expo-apple-authentication/ios`)
   - ExpoAsset (from `../node_modules/expo/node_modules/expo-asset/ios`)
   - ExpoCrypto (from `../node_modules/expo-crypto/ios`)
   - ExpoDevice (from `../node_modules/expo-device/ios`)
@@ -2323,6 +2329,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-constants/ios"
   Expo:
     :path: "../node_modules/expo"
+  ExpoAppIntegrity:
+    :path: "../node_modules/@expo/app-integrity/ios"
+  ExpoAppleAuthentication:
+    :path: "../node_modules/expo-apple-authentication/ios"
   ExpoAsset:
     :path: "../node_modules/expo/node_modules/expo-asset/ios"
   ExpoCrypto:
@@ -2540,6 +2550,8 @@ SPEC CHECKSUMS:
   EXApplication: a727f05eb8592f0bc764f6ab8d51eacc158652ec
   EXConstants: b4e9051547ee9b8337155565fbdbe66036865120
   Expo: ad082d060a56d674d482aa528689e7eda8d8480f
+  ExpoAppIntegrity: 6d9a55f47108c742db83df98e06f50ed3c599763
+  ExpoAppleAuthentication: 16c2955d33ec7315e5a99d17fb5d62ed33cdb5b9
   ExpoAsset: 78dbecc7bc9f60d839fb37ba8b10317b64779685
   ExpoCrypto: 3ba3d7fcf244a3ae8cb888c5759e0db70ecc236d
   ExpoDevice: 5c638e530304a51992263ab5c1cab726f992b9dc
@@ -2554,7 +2566,7 @@ SPEC CHECKSUMS:
   ExpoLocalAuthentication: 1e4aef156a3a1f953f8278b8d8309f6118919640
   ExpoLogBox: 80957303325cd4439137765c90a87d7f22aaf2ff
   ExpoMailComposer: 664b85b27b64b4cfadc982a58c83272c080b04b7
-  ExpoModulesCore: 91d65b1cac6197111fedcae410b2e90e2f90620d
+  ExpoModulesCore: 39d5c871a563d8ddf5df443db000ee6006279bf9
   ExpoModulesJSI: b767422763350d2b248fb218f71bbb286fd2ee77
   ExpoModulesWorklets: 1916bfde983876e6caf849398b91a0b492b73869
   ExpoNetwork: 7a7a7e0123d1ac5efc742b7b29e43102be5634bf

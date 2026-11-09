@@ -857,14 +857,82 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     it('the tenant pin WINS over a conflicting idp hint', async () => {
       expect((await call('microsoft', 'google')).searchParams.get('identity_provider')).toBe('microsoft');
     });
+    // Apple Go-Live R-1 — apple → SignInWithApple; a pinned Aramo value is mapped too.
+    it('idp=apple on an unpinned host → identity_provider=SignInWithApple', async () => {
+      expect((await call(null, 'apple')).searchParams.get('identity_provider')).toBe('SignInWithApple');
+      expect((await call(null, 'Apple')).searchParams.get('identity_provider')).toBe('SignInWithApple');
+    });
+    it('a pinned Aramo value reaches Cognito as the provider name (apple → SignInWithApple, google → Google)', async () => {
+      expect((await call('apple', undefined)).searchParams.get('identity_provider')).toBe('SignInWithApple');
+      expect((await call('google', 'apple')).searchParams.get('identity_provider')).toBe('Google');
+      // An unmapped historical value still passes through verbatim.
+      expect((await call('LegacyIdp', undefined)).searchParams.get('identity_provider')).toBe('LegacyIdp');
+    });
+  });
+
+  // Apple Go-Live R-5 / A1 L-4 — intent and link handle are sealed into the
+  // encrypted state cookie, never put on the authorize URL.
+  describe('Apple Go-Live — signup intent and pending-link handle at login', () => {
+    const HANDLE = 'A'.repeat(43);
+    it('intent=signup and a well-formed link handle are sealed; nothing reaches the authorize URL', async () => {
+      const pkce = fakePkce();
+      const ctl = makeController({ pkce, hostBase: hostBaseYielding(null) });
+      const res = makeRes();
+      await ctl.login('sign', reqWithHost('sign.aramo.ai'), res as never, undefined, undefined, 'apple', 'signup', HANDLE);
+      const sealed = (pkce.encryptState as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(sealed).toMatchObject({ consumer: 'sign', intent: 'signup', link_handle: HANDLE });
+      const url = locationOf(res);
+      expect(url.toString()).not.toContain(HANDLE);
+      expect(url.toString()).not.toContain('signup');
+    });
+    it('an unknown intent or a malformed handle is ignored', async () => {
+      const pkce = fakePkce();
+      const ctl = makeController({ pkce, hostBase: hostBaseYielding(null) });
+      await ctl.login('sign', reqWithHost('sign.aramo.ai'), makeRes() as never, undefined, undefined, 'apple', 'admin', 'short');
+      const sealed = (pkce.encryptState as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(sealed.intent).toBeUndefined();
+      expect(sealed.link_handle).toBeUndefined();
+    });
+  });
+
+  // Apple Go-Live A1 L-4 path 1 — GET /auth/{consumer}/link.
+  describe('Apple Go-Live A1 — GET link (signed-in add provider)', () => {
+    function sessionCookieReq(cookies: Record<string, string>): never {
+      return { requestId: 'r', cookies, get: (n: string) => (n.toLowerCase() === 'host' ? 'sign.aramo.ai' : undefined) } as never;
+    }
+    const verifier = (payload: Record<string, unknown>) =>
+      ({ verify: vi.fn().mockResolvedValue({ sub: USER_ID, tenant_id: TENANT_ID, authz_version: 1, iat: 1, exp: 2, ...payload }) }) as unknown as CookieVerifierService;
+    it('requires a session cookie (401) and a known provider (400)', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding(null) });
+      await expect(ctl.link('sign', sessionCookieReq({}), makeRes() as never, 'apple', '/account')).rejects.toMatchObject({ code: 'AUTH_REQUIRED' });
+      await expect(ctl.link('sign', sessionCookieReq({ aramo_access_token_sign: 'jwt' }), makeRes() as never, 'okta', '/account')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+    it('refuses a native token presented as the browser cookie', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding(null), cookieVerifier: verifier({ consumer_type: 'sign', client: 'native' }) });
+      await expect(ctl.link('sign', sessionCookieReq({ aramo_access_token_sign: 'jwt' }), makeRes() as never, 'apple', '/account')).rejects.toMatchObject({ code: 'INVALID_TOKEN' });
+    });
+    it('seals the signed-in principal + sanitized return and forces the chosen provider, even on a pinned host', async () => {
+      const pkce = fakePkce();
+      const ctl = makeController({ pkce, hostBase: hostBaseYielding('google'), cookieVerifier: verifier({ consumer_type: 'sign' }) });
+      const res = makeRes();
+      await ctl.link('sign', sessionCookieReq({ aramo_access_token_sign: 'jwt' }), res as never, 'apple', 'https://evil.test/x');
+      const sealed = (pkce.encryptState as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+      expect(sealed).toMatchObject({ link_user_id: USER_ID, link_return: '/' });
+      const url = locationOf(res);
+      expect(url.searchParams.get('identity_provider')).toBe('SignInWithApple');
+      expect(url.searchParams.has('prompt')).toBe(false);
+    });
   });
 
   describe('AUTH-SIGNIN-1 — GET login-options', () => {
     it.each([
-      [null, ['microsoft', 'google']],
+      // Apple Go-Live R-2 — apple is listed (order: microsoft, google, apple).
+      [null, ['microsoft', 'google', 'apple']],
       ['microsoft', ['microsoft']],
       ['Google', ['google']],
-      ['some-other-idp', ['microsoft', 'google']],
+      ['apple', ['apple']],
+      ['SignInWithApple', ['apple']],
+      ['some-other-idp', ['microsoft', 'google', 'apple']],
     ] as const)('pin %s → providers %j', async (pin, providers) => {
       const hostBase = hostBaseYielding(pin);
       const ctl = makeController({ hostBase });
@@ -1117,5 +1185,75 @@ describe('IC-2 PR-5 — /session, /refresh, /logout host binding', () => {
         expect(audit.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ payload: { reason: 'logout' } }));
       }
     });
+  });
+});
+
+
+// Apple Go-Live R-5 / A1 L-2 / L-4 — callback mapping of the linking outcomes.
+describe('AuthController.callback — Apple Go-Live linking outcomes', () => {
+  const BASE = 'https://sign.aramo.ai';
+  const hostBase = (): HostBaseResolver =>
+    ({ resolve: vi.fn().mockResolvedValue({ derivedBase: BASE, identityProvider: null }) }) as unknown as HostBaseResolver;
+  async function run(result: unknown): Promise<FakeResponse> {
+    const sessionOrch = { handleCallback: vi.fn().mockResolvedValue(result) } as unknown as SessionOrchestratorService;
+    const ctl = makeController({ sessionOrch, hostBase: hostBase() });
+    const res = makeRes();
+    await ctl.callback('sign', 'code', 'state', undefined, undefined, { cookies: {}, requestId: 'r', get: () => 'sign.aramo.ai' } as never, res as never);
+    return res;
+  }
+  const location = (res: FakeResponse): URL => new URL((res.redirect.mock.calls[0] as [number, string])[1]);
+  const sessionCookieSet = (res: FakeResponse): boolean =>
+    res.cookie.mock.calls.some(([name, value]) => typeof name === 'string' && name.startsWith('aramo_access_token') && value !== '');
+
+  it('user_not_provisioned with a pending link → /login?error&reason&consumer, handle + idp ONLY in the fragment; no session', async () => {
+    const handle = 'h'.repeat(43);
+    const res = await run({ kind: 'auth_error', reason: 'user_not_provisioned', link: { handle, idp: 'apple' } });
+    const url = location(res);
+    expect(url.pathname).toBe('/login');
+    expect(url.searchParams.get('error')).toBe('INSUFFICIENT_PERMISSIONS');
+    expect(url.searchParams.get('reason')).toBe('user_not_provisioned');
+    expect(url.searchParams.get('consumer')).toBe('sign');
+    expect(url.search).not.toContain(handle);
+    expect(url.hash).toBe(`#link=${handle}&idp=apple`);
+    expect(sessionCookieSet(res)).toBe(false);
+  });
+
+  it('idp_identity_conflict with a pending link → TENANT_ACCESS_DENIED + reason + fragment', async () => {
+    const res = await run({ kind: 'auth_error', reason: 'idp_identity_conflict', link: { handle: 'k'.repeat(43), idp: 'google' } });
+    const url = location(res);
+    expect(url.searchParams.get('error')).toBe('TENANT_ACCESS_DENIED');
+    expect(url.searchParams.get('reason')).toBe('idp_identity_conflict');
+    expect(url.hash).toBe(`#link=${'k'.repeat(43)}&idp=google`);
+  });
+
+  it('user_not_provisioned without a pending link keeps the pre-A1 redirect exactly (no reason, no fragment)', async () => {
+    const url = location(await run({ kind: 'auth_error', reason: 'user_not_provisioned' }));
+    expect(url.searchParams.has('reason')).toBe(false);
+    expect(url.hash).toBe('');
+  });
+
+  it('R-5 signup hand-off → /signup/personal#apple=<base64url JSON>, no cookie of any session', async () => {
+    const res = await run({ kind: 'signup_handoff', email: 'x7k2@privaterelay.appleid.com', given_name: 'Ada', family_name: null });
+    const url = location(res);
+    expect(url.origin + url.pathname).toBe(`${BASE}/signup/personal`);
+    expect(url.search).toBe('');
+    const payload = JSON.parse(Buffer.from(url.hash.replace('#apple=', ''), 'base64url').toString('utf8'));
+    expect(payload).toEqual({ email: 'x7k2@privaterelay.appleid.com', given_name: 'Ada', family_name: null });
+    expect(sessionCookieSet(res)).toBe(false);
+  });
+
+  it('path 1 → <return>?linked=<idp> or ?link_error=<reason>; no session cookie', async () => {
+    const ok = await run({ kind: 'linked', idp: 'apple', returnTo: '/account/sign-in-methods' });
+    expect(location(ok).toString()).toBe(`${BASE}/account/sign-in-methods?linked=apple`);
+    expect(sessionCookieSet(ok)).toBe(false);
+    const refused = await run({ kind: 'link_refused', reason: 'identity_already_linked', returnTo: '/account' });
+    expect(location(refused).toString()).toBe(`${BASE}/account?link_error=identity_already_linked`);
+  });
+
+  it('proof (a) success carries linked= / link_refused= on the landing URL', async () => {
+    const linked = await run({ kind: 'success', accessJwt: 'a', refreshTokenPlaintext: 'r', returnTo: null, link: { linked: 'apple' } });
+    expect(location(linked).searchParams.get('linked')).toBe('apple');
+    const refused = await run({ kind: 'success', accessJwt: 'a', refreshTokenPlaintext: 'r', returnTo: null, link: { refused: 'idp_already_linked' } });
+    expect(location(refused).searchParams.get('link_refused')).toBe('idp_already_linked');
   });
 });

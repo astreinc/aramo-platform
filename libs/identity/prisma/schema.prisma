@@ -580,12 +580,41 @@ model TenantIdentityProviderPolicy {
 }
 
 // AUTH-SIGNIN-1 R2 — the federated provider behind each NEW ExternalIdentity
-// link (CHECK: google | microsoft). No row = a pre-existing (legacy) link.
+// link (CHECK: google | microsoft | apple — Apple Go-Live W1 widened it). No row =
+// a pre-existing (legacy) link.
 model ExternalIdentityIdp {
   external_identity_id String   @id @db.Uuid
   idp                  String
   created_at           DateTime @default(now()) @db.Timestamptz(6)
 
+  @@schema("identity")
+}
+
+// Apple Go-Live Amendment A1 L-2 / L-8 — a denied sign-in's identity waiting for
+// proof of an existing account. Only the handle's hash is stored; single use;
+// 10-minute expiry. code_* holds the email-code proof (L-4 b). No PII beyond
+// email_snapshot (the value ExternalIdentity already keeps).
+model PendingIdentityLink {
+  id                  String    @id @db.Uuid
+  handle_hash         String    @unique
+  provider            String
+  provider_subject    String
+  idp                 String
+  email_snapshot      String?
+  reason              String
+  matched_user_id     String?   @db.Uuid
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at          DateTime  @db.Timestamptz(6)
+  consumed_at         DateTime? @db.Timestamptz(6)
+  code_hash           String?
+  code_expires_at     DateTime? @db.Timestamptz(6)
+  code_attempts       Int       @default(0)
+  code_target_user_id String?   @db.Uuid
+  code_last_sent_at   DateTime? @db.Timestamptz(6)
+  code_send_count     Int       @default(0)
+
+  @@index([expires_at])
+  @@index([code_target_user_id])
   @@schema("identity")
 }
 
@@ -750,6 +779,9 @@ model PersonalSignupRequest {
   tenant_id              String?   @db.Uuid
   owner_user_id          String?   @db.Uuid
   provisioned_at         DateTime? @db.Timestamptz(6)
+  // Apple Go-Live R-9 — the App Attest key id (lowercase hex SHA-256 of the attested
+  // public key) of a `client: "ios"` start. UNIQUE: one attestation is accepted once.
+  attest_key_id          String?   @unique
   expires_at             DateTime  @db.Timestamptz(6)
   created_at             DateTime  @default(now()) @db.Timestamptz(6)
   updated_at             DateTime  @default(now()) @db.Timestamptz(6)

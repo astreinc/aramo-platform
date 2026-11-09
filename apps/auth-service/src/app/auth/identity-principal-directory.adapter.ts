@@ -114,7 +114,8 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   private async recordReturningLinkIdp(input: ResolveSessionInput, user: { id: string; email?: string | null }): Promise<void> {
     try {
       const idp = normalizeIdp(input.idp ?? null);
-      if (idp !== 'google' && idp !== 'microsoft') return;
+      // Apple Go-Live R-1 — any single resolved provider (google | microsoft | apple).
+      if (idp === null || idp === 'ambiguous') return;
       if (typeof user.email !== 'string' || typeof input.verified_email !== 'string') return;
       if (input.verified_email.trim().toLowerCase() !== user.email.trim().toLowerCase()) return;
       const recorded = await this.idpPolicy.recordReturningLinkIdp({ user_id: user.id, provider: input.provider, provider_subject: input.provider_subject, idp });
@@ -164,7 +165,8 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
         email_snapshot: input.verified_email,
       });
       const linkIdp = normalizeIdp(input.idp ?? null);
-      if (linkIdp === 'google' || linkIdp === 'microsoft') await this.idpPolicy.recordLinkIdp(link.id, linkIdp);
+      // Apple Go-Live R-1 — `apple` links are recorded like Google / Microsoft.
+      if (linkIdp !== null && linkIdp !== 'ambiguous') await this.idpPolicy.recordLinkIdp(link.id, linkIdp);
       // Canonical linked audit — INSIDE the adapter (§2.3): internal to resolution,
       // best-effort (the underlying writeGlobalEvent swallows failures).
       await this.audit.writeGlobalEvent({

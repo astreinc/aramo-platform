@@ -9,14 +9,25 @@ import { Platform } from 'react-native';
 import { createGuestSigningClient, type GuestSigningClient } from '../api/guestSigningClient';
 import type { FetchFn } from '../api/http';
 import { createWorkspaceClient, type WorkspaceClient } from '../api/workspaceClient';
+import type { LinkedResponse } from '../api/apple-contract-types';
 import { buildLogoutUrl, type Provider } from '../auth/authorize';
 import { describeDevice } from '../auth/installation';
 import { createNativeAuthApi, type NativeAuthApi } from '../auth/nativeAuthApi';
 import { SECURE_KEYS, secureKeyValue, type SecureKeyValue } from '../auth/secureKeyValue';
 import { SessionManager } from '../auth/session';
-import { signInWithProvider } from '../auth/signIn';
+import {
+  appleSignupIdentity,
+  linkProvider,
+  signInWithProvider,
+  type AppleSignupIdentity,
+  type SignInOptions,
+  type SignInOutcome,
+} from '../auth/signIn';
 import { createTokenStore } from '../auth/tokenStore';
 import { env, NATIVE_SIGNOUT_REDIRECT_URI, type AppEnv } from '../config/env';
+import { appleAuthorizationCode } from '../features/account/appleAuthNative';
+import { revokeAppleBestEffort } from '../features/account/appleRevoke';
+import { linkWithWorkspace } from '../features/account/signInMethods';
 import { defaultStorePort, type StorePort } from '../features/plans/storePort';
 import { createSignupApi, type SignupApi } from '../features/signup/signupApi';
 import { clearGuestTokens } from '../links/guestTokenVault';
@@ -51,7 +62,14 @@ export interface AppServices {
   readonly drafts: DraftStore;
   readonly queryClient: QueryClient;
   readonly persister: Persister;
-  signIn(provider: Provider): Promise<void>;
+  /** A1 L-4: `linkHandle` attaches a pending link on this sign-in (proof (a)). */
+  signIn(provider: Provider, options?: SignInOptions): Promise<SignInOutcome>;
+  /** A1 L-3 path 1: add a sign-in method to the signed-in user (Account → Sign-in methods). */
+  linkProvider(provider: Provider): Promise<LinkedResponse>;
+  /** Apple Go-Live R-5 (native): Apple's email and name for signup prefill; no session. */
+  appleSignupIdentity(): Promise<AppleSignupIdentity>;
+  /** Apple Go-Live R-8: best-effort Apple token revocation before deletion. Never throws. */
+  revokeApple(): Promise<boolean>;
   signOut(): Promise<void>;
 }
 
@@ -80,6 +98,8 @@ export function createAppServices(): AppServices {
   const signup = createSignupApi({
     baseUrl: env.apiBaseUrl,
     fetch: signupFetch,
+    // Apple Go-Live R-9: iOS signs up with App Attest (client ios); Android with Play.
+    client: Platform.OS === 'ios' ? 'ios' : 'android',
     userAgent: `AramoSign/${Application.nativeApplicationVersion ?? '0.0.0'} (${Platform.OS} ${String(Platform.Version)})`,
   });
   const store = encryptedStore();
@@ -90,6 +110,17 @@ export function createAppServices(): AppServices {
 
   session.onBeforeSignOut(() => unregisterPush(workspace));
   wireDocumentTempCleanup(session, documentTempFiles);
+
+  // Ephemeral: no shared browser cookies, so "sign out to use another account" really
+  // switches identity (directive §7 C-10).
+  const openAuthSession = (url: string, redirectUri: string) =>
+    WebBrowser.openAuthSessionAsync(url, redirectUri, { preferEphemeralSession: true });
+  const authorizeDeps = {
+    env,
+    platform: Platform.OS,
+    osVersion: Platform.Version,
+    openAuthSession,
+  };
 
   async function scopeLocalDataToUser(): Promise<void> {
     const token = await session.getAccessToken();
@@ -116,20 +147,37 @@ export function createAppServices(): AppServices {
     drafts,
     queryClient,
     persister,
-    async signIn(provider) {
-      await signInWithProvider(provider, {
-        env,
-        platform: Platform.OS,
-        osVersion: Platform.Version,
-        api: nativeAuth,
-        session,
-        describeDevice: () => describeDevice(kv),
-        openAuthSession: (url, redirectUri) =>
-          // Ephemeral: no shared browser cookies, so "sign out to use another account"
-          // really switches identity (directive §7 C-10).
-          WebBrowser.openAuthSessionAsync(url, redirectUri, { preferEphemeralSession: true }),
-      });
+    async signIn(provider, options) {
+      const outcome = await signInWithProvider(
+        provider,
+        {
+          ...authorizeDeps,
+          api: nativeAuth,
+          session,
+          describeDevice: () => describeDevice(kv),
+        },
+        options,
+      );
       await scopeLocalDataToUser();
+      return outcome;
+    },
+    linkProvider(provider) {
+      return linkProvider(provider, {
+        ...authorizeDeps,
+        describeDevice: () => describeDevice(kv),
+        link: linkWithWorkspace(workspace),
+      });
+    },
+    appleSignupIdentity() {
+      return appleSignupIdentity({ ...authorizeDeps, fetch: authFetch });
+    },
+    revokeApple() {
+      return revokeAppleBestEffort({
+        platform: Platform.OS,
+        workspace,
+        appleAuthorizationCode,
+        openBrowser: (url) => WebBrowser.openBrowserAsync(url),
+      });
     },
     async signOut() {
       // First, so no failure below can leave a document behind.

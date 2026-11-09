@@ -152,6 +152,12 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // (new tables) and a new (id, tenant_id) unique index on UserTenantMembership. No existing
   // returned shape changes, so no pact verify-api registration.
   'libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql',
+  // Apple Go-Live W1 / A1 L-8 / R-9 — ExternalIdentityIdp CHECK widened to 'apple', the
+  // PendingIdentityLink table, and PersonalSignupRequest.attest_key_id (App Attest replay
+  // guard). Additive; no existing returned shape changes.
+  'libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql',
+  'libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql',
+  'libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

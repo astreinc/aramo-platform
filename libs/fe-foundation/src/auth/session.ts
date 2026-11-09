@@ -65,7 +65,8 @@ export function currentReturnTo(): string | null {
 // parameters: nothing caller-supplied, so it cannot become an open redirect.
 export const MICROSOFT_SIGN_OUT_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/logout';
 
-export type FederatedIdp = 'google' | 'microsoft';
+// Apple Go-Live R-1 — `apple` is the Aramo value for Cognito's `SignInWithApple`.
+export type FederatedIdp = 'google' | 'microsoft' | 'apple';
 
 export interface LoginOptions {
   selectAccount?: boolean;
@@ -78,6 +79,12 @@ export interface LoginOptions {
   // AUTH-SIGNIN-1 §3.2.1 — an allowlisted consumer from the sign-in page's
   // `?consumer=`; default is the configured consumer.
   consumer?: string;
+  // Apple Go-Live A1 L-4 proof (a) — the pending-link handle from the /login
+  // fragment; the auth-service seals it into the login state.
+  link?: string;
+  // Apple Go-Live R-5 (web) — Apple-first Personal signup: an unprovisioned
+  // Apple sign-in hands back to the signup page instead of /login.
+  intent?: 'signup';
 }
 
 // AUTH-SIGNIN-1 — the consumers whose apps serve the shared Aramo sign-in page at
@@ -108,6 +115,8 @@ export function loginUrl(options: LoginOptions = {}): string {
   const params = new URLSearchParams();
   if (options.idp !== undefined) params.set('idp', options.idp);
   if (options.selectAccount === true) params.set('select_account', '1');
+  if (options.link !== undefined) params.set('link', options.link);
+  if (options.intent !== undefined) params.set('intent', options.intent);
   const returnTo = options.returnTo === undefined ? currentReturnTo() : options.returnTo;
   if (returnTo !== null && returnTo !== undefined) params.set('return_to', returnTo);
   const qs = params.toString();

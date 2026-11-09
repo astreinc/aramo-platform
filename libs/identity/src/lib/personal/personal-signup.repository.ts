@@ -75,6 +75,8 @@ export interface PersonalSignupRow {
   tenant_id: string | null;
   owner_user_id: string | null;
   provisioned_at: Date | null;
+  // Apple Go-Live R-9 — the App Attest key id of a `client: "ios"` start (unique; else null).
+  attest_key_id: string | null;
   expires_at: Date;
   created_at: Date;
   updated_at: Date;
@@ -161,6 +163,8 @@ export class PersonalSignupRepository {
     decision: PersonalRiskDecision;
     invite_id: string | null;
     status: 'PENDING' | 'REFUSED';
+    /** Apple Go-Live R-9 — the verified App Attest key id (client ios); the column is UNIQUE. */
+    attest_key_id?: string | null;
     now: Date;
   }): Promise<PersonalSignupRow> {
     const { now, risk_signals, geo_evidence, ...rest } = input;
@@ -179,6 +183,11 @@ export class PersonalSignupRepository {
 
   findById(id: string): Promise<PersonalSignupRow | null> {
     return this.prisma.personalSignupRequest.findUnique({ where: { id } });
+  }
+
+  /** Apple Go-Live R-9 (replay) — whether an App Attest key id was already accepted once. */
+  async attestKeyIdUsed(attest_key_id: string): Promise<boolean> {
+    return (await this.prisma.personalSignupRequest.count({ where: { attest_key_id } })) > 0;
   }
 
   countByIpSince(ip: string, since: Date): Promise<number> {
@@ -371,8 +380,9 @@ export class PersonalSignupRepository {
    * (from the signup decision; phone assurance only if the phone code was
    * verified), the invite consumed, and the audit event.
    */
-  // M-A11 §2 — `client: 'android'` records that the signup (and its acceptances) came from the app.
-  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean; client?: 'android' }): Promise<void> {
+  // M-A11 §2 — `client: 'android'` records that the signup (and its acceptances) came from the app
+  // (Apple Go-Live W2: or `'ios'`, the iPhone app).
+  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean; client?: 'android' | 'ios' }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const row = await tx.personalSignupRequest.findUnique({ where: { id: args.id } });
       if (row === null || row.status !== 'PROVISIONING') throw new Error(`personal signup ${args.id} is not provisioning`);

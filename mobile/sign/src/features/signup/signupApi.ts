@@ -5,7 +5,12 @@
 // while SIGN_PERSONAL_SIGNUP_MODE is `off`.
 //
 // Types come from openapi/platform.yaml (generated: src/api/generated/platform-signup.ts,
-// the signup paths only); the start body is narrowed to what the app sends (client android).
+// the signup paths only); the start body is narrowed to what the app sends (client android,
+// or ios with Apple Go-Live R-9; `ios` is widened in by hand until the types are regenerated).
+import type {
+  PersonalSignupClient,
+  PersonalSignupSignInLinks,
+} from '../../api/apple-contract-types';
 import type { components, operations } from '../../api/generated/platform-signup';
 import { execute, type FetchFn } from '../../api/http';
 import type { NextStep } from './signupModel';
@@ -18,11 +23,17 @@ export type TermsListDocument = components['schemas']['PersonalTermsDocument'];
 /** GET …/terms/{key}/{version}: the bound text of one effective Personal document. */
 export type TermsText = components['schemas']['PersonalTermsText'];
 
-type StartRequest = operations['startPersonalSignup']['requestBody']['content']['application/json'];
+type StartRequest = Omit<
+  operations['startPersonalSignup']['requestBody']['content']['application/json'],
+  'client'
+> & { client?: PersonalSignupClient };
 
-/** POST …/start with client "android" (contract: robot_token absent; integrity_token instead). */
+/** The native clients: Play Integrity (android) or App Attest (ios). */
+export type NativeClient = Exclude<PersonalSignupClient, 'web'>;
+
+/** POST …/start with client "android" | "ios" (contract: robot_token absent; integrity_token instead). */
 export interface NativeStartBody {
-  readonly client: 'android';
+  readonly client: NativeClient;
   readonly name: string;
   readonly email: string;
   readonly phone: string;
@@ -38,8 +49,10 @@ export interface AcceptEntry {
   readonly sha256: string;
 }
 
-export type CompleteResponse =
-  operations['completePersonalSignup']['responses'][200]['content']['application/json'];
+export type CompleteResponse = Omit<
+  operations['completePersonalSignup']['responses'][200]['content']['application/json'],
+  'sign_in'
+> & { sign_in: PersonalSignupSignInLinks };
 
 export interface SignupApi {
   /** `{off: true}` = 404 (mode off); `documents: null` = not every document is approved. */
@@ -62,7 +75,10 @@ export function createSignupApi(deps: {
   readonly fetch: FetchFn;
   /** Recorded with the legal acceptance (M-A11 §2: "the app user agent"). */
   readonly userAgent?: string;
+  /** Sent again at complete (the backend does not store it at start); default android. */
+  readonly client?: NativeClient;
 }): SignupApi {
+  const client: NativeClient = deps.client ?? 'android';
   const headers: Record<string, string> = deps.userAgent ? { 'User-Agent': deps.userAgent } : {};
   const post = async <T>(path: string, body: unknown): Promise<T> =>
     (
@@ -114,7 +130,7 @@ export function createSignupApi(deps: {
       // The backend does not store the client at start: it is passed again here (M-A11 §2.2).
       post<CompleteResponse>('complete', {
         signup_id: signupId,
-        client: 'android',
+        client,
         accept: accept.map((a) => ({ key: a.key, version: a.version, sha256: a.sha256 })),
       }),
   };

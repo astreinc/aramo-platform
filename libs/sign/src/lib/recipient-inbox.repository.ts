@@ -71,7 +71,7 @@ export interface RecipientInboxEntry extends RecipientInboxRow {
 // W-1 / W-2 (Lead C1, C2) — the signed-in user's proof of control of the CURRENT account
 // email: `email` is that email normalized (lower(btrim)), `proven_at` the created_at of the
 // earliest qualifying link. A qualifying link is a federated link with a recorded provider
-// (google | microsoft) whose verified email at link time equals the current account email.
+// (google | microsoft | apple — Apple Go-Live R-6) whose verified email at link time equals the current account email.
 // The link time marks the start of recorded verification only; envelopes sent before it are
 // never discovered. Null when the user is inactive or deactivated or holds no such link.
 export interface VerifiedEmailProof {
@@ -90,7 +90,7 @@ export async function readVerifiedEmailProof(client: RawClient, user_id: string)
       WHERE u.id = $1::uuid
         AND u.is_active = true
         AND u.deactivated_at IS NULL
-        AND p.idp IN ('google', 'microsoft')
+        AND p.idp IN ('google', 'microsoft', 'apple')
         AND e.email_snapshot IS NOT NULL
         AND lower(btrim(e.email_snapshot)) = lower(btrim(u.email))
       GROUP BY lower(btrim(u.email))`,

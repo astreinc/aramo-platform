@@ -79,8 +79,9 @@ import { SignupBudget, federatedSignInLinks } from './sign-signup.service.js';
 //                 while any is not approved (complete is refused).
 //   complete      PROVISIONED PERSONAL tenant ([core, sign]) + owner with
 //                 tenant_owner ONLY (system authority; no product-owner role),
-//                 Cognito-free with no ExternalIdentity, enforced Google pin,
-//                 TenantRiskState, legal acceptances. No subscription, no Stripe:
+//                 Cognito-free with no ExternalIdentity, enforced cohort with no
+//                 pin (Apple Go-Live R-4: allowed {google, apple}; the owner's first
+//                 federation pins), TenantRiskState, legal acceptances. No subscription, no Stripe:
 //                 the FREE subscription opens only after federated binding.
 
 export const PERSONAL_SIGNUP_SYSTEM_ACTOR_ID = '01900000-0000-7000-8000-00000000519f';
@@ -101,7 +102,8 @@ export type PersonalNextStep = 'phone' | 'terms' | 'review';
 export interface PersonalCompleteResult {
   status: 'PROVISIONED' | 'PROVISIONING';
   email: string;
-  sign_in: { google: string };
+  // Apple Go-Live R-5 — the done step offers Google and Apple (each the login with its idp hint).
+  sign_in: { google: string; apple: string };
   // §6.3 — the account exists but is held: for review, or until phone assurance.
   held: 'review' | 'phone_verification_required' | null;
 }
@@ -125,13 +127,14 @@ export interface PersonalTermsText {
 /**
  * M-A11 — the signup client. Absent or `web`: the browser (Turnstile, `{key, version}`
  * acceptances), exactly as before. `android`: the native app (Play Integrity,
- * `{key, version, sha256}` acceptances). Anything else is refused.
+ * `{key, version, sha256}` acceptances). Apple Go-Live R-9 / W2 — `ios`: the iPhone app
+ * (App Attest), otherwise exactly as `android`. Anything else is refused.
  */
-export type PersonalSignupClient = 'web' | 'android';
+export type PersonalSignupClient = 'web' | 'android' | 'ios';
 
 function signupClient(v: unknown, requestId: string): PersonalSignupClient {
   if (v === undefined || v === 'web') return 'web';
-  if (v === 'android') return 'android';
+  if (v === 'android' || v === 'ios') return v;
   throw new AramoError('VALIDATION_ERROR', 'Unsupported client', 400, { requestId, details: { field: 'client' } });
 }
 
@@ -282,8 +285,9 @@ export class PersonalSignupService {
     // M-A11 §2.1 — a native start is bound to its integrity token by the hash of the
     // body EXACTLY as received (before any trim or normalization below).
     const client = signupClient(input.client, rid);
+    // Apple Go-Live R-9 — the iOS app binds its App Attest key with the same requestHash.
     let requestHash: string | null = null;
-    if (client === 'android') {
+    if (client !== 'web') {
       if (typeof input.elapsed_ms !== 'number' || !Number.isSafeInteger(input.elapsed_ms)) {
         throw new AramoError('VALIDATION_ERROR', 'elapsed_ms must be an integer', 400, { requestId: rid, details: { field: 'elapsed_ms' } });
       }
@@ -344,12 +348,25 @@ export class PersonalSignupService {
     // §6.1 — the robot check, server-side; unavailable is refused (fail closed).
     // M-A11 §2 — from the Android app the native integrity check takes its place with
     // the same verdicts (pass; fail → robot_check_failed → refused; unavailable → refused).
+    // Apple Go-Live R-9 — routed by platform: the iPhone app is checked with App Attest.
     const robot =
       requestHash !== null
-        ? await this.integrity.verify({ token: typeof input.integrity_token === 'string' ? input.integrity_token : null, request_hash: requestHash, now })
+        ? await this.integrity.verify({
+            platform: client === 'ios' ? 'ios' : 'android',
+            token: typeof input.integrity_token === 'string' ? input.integrity_token : null,
+            request_hash: requestHash,
+            now,
+          })
         : await this.robot.verify(typeof input.robot_token === 'string' ? input.robot_token : null, input.ip);
     if (robot.verdict === 'unavailable') {
       this.log.warn('personal signup refused: robot check unavailable (fail closed)');
+      throw neutralRefusal(rid);
+    }
+    // Apple Go-Live R-9 (replay) — an App Attest key id is accepted once (UNIQUE on the row).
+    const attest_key_id =
+      robot.verdict === 'pass' && client === 'ios' && 'attest_key_id' in robot && typeof robot.attest_key_id === 'string' ? robot.attest_key_id : null;
+    if (attest_key_id !== null && (await this.requests.attestKeyIdUsed(attest_key_id))) {
+      this.log.warn('personal signup refused: native integrity (ios) attestation replayed');
       throw neutralRefusal(rid);
     }
 
@@ -409,24 +426,35 @@ export class PersonalSignupService {
       },
       personalRiskConfig(),
     );
-    const row = await this.requests.create({
-      email,
-      canonical_email: canonical,
-      display_name: name,
-      phone_e164: phone,
-      declared_residence: residence,
-      ip: input.ip === 'unknown' ? null : input.ip,
-      ip_country: ipCountry,
-      phone_region: region,
-      network_kind: network,
-      geo_evidence: geoEvidenceOf(geo),
-      risk_points: rating.points,
-      risk_signals: rating.signals,
-      decision: rating.decision,
-      invite_id,
-      status: rating.decision === 'refuse' ? 'REFUSED' : 'PENDING',
-      now,
-    });
+    let row: PersonalSignupRow;
+    try {
+      row = await this.requests.create({
+        email,
+        canonical_email: canonical,
+        display_name: name,
+        phone_e164: phone,
+        declared_residence: residence,
+        ip: input.ip === 'unknown' ? null : input.ip,
+        ip_country: ipCountry,
+        phone_region: region,
+        network_kind: network,
+        geo_evidence: geoEvidenceOf(geo),
+        risk_points: rating.points,
+        risk_signals: rating.signals,
+        decision: rating.decision,
+        invite_id,
+        status: rating.decision === 'refuse' ? 'REFUSED' : 'PENDING',
+        ...(attest_key_id === null ? {} : { attest_key_id }),
+        now,
+      });
+    } catch (err) {
+      // A concurrent replay of the same attestation loses the UNIQUE race: refused alike.
+      if (attest_key_id !== null && (err as { code?: unknown }).code === 'P2002') {
+        this.log.warn('personal signup refused: native integrity (ios) attestation replayed');
+        throw neutralRefusal(rid);
+      }
+      throw err;
+    }
     if (rating.decision === 'refuse') throw neutralRefusal(rid);
     await this.sendEmailCode(row, now);
     return { signup_id: row.id };
@@ -520,7 +548,9 @@ export class PersonalSignupService {
     const rid = input.request_id;
     // M-A11 §2.2 — the client is passed again at complete (it is not stored at start).
     const client = signupClient(input.client, rid);
-    const sign_in = { google: federatedSignInLinks().google };
+    // Apple Go-Live R-5 — the done step offers Google and Apple.
+    const links = federatedSignInLinks();
+    const sign_in = { google: links.google, apple: links.apple };
     const row = typeof input.signup_id === 'string' ? await this.requests.findById(input.signup_id).catch(() => null) : null;
     if (row === null) throw this.notFound(rid);
     if (row.status === 'PROVISIONED') return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
@@ -541,11 +571,11 @@ export class PersonalSignupService {
     const acceptedDocs: LegalDocumentVersion[] = [];
     for (const t of terms) {
       // An entry that carries a sha256 must name the registry's hash (stricter only; the web
-      // sends none). From the app every entry must carry it (M-A11 §2.2).
+      // sends none). From the app every entry must carry it (M-A11 §2.2; the iPhone app alike).
       const hit = accepted.some((a) => {
         const e = entry(a);
         if (e === null || e.key !== t.key || e.version !== t.version) return false;
-        if (client === 'android' || e.sha256 !== undefined) return e.sha256 === t.sha256;
+        if (client !== 'web' || e.sha256 !== undefined) return e.sha256 === t.sha256;
         return true;
       });
       const doc = this.approvedDocument(t.key, t.version);
@@ -554,7 +584,7 @@ export class PersonalSignupService {
     }
     // M-A11 §2.2 — from the app, exactly one entry per effective document: an extra, duplicate
     // or stale entry (a document that changed after the app fetched it) is refused.
-    if (client === 'android') {
+    if (client !== 'web') {
       const exact =
         accepted.length === terms.length &&
         accepted.every((a) => {
@@ -593,9 +623,11 @@ export class PersonalSignupService {
     try {
       // A lapsed, never-bound earlier signup of this address resumes its SAME
       // tenant and owner (no second tenant or user).
+      // Apple Go-Live R-4 — enrolled WITHOUT a pin; an existing pin (a tenant created
+      // before R-4 was pinned to google) is never re-pointed or cleared.
       const resumable = await this.requests.findResumableLapsed(row.email);
       if (resumable !== null) {
-        await this.idpPolicy.enrollEnforcedTenantPinned(resumable.tenant_id, 'google');
+        await this.idpPolicy.enrollEnforcedTenant(resumable.tenant_id);
         await this.entitlements.grantCapabilities({ tenant_id: resumable.tenant_id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
       }
       const adopted = resumable === null ? await this.adopt(row) : null;
@@ -610,7 +642,7 @@ export class PersonalSignupService {
           subject_email: row.email,
           accepted_at: now,
           // M-A11 §2 — an acceptance from the app records its origin (IP, user agent).
-          ...(client === 'android' ? { origin: { ip: input.ip === 'unknown' ? null : input.ip, user_agent: input.user_agent ?? null } } : {}),
+          ...(client !== 'web' ? { origin: { ip: input.ip === 'unknown' ? null : input.ip, user_agent: input.user_agent ?? null } } : {}),
         });
       }
       await this.requests.completeProvisioning({
@@ -620,12 +652,14 @@ export class PersonalSignupService {
         now: new Date(),
         sms_available: this.sms.configured,
         ...(resumable === null ? {} : { resumed_from: resumable.prior_signup_id }),
-        ...(client === 'android' ? { client: 'android' as const } : {}),
+        ...(client !== 'web' ? { client } : {}),
       });
       this.log.log(`personal signup provisioned tenant ${res.tenant_id}`);
+      // Apple Go-Live R-5 / R-13 — Google and Apple; Apple works only when it shares this address.
       await this.send(row.email, 'Your Aramo Sign personal account is ready', [
-        `Sign in with the Google account for ${row.email}.`,
+        `Sign in with the Google account for ${row.email}, or with your Apple ID if it shares this email address.`,
         'If you don’t have one, you can create a Google Account with this email address.',
+        `Continue with Apple: ${sign_in.apple}`,
       ], { label: 'Continue with Google', href: sign_in.google });
       return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     } catch (err) {
@@ -645,7 +679,8 @@ export class PersonalSignupService {
 
   /**
    * Cognito-free provisioning: PERSONAL tenant (no domain claim — P3) → enforced
-   * provider cohort pinned to Google (V1 Google-only, §5) → [core, sign] →
+   * provider cohort WITHOUT a pin (Apple Go-Live R-4: allowed {google, apple}; the
+   * owner's first federation sets the pin by compare-and-set) → [core, sign] →
    * owner with tenant_owner ONLY through the system owner authority (§4; no
    * product-owner role), ACTIVE membership, no ExternalIdentity. A failure after
    * the tenant exists soft-disables it.
@@ -665,7 +700,7 @@ export class PersonalSignupService {
       actor_type: 'system',
     });
     try {
-      await this.idpPolicy.enrollEnforcedTenantPinned(tenant.id, 'google');
+      await this.idpPolicy.enrollEnforcedTenant(tenant.id);
       await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
       const owner = await this.identity.createFederatedOwnerNoSub({
         email: row.email,
@@ -696,7 +731,8 @@ export class PersonalSignupService {
     if (tenant === null || !tenant.is_active || tenant.kind !== 'PERSONAL' || tenant.name !== personalTenantName(row)) return null;
     const membership = await this.identityRepo.findMembership({ user_id: user.id, tenant_id: tenant.id });
     if (membership === null || !(await this.identity.findRoleKeysForMembership(membership.id)).includes('tenant_owner')) return null;
-    await this.idpPolicy.enrollEnforcedTenantPinned(tenant.id, 'google');
+    // Apple Go-Live R-4 — unpinned enrollment; never re-points a pin the crashed attempt set.
+    await this.idpPolicy.enrollEnforcedTenant(tenant.id);
     await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
     return { tenant_id: tenant.id, owner_user_id: user.id };
   }

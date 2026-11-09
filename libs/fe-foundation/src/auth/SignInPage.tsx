@@ -1,8 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { AuthShell, resolveAuthProduct, type AuthProduct } from './AuthShell';
 import { authPath, getAuthConsumer } from './consumer';
+import { FEDERATED_IDPS, PROVIDER_NAME, parseLinkFragment } from './link';
+import { PendingLinkPanel } from './PendingLinkPanel';
+import { ProviderButton } from './ProviderButton';
 import { MICROSOFT_SIGN_OUT_URL, loginUrl, logout, type FederatedIdp } from './session';
 
 // AUTH-SIGNIN-1 §3.2 — the ONE Aramo-branded sign-in screen every Cognito-backed
@@ -11,17 +14,22 @@ import { MICROSOFT_SIGN_OUT_URL, loginUrl, logout, type FederatedIdp } from './s
 // Design, 2026-10-20).
 //
 //   - Asks the auth-service which providers this host offers (login-options) and
-//     shows one button per provider, Microsoft first. If that call fails, both
-//     buttons are shown: a UI fallback only — the auth-service still enforces a
+//     shows one button per provider, Microsoft first. If that call fails, every
+//     provider's button is shown: a UI fallback only — the auth-service still enforces a
 //     tenant's provider at the callback (R1/R4).
 //   - A button goes to `/auth/<consumer>/login?idp=…&return_to=…`, which sends
-//     the browser straight to Google or Microsoft (no Cognito screen).
+//     the browser straight to Google, Microsoft or Apple (no Cognito screen).
 //   - `?error=CODE` (the callback's failure redirect) renders the matching error
 //     screen. TENANT_ACCESS_DENIED keeps the wrong-account recovery (account
 //     picker, sign out, sign out of Microsoft); the provider-policy reasons say
 //     to use the organization's provider.
 //   - `?consumer=` is honoured only from an allowlist (§3.2.1).
 //   - Performs NO automatic navigation.
+//   - Apple Go-Live W3 — Apple is the third provider (Microsoft, Google, Apple).
+//   - Apple Go-Live A1 L-7 — a pending link (`#link=<handle>&idp=<p>` in the URL
+//     fragment, with reason `idp_identity_conflict` or `user_not_provisioned`)
+//     shows the L-3 path 3 / path 2 panel. The handle is read once, kept in
+//     memory and stripped from the address bar.
 //
 // Deliberately NOT built (need backend/directive work): the organization name
 // and initials header, and "find your organization" by work email.
@@ -48,15 +56,20 @@ export interface SignInPageProps {
    * links exist (e.g. only while that sign-up is switched on).
    */
   accountLinks?: ReactNode;
+  /**
+   * Apple Go-Live A1 L-3 path 2 — "Create a new account", shown on the
+   * no-account pending-link panel (Aramo Sign host only).
+   */
+  newAccountAction?: ReactNode;
   // Test seams.
   search?: string;
+  hash?: string;
   onNavigate?: (url: string) => void;
   onSignOut?: () => void;
   fetchLoginOptions?: (consumer: string) => Promise<unknown>;
 }
 
-const PROVIDER_ORDER: readonly FederatedIdp[] = ['microsoft', 'google'];
-const PROVIDER_NAME: Record<FederatedIdp, string> = { microsoft: 'Microsoft', google: 'Google' };
+const PROVIDER_ORDER: readonly FederatedIdp[] = FEDERATED_IDPS;
 const TENANT_HOST_CONSUMERS: ReadonlySet<string> = new Set(['recruiter', 'org']);
 const IDP_POLICY_REASONS: ReadonlySet<string> = new Set(['idp_not_permitted_for_tenant', 'idp_identity_conflict']);
 const OPTIONS_TIMEOUT_MS = 5000;
@@ -98,28 +111,6 @@ async function defaultFetchLoginOptions(consumer: string): Promise<unknown> {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function MicrosoftLogo() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
-      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-    </svg>
-  );
-}
-
-function GoogleLogo() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-    </svg>
-  );
 }
 
 const ICON = {
@@ -283,7 +274,9 @@ export function SignInPage({
   notEntitledAction,
   signerNote = false,
   accountLinks,
+  newAccountAction,
   search,
+  hash,
   onNavigate,
   onSignOut,
   fetchLoginOptions,
@@ -298,6 +291,19 @@ export function SignInPage({
   // A return_to belongs to the configured consumer's app; drop it when signing
   // in to a different (allowlisted) consumer.
   const returnTo = consumer === configured ? safeReturnTo(params.get('return_to')) : null;
+
+  // A1 L-2/L-7 — read the pending link once, keep it in memory only, and strip
+  // the fragment so the handle doesn't stay in the address bar or history.
+  const routerNavigate = useNavigate();
+  const [pendingLink] = useState(() => parseLinkFragment(hash ?? location.hash));
+  useEffect(() => {
+    if (/(^|[#&])link=/.test(location.hash)) {
+      routerNavigate({ pathname: location.pathname, search: location.search, hash: '' }, { replace: true });
+    }
+    // Once, on mount.
+  }, []);
+  const linkKind =
+    pendingLink === null ? null : reason === 'idp_identity_conflict' ? 'conflict' : reason === 'user_not_provisioned' ? 'unprovisioned' : null;
 
   const [providers, setProviders] = useState<FederatedIdp[] | null>(null);
   useEffect(() => {
@@ -324,18 +330,25 @@ export function SignInPage({
       </p>
     ) : (
       providers.map((idp) => (
-        <button
-          key={idp}
-          type="button"
-          className="aramo-auth__btn"
-          data-testid={`signin-${idp}`}
-          onClick={() => navigate(loginUrl({ idp, consumer, returnTo }))}
-        >
-          {idp === 'microsoft' ? <MicrosoftLogo /> : <GoogleLogo />}
-          <span>{`Continue with ${PROVIDER_NAME[idp]}`}</span>
-        </button>
+        <ProviderButton key={idp} idp={idp} testId={`signin-${idp}`} onClick={() => navigate(loginUrl({ idp, consumer, returnTo }))} />
       ))
     );
+
+  if (pendingLink !== null && linkKind !== null) {
+    return (
+      <AuthShell product={p}>
+        <PendingLinkPanel
+          kind={linkKind}
+          link={pendingLink}
+          providers={providers}
+          consumer={consumer}
+          returnTo={returnTo}
+          navigate={navigate}
+          {...(newAccountAction !== undefined ? { newAccount: newAccountAction } : {})}
+        />
+      </AuthShell>
+    );
+  }
 
   if (error !== null) {
     const screen = errorScreen(error, reason, p.name, providers, errorCopy, signerNote);
@@ -412,7 +425,9 @@ export function SignInPage({
           <span>
             {single === 'microsoft'
               ? 'Single sign-on through your organization’s Microsoft account. Aramo never sees your password.'
-              : 'Single sign-on through your organization’s Google Workspace account. Aramo never sees your password.'}
+              : single === 'apple'
+                ? 'Sign-in through your Apple ID. Aramo never sees your password.'
+                : 'Single sign-on through your organization’s Google Workspace account. Aramo never sees your password.'}
           </span>
         </div>
       ) : null}

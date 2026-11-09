@@ -8,8 +8,9 @@ const LINK_ENDED =
 
 // M-A11 §1: a federated login with no Aramo user is offered the native Personal signup (the
 // sign-in screen shows "Create a free account" with this message). Builds without native
-// signup (iOS, D-2) still point to the web: NO_ACCOUNT_WEB.
-const NO_ACCOUNT = 'There’s no Aramo account for this Google account yet.';
+// signup still point to the web: NO_ACCOUNT_WEB. Apple Go-Live W4: provider-neutral, since
+// Google, Microsoft and Apple all reach it.
+const NO_ACCOUNT = 'There’s no Aramo account for this sign-in yet.';
 export const NO_ACCOUNT_WEB =
   'There’s no Aramo account for this sign-in. Create one at sign.aramo.ai, or try the other sign-in option.';
 const NO_SIGN_ACCESS =
@@ -27,8 +28,10 @@ export const WORD_COPY = {
 
 const COPY: Record<string, string> = {
   ...WORD_COPY,
-  // C-9 — a Personal tenant is Google-only (AUTH-SIGNIN-1 R1).
-  idp_not_permitted_for_tenant: 'Personal accounts sign in with Google.',
+  // C-9, reworded for Apple Go-Live R-4 / A1 L-5: Personal allows Google and Apple, and a
+  // Business account may be pinned to one provider. Provider-neutral.
+  idp_not_permitted_for_tenant:
+    'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
   invalid_grant: 'Sign-in didn’t finish. Try again.',
   state_mismatch: 'Sign-in didn’t finish. Try again.',
   authorization_denied: 'Sign-in was cancelled.',
@@ -49,6 +52,16 @@ const COPY: Record<string, string> = {
   tenant_resolution_ambiguous:
     'We couldn’t tell which Aramo account to open. For help, contact support@aramo.ai.',
   code_exchange_rejected: 'Sign-in didn’t finish. Try again.',
+  // Apple Go-Live A1 L-2 / L-5 — pending links and sign-in methods. (`link_expired` keeps the
+  // signing-link copy above; the sign-in screen's link panel words its own expiry.)
+  idp_identity_conflict: 'You already have an Aramo account. Confirm it’s you.',
+  identity_already_linked: 'This sign-in is already connected to another Aramo account.',
+  idp_already_linked:
+    'Your account already has a sign-in from this provider. Remove it first to connect a different one.',
+  last_sign_in_method: 'You can’t remove your only sign-in method. Add another one first.',
+  code_invalid: 'That code isn’t right. Check the code and try again.',
+  code_expired: 'This code has expired. Send a new code.',
+  code_attempts_exceeded: 'Too many wrong codes. Start again to get a new code.',
   // C-21 / M-A2 §2.3 — the app never retries with a stale token.
   SIGNING_SESSION_INVALID: LINK_ENDED,
   SIGNING_SESSION_EXPIRED: LINK_ENDED,

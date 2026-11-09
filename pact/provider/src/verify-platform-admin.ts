@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
@@ -88,7 +88,8 @@ import { seedUsageTenant } from '../../../libs/subscription/src/tests/support/cc
 //
 // Aramo-Sign-Mobile-Amendment-M-A11 §5 — a SECOND consumer, `sign-mobile` (the Android app's
 // native Personal signup: terms, terms text, start with client android, verify-email,
-// complete with key/version/sha256 acceptances), verified against the same booted AppModule
+// complete with key/version/sha256 acceptances; Apple Go-Live adds the iPhone app's
+// client ios start and complete), verified against the same booted AppModule
 // (pact/pacts/sign-mobile-platform-admin.json). The native integrity verifier is the ONLY
 // replaced port for it: PactNativeIntegrity below, a test double bound in this harness only
 // (production binds the Google decoder; libs/identity native-integrity.spec.ts asserts it).
@@ -201,13 +202,17 @@ function pactCoverage(): Map<string, { allowed: number; superAdmin: number; tena
 
 /**
  * M-A11 — the native integrity verifier's test double (this harness only). It never decodes
- * anything: a non-empty token answers the verdict the provider state set.
+ * anything: a non-empty token answers the verdict the provider state set. Apple Go-Live R-9 —
+ * it stands in for both platforms; an ios pass reports a fresh App Attest key id, so the
+ * UNIQUE replay column is written on every run without colliding across runs.
  */
 class PactNativeIntegrity implements NativeIntegrityCheck {
   verdict: NativeIntegrityResult['verdict'] = 'pass';
-  async verify(input: { token: string | null }): Promise<NativeIntegrityResult> {
+  async verify(input: { platform?: 'android' | 'ios'; token: string | null }): Promise<NativeIntegrityResult> {
     if (input.token === null || input.token === '') return { verdict: 'fail', reason: 'token_missing' };
-    if (this.verdict === 'pass') return { verdict: 'pass', reason: 'ok' };
+    if (this.verdict === 'pass') {
+      return input.platform === 'ios' ? { verdict: 'pass', reason: 'ok', attest_key_id: randomBytes(32).toString('hex') } : { verdict: 'pass', reason: 'ok' };
+    }
     return this.verdict === 'fail' ? { verdict: 'fail', reason: 'app_not_recognized' } : { verdict: 'unavailable', reason: 'decode_unavailable' };
   }
 }

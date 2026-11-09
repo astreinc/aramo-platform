@@ -19,6 +19,7 @@ import {
   parseNativeTokenRequest,
   parseRefreshTokenBody,
   type NativeCaller,
+  type NativeLinkResponse,
   type NativeSessionItem,
   type NativeTokenResponse,
 } from './native-auth.service.js';
@@ -55,6 +56,21 @@ export class NativeAuthController {
     noStore(res);
     const requestId = req.requestId ?? 'unknown';
     return this.native.exchange(parseNativeTokenRequest(body, requestId), requestId);
+  }
+
+  // Apple Go-Live A1 L-4 path 1 — the signed-in caller (native Bearer) adds a
+  // provider: same body as /token; 200 {linked: true, idp} or 4xx details.reason.
+  @Post('link')
+  @HttpCode(200)
+  async link(
+    @Body() body: unknown,
+    @Req() req: RequestWithId,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<NativeLinkResponse> {
+    noStore(res);
+    const requestId = req.requestId ?? 'unknown';
+    const caller = await this.authenticate(req, requestId);
+    return this.native.link(parseNativeTokenRequest(body, requestId), caller, requestId);
   }
 
   @Post('refresh')

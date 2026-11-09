@@ -42,6 +42,20 @@ test('Microsoft first sign-in with xms_edov-mapped verification is allowed, unch
   assert.equal(out.response.autoConfirmUser, false);
 });
 
+test('Apple Go-Live R-1: a SignInWithApple first sign-in (real or relay email) is allowed by default, unchanged', async () => {
+  const e = event('signinwithapple_001234.abcdef0123456789.0123', { email: 'x7k2@privaterelay.appleid.com', email_verified: 'true' });
+  const out = await handler(structuredClone(e));
+  assert.deepEqual(out.response, e.response);
+  assert.deepEqual(logs, [{ trigger: 'pre-signup-v2', decision: 'allowed', provider: 'signinwithapple', email_domain: 'privaterelay.appleid.com', provider_email_verified: true }]);
+  await assert.rejects(handler(event('signinwithapple_1', { email: 'owner@acme.test', email_verified: 'false' })), /not verified/);
+});
+
+test('ALLOWED_PROVIDERS still governs: an explicit list without SignInWithApple refuses Apple', async () => {
+  process.env.ALLOWED_PROVIDERS = 'Google,microsoft';
+  ({ handler } = await import(`./index.mjs?t=${Math.random()}`));
+  await assert.rejects(handler(event('signinwithapple_1', { email: 'a@b.test', email_verified: 'true' })), /not permitted/);
+});
+
 test('an unverified provider email is refused before any user is created', async () => {
   await assert.rejects(handler(event('microsoft_abc', { email: 'owner@contoso.test', email_verified: 'false' })), /not verified/);
   await assert.rejects(handler(event('google_123', { email: 'owner@acme.test' })), /not verified/);

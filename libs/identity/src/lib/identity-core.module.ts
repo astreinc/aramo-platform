@@ -18,6 +18,8 @@ import { AuthorizationVersionService } from './authorization-version.service.js'
 import { RoleRepository } from './role.repository.js';
 import { SignupRequestRepository } from './signup-request.repository.js';
 import { IdentityProviderPolicyService } from './identity-provider-policy.service.js';
+// Apple Go-Live Amendment A1 — proven account linking (pending links, attach policy, methods).
+import { IdentityLinkService } from './account-link/identity-link.service.js';
 import { OrganizationRegionService } from './organization-region.service.js';
 import { DomainClaimService } from './domain-claim/domain-claim.service.js';
 import { GEO_IP_PORT, MaxmindGeoIpAdapter } from './personal/geo-ip.port.js';
@@ -28,7 +30,9 @@ import { IdentityDependencyInspector } from './privacy/identity-dependency-inspe
 import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/identity-retirement.port.js';
 import { PersonalSignupRepository } from './personal/personal-signup.repository.js';
 import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
-import { NATIVE_INTEGRITY_CHECK, nativeIntegrityCheckFromEnv } from './personal/native-integrity.port.js';
+import { NATIVE_INTEGRITY_CHECK } from './personal/native-integrity.port.js';
+// Apple Go-Live R-9 — the production binding routes android → Play Integrity, ios → App Attest.
+import { nativeIntegrityChecksFromEnv } from './personal/app-attest.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
 import { RoleService } from './role.service.js';
 import { SignCustomRoleService } from './sign-custom-role/sign-custom-role.service.js';
@@ -98,6 +102,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     // Aramo Sign launch — self-service signup requests (platform-admin public signup).
     SignupRequestRepository,
     IdentityProviderPolicyService,
+    IdentityLinkService,
     // Sign Signup Amendment A1 — billing-region lock + authority attestation.
     OrganizationRegionService,
     // Domain-Enforcement P3 (LOCKED) — one organization per email domain (the claim).
@@ -121,7 +126,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
     { provide: ROBOT_CHECK_PORT, useFactory: () => robotCheckAdapterFromEnv() },
     // Aramo-Sign-Mobile-Amendment-M-A11 §2.1 — the native (Play Integrity) check beside the
     // robot check. Production binds the Google decoder; unconfigured ⇒ unavailable (refused).
-    { provide: NATIVE_INTEGRITY_CHECK, useFactory: () => nativeIntegrityCheckFromEnv() },
+    // Apple Go-Live R-9 — routed by platform: ios → App Attest (unset app id ⇒ unavailable).
+    { provide: NATIVE_INTEGRITY_CHECK, useFactory: () => nativeIntegrityChecksFromEnv() },
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
@@ -171,6 +177,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     ROBOT_CHECK_PORT,
     NATIVE_INTEGRITY_CHECK,
     IdentityProviderPolicyService,
+    IdentityLinkService,
     OrganizationRegionService,
     DomainClaimService,
     IdentityService,

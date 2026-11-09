@@ -248,6 +248,11 @@ export const EVENT_TYPES = [
   // contact id; payload { company_id } (no name, email or phone).
   'identity.contact.deleted',
   'identity.contact.restored',
+  // Apple Go-Live Amendment A1 L-5 — a sign-in method removed by its user
+  // (DELETE /auth/me/sign-in-methods/{idp}). GLOBAL like
+  // identity.external_identity.linked; subject_id = the user; payload
+  // { provider, provider_subject, idp, reason } (no email).
+  'identity.external_identity.unlinked',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

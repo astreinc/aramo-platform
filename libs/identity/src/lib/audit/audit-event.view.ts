@@ -165,6 +165,9 @@ export function summarizeDetail(
       return 'Created a tenant membership';
     case 'identity.external_identity.linked':
       return 'Linked an external identity';
+    // Apple Go-Live A1 L-5 — a sign-in method removed by its user.
+    case 'identity.external_identity.unlinked':
+      return 'Removed a sign-in method';
     case 'identity.role.created':
       return 'Created a role';
     case 'identity.scope.created':

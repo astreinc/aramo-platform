@@ -106,6 +106,8 @@ describe('signed in with (B-11)', () => {
   it('names Google or Microsoft, and hides the line when unknown', () => {
     expect(signedInWithLabel('google')).toBe('Signed in with Google');
     expect(signedInWithLabel('microsoft')).toBe('Signed in with Microsoft');
+    // Apple Go-Live R-2.
+    expect(signedInWithLabel('apple')).toBe('Signed in with Apple');
     expect(signedInWithLabel(null)).toBeNull();
     expect(signedInWithLabel(undefined)).toBeNull();
   });

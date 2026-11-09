@@ -15,7 +15,7 @@ Every command in §3 and §4 changes production and needs explicit approval at t
 - The pool `us-east-1_4fKlnGfaW` points its PreSignUp trigger at the **unqualified** ARN of `cognito-pre-signup-auto-link`, which runs `$LATEST`. The function has no published versions and no aliases (captured 2026-10-20).
 - The cutover replaces that function's code. The pool configuration is **not** touched.
   - Do not use `aws cognito-idp update-user-pool`: it resets every setting the call leaves out.
-- v2's defaults are the governed values: `ALLOWED_PROVIDERS=Google,microsoft`, `REQUIRE_PROVIDER_EMAIL_VERIFIED=true`. v2 ignores the old variables (`ALLOWED_EMAIL_DOMAINS`, `PRIMARY_IDP`, `REQUIRE_DEST_GROUP`, `USER_POOL_ID`).
+- v2's defaults are the governed values: `ALLOWED_PROVIDERS=Google,microsoft,SignInWithApple` (Apple added by the Apple Platform Go-Live directive, R-1), `REQUIRE_PROVIDER_EMAIL_VERIFIED=true`. v2 ignores the old variables (`ALLOWED_EMAIL_DOMAINS`, `PRIMARY_IDP`, `REQUIRE_DEST_GROUP`, `USER_POOL_ID`).
 - So the cutover is **one code update**, and the rollback is **one code update** back to the captured zip. No environment change is needed either way.
 
 ### Blast radius (canary isolation)

@@ -246,6 +246,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       sign_in: {
         microsoft: 'https://esign.example.test/auth/sign/login?idp=microsoft&return_to=%2F',
         google: 'https://esign.example.test/auth/sign/login?idp=google&return_to=%2F',
+        apple: 'https://esign.example.test/auth/sign/login?idp=apple&return_to=%2F',
       },
     });
     // Aramo-Sign-Signup-Federated-Owner: no Cognito user, no ExternalIdentity,

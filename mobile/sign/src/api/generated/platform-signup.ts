@@ -92,6 +92,18 @@ export interface paths {
          *     verifier is refused too (fail closed). For android, `elapsed_ms` must be a JSON
          *     integer. Absent `client` or `client: "web"` is the browser flow, unchanged; any
          *     other value is `VALIDATION_ERROR`.
+         *
+         *     Aramo Sign Apple Platform Go-Live R-9 — `client: "ios"` (the iPhone app) is
+         *     bound the same way with Apple App Attest: `integrity_token` is
+         *     `base64url(JSON {"key_id": <base64 key id>, "attestation": <base64 CBOR
+         *     attestation object>})`, attested with `clientDataHash` = the requestHash bytes
+         *     (the same canonical body hash as android; `elapsed_ms` a JSON integer). The
+         *     server verifies the x5c chain to the Apple App Attestation Root CA, the nonce
+         *     (SHA-256 of authData and clientDataHash) in the credential certificate,
+         *     `key_id` = SHA-256 of the credential public key and the credential id, the
+         *     rpIdHash of `<TEAMID>.ai.aramo.sign`, counter 0 and the production aaguid. A
+         *     key id is accepted once (a replay is refused). Failures and an unconfigured
+         *     verifier are refused as for android (`personal_signup_refused`).
          */
         post: operations["startPersonalSignup"];
         delete?: never;
@@ -197,9 +209,11 @@ export interface paths {
          * Accept the APPROVED documents and create the Personal account.
          * @description Creates a PROVISIONED PERSONAL tenant ([core, sign]) and its owner with
          *     `tenant_owner` only (system provisioning authority), without a Cognito
-         *     user or an ExternalIdentity, enrolled for Google sign-in. No subscription
-         *     and no billing provider are created. The account activates only when the
-         *     owner signs in with the Google account for exactly the verified email.
+         *     user or an ExternalIdentity, enrolled in the enforced provider cohort with no
+         *     pin (Apple Platform Go-Live R-4: Google or Apple; the owner's first federation
+         *     pins it). No subscription and no billing provider are created. The account
+         *     activates only when the owner signs in with Google or Apple for exactly the
+         *     verified email.
          *     `held` reports a review hold or an unmet phone step-up. Idempotent.
          *
          *     Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — the native app sends `client:
@@ -210,7 +224,8 @@ export interface paths {
          *     and asks again). Each acceptance records the document key, version and hash,
          *     and its origin (IP and user agent); the signup's audit event records client
          *     android. The web's `{key, version}` entries are unchanged (an entry that does
-         *     carry `sha256` must match it).
+         *     carry `sha256` must match it). Apple Platform Go-Live W2 — `client: "ios"` is
+         *     bound exactly as android (the audit event records client ios).
          */
         post: operations["completePersonalSignup"];
         delete?: never;
@@ -368,11 +383,11 @@ export interface operations {
             content: {
                 "application/json": {
                     /**
-                     * @description Absent or `web` = the browser (Turnstile); `android` = the native app (Play Integrity).
+                     * @description Absent or `web` = the browser (Turnstile); `android` = the Android app (Play Integrity); `ios` = the iPhone app (App Attest).
                      * @enum {string}
                      */
-                    client?: "web" | "android";
-                    /** @description client android only — the Play Integrity Standard token bound to the requestHash. */
+                    client?: "web" | "android" | "ios";
+                    /** @description client android — the Play Integrity Standard token bound to the requestHash; client ios — base64url(JSON {key_id, attestation}) of the App Attest attestation bound to the requestHash. */
                     integrity_token?: string;
                     name: string;
                     /** Format: email */
@@ -387,7 +402,7 @@ export interface operations {
                     invite_code?: string | null;
                     /** @description Honeypot; must be empty. */
                     hp?: string;
-                    /** @description Milliseconds the form was open before submitting (an integer from client android). */
+                    /** @description Milliseconds the form was open before submitting (an integer from client android or ios). */
                     elapsed_ms?: number;
                 };
             };
@@ -556,14 +571,14 @@ export interface operations {
                     /** Format: uuid */
                     signup_id: string;
                     /**
-                     * @description Absent or `web` = the browser; `android` = the native app (sha256 binding).
+                     * @description Absent or `web` = the browser; `android` / `ios` = the native app (sha256 binding).
                      * @enum {string}
                      */
-                    client?: "web" | "android";
+                    client?: "web" | "android" | "ios";
                     accept: {
                         key: string;
                         version: string;
-                        /** @description Required from client android — the registry hash of the accepted text. */
+                        /** @description Required from client android or ios — the registry hash of the accepted text. */
                         sha256?: string;
                     }[];
                 };
@@ -580,9 +595,16 @@ export interface operations {
                         /** @enum {string} */
                         status: "PROVISIONED" | "PROVISIONING";
                         email: string;
+                        /**
+                         * @description Apple Platform Go-Live R-5 — the done step's sign-in entry
+                         *     points: the login with the `idp` hint for Google and for Apple
+                         *     (Apple binds only when it shares the verified email).
+                         */
                         sign_in: {
                             /** Format: uri */
                             google: string;
+                            /** Format: uri */
+                            apple: string;
                         };
                         /** @enum {string|null} */
                         held: "review" | "phone_verification_required" | null;

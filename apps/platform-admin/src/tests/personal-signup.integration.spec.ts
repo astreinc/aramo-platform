@@ -62,7 +62,7 @@ import { generateTestKeyPair } from './test-keys.js';
 // GeoLite2 network country a risk signal only — Architect ruling 2026-10-21, with
 // its evidence stored); §6.2 refusals stored; OTP lifecycle;
 // binding preconditions (owner email == OTP-verified email, PROVISIONED tenant,
-// tenant_owner ONLY, no ExternalIdentity, no subscription, Google pre-pin);
+// tenant_owner ONLY, no ExternalIdentity, no subscription, enforced cohort with no pin — Apple Go-Live R-4);
 // legal-not-approved refusal; invite mode / cap / expiry; held accounts; operator
 // review actions (clear-review never sets phone assurance; while SMS is
 // unavailable it lifts the phone step — PO "Review replaces phone"); the unbound lapse.
@@ -332,12 +332,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(terms.body.documents.map((d: { key: string }) => d.key)).toEqual(APPROVED.map((d) => d.key));
     const done = await complete(p.signup_id);
     expect(done.status).toBe(200);
-    expect(done.body).toEqual({ status: 'PROVISIONED', email: p.email, sign_in: { google: expect.stringContaining('idp=google') }, held: null });
+    expect(done.body).toEqual({ status: 'PROVISIONED', email: p.email, sign_in: { google: expect.stringContaining('idp=google'), apple: expect.stringContaining('idp=apple') }, held: null });
 
     const row = await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } });
     expect(row).toMatchObject({ status: 'PROVISIONED', decision: 'allow', accepted_ip: expect.any(String) });
     const tenant = await db.tenant.findUnique({ where: { id: row!.tenant_id! } });
-    expect(tenant).toMatchObject({ kind: 'PERSONAL', status: 'PROVISIONED', allowed_domain: null, is_active: true, identity_provider: 'google' });
+    // Apple Go-Live R-4 — enrolled in the enforced cohort WITHOUT a pin (allowed {google, apple}).
+    expect(tenant).toMatchObject({ kind: 'PERSONAL', status: 'PROVISIONED', allowed_domain: null, is_active: true, identity_provider: null });
+    expect(await db.tenantIdentityProviderPolicy.findUnique({ where: { tenant_id: tenant!.id } })).toMatchObject({ pinned_at: null });
     expect(await db.tenantDomainClaim.findUnique({ where: { tenant_id: tenant!.id } })).toBeNull();
     const owner = await db.user.findUnique({ where: { id: row!.owner_user_id! } });
     expect(owner?.email).toBe(p.email);
@@ -733,7 +735,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(second.owner_user_id).toBe(first.owner_user_id);
     expect(await db.user.count({ where: { email: p.email as string } })).toBe(1);
     expect((await db.personalSignupRequest.findUnique({ where: { id: first.id } }))?.status).toBe('LAPSED');
-    expect(await db.tenant.findUnique({ where: { id: first.tenant_id! } })).toMatchObject({ is_active: true, status: 'PROVISIONED', kind: 'PERSONAL', identity_provider: 'google' });
+    expect(await db.tenant.findUnique({ where: { id: first.tenant_id! } })).toMatchObject({ is_active: true, status: 'PROVISIONED', kind: 'PERSONAL', identity_provider: null });
     expect(await db.externalIdentity.count({ where: { user_id: first.owner_user_id! } })).toBe(0);
     expect(await module.get(PersonalRiskService).riskStateOf(first.tenant_id!)).toMatchObject({ state: 'clear', restricted_until: null, decided_by: null });
     const acc = (await sql.query(`SELECT count(*)::int AS n FROM subscription."LegalAcceptance" WHERE tenant_id = $1 AND context_ref = $2`, [first.tenant_id, second.id])).rows[0].n;

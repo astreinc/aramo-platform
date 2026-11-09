@@ -45,6 +45,15 @@ const config: ExpoConfig = {
     // Universal Links: /s/*, /d/* and the native auth callback (served by the
     // apple-app-site-association file on the Sign host, directive P-1 / P-6).
     associatedDomains: [`applinks:${SIGN_HOST}`],
+    // Apple Go-Live R-8 / W6: the native Apple sheet (expo-apple-authentication) is used
+    // only to get an authorization code for token revocation at account deletion; sign-in
+    // itself stays the Cognito hosted-UI PKCE flow (R-1).
+    usesAppleSignIn: true,
+    entitlements: {
+      // Apple Go-Live R-9 / W7: App Attest for native signup integrity (production
+      // attestations; the server accepts development ones only when told to).
+      'com.apple.developer.devicecheck.appattest-environment': 'production',
+    },
     infoPlist: {
       // ATS defaults stay in force: no arbitrary loads (directive §12.16).
       NSAppTransportSecurity: { NSAllowsArbitraryLoads: false },
@@ -116,7 +125,9 @@ const config: ExpoConfig = {
         faceIDPermission: 'Aramo Sign uses Face ID to confirm it’s you before you finish signing.',
       },
     ],
-    ['expo-notifications', {}],
+    // Apple Go-Live R-10 / W7: release builds register with the production APNs gateway.
+    ['expo-notifications', { mode: 'production' }],
+    'expo-apple-authentication',
     [
       'react-native-document-scanner-plugin',
       { cameraPermission: 'Aramo Sign uses the camera to scan documents you choose to send.' },

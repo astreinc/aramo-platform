@@ -121,6 +121,7 @@
     "apps/sign-service/src/app/me/signature/saved-signature.controller.ts": "AP",
     "apps/sign-service/src/app/me/stats/sign-me-signing-stats.controller.ts": "AP",
     "apps/sign-service/src/app/me/notifications/sign-me-notifications.controller.ts": "AP",
+    "apps/sign-service/src/app/me/apple/sign-apple-revoke.controller.ts": "AP",
     "apps/sign-service/src/app/privacy/sign-privacy-request.controller.ts": "AP",
     "apps/sign-service/src/app/privacy/sign-privacy-public.controller.ts": "PZ",
     "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts": "SS",
@@ -150,6 +151,7 @@
     "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",
+    "libs/auth-core/src/lib/account-link.controller.ts": "SS",
     "libs/auth-core/src/lib/auth.controller.ts": "SS",
     "libs/auth-core/src/lib/jwks.controller.ts": "SS",
     "libs/auth-core/src/lib/native-auth.controller.ts": "SS",
@@ -257,6 +259,11 @@
     {
       "method": "POST",
       "path": "/v1/sign/billing/webhook/stripe",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/sign/me/apple/revoke/callback",
       "class": "XP"
     },
     {

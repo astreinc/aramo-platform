@@ -204,6 +204,8 @@ export const SUBPROCESSOR_LISTS: readonly SubprocessorList[] = [
       { name: 'Cloudflare', purpose: 'Robot check on the signup page', location: 'Global' },
       { name: 'Google', purpose: 'Sign-in with Google (web and mobile app)', location: "The person's own Google account" },
       { name: 'Microsoft', purpose: 'Sign-in with Microsoft for organizations (web and mobile app)', location: "The organization's own Microsoft account" },
+      // Apple Go-Live R-13 — Sign in with Apple (the in-force 2026-10-22 list is a published list and stays unchanged).
+      { name: 'Apple', purpose: 'Sign in with Apple (web and mobile app)', location: "The person's own Apple Account" },
       {
         name: 'Apple',
         purpose: 'Apple Push Notification service: delivers notifications to iPhones running the Aramo Sign app, when the user allows notifications',
@@ -220,6 +222,7 @@ export const SUBPROCESSOR_LISTS: readonly SubprocessorList[] = [
     ],
     pending_review: [
       'Apple: exact legal entity and region (CD-08)',
+      'Apple: the Sign in with Apple row (Apple Go-Live R-13)',
       'Google Firebase Cloud Messaging: region',
       "Microsoft: confirm the row (1.0 §7 names Microsoft; the 2026-10-22 page does not) and its location wording",
     ],

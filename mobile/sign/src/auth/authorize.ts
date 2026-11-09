@@ -8,10 +8,27 @@ import {
 } from '../config/env';
 import { safeEqual } from './pkce';
 
-export type Provider = 'google' | 'microsoft';
+export type Provider = 'google' | 'microsoft' | 'apple';
 
-/** Cognito `identity_provider` names, matching the browser flow (auth.controller mapIdpHint). */
-const COGNITO_IDP: Record<Provider, string> = { google: 'Google', microsoft: 'microsoft' };
+/**
+ * Cognito `identity_provider` names, matching the browser flow (auth.controller mapIdpHint).
+ * Apple Go-Live R-1: Apple is one more Cognito provider (`SignInWithApple`), not a new flow.
+ */
+export const COGNITO_IDP: Record<Provider, string> = {
+  google: 'Google',
+  microsoft: 'microsoft',
+  apple: 'SignInWithApple',
+};
+
+export const PROVIDER_NAMES: Record<Provider, string> = {
+  google: 'Google',
+  microsoft: 'Microsoft',
+  apple: 'Apple',
+};
+
+export function isProvider(v: unknown): v is Provider {
+  return v === 'google' || v === 'microsoft' || v === 'apple';
+}
 
 export interface AuthorizeParams {
   readonly cognitoDomain: string;
@@ -38,10 +55,11 @@ export function buildAuthorizeUrl(p: AuthorizeParams): string {
     ['code_challenge', p.codeChallenge],
     ['code_challenge_method', 'S256'],
     ['identity_provider', COGNITO_IDP[p.provider]],
-    // Forwarded by Cognito managed login to Microsoft/Google: always show their
-    // account picker, so a browser session is offered but never used silently.
-    ['prompt', 'select_account'],
   ];
+  // Forwarded by Cognito managed login to Microsoft/Google: always show their account
+  // picker, so a browser session is offered but never used silently. Apple has no such
+  // parameter and always asks (Apple Go-Live W4).
+  if (p.provider !== 'apple') q.push(['prompt', 'select_account']);
   return `https://${p.cognitoDomain}/oauth2/authorize?${q.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')}`;
 }
 

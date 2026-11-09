@@ -24,8 +24,10 @@ export const SCHEME_CALLBACK = 'aramosign://auth/callback';
 export interface FakeIdentity {
   sub: string;
   email: string;
-  // Federated provider ('google' | 'microsoft'); rides `identities[].providerName`.
-  idp: 'google' | 'microsoft' | null;
+  // Federated provider ('google' | 'microsoft' | 'apple' — Apple Go-Live R-1);
+  // rides `identities[].providerName` as the Cognito name (Google / microsoft /
+  // SignInWithApple).
+  idp: 'google' | 'microsoft' | 'apple' | null;
 }
 
 interface IssuedCode {
@@ -99,7 +101,7 @@ export class FakeCognito implements NativeCodeExchange {
       token_use: 'id',
       ...(issued.nonce !== null ? { nonce: issued.nonce } : {}),
       ...(issued.identity.idp !== null
-        ? { identities: [{ providerName: issued.identity.idp === 'google' ? 'Google' : 'microsoft' }] }
+        ? { identities: [{ providerName: issued.identity.idp === 'google' ? 'Google' : issued.identity.idp === 'apple' ? 'SignInWithApple' : 'microsoft' }] }
         : {}),
     };
     const jwk = await this.jwk;

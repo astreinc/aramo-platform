@@ -43,6 +43,21 @@ export type { SignInErrorCopy, SignInPageProps } from './auth/SignInPage';
 export { configureAuthConsumer, getAuthConsumer, configureAppBasePath, getAppBasePath, appPath } from './auth/consumer';
 export { hasScope } from './auth/scopes';
 export { RouteGuard } from './auth/RouteGuard';
+// Apple Go-Live A1 — proven account linking (pending link, email code, Sign-in methods).
+export {
+  FEDERATED_IDPS,
+  PROVIDER_NAME,
+  fetchSignInMethods,
+  isFederatedIdp,
+  linkProviderUrl,
+  linkRefusalMessage,
+  parseLinkFragment,
+  removeSignInMethod,
+  startLinkEmail,
+  verifyLinkEmail,
+} from './auth/link';
+export type { LinkEmailFailure, LinkEmailVerifyResult, PendingLink, SignInMethod } from './auth/link';
+export { AppleLogo, GoogleLogo, MicrosoftLogo, ProviderButton } from './auth/ProviderButton';
 
 // components (the existing components/index.ts barrel also side-effect-
 // imports components.css)

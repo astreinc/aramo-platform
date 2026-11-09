@@ -52,10 +52,16 @@ export const SIGNUP_COPY = {
   pilotFull: 'Personal accounts are full right now. Try again later.',
   rateLimited: 'Too many attempts. Wait a few minutes and try again.',
   integrityFailed: 'We couldn’t check this device with Google Play. Try again.',
+  // Apple Go-Live W5: no "Google Play" on iOS (App Attest).
+  integrityFailedIos: 'We couldn’t check this device. Try again.',
   generic: 'Something went wrong. Try again.',
   privacy: 'We use your details as described in our Privacy Notice.',
   phoneHelp: 'Used only to verify your account and keep it secure — never for marketing.',
-  emailHelp: 'Gmail, Outlook.com, Yahoo and similar. You’ll sign in with Google for this address.',
+  emailHelp:
+    'Gmail, Outlook.com, Yahoo and similar. You’ll sign in with Google or Apple for this address.',
+  // Apple Go-Live R-5: the address Apple shared (real or Hide My Email) is locked.
+  applePrefilled:
+    'We filled in the email Apple shared. We’ll still send a code to it to confirm it’s yours.',
   maxmind:
     'This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.',
   reviewTitle: 'We’re reviewing your account…',
@@ -69,17 +75,23 @@ export const SIGNUP_COPY = {
     'Your email is confirmed, but we can’t create personal accounts yet. Please try again later.',
   expiredTitle: 'This signup has expired',
   expiredBody: 'Start again and we’ll send you a new code.',
-  emailTaken: 'This email already has an Aramo account. Sign in with Google instead.',
+  emailTaken: 'This email already has an Aramo account. Sign in instead.',
   stillCreating: 'Your account is still being created. Try again in a moment.',
   doneTitle: 'Your account is ready.',
-  doneBody: (email: string) => `Sign in with the Google account for ${email}.`,
-  doneInactive: 'Your account stays inactive until you sign in with that Google account.',
+  doneBody: (email: string) => `Sign in with Google or Apple. Use the account for ${email}.`,
+  doneBodyApple: 'Sign in with Apple to finish. Use the same Apple ID.',
+  doneInactive: 'Your account stays inactive until you sign in.',
   gmail:
     'Sign-in must match this address exactly. If Google shows your address with dots (for example pat.lee@gmail.com), it must be entered the same way here.',
   phoneUnavailable:
     'Phone verification is temporarily unavailable. You can still create your account.',
   phoneSendFailed: 'We couldn’t send a code to your phone',
 } as const;
+
+/** The device-check failure in the platform's words (no "Google Play" on iOS). */
+export function integrityFailedCopy(client: 'android' | 'ios'): string {
+  return client === 'ios' ? SIGNUP_COPY.integrityFailedIos : SIGNUP_COPY.integrityFailed;
+}
 
 export const HELD_COPY: Record<Exclude<Held, null>, { title: string; note: string }> = {
   review: {

@@ -26,6 +26,7 @@ import { PortalLoginService } from '@aramo/auth-core';
 import { RefreshOrchestratorService } from '@aramo/auth-core';
 import { SessionOrchestratorService } from '@aramo/auth-core';
 import { CognitoNativeCodeExchangeAdapter, NATIVE_CODE_EXCHANGE, NativeAuthController, NativeAuthPagesController, NativeAuthService } from '@aramo/auth-core';
+import { ACCOUNT_LINK_DIRECTORY, AccountLinkController, AccountLinkService, LinkEmailBudget } from '@aramo/auth-core';
 import { JwtAuthGuard } from '@aramo/auth';
 
 import { PortalIdentityRepositoryAdapter } from './portal-identity-repository.adapter.js';
@@ -34,6 +35,7 @@ import { IdentityPrincipalDirectoryAdapter } from './identity-principal-director
 import { PortalDeferredEligibilityAdapter } from './portal-deferred-eligibility.adapter.js';
 import { IdentityHostContextAdapter } from './identity-host-context.adapter.js';
 import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
+import { IdentityAccountLinkAdapter } from './identity-account-link.adapter.js';
 
 // PR-8.0a-Reground apps/auth-service local module. Wires the orchestrators,
 // crypto helpers, and HTTP controllers; consumes IdentityCoreModule (for user/
@@ -66,7 +68,10 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
   // AUTH-SIGNIN-1 Amendment M-A1 — NativeAuthController (Aramo Sign mobile).
   // NativeAuthPagesController FIRST: its GET /auth/native/callback must win over
   // AuthController's GET /auth/:consumer/callback (Express matches in order).
-  controllers: [NativeAuthPagesController, AuthController, JwksController, PortalAuthController, NativeAuthController],
+  // Apple Go-Live A1 — AccountLinkController (/auth/link/email/*, /auth/me/sign-in-methods):
+  // its paths have more segments than AuthController's /auth/:consumer/<action>, so
+  // no route of either can shadow the other.
+  controllers: [NativeAuthPagesController, AuthController, JwksController, PortalAuthController, NativeAuthController, AccountLinkController],
   providers: [
     PkceService,
     JwtIssuerService,
@@ -109,6 +114,12 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     NativeAuthService,
     JwtAuthGuard,
     { provide: NATIVE_CODE_EXCHANGE, useClass: CognitoNativeCodeExchangeAdapter },
+    // Apple Go-Live Amendment A1 — proven account linking. The port is bound to the
+    // identity-backed adapter (the only code here importing IdentityLinkService);
+    // the orchestrators take AccountLinkService optionally.
+    { provide: ACCOUNT_LINK_DIRECTORY, useClass: IdentityAccountLinkAdapter },
+    AccountLinkService,
+    LinkEmailBudget,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

@@ -37,7 +37,8 @@ export interface paths {
          * @description AUTH-SIGNIN-1 §3.1.2. Anonymous, host-derived, no PII. Returns the
          *     federated providers the Aramo sign-in page shows on the request host:
          *     a host whose tenant pins a provider returns only that provider;
-         *     every other host returns both. UI only — authorization is enforced at
+         *     every other host returns all three (microsoft, google, apple — Apple
+         *     Go-Live R-2). UI only — authorization is enforced at
          *     the callback, and a failed call falls back to showing both buttons.
          */
         get: operations["getLoginOptions"];
@@ -66,10 +67,163 @@ export interface paths {
          *     resolved server-side per request, not carried in the token.
          *     Per directive §8.2. Anonymous (the Cognito `code` is the
          *     auth credential).
+         *
+         *     Apple Go-Live / Amendment A1 additions (all 302 redirects on a validated host):
+         *     - A denial `user_not_provisioned` or `idp_identity_conflict` for a known
+         *       provider writes a pending link (A1 L-2) and redirects to
+         *       `/login?error=<code>&reason=<reason>&consumer=<c>#link=<handle>&idp=<idp>`.
+         *       The handle is in the fragment only. No session is created.
+         *     - Signup intent (R-5): see `intent` on /login.
+         *     - Path 1 (A1 L-4, started by GET /auth/{consumer}/link): the new identity
+         *       is attached to the signed-in principal and the browser returns to
+         *       `<return>?linked=<idp>` or `<return>?link_error=<reason>`. No session is
+         *       minted by this callback.
          */
         get: operations["completeLogin"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/{consumer}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Add a sign-in provider to the signed-in account (A1 path 1)
+         * @description Apple Go-Live Amendment A1 L-4, proof (c). Requires this consumer's
+         *     browser access cookie. Starts the hosted UI for the chosen provider with
+         *     the signed-in principal sealed into the state cookie. The callback
+         *     attaches the new identity to that principal (A1 L-5 policy) and redirects
+         *     to `<return>?linked=<idp>` or `<return>?link_error=<reason>`
+         *     (`identity_already_linked`, `idp_already_linked`,
+         *     `idp_not_permitted_for_tenant`, `user_inactive`, or a token rejection).
+         *     The existing session is unchanged.
+         */
+        get: operations["startSignInMethodLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/link/email/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a code to the account email to prove it (A1 proof b)
+         * @description Apple Go-Live Amendment A1 L-4 (b). Always 202 `{}` with the same answer
+         *     whatever happened (no enumeration oracle). When an active user with that
+         *     normalized email exists (or, in the conflict case, the matched user,
+         *     ignoring `email`), a 6-digit code is emailed: valid 10 minutes, 5
+         *     attempts, resend after 60 s, at most 5 sends a day per handle and per
+         *     account, plus a per-IP budget.
+         */
+        post: operations["startLinkEmailProof"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/link/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter the emailed code; attaches the pending identity (A1 proof b)
+         * @description On success the pending identity is attached to the proven account and
+         *     a security email is sent to it. The client then restarts sign-in with
+         *     the new provider, which now resolves by subject.
+         */
+        post: operations["verifyLinkEmailProof"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me/sign-in-methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's sign-in methods
+         * @description Apple Go-Live Amendment A1 L-4. A native `sign` Bearer token (live
+         *     device session) or the browser access cookie of `consumer`. Links with a
+         *     recorded provider, oldest first.
+         */
+        get: operations["listSignInMethods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me/sign-in-methods/{idp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a sign-in method
+         * @description Removes the caller's links for `idp`, writes
+         *     `identity.external_identity.unlinked` and emails the account. The last
+         *     remaining method is never removed.
+         */
+        delete: operations["removeSignInMethod"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/native/sign/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a sign-in provider from the app (A1 path 1, native)
+         * @description Apple Go-Live Amendment A1 L-4, proof (c). A native `sign` Bearer token
+         *     with a live device session; the body is the /auth/native/sign/token body
+         *     (the code from a new PKCE flow for the provider being added). The same
+         *     code checks run (redirect binding, single-use ledger, audience, nonce);
+         *     the identity is attached to the caller. No device session is created.
+         */
+        post: operations["nativeSignLinkProvider"];
         delete?: never;
         options?: never;
         head?: never;
@@ -184,7 +338,7 @@ export interface paths {
          *     redirect URI, is refused. It exchanges the code with Cognito (native
          *     client id, no secret), validates the ID token (issuer, audience = the
          *     native client, nonce), runs the same principal resolution as the
-         *     browser callback (provider pin — Personal is Google-only — no JIT,
+         *     browser callback (provider pin — Personal uses Google or Apple — no JIT,
          *     IC-1, capability `sign`), creates a server-owned device session and
          *     returns the existing Aramo access JWT (900 s, consumer `sign`) with the
          *     claims `client: "native"` and `dsid`.
@@ -457,6 +611,11 @@ export interface components {
             /** @description The nonce sent on the authorize request; must equal the ID token's. */
             nonce: string;
             device: components["schemas"]["NativeDevice"];
+            /**
+             * @description Apple Go-Live A1 L-4 proof (a) — the pending-link handle from a
+             *     denied sign-in; attached to the principal this sign-in resolves.
+             */
+            link_handle?: string;
         };
         NativeRefreshTokenRequest: {
             refresh_token: string;
@@ -475,6 +634,29 @@ export interface components {
              * @description The server-owned device session (equals the access token's `dsid`).
              */
             device_session_id: string;
+            /**
+             * @description Apple Go-Live A1 L-4 — present only when `link_handle` was sent and
+             *     the attach was refused (`link_expired`, `identity_already_linked`,
+             *     `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`).
+             *     The sign-in itself succeeded.
+             */
+            link_refused?: string;
+        };
+        LinkedResponse: {
+            /** @constant */
+            linked: true;
+            /** @enum {string} */
+            idp: "google" | "microsoft" | "apple";
+        };
+        SignInMethod: {
+            /** @enum {string} */
+            idp: "google" | "microsoft" | "apple";
+            email_snapshot: string | null;
+            /** Format: date-time */
+            linked_at: string;
+        };
+        SignInMethodList: {
+            items: components["schemas"]["SignInMethod"][];
         };
         NativeSessionItem: {
             /** Format: uuid */
@@ -534,12 +716,31 @@ export interface operations {
                 /**
                  * @description AUTH-SIGNIN-1 §3.1.1 — the provider button chosen on the Aramo
                  *     sign-in page. Closed allowlist, case-insensitive: `google` maps to the
-                 *     Cognito provider `Google`, `microsoft` to `microsoft`; any other value
-                 *     is ignored and never forwarded. A tenant's pinned provider wins over
-                 *     this hint. The hint is UI routing only — provider policy is enforced
-                 *     at the callback.
+                 *     Cognito provider `Google`, `microsoft` to `microsoft`, `apple` to
+                 *     `SignInWithApple` (Apple Go-Live R-1); any other value is ignored and
+                 *     never forwarded. A tenant's pinned provider wins over this hint (the
+                 *     pinned Aramo value is mapped to the Cognito name the same way). The
+                 *     hint is UI routing only — provider policy is enforced at the callback.
                  */
-                idp?: "google" | "microsoft";
+                idp?: "google" | "microsoft" | "apple";
+                /**
+                 * @description Apple Go-Live R-5 (web). `signup`: when the callback finds no account
+                 *     (`user_not_provisioned`), it redirects (302) to
+                 *     `/signup/personal#apple=<base64url(JSON {email, given_name, family_name})>`
+                 *     on the same host instead of /login. The data rides only in the URL
+                 *     fragment. No session and no pending link are created. Any other value
+                 *     is ignored.
+                 */
+                intent?: "signup";
+                /**
+                 * @description Apple Go-Live Amendment A1 L-4 proof (a). The pending-link handle from
+                 *     the /login fragment. Sealed into the encrypted state cookie (never
+                 *     forwarded or logged). After this sign-in resolves user U normally,
+                 *     the pending identity is attached to U. The landing URL carries
+                 *     `linked=<idp>` or `link_refused=<reason>`; the sign-in succeeds either
+                 *     way. A malformed handle is ignored.
+                 */
+                link?: string;
             };
             header?: never;
             path: {
@@ -602,7 +803,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        providers: ("microsoft" | "google")[];
+                        providers: ("microsoft" | "google" | "apple")[];
                     };
                 };
             };
@@ -668,6 +869,263 @@ export interface operations {
              *     failure, DB write failure.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startSignInMethodLink: {
+        parameters: {
+            query: {
+                idp: "google" | "microsoft" | "apple";
+                /** @description Same-host relative path inside the consumer's app (sanitized like `return_to`); default the consumer's landing path. */
+                return?: string;
+            };
+            header?: never;
+            path: {
+                consumer: "recruiter" | "ingestion" | "platform" | "sign" | "org";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the Cognito authorize endpoint; sets the state cookie. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `VALIDATION_ERROR` (`invalid_consumer`, `invalid_idp`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `AUTH_REQUIRED` (`session_required`) or `INVALID_TOKEN`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startLinkEmailProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    link_handle: string;
+                    email?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    verifyLinkEmailProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    link_handle: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedResponse"];
+                };
+            };
+            /**
+             * @description `VALIDATION_ERROR`. `error.details.reason`: `code_invalid` (with
+             *     `details.attempts_remaining`), `code_expired`,
+             *     `code_attempts_exceeded`, `link_expired` (unknown, used or expired
+             *     handle).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /**
+             * @description `VALIDATION_ERROR`, attach refused (A1 L-5): `identity_already_linked`,
+             *     `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listSignInMethods: {
+        parameters: {
+            query?: {
+                /** @description Required with the cookie; the consumer the cookie belongs to (never `portal`). */
+                consumer?: "recruiter" | "ingestion" | "platform" | "sign" | "org";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The methods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInMethodList"];
+                };
+            };
+            /** @description `AUTH_REQUIRED` or `INVALID_TOKEN` (incl. `consumer_header_mismatch`, `device_session_revoked`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeSignInMethod: {
+        parameters: {
+            query?: {
+                consumer?: "recruiter" | "ingestion" | "platform" | "sign" | "org";
+            };
+            header?: never;
+            path: {
+                idp: "google" | "microsoft" | "apple";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Same as GET. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `NOT_FOUND` (`sign_in_method_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `VALIDATION_ERROR` (`last_sign_in_method`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    nativeSignLinkProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NativeTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedResponse"];
+                };
+            };
+            /** @description Same as /auth/native/sign/token. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Same as /auth/native/sign/token, plus the Bearer refusals of /auth/native/sign/sessions. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /**
+             * @description `VALIDATION_ERROR`, attach refused: `identity_already_linked`,
+             *     `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -969,6 +1427,9 @@ export interface operations {
              *     `tenant_resolution_ambiguous`), `TENANT_SUSPENDED`, `TENANT_CLOSED`,
              *     `TENANT_CAPABILITY_NOT_ENTITLED` (`consumer_not_entitled`),
              *     `INSUFFICIENT_PERMISSIONS` (`user_not_provisioned`, `user_inactive`).
+             *     Apple Go-Live A1 L-2: for `user_not_provisioned` and
+             *     `idp_identity_conflict` with a known provider, `error.details` also
+             *     carries `idp` and, when a pending link was written, `link_handle`.
              */
             403: {
                 headers: {

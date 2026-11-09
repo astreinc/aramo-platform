@@ -8,7 +8,8 @@
 //   2. No manufactured verification: this trigger NEVER sets
 //      `autoVerifyEmail`. Verified-email evidence comes only from the
 //      provider's own claim, mapped to `email_verified` by the pool's
-//      attribute mapping (Google: email_verified; microsoft: xms_edov).
+//      attribute mapping (Google: email_verified; microsoft: xms_edov;
+//      SignInWithApple: email_verified).
 //   3. With REQUIRE_PROVIDER_EMAIL_VERIFIED=true (default) a first federated
 //      sign-in whose provider did not assert a verified email is refused here,
 //      before any Cognito user is created.
@@ -23,8 +24,10 @@
 
 const REQUIRE_VERIFIED = (process.env.REQUIRE_PROVIDER_EMAIL_VERIFIED ?? 'true').trim().toLowerCase() !== 'false';
 // Federated providers accepted by this pool (exact Cognito provider names,
-// compared case-insensitively). Anything else is refused.
-const ALLOWED_PROVIDERS = (process.env.ALLOWED_PROVIDERS ?? 'Google,microsoft')
+// compared case-insensitively). Anything else is refused. Apple Go-Live R-1:
+// `SignInWithApple` (Cognito userName prefix `signinwithapple_`) joins Google
+// and microsoft.
+const ALLOWED_PROVIDERS = (process.env.ALLOWED_PROVIDERS ?? 'Google,microsoft,SignInWithApple')
   .split(',')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);

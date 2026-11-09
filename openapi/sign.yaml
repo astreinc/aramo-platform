@@ -5646,6 +5646,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  # Apple Go-Live R-8 / W6 — Sign in with Apple token revocation on account deletion (best effort).
+  /v1/sign/me/apple/revoke:
+    post:
+      operationId: revokeSignAppleTokens
+      summary: Revoke the user's Sign in with Apple tokens before account deletion (Apple Go-Live R-8).
+      description: >
+        Apple Go-Live R-8 (App Store guideline 5.1.1(v)). Session (sign consumer) or bearer. The app re-authenticates with
+        Apple directly and sends the one-time authorization code; sign-service exchanges it at appleid.apple.com/auth/token
+        with an ES256 client secret (client_id = the app bundle id for client ios, the Services ID for client web) and
+        revokes the refresh token at /auth/revoke. Best effort: always 202 - an Apple failure, malformed input or an
+        unconfigured service never blocks the deletion. Nothing from Apple is stored; no code or token is logged.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [authorization_code, client]
+              properties:
+                authorization_code: { type: string, maxLength: 1024 }
+                client: { type: string, enum: [ios, web] }
+      responses:
+        '202':
+          description: Accepted (revocation attempted when configured).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/apple/revoke/start:
+    get:
+      operationId: startSignAppleRevoke
+      summary: Start the web/Android Apple re-authentication for token revocation (Apple Go-Live R-8).
+      description: >
+        Session (sign consumer) or bearer. 302 to https://appleid.apple.com/auth/authorize (client_id = the Services ID,
+        response_type code, response_mode form_post, redirect_uri = <Sign origin>/v1/sign/me/apple/revoke/callback,
+        state = an HMAC-signed value binding the user and the return path, valid 10 minutes). When the service is not
+        configured, 302 straight to <return>?apple_revoked=0.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: return
+          in: query
+          required: true
+          description: A same-origin relative path (starts with a single /; no scheme, host, backslash or fragment).
+          schema: { type: string, maxLength: 512 }
+      responses:
+        '302':
+          description: Redirect to Apple authorize (or back to the return path when not configured).
+          headers:
+            Location:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/apple/revoke/callback:
+    post:
+      operationId: completeSignAppleRevoke
+      summary: Apple's form_post return for the web/Android token revocation (Apple Go-Live R-8).
+      description: >
+        No session: a cross-site form_post from appleid.apple.com, so the user and the return path come only from the
+        signed state. A verified, unexpired state → code exchange + revoke → 302 <return>?apple_revoked=1 (0 when Apple
+        fails or the user cancelled). A state that does not verify → 302 /?apple_revoked=0 with no Apple call.
+      tags: [sender]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                state: { type: string }
+                error: { type: string }
+      responses:
+        '302':
+          description: Redirect to the signed return path with apple_revoked=1|0.
+          headers:
+            Location:
+              schema: { type: string }
   /v1/sign/me/notifications:
     get:
       operationId: listSignNotifications
@@ -8650,9 +8744,9 @@ components:
               type: [string, 'null']
             identity_provider:
               type: [string, 'null']
-              enum: [google, microsoft, null]
+              enum: [google, microsoft, apple, null]
               description: >-
-                Sign Mobile B-11 — the federated provider the user signs in with ("Signed in with Google/Microsoft"), from the
+                Sign Mobile B-11 — the federated provider the user signs in with ("Signed in with Google/Microsoft/Apple"; Apple Go-Live W1 adds apple), from the
                 provider recorded on the user's sign-in link (or the enforced pin of the tenant for a link made before
                 providers were recorded). null when not known; never a guess.
         tenant:

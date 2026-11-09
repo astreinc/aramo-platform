@@ -393,6 +393,8 @@ describe('E-7 subprocessor list', () => {
       purpose: 'Apple Push Notification service: delivers notifications to iPhones running the Aramo Sign app, when the user allows notifications',
       note: 'Used only when notifications are switched on.',
     });
+    // Apple Go-Live R-13 — Sign in with Apple joins the proposed list (the in-force list is unchanged).
+    expect(byPurpose('Sign in with Apple')).toMatchObject({ name: 'Apple', purpose: 'Sign in with Apple (web and mobile app)', location: "The person's own Apple Account" });
     expect(byPurpose('Firebase Cloud Messaging')).toMatchObject({
       name: 'Google',
       purpose: 'Firebase Cloud Messaging: delivers notifications to Android phones running the Aramo Sign app, when the user allows notifications',

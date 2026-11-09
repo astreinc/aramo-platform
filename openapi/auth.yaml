@@ -65,13 +65,40 @@ paths:
           description: |
             AUTH-SIGNIN-1 §3.1.1 — the provider button chosen on the Aramo
             sign-in page. Closed allowlist, case-insensitive: `google` maps to the
-            Cognito provider `Google`, `microsoft` to `microsoft`; any other value
-            is ignored and never forwarded. A tenant's pinned provider wins over
-            this hint. The hint is UI routing only — provider policy is enforced
-            at the callback.
+            Cognito provider `Google`, `microsoft` to `microsoft`, `apple` to
+            `SignInWithApple` (Apple Go-Live R-1); any other value is ignored and
+            never forwarded. A tenant's pinned provider wins over this hint (the
+            pinned Aramo value is mapped to the Cognito name the same way). The
+            hint is UI routing only — provider policy is enforced at the callback.
           schema:
             type: string
-            enum: [google, microsoft]
+            enum: [google, microsoft, apple]
+        - name: intent
+          in: query
+          required: false
+          description: |
+            Apple Go-Live R-5 (web). `signup`: when the callback finds no account
+            (`user_not_provisioned`), it redirects (302) to
+            `/signup/personal#apple=<base64url(JSON {email, given_name, family_name})>`
+            on the same host instead of /login. The data rides only in the URL
+            fragment. No session and no pending link are created. Any other value
+            is ignored.
+          schema:
+            type: string
+            enum: [signup]
+        - name: link
+          in: query
+          required: false
+          description: |
+            Apple Go-Live Amendment A1 L-4 proof (a). The pending-link handle from
+            the /login fragment. Sealed into the encrypted state cookie (never
+            forwarded or logged). After this sign-in resolves user U normally,
+            the pending identity is attached to U. The landing URL carries
+            `linked=<idp>` or `link_refused=<reason>`; the sign-in succeeds either
+            way. A malformed handle is ignored.
+          schema:
+            type: string
+            pattern: '^[A-Za-z0-9_-]{43}$'
       responses:
         '302':
           description: Redirect to Cognito authorize endpoint; sets aramo_pkce_state cookie.
@@ -113,7 +140,8 @@ paths:
         AUTH-SIGNIN-1 §3.1.2. Anonymous, host-derived, no PII. Returns the
         federated providers the Aramo sign-in page shows on the request host:
         a host whose tenant pins a provider returns only that provider;
-        every other host returns both. UI only — authorization is enforced at
+        every other host returns all three (microsoft, google, apple — Apple
+        Go-Live R-2). UI only — authorization is enforced at
         the callback, and a failed call falls back to showing both buttons.
       security: []
       parameters:
@@ -138,7 +166,7 @@ paths:
                     minItems: 1
                     items:
                       type: string
-                      enum: [microsoft, google]
+                      enum: [microsoft, google, apple]
         '400':
           description: Invalid `consumer` path parameter
           content:
@@ -160,6 +188,17 @@ paths:
         resolved server-side per request, not carried in the token.
         Per directive §8.2. Anonymous (the Cognito `code` is the
         auth credential).
+
+        Apple Go-Live / Amendment A1 additions (all 302 redirects on a validated host):
+        - A denial `user_not_provisioned` or `idp_identity_conflict` for a known
+          provider writes a pending link (A1 L-2) and redirects to
+          `/login?error=<code>&reason=<reason>&consumer=<c>#link=<handle>&idp=<idp>`.
+          The handle is in the fragment only. No session is created.
+        - Signup intent (R-5): see `intent` on /login.
+        - Path 1 (A1 L-4, started by GET /auth/{consumer}/link): the new identity
+          is attached to the signed-in principal and the browser returns to
+          `<return>?linked=<idp>` or `<return>?link_error=<reason>`. No session is
+          minted by this callback.
       security: []
       parameters:
         - name: consumer
@@ -233,6 +272,267 @@ paths:
             cognito_exchange_failed, cognito_verification_failed,
             user_not_provisioned, no_active_tenant, JWT signing
             failure, DB write failure.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/{consumer}/link:
+    get:
+      operationId: startSignInMethodLink
+      tags: [Auth]
+      summary: Add a sign-in provider to the signed-in account (A1 path 1)
+      description: |
+        Apple Go-Live Amendment A1 L-4, proof (c). Requires this consumer's
+        browser access cookie. Starts the hosted UI for the chosen provider with
+        the signed-in principal sealed into the state cookie. The callback
+        attaches the new identity to that principal (A1 L-5 policy) and redirects
+        to `<return>?linked=<idp>` or `<return>?link_error=<reason>`
+        (`identity_already_linked`, `idp_already_linked`,
+        `idp_not_permitted_for_tenant`, `user_inactive`, or a token rejection).
+        The existing session is unchanged.
+      security:
+        - CookieAccessAuth: []
+      parameters:
+        - name: consumer
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [recruiter, ingestion, platform, sign, org]
+        - name: idp
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [google, microsoft, apple]
+        - name: return
+          in: query
+          required: false
+          description: Same-host relative path inside the consumer's app (sanitized like `return_to`); default the consumer's landing path.
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to the Cognito authorize endpoint; sets the state cookie.
+        '400':
+          description: '`VALIDATION_ERROR` (`invalid_consumer`, `invalid_idp`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: '`AUTH_REQUIRED` (`session_required`) or `INVALID_TOKEN`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/link/email/start:
+    post:
+      operationId: startLinkEmailProof
+      tags: [Auth]
+      summary: Send a code to the account email to prove it (A1 proof b)
+      description: |
+        Apple Go-Live Amendment A1 L-4 (b). Always 202 `{}` with the same answer
+        whatever happened (no enumeration oracle). When an active user with that
+        normalized email exists (or, in the conflict case, the matched user,
+        ignoring `email`), a 6-digit code is emailed: valid 10 minutes, 5
+        attempts, resend after 60 s, at most 5 sends a day per handle and per
+        account, plus a per-IP budget.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [link_handle]
+              properties:
+                link_handle:
+                  type: string
+                email:
+                  type: string
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+
+  /auth/link/email/verify:
+    post:
+      operationId: verifyLinkEmailProof
+      tags: [Auth]
+      summary: Enter the emailed code; attaches the pending identity (A1 proof b)
+      description: |
+        On success the pending identity is attached to the proven account and
+        a security email is sent to it. The client then restarts sign-in with
+        the new provider, which now resolves by subject.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [link_handle, code]
+              properties:
+                link_handle:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Linked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedResponse'
+        '400':
+          description: |
+            `VALIDATION_ERROR`. `error.details.reason`: `code_invalid` (with
+            `details.attempts_remaining`), `code_expired`,
+            `code_attempts_exceeded`, `link_expired` (unknown, used or expired
+            handle).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `VALIDATION_ERROR`, attach refused (A1 L-5): `identity_already_linked`,
+            `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/me/sign-in-methods:
+    get:
+      operationId: listSignInMethods
+      tags: [Auth]
+      summary: The caller's sign-in methods
+      description: |
+        Apple Go-Live Amendment A1 L-4. A native `sign` Bearer token (live
+        device session) or the browser access cookie of `consumer`. Links with a
+        recorded provider, oldest first.
+      security:
+        - NativeBearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: consumer
+          in: query
+          required: false
+          description: Required with the cookie; the consumer the cookie belongs to (never `portal`).
+          schema:
+            type: string
+            enum: [recruiter, ingestion, platform, sign, org]
+      responses:
+        '200':
+          description: The methods.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInMethodList'
+        '401':
+          description: '`AUTH_REQUIRED` or `INVALID_TOKEN` (incl. `consumer_header_mismatch`, `device_session_revoked`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/me/sign-in-methods/{idp}:
+    delete:
+      operationId: removeSignInMethod
+      tags: [Auth]
+      summary: Remove a sign-in method
+      description: |
+        Removes the caller's links for `idp`, writes
+        `identity.external_identity.unlinked` and emails the account. The last
+        remaining method is never removed.
+      security:
+        - NativeBearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: idp
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, microsoft, apple]
+        - name: consumer
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [recruiter, ingestion, platform, sign, org]
+      responses:
+        '204':
+          description: Removed.
+        '401':
+          description: Same as GET.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: '`NOT_FOUND` (`sign_in_method_not_found`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`VALIDATION_ERROR` (`last_sign_in_method`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/native/sign/link:
+    post:
+      operationId: nativeSignLinkProvider
+      tags: [Auth]
+      summary: Add a sign-in provider from the app (A1 path 1, native)
+      description: |
+        Apple Go-Live Amendment A1 L-4, proof (c). A native `sign` Bearer token
+        with a live device session; the body is the /auth/native/sign/token body
+        (the code from a new PKCE flow for the provider being added). The same
+        code checks run (redirect binding, single-use ledger, audience, nonce);
+        the identity is attached to the caller. No device session is created.
+      security:
+        - NativeBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeTokenRequest'
+      responses:
+        '200':
+          description: Linked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedResponse'
+        '400':
+          description: Same as /auth/native/sign/token.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: Same as /auth/native/sign/token, plus the Bearer refusals of /auth/native/sign/sessions.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            `VALIDATION_ERROR`, attach refused: `identity_already_linked`,
+            `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`.
           content:
             application/json:
               schema:
@@ -491,7 +791,7 @@ paths:
         redirect URI, is refused. It exchanges the code with Cognito (native
         client id, no secret), validates the ID token (issuer, audience = the
         native client, nonce), runs the same principal resolution as the
-        browser callback (provider pin — Personal is Google-only — no JIT,
+        browser callback (provider pin — Personal uses Google or Apple — no JIT,
         IC-1, capability `sign`), creates a server-owned device session and
         returns the existing Aramo access JWT (900 s, consumer `sign`) with the
         claims `client: "native"` and `dsid`.
@@ -547,6 +847,9 @@ paths:
             `tenant_resolution_ambiguous`), `TENANT_SUSPENDED`, `TENANT_CLOSED`,
             `TENANT_CAPABILITY_NOT_ENTITLED` (`consumer_not_entitled`),
             `INSUFFICIENT_PERMISSIONS` (`user_not_provisioned`, `user_inactive`).
+            Apple Go-Live A1 L-2: for `user_not_provisioned` and
+            `idp_identity_conflict` with a known provider, `error.details` also
+            carries `idp` and, when a pending link was written, `link_handle`.
           content:
             application/json:
               schema:
@@ -978,6 +1281,12 @@ components:
           description: The nonce sent on the authorize request; must equal the ID token's.
         device:
           $ref: '#/components/schemas/NativeDevice'
+        link_handle:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{43}$'
+          description: |
+            Apple Go-Live A1 L-4 proof (a) — the pending-link handle from a
+            denied sign-in; attached to the principal this sign-in resolves.
 
     NativeRefreshTokenRequest:
       type: object
@@ -1010,6 +1319,49 @@ components:
           type: string
           format: uuid
           description: The server-owned device session (equals the access token's `dsid`).
+        link_refused:
+          type: string
+          description: |
+            Apple Go-Live A1 L-4 — present only when `link_handle` was sent and
+            the attach was refused (`link_expired`, `identity_already_linked`,
+            `idp_already_linked`, `idp_not_permitted_for_tenant`, `user_inactive`).
+            The sign-in itself succeeded.
+
+    LinkedResponse:
+      type: object
+      additionalProperties: false
+      required: [linked, idp]
+      properties:
+        linked:
+          type: boolean
+          const: true
+        idp:
+          type: string
+          enum: [google, microsoft, apple]
+
+    SignInMethod:
+      type: object
+      additionalProperties: false
+      required: [idp, email_snapshot, linked_at]
+      properties:
+        idp:
+          type: string
+          enum: [google, microsoft, apple]
+        email_snapshot:
+          type: [string, 'null']
+        linked_at:
+          type: string
+          format: date-time
+
+    SignInMethodList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignInMethod'
 
     NativeSessionItem:
       type: object

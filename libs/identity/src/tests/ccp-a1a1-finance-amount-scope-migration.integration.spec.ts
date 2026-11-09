@@ -107,12 +107,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A1 Amendment 
   });
 
   it('A1A1-M-0 registration — after CCP-A9, followed by the CCP-A1 Amendment A2 payment request scope (then only M-A7 privacy requests); one statement, no $$', () => {
-    // M-A7 privacy requests, then Feature-Parity §1.21 Sign custom roles, follow (neither is CCP).
-    expect(IDENTITY_MIGRATIONS.at(-4)).toBe(MIGRATION);
-    expect(IDENTITY_MIGRATIONS.at(-3)).toBe('libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql');
-    expect(IDENTITY_MIGRATIONS.at(-2)).toBe('libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql');
-    expect(IDENTITY_MIGRATIONS.at(-1)).toBe('libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql');
-    expect(IDENTITY_MIGRATIONS.at(-5)).toBe('libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql');
+    // M-A7 privacy requests, then Feature-Parity §1.21 Sign custom roles, follow (neither is CCP),
+    // then the three Apple Platform Go-Live identity migrations (at(-3)..at(-1)).
+    expect(IDENTITY_MIGRATIONS.at(-7)).toBe(MIGRATION);
+    expect(IDENTITY_MIGRATIONS.at(-6)).toBe('libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-5)).toBe('libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-4)).toBe('libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-8)).toBe('libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql');
     const sql = migrationSql();
     expect(sql).not.toContain('$$');
     expect(sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/).map((x) => x.trim()).filter((x) => x.length > 0)).toHaveLength(1);

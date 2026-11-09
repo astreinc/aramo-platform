@@ -213,6 +213,13 @@ describe('B-11 — user.identity_provider on the sender context', () => {
     expect(view.user).toEqual({ id: BROWSER.sub, email: 'a@co.test', display_name: 'Ann', identity_provider: 'microsoft' });
   });
 
+  // Apple Go-Live W1 — "Signed in with Apple".
+  it('apple: the one recorded provider, or the enforced pin', async () => {
+    expect((await context({ recordedIdpsOf: async () => ['apple'], policyOf: policy(false, null) }).context(BROWSER, 'r')).user.identity_provider).toBe('apple');
+    expect((await context({ recordedIdpsOf: async () => [], policyOf: policy(true, 'apple') }).context(BROWSER, 'r')).user.identity_provider).toBe('apple');
+    expect((await context({ recordedIdpsOf: async () => ['google', 'apple'], policyOf: policy(true, 'google') }).context(BROWSER, 'r')).user.identity_provider).toBeNull();
+  });
+
   it('no recorded provider: the pin of a tenant that enforces it; otherwise null', async () => {
     expect((await context({ recordedIdpsOf: async () => [], policyOf: policy(true, 'google') }).context(BROWSER, 'r')).user.identity_provider).toBe('google');
     expect((await context({ recordedIdpsOf: async () => [], policyOf: policy(false, 'google') }).context(BROWSER, 'r')).user.identity_provider).toBeNull();

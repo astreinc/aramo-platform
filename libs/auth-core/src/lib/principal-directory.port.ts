@@ -26,7 +26,7 @@ export interface ResolveSessionInput {
   host_class?: HostBindingClass | null;
   context_id?: string | null;
   // AUTH-SIGNIN-1 R1 — the federated provider that authenticated the token
-  // ('google' | 'microsoft' | 'ambiguous' | null). The adapter applies the
+  // ('google' | 'microsoft' | 'apple' | 'ambiguous' | null). The adapter applies the
   // provider policy (no cross-provider merge; the enforced-pin cohort).
   idp?: string | null;
   // AUTH-SIGNIN-1 Amendment M-A1 §3.7 — the client kind. 'native' (the Aramo Sign

@@ -7,3 +7,9 @@
 openapi/ats.yaml:
   operation-2xx-response:
     - '#/paths/~1v1~1integrations~1esignature~1{provider}~1callback/get/responses'
+# Apple Go-Live R-8 / W6 — the web/Android Apple revocation start and callback are browser
+# redirect targets: 302 is their only success response (same reason as above).
+openapi/sign.yaml:
+  operation-2xx-response:
+    - '#/paths/~1v1~1sign~1me~1apple~1revoke~1start/get/responses'
+    - '#/paths/~1v1~1sign~1me~1apple~1revoke~1callback/post/responses'

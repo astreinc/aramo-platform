@@ -54,11 +54,19 @@ export function LoginPage() {
         ) : null}
       </div>
     ) : undefined;
+  // Apple Go-Live A1 L-3 path 2 — "Create a new account" on the no-account
+  // pending-link panel: the Personal signup, which starts with Continue with Apple (R-5).
+  const newAccountAction = personal ? (
+    <Link className="aramo-auth__btn" to="/signup/personal" data-testid="link-create-account">
+      Create a new account
+    </Link>
+  ) : undefined;
   return (
     <SignInPage
       product={AUTH_PRODUCTS.sign}
       signerNote
       accountLinks={accountLinks}
+      {...(newAccountAction !== undefined ? { newAccountAction } : {})}
     />
   );
 }

@@ -61,6 +61,8 @@ dependency, move `before` to (today − 14 days) in the same change.
 | expo-image-picker | 57.0.20 (2026-09-24) | Photos source (M-A4 §5.2, A12): system photo picker, images composed into one PDF on the device. SDK 57 matrix (`~57.0.20`). Pulls in `expo-image-loader`. |
 | react-native-view-shot | 5.1.0 | rasterizes drawn signatures to PNG (C-19). SDK 57 matrix. |
 | expo-iap | 5.8.3 (2026-10-07) | M-A12 W1-G in-app purchase (StoreKit 2 / Play Billing via OpenIAP; apple 3.6.1, google 3.6.3). An Expo module, autolinked like the other `expo-*` modules, so no config plugin and no native-folder edit is needed (the Play flavor is the default store for release builds). Chosen over `react-native-iap` 16/17, which needs `react-native-nitro-modules`. The 5.x line, not the 6.0.0 major released one day before the `before` cut-off. Wrapped by `src/features/plans/storePort.ts`; only `expoIapStore.ts` imports it. The iOS build needs `pod install` to add the `ExpoIap` and `openiap` pods to `Podfile.lock`. |
+| expo-apple-authentication | 57.0.2 (2026-09-11) | Apple Go-Live R-8: the native Apple sheet, used only to get an authorization code so sign-service can revoke Apple's tokens when an Apple-linked account is deleted. Sign-in stays the Cognito PKCE flow (R-1). SDK 57 matrix (`~57.0.2`). Imported only by `src/features/account/appleAuthNative.ts`. |
+| @expo/app-integrity | 57.0.2 | Play Integrity (Android, M-A11) and, with Apple Go-Live R-9, App Attest (iOS): its iOS autolinking exclusion is removed. |
 | @tanstack/react-query · react-query-persist-client | 5.104.1 | query cache + persistence |
 | openapi-typescript | 7.13.0 | type generation. Its `typescript ^5` peer is overridden to the app's TS 6. |
 | jest-expo · jest · @testing-library/react-native | 57.0.5 · 29.7.0 · 13.3.3 | RNTL 14 needs a peer that has no stable release |
@@ -278,7 +280,12 @@ and they are checked in. Change `app.config.ts`, then run `npm run prebuild`; do
 hand-edit the generated projects. What they configure:
 
 - Bundle id / application id `ai.aramo.sign`; scheme `aramosign`.
-- iOS: `applinks:sign.aramo.ai` and `aps-environment` (development) entitlements.
+- iOS entitlements (Apple Go-Live W7): `applinks:sign.aramo.ai`; `aps-environment`
+  **production** (`expo-notifications` plugin `mode: 'production'`, R-10);
+  `com.apple.developer.applesignin` (`ios.usesAppleSignIn` + the
+  `expo-apple-authentication` plugin, used only for token revocation at deletion, R-8);
+  `com.apple.developer.devicecheck.appattest-environment` = production (`ios.entitlements`,
+  App Attest for native signup, R-9).
 - Android: an `autoVerify` intent filter for `https://sign.aramo.ai` `/s/`, `/d/` and
   `/auth/native/callback`.
 - Camera (iOS scanner) and Face ID usage strings. Android declares no `CAMERA`: the ML Kit
@@ -295,9 +302,16 @@ hand-edit the generated projects. What they configure:
   (`plugins/withReleaseSigning.js`, M-A7 §4 R-6; runbook P-3a). R8 and resource
   shrinking for release, with keep rules in `app.config.ts` (R-13).
 
+**Prebuild churn.** `expo prebuild` regenerates the whole tree and also rewrites
+unrelated files (launcher icons, `PrivacyInfo.xcprivacy`, Info.plist keys, Android
+`versionCode`). Keep only the change the config edit intended (for example the
+`.entitlements` file) and restore the rest from Git; Android `versionCode` in
+`android/app/build.gradle` is managed per Play upload, not by prebuild.
+
 **Not generated here** (they need Xcode, CocoaPods or the Android SDK):
-- `ios/Pods` and `ios/Podfile.lock`: the first `pod install` (CI / a Mac with Xcode)
-  creates the lock, which should then be committed;
+- `ios/Pods`: `pod install` (CI / a Mac with Xcode). `ios/Podfile.lock` is committed;
+  re-run `pod install` (with a UTF-8 locale, `LANG=en_US.UTF-8`) after adding a native
+  module and commit only the lock (keep the pbxproj as prebuild wrote it);
 - any compiled build;
 - the upload key (never in Git; runbook P-3a).
 
@@ -309,8 +323,9 @@ hand-edit the generated projects. What they configure:
 - **Push on Android** needs the Firebase config (`google-services.json`, directive P-4)
   and the `expo-notifications` Android FCM setup. Without it, `registerForPush` returns
   `'unavailable'` and the in-app feed still works.
-- **iOS release builds** need `aps-environment` = production (`expo-notifications`
-  plugin `mode`) and the P-1 Team ID.
+- **iOS release builds** need the P-1 Team ID and the App ID capabilities listed in
+  `doc/runbooks/RELEASE-sign-mobile.md` → "iOS release (Apple Go-Live W7)". The
+  entitlements are already production (Apple Go-Live W7).
 - **Production values** (Cognito domain, native client id) are unset. Sign-in shows
   "Sign-in isn’t available in this build" until they are provided at build time.
 - **Web links.** `WEB_LINKS.help` (`/help`) is assumed to exist on the Sign host;

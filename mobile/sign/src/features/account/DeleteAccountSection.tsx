@@ -4,6 +4,9 @@
 // sheet then shows the request ID, its status and what is kept and why. When the
 // session has ended (Personal, or a completed request) "Done" signs out, which also
 // wipes the temporary documents (M-A7 §4 R-7).
+// Apple Go-Live R-8: for an Apple-linked account the app first asks Apple for a fresh
+// authorization code so sign-service can revoke Apple's tokens. Best effort: whatever
+// happens there, the deletion request is sent.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
@@ -30,10 +33,19 @@ import {
 
 const privacyKey = ['sign', 'me', 'privacy-requests'] as const;
 
-export function DeleteAccountSection({ personal, online }: { personal: boolean; online: boolean }) {
+export function DeleteAccountSection({
+  personal,
+  online,
+  appleLinked = false,
+}: {
+  personal: boolean;
+  online: boolean;
+  /** The user signs in with Apple: revoke Apple's tokens before deleting (R-8). */
+  appleLinked?: boolean;
+}) {
   const t = useTheme();
   const qc = useQueryClient();
-  const { workspace, signOut } = useServices();
+  const { workspace, signOut, revokeApple } = useServices();
   const requests = useQuery({ queryKey: privacyKey, queryFn: () => loadPrivacyRequests(workspace) });
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
@@ -48,6 +60,8 @@ export function DeleteAccountSection({ personal, online }: { personal: boolean; 
     setBusy(true);
     setError(null);
     try {
+      // While still signed in (the revoke route needs the session). Never blocks deletion.
+      if (personal && appleLinked) await revokeApple().catch(() => false);
       const r = await requestDeletion(workspace);
       setResult(r);
       void qc.invalidateQueries({ queryKey: privacyKey });

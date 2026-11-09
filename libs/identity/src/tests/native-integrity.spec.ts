@@ -12,6 +12,7 @@ import {
   NATIVE_INTEGRITY_CHECK,
   PLAY_INTEGRITY_DECODE_URL,
   PLAY_INTEGRITY_SCOPE,
+  PlatformNativeIntegrityCheck,
   PlayIntegrityCheck,
   UnconfiguredNativeIntegrityCheck,
   certificateDigestHex,
@@ -329,13 +330,15 @@ describe('env binding and no bypass (§5)', () => {
     const exportsList = (Reflect.getMetadata(MODULE_METADATA.EXPORTS, IdentityCoreModule) ?? []) as unknown[];
     expect(exportsList).toContain(NATIVE_INTEGRITY_CHECK);
 
+    // Apple Go-Live R-9 — the binding routes by platform; the android side is this check.
     vi.stubEnv('SIGN_PLAY_INTEGRITY_CERT_SHA256', APP_SIGNING);
     vi.stubEnv('SIGN_PLAY_INTEGRITY_CREDENTIALS_B64', creds);
-    const bound = binding!.useFactory!();
-    expect(bound).toBeInstanceOf(PlayIntegrityCheck);
-    expect((bound as PlayIntegrityCheck).decoder).toBeInstanceOf(GooglePlayIntegrityDecoder);
+    const bound = binding!.useFactory!() as PlatformNativeIntegrityCheck;
+    expect(bound).toBeInstanceOf(PlatformNativeIntegrityCheck);
+    expect(bound.android).toBeInstanceOf(PlayIntegrityCheck);
+    expect((bound.android as PlayIntegrityCheck).decoder).toBeInstanceOf(GooglePlayIntegrityDecoder);
 
     vi.stubEnv('SIGN_PLAY_INTEGRITY_CREDENTIALS_B64', '');
-    expect(binding!.useFactory!()).toBeInstanceOf(UnconfiguredNativeIntegrityCheck);
+    expect((binding!.useFactory!() as PlatformNativeIntegrityCheck).android).toBeInstanceOf(UnconfiguredNativeIntegrityCheck);
   });
 });

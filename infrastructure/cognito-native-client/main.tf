@@ -15,7 +15,9 @@ data "aws_cognito_user_pool" "aramo_platform" {
 #     code_verifier (libs/auth-core/src/lib/native-auth.service.ts), and Cognito
 #     checks the verifier against the challenge. Cognito has no per-client setting
 #     that makes PKCE mandatory.
-#   - No password, SRP or custom auth flows: Google and Microsoft only.
+#   - No password, SRP or custom auth flows: Google, Microsoft and Apple only
+#     (Apple Go-Live R-1: the `SignInWithApple` provider must exist in the pool
+#     before this is applied).
 #   - Tokens: access 15 min, ID 15 min, Cognito refresh 30 days. Aramo issues its
 #     own rotated device-session refresh token after the code exchange.
 #   - The browser client `aramo` is a different resource that this root does not
@@ -33,7 +35,7 @@ resource "aws_cognito_user_pool_client" "aramo_sign_native" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["Google", "microsoft"]
+  supported_identity_providers         = ["Google", "microsoft", "SignInWithApple"]
 
   callback_urls = [
     "https://sign.aramo.ai/auth/native/callback",

@@ -43,7 +43,7 @@ import {
 //              provider-pin cohort, and create the owner (tenant_owner +
 //              tenant_admin — ROLES-1 PR-2 §6) WITHOUT a
 //              Cognito user or ExternalIdentity (membership ACTIVE). No temporary
-//              password: the owner continues with Google or Microsoft; the first
+//              password: the owner continues with Google, Microsoft or Apple; the first
 //              federation pins the tenant's provider and links the owner
 //              (AUTH-SIGNIN-1 R1/R2, Aramo-Sign-Signup-Federated-Owner). The
 //              owner has NO send authority until a paid subscription opens.
@@ -124,15 +124,23 @@ export interface CompleteResult {
   organization_name: string;
   sign_in_url: string;
   // Federated sign-in entry points (AUTH-SIGNIN-1 `idp` hint) for the done page.
-  sign_in: { microsoft: string; google: string };
+  // Apple Go-Live R-2 / R-3 — Apple too (it matches only when Apple shares the work email).
+  sign_in: FederatedSignInLinks;
+}
+
+export interface FederatedSignInLinks {
+  microsoft: string;
+  google: string;
+  apple: string;
 }
 
 /** The sign host's federated sign-in links (the auth-service login on that host). */
-export function federatedSignInLinks(): { microsoft: string; google: string } {
+export function federatedSignInLinks(): FederatedSignInLinks {
   const base = consoleBase();
   return {
     microsoft: `${base}/auth/sign/login?idp=microsoft&return_to=%2F`,
     google: `${base}/auth/sign/login?idp=google&return_to=%2F`,
+    apple: `${base}/auth/sign/login?idp=apple&return_to=%2F`,
   };
 }
 
@@ -439,14 +447,16 @@ export class SignSignupService {
     };
   }
 
-  private async sendReady(to: string, organization_name: string, links: { microsoft: string; google: string }): Promise<void> {
+  private async sendReady(to: string, organization_name: string, links: FederatedSignInLinks): Promise<void> {
     await this.send(
       to,
       'Your Aramo Sign organization is ready',
       [
         `${organization_name} is set up on Aramo Sign.`,
-        'Sign in with the Microsoft or Google work account for this email address. The provider you sign in with first becomes your organization\u2019s sign-in provider.',
+        // Apple Go-Live R-3 / R-13 — Apple signs in only when it shares this work email address.
+        'Sign in with the Microsoft, Google or Apple account for this work email address. With Apple, choose Share My Email. The provider you sign in with first becomes your organization\u2019s sign-in provider.',
         `Continue with Google: ${links.google}`,
+        `Continue with Apple: ${links.apple}`,
         'After you sign in, choose a plan to start sending documents.',
       ],
       { label: 'Continue with Microsoft', href: links.microsoft },

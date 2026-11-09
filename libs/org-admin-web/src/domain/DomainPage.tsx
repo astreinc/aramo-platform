@@ -261,7 +261,7 @@ function SsoPlannedCard() {
         </span>
       </div>
       <p style={{ fontSize: 13, color: 'var(--ox-muted)', margin: '6px 0 0', lineHeight: 1.55, maxWidth: 720 }}>
-        People sign in through Aramo’s hosted login with their Microsoft or Google work account. Organization-level controls arrive later:
+        People sign in through Aramo’s hosted login with their Microsoft or Google work account, or an Apple ID that uses their work email. Organization-level controls arrive later:
       </p>
       <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13, color: 'var(--ox-muted)', lineHeight: 1.8 }}>
         <li>Require single sign-on and multi-factor sign-in for everyone</li>

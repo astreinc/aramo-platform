@@ -75,6 +75,31 @@ export {
   parseRefreshTokenBody,
   principalDenialError,
 } from './lib/native-auth.service.js';
-export type { NativeTokenRequest, NativeTokenResponse, NativeSessionItem, NativeCaller, NativeDeviceInput } from './lib/native-auth.service.js';
+export type { NativeTokenRequest, NativeTokenResponse, NativeLinkResponse, NativeSessionItem, NativeCaller, NativeDeviceInput } from './lib/native-auth.service.js';
 export { NATIVE_CODE_EXCHANGE, CognitoNativeCodeExchangeAdapter } from './lib/native-code-exchange.port.js';
 export type { NativeCodeExchange, NativeCodeExchangeInput, NativeCodeExchangeResult } from './lib/native-code-exchange.port.js';
+// Apple Go-Live Amendment A1 (LOCKED) — proven account linking (pending links,
+// email-code proof, signed-in linking, sign-in methods). The port is bound to the
+// identity-backed adapter in apps/auth-service.
+export { ACCOUNT_LINK_DIRECTORY } from './lib/account-link-directory.port.js';
+export type {
+  AccountLinkDirectory,
+  AccountLinkIdentity,
+  AccountLinkAttachResult,
+  AccountLinkVerifyResult,
+  AccountLinkMethod,
+  AccountLinkRemoveResult,
+  AccountLinkProof,
+} from './lib/account-link-directory.port.js';
+export {
+  AccountLinkService,
+  LinkEmailBudget,
+  PENDING_LINK_DENIALS,
+  LINKABLE_IDPS,
+  isLinkHandle,
+} from './lib/account-link.service.js';
+export type { PendingLinkOffer, VerifiedIdentityForLink } from './lib/account-link.service.js';
+export { AccountLinkController } from './lib/account-link.controller.js';
+export { providerLabel, renderLinkCodeEmail, renderSignInMethodNoticeEmail } from './lib/account-link-email.js';
+export { mapIdpHint, mapPinnedIdpHint, encodeSignupHandoff, LOGIN_OPTION_PROVIDERS } from './lib/auth.controller.js';
+export { idpOfCognitoProviderName } from './lib/cognito-verifier.service.js';

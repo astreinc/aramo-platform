@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   NATIVE_PLATFORMS,
@@ -11,6 +11,7 @@ import {
   type NativePlatform,
 } from '@aramo/auth-storage';
 
+import { AccountLinkService, LINKABLE_IDPS, PENDING_LINK_DENIALS, isLinkHandle } from './account-link.service.js';
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { CognitoVerificationError, CognitoVerifierService } from './cognito-verifier.service.js';
 import { TENANT_ACCESS_DENIED_REASONS } from './host-binding.js';
@@ -72,6 +73,9 @@ export interface NativeTokenRequest {
   redirect_uri: string;
   nonce: string;
   device: NativeDeviceInput;
+  // Apple Go-Live A1 L-4 proof (a) — the pending-link handle from a previous
+  // denied sign-in; attached to the principal this sign-in resolves.
+  link_handle?: string;
 }
 
 export interface NativeTokenResponse {
@@ -80,6 +84,15 @@ export interface NativeTokenResponse {
   expires_in: number;
   refresh_token: string;
   device_session_id: string;
+  // Apple Go-Live A1 L-4 — present only when `link_handle` was sent and the attach
+  // was refused (the sign-in itself succeeded).
+  link_refused?: string;
+}
+
+// Apple Go-Live A1 L-4 path 1 — POST /auth/native/sign/link.
+export interface NativeLinkResponse {
+  linked: true;
+  idp: string;
 }
 
 export interface NativeSessionItem {
@@ -147,6 +160,8 @@ export function parseNativeTokenRequest(body: unknown, requestId: string): Nativ
     throw invalidRequest(requestId, 'device.platform');
   }
   if (!isNonEmptyString(dev['app_version'], 64)) throw invalidRequest(requestId, 'device.app_version');
+  const linkHandle = b['link_handle'];
+  if (linkHandle !== undefined && linkHandle !== null && !isLinkHandle(linkHandle)) throw invalidRequest(requestId, 'link_handle');
   return {
     code: b['code'],
     code_verifier: b['code_verifier'],
@@ -157,6 +172,7 @@ export function parseNativeTokenRequest(body: unknown, requestId: string): Nativ
       platform: dev['platform'] as NativePlatform,
       app_version: dev['app_version'],
     },
+    ...(isLinkHandle(linkHandle) ? { link_handle: linkHandle } : {}),
   };
 }
 
@@ -173,8 +189,10 @@ export function parseRefreshTokenBody(body: unknown, requestId: string): string 
 
 // The principal-resolution denials, mapped to the SAME error codes the browser
 // callback uses (auth.controller.ts) — a JSON body here, never a redirect.
-export function principalDenialError(reason: string, requestId: string): AramoError {
-  const details = { reason };
+// Apple Go-Live A1 L-2 — `extra` carries `idp` and, when a pending link was
+// written, `link_handle` (details only; never a header or a log line).
+export function principalDenialError(reason: string, requestId: string, extra?: Record<string, unknown>): AramoError {
+  const details = { reason, ...(extra ?? {}) };
   if (TENANT_ACCESS_DENIED_REASONS.has(reason)) {
     return new AramoError(
       'TENANT_ACCESS_DENIED',
@@ -217,6 +235,8 @@ export class NativeAuthService {
     private readonly deviceSessions: NativeDeviceSessionService,
     private readonly jwtIssuer: JwtIssuerService,
     @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
+    // Apple Go-Live A1 — proven account linking (optional: unbound keeps today's exchange).
+    @Optional() private readonly links?: AccountLinkService,
   ) {}
 
   private requireClientId(requestId: string): string {
@@ -233,7 +253,74 @@ export class NativeAuthService {
   // POST /auth/native/sign/token
   async exchange(req: NativeTokenRequest, requestId: string): Promise<NativeTokenResponse> {
     const clientId = this.requireClientId(requestId);
+    const verified = await this.redeemAndVerify(req, clientId, requestId);
 
+    // The SAME principal resolution as the browser callback (reconcile, no JIT,
+    // R1/R2 provider policy, IC-1, status, capability `sign`), minus browser host
+    // binding (client: 'native').
+    const resolution = await this.principals.resolveSession({
+      provider: 'cognito',
+      provider_subject: verified.sub,
+      verified_email: verified.email,
+      consumer: NATIVE_CONSUMER,
+      idp: verified.idp,
+      client: 'native',
+    });
+    if (resolution.kind === 'denied') {
+      // Apple Go-Live A1 L-2 — a linkable denial writes a pending link; its handle
+      // rides in the 403 details (never a session, never a link).
+      if (PENDING_LINK_DENIALS.has(resolution.reason) && verified.idp !== null && LINKABLE_IDPS.has(verified.idp)) {
+        const offer = this.links === undefined ? null : await this.links.offerPendingLink(resolution.reason, verified);
+        throw principalDenialError(resolution.reason, requestId, {
+          idp: verified.idp,
+          ...(offer !== null ? { link_handle: offer.handle } : {}),
+        });
+      }
+      throw principalDenialError(resolution.reason, requestId);
+    }
+    const siteId = resolution.claims?.['site_id'] ?? null;
+
+    // Apple Go-Live A1 L-4 proof (a) — attach the pending identity to the principal
+    // this sign-in resolved. A refusal never fails the sign-in.
+    let linkRefused: string | undefined;
+    if (req.link_handle !== undefined && this.links !== undefined) {
+      const attached = await this.links.attachAfterSignIn(req.link_handle, resolution.principal_id);
+      if (!attached.ok) linkRefused = attached.reason;
+    }
+
+    return this.openDeviceSession(req, clientId, resolution, siteId, linkRefused, requestId);
+  }
+
+  // Apple Go-Live A1 L-4 path 1 — POST /auth/native/sign/link: the signed-in
+  // caller adds a provider. Same body and the same code checks as /token; the new
+  // identity is attached to the caller (proof c). No device session is created.
+  async link(req: NativeTokenRequest, caller: NativeCaller, requestId: string): Promise<NativeLinkResponse> {
+    const clientId = this.requireClientId(requestId);
+    await this.assertCallerSessionActive(caller, requestId);
+    const verified = await this.redeemAndVerify(req, clientId, requestId);
+    if (this.links === undefined) {
+      throw new AramoError('INTERNAL_ERROR', 'Account linking is not configured', 500, {
+        requestId,
+        details: { reason: 'link_unavailable' },
+      });
+    }
+    const attached = await this.links.attachSignedIn(caller.sub, verified);
+    if (!attached.ok) {
+      throw new AramoError('VALIDATION_ERROR', 'Sign-in method not added', 409, {
+        requestId,
+        details: { reason: attached.reason },
+      });
+    }
+    return { linked: true, idp: attached.idp };
+  }
+
+  // Redirect binding, single-use code + nonce ledger, the Cognito exchange and the
+  // ID-token verification (native audience + nonce). Shared by /token and /link.
+  private async redeemAndVerify(
+    req: NativeTokenRequest,
+    clientId: string,
+    requestId: string,
+  ): Promise<{ sub: string; email: string; idp: string | null }> {
     // Redirect-URI binding — byte-equal to an allow-listed native callback,
     // checked before the code is touched.
     if (!readNativeRedirectUris().includes(req.redirect_uri)) {
@@ -301,22 +388,17 @@ export class NativeAuthService {
       });
     }
 
-    // The SAME principal resolution as the browser callback (reconcile, no JIT,
-    // R1/R2 provider policy, IC-1, status, capability `sign`), minus browser host
-    // binding (client: 'native').
-    const resolution = await this.principals.resolveSession({
-      provider: 'cognito',
-      provider_subject: verified.sub,
-      verified_email: verified.email,
-      consumer: NATIVE_CONSUMER,
-      idp: verified.idp,
-      client: 'native',
-    });
-    if (resolution.kind === 'denied') {
-      throw principalDenialError(resolution.reason, requestId);
-    }
-    const siteId = resolution.claims?.['site_id'] ?? null;
+    return verified;
+  }
 
+  private async openDeviceSession(
+    req: NativeTokenRequest,
+    clientId: string,
+    resolution: { principal_id: string; context_id: string; authz_version: number },
+    siteId: string | null,
+    linkRefused: string | undefined,
+    requestId: string,
+  ): Promise<NativeTokenResponse> {
     const refreshPlain = randomBytes(REFRESH_TOKEN_BYTES).toString('base64url');
     let created;
     try {
@@ -368,6 +450,7 @@ export class NativeAuthService {
       expires_in: ACCESS_TOKEN_TTL_SECONDS,
       refresh_token: refreshPlain,
       device_session_id: created.session.id,
+      ...(linkRefused !== undefined ? { link_refused: linkRefused } : {}),
     };
   }
 

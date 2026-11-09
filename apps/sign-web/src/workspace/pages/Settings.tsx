@@ -13,6 +13,8 @@ import { CloseAccountSection } from './AccountClose';
 import { PersonalPlanPanel } from './PersonalPlan';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 import { RetentionSection } from './Retention';
+// Apple Go-Live A1 L-7 — Sign-in methods (add / remove a provider while signed in).
+import { SignInMethodsSection } from './SignInMethods';
 import { PaymentsSection } from './Payments';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
@@ -141,6 +143,7 @@ function PersonalSection() {
           </p>
         </div>
       </section>
+      <SignInMethodsSection />
       <section className="sg-card">
         <div className="sg-card__head">
           Sign notifications <span className="sg-tag sg-tag--blue">Sign only</span>

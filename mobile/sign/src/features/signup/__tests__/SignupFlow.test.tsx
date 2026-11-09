@@ -77,26 +77,28 @@ function fakeApi(docs: TermsText[][] = [[TOS, PRIVACY, AUP]]) {
   return api as typeof api & SignupApi;
 }
 
-function fakeIntegrity(): IntegritySession & { tokenFor: jest.Mock; warmUp: jest.Mock } {
-  return { warmUp: jest.fn(), tokenFor: jest.fn(async () => 'play-integrity-token') };
+function fakeIntegrity(
+  client: 'android' | 'ios' = 'android',
+): IntegritySession & { tokenFor: jest.Mock; warmUp: jest.Mock } {
+  return { client, warmUp: jest.fn(), tokenFor: jest.fn(async () => 'play-integrity-token') };
 }
 
 function setup(over: Partial<SignupDeps> = {}) {
   const api = (over.api as ReturnType<typeof fakeApi> | undefined) ?? fakeApi();
   const integrity = over.integrity === undefined ? fakeIntegrity() : over.integrity;
-  const signInWithGoogle = jest.fn(async () => undefined);
+  const signIn = jest.fn<Promise<unknown>, ['google' | 'apple']>(async () => undefined);
   let clock = 1_000;
   const now = jest.fn(() => clock);
   render(
     <SignupFlow
       api={api}
       integrity={integrity}
-      signInWithGoogle={signInWithGoogle}
+      signIn={signIn}
       now={now}
-      {...(over.signInWithGoogle ? { signInWithGoogle: over.signInWithGoogle } : {})}
+      {...(over.appleIdentity ? { appleIdentity: over.appleIdentity } : {})}
     />,
   );
-  return { api, integrity, signInWithGoogle, advance: (ms: number) => (clock += ms) };
+  return { api, integrity, signIn, advance: (ms: number) => (clock += ms) };
 }
 
 function fillDetails(email = 'pat.lee@gmail.com') {
@@ -564,17 +566,19 @@ describe('done', () => {
     return s;
   }
 
-  it('says the account is ready, names the email, warns about Gmail dots and continues with Google', async () => {
+  it('says the account is ready, names the email, warns about Gmail dots and continues with Google or Apple', async () => {
     const s = await toDone('pat.lee@gmail.com');
     expect(screen.getByText('Your account is ready.')).toBeTruthy();
     expect(screen.getByTestId('signup-done-copy')).toHaveTextContent(
-      'Sign in with the Google account for pat.lee@gmail.com.',
+      'Sign in with Google or Apple. Use the account for pat.lee@gmail.com.',
     );
     expect(screen.getByTestId('signup-done-gmail')).toHaveTextContent(SIGNUP_COPY.gmail);
+    // Apple Go-Live R-5: the email-path done step offers Google and Apple.
+    expect(screen.getByTestId('signup-continue-apple')).toHaveTextContent('Continue with Apple');
     await act(async () => {
       fireEvent.press(screen.getByTestId('signup-continue-google'));
     });
-    expect(s.signInWithGoogle).toHaveBeenCalledTimes(1);
+    expect(s.signIn).toHaveBeenCalledWith('google');
   });
 
   it('no Gmail warning for other addresses; a review hold is explained', async () => {
@@ -585,7 +589,7 @@ describe('done', () => {
 
   it('a refused Google sign-in shows the refusal; a cancelled one shows nothing', async () => {
     const s = await toDone('pat.lee@gmail.com');
-    s.signInWithGoogle.mockRejectedValueOnce(clientError('auth_cancelled')).mockRejectedValueOnce(
+    s.signIn.mockRejectedValueOnce(clientError('auth_cancelled')).mockRejectedValueOnce(
       new ApiError({
         status: 403,
         code: 'INSUFFICIENT_PERMISSIONS',
@@ -600,7 +604,88 @@ describe('done', () => {
       fireEvent.press(screen.getByTestId('signup-continue-google'));
     });
     expect(screen.getByTestId('signup-done-error')).toHaveTextContent(
-      'There’s no Aramo account for this Google account yet.',
+      'There’s no Aramo account for this sign-in yet.',
     );
+  });
+});
+
+describe('Apple Go-Live (R-5 Apple-first, R-9 iOS client)', () => {
+  const APPLE = { email: 'x1y2@privaterelay.appleid.com', givenName: 'Pat', familyName: 'Lee' };
+
+  it('iOS sends client "ios" in the body the token is bound to; the failure copy has no "Google Play"', async () => {
+    const integrity = fakeIntegrity('ios');
+    const s = setup({ integrity });
+    fillDetails();
+    await submitDetails();
+    expect(integrity.tokenFor.mock.calls[0]![0]).toMatchObject({ client: 'ios' });
+    expect(s.api.start.mock.calls[0]![0]).toMatchObject({ client: 'ios' });
+
+    const failing = fakeIntegrity('ios');
+    failing.tokenFor.mockRejectedValueOnce(new Error('attest'));
+    setup({ integrity: failing });
+    fillDetails();
+    await submitDetails();
+    expect(screen.getByTestId('signup-failure')).toHaveTextContent(SIGNUP_COPY.integrityFailedIos);
+    expect(SIGNUP_COPY.integrityFailedIos).not.toMatch(/Google/);
+  });
+
+  it('Continue with Apple prefills and locks the email, prefills the name; the email code is still required', async () => {
+    const appleIdentity = jest.fn(async () => APPLE);
+    const s = setup({ appleIdentity });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-continue-apple-top'));
+    });
+    expect(screen.getByTestId('signup-email').props.value).toBe(APPLE.email);
+    expect(screen.getByTestId('signup-email').props.editable).toBe(false);
+    expect(screen.getByTestId('signup-name').props.value).toBe('Pat Lee');
+    expect(screen.getByTestId('signup-apple-prefilled')).toBeTruthy();
+    expect(screen.queryByTestId('signup-continue-apple-top')).toBeNull();
+    fireEvent.changeText(screen.getByTestId('signup-phone'), '(415) 555-0100');
+    fireEvent.press(screen.getByTestId('signup-residence-US'));
+    await submitDetails();
+    expect(s.api.start.mock.calls[0]![0]).toMatchObject({ email: APPLE.email, name: 'Pat Lee' });
+    expect(await screen.findByTestId('signup-email-code')).toBeTruthy();
+  });
+
+  it('Apple shared no name: only the email is filled; a cancelled Apple sheet changes nothing', async () => {
+    const appleIdentity = jest
+      .fn()
+      .mockRejectedValueOnce(clientError('auth_cancelled'))
+      .mockResolvedValueOnce({ email: 'a@icloud.com', givenName: null, familyName: null });
+    setup({ appleIdentity });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-continue-apple-top'));
+    });
+    expect(screen.queryByTestId('signup-failure')).toBeNull();
+    expect(screen.getByTestId('signup-email').props.value).toBe('');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-continue-apple-top'));
+    });
+    expect(screen.getByTestId('signup-email').props.value).toBe('a@icloud.com');
+    expect(screen.getByTestId('signup-name').props.value).toBe('');
+  });
+
+  it('an Apple-first signup ends with Continue with Apple only', async () => {
+    const appleIdentity = jest.fn(async () => APPLE);
+    const api = fakeApi();
+    const s = setup({ api, appleIdentity });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-continue-apple-top'));
+    });
+    fireEvent.changeText(screen.getByTestId('signup-phone'), '(415) 555-0100');
+    fireEvent.press(screen.getByTestId('signup-residence-US'));
+    await submitDetails();
+    await enterCode();
+    expect(await screen.findByTestId('signup-accept')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('signup-accept'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-complete'));
+    });
+    expect(screen.getByTestId('signup-done-copy')).toHaveTextContent(SIGNUP_COPY.doneBodyApple);
+    expect(screen.queryByTestId('signup-continue-google')).toBeNull();
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('signup-continue-apple'));
+    });
+    expect(s.signIn).toHaveBeenCalledWith('apple');
   });
 });

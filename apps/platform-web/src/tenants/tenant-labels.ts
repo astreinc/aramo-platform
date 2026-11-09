@@ -54,6 +54,8 @@ export function providerLabel(provider: string | null): string {
   const p = provider.trim().toLowerCase();
   if (p === 'microsoft') return 'Microsoft';
   if (p === 'google') return 'Google';
+  // Apple Go-Live W3 — `apple` is the Aramo value for Sign in with Apple.
+  if (p === 'apple') return 'Apple';
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 

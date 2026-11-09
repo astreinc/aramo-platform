@@ -38,7 +38,12 @@ const REQUEST: PrivacyRequest = {
 let qc: QueryClient;
 afterEach(() => qc?.clear());
 
-function renderSection(personal: boolean, created: PrivacyRequest, items: PrivacyRequest[] = []) {
+function renderSection(
+  personal: boolean,
+  created: PrivacyRequest,
+  items: PrivacyRequest[] = [],
+  apple: { linked: boolean; revokeApple?: jest.Mock } = { linked: false },
+) {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
   const call = jest.fn(async (path: string, method: string, init: { body?: unknown }) => {
     if (path === '/v1/sign/me/privacy-requests' && method === 'get') return { items };
@@ -49,15 +54,16 @@ function renderSection(personal: boolean, created: PrivacyRequest, items: Privac
     throw new Error(`unexpected ${path}`);
   });
   const signOut = jest.fn(async () => undefined);
-  const services = { workspace: { call }, signOut } as unknown as AppServices;
+  const revokeApple = apple.revokeApple ?? jest.fn(async () => true);
+  const services = { workspace: { call }, signOut, revokeApple } as unknown as AppServices;
   render(
     <ServicesProvider services={services}>
       <QueryClientProvider client={qc}>
-        <DeleteAccountSection personal={personal} online />
+        <DeleteAccountSection personal={personal} online appleLinked={apple.linked} />
       </QueryClientProvider>
     </ServicesProvider>,
   );
-  return { call, signOut };
+  return { call, signOut, revokeApple };
 }
 
 describe('Delete account (M-A7 §3.3)', () => {
@@ -120,5 +126,48 @@ describe('Delete account (M-A7 §3.3)', () => {
     expect(signOutAfter(REQUEST, true)).toBe(true);
     expect(signOutAfter({ ...REQUEST, status: 'REFERRED_TO_ORGANIZATION' }, false)).toBe(false);
     expect(signOutAfter({ ...REQUEST, status: 'COMPLETED' }, false)).toBe(true);
+  });
+});
+
+describe('Apple Go-Live R-8 — Apple token revocation on deletion', () => {
+  async function confirmDelete() {
+    await act(async () => {
+      fireEvent.press(await screen.findByTestId('delete-account', undefined, WAIT));
+    });
+    fireEvent.changeText(screen.getByTestId('delete-confirm-input'), 'DELETE');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('delete-account-confirm'));
+    });
+  }
+
+  it('an Apple-linked Personal account revokes first, then sends the deletion', async () => {
+    const order: string[] = [];
+    const revokeApple = jest.fn(async () => {
+      order.push('revoke');
+      return true;
+    });
+    const { call } = renderSection(true, REQUEST, [], { linked: true, revokeApple });
+    call.mockImplementation(async (path: string, method: string) => {
+      if (method === 'post') order.push('delete');
+      return method === 'get' ? { items: [] } : REQUEST;
+    });
+    await confirmDelete();
+    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    expect(order).toEqual(['revoke', 'delete']);
+  });
+
+  it('a failed revocation never blocks the deletion; no revocation without Apple', async () => {
+    const revokeApple = jest.fn(async () => Promise.reject(new Error('apple down')));
+    renderSection(true, REQUEST, [], { linked: true, revokeApple });
+    await confirmDelete();
+    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    qc.clear();
+  });
+
+  it('not Apple-linked: no revocation', async () => {
+    const r = renderSection(true, REQUEST);
+    await confirmDelete();
+    expect(await screen.findByTestId('delete-account-reference', undefined, WAIT)).toBeTruthy();
+    expect(r.revokeApple).not.toHaveBeenCalled();
   });
 });

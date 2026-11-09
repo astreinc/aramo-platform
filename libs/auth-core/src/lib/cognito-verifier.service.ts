@@ -57,6 +57,20 @@ export interface CognitoIdTokenClaims extends JWTPayload {
   'cognito:username'?: string;
   // OIDC nonce (echoed from the authorize request; checked on the native path).
   nonce?: string;
+  // Apple Go-Live R-5 / R-7 — the name the provider shared (Apple maps
+  // firstName → given_name and lastName → family_name; absent when not shared).
+  given_name?: string;
+  family_name?: string;
+}
+
+// Apple Go-Live R-1 — Cognito provider names (lowercased) whose Aramo value
+// differs: `SignInWithApple` is `apple`. Google (`google`) and Microsoft
+// (`microsoft`) already match their Aramo values.
+const COGNITO_PROVIDER_TO_IDP: Readonly<Record<string, string>> = { signinwithapple: 'apple' };
+
+export function idpOfCognitoProviderName(name: string): string {
+  const v = name.trim().toLowerCase();
+  return COGNITO_PROVIDER_TO_IDP[v] ?? v;
 }
 
 // AUTH-SIGNIN-1 Amendment M-A1 §3.3 — native-exchange verification options. When
@@ -76,10 +90,20 @@ export interface VerifiedCognitoIdToken {
   email_verified: boolean;
   token_use: 'id';
   // AUTH-SIGNIN-1 R1 — the federated provider that authenticated this token:
-  // 'google' | 'microsoft', 'ambiguous' when Cognito carries more than one
-  // linked identity (the provider used cannot be told apart), null for a
-  // native (non-federated) user.
+  // 'google' | 'microsoft' | 'apple' (Apple Go-Live R-1), 'ambiguous' when
+  // Cognito carries more than one linked identity (the provider used cannot be
+  // told apart), null for a native (non-federated) user.
   idp: string | null;
+  // Apple Go-Live R-5 — the shared first/last name (null when not shared). Used
+  // only for the signup hand-off prefill; never stored by auth.
+  given_name?: string | null;
+  family_name?: string | null;
+}
+
+function nameClaim(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length > 0 && t.length <= 256 ? t : null;
 }
 
 @Injectable()
@@ -144,21 +168,24 @@ export class CognitoVerifierService {
       email_verified: true,
       token_use: 'id',
       idp: this.authenticatingIdp(p),
+      given_name: nameClaim(p.given_name),
+      family_name: nameClaim(p.family_name),
     };
   }
 
   // AUTH-SIGNIN-1 R1 — which federated provider authenticated this token. A
   // Cognito user carrying more than one linked identity (a merge made upstream)
   // yields 'ambiguous': the token does not say which provider was used.
+  // Apple Go-Live R-1: `SignInWithApple` maps to `apple`.
   private authenticatingIdp(p: CognitoIdTokenClaims): string | null {
     if (Array.isArray(p.identities) && p.identities.length > 0) {
-      const names = new Set(p.identities.map((i) => (i?.providerName ?? '').trim().toLowerCase()).filter((n) => n.length > 0));
+      const names = new Set(p.identities.map((i) => idpOfCognitoProviderName(i?.providerName ?? '')).filter((n) => n.length > 0));
       if (names.size > 1) return 'ambiguous';
       if (names.size === 1) return [...names][0]!;
     }
     const username = typeof p['cognito:username'] === 'string' ? p['cognito:username'] : '';
     const underscore = username.indexOf('_');
-    return underscore > 0 ? username.slice(0, underscore).toLowerCase() : null;
+    return underscore > 0 ? idpOfCognitoProviderName(username.slice(0, underscore)) : null;
   }
 
   // email_verified gate with trusted-federation normalization (P1).
