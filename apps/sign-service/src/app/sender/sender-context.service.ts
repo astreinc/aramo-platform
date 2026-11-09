@@ -50,11 +50,12 @@ export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
 export const DOCUMENT_TEMPLATE_READ_SCOPE = 'document_template:read';
 
 export type SenderWorkspace = 'sign' | 'personal';
-export type SignInProvider = 'google' | 'microsoft';
+// Apple Go-Live W1 — `apple` (Sign in with Apple) joins the recorded providers.
+export type SignInProvider = 'google' | 'microsoft' | 'apple';
 
 export interface SenderContextView {
   // Sign Mobile B-11 — identity_provider: the federated provider the user signs in
-  // with ('google' | 'microsoft'), for "Signed in with Google/Microsoft"; null when
+  // with ('google' | 'microsoft' | 'apple'), for "Signed in with Google/Microsoft/Apple"; null when
   // not recorded (a legacy link) or not one provider.
   user: { id: string; email: string | null; display_name: string | null; identity_provider: SignInProvider | null };
   tenant: { id: string; name: string; kind: string };
@@ -193,12 +194,12 @@ export class SenderContextService {
       const recorded = [...new Set((await this.idps.recordedIdpsOf(user_id)).map((x) => normalizeIdp(x)))];
       if (recorded.length === 1) {
         const only = recorded[0];
-        return only === 'google' || only === 'microsoft' ? only : null;
+        return only === 'google' || only === 'microsoft' || only === 'apple' ? only : null;
       }
       if (recorded.length > 1) return null;
       const policy = await this.idps.policyOf(tenant_id);
       const pin = policy.enforced ? normalizeIdp(policy.pin) : null;
-      return pin === 'google' || pin === 'microsoft' ? pin : null;
+      return pin === 'google' || pin === 'microsoft' || pin === 'apple' ? pin : null;
     } catch {
       return null;
     }

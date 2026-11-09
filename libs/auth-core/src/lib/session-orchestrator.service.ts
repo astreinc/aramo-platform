@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { RefreshTokenService } from '@aramo/auth-storage';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 
+import { AccountLinkService, type PendingLinkOffer } from './account-link.service.js';
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { readHostBindingMode, type HostBindingClass } from './host-binding.js';
 import {
@@ -80,7 +81,24 @@ export type CallbackResult =
       refreshTokenPlaintext: string;
       // D-ORG-2 — the deep link sealed at login (already sanitized), or null.
       returnTo: string | null;
+      // Apple Go-Live A1 L-4 proof (a) — the outcome of attaching the pending
+      // link sealed at login: `linked` (the provider) or `refused` (the reason).
+      // The sign-in itself succeeds either way.
+      link?: { linked?: string; refused?: string };
     }
+  // Apple Go-Live R-5 (web) — a signup-intent sign-in with no account: the
+  // verified email and shared name go to the Personal signup page in the URL
+  // fragment. No session, no link, no pending link.
+  | {
+      kind: 'signup_handoff';
+      email: string;
+      given_name: string | null;
+      family_name: string | null;
+    }
+  // Apple Go-Live A1 L-4 path 1 — the provider was (or was not) attached to the
+  // signed-in principal sealed at login. No session is minted at this callback.
+  | { kind: 'linked'; idp: string; returnTo: string | null }
+  | { kind: 'link_refused'; reason: string; returnTo: string | null }
   | {
       kind: 'validation_error';
       reason: string;
@@ -100,6 +118,9 @@ export type CallbackResult =
   | {
       kind: 'auth_error';
       reason: string;
+      // Apple Go-Live A1 L-2 — a pending link was written for this denial; the
+      // controller returns the handle in the /login URL fragment only.
+      link?: PendingLinkOffer;
     }
   | {
       kind: 'internal_error';
@@ -133,6 +154,9 @@ export class SessionOrchestratorService {
     private readonly refreshTokens: RefreshTokenService,
     private readonly jwtIssuer: JwtIssuerService,
     @Inject(AUDIT_SINK) private readonly auditSink: AuditSink,
+    // Apple Go-Live A1 — proven account linking (optional: a composition root
+    // that does not bind the linking port keeps today's callback exactly).
+    @Optional() private readonly links?: AccountLinkService,
   ) {}
 
   async handleCallback(input: CallbackInput): Promise<CallbackResult> {
@@ -228,9 +252,25 @@ export class SessionOrchestratorService {
       // wrong token_use) is a 4xx auth_error; signature / JWKS / network /
       // iss / aud / exp failures (plain Errors from jose) stay 500.
       if (err instanceof CognitoVerificationError) {
+        if (payload.link_user_id) return { kind: 'link_refused', reason: err.reason, returnTo: payload.link_return ?? null };
         return { kind: 'auth_error', reason: err.reason };
       }
       return { kind: 'internal_error', reason: 'cognito_verification_failed' };
+    }
+
+    // Apple Go-Live A1 L-4 path 1 — "Add <provider>" while signed in: the new
+    // identity is attached to the principal sealed at login (proof c). No session
+    // is resolved or minted here; the existing session stays as it is.
+    if (typeof payload.link_user_id === 'string' && payload.link_user_id.length > 0) {
+      const returnTo = payload.link_return ?? null;
+      if (this.links === undefined) return { kind: 'link_refused', reason: 'link_unavailable', returnTo };
+      try {
+        const attached = await this.links.attachSignedIn(payload.link_user_id, cognito);
+        return attached.ok ? { kind: 'linked', idp: attached.idp, returnTo } : { kind: 'link_refused', reason: attached.reason, returnTo };
+      } catch (err) {
+        this.logger.warn(`signed-in link failed: ${(err as Error).message}`);
+        return { kind: 'link_refused', reason: 'link_failed', returnTo };
+      }
     }
 
     // Auth-Decoupling PR-4 (ADR-0021 §2): ONE call resolves the verified identity
@@ -257,7 +297,14 @@ export class SessionOrchestratorService {
       // user_not_provisioned · no_active_tenant · tenant_suspended · tenant_closed
       // · tenant_resolution_ambiguous · host_tenant_mismatch ·
       // host_class_consumer_mismatch · host_unbound (IC-2 PR-4)
-      return { kind: 'auth_error', reason: resolution.reason };
+      // Apple Go-Live R-5 — a signup-intent sign-in with no account hands the
+      // verified email + shared name to the signup page: no session, no pending link.
+      if (payload.intent === 'signup' && resolution.reason === 'user_not_provisioned') {
+        return { kind: 'signup_handoff', email: cognito.email, given_name: cognito.given_name ?? null, family_name: cognito.family_name ?? null };
+      }
+      // Apple Go-Live A1 L-2 — offer a pending link (never a session or a link).
+      const offer = this.links === undefined ? null : await this.links.offerPendingLink(resolution.reason, cognito);
+      return offer === null ? { kind: 'auth_error', reason: resolution.reason } : { kind: 'auth_error', reason: resolution.reason, link: offer };
     }
     // resolved → mint. principal_id/context_id are opaque (a user id / tenant id);
     // site_id rides in claims when a site-scoped membership stamped one.
@@ -308,11 +355,21 @@ export class SessionOrchestratorService {
       payload: { refresh_token_id: stored.id },
     });
 
+    // Apple Go-Live A1 L-4 proof (a) — this sign-in proved principal U through a
+    // provider already linked to it: attach the pending identity sealed at login.
+    // A refusal never fails the sign-in.
+    let link: { linked?: string; refused?: string } | undefined;
+    if (typeof payload.link_handle === 'string' && payload.link_handle.length > 0 && this.links !== undefined) {
+      const attached = await this.links.attachAfterSignIn(payload.link_handle, principalId);
+      link = attached.ok ? { linked: attached.idp } : { refused: attached.reason };
+    }
+
     return {
       kind: 'success',
       accessJwt,
       refreshTokenPlaintext,
       returnTo: payload.return_to ?? null,
+      ...(link !== undefined ? { link } : {}),
     };
   }
 

@@ -28,7 +28,7 @@ const DONE = {
   email: 'pat@astre.test',
   organization_name: 'Astre Consulting',
   sign_in_url: 'https://esign.example.test/login',
-  sign_in: { microsoft: 'https://sign.example.test/auth/sign/login?idp=microsoft&return_to=%2F', google: 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F' },
+  sign_in: { microsoft: 'https://sign.example.test/auth/sign/login?idp=microsoft&return_to=%2F', google: 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F', apple: 'https://sign.example.test/auth/sign/login?idp=apple&return_to=%2F' },
 };
 const SUGGESTIONS = [
   { label: '100 Main St, Dallas, TX 75001', address_line1: '100 Main St', address_line2: null, city: 'Dallas', state_province: 'TX', postal_code: '75001' },
@@ -124,7 +124,7 @@ describe('/signup', () => {
     vi.stubGlobal('fetch', fetch);
     at('/signup');
     expect(await screen.findByRole('region', { name: 'Create your Aramo Sign account' })).toBeInTheDocument();
-    expect(screen.getByText('No passwords. You sign in with your Google or Microsoft account.')).toBeInTheDocument();
+    expect(screen.getByText('No passwords. You sign in with your Google, Microsoft or Apple account.')).toBeInTheDocument();
     change('Work email', 'pat@astre.test');
     change('Organization name', 'Astre Consulting');
     change('Your name', 'Pat Lee');
@@ -301,6 +301,8 @@ describe('/signup/verify — activation steps', () => {
     expect(screen.queryByRole('button', { name: /choose a plan/i })).toBeNull();
     expect(screen.getByTestId('signup-signin-microsoft')).toHaveAttribute('href', DONE.sign_in.microsoft);
     expect(screen.getByTestId('signup-signin-google')).toHaveAttribute('href', DONE.sign_in.google);
+    // Apple Go-Live R-2 — the Business sign-in links include Apple.
+    expect(screen.getByTestId('signup-signin-apple')).toHaveAttribute('href', DONE.sign_in.apple);
     // Sign-Signup-Federated-Owner R3 — no password is issued or mentioned.
     expect(done.textContent ?? '').not.toMatch(/password/i);
     // Every step shows done; none is clickable.

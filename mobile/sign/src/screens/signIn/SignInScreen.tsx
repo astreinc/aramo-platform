@@ -1,10 +1,12 @@
-// Sign in (handoff §4.1, with directive §7 C-9/C-10): federated only, Microsoft and
-// Google both shown (Business may use Microsoft; a Personal Microsoft attempt is refused
-// by the server and shown as "Personal accounts sign in with Google."). No passwords, no
-// account switcher, and still no account creation AT LOGIN (M-A1). M-A11 adds native
-// Personal signup as a separate flow BEFORE sign-in (Android only, D-2): "New to Aramo
-// Sign? Create a free account" under the buttons, and the same button when a Google
-// sign-in is refused with user_not_provisioned.
+// Sign in (handoff §4.1, with directive §7 C-9/C-10): federated only. Microsoft, Google and
+// (Apple Go-Live R-2 / W4) Apple are shown; Apple first on iOS per Apple's placement
+// guidance, as a black "Sign in with Apple" button. A provider the account may not use is
+// refused by the server and shown in provider-neutral words. No passwords, no account
+// switcher, and still no account creation AT LOGIN (M-A1). M-A11 adds native Personal
+// signup as a separate flow BEFORE sign-in: "New to Aramo Sign? Create a free account"
+// under the buttons (Android and, with Apple Go-Live W5, iOS). A1 L-3/L-7: a refusal that
+// carries a pending-link handle opens the link panel (path 2 / path 3) in place of the
+// buttons; the handle stays in this screen's memory only.
 import { useNavigation } from '@react-navigation/native';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -15,16 +17,20 @@ import { isApiError, type ApiError } from '../../api/errors';
 import { NO_ACCOUNT_WEB, refusalMessage } from '../../api/refusalMessages';
 import { useServices, useSession } from '../../app/ServicesContext';
 import type { Provider } from '../../auth/authorize';
-import { AramoMark, GoogleLogo, MicrosoftLogo } from '../../components/BrandMarks';
+import { AramoMark } from '../../components/BrandMarks';
 import { Button } from '../../components/Button';
+import { ProviderButton } from '../../components/ProviderButton';
 import { WEB_LINKS } from '../../config/env';
 import { useTheme } from '../../theme';
+import { LinkPanel, type LinkPanelApi } from './LinkPanel';
+import { pendingLinkFrom, type PendingLink } from './linkPanelModel';
 
 export const SIGN_IN_COPY = {
   title: 'Aramo Sign',
   subtitle: 'Send, manage and sign agreements from anywhere.',
   microsoft: 'Continue with Microsoft',
   google: 'Continue with Google',
+  apple: 'Sign in with Apple',
   busy: 'Signing in…',
   footnote:
     'Signing something you were sent? Open the link in your email. You don’t need an account.',
@@ -33,17 +39,25 @@ export const SIGN_IN_COPY = {
   createAccount: 'Create a free account',
 } as const;
 
-const PROVIDERS: readonly { readonly id: Provider; readonly label: string }[] = [
-  { id: 'microsoft', label: SIGN_IN_COPY.microsoft },
-  { id: 'google', label: SIGN_IN_COPY.google },
-];
+const LABELS: Record<Provider, string> = {
+  microsoft: SIGN_IN_COPY.microsoft,
+  google: SIGN_IN_COPY.google,
+  apple: SIGN_IN_COPY.apple,
+};
+
+/** Button order: Apple first on iOS (Apple's guidance); last elsewhere. */
+export function providerOrder(platform: string): readonly Provider[] {
+  return platform === 'ios' ? ['apple', 'microsoft', 'google'] : ['microsoft', 'google', 'apple'];
+}
 
 export interface SignInViewProps {
-  readonly onSignIn: (provider: Provider) => Promise<void>;
+  readonly onSignIn: (provider: Provider, options?: { linkHandle?: string }) => Promise<unknown>;
   readonly onOpenLink: (url: string) => void;
   readonly sessionExpired?: boolean;
-  /** Opens native Personal signup (M-A11); absent where signup isn't offered (iOS). */
+  /** Opens native Personal signup (M-A11); absent where signup isn't offered. */
   readonly onCreateAccount?: () => void;
+  /** A1 L-4 proof (b) (email code); without it a pending link shows no panel. */
+  readonly linkApi?: LinkPanelApi;
 }
 
 /** Presentational sign-in (no services), so it renders in tests. */
@@ -52,12 +66,15 @@ export function SignInView({
   onOpenLink,
   sessionExpired,
   onCreateAccount,
+  linkApi,
 }: SignInViewProps) {
   const t = useTheme();
   const ios = t.platform === 'ios';
+  const order = providerOrder(t.platform);
   const [busy, setBusy] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(sessionExpired ? SIGN_IN_COPY.expired : null);
   const [noAccount, setNoAccount] = useState(false);
+  const [link, setLink] = useState<PendingLink | null>(null);
 
   async function start(provider: Provider): Promise<void> {
     setBusy(provider);
@@ -67,7 +84,10 @@ export function SignInView({
       await onSignIn(provider);
     } catch (e) {
       const err = isApiError(e) ? (e as ApiError) : null;
-      if (err?.reason === 'user_not_provisioned') {
+      const pending = linkApi !== undefined ? pendingLinkFrom(err, provider) : null;
+      if (pending !== null) {
+        setLink(pending);
+      } else if (err?.reason === 'user_not_provisioned') {
         // M-A11 §1: offer the native signup; without it, point to the web as before.
         setNoAccount(onCreateAccount !== undefined);
         setError(onCreateAccount !== undefined ? refusalMessage(err) : NO_ACCOUNT_WEB);
@@ -122,46 +142,31 @@ export function SignInView({
             {error}
           </Text>
         ) : null}
-        {PROVIDERS.map((p) => {
-          const isBusy = busy === p.id;
-          const disabled = busy !== null;
-          return (
-            <Pressable
-              key={p.id}
-              testID={`sign-in-${p.id}`}
-              onPress={() => void start(p.id)}
-              disabled={disabled}
-              accessibilityRole="button"
-              accessibilityLabel={isBusy ? SIGN_IN_COPY.busy : p.label}
-              accessibilityState={{ disabled, busy: isBusy }}
-              android_ripple={ios ? undefined : { color: t.color.fill }}
-              style={({ pressed }) => [
-                styles.provider,
-                {
-                  height: t.button.signIn.height,
-                  borderRadius: t.button.signIn.radius,
-                  borderColor: t.color.signInBorder,
-                  opacity: busy !== null && !isBusy ? 0.5 : 1,
-                },
-                pressed && ios ? { backgroundColor: t.color.fill } : null,
-              ]}
-            >
-              {p.id === 'microsoft' ? <MicrosoftLogo size={18} /> : <GoogleLogo size={18} />}
-              <Text
-                maxFontSizeMultiplier={1.6}
-                style={{
-                  color: t.color.text,
-                  fontFamily: t.font.family,
-                  fontSize: t.button.signIn.fontSize,
-                  fontWeight: t.button.signIn.fontWeight,
-                }}
-              >
-                {isBusy ? SIGN_IN_COPY.busy : p.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-        {onCreateAccount !== undefined && noAccount ? (
+        {link !== null && linkApi !== undefined ? (
+          <LinkPanel
+            link={link}
+            order={order}
+            api={linkApi}
+            onSignIn={onSignIn}
+            onCreateAccount={onCreateAccount}
+            onDone={() => setLink(null)}
+          />
+        ) : null}
+        {link === null
+          ? order.map((id) => (
+              <ProviderButton
+                key={id}
+                testID={`sign-in-${id}`}
+                provider={id}
+                label={LABELS[id]}
+                busy={busy === id}
+                busyLabel={SIGN_IN_COPY.busy}
+                dimmed={busy !== null && busy !== id}
+                onPress={() => void start(id)}
+              />
+            ))
+          : null}
+        {link === null && onCreateAccount !== undefined && noAccount ? (
           <Button
             title={SIGN_IN_COPY.createAccount}
             onPress={onCreateAccount}
@@ -169,7 +174,7 @@ export function SignInView({
             testID="sign-in-no-account-create"
           />
         ) : null}
-        {onCreateAccount !== undefined && !noAccount ? (
+        {link === null && onCreateAccount !== undefined && !noAccount ? (
           <View style={styles.newHere}>
             <Text style={{ color: t.color.textSecondary, fontSize: 15, fontFamily: t.font.family }}>
               {SIGN_IN_COPY.newHere}
@@ -230,16 +235,21 @@ export function SignInView({
 }
 
 export function SignInScreen() {
-  const { signIn } = useServices();
+  const { signIn, nativeAuth } = useServices();
   const { cause } = useSession();
   const navigation = useNavigation();
+  const linkApi: LinkPanelApi = {
+    start: (handle, email) =>
+      nativeAuth.linkEmailStart(email ? { link_handle: handle, email } : { link_handle: handle }),
+    verify: (handle, code) => nativeAuth.linkEmailVerify({ link_handle: handle, code }),
+  };
   return (
     <SignInView
       onSignIn={signIn}
       sessionExpired={cause === 'expired'}
-      {...(Platform.OS === 'android'
-        ? { onCreateAccount: () => navigation.navigate('Signup') }
-        : {})}
+      // Apple Go-Live W5: native signup on iOS too (App Attest), not only Android.
+      onCreateAccount={() => navigation.navigate('Signup')}
+      linkApi={linkApi}
       onOpenLink={(url) => void WebBrowser.openBrowserAsync(url).catch(() => undefined)}
     />
   );
@@ -266,14 +276,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, lineHeight: 23, maxWidth: 270, textAlign: 'center' },
   actions: { gap: 10 },
   error: { fontSize: 15, textAlign: 'center', marginBottom: 4 },
-  provider: {
-    borderWidth: 1,
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
   footnote: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 },
   links: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 2 },
   newHere: {

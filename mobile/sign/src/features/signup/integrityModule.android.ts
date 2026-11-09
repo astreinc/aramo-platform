@@ -7,6 +7,11 @@ import {
 import type { IntegrityModule } from './integrity';
 
 export const integrityModule: IntegrityModule | null = {
-  prepare: (cloudProjectNumber) => prepareIntegrityTokenProviderAsync(cloudProjectNumber),
+  client: 'android',
+  needsCloudProject: true,
+  prepare: async (cloudProjectNumber) => {
+    if (cloudProjectNumber === null) throw new Error('play_cloud_project_missing');
+    await prepareIntegrityTokenProviderAsync(cloudProjectNumber);
+  },
   request: (requestHash) => requestIntegrityCheckAsync(requestHash),
 };

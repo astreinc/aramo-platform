@@ -5,5 +5,5 @@ export { ListRow, RowTile, type ListRowProps } from './ListRow';
 export { Sheet, type SheetProps } from './Sheet';
 export { ToastProvider, useToast } from './Toast';
 export { Banner, OfflineBanner } from './Banner';
-export { AramoMark, GoogleLogo, MicrosoftLogo } from './BrandMarks';
+export { AppleLogo, AramoMark, GoogleLogo, MicrosoftLogo, ProviderLogo } from './BrandMarks';
 export { PlaceholderScreen } from './PlaceholderScreen';

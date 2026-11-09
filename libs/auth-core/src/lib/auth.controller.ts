@@ -29,6 +29,7 @@ import {
 import { RefreshTokenService } from '@aramo/auth-storage';
 import type { Request, Response } from 'express';
 
+import { isLinkHandle } from './account-link.service.js';
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
@@ -45,6 +46,7 @@ import {
   sanitizeReturnTo,
   deriveSignoutRedirect,
   resolvePublicBaseUrl,
+  defaultPostLoginPath,
 } from './redirect-uri.js';
 import {
   RefreshOrchestratorService,
@@ -169,12 +171,46 @@ function requestHost(req: RequestWithCookies): string | undefined {
 }
 
 // AUTH-SIGNIN-1 §3.1.1 — closed allowlist: the page's button value → the exact
-// Cognito provider name. Any other value yields no hint.
-export function mapIdpHint(raw: string | undefined): string | null {
+// Cognito provider name. Any other value yields no hint. Apple Go-Live R-1:
+// `apple` → `SignInWithApple`.
+export function mapIdpHint(raw: string | undefined | null): string | null {
   const v = (raw ?? '').trim().toLowerCase();
   if (v === 'google') return 'Google';
   if (v === 'microsoft') return 'microsoft';
+  if (v === 'apple' || v === 'signinwithapple') return 'SignInWithApple';
   return null;
+}
+
+// Apple Go-Live R-1 — a tenant's pinned provider is stored as the Aramo value
+// (`google` | `microsoft` | `apple`, set by the first owner federation) and must
+// reach Cognito as the exact provider name. A value outside the allowlist (a
+// historical verbatim Cognito name) is passed through unchanged, as before.
+export function mapPinnedIdpHint(pinned: string): string {
+  return mapIdpHint(pinned) ?? pinned;
+}
+
+// The provider list the sign-in page shows (AUTH-SIGNIN-1 §3.1.2; Apple Go-Live R-2).
+export const LOGIN_OPTION_PROVIDERS = ['microsoft', 'google', 'apple'] as const;
+
+// Apple Go-Live R-5 — base64url(JSON {email, given_name, family_name}) for the
+// signup page's URL fragment (a fragment never reaches a server or a log).
+export function encodeSignupHandoff(input: { email: string; given_name: string | null; family_name: string | null }): string {
+  return Buffer.from(
+    JSON.stringify({ email: input.email, given_name: input.given_name, family_name: input.family_name }),
+    'utf8',
+  ).toString('base64url');
+}
+
+// Apple Go-Live A1 L-2 — the /login URL fragment that carries a pending link.
+function pendingLinkFragment(link: { handle: string; idp: string }): string {
+  return `link=${encodeURIComponent(link.handle)}&idp=${encodeURIComponent(link.idp)}`;
+}
+
+// The relative path + one query parameter, resolved on `base` (never another origin).
+function withQueryParam(base: string, path: string, key: string, value: string): string {
+  const url = new URL(path, `${base}/`);
+  url.searchParams.set(key, value);
+  return url.toString();
 }
 
 @Controller('auth/:consumer')
@@ -218,7 +254,112 @@ export class AuthController {
     // Absent/unknown → no hint (Cognito chooser; fail-open UI). The backend
     // still enforces provider policy at the callback (AUTH-SIGNIN-1 R1/R4).
     @Query('idp') idp?: string,
+    // Apple Go-Live R-5 (web) — `intent=signup`: an unprovisioned result hands
+    // off to the Personal signup page (no session, no pending link).
+    @Query('intent') intent?: string,
+    // Apple Go-Live A1 L-4 proof (a) — the pending-link handle from the /login
+    // fragment, sealed into the encrypted state cookie (never echoed or logged).
+    @Query('link') link?: string,
   ): Promise<void> {
+    await this.startHostedUi(req, res, consumer, {
+      selectAccount: selectAccount === '1',
+      returnTo,
+      idp,
+      intent: intent === 'signup' ? 'signup' : null,
+      linkHandle: isLinkHandle(link) ? link : null,
+      linkUserId: null,
+      linkReturn: null,
+    });
+  }
+
+  // Apple Go-Live A1 L-4 path 1 — GET /auth/{consumer}/link?idp=<p>&return=<path>.
+  // Requires this consumer's browser session cookie. Starts the hosted UI for the
+  // chosen provider with the signed-in principal sealed into the state; the
+  // callback attaches the new identity to it (proof c) and redirects to
+  // `<return>?linked=<p>` or `<return>?link_error=<reason>`. No session is minted.
+  @Get('link')
+  async link(
+    @Param('consumer') consumer: string,
+    @Req() req: RequestWithCookies,
+    @Res() res: Response,
+    @Query('idp') idp?: string,
+    @Query('return') returnPath?: string,
+  ): Promise<void> {
+    const requestId = req.requestId ?? 'unknown';
+    const c = parseConsumer(consumer, requestId);
+    if (mapIdpHint(idp) === null) {
+      throw new AramoError('VALIDATION_ERROR', 'Unknown sign-in provider', 400, {
+        requestId,
+        details: { reason: 'invalid_idp' },
+      });
+    }
+    const principal = await this.requireBrowserSession(req, c, requestId);
+    const v = (idp ?? '').trim().toLowerCase();
+    await this.startHostedUi(req, res, consumer, {
+      // Google / Microsoft: show the account picker so a different account can be
+      // chosen; Apple has no picker prompt (W4).
+      selectAccount: v !== 'apple',
+      returnTo: undefined,
+      idp,
+      intent: null,
+      linkHandle: null,
+      linkUserId: principal,
+      linkReturn: sanitizeReturnTo(returnPath, c) ?? defaultPostLoginPath(c),
+      // The chosen provider wins even on a pinned host: the attach policy (A1 L-5)
+      // decides whether a second provider is allowed.
+      ignorePin: true,
+    });
+  }
+
+  // A valid browser session for consumer `c` (never a native token): the
+  // principal id. 401 otherwise.
+  private async requireBrowserSession(req: RequestWithCookies, c: ConsumerType, requestId: string): Promise<string> {
+    const cookie = readCookie(req, accessCookieName(c), LEGACY_ACCESS_COOKIE);
+    if (cookie === undefined || cookie.length === 0) {
+      throw new AramoError('AUTH_REQUIRED', 'Sign in first', 401, { requestId, details: { reason: 'session_required' } });
+    }
+    let payload;
+    try {
+      payload = await this.cookieVerifier.verify(cookie);
+    } catch {
+      throw new AramoError('INVALID_TOKEN', 'Access token verification failed', 401, { requestId });
+    }
+    if (payload.consumer_type !== c || payload.client !== undefined) {
+      throw new AramoError('INVALID_TOKEN', 'Access token consumer mismatch', 401, { requestId });
+    }
+    const resolution = await this.authzResolver.resolve({
+      tenant_id: payload.tenant_id,
+      principal_id: payload.sub,
+      consumer_type: payload.consumer_type,
+      actor_kind: 'user',
+      token_authz_version: payload.authz_version,
+      ...(payload.site_id !== undefined ? { site_id: payload.site_id } : {}),
+    });
+    if (resolution.status !== 'ok') {
+      throw new AramoError('INVALID_TOKEN', 'Access token authorization not resolvable', 401, {
+        requestId,
+        details: { reason: resolution.status === 'stale' ? 'authz_version_stale' : 'authz_unresolvable' },
+      });
+    }
+    return payload.sub;
+  }
+
+  private async startHostedUi(
+    req: RequestWithCookies,
+    res: Response,
+    consumer: string,
+    opts: {
+      selectAccount: boolean;
+      returnTo: string | undefined;
+      idp: string | undefined;
+      intent: 'signup' | null;
+      linkHandle: string | null;
+      linkUserId: string | null;
+      linkReturn: string | null;
+      ignorePin?: boolean;
+    },
+  ): Promise<void> {
+    const { selectAccount, returnTo, idp } = opts;
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
@@ -259,6 +400,10 @@ export class AuthController {
       context_id: contextId ?? null,
       // D-ORG-2 — same-host relative deep link, validated against the consumer's app base.
       return_to: sanitizeReturnTo(returnTo, c),
+      // Apple Go-Live R-5 / A1 L-4 — present only when used (cookie size unchanged otherwise).
+      ...(opts.intent !== null ? { intent: opts.intent } : {}),
+      ...(opts.linkHandle !== null ? { link_handle: opts.linkHandle } : {}),
+      ...(opts.linkUserId !== null ? { link_user_id: opts.linkUserId, link_return: opts.linkReturn } : {}),
     });
     setPkceCookie(res, c, cipher);
     const url = new URL(`https://${domain}/oauth2/authorize`);
@@ -277,13 +422,15 @@ export class AuthController {
     // (no tenant host, unknown/inactive slug, null IdP, lookup error) leaves the
     // chooser showing. Purely additive front-door hint; does NOT touch the
     // callback/token-exchange/reconcile spine.
-    if (identityProvider !== null) {
-      url.searchParams.set('identity_provider', identityProvider);
+    // Apple Go-Live R-1 — the pinned Aramo value is mapped to the Cognito
+    // provider name (apple → SignInWithApple, google → Google).
+    if (identityProvider !== null && opts.ignorePin !== true) {
+      url.searchParams.set('identity_provider', mapPinnedIdpHint(identityProvider));
     } else {
       const chosen = mapIdpHint(idp);
       if (chosen !== null) url.searchParams.set('identity_provider', chosen);
     }
-    if (selectAccount === '1') {
+    if (selectAccount) {
       url.searchParams.set('prompt', 'select_account');
     }
     res.redirect(302, url.toString());
@@ -301,9 +448,11 @@ export class AuthController {
     const requestId = req.requestId ?? 'unknown';
     parseConsumer(consumer, requestId);
     const { identityProvider } = await this.hostBase.resolve(req.get('host'));
-    const pinned = identityProvider === null ? null : identityProvider.trim().toLowerCase();
-    if (pinned === 'microsoft' || pinned === 'google') return { providers: [pinned] };
-    return { providers: ['microsoft', 'google'] };
+    const raw = identityProvider === null ? null : identityProvider.trim().toLowerCase();
+    // Apple Go-Live R-1/R-2 — `apple` (or its Cognito name) is a pin too.
+    const pinned = raw === 'signinwithapple' ? 'apple' : raw;
+    if (pinned !== null && (LOGIN_OPTION_PROVIDERS as readonly string[]).includes(pinned)) return { providers: [pinned] };
+    return { providers: [...LOGIN_OPTION_PROVIDERS] };
   }
 
   // §8.2 — GET /auth/{consumer}/callback
@@ -375,7 +524,55 @@ export class AuthController {
           { requestId, details: { reason: 'post_login_redirect_missing' } },
         );
       }
+      // Apple Go-Live A1 L-4 proof (a) — the attach outcome rides on the landing
+      // URL (`linked=<idp>` or `link_refused=<reason>`), the browser analogue of
+      // the native `link_refused` field.
+      if (result.link !== undefined) {
+        const landing = new URL(postLogin);
+        if (result.link.linked !== undefined) landing.searchParams.set('linked', result.link.linked);
+        if (result.link.refused !== undefined) landing.searchParams.set('link_refused', result.link.refused);
+        res.redirect(302, landing.toString());
+        return;
+      }
       res.redirect(302, postLogin);
+      return;
+    }
+    // Apple Go-Live R-5 (web) — no account for this verified identity under the
+    // signup intent: hand the email and shared name to the Personal signup page in
+    // the URL FRAGMENT (never sent to a server, never logged). No cookie is set.
+    if (result.kind === 'signup_handoff') {
+      const base = resolvePublicBaseUrl(derivedBase);
+      if (base === null) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Identity not provisioned', 403, {
+          requestId,
+          details: { reason: 'user_not_provisioned' },
+        });
+      }
+      const url = new URL('/signup/personal', base);
+      url.hash = `apple=${encodeSignupHandoff(result)}`;
+      res.redirect(302, url.toString());
+      return;
+    }
+    // Apple Go-Live A1 L-4 path 1 — back to the page that started "Add <provider>".
+    if (result.kind === 'linked' || result.kind === 'link_refused') {
+      const base = resolvePublicBaseUrl(derivedBase);
+      if (base === null) {
+        if (result.kind === 'linked') {
+          res.status(200).json({ linked: true, idp: result.idp });
+          return;
+        }
+        throw new AramoError('VALIDATION_ERROR', 'Sign-in method not added', 409, {
+          requestId,
+          details: { reason: result.reason },
+        });
+      }
+      const path = result.returnTo ?? defaultPostLoginPath(c);
+      res.redirect(
+        302,
+        result.kind === 'linked'
+          ? withQueryParam(base, path, 'linked', result.idp)
+          : withQueryParam(base, path, 'link_error', result.reason),
+      );
       return;
     }
     // IC-2 PR-4 (Amendment A1 §2 item 2): the 409 TENANT_SELECTION_REQUIRED
@@ -422,6 +619,9 @@ export class AuthController {
         'wrong_token_use',
       ]);
       const details = { reason: result.reason };
+      // Apple Go-Live A1 L-2 — a pending link was written: its handle and provider
+      // ride ONLY in the /login URL fragment, never in the query or the JSON body.
+      const linkFragment = result.link !== undefined ? pendingLinkFragment(result.link) : undefined;
       if (TOKEN_REASONS.has(result.reason)) {
         return this.redirectCallbackErrorOrJson(
           res,
@@ -446,6 +646,7 @@ export class AuthController {
             403,
             { requestId, details },
           ),
+          linkFragment,
         );
       }
       // Platform-Console Increment-2 PR-1 (workstream E) — tenant lifecycle
@@ -499,6 +700,7 @@ export class AuthController {
           403,
           { requestId, details },
         ),
+        linkFragment,
       );
     }
     // internal_error
@@ -532,6 +734,8 @@ export class AuthController {
     derivedBase: string | null,
     consumer: string,
     err: AramoError,
+    // Apple Go-Live A1 L-2 — `link=<handle>&idp=<idp>`, set as the URL fragment.
+    linkFragment?: string,
   ): void {
     const base = resolvePublicBaseUrl(derivedBase);
     if (base === null) {
@@ -555,6 +759,14 @@ export class AuthController {
       if (typeof reason === 'string') {
         url.searchParams.set('reason', reason);
       }
+    }
+    // Apple Go-Live A1 L-2 — with a pending link the page needs the reason
+    // (user_not_provisioned → path 2, idp_identity_conflict → path 3).
+    if (linkFragment !== undefined) {
+      if (deniedReason === 'user_not_provisioned' || deniedReason === 'idp_identity_conflict') {
+        url.searchParams.set('reason', deniedReason);
+      }
+      url.hash = linkFragment;
     }
     res.redirect(302, url.toString());
   }

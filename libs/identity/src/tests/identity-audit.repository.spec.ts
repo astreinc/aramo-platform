@@ -90,8 +90,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // TEMPLATE-PRODUCT-1 §4.3: +4 GLOBAL document_type.created/updated/retired/deleted (85 -> 89).
   // TEMPLATE-PRODUCT-1 §7.3: +2 tenant-scoped document_template.fixed_form_hidden/_shown (89 -> 91).
   // CONTACTS-1 SD-11: +2 contact.deleted / contact.restored (91 -> 93).
-  it('EVENT_TYPES contains 93 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes + 2 TEMPLATE-PRODUCT-1 fixed-form hide/show + 2 CONTACTS-1 contact delete/restore; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(93);
+  // Apple Go-Live A1 L-5: +1 GLOBAL external_identity.unlinked (93 -> 94).
+  it('EVENT_TYPES contains 94 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes + 2 TEMPLATE-PRODUCT-1 fixed-form hide/show + 2 CONTACTS-1 contact delete/restore + 1 A1 sign-in method removal; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(94);
     // Sign Feature-Parity §1.21 — the custom Sign role events are tenant-scoped.
     for (const t of [
       'identity.sign_custom_role.created',

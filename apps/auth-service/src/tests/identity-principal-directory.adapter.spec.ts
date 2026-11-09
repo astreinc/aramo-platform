@@ -798,3 +798,29 @@ describe('W2 — returning sign-in records the provider of a legacy link', () =>
     expect(record).not.toHaveBeenCalled();
   });
 });
+
+// Apple Go-Live (LOCKED) R-1 / R-3 — `apple` links are recorded like Google and
+// Microsoft; an Apple relay email matching no work account stays unprovisioned.
+describe('Apple Go-Live — apple provider at the principal directory', () => {
+  it('a returning Apple sign-in records the legacy link provider as apple', async () => {
+    const record = vi.fn().mockResolvedValue(true);
+    const idpPolicy = { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined, recordReturningLinkIdp: record } as unknown as IdentityProviderPolicyService;
+    const d = { ...makeDeps({ resolveUser: { id: USER_ID, email: 'a@b.c' } }), idpPolicy };
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, verified_email: 'a@b.c', idp: 'apple' })).kind).toBe('resolved');
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ idp: 'apple' }));
+  });
+
+  it('a first Apple federation (email reconcile) records the new link as apple', async () => {
+    const recordLinkIdp = vi.fn().mockResolvedValue(undefined);
+    const idpPolicy = { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp } as unknown as IdentityProviderPolicyService;
+    const d = { ...makeDeps({ resolveUser: null, findUserByEmail: { id: USER_ID, email: 'a@b.c' } }), idpPolicy };
+    await adapter(d).resolveSession({ ...SESSION_INPUT, verified_email: 'a@b.c', idp: 'apple' });
+    expect(recordLinkIdp).toHaveBeenCalledWith('ext-1', 'apple');
+  });
+
+  it('R-3: an Apple relay address matching no Business account is user_not_provisioned (no link written)', async () => {
+    const d = makeDeps({ resolveUser: null, findUserByEmail: null });
+    expect(await adapter(d).resolveSession({ ...SESSION_INPUT, verified_email: 'x7k2@privaterelay.appleid.com', idp: 'apple' })).toEqual({ kind: 'denied', reason: 'user_not_provisioned' });
+    expect(d.identity.linkExternalIdentity).not.toHaveBeenCalled();
+  });
+});

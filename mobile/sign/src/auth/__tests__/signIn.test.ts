@@ -7,11 +7,18 @@ import {
 } from '../../config/env';
 import { buildLogoutUrl } from '../authorize';
 import { fakeJwt, memoryKv, nodeCrypto, recordingFetch } from '../../testing/fakes';
+import { base64UrlEncode, utf8Encode } from '../../util/bytes';
 import { deliverCallback } from '../callbackBus';
 import { createNativeAuthApi } from '../nativeAuthApi';
 import { codeChallengeS256 } from '../pkce';
 import { SessionManager } from '../session';
-import { signInWithProvider, type SignInDeps } from '../signIn';
+import {
+  appleSignupIdentity,
+  linkProvider,
+  signInWithProvider,
+  type AuthSessionResult,
+  type SignInDeps,
+} from '../signIn';
 import { SECURE_KEYS } from '../secureKeyValue';
 import { createTokenStore } from '../tokenStore';
 
@@ -167,11 +174,11 @@ describe('native sign-in (M-A1 §3.2-§3.3)', () => {
         return { type: 'dismiss' };
       }),
     );
-    await expect(done).resolves.toBeUndefined();
+    await expect(done).resolves.toEqual({ linkRefused: null });
     expect((t.net.calls[0]!.body as { code: string }).code).toBe('late');
   });
 
-  it('maps the Personal Microsoft refusal to "Personal accounts sign in with Google."', async () => {
+  it('maps the Personal Microsoft refusal to the provider-neutral copy (Apple Go-Live W4)', async () => {
     const t = setup(403, {
       error: {
         code: 'AUTH_FORBIDDEN',
@@ -189,7 +196,9 @@ describe('native sign-in (M-A1 §3.2-§3.3)', () => {
     ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).reason).toBe('idp_not_permitted_for_tenant');
-    expect(refusalMessage(err as ApiError)).toBe('Personal accounts sign in with Google.');
+    expect(refusalMessage(err as ApiError)).toBe(
+      'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
+    );
     expect(t.kv.items.size).toBe(0);
   });
 
@@ -202,6 +211,135 @@ describe('native sign-in (M-A1 §3.2-§3.3)', () => {
       }),
     ).rejects.toMatchObject({
       reason: 'auth_not_configured',
+    });
+  });
+});
+
+const ok = (url: string, redirect: string): Promise<AuthSessionResult> =>
+  Promise.resolve({
+    type: 'success',
+    url: `${redirect}?code=the-code&state=${param(url, 'state')}`,
+  });
+
+describe('Sign in with Apple (Apple Go-Live R-1 / W4)', () => {
+  it('uses the Cognito provider SignInWithApple and sends no prompt=select_account', async () => {
+    const t = setup();
+    await signInWithProvider('apple', t.deps(ok));
+    const q = new URL(t.opened()).searchParams;
+    expect(q.get('identity_provider')).toBe('SignInWithApple');
+    expect(q.has('prompt')).toBe(false);
+    expect(t.net.calls[0]!.url).toBe('https://sign.aramo.ai/auth/native/sign/token');
+  });
+
+  it('A1 L-4 proof (a): the pending-link handle rides on the token call; link_refused is returned', async () => {
+    const t = setup(200, {
+      access_token: fakeJwt('u1'),
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r1',
+      device_session_id: 'dsid-1',
+      link_refused: 'idp_already_linked',
+    });
+    const out = await signInWithProvider('google', t.deps(ok), { linkHandle: 'h'.repeat(43) });
+    expect((t.net.calls[0]!.body as { link_handle?: string }).link_handle).toBe('h'.repeat(43));
+    expect(out).toEqual({ linkRefused: 'idp_already_linked' });
+    expect(t.session.snapshot().status).toBe('signedIn');
+  });
+
+  it('without a handle the token body has no link_handle', async () => {
+    const t = setup();
+    await signInWithProvider('google', t.deps(ok));
+    expect(t.net.calls[0]!.body).not.toHaveProperty('link_handle');
+  });
+
+  it('A1 path 1: linkProvider authorizes with the provider and posts the same body to link', async () => {
+    const t = setup();
+    const link = jest.fn(async () => ({ linked: true as const, idp: 'apple' as const }));
+    const deps = t.deps(ok);
+    await expect(
+      linkProvider('apple', { ...deps, describeDevice: deps.describeDevice, link }),
+    ).resolves.toEqual({ linked: true, idp: 'apple' });
+    expect(link).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'the-code',
+        redirect_uri: NATIVE_REDIRECT_URI,
+        device: DEVICE,
+      }),
+    );
+    // Linking never touches the token endpoint or the session.
+    expect(t.net.calls).toHaveLength(0);
+  });
+});
+
+describe('Apple-first signup identity (Apple Go-Live R-5, native)', () => {
+  function idToken(claims: Record<string, unknown>): string {
+    const enc = (o: unknown) => base64UrlEncode(utf8Encode(JSON.stringify(o)));
+    return `${enc({ alg: 'RS256' })}.${enc(claims)}.sig`;
+  }
+
+  it('redeems the code at Cognito (PKCE, no secret), reads email + name from the ID token and keeps no token', async () => {
+    const t = setup();
+    let nonce = '';
+    const cognito = recordingFetch(() => {
+      return {
+        status: 200,
+        body: {
+          id_token: idToken({
+            email: 'x1@privaterelay.appleid.com',
+            given_name: 'Pat',
+            family_name: 'Lee',
+            nonce,
+          }),
+          access_token: 'a',
+          refresh_token: 'r',
+        },
+      };
+    });
+    const deps = t.deps(async (url, redirect) => {
+      nonce = param(url, 'nonce');
+      return ok(url, redirect);
+    });
+    const fetchSpy = jest.fn((url: string, init: RequestInit) => {
+      expect(url).toBe('https://auth.example.aramo.ai/oauth2/token');
+      const form = new URLSearchParams(String(init.body));
+      expect(form.get('grant_type')).toBe('authorization_code');
+      expect(form.get('client_id')).toBe('nativeclient123');
+      expect(form.get('code')).toBe('the-code');
+      expect(form.get('code_verifier')).toBeTruthy();
+      expect(form.has('client_secret')).toBe(false);
+      return cognito.fetch(url, { ...init, body: undefined });
+    });
+    await expect(appleSignupIdentity({ ...deps, fetch: fetchSpy })).resolves.toEqual({
+      email: 'x1@privaterelay.appleid.com',
+      givenName: 'Pat',
+      familyName: 'Lee',
+    });
+    expect(param(t.opened(), 'identity_provider')).toBe('SignInWithApple');
+    expect(t.net.calls).toHaveLength(0);
+    expect(t.kv.items.size).toBe(0);
+  });
+
+  it('refuses an ID token whose nonce does not match, and a name Apple did not share is null', async () => {
+    const t = setup();
+    // The Cognito token call is form-encoded; the recorder only parses JSON, so drop the body.
+    const answer = (claims: Record<string, unknown>) => (url: string, init: RequestInit) =>
+      recordingFetch(() => ({ status: 200, body: { id_token: idToken(claims) } })).fetch(url, {
+        ...init,
+        body: undefined,
+      });
+    await expect(
+      appleSignupIdentity({ ...t.deps(ok), fetch: answer({ email: 'a@b.co', nonce: 'other' }) }),
+    ).rejects.toMatchObject({ reason: 'state_mismatch' });
+    let nonce = '';
+    const deps = t.deps(async (url, redirect) => {
+      nonce = param(url, 'nonce');
+      return ok(url, redirect);
+    });
+    const lazy: typeof fetch = (u, i) => answer({ email: 'a@b.co', nonce })(String(u), i ?? {});
+    await expect(appleSignupIdentity({ ...deps, fetch: lazy })).resolves.toEqual({
+      email: 'a@b.co',
+      givenName: null,
+      familyName: null,
     });
   });
 });

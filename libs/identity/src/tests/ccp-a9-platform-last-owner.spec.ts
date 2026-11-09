@@ -35,11 +35,15 @@ describe('CCP-A9 platform last-owner invariant (identity)', () => {
     expect(sql).toContain(`pg_advisory_xact_lock(hashtext(''identity:platform_owner''))`);
   });
 
-  it('A9-ID-0 registration — right after the CCP-A1 catalog migration, followed by the CCP-A1 Amendment A1 Finance amount scope and the Amendment A2 payment request scope (then only later, unrelated migrations: M-A7 privacy requests, Sign custom roles); stamps in apply order', () => {
+  it('A9-ID-0 registration — right after the CCP-A1 catalog migration, followed by the CCP-A1 Amendment A1 Finance amount scope and the Amendment A2 payment request scope (then only later, unrelated migrations: M-A7 privacy requests, Sign custom roles, Apple Go-Live); stamps in apply order', () => {
     const at = IDENTITY_MIGRATIONS.indexOf('libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql');
     expect(IDENTITY_MIGRATIONS.slice(at + 4)).toEqual([
       'libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql',
       'libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql',
+      // Apple Platform Go-Live W1 / A1 L-8 / W2 R-9.
+      'libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql',
+      'libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql',
+      'libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql',
     ]);
     expect(IDENTITY_MIGRATIONS.slice(at, at + 4)).toEqual([
       'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',

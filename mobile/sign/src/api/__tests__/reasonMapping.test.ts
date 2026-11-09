@@ -81,7 +81,9 @@ describe('refusal -> typed error (details.reason)', () => {
 
   it('renders the directive copy for the key reasons', () => {
     const m = (reason: string) => refusalMessage({ reason, code: 'X' });
-    expect(m('idp_not_permitted_for_tenant')).toBe('Personal accounts sign in with Google.');
+    expect(m('idp_not_permitted_for_tenant')).toBe(
+      'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
+    );
     for (const r of [
       'SIGNING_SESSION_EXPIRED',
       'SIGNING_SESSION_INVALID',
@@ -95,6 +97,24 @@ describe('refusal -> typed error (details.reason)', () => {
     expect(m('something_new')).toBe('Something went wrong. Try again.');
   });
 
+  it('Apple Go-Live A1: names the linking refusals and the email-code answers', () => {
+    const m = (reason: string) => refusalMessage({ reason, code: 'X' });
+    expect(m('identity_already_linked')).toBe(
+      'This sign-in is already connected to another Aramo account.',
+    );
+    expect(m('idp_already_linked')).toMatch(/already has a sign-in from this provider/);
+    expect(m('last_sign_in_method')).toBe(
+      'You can’t remove your only sign-in method. Add another one first.',
+    );
+    expect(m('idp_identity_conflict')).toBe('You already have an Aramo account. Confirm it’s you.');
+    expect(m('code_invalid')).toMatch(/isn’t right/);
+    expect(m('code_expired')).toMatch(/expired/);
+    expect(m('code_attempts_exceeded')).toMatch(/Too many wrong codes/);
+    // Provider-neutral: no refusal names a single provider any more.
+    for (const r of ['idp_not_permitted_for_tenant', 'user_not_provisioned'])
+      expect(m(r)).not.toMatch(/Google|Microsoft|Apple/);
+  });
+
   it('names the sign-in denial instead of the generic text', () => {
     const denial = (reason: string) =>
       refusalMessage({
@@ -103,9 +123,7 @@ describe('refusal -> typed error (details.reason)', () => {
           reason === 'user_not_provisioned' ? 'INSUFFICIENT_PERMISSIONS' : 'TENANT_ACCESS_DENIED',
       });
     // M-A11 §1: the sign-in screen offers "Create a free account" with this message.
-    expect(denial('user_not_provisioned')).toBe(
-      'There’s no Aramo account for this Google account yet.',
-    );
+    expect(denial('user_not_provisioned')).toBe('There’s no Aramo account for this sign-in yet.');
     for (const r of ['no_active_tenant', 'membership_inactive', 'sign_access_removed']) {
       expect(denial(r)).toBe(
         'Your account doesn’t have access to Aramo Sign. Ask your Aramo administrator to add you.',

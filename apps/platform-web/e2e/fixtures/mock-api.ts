@@ -77,7 +77,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}): Promise<MockT
       if (path === '/auth/platform/session') {
         reply = opts.signedOut ? json({ error: { code: 'UNAUTHENTICATED' } }, 401) : json(sessionBody(persona));
       } else if (path === '/auth/platform/login-options') {
-        reply = json({ providers: ['microsoft', 'google'] });
+        reply = json({ providers: ['microsoft', 'google', 'apple'] });
       } else if (path === '/platform/me') {
         reply = opts.meRefused || persona === 'tenantUser' ? json({ error: { code: 'FORBIDDEN' } }, 403) : json(meBody(persona));
       } else {

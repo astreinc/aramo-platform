@@ -5,6 +5,8 @@ import {
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   deriveAllowedDomainOrThrow,
+  classifyEmailDomain,
+  APPLE_PRIVATE_RELAY_DOMAIN,
 } from '../lib/util/email-domain.js';
 
 // Domain-Enforcement P1 — the email-domain primitives + the dataset wiring.
@@ -78,5 +80,23 @@ describe('email-domain — deriveAllowedDomainOrThrow (single-source provision g
         }),
       }),
     );
+  });
+});
+
+// Apple Go-Live R-6 — the Hide My Email relay domain is personal (never business or
+// disposable), so a relay address can only take Personal signup.
+describe('email-domain — Apple private relay (R-6)', () => {
+  it('classes privaterelay.appleid.com as personal, case-insensitively', () => {
+    expect(APPLE_PRIVATE_RELAY_DOMAIN).toBe('privaterelay.appleid.com');
+    expect(classifyEmailDomain('privaterelay.appleid.com')).toBe('personal');
+    expect(classifyEmailDomain('PrivateRelay.AppleID.com')).toBe('personal');
+    expect(extractEmailDomain('x7k2abc@privaterelay.appleid.com')).toBe('privaterelay.appleid.com');
+  });
+  it('is refused as a tenant owner domain (business signup)', () => {
+    expect(isPersonalOrDisposableDomain('privaterelay.appleid.com')).toBe(true);
+    expect(() => deriveAllowedDomainOrThrow('x7k2abc@privaterelay.appleid.com', 'r')).toThrow();
+  });
+  it('does not widen to other appleid.com hosts', () => {
+    expect(classifyEmailDomain('appleid.com')).not.toBe('personal');
   });
 });

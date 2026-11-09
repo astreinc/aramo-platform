@@ -7,6 +7,8 @@
 // Remaining-Work A4 — "Manage billing or cancel" opens the web billing settings (owners of a billed plan).
 // M-A12 W1-E: My profile, the date format and default field size settings, Report app
 // issue, and the Plan row (W1-G Plans screen). A store-billed plan is managed in the store.
+// Apple Go-Live: "Signed in with Apple" (R-2), Sign-in methods with Add / Remove (A1 L-7),
+// and Apple token revocation on deletion (R-8).
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
@@ -27,7 +29,7 @@ import {
   type BiometricCapability,
 } from '../../auth/biometric';
 import { Banner, OfflineBanner } from '../../components/Banner';
-import { GoogleLogo, MicrosoftLogo } from '../../components/BrandMarks';
+import { ProviderLogo } from '../../components/BrandMarks';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Sheet } from '../../components/Sheet';
@@ -55,7 +57,12 @@ import {
   useSignSettings,
 } from '../../features/profile/signProfile';
 import { ReportIssueSheet } from '../../features/support/ReportIssueSheet';
+import { appleLinked } from '../../features/account/appleRevoke';
 import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
+import {
+  SignInMethodsSection,
+  useSignInMethods,
+} from '../../features/account/SignInMethodsSection';
 import { isPersonalAccountOwner } from '../../features/account/privacy';
 import { PrivacyRequestsSection } from '../../features/account/PrivacyRequestsSection';
 import { signedInWithLabel } from '../../features/account/profile';
@@ -181,6 +188,7 @@ export function AccountScreen() {
   const name = user?.display_name ?? user?.email ?? '';
   const provider = user?.identity_provider ?? null;
   const signedInWith = signedInWithLabel(provider);
+  const methods = useSignInMethods();
   const allowance = allowanceModel(billing.data ?? null);
   // Remaining-Work A4 — cancel lives in the web billing settings; the app links there.
   const billingLink = billingSettingsLink(billing.data);
@@ -293,7 +301,7 @@ export function AccountScreen() {
             ) : null}
             {signedInWith ? (
               <View style={styles.provider} testID="signed-in-with">
-                {provider === 'microsoft' ? <MicrosoftLogo size={14} /> : <GoogleLogo size={14} />}
+                {provider !== null ? <ProviderLogo provider={provider} size={14} /> : null}
                 <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{signedInWith}</Text>
               </View>
             ) : null}
@@ -309,6 +317,8 @@ export function AccountScreen() {
             last
           />
         </Card>
+
+        <SignInMethodsSection online={online} />
 
         <SectionTitle>Account</SectionTitle>
         <Card style={styles.card0}>
@@ -598,7 +608,11 @@ export function AccountScreen() {
         {/* M-A8 §2 — Personal owners keep "Delete account"; Business users are organization-managed:
             no self-service delete, a "Privacy requests" entry instead. */}
         {ctx.data === undefined && billing.data === undefined ? null : personalOwner ? (
-          <DeleteAccountSection personal online={online} />
+          <DeleteAccountSection
+            personal
+            online={online}
+            appleLinked={appleLinked(provider, methods.data)}
+          />
         ) : (
           <PrivacyRequestsSection online={online} />
         )}

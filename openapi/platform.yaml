@@ -474,13 +474,18 @@ paths:
                       Federated sign-in entry points for the owner (no password is
                       issued). Each is the sign host's login with the AUTH-SIGNIN-1
                       `idp` hint; the first permitted provider becomes the
-                      organization's sign-in provider.
-                    required: [microsoft, google]
+                      organization's sign-in provider. Apple Platform Go-Live R-2 /
+                      R-3 — `apple` signs in only when Apple shares the account's
+                      work email (a relay address never matches a Business account).
+                    required: [microsoft, google, apple]
                     properties:
                       microsoft:
                         type: string
                         format: uri
                       google:
+                        type: string
+                        format: uri
+                      apple:
                         type: string
                         format: uri
         '400':
@@ -5224,6 +5229,18 @@ paths:
         verifier is refused too (fail closed). For android, `elapsed_ms` must be a JSON
         integer. Absent `client` or `client: "web"` is the browser flow, unchanged; any
         other value is `VALIDATION_ERROR`.
+
+        Aramo Sign Apple Platform Go-Live R-9 — `client: "ios"` (the iPhone app) is
+        bound the same way with Apple App Attest: `integrity_token` is
+        `base64url(JSON {"key_id": <base64 key id>, "attestation": <base64 CBOR
+        attestation object>})`, attested with `clientDataHash` = the requestHash bytes
+        (the same canonical body hash as android; `elapsed_ms` a JSON integer). The
+        server verifies the x5c chain to the Apple App Attestation Root CA, the nonce
+        (SHA-256 of authData and clientDataHash) in the credential certificate,
+        `key_id` = SHA-256 of the credential public key and the credential id, the
+        rpIdHash of `<TEAMID>.ai.aramo.sign`, counter 0 and the production aaguid. A
+        key id is accepted once (a replay is refused). Failures and an unconfigured
+        verifier are refused as for android (`personal_signup_refused`).
       security: []
       requestBody:
         required: true
@@ -5235,11 +5252,11 @@ paths:
               properties:
                 client:
                   type: string
-                  enum: [web, android]
-                  description: Absent or `web` = the browser (Turnstile); `android` = the native app (Play Integrity).
+                  enum: [web, android, ios]
+                  description: Absent or `web` = the browser (Turnstile); `android` = the Android app (Play Integrity); `ios` = the iPhone app (App Attest).
                 integrity_token:
                   type: string
-                  description: client android only — the Play Integrity Standard token bound to the requestHash.
+                  description: client android — the Play Integrity Standard token bound to the requestHash; client ios — base64url(JSON {key_id, attestation}) of the App Attest attestation bound to the requestHash.
                 name:
                   type: string
                   minLength: 2
@@ -5265,7 +5282,7 @@ paths:
                   description: Honeypot; must be empty.
                 elapsed_ms:
                   type: number
-                  description: Milliseconds the form was open before submitting (an integer from client android).
+                  description: Milliseconds the form was open before submitting (an integer from client android or ios).
       responses:
         '202':
           description: Accepted (a code was emailed, or the address already has an account).
@@ -5420,9 +5437,11 @@ paths:
       description: |
         Creates a PROVISIONED PERSONAL tenant ([core, sign]) and its owner with
         `tenant_owner` only (system provisioning authority), without a Cognito
-        user or an ExternalIdentity, enrolled for Google sign-in. No subscription
-        and no billing provider are created. The account activates only when the
-        owner signs in with the Google account for exactly the verified email.
+        user or an ExternalIdentity, enrolled in the enforced provider cohort with no
+        pin (Apple Platform Go-Live R-4: Google or Apple; the owner's first federation
+        pins it). No subscription and no billing provider are created. The account
+        activates only when the owner signs in with Google or Apple for exactly the
+        verified email.
         `held` reports a review hold or an unmet phone step-up. Idempotent.
 
         Aramo-Sign-Mobile-Amendment-M-A11 §2.2 — the native app sends `client:
@@ -5433,7 +5452,8 @@ paths:
         and asks again). Each acceptance records the document key, version and hash,
         and its origin (IP and user agent); the signup's audit event records client
         android. The web's `{key, version}` entries are unchanged (an entry that does
-        carry `sha256` must match it).
+        carry `sha256` must match it). Apple Platform Go-Live W2 — `client: "ios"` is
+        bound exactly as android (the audit event records client ios).
       security: []
       requestBody:
         required: true
@@ -5448,8 +5468,8 @@ paths:
                   format: uuid
                 client:
                   type: string
-                  enum: [web, android]
-                  description: Absent or `web` = the browser; `android` = the native app (sha256 binding).
+                  enum: [web, android, ios]
+                  description: Absent or `web` = the browser; `android` / `ios` = the native app (sha256 binding).
                 accept:
                   type: array
                   items:
@@ -5463,7 +5483,7 @@ paths:
                       sha256:
                         type: string
                         pattern: '^[0-9a-f]{64}$'
-                        description: Required from client android — the registry hash of the accepted text.
+                        description: Required from client android or ios — the registry hash of the accepted text.
       responses:
         '200':
           description: Provisioned (or provisioning in a concurrent request).
@@ -5480,9 +5500,16 @@ paths:
                     type: string
                   sign_in:
                     type: object
-                    required: [google]
+                    description: |
+                      Apple Platform Go-Live R-5 — the done step's sign-in entry
+                      points: the login with the `idp` hint for Google and for Apple
+                      (Apple binds only when it shares the verified email).
+                    required: [google, apple]
                     properties:
                       google:
+                        type: string
+                        format: uri
+                      apple:
                         type: string
                         format: uri
                   held:

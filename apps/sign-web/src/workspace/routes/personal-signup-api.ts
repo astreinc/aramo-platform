@@ -29,7 +29,8 @@ export type Held = 'review' | 'phone_verification_required' | null;
 export interface CompleteResponse {
   status: string;
   held?: Held;
-  sign_in?: { google?: string };
+  // Apple Go-Live W2/R-5 — `apple` is the login URL with idp=apple.
+  sign_in?: { google?: string; apple?: string };
 }
 
 export interface PersonalSignupError {

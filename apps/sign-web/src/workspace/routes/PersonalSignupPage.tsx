@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { AppleLogo, loginUrl } from '@aramo/fe-foundation';
 
 import { legalPath, MAXMIND_ATTRIBUTION, MAXMIND_URL, THIRD_PARTY_NOTICES_PATH } from '../legal/catalog';
 
@@ -54,6 +55,14 @@ import { Turnstile } from './Turnstile';
 //   page only renders it, in the activation layout of the signup handoff §4.5.
 //   Nothing activates until the Google identity for the verified email signs in
 //   (§3.6). All copy is placeholder (LEGAL_PENDING).
+//
+// Apple Go-Live R-5 (web) — "Continue with Apple" at the top of the form starts
+// the hosted UI with idp=apple and a signup intent. An unprovisioned Apple
+// sign-in comes back here with `#apple=<base64url {email, given_name,
+// family_name}>` in the URL fragment (never sent to a server): the email is
+// filled in and locked, the name prefilled, and the fragment cleared. The rest
+// is unchanged (email OTP to that address, phone, residence, terms). The done
+// step offers Continue with Apple and Google.
 
 export { RESEND_SECONDS } from './signup-ui';
 
@@ -74,7 +83,52 @@ type Step =
   | { k: 'phone'; id: string }
   | { k: 'terms'; id: string; hint: Held; notice?: string }
   | { k: 'review' }
-  | { k: 'done'; google: string | null; held: Held };
+  | { k: 'done'; signIn: SignInLinks; held: Held };
+
+interface SignInLinks {
+  google: string | null;
+  apple: string | null;
+}
+
+/** What Apple shared, from the R-5 hand-off fragment. */
+export interface ApplePrefill {
+  email: string | null;
+  givenName: string | null;
+  familyName: string | null;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** `#apple=<base64url JSON>` → the prefill, or null when absent or malformed. */
+export function parseAppleFragment(hash: string): ApplePrefill | null {
+  const raw = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash).get('apple');
+  if (raw === null || raw.length === 0 || raw.length > 4000 || !/^[A-Za-z0-9_-]+=*$/.test(raw)) return null;
+  try {
+    const b64 = raw.replace(/=+$/, '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const body = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) as Record<string, unknown>;
+    const str = (v: unknown, max: number) => (typeof v === 'string' && v.trim() !== '' ? v.trim().slice(0, max) : null);
+    const email = str(body['email'], 254);
+    return {
+      email: email !== null && EMAIL_RE.test(email) ? email : null,
+      givenName: str(body['given_name'], 100),
+      familyName: str(body['family_name'], 100),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Read the hand-off once and clear it from the address bar (and history). */
+function takeAppleFragment(): ApplePrefill | null {
+  const { hash, pathname, search } = window.location;
+  if (!/(^|[#&])apple=/.test(hash)) return null;
+  const prefill = parseAppleFragment(hash);
+  window.history.replaceState(window.history.state, '', `${pathname}${search}`);
+  return prefill;
+}
+
+const APPLE_SIGNUP_URL = loginUrl({ idp: 'apple', intent: 'signup', consumer: 'sign', returnTo: null });
 
 function groups(withPhone: boolean): readonly StepGroupDef[] {
   return [
@@ -127,6 +181,8 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState<string | null>(null);
   const [withPhone, setWithPhone] = useState(false);
+  const [apple] = useState(takeAppleFragment);
+  const viaApple = apple !== null && apple.email !== null;
 
   useEffect(() => {
     fetchPersonalTerms()
@@ -175,6 +231,7 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
         <Shell step="form" withPhone={withPhone} testId="personal-form">
           <PersonalForm
             siteKey={siteKey}
+            apple={apple}
             onStarted={(id, addr, e164) => {
               setEmail(addr);
               setPhone(e164);
@@ -250,8 +307,8 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
           id={step.id}
           withPhone={withPhone}
           {...(step.notice !== undefined ? { notice: step.notice } : {})}
-          onDone={(google, held) =>
-            setStep({ k: 'done', google, held: held === undefined ? hint : held })
+          onDone={(signIn, held) =>
+            setStep({ k: 'done', signIn, held: held === undefined ? hint : held })
           }
           onRestart={restart}
         />
@@ -290,7 +347,7 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
           </span>
           <StepHead
             title="Your personal account is ready"
-            sub="Sign in with Google to start using it. You can send up to 5 documents a month."
+            sub={`Sign in with ${viaApple ? 'Apple' : 'Google or Apple'} to start using it. You can send up to 5 documents a month.`}
           />
           {step.held !== null ? (
             <div className="su-banner" role="status" data-testid="personal-held">
@@ -303,22 +360,37 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
               </span>
             </div>
           ) : null}
-          <p className="su-hint" style={{ fontSize: 14 }} data-testid="personal-done-copy">
-            Sign in with the Google account for <strong>{email}</strong>. No Google account for this
-            address? You can create one with this email.
-          </p>
-          <div style={{ maxWidth: 360 }}>
-            {step.google !== null ? (
-              <ProviderLink provider="google" href={step.google} testId="personal-signin-google" />
-            ) : (
+          {viaApple ? (
+            <p className="su-hint" style={{ fontSize: 14 }} data-testid="personal-done-copy">
+              Continue with the Apple ID you used, for <strong>{email}</strong>.
+            </p>
+          ) : (
+            <p className="su-hint" style={{ fontSize: 14 }} data-testid="personal-done-copy">
+              Sign in with the Google account for <strong>{email}</strong>. No Google account for this
+              address? You can create one with this email. Apple works too, if your Apple ID uses this
+              same email.
+            </p>
+          )}
+          <div className="su-providers" style={{ maxWidth: 360 }}>
+            {/* Apple Go-Live R-5 — the done step offers Apple; on the Apple path it comes first. */}
+            {(viaApple
+              ? (['apple', 'google'] as const)
+              : (['google', 'apple'] as const)
+            ).map((p) => {
+              const href = step.signIn[p];
+              return href !== null ? (
+                <ProviderLink key={p} provider={p} href={href} testId={`personal-signin-${p}`} />
+              ) : null;
+            })}
+            {step.signIn.google === null && step.signIn.apple === null ? (
               <a className="su-btn su-btn--primary" href="/login" data-testid="personal-signin">
                 Sign in
               </a>
-            )}
+            ) : null}
           </div>
           <div className="su-info">
-            <b>Next time</b> · Your account stays inactive until you sign in with that Google
-            account.
+            <b>Next time</b> · Your account stays inactive until you sign in with Google or Apple
+            using that address.
             {/@(gmail|googlemail)\.com$/i.test(email) ? (
               <span data-testid="personal-done-gmail">
                 {' '}
@@ -356,18 +428,24 @@ const FLAG: Record<Country, string> = { US: '🇺🇸', IN: '🇮🇳' };
 
 function PersonalForm({
   siteKey,
+  apple,
   onStarted,
   onNotOpen,
   onRefused,
 }: {
   siteKey: string | null;
+  apple: ApplePrefill | null;
   onStarted: (id: string, email: string, phone: string | null) => void;
   onNotOpen: () => void;
   onRefused: (email: string) => void;
 }) {
   const startedAt = useRef(Date.now());
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState(() =>
+    [apple?.givenName, apple?.familyName].filter((v): v is string => typeof v === 'string').join(' '),
+  );
+  // R-5 — the address Apple shared (real or relay) is locked: the OTP goes to it.
+  const lockedEmail = apple?.email ?? null;
+  const [email, setEmail] = useState(lockedEmail ?? '');
   const [country, setCountry] = useState<Country>('US');
   const [phone, setPhone] = useState('');
   const [residence, setResidence] = useState<Residence>('');
@@ -458,6 +536,22 @@ function PersonalForm({
         title="Tell us about you"
         sub="For your free personal account. 5 documents a month."
       />
+      {lockedEmail === null ? (
+        <div className="su-providers" data-testid="personal-apple-start">
+          <a className="su-provider su-provider--apple" href={APPLE_SIGNUP_URL} data-testid="personal-continue-apple">
+            <AppleLogo />
+            <span>Continue with Apple</span>
+          </a>
+          <p className="su-hint" style={{ textAlign: 'center', margin: 0 }}>
+            or enter your details
+          </p>
+        </div>
+      ) : (
+        <div className="su-info" data-testid="personal-apple-prefilled">
+          <b>From your Apple ID</b> · We filled in what Apple shared. We’ll still send a code to this
+          email to confirm it.
+        </div>
+      )}
       <div className="su-fields">
         <SuField id="ps-name" label="Full name" error={errors.name}>
           <SuInput
@@ -475,13 +569,21 @@ function PersonalForm({
         <SuField
           id="ps-email"
           label="Personal email"
-          help="Gmail, Outlook.com, Yahoo and similar. You’ll sign in with Google for this address."
+          help={
+            lockedEmail !== null
+              ? /@privaterelay\.appleid\.com$/i.test(lockedEmail)
+                ? 'This is the Hide My Email address Apple made for you. Email to it reaches your Apple ID inbox.'
+                : 'The email your Apple ID shared. You’ll sign in with Apple for this address.'
+              : 'Gmail, Outlook.com, Yahoo and similar. You’ll sign in with Google or Apple for this address.'
+          }
           error={errors.email}
         >
           <SuInput
             id="ps-email"
             type="email"
             autoComplete="email"
+            readOnly={lockedEmail !== null}
+            data-testid="personal-email"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -870,7 +972,7 @@ function TermsStep({
   id: string;
   withPhone: boolean;
   notice?: string;
-  onDone: (google: string | null, held: Held | undefined) => void;
+  onDone: (signIn: SignInLinks, held: Held | undefined) => void;
   onRestart: () => void;
 }) {
   const [docs, setDocs] = useState<TermsDocument[] | null | undefined>(undefined);
@@ -896,7 +998,13 @@ function TermsStep({
     })
       .then((r) => {
         if (r.status === 'PROVISIONED')
-          onDone(typeof r.sign_in?.google === 'string' ? r.sign_in.google : null, r.held);
+          onDone(
+            {
+              google: typeof r.sign_in?.google === 'string' ? r.sign_in.google : null,
+              apple: typeof r.sign_in?.apple === 'string' ? r.sign_in.apple : null,
+            },
+            r.held,
+          );
         else setError('Your account is still being created. Try again in a moment.');
       })
       .catch((err: PersonalSignupError) => {

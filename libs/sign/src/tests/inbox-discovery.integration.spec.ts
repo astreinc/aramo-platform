@@ -71,7 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign W2 inbox dis
     return { id, tenant_id };
   }
   // A link; `idp` null = an admin-created link (no recorded provider).
-  async function link(user_id: string, snapshot: string, created_at: Date, idp: 'google' | 'microsoft' | null = 'google'): Promise<string> {
+  async function link(user_id: string, snapshot: string, created_at: Date, idp: 'google' | 'microsoft' | 'apple' | null = 'google'): Promise<string> {
     const id = randomUUID();
     await db.query(
       `INSERT INTO identity."ExternalIdentity" (id, provider, provider_subject, user_id, email_snapshot, created_at, updated_at) VALUES ($1, 'cognito', $2, $3, $4, $5, now())`,
@@ -127,6 +127,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign W2 inbox dis
       await link(u.id, 'proof.one@example.test', new Date('2026-03-01T00:00:00.000Z'), 'microsoft');
       await link(u.id, ' PROOF.ONE@example.TEST ', new Date('2026-02-01T00:00:00.000Z'), 'google');
       expect(await proofOf(u.id)).toEqual({ email: 'proof.one@example.test', proven_at: new Date('2026-02-01T00:00:00.000Z') });
+    });
+
+    // Apple Go-Live R-6 — an `apple` link is provider proof like google / microsoft
+    // (a relay address proves the relay address).
+    it('an apple link with a matching snapshot proves the email and discovers the envelope', async () => {
+      const u = await account('x7k2abc@privaterelay.appleid.com');
+      await link(u.id, 'x7k2abc@privaterelay.appleid.com', LONG_AGO, 'apple');
+      expect(await proofOf(u.id)).toEqual({ email: 'x7k2abc@privaterelay.appleid.com', proven_at: LONG_AGO });
+      const env = await sent([signer('A', 'X7K2ABC@privaterelay.appleid.com')]);
+      expect((await discovered(u.id)).map((d) => d.envelope_id)).toEqual([env.id]);
     });
 
     it('row 18: an admin-created link (no recorded provider) with a matching email never qualifies', async () => {

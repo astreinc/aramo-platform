@@ -16,6 +16,12 @@ import { SignJWT, importPKCS8 } from 'jose';
 // There is NO setting that accepts an unverified token (§5 "no bypass"): an
 // unconfigured server answers `unavailable`. Test doubles live only in test modules.
 // Only reason codes are logged — never the token or the decoded payload.
+//
+// Aramo Sign Apple Platform Go-Live (LOCKED) R-9 — the port gains a platform
+// discriminator: `android` (Play Integrity, above, unchanged) or `ios` (Apple App
+// Attest, ./app-attest.ts). The production binding routes by platform
+// (PlatformNativeIntegrityCheck); each platform keeps the same verdicts and fails
+// closed on its own when unconfigured.
 
 export const NATIVE_INTEGRITY_CHECK = Symbol('NATIVE_INTEGRITY_CHECK');
 
@@ -35,15 +41,54 @@ export type NativeIntegrityReason =
   | 'device_integrity_missing'
   | 'timestamp_invalid'
   | 'timestamp_stale'
-  | 'timestamp_future';
+  | 'timestamp_future'
+  // Apple Go-Live R-9 — App Attest (ios).
+  | 'attestation_malformed'
+  | 'certificate_chain_invalid'
+  | 'nonce_mismatch'
+  | 'key_id_mismatch'
+  | 'rp_id_mismatch'
+  | 'counter_nonzero'
+  | 'aaguid_mismatch';
 
 export interface NativeIntegrityResult {
   verdict: NativeIntegrityVerdict;
   reason: NativeIntegrityReason;
+  /**
+   * Apple Go-Live R-9 — on an App Attest pass, the attested key id (lowercase hex). The
+   * caller stores it on the signup row (UNIQUE) so one attestation is accepted once.
+   */
+  attest_key_id?: string;
+}
+
+/** Apple Go-Live R-9 — which native verifier applies. */
+export type NativeIntegrityPlatform = 'android' | 'ios';
+
+export interface NativeIntegrityInput {
+  /** Absent = `android` (the M-A11 Play Integrity path, unchanged). */
+  platform?: NativeIntegrityPlatform;
+  token: string | null;
+  request_hash: string;
+  now?: Date;
 }
 
 export interface NativeIntegrityCheck {
-  verify(input: { token: string | null; request_hash: string; now?: Date }): Promise<NativeIntegrityResult>;
+  verify(input: NativeIntegrityInput): Promise<NativeIntegrityResult>;
+}
+
+/**
+ * Apple Go-Live R-9 — the production binding: routes each verification to its
+ * platform's verifier (android → Play Integrity, ios → App Attest).
+ */
+export class PlatformNativeIntegrityCheck implements NativeIntegrityCheck {
+  constructor(
+    readonly android: NativeIntegrityCheck,
+    readonly ios: NativeIntegrityCheck,
+  ) {}
+
+  verify(input: NativeIntegrityInput): Promise<NativeIntegrityResult> {
+    return (input.platform ?? 'android') === 'ios' ? this.ios.verify(input) : this.android.verify(input);
+  }
 }
 
 export const SIGN_PLAY_INTEGRITY_DEFAULT_PACKAGE = 'ai.aramo.sign';

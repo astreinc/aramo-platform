@@ -139,6 +139,9 @@ import { SignMeSigningStatsService } from './me/stats/sign-me-signing-stats.serv
 // Aramo Sign Mobile (M-A3 §1, §2, §9) — notification feed, push devices, preferences, push delivery.
 import { SignMeNotificationsController } from './me/notifications/sign-me-notifications.controller.js';
 import { SignMeNotificationsService } from './me/notifications/sign-me-notifications.service.js';
+// Apple Go-Live R-8 / W6 — Apple token revocation on account deletion (best effort).
+import { SignAppleRevokeController } from './me/apple/sign-apple-revoke.controller.js';
+import { SignAppleRevokeService } from './me/apple/sign-apple-revoke.service.js';
 import { PUSH_DELIVERY_PORT } from './push/push-delivery.port.js';
 import { pushDeliveryFromEnv } from './push/push-delivery.adapters.js';
 import { AuthStorageDeviceSessionLiveness, DEVICE_SESSION_LIVENESS } from './push/device-session-liveness.js';
@@ -319,7 +322,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -386,6 +389,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     // disabled); the account-close convenience-data purge.
     SignNotificationRepository,
     SignMeNotificationsService,
+    SignAppleRevokeService,
     { provide: PUSH_DELIVERY_PORT, useFactory: () => pushDeliveryFromEnv(process.env) },
     { provide: DEVICE_SESSION_LIVENESS, useClass: AuthStorageDeviceSessionLiveness },
     NotificationFanoutService,

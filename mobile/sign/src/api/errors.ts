@@ -20,6 +20,14 @@ export const KNOWN_REASONS = [
   'tenant_suspended',
   'tenant_resolution_ambiguous',
   'code_exchange_rejected',
+  // Account linking (Apple Go-Live A1 L-2 … L-5)
+  'idp_identity_conflict',
+  'identity_already_linked',
+  'idp_already_linked',
+  'last_sign_in_method',
+  'code_invalid',
+  'code_expired',
+  'code_attempts_exceeded',
   // Concurrency / idempotency (M-A3 §6-§8)
   'precondition_required',
   'revision_mismatch',

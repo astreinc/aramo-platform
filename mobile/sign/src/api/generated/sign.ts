@@ -2737,6 +2737,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/me/apple/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke the user's Sign in with Apple tokens before account deletion (Apple Go-Live R-8).
+         * @description Apple Go-Live R-8 (App Store guideline 5.1.1(v)). Session (sign consumer) or bearer. The app re-authenticates with Apple directly and sends the one-time authorization code; sign-service exchanges it at appleid.apple.com/auth/token with an ES256 client secret (client_id = the app bundle id for client ios, the Services ID for client web) and revokes the refresh token at /auth/revoke. Best effort: always 202 - an Apple failure, malformed input or an unconfigured service never blocks the deletion. Nothing from Apple is stored; no code or token is logged.
+         */
+        post: operations["revokeSignAppleTokens"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/apple/revoke/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start the web/Android Apple re-authentication for token revocation (Apple Go-Live R-8).
+         * @description Session (sign consumer) or bearer. 302 to https://appleid.apple.com/auth/authorize (client_id = the Services ID, response_type code, response_mode form_post, redirect_uri = <Sign origin>/v1/sign/me/apple/revoke/callback, state = an HMAC-signed value binding the user and the return path, valid 10 minutes). When the service is not configured, 302 straight to <return>?apple_revoked=0.
+         */
+        get: operations["startSignAppleRevoke"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/apple/revoke/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apple's form_post return for the web/Android token revocation (Apple Go-Live R-8).
+         * @description No session: a cross-site form_post from appleid.apple.com, so the user and the return path come only from the signed state. A verified, unexpired state → code exchange + revoke → 302 <return>?apple_revoked=1 (0 when Apple fails or the user cancelled). A state that does not verify → 302 /?apple_revoked=0 with no Apple call.
+         */
+        post: operations["completeSignAppleRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/me/notifications": {
         parameters: {
             query?: never;
@@ -4096,10 +4156,10 @@ export interface components {
                 email: string | null;
                 display_name: string | null;
                 /**
-                 * @description Sign Mobile B-11 — the federated provider the user signs in with ("Signed in with Google/Microsoft"), from the provider recorded on the user's sign-in link (or the enforced pin of the tenant for a link made before providers were recorded). null when not known; never a guess.
+                 * @description Sign Mobile B-11 — the federated provider the user signs in with ("Signed in with Google/Microsoft/Apple"; Apple Go-Live W1 adds apple), from the provider recorded on the user's sign-in link (or the enforced pin of the tenant for a link made before providers were recorded). null when not known; never a guess.
                  * @enum {string|null}
                  */
-                identity_provider: "google" | "microsoft" | null;
+                identity_provider: "google" | "microsoft" | "apple" | null;
             };
             tenant: {
                 /** Format: uuid */
@@ -10376,6 +10436,88 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+        };
+    };
+    revokeSignAppleTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    authorization_code: string;
+                    /** @enum {string} */
+                    client: "ios" | "web";
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted (revocation attempted when configured). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    startSignAppleRevoke: {
+        parameters: {
+            query: {
+                /** @description A same-origin relative path (starts with a single /; no scheme, host, backslash or fragment). */
+                return: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to Apple authorize (or back to the return path when not configured). */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    completeSignAppleRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Redirect to the signed return path with apple_revoked=1|0. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -197,6 +197,8 @@ export {
   classifyEmailDomain,
   canonicalEmailForDuplicates,
   type EmailDomainClass,
+  // Apple Go-Live R-6 — the Hide My Email relay domain (classed personal).
+  APPLE_PRIVATE_RELAY_DOMAIN,
 } from './lib/util/email-domain.js';
 // Subdomain-Identity Directive A — the subdomain-slug primitives. Exported so
 // apps/api's public cert-eligibility ask-endpoint can extract the slug from the
@@ -297,10 +299,28 @@ export {
 export {
   IdentityProviderPolicyService,
   FEDERATED_IDPS,
+  // Apple Go-Live R-4 — the PERSONAL provider set + its predicate.
+  PERSONAL_IDPS,
+  idpAllowedForTenantKind,
   normalizeIdp,
   type FederatedIdp,
   type IdpDecision,
 } from './lib/identity-provider-policy.service.js';
+// Apple Go-Live Amendment A1 (LOCKED) — proven account linking.
+export {
+  IdentityLinkService,
+  PENDING_LINK_TTL_MS,
+  hashLinkHandle,
+  type AttachOutcome,
+  type AttachRefusalReason,
+  type EmailProofVerifyOutcome,
+  type LinkProof,
+  type PendingIdentity,
+  type PendingLinkReason,
+  type RemoveSignInMethodOutcome,
+  type SignInMethod,
+} from './lib/account-link/identity-link.service.js';
+export { LINK_OTP_MAX_ATTEMPTS, LINK_OTP_TTL_MS } from './lib/account-link/link-otp.js';
 
 // Sign Signup Amendment A1 (LOCKED) — organization details at signup, US only.
 export { OrganizationRegionService } from './lib/organization-region.service.js';

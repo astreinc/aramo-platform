@@ -30,6 +30,16 @@ export interface PkceStatePayload {
   context_id?: string | null;
   // D-ORG-2 — the sanitized same-host deep link to return to after sign-in.
   return_to?: string | null;
+  // Apple Go-Live R-5 (web) — `signup`: a user_not_provisioned result hands the
+  // verified email/name to the Personal signup page instead of a pending link.
+  intent?: 'signup' | null;
+  // Apple Go-Live A1 L-4 proof (a) — the pending-link handle, sealed here (the
+  // cookie is encrypted) and never echoed into a URL or a log.
+  link_handle?: string | null;
+  // Apple Go-Live A1 L-4 path 1 — the signed-in principal the new provider is
+  // attached to (no session is resolved at the callback), and where to return.
+  link_user_id?: string | null;
+  link_return?: string | null;
 }
 
 const VERIFIER_BYTES = 64; // 64 random bytes → ~86-char base64url verifier (within 43-128 range)

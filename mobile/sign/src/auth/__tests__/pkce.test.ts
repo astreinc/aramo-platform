@@ -81,6 +81,14 @@ describe('authorize request', () => {
     expect(
       buildAuthorizeUrl({ ...base, redirectUri: NATIVE_REDIRECT_URI, provider: 'microsoft' }),
     ).toContain('identity_provider=microsoft');
+    // Apple Go-Live R-1 / W4: Cognito's SignInWithApple, and no prompt parameter for Apple.
+    const apple = buildAuthorizeUrl({
+      ...base,
+      redirectUri: NATIVE_REDIRECT_URI,
+      provider: 'apple',
+    });
+    expect(apple).toContain('identity_provider=SignInWithApple');
+    expect(apple).not.toContain('prompt=');
   });
 
   it('refuses an unregistered redirect URI or a malformed domain', () => {

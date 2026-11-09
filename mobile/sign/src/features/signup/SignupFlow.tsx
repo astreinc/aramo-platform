@@ -1,13 +1,19 @@
 // Aramo Sign Personal (Free) — native signup (M-A11 §1). Fully native, no browser and no
 // web view: details → email code → [phone code, only when the server says `next: phone`]
 // → terms (the exact effective Personal documents, rendered from server text, one
-// unticked box) → done (the existing Google sign-in). Every decision (eligibility, risk,
+// unticked box) → done (the existing Google or Apple sign-in). Every decision (eligibility, risk,
 // next step, documents) is the server's; this flow only renders it. Refusals show native
 // copy. An address that already has an account is answered exactly like a new one by the
 // server (a signup id that never verifies), and an explicit refusal shows the same review
 // screen as the web, so decoy answers stay indistinguishable here too. Nothing in the flow
 // opens a browser (PO: "100% native"): the Privacy Notice at collection is the effective
 // document read through GET …/terms/{key}/{version} and shown in-app, like the terms step.
+// Apple Go-Live R-5 (native, W5): "Continue with Apple" at the top of the details step runs
+// the PKCE flow with SignInWithApple and prefills (and locks) the email Apple shared, and
+// the name when shared. The rest is unchanged: the email code is still sent to that address
+// and must be verified, then the phone step, residence, terms and complete. The done step
+// offers Continue with Apple (and Google too for an email-path signup). R-9: iOS sends
+// client 'ios' with an App Attest token; Android keeps Play Integrity.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,12 +22,14 @@ import { isApiError, type ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
+import { ProviderButton } from '../../components/ProviderButton';
 import { ARAMO_SIGN_IDENTITY } from '../../config/identity';
 import { useTheme } from '../../theme';
 import { utf8Encode } from '../../util/bytes';
 import { CheckRow } from '../inbox/ui';
 import { TextField } from '../send/ui';
 import { platformCrypto, type CryptoPort } from '../../auth/pkce';
+import type { AppleSignupIdentity } from '../../auth/signIn';
 import { toHex, type IntegritySession } from './integrity';
 import type {
   AcceptEntry,
@@ -35,6 +43,7 @@ import {
   COUNTRIES,
   documentLabel,
   HELD_COPY,
+  integrityFailedCopy,
   isGmail,
   maskPhone,
   RESEND_SECONDS,
@@ -50,11 +59,17 @@ import {
   type Residence,
 } from './signupModel';
 
+/** The providers a new Personal account signs in with (Apple Go-Live R-4). */
+export type SignupProvider = 'google' | 'apple';
+
 export interface SignupDeps {
   readonly api: SignupApi;
-  /** null: no Play Integrity in this build (no cloud project number, or not Android). */
+  /** null: no device integrity in this build (no Play cloud project number, or no App Attest). */
   readonly integrity: IntegritySession | null;
-  readonly signInWithGoogle: () => Promise<void>;
+  /** The existing sign-in (done step). */
+  readonly signIn: (provider: SignupProvider) => Promise<unknown>;
+  /** R-5: Apple's email and name for the prefill; absent = no "Continue with Apple" at the top. */
+  readonly appleIdentity?: () => Promise<AppleSignupIdentity>;
   readonly now?: () => number;
   readonly crypto?: Pick<CryptoPort, 'sha256'>;
 }
@@ -74,6 +89,8 @@ export function SignupFlow(deps: SignupDeps) {
   const [step, setStep] = useState<Step>({ k: 'details' });
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState<string | null>(null);
+  // R-5: the Apple prefill survives a restart (the email stays the one Apple shared).
+  const [apple, setApple] = useState<AppleSignupIdentity | null>(null);
   const restart = () => setStep({ k: 'details' });
 
   switch (step.k) {
@@ -82,6 +99,8 @@ export function SignupFlow(deps: SignupDeps) {
         <Page testID="signup-details">
           <DetailsStep
             deps={deps}
+            apple={apple}
+            onApple={setApple}
             onStarted={(id, addr, e164) => {
               setEmail(addr);
               setPhone(e164);
@@ -175,7 +194,12 @@ export function SignupFlow(deps: SignupDeps) {
     case 'done':
       return (
         <Page testID="signup-done">
-          <DoneStep email={email} held={step.held} signIn={deps.signInWithGoogle} />
+          <DoneStep
+            email={email}
+            held={step.held}
+            applePath={apple !== null}
+            signIn={deps.signIn}
+          />
         </Page>
       );
   }
@@ -314,13 +338,22 @@ function Choice<V extends string>({
 
 const FLAG: Record<Country, string> = { US: '🇺🇸', IN: '🇮🇳' };
 
+/** "Given Family" from what Apple shared, or '' when it shared no name. */
+function appleName(a: AppleSignupIdentity): string {
+  return [a.givenName, a.familyName].filter((v): v is string => v !== null).join(' ');
+}
+
 function DetailsStep({
   deps,
+  apple,
+  onApple,
   onStarted,
   onRefused,
   onNotOpen,
 }: {
   readonly deps: SignupDeps;
+  readonly apple: AppleSignupIdentity | null;
+  readonly onApple: (a: AppleSignupIdentity) => void;
   readonly onStarted: (id: string, email: string, phone: string) => void;
   readonly onRefused: (email: string) => void;
   readonly onNotOpen: () => void;
@@ -329,8 +362,9 @@ function DetailsStep({
   const now = deps.now ?? Date.now;
   // elapsed_ms: measured from this screen's mount to submit (untrusted risk input, M-A11).
   const mountedAt = useRef(now());
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState(apple !== null ? appleName(apple) : '');
+  const [email, setEmail] = useState(apple?.email ?? '');
+  const [appleBusy, setAppleBusy] = useState(false);
   const [country, setCountry] = useState<Country>('US');
   const [phone, setPhone] = useState('');
   const [residence, setResidence] = useState<Residence>('');
@@ -374,6 +408,28 @@ function DetailsStep({
       return n;
     });
 
+  async function continueWithApple(getIdentity: () => Promise<AppleSignupIdentity>): Promise<void> {
+    setAppleBusy(true);
+    setFailure(null);
+    try {
+      const a = await getIdentity();
+      onApple(a);
+      setEmail(a.email);
+      clear('email');
+      const shared = appleName(a);
+      if (shared !== '') {
+        setName(shared);
+        clear('name');
+      }
+    } catch (e) {
+      const err = asError(e);
+      if (err?.reason !== 'auth_cancelled')
+        setFailure(err ? refusalMessage(err) : SIGNUP_COPY.generic);
+    } finally {
+      setAppleBusy(false);
+    }
+  }
+
   async function submit(session: IntegritySession): Promise<void> {
     const { errors: errs, e164 } = validateDetails({
       name,
@@ -388,7 +444,7 @@ function DetailsStep({
     setFailure(null);
     if (Object.keys(errs).length > 0 || e164 === null || residence === '') return;
     const body: NativeStartBody = {
-      client: 'android',
+      client: session.client,
       name: name.trim(),
       email: email.trim(),
       phone: e164,
@@ -403,7 +459,7 @@ function DetailsStep({
       try {
         token = await session.tokenFor(body);
       } catch {
-        setFailure(SIGNUP_COPY.integrityFailed);
+        setFailure(integrityFailedCopy(session.client));
         return;
       }
       const r = await deps.api.start({ ...body, integrity_token: token });
@@ -440,6 +496,20 @@ function DetailsStep({
     <View style={styles.gap}>
       <Title>Tell us about you</Title>
       <Body>For your free personal account. 5 documents a month.</Body>
+      {deps.appleIdentity !== undefined && apple === null ? (
+        <ProviderButton
+          testID="signup-continue-apple-top"
+          provider="apple"
+          label="Continue with Apple"
+          busy={appleBusy}
+          busyLabel="Continuing…"
+          disabled={busy}
+          onPress={() => deps.appleIdentity && void continueWithApple(deps.appleIdentity)}
+        />
+      ) : null}
+      {apple !== null ? (
+        <Body testID="signup-apple-prefilled">{SIGNUP_COPY.applePrefilled}</Body>
+      ) : null}
       <TextField
         label="Full name"
         testID="signup-name"
@@ -457,6 +527,8 @@ function DetailsStep({
         label="Personal email"
         testID="signup-email"
         value={email}
+        // R-5: the address Apple shared is locked; the email code still proves it.
+        editable={apple === null}
         keyboardType="email-address"
         autoCapitalize="none"
         autoCorrect={false}
@@ -1030,45 +1102,59 @@ function TermsStep({
 function DoneStep({
   email,
   held,
+  applePath,
   signIn,
 }: {
   readonly email: string;
   readonly held: Held;
-  readonly signIn: () => Promise<void>;
+  /** R-5: an Apple-first signup signs in with Apple; an email-path one with Google or Apple. */
+  readonly applePath: boolean;
+  readonly signIn: (provider: SignupProvider) => Promise<unknown>;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<SignupProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function go(): Promise<void> {
-    setBusy(true);
+  async function go(provider: SignupProvider): Promise<void> {
+    setBusy(provider);
     setError(null);
     try {
-      await signIn();
+      await signIn(provider);
     } catch (e) {
       const err = asError(e);
       if (err?.reason !== 'auth_cancelled')
         setError(err ? refusalMessage(err) : SIGNUP_COPY.generic);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  const providers: readonly SignupProvider[] = applePath ? ['apple'] : ['google', 'apple'];
   return (
     <View style={styles.gap}>
       <Title>{SIGNUP_COPY.doneTitle}</Title>
-      <Body testID="signup-done-copy">{SIGNUP_COPY.doneBody(email)}</Body>
+      <Body testID="signup-done-copy">
+        {applePath ? SIGNUP_COPY.doneBodyApple : SIGNUP_COPY.doneBody(email)}
+      </Body>
       {held !== null ? (
         <Banner tone="limit" title={HELD_COPY[held].title} body={HELD_COPY[held].note} />
       ) : null}
       <Body>{SIGNUP_COPY.doneInactive}</Body>
-      {isGmail(email) ? <Body testID="signup-done-gmail">{SIGNUP_COPY.gmail}</Body> : null}
+      {!applePath && isGmail(email) ? (
+        <Body testID="signup-done-gmail">{SIGNUP_COPY.gmail}</Body>
+      ) : null}
       {error !== null ? <ErrorText testID="signup-done-error">{error}</ErrorText> : null}
-      <Button
-        title={busy ? 'Signing in…' : 'Continue with Google'}
-        busy={busy}
-        onPress={() => void go()}
-        testID="signup-continue-google"
-      />
+      {providers.map((p) => (
+        <ProviderButton
+          key={p}
+          testID={`signup-continue-${p}`}
+          provider={p}
+          label={p === 'apple' ? 'Continue with Apple' : 'Continue with Google'}
+          busy={busy === p}
+          busyLabel="Signing in…"
+          dimmed={busy !== null && busy !== p}
+          onPress={() => void go(p)}
+        />
+      ))}
     </View>
   );
 }

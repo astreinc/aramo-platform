@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, logout } from '@aramo/fe-foundation';
+import { Button, fetchSignInMethods, logout } from '@aramo/fe-foundation';
 
 import { errorMessage, privacyApi, type PrivacyRequestType, type PrivacyRequestView } from '../api';
 import { ARAMO_SIGN_IDENTITY } from '../legal/identity';
@@ -14,6 +14,33 @@ import { Btn, ErrorBox, Field, TextIn } from '../ui';
 // requests" card instead (ACCESS, EXPORT, CORRECTION, DELETION of eligible personal
 // information). A Business DELETION is referred to the organization and the Aramo
 // privacy team and is never executed by self-service.
+
+// Apple Go-Live R-8 (web) — deleting an Apple-linked account first revokes the
+// Apple tokens (App Store guideline 5.1.1(v)). The browser goes to sign-service's
+// revoke start (top-level; the session cookie authenticates it), Apple form-posts
+// back to sign-service, which revokes and returns here with `?apple_revoked=1|0`.
+// Best effort: either value continues to the deletion; it is never blocked.
+export const APPLE_REVOKE_START = '/v1/sign/me/apple/revoke/start';
+
+async function defaultAppleLinked(): Promise<boolean> {
+  try {
+    return (await fetchSignInMethods()).some((m) => m.idp === 'apple');
+  } catch {
+    return false;
+  }
+}
+
+/** `?apple_revoked=1|0` from the revoke round trip (read once, then cleared); null when absent. */
+function takeAppleRevoked(): '1' | '0' | null {
+  if (typeof window === 'undefined') return null;
+  const q = new URLSearchParams(window.location.search);
+  const v = q.get('apple_revoked');
+  if (v === null) return null;
+  q.delete('apple_revoked');
+  const rest = q.toString();
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${rest.length > 0 ? `?${rest}` : ''}${window.location.hash}`);
+  return v === '1' ? '1' : '0';
+}
 
 export const BUSINESS_MANAGED_COPY =
   'Your organization manages this account. Contact your organization administrator to manage product access.';
@@ -34,27 +61,40 @@ export function PrivacyRequestsSection({
   loader = privacyApi.mine,
   requester = privacyApi.request,
   onDeleted = () => void logout(() => window.location.assign(DELETE_ACCOUNT_PATH)),
+  appleLinked = defaultAppleLinked,
+  onAppleRevoke = (url: string) => window.location.assign(url),
 }: {
   personal: boolean;
   loader?: () => Promise<{ items: PrivacyRequestView[] }>;
   requester?: (t: PrivacyRequestType) => Promise<PrivacyRequestView>;
   onDeleted?: () => void;
+  /** R-8 — whether this account has an Apple sign-in (Sign-in methods). */
+  appleLinked?: () => Promise<boolean>;
+  /** R-8 — the top-level navigation to the Apple revoke start. */
+  onAppleRevoke?: (url: string) => void;
 }) {
   if (!personal) return <BusinessPrivacyRequests loader={loader} requester={requester} />;
-  return <PersonalDeleteAccount loader={loader} requester={requester} onDeleted={onDeleted} />;
+  return <PersonalDeleteAccount loader={loader} requester={requester} onDeleted={onDeleted} appleLinked={appleLinked} onAppleRevoke={onAppleRevoke} />;
 }
 
 function PersonalDeleteAccount({
   loader,
   requester,
   onDeleted,
+  appleLinked,
+  onAppleRevoke,
 }: {
   loader: () => Promise<{ items: PrivacyRequestView[] }>;
   requester: (t: PrivacyRequestType) => Promise<PrivacyRequestView>;
   onDeleted: () => void;
+  appleLinked: () => Promise<boolean>;
+  onAppleRevoke: (url: string) => void;
 }) {
   const [items, setItems] = useState<PrivacyRequestView[] | null>(null);
-  const [typed, setTyped] = useState('');
+  // R-8 — back from the Apple revoke round trip: the user already confirmed, so the
+  // confirmation is kept and the deletion is offered again (never blocked).
+  const [appleRevoked] = useState(takeAppleRevoked);
+  const [typed, setTyped] = useState(appleRevoked !== null ? 'DELETE' : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<PrivacyRequestView | null>(null);
@@ -75,6 +115,11 @@ function PersonalDeleteAccount({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    if (appleRevoked === null && (await appleLinked())) {
+      const params = new URLSearchParams({ return: window.location.pathname });
+      onAppleRevoke(`${APPLE_REVOKE_START}?${params.toString()}`);
+      return;
+    }
     try {
       const r = await requester('DELETION');
       setCreated(r);
@@ -95,7 +140,7 @@ function PersonalDeleteAccount({
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             <li>your account is closed: sending stops and you can’t open or download your documents afterwards, so download what you want to keep first;</li>
             <li>your saved signatures and initials, contacts, notifications, device registrations and unsent drafts with their files are deleted;</li>
-            <li>your active sessions are revoked and your Aramo sign-in is removed (your Google or Microsoft account itself is not affected);</li>
+            <li>your active sessions are revoked and your Aramo sign-in is removed (your Google, Microsoft or Apple account itself is not affected);</li>
             <li>certain records may be retained for legitimate legal, security and compliance purposes, as described in the Privacy Notice: signed agreements and their evidence, legal acceptances, security records, abuse reports, and minimal account and request records. Each is listed with your request.</li>
           </ul>
         </div>
@@ -110,6 +155,13 @@ function PersonalDeleteAccount({
           </>
         ) : (
           <>
+            {appleRevoked !== null ? (
+              <div className="sg-note" role="status" data-testid="privacy-apple-revoked">
+                {appleRevoked === '1'
+                  ? 'Aramo’s access to your Apple ID was removed. Select Delete my account to finish.'
+                  : 'We couldn’t reach Apple to remove Aramo’s access to your Apple ID. You can still delete your account, and remove Aramo in your Apple ID settings (Sign in with Apple).'}
+              </div>
+            ) : null}
             <Field label="Type DELETE to confirm" htmlFor="privacy-delete-confirm">
               <TextIn id="privacy-delete-confirm" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} disabled={busy} />
             </Field>

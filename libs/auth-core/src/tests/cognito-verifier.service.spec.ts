@@ -213,3 +213,63 @@ describe('CognitoVerifierService.verify — native options (M-A1)', () => {
     await expect(new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' })).rejects.toMatchObject({ reason: 'id_token_issuer_mismatch' });
   });
 });
+
+// Apple Go-Live (LOCKED) R-1 / R-5 / R-7 — Sign in with Apple through Cognito.
+describe('CognitoVerifierService.verify — Sign in with Apple (R-1)', () => {
+  const mocked = mockedJwtVerify as unknown as ReturnType<typeof vi.fn>;
+  let savedTrusted: string | undefined;
+  beforeAll(() => {
+    savedTrusted = process.env['AUTH_TRUSTED_IDP_NAMES'];
+  });
+  afterEach(() => {
+    if (savedTrusted === undefined) delete process.env['AUTH_TRUSTED_IDP_NAMES'];
+    else process.env['AUTH_TRUSTED_IDP_NAMES'] = savedTrusted;
+  });
+
+  it('maps the Cognito provider SignInWithApple to the Aramo value apple (identities claim)', async () => {
+    mocked.mockResolvedValue({
+      payload: { sub: SUB, email: 'x7k2@privaterelay.appleid.com', email_verified: true, token_use: 'id', identities: [{ providerName: 'SignInWithApple' }] },
+    });
+    const out = await new CognitoVerifierService().verify('token');
+    expect(out.idp).toBe('apple');
+    expect(out.email).toBe('x7k2@privaterelay.appleid.com');
+  });
+
+  it('maps the cognito:username prefix signinwithapple_ to apple; Google and Microsoft are unchanged', async () => {
+    mocked.mockResolvedValue({ payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', 'cognito:username': 'signinwithapple_001234.abc' } });
+    expect((await new CognitoVerifierService().verify('token')).idp).toBe('apple');
+    mocked.mockResolvedValue({ payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', identities: [{ providerName: 'Google' }] } });
+    expect((await new CognitoVerifierService().verify('token')).idp).toBe('google');
+    mocked.mockResolvedValue({ payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', identities: [{ providerName: 'microsoft' }] } });
+    expect((await new CognitoVerifierService().verify('token')).idp).toBe('microsoft');
+  });
+
+  it('two linked providers incl. Apple stay ambiguous', async () => {
+    mocked.mockResolvedValue({
+      payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', identities: [{ providerName: 'SignInWithApple' }, { providerName: 'Google' }] },
+    });
+    expect((await new CognitoVerifierService().verify('token')).idp).toBe('ambiguous');
+  });
+
+  it('string email_verified from Apple passes only when SignInWithApple is a trusted IdP name', async () => {
+    const payload = { sub: SUB, email: 'a@b.test', email_verified: 'true', token_use: 'id', identities: [{ providerName: 'SignInWithApple' }] };
+    mocked.mockResolvedValue({ payload });
+    process.env['AUTH_TRUSTED_IDP_NAMES'] = 'Google,microsoft';
+    await expect(new CognitoVerifierService().verify('token')).rejects.toMatchObject({ reason: 'email_not_verified' });
+    process.env['AUTH_TRUSTED_IDP_NAMES'] = 'Google,microsoft,SignInWithApple';
+    expect((await new CognitoVerifierService().verify('token')).idp).toBe('apple');
+  });
+
+  it('surfaces the shared first and last name (R-5 prefill) and null when not shared', async () => {
+    mocked.mockResolvedValue({
+      payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', given_name: ' Ada ', family_name: 'Lovelace' },
+    });
+    const named = await new CognitoVerifierService().verify('token');
+    expect(named.given_name).toBe('Ada');
+    expect(named.family_name).toBe('Lovelace');
+    mocked.mockResolvedValue({ payload: { sub: SUB, email: 'a@b.test', email_verified: true, token_use: 'id', given_name: '' } });
+    const unnamed = await new CognitoVerifierService().verify('token');
+    expect(unnamed.given_name).toBeNull();
+    expect(unnamed.family_name).toBeNull();
+  });
+});

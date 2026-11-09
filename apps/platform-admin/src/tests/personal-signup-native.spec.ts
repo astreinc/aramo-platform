@@ -17,6 +17,8 @@ import { SignupBudget } from '../app/signup/sign-signup.service.js';
 // signup on the server: `start` from client android (integrity check bound to the
 // recomputed requestHash), the terms text read, and `complete`'s key/version/sha256
 // binding with the acceptance origin. The service runs with in-memory collaborators.
+// Apple Platform Go-Live (LOCKED) R-4 / R-5 / R-9 / W2 — `client: "ios"` (App Attest,
+// routed by platform; key id replay refused), unpinned enrollment, sign_in {google, apple}.
 
 const REPO_ROOT = resolve(__dirname, '../../../..');
 const NOW = new Date('2026-11-03T15:00:00Z');
@@ -29,15 +31,18 @@ const AUP = doc('aramo.acceptable_use_policy', '1.0');
 const ACCEPT_ANDROID = [TOS, PRIVACY, AUP].map((d) => ({ key: d.key, version: d.version, sha256: d.sha256 }));
 
 class FakeIntegrity implements NativeIntegrityCheck {
-  calls: { token: string | null; request_hash: string }[] = [];
+  calls: { platform?: string; token: string | null; request_hash: string }[] = [];
   /** The hash the (fake) Google payload carries; null = no token was minted. */
   boundHash: string | null = null;
   result: NativeIntegrityResult | null = null;
-  async verify(input: { token: string | null; request_hash: string }): Promise<NativeIntegrityResult> {
-    this.calls.push({ token: input.token, request_hash: input.request_hash });
+  /** Apple Go-Live R-9 — the key id an App Attest pass reports (ios). */
+  attestKeyId: string | undefined = undefined;
+  async verify(input: { platform?: 'android' | 'ios'; token: string | null; request_hash: string }): Promise<NativeIntegrityResult> {
+    this.calls.push({ platform: input.platform, token: input.token, request_hash: input.request_hash });
     if (this.result !== null) return this.result;
     if (input.token === null) return { verdict: 'fail', reason: 'token_missing' };
-    return input.request_hash === this.boundHash ? { verdict: 'pass', reason: 'ok' } : { verdict: 'fail', reason: 'request_hash_mismatch' };
+    if (input.request_hash !== this.boundHash) return { verdict: 'fail', reason: 'request_hash_mismatch' };
+    return { verdict: 'pass', reason: 'ok', ...(this.attestKeyId === undefined ? {} : { attest_key_id: this.attestKeyId }) };
   }
 }
 
@@ -78,6 +83,7 @@ function row(over: Partial<PersonalSignupRow> = {}): PersonalSignupRow {
     tenant_id: null,
     owner_user_id: null,
     provisioned_at: null,
+    attest_key_id: null,
     expires_at: new Date(NOW.getTime() + 24 * 3600 * 1000),
     created_at: NOW,
     updated_at: NOW,
@@ -94,6 +100,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
     countByIpSince: vi.fn(async () => 0),
     gmailAliasOfExisting: vi.fn(async () => false),
     phoneUsedByAnother: vi.fn(async () => false),
+    attestKeyIdUsed: vi.fn(async (_key: string) => false),
     create: vi.fn(async (input: Record<string, unknown>) => {
       created.push(input);
       return row({ id: '01900000-0000-7000-8000-0000000a1101', status: String(input['status']), decision: String(input['decision']) });
@@ -112,7 +119,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
   };
   const tenantSvc = { provisionTenant: vi.fn(async () => ({ id: 'tenant-1' })), deactivateTenant: vi.fn(async () => undefined) };
   const entitlements = { grantCapabilities: vi.fn(async () => undefined) };
-  const idpPolicy = { enrollEnforcedTenantPinned: vi.fn(async () => undefined) };
+  const idpPolicy = { enrollEnforcedTenant: vi.fn(async () => undefined), enrollEnforcedTenantPinned: vi.fn(async () => undefined) };
   const acceptances = { record: vi.fn(async () => undefined) };
   const mailer = { send: vi.fn(async () => ({ message_id: 'm' })) };
   const geo = { lookup: vi.fn(), countryOf: vi.fn(), networkKind: vi.fn() };
@@ -138,7 +145,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
     texts,
     opts.registry ?? LEGAL_DOCUMENTS,
   );
-  return { svc, requests, identity, acceptances, robot, integrity, created };
+  return { svc, requests, identity, acceptances, robot, integrity, created, idpPolicy, mailer };
 }
 
 const ANDROID = {
@@ -172,7 +179,7 @@ describe('start — client android (§2.1)', () => {
     h.integrity.boundHash = nativeSignupRequestHash(ANDROID);
     const out = await h.svc.start({ ...ANDROID, integrity_token: 'tok', ip: 'unknown', request_id: 'r', now: NOW });
     expect(out.signup_id).toBe('01900000-0000-7000-8000-0000000a1101');
-    expect(h.integrity.calls).toEqual([{ token: 'tok', request_hash: nativeSignupRequestHash(ANDROID) }]);
+    expect(h.integrity.calls).toEqual([{ platform: 'android', token: 'tok', request_hash: nativeSignupRequestHash(ANDROID) }]);
     // The canonical array of the contract, recomputed independently here.
     expect(h.integrity.calls[0]!.request_hash).toBe(sha(Buffer.from(JSON.stringify(['android', 'Pat Person', 'pat.person@gmail.com', '+12025550101', 'US', null, '', 20000]), 'utf8')));
     expect(h.robot.verify).not.toHaveBeenCalled();
@@ -237,7 +244,7 @@ describe('start — client android (§2.1)', () => {
     expect(h.integrity.calls).toHaveLength(0);
   });
 
-  it.each([['ios'], ['Android'], [''], [null], [1]])('client %s → VALIDATION_ERROR', async (client) => {
+  it.each([['IOS'], ['Android'], [''], [null], [1]])('client %s → VALIDATION_ERROR', async (client) => {
     const h = harness();
     const r = await refusalOf(h.svc.start({ ...ANDROID, client, integrity_token: 'tok', ip: 'unknown', request_id: 'r', now: NOW }));
     expect(r).toMatchObject({ code: 'VALIDATION_ERROR', details: { field: 'client' } });
@@ -384,9 +391,9 @@ describe('complete — android acceptance binding (§2.2)', () => {
     nothingRecorded(h);
   });
 
-  it('client values other than web / android are refused at complete', async () => {
+  it('client values other than web / android / ios are refused at complete', async () => {
     const h = harness();
-    expect(await refusalOf(h.svc.complete({ signup_id: row().id, client: 'ios', accept: ACCEPT_ANDROID, ip: 'unknown', request_id: 'r', now: NOW }))).toMatchObject({
+    expect(await refusalOf(h.svc.complete({ signup_id: row().id, client: 'iphone', accept: ACCEPT_ANDROID, ip: 'unknown', request_id: 'r', now: NOW }))).toMatchObject({
       code: 'VALIDATION_ERROR',
       details: { field: 'client' },
     });
@@ -417,5 +424,109 @@ describe('the served legal texts are the registry-pinned bytes (repo files)', ()
   it('refuses a registry path outside doc/legal', () => {
     expect(src.text({ ...PRIVACY, path: 'package.json' })).toBeNull();
     expect(src.text({ ...PRIVACY, path: '../etc/passwd' })).toBeNull();
+  });
+});
+
+// ── Apple Platform Go-Live (LOCKED) R-9 / W2 — client ios ────────────────────
+
+const IOS = { ...ANDROID, client: 'ios' };
+const KEY_ID = 'ab'.repeat(32);
+
+describe('start — client ios (Apple Go-Live R-9)', () => {
+  it('routes to the ios verifier with the requestHash of the received body; Turnstile is not consulted; the key id is stored', async () => {
+    const h = harness();
+    h.integrity.boundHash = nativeSignupRequestHash(IOS);
+    h.integrity.attestKeyId = KEY_ID;
+    const out = await h.svc.start({ ...IOS, integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW });
+    expect(out.signup_id).toBe('01900000-0000-7000-8000-0000000a1101');
+    expect(h.integrity.calls).toEqual([{ platform: 'ios', token: 'attest', request_hash: nativeSignupRequestHash(IOS) }]);
+    expect(h.integrity.calls[0]!.request_hash).toBe(sha(Buffer.from(JSON.stringify(['ios', 'Pat Person', 'pat.person@gmail.com', '+12025550101', 'US', null, '', 20000]), 'utf8')));
+    expect(h.robot.verify).not.toHaveBeenCalled();
+    expect(h.requests.attestKeyIdUsed).toHaveBeenCalledWith(KEY_ID);
+    expect(h.created[0]).toMatchObject({ status: 'PENDING', attest_key_id: KEY_ID });
+  });
+
+  it('elapsed_ms must be a JSON integer, as for android', async () => {
+    const h = harness();
+    expect(await refusalOf(h.svc.start({ ...IOS, elapsed_ms: '20000', integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW }))).toMatchObject({
+      details: { field: 'elapsed_ms' },
+    });
+    expect(h.integrity.calls).toHaveLength(0);
+  });
+
+  it('a replayed key id (already accepted once) is refused neutrally; nothing is created', async () => {
+    const h = harness();
+    h.integrity.boundHash = nativeSignupRequestHash(IOS);
+    h.integrity.attestKeyId = KEY_ID;
+    h.requests.attestKeyIdUsed.mockResolvedValue(true);
+    expect(await refusalOf(h.svc.start({ ...IOS, integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW }))).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      reason: 'personal_signup_refused',
+    });
+    expect(h.requests.create).not.toHaveBeenCalled();
+  });
+
+  it('a concurrent replay that loses the UNIQUE race (P2002) is refused alike', async () => {
+    const h = harness();
+    h.integrity.boundHash = nativeSignupRequestHash(IOS);
+    h.integrity.attestKeyId = KEY_ID;
+    h.requests.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    expect((await refusalOf(h.svc.start({ ...IOS, integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW }))).reason).toBe('personal_signup_refused');
+  });
+
+  it('a failed attestation is refused and stored as robot_check_failed without a key id; unavailable (unconfigured) refuses without a row', async () => {
+    const h = harness();
+    h.integrity.result = { verdict: 'fail', reason: 'nonce_mismatch' };
+    expect((await refusalOf(h.svc.start({ ...IOS, integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW }))).reason).toBe('personal_signup_refused');
+    expect(h.created[0]).toMatchObject({ status: 'REFUSED', decision: 'refuse' });
+    expect(h.created[0]).not.toHaveProperty('attest_key_id');
+    expect(h.requests.attestKeyIdUsed).not.toHaveBeenCalled();
+
+    const u = harness();
+    u.integrity.result = { verdict: 'unavailable', reason: 'not_configured' };
+    expect((await refusalOf(u.svc.start({ ...IOS, integrity_token: 'attest', ip: 'unknown', request_id: 'r', now: NOW }))).reason).toBe('personal_signup_refused');
+    expect(u.requests.create).not.toHaveBeenCalled();
+  });
+
+  it('an android pass never stores a key id', async () => {
+    const h = harness();
+    h.integrity.boundHash = nativeSignupRequestHash(ANDROID);
+    h.integrity.attestKeyId = KEY_ID;
+    await h.svc.start({ ...ANDROID, integrity_token: 'tok', ip: 'unknown', request_id: 'r', now: NOW });
+    expect(h.created[0]).not.toHaveProperty('attest_key_id');
+    expect(h.requests.attestKeyIdUsed).not.toHaveBeenCalled();
+  });
+});
+
+describe('complete — client ios, unpinned enrollment, sign_in {google, apple} (Apple Go-Live R-4 / R-5)', () => {
+  it('ios is bound like android (key + version + sha256, origin recorded, client ios on the audit)', async () => {
+    const h = harness();
+    const out = await h.svc.complete({ signup_id: row().id, client: 'ios', accept: ACCEPT_ANDROID, ip: '203.0.113.9', user_agent: 'AramoSign/1 CFNetwork', request_id: 'r', now: NOW });
+    expect(out.status).toBe('PROVISIONED');
+    const recorded = h.acceptances.record.mock.calls.map((c) => (c as unknown as [{ origin?: unknown }])[0]);
+    for (const r of recorded) expect(r.origin).toEqual({ ip: '203.0.113.9', user_agent: 'AramoSign/1 CFNetwork' });
+    expect(h.requests.completeProvisioning).toHaveBeenCalledWith(expect.objectContaining({ client: 'ios' }));
+    const withoutHash = ACCEPT_ANDROID.map(({ key, version }) => ({ key, version }));
+    expect((await refusalOf(harness().svc.complete({ signup_id: row().id, client: 'ios', accept: withoutHash, ip: 'unknown', request_id: 'r', now: NOW }))).reason).toBe('terms_not_accepted');
+  });
+
+  it('a new Personal tenant is enrolled in the enforced cohort WITHOUT a pin (never pinned to google)', async () => {
+    const h = harness();
+    await h.svc.complete({ signup_id: row().id, client: 'ios', accept: ACCEPT_ANDROID, ip: 'unknown', request_id: 'r', now: NOW });
+    expect(h.idpPolicy.enrollEnforcedTenant).toHaveBeenCalledWith('tenant-1');
+    expect(h.idpPolicy.enrollEnforcedTenantPinned).not.toHaveBeenCalled();
+  });
+
+  it('sign_in carries Google and Apple (the login with idp=apple); the ready email offers both', async () => {
+    vi.stubEnv('ARAMO_SIGN_BASE_URL', 'https://sign.example.test');
+    const h = harness();
+    const out = await h.svc.complete({ signup_id: row().id, accept: ACCEPT_ANDROID.map(({ key, version }) => ({ key, version })), ip: 'unknown', request_id: 'r', now: NOW });
+    expect(out.sign_in).toEqual({
+      google: 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F',
+      apple: 'https://sign.example.test/auth/sign/login?idp=apple&return_to=%2F',
+    });
+    const ready = h.mailer.send.mock.calls.map((c) => (c as unknown as [{ subject: string; text: string }])[0]).find((m) => /ready/.test(m.subject))!;
+    expect(ready.text).toContain('Continue with Apple: https://sign.example.test/auth/sign/login?idp=apple&return_to=%2F');
+    expect(ready.text).toContain('Continue with Google: https://sign.example.test/auth/sign/login?idp=google&return_to=%2F');
   });
 });

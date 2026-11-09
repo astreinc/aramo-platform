@@ -13,8 +13,11 @@ import {
   type RefreshTokenDto,
 } from '@aramo/auth-storage';
 import {
+  AccountLinkService,
   JwtIssuerService,
+  LinkEmailBudget,
   NATIVE_REFRESH_CONSUMER,
+  type AccountLinkDirectory,
   NativeAuthService,
   parseNativeTokenRequest,
   type AuditRecord,
@@ -434,6 +437,92 @@ describe('NativeAuthService (M-A1)', () => {
     it('refuses when the native client is not configured', async () => {
       delete process.env['SIGN_NATIVE_COGNITO_CLIENT_ID'];
       await expectRefusal(svc.exchange(signIn(), 'r'), 'INTERNAL_ERROR', 500, 'native_client_not_configured');
+    });
+  });
+
+  // Apple Go-Live A1 (LOCKED) L-2 / L-4 — pending links, proof (a) and path 1 on
+  // the native routes. The linking port is a fake; the attach policy itself is
+  // covered by the identity integration spec.
+  describe('Apple Go-Live A1 — proven account linking (native)', () => {
+    const HANDLE = 'H'.repeat(43);
+    let directory: { [K in keyof AccountLinkDirectory]: ReturnType<typeof import('vitest').vi.fn> };
+    let mails: Array<{ to: string; subject: string }>;
+    let linked: NativeAuthService;
+
+    beforeEach(async () => {
+      const { vi } = await import('vitest');
+      mails = [];
+      directory = {
+        createPendingLink: vi.fn(async (i: { idp: string }) => ({ handle: HANDLE, idp: i.idp })),
+        attachPendingLink: vi.fn(async () => ({ ok: true, idp: 'apple', account_email: 'alice@example.com' })),
+        attachIdentity: vi.fn(async (i: { idp: string }) => ({ ok: true, idp: i.idp, account_email: 'alice@example.com' })),
+        startEmailProof: vi.fn(),
+        verifyEmailProof: vi.fn(),
+        listSignInMethods: vi.fn(),
+        removeSignInMethod: vi.fn(),
+      };
+      const email = { send: async (m: { to: string; subject: string }) => { mails.push(m); return { message_id: 'm' }; } };
+      linked = new NativeAuthService(
+        fake,
+        verifier,
+        principals,
+        new RefreshTokenService(store.refreshRepo as never),
+        new NativeDeviceSessionService(store.sessionRepo as never),
+        new JwtIssuerService(),
+        audit,
+        new AccountLinkService(directory as unknown as AccountLinkDirectory, email, new LinkEmailBudget()),
+      );
+    });
+
+    it('user_not_provisioned with Apple → 403 details {reason, idp, link_handle}; no session, no token', async () => {
+      const err = await linked.exchange(signIn({ sub: 'sub-relay', email: 'x7k2@privaterelay.appleid.com', idp: 'apple' }), 'r').then(() => null, (e: unknown) => e);
+      expect(err).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403, context: { details: { reason: 'user_not_provisioned', idp: 'apple', link_handle: HANDLE } } });
+      expect(directory['createPendingLink']).toHaveBeenCalledWith(expect.objectContaining({ provider: 'cognito', provider_subject: 'sub-relay', idp: 'apple', reason: 'user_not_provisioned' }));
+      expect(store.sessions.size).toBe(0);
+      expect(store.tokens.size).toBe(0);
+    });
+
+    it('a non-linkable denial writes no pending link and carries no handle', async () => {
+      principals.denySession = 'consumer_not_entitled';
+      const err = await linked.exchange(signIn(), 'r').then(() => null, (e: unknown) => e);
+      expect((err as AramoError).context.details).toEqual({ reason: 'consumer_not_entitled' });
+      expect(directory['createPendingLink']).not.toHaveBeenCalled();
+    });
+
+    it('proof (a): a sign-in with link_handle attaches to the resolved principal and sends the security email', async () => {
+      const out = await linked.exchange(signIn(ALICE, { link_handle: HANDLE }), 'r');
+      expect(out.link_refused).toBeUndefined();
+      expect(directory['attachPendingLink']).toHaveBeenCalledWith({ handle: HANDLE, principal_id: USER_A });
+      expect(mails).toEqual([expect.objectContaining({ to: 'alice@example.com', subject: 'Apple sign-in added to your Aramo account' })]);
+    });
+
+    it('proof (a): a refused attach still signs in, with link_refused', async () => {
+      directory['attachPendingLink']!.mockResolvedValueOnce({ ok: false, reason: 'link_expired' });
+      const out = await linked.exchange(signIn(ALICE, { link_handle: HANDLE }), 'r');
+      expect(out.device_session_id).toBeDefined();
+      expect(out.link_refused).toBe('link_expired');
+      expect(mails).toEqual([]);
+    });
+
+    it('a malformed link_handle is a 400 at parse', () => {
+      expect(() => parseNativeTokenRequest({ ...signIn(), link_handle: 'nope' }, 'r')).toThrow(AramoError);
+      expect(parseNativeTokenRequest({ ...signIn(), link_handle: HANDLE }, 'r').link_handle).toBe(HANDLE);
+    });
+
+    it('path 1: /link attaches the new identity to the signed-in caller (proof signed_in); no device session is created', async () => {
+      const session = await linked.exchange(signIn(), 'r');
+      const before = store.sessions.size;
+      const out = await linked.link(signIn({ sub: 'sub-apple', email: 'x7k2@privaterelay.appleid.com', idp: 'apple' }), { sub: USER_A, tenant_id: TENANT, dsid: session.device_session_id }, 'r');
+      expect(out).toEqual({ linked: true, idp: 'apple' });
+      expect(directory['attachIdentity']).toHaveBeenCalledWith(expect.objectContaining({ principal_id: USER_A, provider_subject: 'sub-apple', idp: 'apple', proof: 'signed_in' }));
+      expect(store.sessions.size).toBe(before);
+    });
+
+    it('path 1: a refused attach is 409 with details.reason; a revoked caller session is 401', async () => {
+      const session = await linked.exchange(signIn(), 'r');
+      directory['attachIdentity']!.mockResolvedValueOnce({ ok: false, reason: 'identity_already_linked' });
+      await expectRefusal(linked.link(signIn(BOB), { sub: USER_A, tenant_id: TENANT, dsid: session.device_session_id }, 'r'), 'VALIDATION_ERROR', 409, 'identity_already_linked');
+      await expectRefusal(linked.link(signIn(BOB), { sub: USER_A, tenant_id: TENANT, dsid: uuidv7() }, 'r'), 'INVALID_TOKEN', 401, 'device_session_revoked');
     });
   });
 

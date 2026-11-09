@@ -108,6 +108,17 @@ describe('sign-web workspace LoginPage', () => {
     expect(await screen.findByRole('link', { name: 'Create a Business account' })).toBeInTheDocument();
   });
 
+  // Apple Go-Live A1 L-3 path 2 — on the Sign host the no-account pending-link
+  // panel offers "Create a new account" (the Personal signup, Apple-first).
+  it('a pending Apple link with no account offers to connect an account or create one', async () => {
+    mockSignup(200, 200);
+    renderAt(`/login?error=INSUFFICIENT_PERMISSIONS&reason=user_not_provisioned&consumer=sign#link=${'k'.repeat(43)}&idp=apple`);
+    expect(screen.getByText('No Aramo account uses this Apple ID yet')).toBeInTheDocument();
+    expect(await screen.findByTestId('link-create-account')).toHaveAttribute('href', '/signup/personal');
+    expect(await screen.findByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue with Apple' })).toBeNull();
+  });
+
   it('an unverified Microsoft email gets its own explanation', () => {
     renderAt('/login?error=VALIDATION_ERROR&reason=idp_email_unverified');
     expect(screen.getByText('Your Microsoft account’s email isn’t verified')).toBeInTheDocument();

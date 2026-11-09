@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
-import { AUTH_PRODUCTS, AuthShell, Button, Checkbox, Input, Select } from '@aramo/fe-foundation';
+import { AppleLogo, AUTH_PRODUCTS, AuthShell, Button, Checkbox, Input, Select } from '@aramo/fe-foundation';
 
 import './signup.css';
 
@@ -176,7 +176,7 @@ export function SignupFrame({
       className="su-auth"
       cardClassName="su-card"
       cardLabel={label}
-      idpNote="No passwords. You sign in with your Google or Microsoft account."
+      idpNote="No passwords. You sign in with your Google, Microsoft or Apple account."
     >
       <div className="su-stack" data-testid={testId}>
         {children}
@@ -558,19 +558,22 @@ export function StepFooter({ onBack, children }: { onBack?: () => void; children
   );
 }
 
+const PROVIDER_LABEL = { microsoft: 'Microsoft', google: 'Google', apple: 'Apple' } as const;
+
+/** A provider sign-in link. Apple follows Apple's button rules (Apple Go-Live W3): black, Apple logo. */
 export function ProviderLink({
   provider,
   href,
   testId,
 }: {
-  provider: 'microsoft' | 'google';
+  provider: 'microsoft' | 'google' | 'apple';
   href: string;
   testId: string;
 }) {
   return (
-    <a className="su-provider" href={href} data-testid={testId}>
-      {provider === 'microsoft' ? <MicrosoftLogo /> : <GoogleLogo />}
-      <span>Continue with {provider === 'microsoft' ? 'Microsoft' : 'Google'}</span>
+    <a className={provider === 'apple' ? 'su-provider su-provider--apple' : 'su-provider'} href={href} data-testid={testId}>
+      {provider === 'apple' ? <AppleLogo /> : provider === 'microsoft' ? <MicrosoftLogo /> : <GoogleLogo />}
+      <span>Continue with {PROVIDER_LABEL[provider]}</span>
     </a>
   );
 }

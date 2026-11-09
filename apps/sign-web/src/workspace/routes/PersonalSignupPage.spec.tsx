@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
 
-import { PersonalSignupPage } from './PersonalSignupPage';
+import { parseAppleFragment, PersonalSignupPage } from './PersonalSignupPage';
 import { codeFailureMessage, startFailure, toE164 } from './personal-signup-api';
 
 // Aramo Sign Personal (Free) — /signup/personal: public, dark while the mode is
@@ -23,6 +23,8 @@ const DOCS = [
   { key: 'aramo.acceptable_use_policy', version: '1.0', url: 'https://aramo.ai/legal/aup', sha256: 'c'.repeat(64) },
 ];
 const GOOGLE = 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F';
+const APPLE = 'https://sign.example.test/auth/sign/login?idp=apple&return_to=%2F';
+const b64url = (v: unknown) => btoa(JSON.stringify(v)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 type Handler = (body: Record<string, unknown>) => Response;
 function api(routes: Record<string, Handler | Response>) {
@@ -233,6 +235,59 @@ describe('/signup/personal', () => {
     expect(bodyOf(fetch, 'complete')).toEqual({ signup_id: 'su-1', accept: DOCS.map((d) => ({ key: d.key, version: d.version })) });
   });
 
+  // Apple Go-Live R-5 (web) — Apple-first Personal signup.
+  it('the form starts with Continue with Apple (hosted UI, idp=apple, signup intent)', async () => {
+    at(api({}));
+    const apple = await screen.findByTestId('personal-continue-apple');
+    expect(apple).toHaveAttribute('href', '/auth/sign/login?idp=apple&intent=signup');
+    expect(apple).toHaveTextContent('Continue with Apple');
+    expect(apple.className).toContain('su-provider--apple');
+    expect(screen.getByLabelText('Personal email')).not.toHaveAttribute('readonly');
+  });
+
+  it('the #apple= hand-off fills and locks the email, prefills the name, clears the fragment; OTP, terms, then Apple first on done', async () => {
+    const relay = 'x7k2@privaterelay.appleid.com';
+    window.history.replaceState(null, '', `/signup/personal?invite=PILOT#apple=${b64url({ email: relay, given_name: 'Pat', family_name: 'Lee' })}`);
+    const fetch = api({
+      start: json({ signup_id: 'su-1' }, 202),
+      'verify-email': json({ next: 'terms' }),
+      complete: json({ status: 'PROVISIONED', sign_in: { google: GOOGLE, apple: APPLE } }),
+    });
+    at(fetch);
+    const email = await screen.findByLabelText('Personal email');
+    expect(email).toHaveValue(relay);
+    expect(email).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Full name')).toHaveValue('Pat Lee');
+    expect(screen.getByTestId('personal-apple-prefilled')).toBeInTheDocument();
+    expect(screen.queryByTestId('personal-continue-apple')).toBeNull();
+    expect(screen.getByText(/Hide My Email address Apple made for you/)).toBeInTheDocument();
+    expect(window.location.hash).toBe('');
+    expect(window.location.search).toBe('?invite=PILOT');
+    fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: '(415) 555-0134' } });
+    fireEvent.change(screen.getByLabelText('Country of residence'), { target: { value: 'US' } });
+    fireEvent.click(screen.getByTestId('personal-submit'));
+    await screen.findByTestId('personal-email-code');
+    expect(bodyOf(fetch, 'start')).toMatchObject({ name: 'Pat Lee', email: relay });
+    enterCode();
+    fireEvent.click(await screen.findByTestId('personal-accept'));
+    fireEvent.click(screen.getByTestId('personal-complete'));
+    const done = await screen.findByTestId('personal-done');
+    const links = within(done).getAllByRole('link').filter((l) => l.getAttribute('data-testid')?.startsWith('personal-signin-'));
+    expect(links.map((l) => l.getAttribute('data-testid'))).toEqual(['personal-signin-apple', 'personal-signin-google']);
+    expect(screen.getByTestId('personal-signin-apple')).toHaveAttribute('href', APPLE);
+    expect(screen.getByTestId('personal-done-copy')).toHaveTextContent(`Continue with the Apple ID you used, for ${relay}.`);
+  });
+
+  it('the email-path done step offers Google and Apple', async () => {
+    await toEmailCode(api({ start: json({ signup_id: 'su-1' }, 202), 'verify-email': json({ next: 'terms' }), complete: json({ status: 'PROVISIONED', sign_in: { google: GOOGLE, apple: APPLE } }) }));
+    enterCode();
+    fireEvent.click(await screen.findByTestId('personal-accept'));
+    fireEvent.click(screen.getByTestId('personal-complete'));
+    await screen.findByTestId('personal-done');
+    expect(screen.getByTestId('personal-signin-google')).toHaveAttribute('href', GOOGLE);
+    expect(screen.getByTestId('personal-signin-apple')).toHaveAttribute('href', APPLE);
+  });
+
   it('too many wrong email codes offers Start again', async () => {
     await toEmailCode(api({ start: json({ signup_id: 'su-1' }, 202), 'verify-email': refusal(400, 'otp_attempts_exceeded') }));
     enterCode();
@@ -384,6 +439,18 @@ describe('/signup/personal', () => {
 });
 
 describe('personal signup helpers', () => {
+  it('parseAppleFragment reads the R-5 hand-off and rejects junk', () => {
+    expect(parseAppleFragment(`#apple=${b64url({ email: 'pat@icloud.com', given_name: 'Pat', family_name: null })}`)).toEqual({
+      email: 'pat@icloud.com',
+      givenName: 'Pat',
+      familyName: null,
+    });
+    expect(parseAppleFragment(`#apple=${b64url({ email: 'not-an-email' })}`)).toEqual({ email: null, givenName: null, familyName: null });
+    expect(parseAppleFragment('#apple=%%%')).toBeNull();
+    expect(parseAppleFragment('#apple=bm90IGpzb24')).toBeNull();
+    expect(parseAppleFragment('')).toBeNull();
+  });
+
   it('toE164 accepts only valid US and Indian mobile numbers', () => {
     expect(toE164('US', '415-555-0134')).toBe('+14155550134');
     expect(toE164('US', '1 415 555 0134')).toBe('+14155550134');

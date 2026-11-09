@@ -383,6 +383,23 @@
   text-decoration: none;
 }
 
+/* Apple Go-Live W3 — Sign in with Apple: black, white Apple logo, same size. */
+.su-provider--apple,
+.su a.su-provider--apple,
+.su-auth a.su-provider--apple {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+}
+
+.su-provider--apple:hover,
+.su a.su-provider--apple:hover,
+.su-auth a.su-provider--apple:hover {
+  border-color: #1d1d1f;
+  background: #1d1d1f;
+  color: #fff;
+}
+
 .su-providers {
   display: flex;
   flex-direction: column;

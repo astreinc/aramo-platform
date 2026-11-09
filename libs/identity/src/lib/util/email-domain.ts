@@ -78,10 +78,17 @@ export type EmailDomainClass = 'business' | 'personal' | 'disposable' | 'invalid
 
 const DOMAIN_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
+// Apple Go-Live R-6 — Sign in with Apple's "Hide My Email" relay domain. A relay
+// address is an ordinary verified email for Aramo, classed PERSONAL (never
+// business, never disposable), so a relay user can only take Personal signup.
+// Neither dataset lists it, so it is named here.
+export const APPLE_PRIVATE_RELAY_DOMAIN = 'privaterelay.appleid.com';
+
 export function classifyEmailDomain(domain: string): EmailDomainClass {
   // Lowercased only (no trim) — byte-identical to the pre-v1.1 membership test.
   const d = domain.toLowerCase();
   if (d.length === 0) return 'invalid';
+  if (d === APPLE_PRIVATE_RELAY_DOMAIN) return 'personal';
   if (isDisposableEmailDomain(d)) return 'disposable';
   if (FREE_EMAIL_DOMAINS.has(d)) return 'personal';
   return DOMAIN_SHAPE.test(d) ? 'business' : 'invalid';

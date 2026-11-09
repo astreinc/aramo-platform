@@ -25,6 +25,9 @@ const { like, uuid, eachLike, regex } = MatchersV3;
 //   5. POST /v1/signup/sign/personal/start  (integrity fails)      400 personal_signup_refused
 //   6. POST /v1/signup/sign/personal/verify-email                   200 { next: terms }
 //   7. POST /v1/signup/sign/personal/complete (client android)     200 PROVISIONED
+// Aramo Sign Apple Platform Go-Live (LOCKED) §2 Acceptance — the iPhone app:
+//   8. POST /v1/signup/sign/personal/start  (client ios)           202 { signup_id }
+//   9. POST /v1/signup/sign/personal/complete (client ios)         200 PROVISIONED, sign_in {google, apple}
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -39,6 +42,7 @@ const SHA256 = /^[0-9a-f]{64}$/.source;
 const EMAIL_CODE = '246810';
 const SIGNUP_FOR_EMAIL_CODE = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b5a01';
 const SIGNUP_FOR_COMPLETE = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b5a02';
+const SIGNUP_FOR_COMPLETE_IOS = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b5a03';
 
 // The currently effective Personal documents (key, version, registry sha256).
 const EFFECTIVE = [
@@ -249,6 +253,70 @@ describe('sign-mobile → POST /v1/signup/sign/personal/complete (client android
         const json = (await res.json()) as { status: string; held: unknown };
         expect(json.status).toBe('PROVISIONED');
         expect(json.held).toBeNull();
+      });
+  });
+});
+
+// Apple Go-Live R-9 / W2 — the iPhone app: App Attest instead of Play Integrity (the provider
+// binds its integrity test double for both platforms), and the done step's Google + Apple links.
+describe('sign-mobile → POST /v1/signup/sign/personal/start (client ios)', () => {
+  it('starts a signup with an App Attest attestation (202)', async () => {
+    const body = {
+      ...startBody('pact.mobile.ios@gmail.com'),
+      client: 'ios',
+      // base64url(JSON {key_id, attestation}) — opaque to the provider's test double.
+      integrity_token: 'eyJrZXlfaWQiOiJwYWN0LWtleSIsImF0dGVzdGF0aW9uIjoicGFjdC1hdHRlc3RhdGlvbiJ9',
+    };
+    await provider
+      .addInteraction()
+      .given('personal signup is open')
+      .uponReceiving('a native Personal signup start from the iPhone app with an App Attest attestation')
+      .withRequest('POST', `${BASE}/start`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(body);
+      })
+      .willRespondWith(202, (b) => {
+        b.jsonBody({ signup_id: uuid('0190d5a4-7e01-7e2a-a4d3-3d4f1c2b5a11') });
+      })
+      .executeTest(async (mock) => {
+        const res = await post(`${mock.url}${BASE}/start`, body);
+        expect(res.status).toBe(202);
+        const json = (await res.json()) as { signup_id: string };
+        expect(typeof json.signup_id).toBe('string');
+      });
+  });
+});
+
+describe('sign-mobile → POST /v1/signup/sign/personal/complete (client ios)', () => {
+  it('creates the account from the iPhone app and offers Google and Apple sign-in (200)', async () => {
+    const body = {
+      signup_id: SIGNUP_FOR_COMPLETE_IOS,
+      client: 'ios',
+      accept: EFFECTIVE.map((d) => ({ ...d })),
+    };
+    await provider
+      .addInteraction()
+      .given('a personal signup has a verified email', { signup_id: SIGNUP_FOR_COMPLETE_IOS })
+      .uponReceiving('a native Personal signup completion from the iPhone app')
+      .withRequest('POST', `${BASE}/complete`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          status: 'PROVISIONED',
+          email: like('pact.mobile@gmail.com'),
+          sign_in: {
+            google: regex(/^https?:\/\/.+idp=google.*$/.source, 'https://sign.aramo.ai/auth/sign/login?idp=google&return_to=%2F'),
+            apple: regex(/^https?:\/\/.+idp=apple.*$/.source, 'https://sign.aramo.ai/auth/sign/login?idp=apple&return_to=%2F'),
+          },
+          held: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await post(`${mock.url}${BASE}/complete`, body);
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { status: string; sign_in: { google: string; apple: string } };
+        expect(json.status).toBe('PROVISIONED');
+        expect(json.sign_in.apple).toContain('idp=apple');
       });
   });
 });

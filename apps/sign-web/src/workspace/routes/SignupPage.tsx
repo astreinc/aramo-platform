@@ -429,7 +429,8 @@ export function SignupPage() {
             {busy ? 'Sending…' : 'Continue'}
           </PrimaryBtn>
           <p className="su-hint" data-testid="signup-eligibility">
-            After you set up, you sign in with your Google or Microsoft work account. Another
+            After you set up, you sign in with your Google or Microsoft work account, or an Apple ID
+            that uses your work email. Another
             sign-in provider?{' '}
             <a
               className="su-link"
@@ -553,7 +554,7 @@ interface CompleteResponse {
   email: string;
   organization_name: string;
   sign_in_url: string;
-  sign_in?: { microsoft: string; google: string };
+  sign_in?: { microsoft: string; google: string; apple?: string };
 }
 
 export function tokenFromHash(hash: string = window.location.hash): string | null {
@@ -889,6 +890,10 @@ export function SignupVerifyPage() {
               href={done.sign_in.google}
               testId="signup-signin-google"
             />
+            {/* Apple Go-Live R-2/R-3 — Apple works when it shares this work address. */}
+            {typeof done.sign_in.apple === 'string' ? (
+              <ProviderLink provider="apple" href={done.sign_in.apple} testId="signup-signin-apple" />
+            ) : null}
           </div>
         ) : (
           <div>
@@ -1106,7 +1111,7 @@ export function SignupVerifyPage() {
           id="sv-confirmed"
           label="Your email"
           value={preview.email}
-          help="Confirmed by the link we sent. After you activate, you sign in with the Google or Microsoft account for this address."
+          help="Confirmed by the link we sent. After you activate, you sign in with the Google, Microsoft or Apple account for this address."
         />
         <SuField id="sv-name" label="Your name" error={fe.primary_contact_name}>
           <SuInput
