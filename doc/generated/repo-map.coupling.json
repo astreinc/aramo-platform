@@ -180,6 +180,7 @@
     },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
+    { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/sign.yaml" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "README.md", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -11376,6 +11377,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/me/apple/sign-apple-revoke.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/me/notifications/sign-me-notifications.controller.ts"
     },
     {
@@ -11512,6 +11518,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "libs/attachment/src/lib/attachment.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/account-link.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -29265,6 +29276,11 @@
     {
       "from": "doc/runbooks/RELEASE-sign-mobile.md",
       "status": "unscoped",
+      "to": "mobile/sign/ios/AramoSign/AramoSign.entitlements"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
       "to": "mobile/sign/plugins/withReleaseSigning.js"
     },
     {
@@ -31748,6 +31764,21 @@
       "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -32653,6 +32684,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -32740,6 +32789,24 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261101150000_sign_custom_roles/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -35426,6 +35493,11 @@
       "status": "unscoped",
       "to": "libs/visibility/tsconfig.lib.json"
     },
+    {
+      "from": "mobile/sign/README.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/sign.yaml" },
     {
@@ -35465,6 +35537,11 @@
       "from": "mobile/sign/scripts/generate-api.mjs",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "mobile/sign/src/api/apple-contract-types.ts",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
     },
     { "from": "mobile/sign/src/api/errors.ts", "status": "unscoped", "to": "openapi/common.yaml" },
     {
