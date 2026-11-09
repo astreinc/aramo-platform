@@ -507,6 +507,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const idp = new IdentityProviderPolicyService(prisma);
     await idp.enrollEnforcedTenantPinned(t, 'google');
     await idp.enrollEnforcedTenantPinned(t, 'microsoft');
-    expect(await idp.policyOf(t)).toEqual({ enforced: true, pin: 'google' });
+    expect(await idp.policyOf(t)).toEqual({ enforced: true, pin: 'google', kind: 'PERSONAL' });
   });
 });
