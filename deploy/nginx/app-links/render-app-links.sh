@@ -6,7 +6,8 @@
 # §14 P-1/P-3/P-6; Amendment M-A2 §3) — renders the two platform app-association
 # files the Sign host serves at its exact `/.well-known/` locations:
 #
-#   apple-app-site-association   iOS Universal Links (applinks)
+#   apple-app-site-association   iOS Universal Links (applinks) + webcredentials
+#                                (the https native sign-in callback, iOS 17.4+)
 #   assetlinks.json              Android App Links (Digital Asset Links)
 #
 # Installed into the official nginx image as /docker-entrypoint.d/40-aramo-app-links.sh,
@@ -56,7 +57,10 @@ ios_json='{"applinks":{"details":[]}}'
 if [ -n "$IOS_APP_ID" ]; then
   # Team ID: 10 uppercase alphanumerics; bundle id: reverse-DNS segments.
   if printf '%s' "$IOS_APP_ID" | grep -Eq '^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'; then
-    ios_json="{\"applinks\":{\"details\":[{\"appIDs\":[\"$IOS_APP_ID\"],\"components\":[$AASA_COMPONENTS]}]}}"
+    # webcredentials: iOS 17.4+ returns an https sign-in callback
+    # (/auth/native/callback) to the app's ASWebAuthenticationSession only when
+    # the host is associated with the app for this service; applinks alone is not enough.
+    ios_json="{\"applinks\":{\"details\":[{\"appIDs\":[\"$IOS_APP_ID\"],\"components\":[$AASA_COMPONENTS]}]},\"webcredentials\":{\"apps\":[\"$IOS_APP_ID\"]}}"
     log "apple-app-site-association: associated $IOS_APP_ID"
   else
     log "WARNING: SIGN_IOS_APP_ID is not <TEAMID>.<bundle id>; rendering an empty association"

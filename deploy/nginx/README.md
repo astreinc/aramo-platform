@@ -133,6 +133,8 @@ This is a separate step from the template envsubst, which stays filtered to
 An unset or malformed value renders valid JSON that associates nothing:
 `{"applinks":{"details":[]}}` and `[]`. A warning is logged, and nginx still
 starts. The iOS file claims exactly `/s/*`, `/d/*` and `/auth/native/callback`.
+It also associates the host for `webcredentials`, which iOS 17.4+ requires before
+it returns the https native sign-in callback to the app's auth session.
 
 After changing a value, restart nginx (a reload does not re-run the step).
 
