@@ -44,7 +44,9 @@ const config: ExpoConfig = {
     supportsTablet: false,
     // Universal Links: /s/*, /d/* and the native auth callback (served by the
     // apple-app-site-association file on the Sign host, directive P-1 / P-6).
-    associatedDomains: [`applinks:${SIGN_HOST}`],
+    // webcredentials: iOS 17.4+ returns the https sign-in callback to the auth session
+    // (ASWebAuthenticationSession .https callback) only for a webcredentials-associated host.
+    associatedDomains: [`applinks:${SIGN_HOST}`, `webcredentials:${SIGN_HOST}`],
     // Apple Go-Live R-8 / W6: the native Apple sheet (expo-apple-authentication) is used
     // only to get an authorization code for token revocation at account deletion; sign-in
     // itself stays the Cognito hosted-UI PKCE flow (R-1).

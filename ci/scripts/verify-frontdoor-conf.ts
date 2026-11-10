@@ -619,6 +619,12 @@ function checkRender(scriptText: string): Issue[] {
         if (!isDeepStrictEqual(paths, AASA_PATHS)) issues.push({ where: RENDER_SCRIPT, reason: `(s) [valid] applinks paths must be exactly ${AASA_PATHS.join(', ')} (got ${JSON.stringify(paths)})` });
         if ((d0?.components ?? []).some((c) => 'exclude' in c || '?' in c || '#' in c)) issues.push({ where: RENDER_SCRIPT, reason: '(s) [valid] applinks components must be plain path matches' });
       }
+      // iOS 17.4+ hands the https sign-in callback back to the app's auth session only
+      // when the host is associated for webcredentials.
+      const webcredentials = (got.aasa as { webcredentials?: { apps?: unknown } }).webcredentials;
+      if (!isDeepStrictEqual(webcredentials, { apps: ['ABCDE12345.ai.aramo.sign'] })) {
+        issues.push({ where: RENDER_SCRIPT, reason: `(s) [valid] apple-app-site-association webcredentials must be exactly {"apps":["ABCDE12345.ai.aramo.sign"]} (got ${JSON.stringify(webcredentials)})` });
+      }
       const expectLinks = [{
         relation: ['delegate_permission/common.handle_all_urls'],
         target: { namespace: 'android_app', package_name: 'ai.aramo.sign', sha256_cert_fingerprints: [FP_A, FP_B.toUpperCase()] },
@@ -730,6 +736,7 @@ function mutations(): Mutation[] {
   // (s) — the render step's behaviour.
   out.push({ name: 'render accepts any iOS id', tag: '(s) [malformed] apple-app-site-association', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, "grep -Eq '^[A-Z0-9]{10}", "grep -Eq '^.*|[A-Z0-9]{10}", 'ios regex') }) });
   out.push({ name: 'render drops /d/*', tag: '(s) [valid] applinks paths', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, '{"/":"/d/*","comment":"guest signing link"},', '', 'd path') }) });
+  out.push({ name: 'render drops webcredentials', tag: '(s) [valid] apple-app-site-association webcredentials', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, ',\\"webcredentials\\":{\\"apps\\":[\\"$IOS_APP_ID\\"]}}"', '}"', 'webcredentials') }) });
   out.push({ name: 'render claims every path', tag: '(s) [valid] applinks paths', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, '{"/":"/s/*"', '{"/":"*"', 's path') }) });
   out.push({ name: 'render keeps a bad fingerprint list', tag: '(s) [malformed] assetlinks.json', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, 'if [ "$bad" -eq 1 ] || [ -z "$fps" ]; then', 'if [ -z "$fps" ]; then', 'fp gate') }) });
   out.push({ name: 'render leaves fingerprints lower-case', tag: '(s) [valid] assetlinks.json', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, " | tr 'abcdef' 'ABCDEF'", '', 'upper') }) });
