@@ -10628,6 +10628,11 @@
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts"
     },
     {
+      "from": "apps/platform-web/src/commercial/catalog/store-countries.ts",
+      "status": "production",
+      "to": "libs/subscription/src/lib/billing/sync/apple-territories.ts"
+    },
+    {
       "from": "apps/platform-web/src/commercial/subscriptions/subscriptions-test-data.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
@@ -34872,6 +34877,12 @@
       "from": "libs/subscription/src/tests/ccp-b5-governance.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-billing-product.spec.ts",
+      "status": "excluded",
+      "to": "apps/platform-web/src/commercial/catalog/store-countries.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

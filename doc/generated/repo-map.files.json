@@ -2644,6 +2644,7 @@
     "apps/platform-web/src/commercial/catalog/new-plan-model.spec.ts",
     "apps/platform-web/src/commercial/catalog/new-plan-model.ts",
     "apps/platform-web/src/commercial/catalog/regional-prices-model.ts",
+    "apps/platform-web/src/commercial/catalog/store-countries.ts",
     "apps/platform-web/src/commercial/ccp-v12-drawer.spec.tsx",
     "apps/platform-web/src/commercial/commercial-api.ts",
     "apps/platform-web/src/commercial/commercial-errors.ts",
