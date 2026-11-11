@@ -243,18 +243,33 @@ export class AppleAscClient implements BillingProductSyncPort {
 
   /** The countries a subscription is available in today (empty when it has no availability yet). */
   private async availableCountries(subId: string): Promise<string[]> {
-    const d = await this.get(`/v1/subscriptions/${enc(subId)}/planAvailabilities?include=availableTerritories&limit%5BavailableTerritories%5D=200`);
-    const rel = many(d)[0]?.relationships?.['availableTerritories']?.data;
-    const ids = Array.isArray(rel) ? rel.map((x) => x.id) : [];
-    return ids.map((id) => countryOfAppleTerritory(id) ?? id).sort();
+    const av = await this.planAvailability(subId);
+    return (av?.territories ?? []).map((id) => countryOfAppleTerritory(id) ?? id).sort();
+  }
+
+  /**
+   * The subscription's plan availability and every territory it lists. Apple caps an included relationship
+   * at 50 (`limit[availableTerritories]` > 50 is a 400), so the territories are read from the availability's
+   * own relationship endpoint, page by page (up to 200 per page).
+   */
+  private async planAvailability(subId: string): Promise<{ id: string; availableInNewTerritories: unknown; territories: string[] } | null> {
+    const current = many(await this.get(`/v1/subscriptions/${enc(subId)}/planAvailabilities`))[0];
+    if (current === undefined) return null;
+    const territories: string[] = [];
+    let path: string | null = `/v1/subscriptionPlanAvailabilities/${enc(current.id)}/relationships/availableTerritories?limit=200`;
+    for (let page = 0; path !== null && page < 20; page++) {
+      const d: Doc = await this.get(path);
+      for (const r of many(d)) territories.push(r.id);
+      path = d.links?.next ? d.links.next.replace(ASC_API, '') : null;
+    }
+    return { id: current.id, availableInNewTerritories: current.attributes?.['availableInNewTerritories'], territories };
   }
 
   private async syncAvailability(subId: string, territories: string[]): Promise<void> {
-    const d = await this.get(`/v1/subscriptions/${enc(subId)}/planAvailabilities?include=availableTerritories&limit%5BavailableTerritories%5D=200`);
-    const current = many(d)[0];
+    const current = await this.planAvailability(subId);
     const want = [...new Set(territories)].sort();
     const data = want.map((id) => ({ type: 'territories', id }));
-    if (current === undefined) {
+    if (current === null) {
       await this.send('POST', '/v1/subscriptionPlanAvailabilities', {
         data: {
           type: 'subscriptionPlanAvailabilities',
@@ -264,9 +279,8 @@ export class AppleAscClient implements BillingProductSyncPort {
       });
       return;
     }
-    const rel = current.relationships?.['availableTerritories']?.data;
-    const have = (Array.isArray(rel) ? rel.map((x) => x.id) : []).sort();
-    if (current.attributes?.['availableInNewTerritories'] === false && have.join() === want.join()) return;
+    const have = [...current.territories].sort();
+    if (current.availableInNewTerritories === false && have.join() === want.join()) return;
     await this.send('PATCH', `/v1/subscriptionPlanAvailabilities/${enc(current.id)}`, {
       data: { type: 'subscriptionPlanAvailabilities', id: current.id, attributes: { availableInNewTerritories: false }, relationships: { availableTerritories: { data } } },
     });
