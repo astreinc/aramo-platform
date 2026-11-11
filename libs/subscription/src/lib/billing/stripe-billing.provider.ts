@@ -163,17 +163,30 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
   if (!ok) throw new BillingWebhookSignatureError('BAD_SIGNATURE');
 }
 
+/**
+ * The Stripe key and API base, read in ONE place (this adapter; the CCP-C5 guard C5-G-1 holds the
+ * readers of the key to the two Stripe adapters). The CCP Billing Products catalog writer reuses these
+ * rather than reading the key or naming the host itself.
+ */
+export function stripeSecretKey(): string | undefined {
+  const k = process.env['STRIPE_SECRET_KEY'];
+  return k === undefined || k.trim() === '' ? undefined : k.trim();
+}
+
+export function stripeApiBase(): string {
+  return (process.env['STRIPE_API_BASE'] ?? 'https://api.stripe.com').replace(/\/+$/, '');
+}
+
 @Injectable()
 export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort, UsageMeterReportPort, BillingProviderSeatPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
-    const k = process.env['STRIPE_SECRET_KEY'];
-    return k === undefined || k.trim() === '' ? undefined : k.trim();
+    return stripeSecretKey();
   }
 
   private base(): string {
-    return (process.env['STRIPE_API_BASE'] ?? 'https://api.stripe.com').replace(/\/+$/, '');
+    return stripeApiBase();
   }
 
   mode(): 'test' | 'live' {

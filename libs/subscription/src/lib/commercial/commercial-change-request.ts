@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { BILLING_PRODUCTS_KEY, billingProductsShapeErrors } from '../billing/sync/billing-product.js';
+
 import type { CommercialPolicyContent } from './commercial-policy.js';
 import { canonicalJson } from './commercial-policy.js';
 import { creditEscalation, discountEscalates } from './commercial-policy-boundaries.js';
@@ -685,8 +687,15 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       // A3 (no snapshot) still validates.
       // M-A12 W1-G — `store_products` pins the store products (App Store / Google Play product id
       // and its interval) to the version in the same governed apply (storeProductPinErrors).
-      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY, 'store_products'], errors);
+      // CCP Billing Products Directive v1.0 (LOCKED) — `billing_products`: the plan's billing products on
+      // web / App Store / Google Play, created or adopted and linked by the post-apply sync (BP-10). It
+      // replaces the direct pins: a request carries one or the other, never both.
+      closedKeys(p, ['plan_version_id', 'provider_price_ref', PLAN_TARGET_CHECKSUM_KEY, 'store_products', BILLING_PRODUCTS_KEY], errors);
       if (p['store_products'] !== undefined) errors.push(...storeProductPinErrors(p['store_products']));
+      if (p[BILLING_PRODUCTS_KEY] !== undefined) {
+        errors.push(...billingProductsShapeErrors(p[BILLING_PRODUCTS_KEY]));
+        if (p['store_products'] !== undefined || p['provider_price_ref'] !== undefined) errors.push(`${BILLING_PRODUCTS_KEY} replaces store_products and provider_price_ref; send only ${BILLING_PRODUCTS_KEY}`);
+      }
       if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
       if (p[PLAN_TARGET_CHECKSUM_KEY] !== undefined && (typeof p[PLAN_TARGET_CHECKSUM_KEY] !== 'string' || !SHA256_HEX.test(p[PLAN_TARGET_CHECKSUM_KEY]))) {
         errors.push(`${PLAN_TARGET_CHECKSUM_KEY} must be a lowercase SHA-256 hex digest`);

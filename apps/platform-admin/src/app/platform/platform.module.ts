@@ -14,6 +14,7 @@ import { SubscriptionModule } from '@aramo/subscription';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { DomainClaimSweeper } from './domain-claim-sweeper.service.js';
+import { BillingSyncWorker } from './billing-sync-worker.service.js';
 import { PersonalLapseSweeper } from './personal-lapse-sweeper.service.js';
 import { PersonalSignupAttemptPurgeSweeper } from './personal-signup-attempt-purge-sweeper.service.js';
 import { PlatformCommercialAuditController } from './platform-commercial-audit.controller.js';
@@ -134,6 +135,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
     UsageRollupWorker,
     // CCP-D3 — opt-in operational alert scanner (CCP_ALERTS_ENABLED=1; off by default).
     CommercialAlertScannerWorker,
+    // CCP Billing Products Directive v1.0 (LOCKED) — the post-apply provider sync (CCP_BILLING_SYNC_ENABLED=1; off by default).
+    BillingSyncWorker,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.

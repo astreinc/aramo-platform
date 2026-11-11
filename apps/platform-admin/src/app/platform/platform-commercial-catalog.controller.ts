@@ -3,6 +3,8 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, PLATFORM_TENANT_SENTINEL_ID, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
+  BillingProductsError,
+  BillingProductsService,
   CommercialCatalogError,
   CommercialCatalogService,
   CommercialPolicyUnavailableError,
@@ -13,6 +15,8 @@ import {
 } from '@aramo/subscription';
 
 import {
+  BillingPreviewDto,
+  type BillingProductViewDto,
   type CatalogResponseDto,
   type CatalogVersionDetailDto,
   type CatalogVersionSummaryDto,
@@ -20,6 +24,7 @@ import {
   CreateCatalogDraftDto,
   UUID_SHAPE,
   UpdateCatalogDraftDto,
+  UploadReviewScreenshotDto,
 } from './dto/commercial-catalog.dto.js';
 
 /** A path id with the uuid shape (see UUID_SHAPE: the A5 v1 version ids are md5-derived). */
@@ -54,7 +59,10 @@ class UuidShapePipe implements PipeTransform<string, string> {
 @Controller('platform/commercial/catalog')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PlatformCommercialCatalogController {
-  constructor(private readonly catalog: CommercialCatalogService) {}
+  constructor(
+    private readonly catalog: CommercialCatalogService,
+    private readonly billingProducts: BillingProductsService,
+  ) {}
 
   @Get()
   @RequireScopes('platform:catalog:read')
@@ -81,7 +89,57 @@ export class PlatformCommercialCatalogController {
   ): Promise<CatalogVersionDetailDto> {
     platformOnly(auth, requestId);
     const d = await run(requestId, () => this.catalog.readVersion(versionId));
-    return { version: summaryDto(d.version), plan: d.plan, content: d.content as unknown as Record<string, unknown>, pinned_tenants: d.pinned_tenants };
+    const billing = await run(requestId, () => this.billingProducts.status(versionId));
+    const forward = await run(requestId, () => this.billingProducts.carryForward(d.version.plan_id));
+    return {
+      version: summaryDto(d.version),
+      plan: d.plan,
+      content: d.content as unknown as Record<string, unknown>,
+      pinned_tenants: d.pinned_tenants,
+      billing_products: billing.map((b): BillingProductViewDto => ({ ...b, sync: b.sync === null ? null : { ...b.sync } })),
+      billing_eligible: [...forward.eligible],
+      billing_carry_forward: forward.products.map((p) => ({ ...p })),
+    };
+  }
+
+  // ---- CCP Billing Products Directive v1.0 (LOCKED) §3.4 -------------------------------------
+
+  /** BP-5 — the exact per-channel, per-country prices a publish would set (the approver sees the same). */
+  @Post('versions/:versionId/billing-preview')
+  @HttpCode(200)
+  @RequireScopes('platform:catalog:read')
+  async billingPreview(
+    @Param('versionId', new UuidShapePipe()) versionId: string,
+    @Body() body: BillingPreviewDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ) {
+    platformOnly(auth, requestId);
+    return { channels: await run(requestId, () => this.billingProducts.preview(versionId, body.products)) };
+  }
+
+  /** BP-7 — upload the Apple review screenshot a new App Store product is created with (catalog_manager). */
+  @Post('plans/:planId/billing-assets/apple-review-screenshot')
+  @HttpCode(201)
+  @RequireScopes('platform:catalog:draft')
+  async uploadReviewScreenshot(
+    @Param('planId', new UuidShapePipe()) planId: string,
+    @Body() body: UploadReviewScreenshotDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ) {
+    platformOnly(auth, requestId);
+    const bytes = Buffer.from(body.content_base64, 'base64');
+    return run(requestId, () => this.billingProducts.uploadReviewScreenshot({ plan_id: planId, file_name: body.file_name, content_type: body.content_type, bytes, created_by: auth.sub }));
+  }
+
+  /** BP-10 / BP-14 — retry a provider sync that did not succeed (owner). */
+  @Post('billing-sync/:syncId/retry')
+  @HttpCode(204)
+  @RequireScopes('platform:catalog:publish')
+  async retryBillingSync(@Param('syncId', new UuidShapePipe()) syncId: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<void> {
+    platformOnly(auth, requestId);
+    await run(requestId, () => this.billingProducts.retry(syncId));
   }
 
   @Post('plans/:planId/drafts')
@@ -144,6 +202,11 @@ async function run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
 export function toCatalogAramoError(err: unknown, requestId: string): unknown {
   if (err instanceof CommercialPolicyUnavailableError) {
     return new AramoError('COMMERCIAL_POLICY_UNAVAILABLE', 'no valid ACTIVE commercial policy', 503, { requestId, details: { reason: err.reason } });
+  }
+  if (err instanceof BillingProductsError) {
+    if (err.code === 'NOT_FOUND') return new AramoError('NOT_FOUND', err.message, 404, { requestId, details: err.details });
+    if (err.code === 'NOT_RETRYABLE') return new AramoError('COMMERCIAL_CATALOG_CONFLICT', err.message, 409, { requestId, details: { reason: 'not_retryable', ...err.details } });
+    return new AramoError('VALIDATION_ERROR', err.message, 422, { requestId, details: err.details });
   }
   if (err instanceof CommercialCatalogError) {
     switch (err.code) {

@@ -1,4 +1,5 @@
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateBy, ValidateIf } from 'class-validator';
+import { billingProductsShapeErrors } from '@aramo/subscription';
 
 /**
  * The 8-4-4-4-12 hex SHAPE of a uuid, without the RFC 9562 version/variant check: the CCP-A5
@@ -172,4 +173,47 @@ export interface CatalogVersionDetailDto {
   plan: CatalogPlanDto;
   content: Record<string, unknown>;
   pinned_tenants: { tenant_id: string; name: string }[];
+  /** CCP Billing Products — the plan's billing products as this version sees them (ids, sync status, link). */
+  billing_products: BillingProductViewDto[];
+  /** BP-2 — the channels this plan may sell on. */
+  billing_eligible: ('STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY')[];
+  /** BP-11 — the billing products a publish of this plan starts from (what the plan sells on today). */
+  billing_carry_forward: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
+}
+
+// CCP Billing Products Directive v1.0 (LOCKED) §3.4 — the billing-product routes on this controller.
+
+/** POST versions/:versionId/billing-preview — the products to price (the publish payload's `products`). */
+export class BillingPreviewDto {
+  @ValidateBy({
+    name: 'isBillingProductList',
+    validator: { validate: (v: unknown) => Array.isArray(v) && billingProductsShapeErrors({ products: v }).length === 0, defaultMessage: () => 'products must be 0..6 billing products { provider, interval, product_id }' },
+  })
+  products!: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
+}
+
+/** POST plans/:planId/billing-assets/apple-review-screenshot — the image as base64 (BP-7). */
+export class UploadReviewScreenshotDto {
+  @IsString() @MaxLength(100) file_name!: string;
+  @IsIn(['image/png', 'image/jpeg']) content_type!: 'image/png' | 'image/jpeg';
+  @IsString() @MaxLength(11_200_000) @Matches(/^[A-Za-z0-9+/]+={0,2}$/, { message: 'content_base64 must be base64' }) content_base64!: string;
+}
+
+export interface BillingProductViewDto {
+  provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+  interval: 'MONTH' | 'YEAR';
+  product_id: string;
+  origin: 'CREATED' | 'ADOPTED' | null;
+  linked: boolean;
+  sync: null | {
+    id: string;
+    change_request_id: string;
+    plan_version_id: string;
+    status: 'PENDING' | 'SYNCED' | 'NEEDS_ATTENTION' | 'FAILED' | 'NOT_CONFIGURED';
+    attempts: number;
+    store_state: string | null;
+    last_error: string | null;
+    synced_at: string | null;
+    next_attempt_at: string;
+  };
 }

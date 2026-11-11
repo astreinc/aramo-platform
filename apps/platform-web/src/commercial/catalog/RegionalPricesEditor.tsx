@@ -3,6 +3,9 @@ import { Button, Input, Select } from '@aramo/fe-foundation';
 
 import type { CatalogRegionalPrice, CatalogVersion } from './catalog-api';
 import { formatRegionalPrice, parseRegionalPriceInput, regionalRows } from './regional-prices-model';
+import { STORE_COUNTRY_CURRENCY, countryName, storeCountryOptions } from './store-countries';
+
+const COUNTRY_OPTIONS = storeCountryOptions();
 
 // Sign Mobile M-A12 Amendment A1-3 — the regional price editor and display on the plan version screen.
 // Every viewer sees the version's regional prices; only a catalog manager edits them, and only on a
@@ -10,7 +13,7 @@ import { formatRegionalPrice, parseRegionalPriceInput, regionalRows } from './re
 // Owner through "Request publish").
 
 export const REGIONAL_PRICES_INTRO =
-  'Regional list prices for in-app store billing, by country and interval (for example IN / INR). The app always shows and charges the store’s own price; the reconciliation report flags a store price that differs. Stripe stays US-only.';
+  'Where the apps sell, and at what price. The App Store and Google Play sell this plan in the United States (the list price above) and in each country listed here, at exactly this price in that country’s store currency. A country the stores sell in today with no price here is stopped only when the publish request confirms it. Web (Stripe) sells at the US price.';
 
 export type RegionalPriceEdit = { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null };
 
@@ -57,7 +60,7 @@ export function RegionalPricesEditor(props: { version: CatalogVersion; canDraft:
           {rows.map((r) => (
             <div key={`${r.country}:${r.interval}`} role="row" className="pc-diff__row">
               <span role="cell" className="pc-diff__field">
-                {r.country}
+                {`${countryName(r.country)} (${r.country})`}
               </span>
               <span role="cell" className="pc-diff__after">
                 {formatRegionalPrice(r)}
@@ -77,11 +80,22 @@ export function RegionalPricesEditor(props: { version: CatalogVersion; canDraft:
         <div className="pc-fields" data-testid="regional-price-form">
           <label className="pc-field">
             <span className="pc-field__label">Country</span>
-            <Input unstyled className="pc-input pc-input--editable" aria-label="Regional price country" maxLength={2} placeholder="IN" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
+            <Select
+              unstyled
+              className="pc-input pc-input--editable"
+              aria-label="Regional price country"
+              value={form.country}
+              onChange={(e) => setForm({ ...form, country: e.target.value, currency: STORE_COUNTRY_CURRENCY[e.target.value] ?? '' })}
+            >
+              <option value="">Choose a country</option>
+              {COUNTRY_OPTIONS.map((c) => (
+                <option key={c.code} value={c.code}>{`${c.name} (${c.code}) · ${c.currency}`}</option>
+              ))}
+            </Select>
           </label>
           <label className="pc-field">
             <span className="pc-field__label">Currency</span>
-            <Input unstyled className="pc-input pc-input--editable" aria-label="Regional price currency" maxLength={3} placeholder="INR" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+            <Input unstyled className="pc-input" aria-label="Regional price currency" maxLength={3} placeholder="Set by the country" value={form.currency} readOnly title="The currency the App Store charges in this country" />
           </label>
           <label className="pc-field">
             <span className="pc-field__label">Interval</span>

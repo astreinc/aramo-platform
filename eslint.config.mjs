@@ -542,6 +542,12 @@ export default [
       // Paired in lockstep with scripts/verify-vocabulary.sh.
       'libs/subscription/src/lib/billing/stripe-wire.ts',
       'libs/subscription/src/tests/stripe-wire.spec.ts',
+      // CCP Billing Products Directive v1.0 (LOCKED) — PO ruling 2026-11-11: the same
+      // exception for the App Store Connect wire file + its boundary spec (Apple's
+      // price-point attribute → Aramo's `amount` only). Paired in lockstep with
+      // scripts/verify-vocabulary.sh.
+      'libs/subscription/src/lib/billing/sync/apple-asc-wire.ts',
+      'libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

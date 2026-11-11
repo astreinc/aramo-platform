@@ -1087,3 +1087,28 @@ export {
   type SeatChangeResult,
   type SeatState,
 } from './lib/billing/seat-billing.service.js';
+// CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED) — the console-managed
+// billing products (Stripe / App Store / Google Play) and their post-apply sync.
+export {
+  BILLING_PRODUCTS_KEY,
+  BILLING_PROVIDERS,
+  billingProductsShapeErrors,
+  defaultProductId,
+  eligibleProviders,
+  STORE_LISTING_LIMITS,
+  storeListingErrors,
+  type BillingInterval,
+  type BillingProductLink,
+  type StoreListing,
+  type BillingProductsPayload,
+  type BillingProvider,
+} from './lib/billing/sync/billing-product.js';
+export {
+  BILLING_SYNC_TIMING,
+  BillingProductsError,
+  BillingProductsService,
+  type BillingProductView,
+  type BillingSyncStatus,
+  type MismatchEntry,
+} from './lib/billing/sync/billing-products.service.js';
+export { REVIEW_SCREENSHOT_SIZES } from './lib/billing/sync/review-screenshot.js';

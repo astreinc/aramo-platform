@@ -31,6 +31,10 @@ describe('CCP-B2 Catalog screen', () => {
   let hangCatalog = false;
   // CCP-A6-R (TD-B2-3): the request read's apply_actionable for the caller.
   let applyActionable = true;
+  // CCP Billing Products — the billing fields the version read returns (undefined: an older platform-admin).
+  let versionBilling: Record<string, unknown> | undefined;
+  let previewStops: string[] = [];
+
   function mockApi(role: string, catalog: Catalog = CATALOG) {
     calls = [];
     failCatalog = false;
@@ -47,7 +51,7 @@ describe('CCP-B2 Catalog screen', () => {
         return failCatalog ? json({ error: { code: 'INTERNAL', message: 'The catalog is unavailable.' } }, 500) : json(catalog);
       }
       if (/\/platform\/commercial\/catalog\/versions\/[^/]+$/.test(url) && method === 'GET') {
-        return json({ version: TEAM.versions[1], plan: TEAM, content: {}, pinned_tenants: [{ tenant_id: 't1', name: 'Northwind Logistics' }] });
+        return json({ version: TEAM.versions[1], plan: TEAM, content: {}, pinned_tenants: [{ tenant_id: 't1', name: 'Northwind Logistics' }], ...(versionBilling ?? {}) });
       }
       if (/\/platform\/commercial\/catalog\/versions\/[^/]+$/.test(url) && method === 'PATCH') return json({ version: TEAM.versions[0] });
       if (url.endsWith('/drafts') && method === 'POST') return json({ version: { ...TEAM.versions[0], version_number: 4 } }, 201);
@@ -59,6 +63,11 @@ describe('CCP-B2 Catalog screen', () => {
         // TD-A6-13: the A6 apply route (mocked; the B2 base predates A6).
         return json({ request: { id: '019a0000-0000-7000-8000-00000000c002', action_type: 'PLAN_VERSION_PUBLISH', state: 'APPLIED', required_chain: { rule: 'FINANCE_THEN_OWNER', steps: [] }, policy_version_id: 'pol-1' } });
       }
+      if (url.endsWith('/billing-preview') && method === 'POST') {
+        const products = ((body as { products: { provider: string; interval: string; product_id: string }[] }).products ?? []);
+        return json({ channels: products.map((p) => ({ ...p, configured: true, error: null, stops: p.provider === 'APP_STORE' ? previewStops : [], prices: [{ country: 'US', currency: 'USD', amount_minor: 1000, available: true, nearest: [] }] })) });
+      }
+      if (url.endsWith('/billing-assets/apple-review-screenshot') && method === 'POST') return json({ id: '019a0000-0000-7000-8000-0000000000aa', width: 1290, height: 2796, sha256: 'x' }, 201);
       if (url.endsWith('/submit') && method === 'POST') {
         return json({ request: { id: '019a0000-0000-7000-8000-00000000c001', action_type: 'PLAN_VERSION_PUBLISH', state: 'PENDING_APPROVAL', required_chain: { rule: 'FINANCE_THEN_OWNER', steps: [{ step_index: 0, role_key: 'finance_admin' }, { step_index: 1, role_key: 'platform_owner' }] }, policy_version_id: 'pol-1' } });
       }
@@ -75,6 +84,8 @@ describe('CCP-B2 Catalog screen', () => {
   }
 
   beforeEach(() => {
+    versionBilling = undefined;
+    previewStops = [];
     applyActionable = true;
     configureAuthConsumer('platform');
     Object.defineProperty(window, 'location', {
@@ -164,6 +175,76 @@ describe('CCP-B2 Catalog screen', () => {
       'POST /platform/commercial/change-requests',
       'POST /platform/commercial/change-requests/019a0000-0000-7000-8000-00000000c001/submit',
     ]);
+  });
+
+  it('CCP-BP-W-1 a publish carries the plan’s billing products; an existing App Store product keeps its permanent id', async () => {
+    versionBilling = {
+      billing_eligible: ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY'],
+      billing_carry_forward: [],
+      billing_products: [{ provider: 'APP_STORE', interval: 'MONTH', product_id: 'ai.aramo.sign.team.monthly', origin: 'ADOPTED', linked: false, sync: null }],
+    };
+    mockApi('catalog_manager');
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Request publish…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Request publish · Sign Team v3' });
+    expect(await within(dialog).findByTestId('billing-products-editor')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('iPhone (App Store) product id')).toHaveValue('ai.aramo.sign.team.monthly');
+    expect(within(dialog).getByLabelText('iPhone (App Store) product id')).toBeDisabled();
+    fireEvent.click(within(dialog).getByLabelText('Sell on Android (Google Play)'));
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Link the store products' } });
+    fireEvent.change(within(dialog).getByLabelText('Evidence'), { target: { value: 'Directive 3d2b67c1' } });
+    const commit = within(dialog).getByRole('button', { name: 'Submit for approval' });
+    // A1-1 — the store listing is required (Apple limits) and the prices must be previewed.
+    expect(within(dialog).getByLabelText('Store name')).toHaveValue('Team');
+    expect(commit).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('Store description'), { target: { value: '25 sends a month and 1 GB storage' } });
+    expect(commit).toBeDisabled();
+    // A1-2 — the App Store sells in IN today and this version has no IN price: the stop must be confirmed.
+    previewStops = ['IN'];
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Preview prices' }));
+    expect(await within(dialog).findByLabelText('Stop selling in IN')).toBeInTheDocument();
+    expect(commit).toBeDisabled();
+    fireEvent.click(within(dialog).getByLabelText('Stop selling in IN'));
+    await waitFor(() => expect(commit).toBeEnabled());
+    fireEvent.click(commit);
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/submit'))).toBe(true));
+    const create = calls.find((c) => c.method === 'POST' && c.url.endsWith('/platform/commercial/change-requests'));
+    expect((create?.body as { payload: Record<string, unknown> }).payload).toEqual({
+      plan_version_id: 'team-3',
+      billing_products: {
+        products: [
+          { provider: 'STRIPE', interval: 'MONTH', product_id: 'aramo_sign_team' },
+          { provider: 'APP_STORE', interval: 'MONTH', product_id: 'ai.aramo.sign.team.monthly' },
+        ],
+        listing: { name: 'Team', description: '25 sends a month and 1 GB storage' },
+        stop_countries: ['IN'],
+      },
+    });
+  });
+
+  it('CCP-BP-W-2 a new App Store product cannot be requested until the review screenshot is uploaded', async () => {
+    versionBilling = { billing_eligible: ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY'], billing_carry_forward: [], billing_products: [] };
+    mockApi('catalog_manager');
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Request publish…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Request publish · Sign Team v3' });
+    await within(dialog).findByTestId('billing-products-editor');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'First store products' } });
+    fireEvent.change(within(dialog).getByLabelText('Evidence'), { target: { value: 'Directive 3d2b67c1' } });
+    const commit = within(dialog).getByRole('button', { name: 'Submit for approval' });
+    expect(commit).toBeDisabled();
+    expect(within(dialog).getByText('A new App Store product needs the review screenshot of the in-app Plans screen.')).toBeInTheDocument();
+    const file = new File([new Uint8Array([137, 80, 78, 71])], 'plans.png', { type: 'image/png' });
+    fireEvent.change(within(dialog).getByLabelText('App Store review screenshot'), { target: { files: [file] } });
+    fireEvent.change(within(dialog).getByLabelText('Store description'), { target: { value: '25 sends a month and 1 GB storage' } });
+    await within(dialog).findByText(/Uploaded: plans.png/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Preview prices' }));
+    await within(dialog).findByTestId('billing-preview');
+    await waitFor(() => expect(commit).toBeEnabled());
+    fireEvent.click(commit);
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/submit'))).toBe(true));
+    const create = calls.find((c) => c.method === 'POST' && c.url.endsWith('/platform/commercial/change-requests'));
+    expect((create?.body as { payload: { billing_products: Record<string, unknown> } }).payload.billing_products).toMatchObject({ apple_review_screenshot_asset_id: '019a0000-0000-7000-8000-0000000000aa' });
   });
 
   it('B2-W-RETIRE Retire this version… needs the typed plan name and creates a PLAN_RETIRE change request', async () => {

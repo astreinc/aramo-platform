@@ -3888,6 +3888,116 @@ paths:
         '503':
           $ref: '#/components/responses/CommercialPolicyUnavailable'
 
+  # CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED) §3.4. Served by apps/platform-admin.
+  /platform/commercial/catalog/versions/{versionId}/billing-preview:
+    post:
+      operationId: previewPlatformCommercialCatalogBillingProducts
+      tags: [Platform Commercial Catalog]
+      summary: Preview the exact per-channel, per-country prices a publish would set (BP-5).
+      description: >-
+        Read-only. For each billing product, the price the sync would set on Stripe, the App Store or Google Play,
+        and whether the store has that exact amount (never rounded; `nearest` lists alternatives). A provider
+        whose credentials are not set returns `configured: false`. Requires `platform:catalog:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CatalogPlanVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPreviewRequest'
+      responses:
+        '200':
+          description: The per-channel preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPreviewResponse'
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+
+  /platform/commercial/catalog/plans/{planId}/billing-assets/apple-review-screenshot:
+    post:
+      operationId: uploadPlatformCommercialCatalogReviewScreenshot
+      tags: [Platform Commercial Catalog]
+      summary: Upload the App Store review screenshot of a plan's App Store product (BP-7).
+      description: >-
+        A PNG or JPEG of an iPhone screenshot size, up to 8 MB, as base64. Stored immutably; a PLAN_VERSION_PUBLISH
+        names it in `billing_products.apple_review_screenshot_asset_id`. Requires `platform:catalog:draft`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CatalogPlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadReviewScreenshot'
+      responses:
+        '201':
+          description: The stored screenshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingAssetCreated'
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+        '422':
+          description: VALIDATION_ERROR — not a PNG / JPEG, over 8 MB, or not an iPhone screenshot size.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /platform/commercial/catalog/billing-sync/{syncId}/retry:
+    post:
+      operationId: retryPlatformCommercialCatalogBillingSync
+      tags: [Platform Commercial Catalog]
+      summary: Retry a provider sync of an applied publish that did not succeed (BP-10).
+      description: >-
+        Moves a FAILED, NEEDS_ATTENTION or NOT_CONFIGURED sync back to PENDING; the platform-admin worker sends it
+        again. A SYNCED or PENDING sync is refused (409 `not_retryable`). Requires `platform:catalog:publish`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: syncId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Queued for another attempt.
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialCatalogConflict'
+
   # CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-23) — governed manual <-> self-service
   # conversion. Served by apps/platform-admin.
   /platform/commercial/change-requests/{id}/convert:
@@ -11079,8 +11189,26 @@ components:
     CommercialCatalogVersionDetail:
       type: object
       additionalProperties: false
-      required: [version, plan, content, pinned_tenants]
+      required: [version, plan, content, pinned_tenants, billing_products, billing_eligible, billing_carry_forward]
       properties:
+        billing_products:
+          type: array
+          description: >-
+            CCP Billing Products Directive v1.0 (LOCKED) — the plan's billing products as this version sees them:
+            the permanent product id per channel, the latest sync of this version and whether the channel sells
+            this version (a purchase link exists).
+          items:
+            $ref: '#/components/schemas/BillingProductView'
+        billing_eligible:
+          type: array
+          description: BP-2 — the channels this plan may sell on (Personal self-service all three; Business web only).
+          items:
+            $ref: '#/components/schemas/BillingProvider'
+        billing_carry_forward:
+          type: array
+          description: BP-11 — the billing products a publish of this plan starts from (what it sells on today).
+          items:
+            $ref: '#/components/schemas/BillingProductLink'
         version:
           $ref: '#/components/schemas/CommercialCatalogVersion'
         plan:
@@ -11209,11 +11337,196 @@ components:
           type: string
           enum: [MONTH, YEAR]
 
+    # CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED).
+    BillingProvider:
+      type: string
+      enum: [STRIPE, APP_STORE, GOOGLE_PLAY]
+    BillingProductLink:
+      type: object
+      additionalProperties: false
+      required: [provider, interval, product_id]
+      properties:
+        provider:
+          $ref: '#/components/schemas/BillingProvider'
+        interval:
+          type: string
+          enum: [MONTH, YEAR]
+        product_id:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,149}$'
+    BillingProductView:
+      type: object
+      additionalProperties: false
+      required: [provider, interval, product_id, origin, linked, sync]
+      properties:
+        provider:
+          $ref: '#/components/schemas/BillingProvider'
+        interval:
+          type: string
+          enum: [MONTH, YEAR]
+        product_id:
+          type: string
+        origin:
+          type: [string, 'null']
+          enum: [CREATED, ADOPTED, null]
+        linked:
+          type: boolean
+        sync:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [id, change_request_id, plan_version_id, status, attempts, store_state, last_error, synced_at, next_attempt_at]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                change_request_id:
+                  type: string
+                  format: uuid
+                plan_version_id:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [PENDING, SYNCED, NEEDS_ATTENTION, FAILED, NOT_CONFIGURED]
+                attempts:
+                  type: integer
+                store_state:
+                  type: [string, 'null']
+                last_error:
+                  type: [string, 'null']
+                synced_at:
+                  type: [string, 'null']
+                  format: date-time
+                next_attempt_at:
+                  type: string
+                  format: date-time
+    BillingPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [products]
+      properties:
+        products:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/BillingProductLink'
+    BillingPreviewResponse:
+      type: object
+      additionalProperties: false
+      required: [channels]
+      properties:
+        channels:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [provider, interval, product_id, configured, prices, stops, error]
+            properties:
+              provider:
+                $ref: '#/components/schemas/BillingProvider'
+              stops:
+                type: array
+                description: Countries (ISO alpha-2) the store sells this plan in today that the version has no price for; the request must confirm each in `billing_products.stop_countries` or the sync refuses.
+                items:
+                  type: string
+              interval:
+                type: string
+                enum: [MONTH, YEAR]
+              product_id:
+                type: string
+              configured:
+                type: boolean
+              error:
+                type: [string, 'null']
+              prices:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [country, currency, amount_minor, available, nearest]
+                  properties:
+                    country:
+                      type: string
+                    currency:
+                      type: string
+                    amount_minor:
+                      type: integer
+                    available:
+                      type: boolean
+                    nearest:
+                      type: array
+                      items:
+                        type: integer
+    UploadReviewScreenshot:
+      type: object
+      additionalProperties: false
+      required: [file_name, content_type, content_base64]
+      properties:
+        file_name:
+          type: string
+          maxLength: 100
+        content_type:
+          type: string
+          enum: [image/png, image/jpeg]
+        content_base64:
+          type: string
+          maxLength: 11200000
+    BillingAssetCreated:
+      type: object
+      additionalProperties: false
+      required: [id, width, height, sha256]
+      properties:
+        id:
+          type: string
+          format: uuid
+        width:
+          type: integer
+        height:
+          type: integer
+        sha256:
+          type: string
+    BillingMismatchEntry:
+      type: object
+      additionalProperties: false
+      required: [plan_key, plan_version_id, provider, interval, product_id, country, currency, catalog_amount_minor, live_amount_minor, status]
+      properties:
+        plan_key:
+          type: string
+        plan_version_id:
+          type: string
+          format: uuid
+        provider:
+          $ref: '#/components/schemas/BillingProvider'
+        interval:
+          type: string
+          enum: [MONTH, YEAR]
+        product_id:
+          type: string
+        country:
+          type: string
+        currency:
+          type: string
+        catalog_amount_minor:
+          type: integer
+        live_amount_minor:
+          type: [integer, 'null']
+        status:
+          type: string
+          enum: [MATCH, MISMATCH, MISSING_IN_STORE, STORE_PRICE_UNAVAILABLE]
     StorePriceReconciliationResponse:
       type: object
       additionalProperties: false
-      required: [product_key, entries]
+      required: [product_key, entries, billing_products]
       properties:
+        billing_products:
+          type: array
+          description: >-
+            CCP Billing Products BP-12 — every billing product (Stripe, App Store, Google Play) of every published
+            version: the catalog price vs the channel's live price per country, the US price included. Reports only.
+          items:
+            $ref: '#/components/schemas/BillingMismatchEntry'
         product_key:
           type: string
         entries:

@@ -9,6 +9,7 @@ import {
   MANAGE_ON_WEB,
   perInterval,
   planAction,
+  ORG_PLAN_COPY,
   PLANS_COPY,
   productFor,
   reasonLine,
@@ -62,8 +63,12 @@ describe('plans', () => {
 describe('refusals and actions', () => {
   it('maps every block reason', () => {
     expect(blockCopy('not_billing_manager')).toBe(PLANS_COPY.askAdmin);
-    expect(blockCopy('store_purchase_seats_unsupported')).toMatch(MANAGE_ON_WEB);
+    // CCP Billing Products BP-2b — a Business organization's plan is managed by its admin; no link elsewhere.
+    expect(blockCopy('store_purchase_seats_unsupported')).toBe(ORG_PLAN_COPY);
+    expect(blockCopy('store_purchase_seats_unsupported')).not.toMatch(/sign\.aramo\.ai|web/i);
+    expect(PLANS_COPY.askAdmin).toBe(ORG_PLAN_COPY);
     expect(blockCopy('billing_managed_elsewhere')).toBe(PLANS_COPY.billedOnWeb);
+    expect(blockCopy('billing_managed_elsewhere', account({ price_unit: 'SEAT' }))).toBe(ORG_PLAN_COPY);
     expect(blockCopy('billing_managed_elsewhere', account({ managed_by: 'GOOGLE_PLAY' }))).toBe(PLANS_COPY.billedInOtherStore);
     expect(blockCopy('store_billing_disabled')).toMatch(MANAGE_ON_WEB);
     expect(blockCopy(null)).toBeNull();

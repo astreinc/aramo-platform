@@ -37,8 +37,11 @@ import {
   VERSION_PILL,
   type EditorFieldKey,
 } from './catalog-model';
+import { BillingProductsEditor } from './BillingProductsEditor';
+import { BillingProductsPanel } from './BillingProductsPanel';
 import { NewPlanDialog } from './NewPlanDialog';
 import { RegionalPricesEditor, type RegionalPriceEdit } from './RegionalPricesEditor';
+import { STORE_LISTING_LIMITS, billingEditorErrors, billingPayload, initialBillingRows, sellsInCountries, sellsInStores, type BillingEditorRow, type StoreListingInput } from './billing-products-model';
 import { pendingPlanCreateLine, planCreateApplyable } from './new-plan-model';
 import './catalog.css';
 
@@ -91,6 +94,14 @@ export function CatalogView({ session }: { readonly session: Session }) {
   const [reason, setReason] = useState('');
   const [evidence, setEvidence] = useState('');
   const [typed, setTyped] = useState('');
+  // CCP Billing Products — the publish request's billing products (null: the plan sells on no channel).
+  const [billingRows, setBillingRows] = useState<BillingEditorRow[] | null>(null);
+  const [screenshotId, setScreenshotId] = useState<string | null>(null);
+  // A1-1 / A1-2 — the store listing, the countries the stores sell in today without a price (null = not
+  // previewed yet), and the stops the requester confirmed.
+  const [listing, setListing] = useState<StoreListingInput>({ name: '', description: '' });
+  const [previewStops, setPreviewStops] = useState<string[] | null>(null);
+  const [stopCountries, setStopCountries] = useState<string[]>([]);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [newPlanOpen, setNewPlanOpen] = useState(false);
   const saving = useRef<Promise<unknown> | null>(null);
@@ -324,6 +335,21 @@ export function CatalogView({ session }: { readonly session: Session }) {
     setEvidence('');
     setTyped('');
     setDialogError(null);
+    setBillingRows(null);
+    setScreenshotId(null);
+    setListing({ name: plan.name.slice(0, STORE_LISTING_LIMITS.name_max), description: '' });
+    setPreviewStops(null);
+    setStopCountries([]);
+    if (kind === 'publish') {
+      try {
+        const detail = await catalogApi.getVersion(version.id);
+        // An older platform-admin (rolling deploy) returns no billing fields: the publish carries none.
+        const eligible = detail.billing_eligible ?? [];
+        setBillingRows(eligible.length > 0 ? initialBillingRows({ billing_eligible: eligible, billing_carry_forward: detail.billing_carry_forward ?? [], billing_products: detail.billing_products ?? [] }, plan.key) : null);
+      } catch {
+        setBillingRows(null);
+      }
+    }
     setDialog({ kind, plan, version });
   };
 
@@ -339,6 +365,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
         reason: reason.trim(),
         evidence: evidence.trim(),
         idempotency_key: newIdempotencyKey(),
+        ...(dialog.kind === 'publish' && billingRows !== null ? { billing_products: billingPayload(billingRows, screenshotId, listing, stopCountries) } : {}),
       });
       setDialog(null);
       await load();
@@ -583,6 +610,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     </div>
                   ) : null}
                   <RegionalPricesEditor version={version} canDraft={canDraft} onSave={saveRegional} />
+                  <BillingProductsPanel key={version.id} versionId={version.id} canRetry={hasScope(session, CP.catalogPublish)} canReadBilling={hasScope(session, CP.billingRead)} />
                   {version.status === 'DRAFT' && lastPublished(plan, version) ? (
                     <>
                       <div className="pc-caps pc-caps--16">{`Compared with published v${String(lastPublished(plan, version)?.version_number ?? '')}`}</div>
@@ -693,14 +721,42 @@ export function CatalogView({ session }: { readonly session: Session }) {
           alert={dialogError}
           commitLabel="Submit for approval"
           tone={dialog.kind === 'retire' ? 'danger' : 'terra'}
-          canCommit={reason.trim().length > 0 && evidence.trim().length > 0}
+          canCommit={reason.trim().length > 0 && evidence.trim().length > 0 && (dialog.kind !== 'publish' || billingRows === null || publishBillingReady(billingRows, screenshotId, listing, previewStops, stopCountries))}
           busy={busy}
           onCommit={() => void submitRequest()}
         >
           <RequestField label="Reason" value={reason} onChange={setReason} placeholder="Why this change is needed" multiline />
           <RequestField label="Evidence" value={evidence} onChange={setEvidence} placeholder="Document, ticket or call notes reference" />
+          {dialog.kind === 'publish' && billingRows !== null ? (
+            <BillingProductsEditor
+              planId={dialog.plan.id}
+              versionId={dialog.version.id}
+              rows={billingRows}
+              onRows={setBillingRows}
+              screenshotId={screenshotId}
+              onScreenshot={setScreenshotId}
+              listing={listing}
+              onListing={setListing}
+              sellsIn={sellsInCountries(dialog.version.terms.regional_prices)}
+              previewStops={previewStops}
+              onPreviewStops={setPreviewStops}
+              stopCountries={stopCountries}
+              onStopCountries={setStopCountries}
+            />
+          ) : null}
         </CommercialRequestDialog>
       ) : null}
     </div>
   );
+}
+
+/**
+ * A publish with billing products is ready when its rows, listing and screenshot are valid, and — when it
+ * sells on a store — the prices were previewed and every country a store sells in today without a price
+ * here was confirmed as a stop (A1-2: never a silent drop).
+ */
+export function publishBillingReady(rows: BillingEditorRow[], screenshotId: string | null, listing: StoreListingInput, previewStops: string[] | null, stopCountries: string[]): boolean {
+  if (sellsInStores(rows) && previewStops === null) return false;
+  const unconfirmed = (previewStops ?? []).filter((c) => !stopCountries.includes(c));
+  return billingEditorErrors(rows, screenshotId, listing, unconfirmed).length === 0;
 }

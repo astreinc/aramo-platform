@@ -10,6 +10,8 @@ import {
   FINANCE_AMOUNT_WITHHELD,
   paymentFlags,
   SIGN_PRODUCT_KEY,
+  BillingProductsService,
+  type MismatchEntry,
   StoreBillingService,
   type StorePriceReconciliationEntry,
   type BillingPortalConfigurationStatus,
@@ -142,6 +144,8 @@ export class PlatformCommercialBillingStatusController {
     private readonly status: BillingStatusReadService,
     // M-A12 A1-3 — the store price reconciliation (SubscriptionModule provides it).
     @Optional() private readonly store?: StoreBillingService,
+    // CCP Billing Products BP-12 — the all-channel price-mismatch report (US price included).
+    @Optional() private readonly billingProducts?: BillingProductsService,
   ) {}
 
   /**
@@ -152,9 +156,18 @@ export class PlatformCommercialBillingStatusController {
    */
   @Get('store-price-reconciliation')
   @RequireScopes('platform:billing:read')
-  async storePriceReconciliation(@AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ product_key: string; entries: StorePriceReconciliationEntry[] }> {
+  async storePriceReconciliation(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ product_key: string; entries: StorePriceReconciliationEntry[]; billing_products: MismatchEntry[] }> {
     assertPlatform(auth, requestId);
-    return { product_key: SIGN_PRODUCT_KEY, entries: this.store === undefined ? [] : await this.store.priceReconciliation(SIGN_PRODUCT_KEY) };
+    return {
+      product_key: SIGN_PRODUCT_KEY,
+      entries: this.store === undefined ? [] : await this.store.priceReconciliation(SIGN_PRODUCT_KEY),
+      // CCP Billing Products BP-12 — every billing product (Stripe, App Store, Google Play) of every published
+      // version: catalog price vs the channel's live price, US included. Additive field; reports only.
+      billing_products: this.billingProducts === undefined ? [] : await this.billingProducts.mismatchReport(),
+    };
   }
 
   @Get('tenants/:tenant_id/billing-status')

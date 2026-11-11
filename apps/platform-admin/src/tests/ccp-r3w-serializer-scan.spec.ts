@@ -130,7 +130,10 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
     'platform-commercial-revenue.controller.ts': { handlers: ['report'], serializes: 'D2 (R3 amounts; no W field)' },
     'platform-commercial-observability.controller.ts': { handlers: ['listBillingAlerts', 'listApprovalAlerts', 'billingMetrics', 'approvalMetrics'], serializes: 'D3 alerts / metrics (no W field; evidence scanned in R3W-SCAN-5)' },
     'platform-commercial-subscriptions.controller.ts': { handlers: ['list', 'tenant'], serializes: 'B3 (no money, no terms, no reason)' },
-    'platform-commercial-catalog.controller.ts': { handlers: ['read', 'readVersion', 'createDraft', 'updateDraft'], serializes: 'catalog (W-1 list prices; plan terms are catalog information)' },
+    'platform-commercial-catalog.controller.ts': {
+      handlers: ['read', 'readVersion', 'createDraft', 'updateDraft', 'billingPreview', 'uploadReviewScreenshot', 'retryBillingSync'],
+      serializes: 'catalog (W-1 list prices; plan terms are catalog information); CCP Billing Products: billing-product ids, sync status and store list prices (catalog information, no W field)',
+    },
     'platform-commercial-usage.controller.ts': { handlers: ['reconciliation', 'periods'], serializes: 'D1 usage (no W field)' },
     // Merge train TD-MERGE-50 (C8-PR): the contract payments read. Payment terms, amounts and the receipt
     // records (evidence included) go only to a Finance amount holder (contractPaymentsDto amount_access);
@@ -150,7 +153,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
       expect(handlers.sort(), f).toEqual([...ROUTES[f]!.handlers].sort());
     }
     expect(total).toBe(Object.values(ROUTES).reduce((n, r) => n + r.handlers.length, 0));
-    expect(total).toBe(46); // 44 + C8-PR contractPayments (TD-MERGE-50) + Sign Mobile M-A12 A1-3 storePriceReconciliation
+    expect(total).toBe(49); // 44 + C8-PR contractPayments (TD-MERGE-50) + Sign Mobile M-A12 A1-3 storePriceReconciliation + CCP Billing Products billingPreview / uploadReviewScreenshot / retryBillingSync
   });
 
   it('R3W-SCAN-4 lib side: the audit stream is read out only by the A2 repository (feed + export, both through withholdAuditPayloadAmounts); the other readers select no requester text', () => {

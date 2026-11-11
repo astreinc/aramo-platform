@@ -61,12 +61,22 @@ const name = (cn: string) => seq(set(seq(oid('2.5.4.3'), tlv(0x0c, Buffer.from(c
 const utc = (d: Date) => tlv(0x17, Buffer.from(d.toISOString().replace(/[-:T]/g, '').slice(2, 14) + 'Z', 'ascii'));
 const ECDSA_SHA256 = seq(oid('1.2.840.10045.4.3.2'));
 
+/**
+ * A random positive serial in minimal DER form: a leading 0x00 byte (non-minimal INTEGER) makes the
+ * X509 parser reject the certificate, which made this suite fail intermittently (≈1 run in 8).
+ */
+function serialNumber(): Buffer {
+  const b = randomBytes(8);
+  b[0] = (b[0]! & 0x7f) | 0x01;
+  return b;
+}
+
 function certificate(o: { subject: string; issuer: string; key: KeyObject; issuerKey: KeyObject; ca: boolean; nonce?: Buffer; notBefore?: Date; notAfter?: Date }): Buffer {
   const exts: Buffer[] = [seq(oid('2.5.29.19'), bool(true), octet(seq(...(o.ca ? [bool(true)] : []))))];
   if (o.nonce !== undefined) exts.push(seq(oid('1.2.840.113635.100.8.2'), octet(seq(tlv(0xa1, octet(o.nonce))))));
   const tbs = seq(
     explicit(0, int(Buffer.from([2]))),
-    int(randomBytes(8)),
+    int(serialNumber()),
     ECDSA_SHA256,
     name(o.issuer),
     seq(utc(o.notBefore ?? new Date('2026-01-01T00:00:00Z')), utc(o.notAfter ?? new Date('2030-01-01T00:00:00Z'))),
