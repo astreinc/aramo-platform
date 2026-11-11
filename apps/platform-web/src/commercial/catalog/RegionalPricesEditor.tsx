@@ -10,7 +10,7 @@ import { formatRegionalPrice, parseRegionalPriceInput, regionalRows } from './re
 // Owner through "Request publish").
 
 export const REGIONAL_PRICES_INTRO =
-  'Regional list prices for in-app store billing, by country and interval (for example IN / INR). The app always shows and charges the store’s own price; the reconciliation report flags a store price that differs. Stripe stays US-only.';
+  'Regional list prices by country and interval (for example IN / INR). They also decide where the apps sell: the App Store and Google Play sell a plan in the US and in each country listed here, at exactly this price. Stripe stays US-only.';
 
 export type RegionalPriceEdit = { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null };
 

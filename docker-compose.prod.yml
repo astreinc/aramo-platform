@@ -947,6 +947,19 @@ services:
       - SIGN_STORE_BILLING_ENABLED
       - SIGN_GOOGLE_PLAY_PACKAGE
       - SIGN_GOOGLE_PLAY_CREDENTIALS_B64
+      # CCP Billing Products Directive v1.0 (LOCKED) BP-13 — the console's billing-product sync. OFF unless
+      # CCP_BILLING_SYNC_ENABLED=1; each provider is additionally dark until its own credentials are set:
+      # App Store Connect team key (CCP_ASC_*), Google Play (SIGN_GOOGLE_PLAY_* above), Stripe (the existing
+      # key, read only through the Stripe adapter's reader). Unset ⇒ nothing is ever sent to a provider.
+      - CCP_BILLING_SYNC_ENABLED
+      - CCP_BILLING_SYNC_INTERVAL_MS
+      - CCP_ASC_API_ISSUER_ID
+      - CCP_ASC_API_KEY_ID
+      - CCP_ASC_API_PRIVATE_KEY_B64
+      - CCP_ASC_APP_ID
+      - CCP_ASC_SUBSCRIPTION_GROUP_ID
+      - STRIPE_SECRET_KEY
+      - STRIPE_API_BASE
     # Sign Personal (Free) — offline MaxMind GeoLite2 databases, read-only (written by
     # deploy/geoip/docker-compose.geoip.yml; a replaced file is picked up without a restart). A
     # missing directory / file ⇒ network country UNKNOWN ⇒ a risk signal, not a refusal.

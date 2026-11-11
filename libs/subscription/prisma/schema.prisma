@@ -837,9 +837,89 @@ model CommercialCatalogApplication {
   plan_version_id         String   @db.Uuid
   retired_plan_version_id String?  @db.Uuid
   provider_price_ref      String?
+  // CCP Billing Products §3.1-4 (migration 20261111100000) — the billing products an applied publish
+  // asked to link ({ products, stop_selling, apple_review_screenshot_asset_id }); NULL otherwise.
+  billing_products        Json?
   attempt                 Int
   applied_by              String   @db.Uuid
   applied_at              DateTime @db.Timestamptz(3)
+
+  @@index([plan_id])
+  @@schema("subscription")
+}
+
+// CCP Billing Products, One Catalog Directive v1.0 (LOCKED) §3.1 (migration 20261111100000).
+// The PERMANENT external identity of a plan's billing product per (provider, interval) (BP-3):
+// written once when the provider confirms it (CREATED by Aramo or ADOPTED, BP-4). Immutable (trigger).
+// external_ref: the provider's own resource id where it differs from product_id (the App Store
+// subscription resource id); null otherwise.
+model BillingProduct {
+  id           String   @id @db.Uuid
+  plan_id      String   @db.Uuid
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY
+  provider     String
+  // CHECK: MONTH | YEAR (a Stripe product is MONTH)
+  interval     String
+  product_id   String
+  external_ref String?
+  // CHECK: CREATED | ADOPTED
+  origin       String
+  created_by   String
+  created_at   DateTime @db.Timestamptz(3)
+
+  @@unique([plan_id, provider, interval])
+  @@unique([provider, product_id])
+  @@schema("subscription")
+}
+
+// CCP Billing Products §3.1-2 / BP-10 — one sync job per (applied change request, provider, interval):
+// the outbox row enqueued in the apply transaction, drained by the platform-admin worker after the
+// approved catalog change committed. Identity immutable; a SYNCED row is final (trigger).
+model BillingProductSync {
+  id                 String    @id @db.Uuid
+  change_request_id  String    @db.Uuid
+  plan_id            String    @db.Uuid
+  plan_version_id    String    @db.Uuid
+  provider           String
+  interval           String
+  product_id         String
+  // CHECK: PENDING | SYNCED | NEEDS_ATTENTION | FAILED | NOT_CONFIGURED
+  status             String
+  attempts           Int       @default(0)
+  next_attempt_at    DateTime  @db.Timestamptz(3)
+  lease_until        DateTime? @db.Timestamptz(3)
+  // The provider's own state of the product (e.g. the App Store state READY_TO_SUBMIT); display only.
+  store_state        String?
+  // The provider price the sync linked (the Stripe price id); null for a store product.
+  external_price_ref String?
+  // The provider's error (no secret, at most 1000 characters).
+  last_error         String?
+  created_at         DateTime  @db.Timestamptz(3)
+  updated_at         DateTime  @db.Timestamptz(3)
+  synced_at          DateTime? @db.Timestamptz(3)
+
+  @@unique([change_request_id, provider, interval])
+  @@index([status, next_attempt_at])
+  @@index([plan_version_id])
+  @@schema("subscription")
+}
+
+// CCP Billing Products §3.1-3 / BP-7 — a file the sync sends to a provider (the Apple review
+// screenshot), uploaded in the console. Immutable (trigger).
+model BillingAsset {
+  id           String   @id @db.Uuid
+  plan_id      String   @db.Uuid
+  // CHECK: APPLE_REVIEW_SCREENSHOT
+  kind         String
+  file_name    String
+  // CHECK: image/png | image/jpeg
+  content_type String
+  bytes        Bytes
+  sha256       String
+  width        Int
+  height       Int
+  created_by   String
+  created_at   DateTime @db.Timestamptz(3)
 
   @@index([plan_id])
   @@schema("subscription")

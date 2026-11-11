@@ -129,11 +129,35 @@ interface GateRoute {
   body?: Record<string, unknown>;
 }
 const PATCH_BODY = { expected_content_checksum: EX_CHECKSUM, list_price_minor: 2400 };
+/** A PNG header of `w` × `h` (the upload reads the size from the header only). */
+const pngB64 = (w: number, h: number): string => {
+  const b = Buffer.alloc(33);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(b, 0);
+  b.writeUInt32BE(13, 8);
+  b.write('IHDR', 12, 'ascii');
+  b.writeUInt32BE(w, 16);
+  b.writeUInt32BE(h, 20);
+  return b.toString('base64');
+};
+/** A PNG header of 945 × 2048: readable, but not an iPhone screenshot size (the upload refuses it, 422). */
+const TINY_PNG = (() => {
+  const b = Buffer.alloc(33);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(b, 0);
+  b.writeUInt32BE(13, 8);
+  b.write('IHDR', 12, 'ascii');
+  b.writeUInt32BE(945, 16);
+  b.writeUInt32BE(2048, 20);
+  return b.toString('base64');
+})();
 const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET catalog', method: 'GET', path: CAT, scope: 'platform:catalog:read' },
   { name: 'GET catalog/versions/{versionId}', method: 'GET', path: `${CAT}/versions/${EX_VERSION_ID}`, scope: 'platform:catalog:read' },
   { name: 'POST catalog/plans/{planId}/drafts', method: 'POST', path: `${CAT}/plans/${EX_PLAN_ID}/drafts`, scope: 'platform:catalog:draft', body: { from_version_id: EX_VERSION_ID } },
   { name: 'PATCH catalog/versions/{versionId}', method: 'PATCH', path: `${CAT}/versions/${EX_VERSION_ID}`, scope: 'platform:catalog:draft', body: PATCH_BODY },
+  // CCP Billing Products Directive v1.0 (LOCKED) §3.4.
+  { name: 'POST catalog/versions/{versionId}/billing-preview', method: 'POST', path: `${CAT}/versions/${EX_VERSION_ID}/billing-preview`, scope: 'platform:catalog:read', body: { products: [] } },
+  { name: 'POST catalog/plans/{planId}/billing-assets/apple-review-screenshot', method: 'POST', path: `${CAT}/plans/${EX_PLAN_ID}/billing-assets/apple-review-screenshot`, scope: 'platform:catalog:draft', body: { file_name: 'plans.png', content_type: 'image/png', content_base64: TINY_PNG } },
+  { name: 'POST catalog/billing-sync/{syncId}/retry', method: 'POST', path: `${CAT}/billing-sync/${UNKNOWN_VERSION_ID}/retry`, scope: 'platform:catalog:publish' },
 ];
 
 // ── GET /platform/commercial/catalog ──────────────────────────────────────────
@@ -190,6 +214,10 @@ describe('platform-web → GET /platform/commercial/catalog/versions/{versionId}
           plan: PLAN,
           content: like({ format: 1 }),
           pinned_tenants: eachLike({ tenant_id: uuid('ccb20000-0000-7000-8000-0000000000c1'), name: like('Pact Catalog Tenant') }),
+          // CCP Billing Products — the plan's billing products, eligible channels and carry-forward (arrays).
+          billing_products: like([]),
+          billing_eligible: like([]),
+          billing_carry_forward: like([]),
         });
       })
       .executeTest(async (mock) => {
@@ -556,4 +584,99 @@ describe('platform-web → every catalog route refuses the tenant tier (403 tier
         });
     });
   }
+});
+
+// ── CCP Billing Products Directive v1.0 (LOCKED) §3.4 ─────────────────────────────
+
+describe('platform-web → CCP Billing Products routes', () => {
+  it('commercial_ops previews the billing prices of a version (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a published plan version with a pinned subscription exists')
+      .uponReceiving('a billing price preview by commercial ops')
+      .withRequest('POST', fromProviderState(`${CAT}/versions/\${versionId}/billing-preview`, `${CAT}/versions/${EX_VERSION_ID}/billing-preview`), (b) => {
+        b.headers(platformJson('commercial_ops'));
+        b.jsonBody({ products: [] });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ channels: like([]) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/versions/${EX_VERSION_ID}/billing-preview`, 'POST', platformJson('commercial_ops'), { products: [] });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('catalog_manager uploads a review screenshot that is not an iPhone size (422)', async () => {
+    const body = { file_name: 'plans.png', content_type: 'image/png', content_base64: TINY_PNG };
+    await provider
+      .addInteraction()
+      .given('a plan without a draft version exists')
+      .uponReceiving('a review screenshot of the wrong size by a catalog manager')
+      .withRequest('POST', fromProviderState(`${CAT}/plans/\${planId}/billing-assets/apple-review-screenshot`, `${CAT}/plans/${EX_PLAN_ID}/billing-assets/apple-review-screenshot`), (b) => {
+        b.headers(platformJson('catalog_manager'));
+        b.jsonBody(body);
+      })
+      .willRespondWith(422, (b) => {
+        b.jsonBody({ error: { code: 'VALIDATION_ERROR', message: like('a review screenshot must be an iPhone screenshot size') } });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/plans/${EX_PLAN_ID}/billing-assets/apple-review-screenshot`, 'POST', platformJson('catalog_manager'), body);
+        expect(res.status).toBe(422);
+        expect(errCode(res.body)).toBe('VALIDATION_ERROR');
+      });
+  });
+
+  it('platform_owner retries an unknown sync (404)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a retry of an unknown billing sync by the platform owner')
+      .withRequest('POST', `${CAT}/billing-sync/${UNKNOWN_VERSION_ID}/retry`, (b) => {
+        b.headers(platformSession('platform_owner'));
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody({ error: { code: 'NOT_FOUND', message: like('unknown sync job') } });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/billing-sync/${UNKNOWN_VERSION_ID}/retry`, 'POST', platformSession('platform_owner'));
+        expect(res.status).toBe(404);
+      });
+  });
+});
+
+describe('platform-web → CCP Billing Products routes (allowed)', () => {
+  it('catalog_manager uploads an iPhone-size review screenshot (201)', async () => {
+    const body = { file_name: 'plans.png', content_type: 'image/png', content_base64: pngB64(1290, 2796) };
+    await provider
+      .addInteraction()
+      .given('a plan without a draft version exists')
+      .uponReceiving('a review screenshot upload by a catalog manager')
+      .withRequest('POST', fromProviderState(`${CAT}/plans/\${planId}/billing-assets/apple-review-screenshot`, `${CAT}/plans/${EX_PLAN_ID}/billing-assets/apple-review-screenshot`), (b) => {
+        b.headers(platformJson('catalog_manager'));
+        b.jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ id: uuid('ccb20000-0000-7000-8000-0000000000e1'), width: integer(1290), height: integer(2796), sha256: regex(/^[0-9a-f]{64}$/, 'a'.repeat(64)) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CAT}/plans/${EX_PLAN_ID}/billing-assets/apple-review-screenshot`, 'POST', platformJson('catalog_manager'), body);
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('platform_owner retries a sync that needs attention (204)', async () => {
+    await provider
+      .addInteraction()
+      .given('a billing product sync needs attention')
+      .uponReceiving('a retry of a billing sync that needs attention by the platform owner')
+      .withRequest('POST', fromProviderState(`${CAT}/billing-sync/\${syncId}/retry`, `${CAT}/billing-sync/${UNKNOWN_VERSION_ID}/retry`), (b) => {
+        b.headers(platformSession('platform_owner'));
+      })
+      .willRespondWith(204)
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${CAT}/billing-sync/${UNKNOWN_VERSION_ID}/retry`, { method: 'POST', headers: platformSession('platform_owner') });
+        expect(res.status).toBe(204);
+      });
+  });
 });

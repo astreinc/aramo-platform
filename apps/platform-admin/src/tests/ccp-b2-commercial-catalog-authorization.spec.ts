@@ -22,7 +22,7 @@ import {
 } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { filterScopesForConsumer } from '@aramo/identity';
-import { CommercialCatalogError, CommercialCatalogService, CommercialPolicyUnavailableError } from '@aramo/subscription';
+import { BillingProductsService, CommercialCatalogError, CommercialCatalogService, CommercialPolicyUnavailableError } from '@aramo/subscription';
 
 import { PlatformCommercialCatalogController } from '../app/platform/platform-commercial-catalog.controller.js';
 
@@ -120,6 +120,14 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     return r.method === 'get' ? req : req.send(opts.body ?? r.body ?? {});
   }
 
+  const billingMock = {
+    status: async () => [],
+    carryForward: async () => ({ products: [], eligible: [] }),
+    preview: async () => [],
+    uploadReviewScreenshot: async () => ({ id: 'x', width: 1290, height: 2796, sha256: 'x' }),
+    retry: async () => undefined,
+  };
+
   beforeAll(async () => {
     const keys = generateTestKeyPair();
     privatePem = keys.privatePem;
@@ -133,6 +141,8 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
         { provide: CommercialCatalogService, useValue: svcMock },
+        // CCP Billing Products — the version read also carries the plan's billing products.
+        { provide: BillingProductsService, useValue: billingMock },
       ],
     }).compile();
     app = moduleRef.createNestApplication({ logger: false });
@@ -302,13 +312,23 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     });
   }
 
-  it('B2-RT-NOPUB the controller declares exactly the 4 catalog routes: no publish, retire, pin or apply route (publish only through the chain)', () => {
+  it('B2-RT-NOPUB the controller declares exactly the 7 catalog routes: no publish, retire, pin or apply route (publish only through the chain)', () => {
     const proto = PlatformCommercialCatalogController.prototype as unknown as Record<string, unknown>;
     const routes = Object.getOwnPropertyNames(proto)
       .filter((n) => n !== 'constructor' && typeof proto[n] === 'function' && Reflect.getMetadata(METHOD_METADATA, proto[n] as object) !== undefined)
       .map((n) => `${RequestMethod[Reflect.getMetadata(METHOD_METADATA, proto[n] as object) as RequestMethod]} ${String(Reflect.getMetadata(PATH_METADATA, proto[n] as object))}`)
       .sort();
-    expect(routes).toEqual(['GET /', 'GET versions/:versionId', 'PATCH versions/:versionId', 'POST plans/:planId/drafts']);
+    // CCP Billing Products §3.4 — preview (read), the review-screenshot upload and a failed sync's retry. None
+    // publishes or pins: purchase links are written only by the sync of an APPLIED publish (BP-10).
+    expect(routes).toEqual([
+      'GET /',
+      'GET versions/:versionId',
+      'PATCH versions/:versionId',
+      'POST billing-sync/:syncId/retry',
+      'POST plans/:planId/billing-assets/apple-review-screenshot',
+      'POST plans/:planId/drafts',
+      'POST versions/:versionId/billing-preview',
+    ]);
     expect(routes.join(' ')).not.toMatch(/publish|retire|apply|pin/i);
     // The controller and the catalog service never call the A6 apply methods.
     for (const f of ['../app/platform/platform-commercial-catalog.controller.ts', '../../../../libs/subscription/src/lib/commercial/commercial-catalog.service.ts']) {

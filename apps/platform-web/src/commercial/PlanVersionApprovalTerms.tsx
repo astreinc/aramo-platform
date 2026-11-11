@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { catalogApi, type CatalogMeteredUnit, type CatalogVersionDetail } from './catalog/catalog-api';
+import { PROVIDER_LABEL, formatMinor } from './catalog/billing-products-model';
+import { catalogApi, type BillingPreviewChannel, type BillingProductsPayload, type CatalogMeteredUnit, type CatalogVersionDetail } from './catalog/catalog-api';
 import { money, unitName, unitPriceText, versionTitle } from './catalog/catalog-model';
 
 // Sign Feature Parity Amendments A3 (D1) / A4 (D2) — what Finance and the Owner approve on a
@@ -39,11 +40,33 @@ export function planVersionApprovalModel(d: CatalogVersionDetail, units: readonl
   };
 }
 
+/**
+ * CCP Billing Products (BP-5 / BP-10 / BP-11) — what the approver approves about the channels: each billing
+ * product the publish links, every channel it stops selling on, and (from the preview) the exact price each
+ * channel will charge per country. A request without billing products says so.
+ */
+export function billingApprovalRows(payload: Readonly<Record<string, unknown>>, preview: readonly BillingPreviewChannel[] | null): ApprovalTermRow[] {
+  const bp = payload['billing_products'] as BillingProductsPayload | undefined;
+  if (bp === undefined) return [{ field: 'Billing products', value: 'None in this request (the plan sells on no channel)' }];
+  const rows: ApprovalTermRow[] = [];
+  for (const p of bp.products) {
+    const ch = preview?.find((c) => c.provider === p.provider && c.interval === p.interval);
+    const prices = ch === undefined ? '' : !ch.configured ? ' · price checked when it syncs' : ch.error !== null ? ` · ${ch.error}` : ` · ${ch.prices.map((x) => `${x.country} ${formatMinor(x.amount_minor, x.currency)}${x.available ? '' : ' (not a store price)'}`).join(', ')}`;
+    rows.push({ field: `Sells on ${PROVIDER_LABEL[p.provider]}`, value: `${p.product_id}${prices}` });
+  }
+  if (bp.products.length === 0) rows.push({ field: 'Billing products', value: 'Sold on no channel' });
+  for (const s of bp.stop_selling ?? []) rows.push({ field: `Stops selling on ${PROVIDER_LABEL[s]}`, value: 'Yes: new purchases on this channel end with this version' });
+  if (bp.apple_review_screenshot_asset_id !== undefined) rows.push({ field: 'App Store review screenshot', value: 'Attached' });
+  return rows;
+}
+
 export function PlanVersionApprovalTerms({ payload }: { readonly payload: Readonly<Record<string, unknown>> }) {
   const versionId = typeof payload['plan_version_id'] === 'string' ? payload['plan_version_id'] : null;
   const approved = typeof payload[PLAN_TARGET_CHECKSUM_KEY] === 'string' ? (payload[PLAN_TARGET_CHECKSUM_KEY] as string) : null;
   const [model, setModel] = useState<PlanVersionApprovalModel | null>(null);
   const [failed, setFailed] = useState(false);
+  const [preview, setPreview] = useState<BillingPreviewChannel[] | null>(null);
+  const billing = payload['billing_products'] as BillingProductsPayload | undefined;
 
   useEffect(() => {
     if (versionId === null) return;
@@ -56,10 +79,19 @@ export function PlanVersionApprovalTerms({ payload }: { readonly payload: Readon
       .catch(() => {
         if (live) setFailed(true);
       });
+    // BP-5 — the exact per-channel prices (best effort: the request is still approvable without them).
+    if (billing !== undefined && billing.products.length > 0) {
+      void catalogApi
+        .previewBilling(versionId, billing.products)
+        .then((p) => {
+          if (live) setPreview(p);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       live = false;
     };
-  }, [versionId, approved]);
+  }, [versionId, approved, billing]);
 
   if (versionId === null) return null;
   return (
@@ -76,7 +108,7 @@ export function PlanVersionApprovalTerms({ payload }: { readonly payload: Readon
           <dl className="pc-dr-facts">
             <dt>Version</dt>
             <dd>{model.title}</dd>
-            {model.rows.map((row) => (
+            {[...model.rows, ...billingApprovalRows(payload, preview)].map((row) => (
               <FactRow key={row.field} row={row} />
             ))}
             <dt>Terms fingerprint</dt>

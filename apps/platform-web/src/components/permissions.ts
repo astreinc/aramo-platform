@@ -27,6 +27,8 @@ export const COMMERCIAL_PERMISSIONS = {
   // CCP-B2 — drafting plan versions (CCP A1 §4.1: catalog_manager). Merge train TD-MERGE-6:
   // B2's catalog pair folded into this one commercial map.
   catalogDraft: 'platform:catalog:draft',
+  // CCP Billing Products BP-14 — retrying a failed billing-product sync (platform_owner).
+  catalogPublish: 'platform:catalog:publish',
   commercialAuditRead: 'platform:commercial:audit:read',
   // CCP-B6 — requesting a support extension or its removal (support_admin; merge train TD-MERGE-32).
   subscriptionSupport: 'platform:subscription:support',
@@ -60,6 +62,7 @@ export const PERMISSION_LABEL: Readonly<Record<PlatformPermission | CommercialPe
   'platform:commercial:audit:read': 'View the commercial audit',
   'platform:subscription:support': 'Request support extensions',
   'platform:catalog:draft': 'Draft plan versions',
+  'platform:catalog:publish': 'Publish plan versions',
   'platform:billing:read': 'View billing and finance',
   'platform:billing:amount:read': 'View finance amounts',
 };

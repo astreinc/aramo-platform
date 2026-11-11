@@ -1027,6 +1027,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const plan = await freshPlan();
             return { planId: plan.planId, versionId: plan.versionId };
           },
+          // CCP Billing Products — a provider sync that did not succeed (the owner may retry it). The job's
+          // change request only needs to exist (FK); any draft request serves.
+          'a billing product sync needs attention': async () => {
+            const plan = await freshPlan();
+            const requestId = await draftRequest();
+            const syncId = randomUUID();
+            await db.query(
+              `INSERT INTO subscription."BillingProductSync" (id, change_request_id, plan_id, plan_version_id, provider, interval, product_id, status, attempts, next_attempt_at, last_error, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, 'APP_STORE', 'MONTH', 'ai.aramo.sign.pact.monthly', 'NEEDS_ATTENTION', 1, now(), 'no exact price point', now(), now())`,
+              [syncId, requestId, plan.planId, plan.versionId],
+            );
+            return { syncId };
+          },
           'a draft plan version exists': async () => {
             const plan = await freshPlan();
             const out = await asRole<{ version: { id: string; content_checksum: string } }>('catalog_manager', 'POST', `/platform/commercial/catalog/plans/${plan.planId}/drafts`, { from_version_id: plan.versionId });

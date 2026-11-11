@@ -194,6 +194,13 @@ TIER2_EXCLUDES=(
   # enforced). Paired in lockstep with the eslint.config.mjs entries.
   "libs/subscription/src/lib/billing/stripe-wire.ts"
   "libs/subscription/src/tests/stripe-wire.spec.ts"
+  # CCP Billing Products Directive v1.0 (LOCKED) — PO ruling 2026-11-11: the same
+  # vendor-integration exception, same restrictions, for the App Store Connect wire
+  # file + its boundary spec: ONLY Apple's vendor-defined price-point attribute and
+  # its translation to Aramo's `amount`; no Aramo-owned logic (apple-asc.client.ts
+  # stays fully enforced). Paired in lockstep with the eslint.config.mjs entries.
+  "libs/subscription/src/lib/billing/sync/apple-asc-wire.ts"
+  "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
   # M4 PR-3: submittal-create negative-shape spec (F23 standing pattern)
   # legitimately enumerates the forbidden Match-Class vocabulary as part
   # of its leakage-detection logic. Same structural pattern as the M3

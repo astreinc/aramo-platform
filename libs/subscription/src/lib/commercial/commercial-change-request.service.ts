@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { BILLING_PRODUCTS_KEY, type BillingProductsPayload } from '../billing/sync/billing-product.js';
+import { BillingProductsService } from '../billing/sync/billing-products.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { takeBillingLock } from '../billing/governed-subscription.js';
 import type { ProviderPaymentPicture } from '../billing/billing-provider.port.js';
@@ -321,6 +323,9 @@ export class CommercialChangeRequestService {
     // CCP-C4-P (Amendment A1 RF-4/RF-5) — the refundable-remainder gate for REFUND creation. Unbound:
     // a REFUND cannot be created (REFUND_REMAINDER_UNVERIFIABLE, fail closed).
     @Optional() @Inject(RefundRemainderGate) private readonly refundGate?: RefundRemainderGate,
+    // CCP Billing Products Directive v1.0 (LOCKED) — the publish-time billing-product rules (BP-2 / BP-3 /
+    // BP-5 / BP-7 / BP-11). Unbound: a request carrying billing_products is refused (fail closed).
+    @Optional() @Inject(BillingProductsService) private readonly billingProducts?: BillingProductsService,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -388,6 +393,7 @@ export class CommercialChangeRequestService {
         : input.action_type === 'PLAN_VERSION_PUBLISH'
           ? await this.withPlanVersionTargetSnapshot(validated)
           : validated;
+    if (input.action_type === 'PLAN_VERSION_PUBLISH') await this.assertBillingProducts(payload);
     const checksum = payloadChecksum(payload);
     const fingerprint = { action_type: input.action_type, kind, tenant_id, product_key, payload_checksum: checksum, reason: input.reason, requested_by: actor.user_id };
 
@@ -931,6 +937,19 @@ export class CommercialChangeRequestService {
     if (payload[POLICY_TARGET_CHECKSUM_KEY] !== undefined) return payload;
     const row = await this.prisma.commercialPolicyVersion.findUnique({ where: { id: payload['policy_version_id'] as string }, select: { content_checksum: true } });
     return row === null ? payload : { ...payload, [POLICY_TARGET_CHECKSUM_KEY]: row.content_checksum };
+  }
+
+  /** CCP Billing Products — refuse a publish whose billing products break BP-2 / BP-3 / BP-5 / BP-7 / BP-11. */
+  private async assertBillingProducts(payload: Record<string, unknown>): Promise<void> {
+    const bp = payload[BILLING_PRODUCTS_KEY] as BillingProductsPayload | undefined;
+    if (this.billingProducts === undefined) {
+      if (bp !== undefined) throw new CommercialChangeRequestError('INVALID_INPUT', 'billing products cannot be verified here', { reason: 'billing_products_unverifiable' });
+      return;
+    }
+    const errors = await this.billingProducts.validateForPublish(String(payload['plan_version_id']), bp);
+    if (errors.length > 0) {
+      throw new CommercialChangeRequestError('INVALID_INPUT', errors.map((e) => e.message).join('; '), { reason: 'billing_products_rule', codes: [...new Set(errors.map((e) => e.code))], errors: errors.map((e) => e.message) });
+    }
   }
 
   /** Amendment A3 D1: fills the content-checksum snapshot of a PLAN_VERSION_PUBLISH payload when it is absent. */

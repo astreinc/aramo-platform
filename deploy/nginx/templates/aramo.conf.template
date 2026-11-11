@@ -222,6 +222,14 @@ server {
   location /platform/matching-policy {
     proxy_pass http://api:3000;
   }
+  # CCP Billing Products Directive v1.0 (LOCKED) BP-7 — the Apple review screenshot is uploaded as JSON
+  # { content_base64 } (an image of up to 8 MB, ~10.7 MB as base64). Regex location so it wins over the
+  # /platform/ prefix; the larger body cap is scoped to this one route (platform-admin
+  # BILLING_ASSET_UPLOAD_ROUTE carries the same 12 MB parser limit).
+  location ~ ^/platform/commercial/catalog/plans/[^/]+/billing-assets/apple-review-screenshot$ {
+    client_max_body_size 12m;
+    proxy_pass http://platform-admin:3002;
+  }
   location /platform/ {
     proxy_pass http://platform-admin:3002;
   }

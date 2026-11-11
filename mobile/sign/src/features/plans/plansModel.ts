@@ -26,10 +26,14 @@ export type Account = components['schemas']['BillingAccount'] & BillingAccountSt
 
 export const MANAGE_ON_WEB = 'Manage your plan at sign.aramo.ai';
 
+// CCP Billing Products Directive v1.0 (LOCKED) BP-2b — a Business organization's plan is managed only by its
+// admin on the web; the app never sells or changes it and never points a Business user elsewhere to buy.
+export const ORG_PLAN_COPY = 'Your organization’s plan is managed by your admin.';
+
 export const PLANS_COPY = {
-  askAdmin: 'Ask your admin to change the plan.',
+  askAdmin: ORG_PLAN_COPY,
   manageOnWeb: MANAGE_ON_WEB,
-  teamOnWeb: `Plans for teams are bought on the web. ${MANAGE_ON_WEB}`,
+  teamOnWeb: ORG_PLAN_COPY,
   billedOnWeb: `Your plan is billed on the web. ${MANAGE_ON_WEB}`,
   billedInOtherStore: 'Your plan is billed through another app store. Manage it there.',
   unavailable: `In-app purchase isn’t available right now. ${MANAGE_ON_WEB}`,
@@ -63,7 +67,9 @@ export function blockCopy(reason: StorePurchaseBlockReason | string | null | und
     case 'billing_managed_elsewhere':
       return account?.managed_by === 'APP_STORE' || account?.managed_by === 'GOOGLE_PLAY'
         ? PLANS_COPY.billedInOtherStore
-        : PLANS_COPY.billedOnWeb;
+        : isOrganizationAccount(account)
+          ? ORG_PLAN_COPY
+          : PLANS_COPY.billedOnWeb;
     case 'store_purchase_bound_elsewhere':
       return PLANS_COPY.boundElsewhere;
     case 'store_billing_disabled':
@@ -71,6 +77,11 @@ export function blockCopy(reason: StorePurchaseBlockReason | string | null | und
     default:
       return PLANS_COPY.unavailable;
   }
+}
+
+/** BP-2b — a Business organization's account (per-seat billing), as the billing account reports it. */
+export function isOrganizationAccount(account: Account | null | undefined): boolean {
+  return account?.price_unit === 'SEAT' || (account?.seats !== null && account?.seats !== undefined);
 }
 
 /** Plans the app can show: active, self-service or free (never contact-sales or operator). */

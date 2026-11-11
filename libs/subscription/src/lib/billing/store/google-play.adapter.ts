@@ -47,6 +47,39 @@ export function googleMoneyMinor(price: { currencyCode?: string; units?: string 
   return Math.round((units + nanos / 1e9) * 10 ** exp);
 }
 
+/**
+ * A Google service-account access token (scope androidpublisher): an RS256 JWT signed with jose,
+ * exchanged at Google's OAuth token endpoint. Shared by the purchase adapter and the CCP billing-products
+ * Play writer. Throws on any failure (the caller maps it); never logs the key.
+ */
+export async function googleServiceAccountToken(
+  credentials: GooglePlayConfig['credentials'],
+  fetchImpl: StoreFetch,
+  now: number,
+  timeoutMs: number,
+): Promise<{ token: string; expires_at: number }> {
+  const key = await importPKCS8(credentials.private_key, 'RS256');
+  const iat = Math.floor(now / 1000);
+  const assertion = await new SignJWT({ scope: ANDROID_PUBLISHER_SCOPE })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT', ...(credentials.private_key_id === undefined ? {} : { kid: credentials.private_key_id }) })
+    .setIssuer(credentials.client_email)
+    .setAudience(GOOGLE_OAUTH_TOKEN_URL)
+    .setIssuedAt(iat)
+    .setExpirationTime(iat + 3600)
+    .sign(key);
+  const res = await fetchImpl(GOOGLE_OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  const out = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
+  const ttl = typeof out.expires_in === 'number' ? out.expires_in : 0;
+  if (typeof out.access_token !== 'string' || out.access_token === '' || ttl <= 0) throw new Error('token_response_malformed');
+  return { token: out.access_token, expires_at: now + Math.max(0, ttl - 60) * 1000 };
+}
+
 export class GooglePlayAdapter implements StoreSubscriptionPort {
   readonly provider = 'GOOGLE_PLAY' as const;
   private readonly log = new Logger(GooglePlayAdapter.name);
@@ -189,34 +222,15 @@ export class GooglePlayAdapter implements StoreSubscriptionPort {
   }
 
   private async accessToken(): Promise<string> {
-    const c = this.cfg();
     const now = this.clock();
     if (this.cached !== null && this.cached.expires_at > now) return this.cached.token;
     try {
-      const key = await importPKCS8(c.credentials.private_key, 'RS256');
-      const iat = Math.floor(now / 1000);
-      const assertion = await new SignJWT({ scope: ANDROID_PUBLISHER_SCOPE })
-        .setProtectedHeader({ alg: 'RS256', typ: 'JWT', ...(c.credentials.private_key_id === undefined ? {} : { kid: c.credentials.private_key_id }) })
-        .setIssuer(c.credentials.client_email)
-        .setAudience(GOOGLE_OAUTH_TOKEN_URL)
-        .setIssuedAt(iat)
-        .setExpirationTime(iat + 3600)
-        .sign(key);
-      const res = await this.fetchImpl(GOOGLE_OAUTH_TOKEN_URL, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-      if (!res.ok) throw new Error(`http_${res.status}`);
-      const out = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
-      const ttl = typeof out.expires_in === 'number' ? out.expires_in : 0;
-      if (typeof out.access_token !== 'string' || out.access_token === '' || ttl <= 0) throw new Error('token_response_malformed');
-      this.cached = { token: out.access_token, expires_at: now + Math.max(0, ttl - 60) * 1000 };
-      return out.access_token;
+      this.cached = await googleServiceAccountToken(this.cfg().credentials, this.fetchImpl, now, this.timeoutMs);
+      return this.cached.token;
     } catch (e) {
       this.log.warn(`google play credential unavailable: ${(e as Error).message.slice(0, 40)}`);
       throw new BillingProviderUnavailableError('google play credential unavailable');
     }
   }
+
 }

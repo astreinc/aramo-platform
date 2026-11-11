@@ -1,6 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import type { Prisma } from '../../../prisma/generated/client/client.js';
+import { BILLING_PRODUCTS_KEY, type BillingProductsPayload } from '../billing/sync/billing-product.js';
+import { enqueueBillingProductSync } from '../billing/sync/billing-sync-enqueue.js';
 import { PlanVersionRepository, PlanVersionStateError, currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isProductKey } from '../product-registry.js';
@@ -139,6 +142,7 @@ export class CommercialCatalogApplyService {
           throw new ApplyFailure('INVALID_PAYLOAD', { errors: (e as { errors?: unknown }).errors ?? [(e as Error).message] });
         }
         const effect = await this.applyDomain(tx, action, payload, actor, now);
+        const billingProducts = action === 'PLAN_VERSION_PUBLISH' && payload[BILLING_PRODUCTS_KEY] !== undefined ? (payload[BILLING_PRODUCTS_KEY] as BillingProductsPayload) : null;
         await this.fault?.('after_catalog_write', { change_request_id: id });
 
         const catalog_application = (await tx.commercialCatalogApplication.create({
@@ -150,11 +154,17 @@ export class CommercialCatalogApplyService {
             plan_version_id: effect.plan_version_id,
             retired_plan_version_id: effect.retired_plan_version_id,
             provider_price_ref: effect.provider_price_ref,
+            ...(billingProducts !== null ? { billing_products: billingProducts as unknown as Prisma.InputJsonValue } : {}),
             attempt,
             applied_by: actor.user_id,
             applied_at: now,
           },
         })) as CommercialCatalogApplicationRow;
+        // CCP Billing Products BP-10 — the provider sync jobs, in this same transaction (the outbox). Nothing
+        // is sent to Stripe, Apple or Google here; the platform-admin worker drains them after commit.
+        if (billingProducts !== null) {
+          await enqueueBillingProductSync(tx, { change_request_id: id, plan_id: effect.plan_id, plan_version_id: effect.plan_version_id, payload: billingProducts, at: now });
+        }
 
         const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
         const append = (event_type: string, subject: string, body: Record<string, unknown>) =>

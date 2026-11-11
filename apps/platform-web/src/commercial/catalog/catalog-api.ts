@@ -139,6 +139,12 @@ export interface CatalogVersionDetail {
   plan: CatalogPlanSummary;
   content: Record<string, unknown>;
   pinned_tenants: { tenant_id: string; name: string }[];
+  /** CCP Billing Products — the plan's billing products as this version sees them. */
+  billing_products: BillingProductView[];
+  /** BP-2 — the channels this plan may sell on. */
+  billing_eligible: BillingProvider[];
+  /** BP-11 — what the plan sells on today (a publish starts from these). */
+  billing_carry_forward: BillingProductLink[];
 }
 
 export interface CatalogDraftEdits {
@@ -161,6 +167,54 @@ export interface CatalogChangeRequest {
   policy_version_id: string;
 }
 
+// CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED) — one billing product per
+// plan and interval on the web (Stripe), the App Store and Google Play, created and priced by the console.
+export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+export type BillingInterval = 'MONTH' | 'YEAR';
+export interface BillingProductLink {
+  provider: BillingProvider;
+  interval: BillingInterval;
+  product_id: string;
+}
+export type BillingSyncStatus = 'PENDING' | 'SYNCED' | 'NEEDS_ATTENTION' | 'FAILED' | 'NOT_CONFIGURED';
+export interface BillingProductView extends BillingProductLink {
+  origin: 'CREATED' | 'ADOPTED' | null;
+  linked: boolean;
+  sync: null | {
+    id: string;
+    change_request_id: string;
+    plan_version_id: string;
+    status: BillingSyncStatus;
+    attempts: number;
+    store_state: string | null;
+    last_error: string | null;
+    synced_at: string | null;
+    next_attempt_at: string;
+  };
+}
+export interface BillingProductsPayload {
+  products: BillingProductLink[];
+  stop_selling?: BillingProvider[];
+  apple_review_screenshot_asset_id?: string;
+}
+export interface BillingPreviewChannel extends BillingProductLink {
+  configured: boolean;
+  error: string | null;
+  prices: { country: string; currency: string; amount_minor: number; available: boolean; nearest: number[] }[];
+}
+export interface BillingMismatchEntry {
+  plan_key: string;
+  plan_version_id: string;
+  provider: BillingProvider;
+  interval: BillingInterval;
+  product_id: string;
+  country: string;
+  currency: string;
+  catalog_amount_minor: number;
+  live_amount_minor: number | null;
+  status: 'MATCH' | 'MISMATCH' | 'MISSING_IN_STORE' | 'STORE_PRICE_UNAVAILABLE';
+}
+
 const CAT = '/platform/commercial/catalog';
 const CR = '/platform/commercial/change-requests';
 
@@ -179,6 +233,24 @@ export const catalogApi = {
   updateDraft(versionId: string, expectedChecksum: string, edits: CatalogDraftEdits): Promise<{ version: CatalogVersion }> {
     return apiClient.patch(`${CAT}/versions/${encodeURIComponent(versionId)}`, { expected_content_checksum: expectedChecksum, ...edits });
   },
+  /** CCP Billing Products BP-5 — the exact per-channel prices a publish would set. */
+  async previewBilling(versionId: string, products: BillingProductLink[]): Promise<BillingPreviewChannel[]> {
+    const out = await apiClient.post<{ channels: BillingPreviewChannel[] }>(`${CAT}/versions/${encodeURIComponent(versionId)}/billing-preview`, { products });
+    return out.channels;
+  },
+  /** CCP Billing Products BP-7 — upload the App Store review screenshot (PNG / JPEG, iPhone size). */
+  async uploadReviewScreenshot(planId: string, file: { name: string; type: string; base64: string }): Promise<{ id: string; width: number; height: number }> {
+    return apiClient.post(`${CAT}/plans/${encodeURIComponent(planId)}/billing-assets/apple-review-screenshot`, { file_name: file.name, content_type: file.type, content_base64: file.base64 });
+  },
+  /** CCP Billing Products BP-10 — retry a provider sync that did not succeed (owner). */
+  async retryBillingSync(syncId: string): Promise<void> {
+    await apiClient.post(`${CAT}/billing-sync/${encodeURIComponent(syncId)}/retry`);
+  },
+  /** CCP Billing Products BP-12 — catalog vs live price on every channel (billing:read). */
+  async billingMismatchReport(): Promise<BillingMismatchEntry[]> {
+    const out = await apiClient.get<{ billing_products?: BillingMismatchEntry[] }>('/platform/commercial/store-price-reconciliation');
+    return out.billing_products ?? [];
+  },
   // CCP-A3: the requester scope for these two actions is platform:catalog:draft (service-checked).
   async requestCatalogChange(input: {
     action_type: CatalogActionType;
@@ -186,13 +258,15 @@ export const catalogApi = {
     reason: string;
     evidence: string;
     idempotency_key: string;
+    /** CCP Billing Products — a publish carries the plan's billing products (BP-10 / BP-11). */
+    billing_products?: BillingProductsPayload;
   }): Promise<CatalogChangeRequest> {
     // Merge train TD-MERGE-10: CCP-B2-backend gives these payloads a closed key set
     // ({plan_version_id[, provider_price_ref]}), so the evidence travels in the reason, the
     // convention CCP-B5 uses ("<reason>\n\nEvidence: <evidence>").
     const created = await apiClient.post<{ request: CatalogChangeRequest }>(CR, {
       action_type: input.action_type,
-      payload: { plan_version_id: input.plan_version_id },
+      payload: { plan_version_id: input.plan_version_id, ...(input.billing_products !== undefined ? { billing_products: input.billing_products } : {}) },
       reason: `${input.reason.trim()}\n\nEvidence: ${input.evidence.trim()}`,
       idempotency_key: input.idempotency_key,
     });

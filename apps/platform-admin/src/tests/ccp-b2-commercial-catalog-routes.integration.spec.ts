@@ -23,6 +23,7 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { filterScopesForConsumer } from '@aramo/identity';
 import {
   CommercialAuditRepository,
+  BillingProductsService,
   CommercialCatalogService,
   CommercialChangeRequestService,
   CommercialOperatorRepository,
@@ -154,6 +155,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B2 — catalo
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
         { provide: CommercialCatalogService, useValue: catalogService },
+        // CCP Billing Products — this spec's schema is the frozen CCP-B2 migration subset (it predates the
+        // store-billing and billing-product migrations), so the version read's billing part is stubbed here;
+        // the billing chain runs on the full schema in libs/subscription ccp-billing-products.integration.spec.ts.
+        { provide: BillingProductsService, useValue: { status: async () => [], carryForward: async () => ({ products: [], eligible: [] }) } },
         { provide: CommercialChangeRequestService, useValue: changeRequests },
       ],
     }).compile();
