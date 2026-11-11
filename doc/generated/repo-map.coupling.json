@@ -39,6 +39,11 @@
     {
       "from": ".env.prod.example",
       "status": "unscoped",
+      "to": "doc/runbooks/CCP-billing-products.md"
+    },
+    {
+      "from": ".env.prod.example",
+      "status": "unscoped",
       "to": "doc/runbooks/RELEASE-sign-mobile.md"
     },
     {
