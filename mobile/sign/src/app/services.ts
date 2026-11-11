@@ -113,8 +113,13 @@ export function createAppServices(): AppServices {
 
   // Ephemeral: no shared browser cookies, so "sign out to use another account" really
   // switches identity (directive §7 C-10).
+  // preferUniversalLinks: on iOS 17.4+ the redirect is the https callback
+  // (selectRedirectUri), which expo-web-browser matches with the .https(host:path:)
+  // callback only when this is set; without it iOS waits for a custom "https" scheme
+  // that never arrives and the callback page loads in the sheet. Needs the
+  // webcredentials association. A custom-scheme redirect (iOS < 17.4) is unaffected.
   const openAuthSession = (url: string, redirectUri: string) =>
-    WebBrowser.openAuthSessionAsync(url, redirectUri, { preferEphemeralSession: true });
+    WebBrowser.openAuthSessionAsync(url, redirectUri, { preferEphemeralSession: true, preferUniversalLinks: true });
   const authorizeDeps = {
     env,
     platform: Platform.OS,
