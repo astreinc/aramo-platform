@@ -8919,6 +8919,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-billing-products.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"

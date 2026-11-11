@@ -10296,6 +10296,11 @@
       "to": "apps/platform-admin/src/legal-change-notice.main.ts"
     },
     {
+      "from": "apps/platform-admin/src/app/platform/billing-asset-upload.constants.ts",
+      "status": "production",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
       "from": "apps/platform-admin/src/app/platform/tenant-policy-provisioning.service.ts",
       "status": "production",
       "to": "apps/api/src/policy/seed-lifecycle.ts"
@@ -29120,6 +29125,11 @@
       "to": "infrastructure/environments/prod/talent-intake.tf"
     },
     {
+      "from": "doc/runbooks/CCP-billing-products.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
       "from": "doc/runbooks/RELEASE-app-home-org.md",
       "status": "unscoped",
       "to": "apps/home-web/e2e/topology.spec.ts"
@@ -31063,6 +31073,16 @@
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/sync/apple-asc-wire.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
     },
     {
       "from": "eslint.config.mjs",
@@ -38037,6 +38057,16 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/sync/apple-asc-wire.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
