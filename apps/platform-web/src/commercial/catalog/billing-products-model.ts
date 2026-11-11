@@ -59,8 +59,44 @@ export function needsReviewScreenshot(rows: BillingEditorRow[]): boolean {
   return rows.some((r) => r.provider === 'APP_STORE' && r.selected && !r.locked);
 }
 
-export function billingEditorErrors(rows: BillingEditorRow[], screenshotId: string | null): string[] {
-  const errors: string[] = [];
+/** Apple's in-app purchase localization limits (mirrors libs/subscription STORE_LISTING_LIMITS). */
+export const STORE_LISTING_LIMITS = { name_min: 2, name_max: 30, description_min: 1, description_max: 45 } as const;
+
+export interface StoreListingInput {
+  name: string;
+  description: string;
+}
+
+/** True when a selected row is a store (App Store / Google Play): the request then needs the store listing. */
+export function sellsInStores(rows: BillingEditorRow[]): boolean {
+  return rows.some((r) => r.selected && r.provider !== 'STRIPE');
+}
+
+/** The store listing's errors (empty = valid, or no store selected). */
+export function listingErrors(rows: BillingEditorRow[], listing: StoreListingInput): string[] {
+  if (!sellsInStores(rows)) return [];
+  const L = STORE_LISTING_LIMITS;
+  const name = listing.name.trim();
+  const desc = listing.description.trim();
+  const out: string[] = [];
+  if (name.length < L.name_min || name.length > L.name_max) out.push(`Store name: ${L.name_min} to ${L.name_max} characters (now ${name.length}).`);
+  if (desc.length < L.description_min || desc.length > L.description_max) out.push(`Store description: ${L.description_min} to ${L.description_max} characters (now ${desc.length}).`);
+  const text = listing.name + listing.description;
+  if (/[<>]/.test(text) || [...text].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) out.push('Store name and description: plain text on one line.');
+  return out;
+}
+
+/**
+ * The countries each store channel sells the version in: the US list price plus every monthly regional
+ * price (the stores sell exactly where the catalog has a price). Stripe sells on the web at the US price.
+ */
+export function sellsInCountries(regional: readonly { country: string; interval: 'MONTH' | 'YEAR' }[] | undefined): string[] {
+  return ['US', ...[...new Set((regional ?? []).filter((r) => r.interval === 'MONTH').map((r) => r.country))].filter((c) => c !== 'US').sort()];
+}
+
+export function billingEditorErrors(rows: BillingEditorRow[], screenshotId: string | null, listing?: StoreListingInput, unconfirmedStops: readonly string[] = []): string[] {
+  const errors: string[] = listing === undefined ? [] : listingErrors(rows, listing);
+  if (unconfirmedStops.length > 0) errors.push(`The stores sell this plan in ${unconfirmedStops.join(', ')} today: add a regional price there, or confirm the stop.`);
   for (const r of rows) {
     if (!r.selected) continue;
     const ok = r.provider === 'STRIPE' ? STRIPE_ID.test(r.product_id) : STORE_ID.test(r.product_id);
@@ -70,13 +106,15 @@ export function billingEditorErrors(rows: BillingEditorRow[], screenshotId: stri
   return errors;
 }
 
-export function billingPayload(rows: BillingEditorRow[], screenshotId: string | null): BillingProductsPayload {
+export function billingPayload(rows: BillingEditorRow[], screenshotId: string | null, listing?: StoreListingInput, stopCountries: readonly string[] = []): BillingProductsPayload {
   const products: BillingProductLink[] = rows.filter((r) => r.selected).map((r) => ({ provider: r.provider, interval: r.interval, product_id: r.product_id.trim() }));
   const stop = rows.filter((r) => r.sold && !r.selected).map((r) => r.provider);
   return {
     products,
     ...(stop.length > 0 ? { stop_selling: stop } : {}),
     ...(screenshotId !== null && needsReviewScreenshot(rows) ? { apple_review_screenshot_asset_id: screenshotId } : {}),
+    ...(listing !== undefined && sellsInStores(rows) ? { listing: { name: listing.name.trim(), description: listing.description.trim() } } : {}),
+    ...(stopCountries.length > 0 ? { stop_countries: [...new Set(stopCountries)].sort() } : {}),
   };
 }
 

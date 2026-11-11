@@ -49,8 +49,9 @@ describe('M-A12 A1-3 — RegionalPricesEditor', () => {
   it('a catalog manager sets an IN / INR monthly price and removes one on a DRAFT', async () => {
     const onSave = vi.fn(async () => undefined);
     render(<RegionalPricesEditor version={v({ id: 'd', version_number: 3, status: 'DRAFT', terms: { ...TERMS, regional_prices: [IN_Y] } })} canDraft onSave={onSave} />);
-    fireEvent.change(screen.getByLabelText('Regional price country'), { target: { value: 'in' } });
-    fireEvent.change(screen.getByLabelText('Regional price currency'), { target: { value: 'inr' } });
+    // A1-2 — the country is picked from the App Store countries; the currency follows the country.
+    fireEvent.change(screen.getByLabelText('Regional price country'), { target: { value: 'IN' } });
+    expect((screen.getByLabelText('Regional price currency') as HTMLInputElement).value).toBe('INR');
     fireEvent.change(screen.getByLabelText('Regional price amount'), { target: { value: '899' } });
     fireEvent.click(screen.getByText('Set price'));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith([{ country: 'IN', currency: 'INR', interval: 'MONTH', amount_minor: 89900 }]));
@@ -61,11 +62,10 @@ describe('M-A12 A1-3 — RegionalPricesEditor', () => {
   it('an invalid entry shows the reason and saves nothing', async () => {
     const onSave = vi.fn(async () => undefined);
     render(<RegionalPricesEditor version={v({ id: 'd', version_number: 3, status: 'DRAFT', terms: { ...TERMS } })} canDraft onSave={onSave} />);
-    fireEvent.change(screen.getByLabelText('Regional price country'), { target: { value: 'US' } });
-    fireEvent.change(screen.getByLabelText('Regional price currency'), { target: { value: 'USD' } });
+    expect(screen.queryByRole('option', { name: /United States/ })).toBeNull();
     fireEvent.change(screen.getByLabelText('Regional price amount'), { target: { value: '10' } });
     fireEvent.click(screen.getByText('Set price'));
-    expect((await screen.findByRole('alert')).textContent).toMatch(/US price is the plan’s list price/);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/two-letter country code/);
     expect(onSave).not.toHaveBeenCalled();
   });
 });

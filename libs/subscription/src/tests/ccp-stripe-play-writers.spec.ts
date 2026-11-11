@@ -23,6 +23,7 @@ const target = (over: Partial<BillingSyncTarget> = {}): BillingSyncTarget => ({
   version_number: 2,
   prices: [{ country: 'US', currency: 'USD', amount_minor: 1000 }],
   known_external_ref: null,
+  stop_countries: [],
   review_screenshot: null,
   ...over,
 });
@@ -156,7 +157,11 @@ describe('Google Play writer (BP-8)', () => {
     writes = [];
     await w.sync(play({ known_external_ref: null, prices: [{ country: 'US', currency: 'USD', amount_minor: 1000 }, { country: 'IN', currency: 'INR', amount_minor: 99900 }] }));
     expect(writes).toEqual([]);
-    await w.sync(play());
+    // A1-2 — dropping IN without confirming the stop is refused before any write.
+    await expect(w.sync(play())).rejects.toThrow(/Google Play sells this plan in IN today/);
+    expect(writes).toEqual([]);
+    expect(await w.liveCountries(play())).toEqual(['IN', 'US']);
+    await w.sync(play({ stop_countries: ['IN'] }));
     const rc = subs.get('ai.aramo.sign.personal_standard.monthly')!['basePlans'][0].regionalConfigs;
     expect(rc).toEqual([
       { regionCode: 'IN', newSubscriberAvailability: false, price: { currencyCode: 'INR', units: '999', nanos: 0 } },

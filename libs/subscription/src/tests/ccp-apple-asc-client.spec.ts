@@ -208,6 +208,8 @@ const target = (over: Partial<BillingSyncTarget> = {}): BillingSyncTarget => ({
   version_number: 2,
   prices: [{ country: 'US', currency: 'USD', amount_minor: 1000 }],
   known_external_ref: null,
+  // The seeded product sells in US + IN; these fixtures confirm the IN stop unless a test says otherwise (A1-2).
+  stop_countries: ['IN'],
   review_screenshot: { file_name: 'plans.png', content_type: 'image/png', bytes: PNG, sha256: createHash('sha256').update(PNG).digest('hex') },
   ...over,
 });
@@ -249,6 +251,21 @@ describe('adopt the existing product (BP-4) and set the exact catalog price (BP-
     const s = asc.subs.get(SUB)!;
     expect(s.prices['IND']).toBe(point(SUB, 'IND', '20002'));
     expect(s.availability?.territories).toEqual(['IND', 'USA']);
+  });
+});
+
+describe('never narrows the countries silently (A1-2)', () => {
+  it('refuses, before any write, a version without an IN price that does not confirm the IN stop', async () => {
+    asc.seedExisting();
+    const e = await client.sync(target({ stop_countries: [] })).catch((x: unknown) => x);
+    expect((e as BillingSyncError).code).toBe('PROVIDER_REJECTED');
+    expect((e as BillingSyncError).message).toMatch(/sells this plan in IN today/);
+    expect(asc.writes).toEqual([]);
+  });
+  it('reports the live countries (ISO alpha-2), or null for a product that does not exist yet', async () => {
+    expect(await client.liveCountries(target())).toBeNull();
+    asc.seedExisting();
+    expect(await client.liveCountries(target())).toEqual(['IN', 'US']);
   });
 });
 

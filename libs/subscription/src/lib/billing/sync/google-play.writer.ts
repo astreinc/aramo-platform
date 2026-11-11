@@ -10,6 +10,8 @@ import {
   type LiveProviderPrice,
   type PreviewProviderPrice,
   type SyncFetch,
+  dropRefusal,
+  unconfirmedDrops,
 } from './billing-sync.port.js';
 import { currencyExponent } from './money.js';
 
@@ -90,6 +92,9 @@ export class GooglePlayWriter implements BillingProductSyncPort {
       if (current !== undefined && current.autoRenewingBasePlanType?.billingPeriodDuration !== PERIOD[t.interval]) {
         throw new BillingSyncError('PROVIDER_REJECTED', `Play base plan ${basePlanId} of ${t.product_id} is not ${PERIOD[t.interval]}`, false);
       }
+      // A1-2 — never narrow the countries silently: a region open to new subscribers needs a price or a confirmed stop.
+      const drops = unconfirmedDrops(openRegions(current), t);
+      if (drops.length > 0) throw dropRefusal('Google Play', drops);
       const regions = mergeRegions(current?.regionalConfigs ?? [], want);
       const listing = (existing.listings ?? []).find((l) => l.languageCode === 'en-US');
       const listingsOk = listing !== undefined && listing.title === t.display_name && (listing.description ?? '') === t.description;
@@ -116,6 +121,13 @@ export class GooglePlayWriter implements BillingProductSyncPort {
   async preview(t: BillingSyncTarget): Promise<PreviewProviderPrice[]> {
     // Play takes any amount in a region's currency: each catalog price is exactly available.
     return t.prices.map((p) => ({ country: p.country, currency: p.currency, amount_minor: p.amount_minor, available: true, nearest: [] }));
+  }
+
+  async liveCountries(t: BillingSyncTarget): Promise<string[] | null> {
+    const cfg = this.need();
+    const sub = await this.getSub(cfg, t.product_id);
+    if (sub === null) return null;
+    return openRegions((sub.basePlans ?? []).find((b) => b.basePlanId === BASE_PLAN[t.interval]));
   }
 
   async livePrices(t: Pick<BillingSyncTarget, 'provider' | 'interval' | 'product_id' | 'known_external_ref' | 'prices' | 'plan_version_id'>): Promise<LiveProviderPrice[]> {
@@ -179,6 +191,11 @@ export class GooglePlayWriter implements BillingProductSyncPort {
 /** The catalog's prices → Play regional configs (exact Money; open to new subscribers). */
 export function regionalConfigsOf(t: Pick<BillingSyncTarget, 'prices'>): PlayRegionalConfig[] {
   return t.prices.map((p) => ({ regionCode: p.country, newSubscriberAvailability: true, price: minorToMoney(p.amount_minor, p.currency) }));
+}
+
+/** The regions of a base plan open to new subscribers. */
+function openRegions(plan: { regionalConfigs?: PlayRegionalConfig[] } | undefined): string[] {
+  return (plan?.regionalConfigs ?? []).filter((r) => r.newSubscriberAvailability !== false).map((r) => String(r.regionCode)).sort();
 }
 
 /** Keep every region Play has; the catalog's set the exact price and open them; the rest close to new subscribers. */

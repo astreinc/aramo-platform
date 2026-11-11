@@ -1,6 +1,7 @@
 # Runbook: CCP Billing Products (one catalog across web and apps)
 
-Governing directive: `Aramo-CCP-Billing-Products-One-Catalog-Directive-v1_0-LOCKED.md` (sha256 `3d2b67c1…`).
+Governing directive: `Aramo-CCP-Billing-Products-One-Catalog-Directive-v1_0-LOCKED.md` (sha256 `3d2b67c1…`)
+and Amendment A1 (`…-v1_0-A1-LOCKED.md`, sha256 `b3499d63…`: store listing, explicit countries).
 
 The admin console is the one place where a plan's billing products are created, priced and linked:
 Stripe (web), App Store (iPhone) and Google Play (Android). After a `PLAN_VERSION_PUBLISH` request is
@@ -51,13 +52,19 @@ recreate platform-admin only (`RELEASE-box.md` step 6, pinned to the running ima
 
 1. **Draft** a new version of the plan (Catalog → plan → New draft) and set prices. Regional prices also
    decide where the apps sell: the App Store and Google Play sell a plan in the US and in each country
-   that has a regional price, at exactly that price.
+   that has a regional price, at exactly that price. Pick the country from the list; the currency is the
+   App Store's currency there (for India: IN / INR 999.00).
 2. **Request publish.** The dialog shows the billing products: one row per channel the plan may sell on
    (Personal: web, iPhone, Android; Business: web only). Ids default to `ai.aramo.sign.<plan>.monthly`
    (stores) and `aramo_sign_<plan>` (Stripe), and are permanent once synced. A new App Store product needs
    the review screenshot (an iPhone screenshot of the in-app Plans screen). **Preview prices** shows the
    exact price per channel and country; a store without that exact price is refused, never rounded.
    Unticking a channel the plan sells on today is an explicit "stop selling" the approvers see.
+   A store product also needs the **store listing**: the name (2–30 characters) and description (1–45)
+   shoppers see on the App Store and Google Play (Apple's limits; the plan's internal description is never
+   sent). **Preview prices** is required before the request; it lists any country a store sells the plan in
+   today that this version has no price for. Tick each one to confirm the stop, or add its regional price.
+   Without that, the sync refuses to narrow the store's countries.
 3. **Approve** (Finance, then Owner). Approvers see the channels, the stops and the preview prices.
 4. **Apply.** One sync job per channel is queued. The worker runs them; the version screen's
    **Billing products** panel shows each channel: Syncing, In sync (with the store's state, for example

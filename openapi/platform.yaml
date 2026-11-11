@@ -11422,10 +11422,15 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [provider, interval, product_id, configured, prices, error]
+            required: [provider, interval, product_id, configured, prices, stops, error]
             properties:
               provider:
                 $ref: '#/components/schemas/BillingProvider'
+              stops:
+                type: array
+                description: Countries (ISO alpha-2) the store sells this plan in today that the version has no price for; the request must confirm each in `billing_products.stop_countries` or the sync refuses.
+                items:
+                  type: string
               interval:
                 type: string
                 enum: [MONTH, YEAR]

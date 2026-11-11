@@ -16,6 +16,8 @@ describe('billing approval rows', () => {
           ],
           stop_selling: ['GOOGLE_PLAY'],
           apple_review_screenshot_asset_id: '019a0000-0000-7000-8000-0000000000aa',
+          listing: { name: 'Standard', description: '25 sends a month and 1 GB storage' },
+          stop_countries: ['IN'],
         },
       },
       [
@@ -27,6 +29,8 @@ describe('billing approval rows', () => {
       { field: 'Sells on Web (Stripe)', value: 'aramo_sign_personal_standard · US 10.00 USD' },
       { field: 'Sells on iPhone (App Store)', value: 'ai.aramo.sign.personal_standard.monthly · price checked when it syncs' },
       { field: 'Stops selling on Android (Google Play)', value: 'Yes: new purchases on this channel end with this version' },
+      { field: 'Store listing', value: 'Standard — 25 sends a month and 1 GB storage' },
+      { field: 'Stops selling in (stores)', value: 'IN: new store purchases there end with this version' },
       { field: 'App Store review screenshot', value: 'Attached' },
     ]);
   });

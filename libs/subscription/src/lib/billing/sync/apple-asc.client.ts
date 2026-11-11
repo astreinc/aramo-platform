@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { SignJWT, importPKCS8 } from 'jose';
 
 import { wirePricePointAmount } from './apple-asc-wire.js';
-import { appleTerritory } from './apple-territories.js';
+import { appleTerritory, countryOfAppleTerritory } from './apple-territories.js';
 import {
   BillingSyncError,
   httpSyncError,
@@ -13,6 +13,8 @@ import {
   type LiveProviderPrice,
   type PreviewProviderPrice,
   type SyncFetch,
+  dropRefusal,
+  unconfirmedDrops,
 } from './billing-sync.port.js';
 import { decimalToMinor } from './money.js';
 
@@ -109,6 +111,9 @@ export class AppleAscClient implements BillingProductSyncPort {
     } else if (sub.attributes?.['subscriptionPeriod'] !== PERIOD[t.interval]) {
       throw new BillingSyncError('PROVIDER_REJECTED', `App Store product ${t.product_id} is ${String(sub.attributes?.['subscriptionPeriod'])}, not ${PERIOD[t.interval]}`, false);
     }
+    // A1-2 — never narrow the countries silently: refuse before any write when a live country has no price.
+    const drops = unconfirmedDrops(await this.availableCountries(sub.id), t);
+    if (drops.length > 0) throw dropRefusal('The App Store', drops);
     await this.syncLocalization(sub.id, t);
     for (const p of territories) await this.syncPrice(sub.id, p);
     await this.syncAvailability(sub.id, territories.map((p) => p.territory));
@@ -228,6 +233,20 @@ export class AppleAscClient implements BillingProductSyncPort {
         },
       },
     });
+  }
+
+  async liveCountries(t: BillingSyncTarget): Promise<string[] | null> {
+    const cfg = this.need();
+    const sub = await this.findSubscription(cfg, t.product_id, t.known_external_ref);
+    return sub === null ? null : this.availableCountries(sub.id);
+  }
+
+  /** The countries a subscription is available in today (empty when it has no availability yet). */
+  private async availableCountries(subId: string): Promise<string[]> {
+    const d = await this.get(`/v1/subscriptions/${enc(subId)}/planAvailabilities?include=availableTerritories&limit%5BavailableTerritories%5D=200`);
+    const rel = many(d)[0]?.relationships?.['availableTerritories']?.data;
+    const ids = Array.isArray(rel) ? rel.map((x) => x.id) : [];
+    return ids.map((id) => countryOfAppleTerritory(id) ?? id).sort();
   }
 
   private async syncAvailability(subId: string, territories: string[]): Promise<void> {

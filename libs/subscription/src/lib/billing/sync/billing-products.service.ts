@@ -23,7 +23,9 @@ import {
   type BillingTargetPrice,
   type LiveProviderPrice,
   type PreviewProviderPrice,
+  unconfirmedDrops,
 } from './billing-sync.port.js';
+import { appleTerritory } from './apple-territories.js';
 import { enqueueBillingProductSync } from './billing-sync-enqueue.js';
 import { imageDimensions, reviewScreenshotDimensionsError } from './review-screenshot.js';
 
@@ -122,6 +124,18 @@ export class BillingProductsService {
       ? []
       : (await this.prisma.billingProduct.findMany({ where: { plan_id: { not: version.plan_id }, OR: payload.products.map((p) => ({ provider: p.provider, product_id: p.product_id })) } })).map(asLink);
     const errors = billingProductsRuleErrors({ payload, plan, existing, taken_elsewhere: taken, sold });
+    // A1-2 — the App Store sells only in its territories, each in one currency; a stop country cannot also carry a price.
+    const regional = planVersionTerms(version).regional_prices ?? [];
+    for (const p of payload.products.filter((x) => x.provider === 'APP_STORE')) {
+      for (const r of regional.filter((x) => x.interval === p.interval)) {
+        const terr = appleTerritory(r.country);
+        if (terr === null) errors.push({ code: 'COUNTRY_NOT_SOLD', message: `the App Store does not sell in ${r.country}; remove that regional price or untick the App Store` });
+        else if (terr.currency !== r.currency) errors.push({ code: 'COUNTRY_NOT_SOLD', message: `the App Store charges ${terr.currency} in ${r.country}; the regional price is in ${r.currency}` });
+      }
+    }
+    for (const c of payload.stop_countries ?? []) {
+      if (regional.some((r) => r.country === c)) errors.push({ code: 'STOP_COUNTRY_PRICED', message: `${c} has a regional price on this version, so it keeps selling there; remove the price or the stop` });
+    }
     const assetId = payload.apple_review_screenshot_asset_id;
     if (assetId !== undefined) {
       const asset = await this.prisma.billingAsset.findUnique({ where: { id: assetId }, select: { plan_id: true, kind: true } });
@@ -134,7 +148,7 @@ export class BillingProductsService {
       for (const p of payload.products) {
         const port = this.ports.get(p.provider);
         if (port === undefined || !port.configured()) continue;
-        const preview = await port.preview(await this.targetFor(version.id, p.provider, p.interval, p.product_id, null));
+        const preview = await port.preview(await this.targetFor(version.id, p.provider, p.interval, p.product_id, null, payload));
         const missing = preview.filter((x) => !x.available);
         for (const m of missing) {
           errors.push({ code: 'PRICE_NOT_AVAILABLE', message: `${p.provider} has no price of exactly ${m.amount_minor} ${m.currency} (minor units) in ${m.country}; nearest: ${m.nearest.join(', ') || 'none'}` });
@@ -145,18 +159,21 @@ export class BillingProductsService {
   }
 
   /** BP-5 — the exact per-channel, per-country prices the sync would set (the approver's preview). */
-  async preview(plan_version_id: string, products: BillingProductsPayload['products']): Promise<{ provider: BillingProvider; interval: BillingInterval; product_id: string; configured: boolean; prices: PreviewProviderPrice[]; error: string | null }[]> {
+  async preview(plan_version_id: string, products: BillingProductsPayload['products']): Promise<{ provider: BillingProvider; interval: BillingInterval; product_id: string; configured: boolean; prices: PreviewProviderPrice[]; stops: string[]; error: string | null }[]> {
     const out = [];
     for (const p of products) {
       const port = this.ports.get(p.provider);
       if (port === undefined || !port.configured()) {
-        out.push({ ...p, configured: false, prices: [], error: null });
+        out.push({ ...p, configured: false, prices: [], stops: [], error: null });
         continue;
       }
       try {
-        out.push({ ...p, configured: true, prices: await port.preview(await this.targetFor(plan_version_id, p.provider, p.interval, p.product_id, null)), error: null });
+        const target = await this.targetFor(plan_version_id, p.provider, p.interval, p.product_id, null);
+        // A1-2 — the countries the store sells in today that this version has no price for (the approver confirms each stop).
+        const stops = unconfirmedDrops(await port.liveCountries(target), target);
+        out.push({ ...p, configured: true, prices: await port.preview(target), stops, error: null });
       } catch (e) {
-        out.push({ ...p, configured: true, prices: [], error: e instanceof BillingSyncError ? e.message : 'preview unavailable' });
+        out.push({ ...p, configured: true, prices: [], stops: [], error: e instanceof BillingSyncError ? e.message : 'preview unavailable' });
       }
     }
     return out;
@@ -231,7 +248,7 @@ export class BillingProductsService {
       }
       const request = await this.prisma.commercialChangeRequest.findUniqueOrThrow({ where: { id: job.change_request_id }, select: { payload: true } });
       const bp = ((request.payload as Record<string, unknown>)['billing_products'] ?? {}) as BillingProductsPayload;
-      const target = await this.targetFor(job.plan_version_id, provider, interval, job.product_id, provider === 'APP_STORE' ? bp.apple_review_screenshot_asset_id ?? null : null);
+      const target = await this.targetFor(job.plan_version_id, provider, interval, job.product_id, provider === 'APP_STORE' ? bp.apple_review_screenshot_asset_id ?? null : null, bp);
       const outcome = await port.sync(target);
       await this.prisma.$transaction(async (tx) => {
         const permanent = await tx.billingProduct.findUnique({ where: { plan_id_provider_interval: { plan_id: job.plan_id, provider, interval } } });
@@ -353,7 +370,14 @@ export class BillingProductsService {
   // ---- shared ------------------------------------------------------------------------------
 
   /** The sync target of a version + channel: name, description and the exact prices (BP-5) from the catalog. */
-  async targetFor(plan_version_id: string, provider: BillingProvider, interval: BillingInterval, product_id: string, screenshot_asset_id: string | null): Promise<BillingSyncTarget> {
+  async targetFor(
+    plan_version_id: string,
+    provider: BillingProvider,
+    interval: BillingInterval,
+    product_id: string,
+    screenshot_asset_id: string | null,
+    request: Pick<BillingProductsPayload, 'listing' | 'stop_countries'> = {},
+  ): Promise<BillingSyncTarget> {
     const row = await this.prisma.planVersion.findUnique({ where: { id: plan_version_id } });
     if (row === null) throw new BillingSyncError('PROVIDER_REJECTED', `unknown plan version ${plan_version_id}`, false);
     const terms = planVersionTerms(row);
@@ -376,8 +400,10 @@ export class BillingProductsService {
       product_id,
       plan_id: row.plan_id,
       plan_key: plan.key,
-      display_name: plan.name,
-      description: plan.description ?? '',
+      // A1-1 — the store listing of the request; the internal plan description never reaches a store.
+      display_name: request.listing?.name.trim() ?? plan.name,
+      description: request.listing?.description.trim() ?? (provider === 'STRIPE' ? plan.description ?? '' : ''),
+      stop_countries: request.stop_countries ?? [],
       plan_version_id: row.id,
       version_number: row.version_number,
       prices,

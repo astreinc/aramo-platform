@@ -196,9 +196,15 @@ export interface BillingProductsPayload {
   products: BillingProductLink[];
   stop_selling?: BillingProvider[];
   apple_review_screenshot_asset_id?: string;
+  /** A1-1 — what the App Store and Google Play show (Apple limits: name 2..30, description ≤ 45). */
+  listing?: { name: string; description: string };
+  /** A1-2 — countries a store sells in today that this version explicitly stops selling in. */
+  stop_countries?: string[];
 }
 export interface BillingPreviewChannel extends BillingProductLink {
   configured: boolean;
+  /** A1-2 — countries the store sells in today that this version has no price for (absent on an older API). */
+  stops?: string[];
   error: string | null;
   prices: { country: string; currency: string; amount_minor: number; available: boolean; nearest: number[] }[];
 }

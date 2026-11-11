@@ -20,10 +20,12 @@ export interface BillingSyncTarget {
   product_id: string;
   plan_id: string;
   plan_key: string;
-  /** The catalog plan name (the store display name). */
+  /** The store listing name (the request's `listing.name`; the plan name when the request has none). */
   display_name: string;
-  /** The catalog plan description (the store description). */
+  /** The store listing description (the request's `listing.description`; the plan description for Stripe-only). */
   description: string;
+  /** A1-2 — countries the request explicitly stops selling in; any other country a store sells in today is kept or the sync refuses. */
+  stop_countries: readonly string[];
   plan_version_id: string;
   version_number: number;
   /** US list price first, then one entry per regional price; the countries the product is sold in. */
@@ -91,6 +93,8 @@ export interface BillingProductSyncPort {
   configured(): boolean;
   sync(target: BillingSyncTarget): Promise<BillingSyncOutcome>;
   preview(target: BillingSyncTarget): Promise<PreviewProviderPrice[]>;
+  /** A1-2 — the countries the product is sold in today (ISO alpha-2), or null when it does not exist yet. */
+  liveCountries(target: BillingSyncTarget): Promise<string[] | null>;
   livePrices(target: Pick<BillingSyncTarget, 'provider' | 'interval' | 'product_id' | 'known_external_ref' | 'prices' | 'plan_version_id'>): Promise<LiveProviderPrice[]>;
 }
 
@@ -102,4 +106,17 @@ export function httpSyncError(provider: string, status: number, body: string): B
   if (status === 429 || status >= 500) return new BillingSyncError('TRANSIENT', `${provider} HTTP ${status}: ${short}`);
   if (status === 401 || status === 403) return new BillingSyncError('NOT_CONFIGURED', `${provider} refused the credentials (HTTP ${status}): ${short}`, false);
   return new BillingSyncError('PROVIDER_REJECTED', `${provider} HTTP ${status}: ${short}`, false);
+}
+
+/** A1-2 — the countries a sync would stop selling in without the request saying so (empty = safe). */
+export function unconfirmedDrops(live: readonly string[] | null, target: Pick<BillingSyncTarget, 'prices' | 'stop_countries'>): string[] {
+  if (live === null) return [];
+  const want = new Set(target.prices.map((p) => p.country));
+  const stop = new Set(target.stop_countries);
+  return [...new Set(live)].filter((c) => !want.has(c) && !stop.has(c)).sort();
+}
+
+/** The refusal of a sync that would silently narrow a store's countries. */
+export function dropRefusal(store: string, drops: readonly string[]): BillingSyncError {
+  return new BillingSyncError('PROVIDER_REJECTED', `${store} sells this plan in ${drops.join(', ')} today and this version has no price there: add a regional price for ${drops.length === 1 ? 'it' : 'them'}, or publish a version that confirms the stop`, false);
 }

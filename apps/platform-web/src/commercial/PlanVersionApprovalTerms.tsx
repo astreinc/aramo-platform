@@ -56,6 +56,8 @@ export function billingApprovalRows(payload: Readonly<Record<string, unknown>>, 
   }
   if (bp.products.length === 0) rows.push({ field: 'Billing products', value: 'Sold on no channel' });
   for (const s of bp.stop_selling ?? []) rows.push({ field: `Stops selling on ${PROVIDER_LABEL[s]}`, value: 'Yes: new purchases on this channel end with this version' });
+  if (bp.listing !== undefined) rows.push({ field: 'Store listing', value: `${bp.listing.name} — ${bp.listing.description}` });
+  if ((bp.stop_countries ?? []).length > 0) rows.push({ field: 'Stops selling in (stores)', value: `${(bp.stop_countries ?? []).join(', ')}: new store purchases there end with this version` });
   if (bp.apple_review_screenshot_asset_id !== undefined) rows.push({ field: 'App Store review screenshot', value: 'Attached' });
   return rows;
 }

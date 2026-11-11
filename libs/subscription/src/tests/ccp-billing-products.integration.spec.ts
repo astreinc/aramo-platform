@@ -47,6 +47,9 @@ class FakeProvider implements BillingProductSyncPort {
   async preview(t: BillingSyncTarget) {
     return t.prices.map((p) => ({ ...p, available: true, nearest: [] }));
   }
+  async liveCountries(): Promise<string[] | null> {
+    return null;
+  }
   async livePrices(t: Pick<BillingSyncTarget, 'prices'>) {
     return t.prices.map((p) => ({ country: p.country, currency: p.currency, amount_minor: p.amount_minor }));
   }
@@ -109,7 +112,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP Billing Produ
     const plan_id = await planId(plan_key);
     return (await h.versions.createDraft({ plan_id, content: await h.versions.liveContent(plan_id), created_by: 'bp-test' })).id;
   }
-  const create = (payload: Record<string, unknown>) => cr.create(as(CAT, 'catalog_manager'), { action_type: 'PLAN_VERSION_PUBLISH', payload, reason: 'billing products', idempotency_key: key() }, A6_CTX);
+  // A1-1 — every request below carries the store listing unless a test removes it.
+  const LISTING = { name: 'Standard', description: '25 sends a month and 1 GB storage' };
+  const withListing = (payload: Record<string, unknown>) => {
+    const bp = payload['billing_products'] as Record<string, unknown> | undefined;
+    return bp === undefined || 'listing' in bp ? payload : { ...payload, billing_products: { ...bp, listing: LISTING } };
+  };
+  const create = (payload: Record<string, unknown>) => createRaw(withListing(payload));
+  const createRaw = (payload: Record<string, unknown>) => cr.create(as(CAT, 'catalog_manager'), { action_type: 'PLAN_VERSION_PUBLISH', payload, reason: 'billing products', idempotency_key: key() }, A6_CTX);
   async function approveAndApply(id: string): Promise<void> {
     await h.changeRequests.submit(as(CAT, 'catalog_manager'), id, A6_CTX);
     await h.changeRequests.approve(as(FA, 'finance_admin'), id, { step_index: 0 }, A6_CTX);
@@ -135,6 +145,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP Billing Produ
     expect(await refusal(create({ plan_version_id: b, billing_products: { products: products(['STRIPE', 'aramo_sign_business_standard'], ['APP_STORE', 'ai.aramo.sign.business_standard.monthly']) } }))).toEqual(['PROVIDER_NOT_ELIGIBLE', 'SCREENSHOT_REQUIRED']);
     v2 = await draft(PERSONAL);
     expect(await refusal(create({ plan_version_id: v2, billing_products: { products: products(['APP_STORE', APPLE_ID]) } }))).toEqual(['SCREENSHOT_REQUIRED']);
+    // A1-1 — a store product needs the store listing, within Apple's limits (the 77-character plan description is refused).
+    expect(await refusal(createRaw({ plan_version_id: v2, billing_products: { products: products(['GOOGLE_PLAY', APPLE_ID]) } }))).toEqual(['LISTING_REQUIRED']);
+    const long = await createRaw({ plan_version_id: v2, billing_products: { products: products(['GOOGLE_PLAY', APPLE_ID]), listing: { name: 'Standard', description: 'x'.repeat(77) } } }).catch((e: unknown) => e);
+    expect(String((long as Error).message) + JSON.stringify((long as { details?: unknown }).details ?? {})).toMatch(/1 to 45 characters/);
   });
 
   it('BP-7: stores the review screenshot only at an iPhone size', async () => {
@@ -154,7 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP Billing Produ
     expect((await currentPublishedVersion(prisma, await planId(PERSONAL)))?.id).toBe(v2);
 
     expect(await billing.drain()).toBe(3);
-    expect(stripe.calls[0]).toMatchObject({ product_id: 'aramo_sign_personal_standard', prices: [{ country: 'US', currency: 'USD', amount_minor: 1000 }], display_name: expect.any(String) });
+    expect(stripe.calls[0]).toMatchObject({ product_id: 'aramo_sign_personal_standard', prices: [{ country: 'US', currency: 'USD', amount_minor: 1000 }], display_name: 'Standard', description: '25 sends a month and 1 GB storage', stop_countries: [] });
     expect(apple.calls[0]?.review_screenshot?.bytes.byteLength).toBe(33);
     expect(play.calls[0]?.review_screenshot).toBeNull();
     const pins = await prisma.planVersionPrice.findMany({ where: { plan_version_id: v2 }, orderBy: { provider: 'asc' } });

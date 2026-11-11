@@ -91,6 +91,11 @@ export class StripeCatalogWriter implements BillingProductSyncPort {
     return [{ country: 'US', currency: 'USD', amount_minor: us.amount_minor, available: true, nearest: [] }];
   }
 
+  /** Stripe sells on the web at the US price only; it has no per-country availability to narrow. */
+  async liveCountries(): Promise<string[] | null> {
+    return null;
+  }
+
   async livePrices(t: Pick<BillingSyncTarget, 'provider' | 'interval' | 'product_id' | 'known_external_ref' | 'prices' | 'plan_version_id'>): Promise<LiveProviderPrice[]> {
     const price = (await this.get(`/v1/prices?lookup_keys%5B%5D=${enc(lookupKey(t.plan_version_id, t.interval))}&limit=1`))?.data?.[0];
     return [{ country: 'US', currency: 'USD', amount_minor: typeof price?.unit_amount === 'number' && price.currency === 'usd' ? price.unit_amount : null }];

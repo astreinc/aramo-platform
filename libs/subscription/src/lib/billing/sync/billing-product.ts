@@ -23,6 +23,40 @@ export interface BillingProductsPayload {
   stop_selling?: BillingProvider[];
   /** BP-7 — the Apple review screenshot (a BillingAsset id) sent with the App Store product. */
   apple_review_screenshot_asset_id?: string;
+  /**
+   * PO 2026-11-11 (A1-1) — the shopper-facing store listing of this version: the name and description
+   * the App Store and Google Play show. Separate from the internal plan description. Required when the
+   * version sells on a store; limits are Apple's (the stricter store), see STORE_LISTING_LIMITS.
+   */
+  listing?: StoreListing;
+  /**
+   * PO 2026-11-11 (A1-2) — countries a store sells this plan in today that this version explicitly stops
+   * selling in. Without it the sync refuses to narrow a store's countries (never a silent drop).
+   */
+  stop_countries?: string[];
+}
+
+export interface StoreListing {
+  name: string;
+  description: string;
+}
+
+/** Apple's in-app purchase localization limits (name 2..30, description ≤ 45); Google Play allows more. */
+export const STORE_LISTING_LIMITS = { name_min: 2, name_max: 30, description_min: 1, description_max: 45 } as const;
+
+/** True when the text has a control character (U+0000..U+001F, U+007F), a newline included. */
+const hasControl = (t: string): boolean => [...t].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f);
+
+/** Errors of a store listing (empty = valid): lengths and no control characters or markup. */
+export function storeListingErrors(l: StoreListing): string[] {
+  const L = STORE_LISTING_LIMITS;
+  const out: string[] = [];
+  const name = l.name.trim();
+  const desc = l.description.trim();
+  if (name.length < L.name_min || name.length > L.name_max) out.push(`the store name must be ${L.name_min} to ${L.name_max} characters (it is ${name.length})`);
+  if (desc.length < L.description_min || desc.length > L.description_max) out.push(`the store description must be ${L.description_min} to ${L.description_max} characters (it is ${desc.length})`);
+  if (hasControl(l.name) || hasControl(l.description) || /[<>]/.test(l.name + l.description)) out.push('the store name and description must be plain text on one line');
+  return out;
 }
 
 /** A store or Stripe product id: 1..150 chars, starting alphanumeric (the existing STORE_PRODUCT_ID rule). */
@@ -37,7 +71,7 @@ export function billingProductsShapeErrors(v: unknown): string[] {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return [`${w} must be an object`];
   const o = v as Record<string, unknown>;
   const errors: string[] = [];
-  for (const k of Object.keys(o)) if (!['products', 'stop_selling', 'apple_review_screenshot_asset_id'].includes(k)) errors.push(`${w}.${k} is not allowed`);
+  for (const k of Object.keys(o)) if (!['products', 'stop_selling', 'apple_review_screenshot_asset_id', 'listing', 'stop_countries'].includes(k)) errors.push(`${w}.${k} is not allowed`);
   const products = o['products'];
   if (!Array.isArray(products) || products.length > 6) {
     errors.push(`${w}.products must be an array of at most 6 billing products`);
@@ -68,6 +102,21 @@ export function billingProductsShapeErrors(v: unknown): string[] {
       errors.push(`${w}.stop_selling must be a list of distinct providers`);
     } else if (Array.isArray(products)) {
       for (const s of stop) if (products.some((e) => (e as Record<string, unknown> | null)?.['provider'] === s)) errors.push(`${w}.stop_selling names ${String(s)}, which the version also sells on`);
+    }
+  }
+  const listing = o['listing'];
+  if (listing !== undefined) {
+    const l = listing as Record<string, unknown> | null;
+    if (typeof l !== 'object' || l === null || Array.isArray(l) || Object.keys(l).some((k) => k !== 'name' && k !== 'description') || typeof l['name'] !== 'string' || typeof l['description'] !== 'string') {
+      errors.push(`${w}.listing must be { name, description }`);
+    } else {
+      for (const m of storeListingErrors({ name: l['name'], description: l['description'] })) errors.push(`${w}.listing: ${m}`);
+    }
+  }
+  const stopCountries = o['stop_countries'];
+  if (stopCountries !== undefined) {
+    if (!Array.isArray(stopCountries) || stopCountries.length > 250 || stopCountries.some((c) => typeof c !== 'string' || !/^[A-Z]{2}$/.test(c) || c === 'US') || new Set(stopCountries).size !== stopCountries.length) {
+      errors.push(`${w}.stop_countries must be distinct two-letter country codes other than US`);
     }
   }
   const shot = o['apple_review_screenshot_asset_id'];
@@ -126,7 +175,7 @@ export interface SoldChannel {
 }
 
 export interface BillingProductsRuleError {
-  code: 'PROVIDER_NOT_ELIGIBLE' | 'PRODUCT_ID_PERMANENT' | 'PRODUCT_ID_TAKEN' | 'CHANNEL_DROPPED' | 'SCREENSHOT_REQUIRED' | 'PRICE_NOT_AVAILABLE';
+  code: 'PROVIDER_NOT_ELIGIBLE' | 'PRODUCT_ID_PERMANENT' | 'PRODUCT_ID_TAKEN' | 'CHANNEL_DROPPED' | 'SCREENSHOT_REQUIRED' | 'PRICE_NOT_AVAILABLE' | 'LISTING_REQUIRED' | 'COUNTRY_NOT_SOLD' | 'STOP_COUNTRY_PRICED';
   message: string;
 }
 
@@ -167,6 +216,9 @@ export function billingProductsRuleErrors(input: {
     if (!carried && !stop.has(s.provider)) {
       errors.push({ code: 'CHANNEL_DROPPED', message: `the plan sells on ${s.provider} (${s.interval}); carry it forward or choose to stop selling on ${s.provider}` });
     }
+  }
+  if (input.payload.listing === undefined && input.payload.products.some((p) => p.provider !== 'STRIPE')) {
+    errors.push({ code: 'LISTING_REQUIRED', message: 'a store product needs the store name and description (what the App Store and Google Play show)' });
   }
   const newApple = input.payload.products.some((p) => p.provider === 'APP_STORE' && !input.existing.some((e) => e.provider === 'APP_STORE' && e.interval === p.interval));
   if (newApple && input.payload.apple_review_screenshot_asset_id === undefined) {

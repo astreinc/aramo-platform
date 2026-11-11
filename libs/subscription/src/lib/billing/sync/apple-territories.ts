@@ -185,3 +185,9 @@ export function appleTerritory(country: string): { territory: string; currency: 
   const t = APPLE_TERRITORIES[country.toUpperCase()];
   return t === undefined ? null : { territory: t[0], currency: t[1] };
 }
+
+/** Apple territory id (alpha-3) → the catalog country (alpha-2); null for a territory not in the table. */
+export function countryOfAppleTerritory(territory: string): string | null {
+  for (const [country, [t]] of Object.entries(APPLE_TERRITORIES)) if (t === territory) return country;
+  return null;
+}

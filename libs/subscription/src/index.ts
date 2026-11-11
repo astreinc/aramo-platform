@@ -1095,8 +1095,11 @@ export {
   billingProductsShapeErrors,
   defaultProductId,
   eligibleProviders,
+  STORE_LISTING_LIMITS,
+  storeListingErrors,
   type BillingInterval,
   type BillingProductLink,
+  type StoreListing,
   type BillingProductsPayload,
   type BillingProvider,
 } from './lib/billing/sync/billing-product.js';
