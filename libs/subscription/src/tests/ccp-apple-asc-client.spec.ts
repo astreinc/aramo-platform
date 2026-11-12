@@ -148,8 +148,18 @@ class FakeAsc {
       return json(201, { data: { type: 'subscriptionPrices', id: 'p' } });
     }
     if ((m = /^\/v1\/subscriptions\/(\w+)\/planAvailabilities$/.exec(path))) {
+      // Apple (live, 2026-11-11): an included relationship is capped at 50 — limit[availableTerritories]=200 is a 400.
+      const lim = q.get('limit[availableTerritories]');
+      if (lim !== null && Number(lim) > 50) return json(400, { errors: [{ status: '400', code: 'PARAMETER_ERROR.INVALID', detail: "The maximum allowable limit is '50'" }] });
       const a = this.subs.get(m[1]!)!.availability;
-      return json(200, { data: a ? [{ type: 'subscriptionPlanAvailabilities', id: a.id, attributes: { availableInNewTerritories: a.newTerritories, planType: 'UPFRONT' }, relationships: { availableTerritories: { data: a.territories.map((id) => ({ type: 'territories', id })) } } }] : [] });
+      return json(200, { data: a ? [{ type: 'subscriptionPlanAvailabilities', id: a.id, attributes: { availableInNewTerritories: a.newTerritories, planType: 'UPFRONT' }, relationships: { availableTerritories: { links: { related: `https://api.appstoreconnect.apple.com/v1/subscriptionPlanAvailabilities/${a.id}/availableTerritories` } } } }] : [] });
+    }
+    if ((m = /^\/v1\/subscriptionPlanAvailabilities\/([^/]+)\/relationships\/availableTerritories$/.exec(path)) && method === 'GET') {
+      const s = [...this.subs.values()].find((x) => x.availability?.id === decodeURIComponent(m![1]!))!;
+      const all = s.availability!.territories;
+      const cursor = Number(q.get('cursor') ?? '0');
+      const next = cursor + 2 < all.length ? `https://api.appstoreconnect.apple.com${path}?cursor=${cursor + 2}&limit=200` : undefined;
+      return json(200, { data: all.slice(cursor, cursor + 2).map((id) => ({ type: 'territories', id })), links: { self: url, ...(next ? { next } : {}) } });
     }
     if (path === '/v1/subscriptionPlanAvailabilities' && method === 'POST') {
       const r = body!.data['relationships'];
@@ -266,6 +276,14 @@ describe('never narrows the countries silently (A1-2)', () => {
     expect(await client.liveCountries(target())).toBeNull();
     asc.seedExisting();
     expect(await client.liveCountries(target())).toEqual(['IN', 'US']);
+  });
+  it('reads every territory across pages and never asks Apple for more than 50 included (prod 400, 2026-11-11)', async () => {
+    asc.seedExisting();
+    asc.subs.get(SUB)!.availability!.territories = ['CAN', 'DEU', 'GBR', 'IND', 'USA'];
+    expect(await client.liveCountries(target())).toEqual(['CA', 'DE', 'GB', 'IN', 'US']);
+    const e = await client.sync(target({ stop_countries: ['IN'] })).catch((x: unknown) => x);
+    expect((e as BillingSyncError).message).toMatch(/sells this plan in CA, DE, GB today/);
+    expect(asc.writes).toEqual([]);
   });
 });
 
