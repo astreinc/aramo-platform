@@ -50,7 +50,7 @@ export function BillingProductsPanel(props: { versionId: string; canRetry: boole
       {items === null ? null : items.length === 0 ? (
         <p className="pc-addons__intro">No billing products yet. They are set when a version of this plan is published.</p>
       ) : (
-        <div className="pc-diff" role="table" aria-label="Billing products of this version">
+        <div className="pc-diff pc-diff--list" role="table" aria-label="Billing products of this version">
           {items.map((v) => {
             const s = billingStatusText(v);
             return (
@@ -80,7 +80,7 @@ export function BillingProductsPanel(props: { versionId: string; canRetry: boole
       {mismatch !== null && mismatch.length > 0 ? (
         <>
           <div className="pc-caps pc-caps--16">Price check</div>
-          <div className="pc-diff" role="table" aria-label="Catalog price compared with each channel">
+          <div className="pc-diff pc-diff--list" role="table" aria-label="Catalog price compared with each channel">
             {mismatch.map((m) => (
               <div key={`${m.provider}:${m.country}`} role="row" className={`pc-diff__row${m.status === 'MATCH' ? '' : ' pc-diff__row--changed'}`}>
                 <span role="cell" className="pc-diff__field">{`${PROVIDER_LABEL[m.provider]} · ${m.country}`}</span>

@@ -56,7 +56,7 @@ export function RegionalPricesEditor(props: { version: CatalogVersion; canDraft:
           No regional prices on this version.
         </p>
       ) : (
-        <div className="pc-diff" role="table" aria-label="Regional prices">
+        <div className="pc-diff pc-diff--list" role="table" aria-label="Regional prices">
           {rows.map((r) => (
             <div key={`${r.country}:${r.interval}`} role="row" className="pc-diff__row">
               <span role="cell" className="pc-diff__field">

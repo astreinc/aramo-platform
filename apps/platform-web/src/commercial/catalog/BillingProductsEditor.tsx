@@ -90,7 +90,7 @@ export function BillingProductsEditor(props: {
     <div className="pc-addons" data-testid="billing-products-editor">
       <div className="pc-caps pc-caps--16">Billing products</div>
       <p className="pc-addons__intro">{BILLING_PRODUCTS_INTRO}</p>
-      <div className="pc-diff" role="table" aria-label="Billing products">
+      <div className="pc-diff pc-diff--list" role="table" aria-label="Billing products">
         {rows.map((r, i) => (
           <div key={r.provider} role="row" className="pc-diff__row">
             <span role="cell" className="pc-diff__mark">
@@ -149,7 +149,7 @@ export function BillingProductsEditor(props: {
         Preview prices
       </Button>
       {preview !== null ? (
-        <div className="pc-diff" role="table" aria-label="Price preview" data-testid="billing-preview">
+        <div className="pc-diff pc-diff--list" role="table" aria-label="Price preview" data-testid="billing-preview">
           {preview.flatMap((c) =>
             !c.configured
               ? [
@@ -177,7 +177,7 @@ export function BillingProductsEditor(props: {
         </div>
       ) : null}
       {previewStops !== null && previewStops.length > 0 ? (
-        <div className="pc-diff" role="table" aria-label="Countries the stores sell in today" data-testid="billing-stops">
+        <div className="pc-diff pc-diff--list" role="table" aria-label="Countries the stores sell in today" data-testid="billing-stops">
           {previewStops.map((c) => (
             <div key={c} role="row" className="pc-diff__row pc-diff__row--changed">
               <span role="cell" className="pc-diff__mark">
