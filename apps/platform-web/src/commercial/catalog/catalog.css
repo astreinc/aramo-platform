@@ -331,6 +331,35 @@
 .pc-diff__row--changed .pc-diff__after {
   font-weight: 700;
 }
+/* CCP billing products / regional prices: label-first rows with 2–4 cells. The 4-column diff grid above
+   assumes the mark comes first; these tables lead with the label, so they lay out as a wrapping flex row
+   (label, then value(s), then an optional action) and long product ids wrap instead of overlapping. */
+.pc-diff--list .pc-diff__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 12px;
+}
+.pc-diff--list .pc-diff__field {
+  flex: 0 0 140px;
+}
+.pc-diff--list .pc-diff__before {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pc-diff--list .pc-diff__after {
+  flex: 2 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pc-diff--list .pc-diff__mark {
+  flex: 0 0 auto;
+  min-width: 20px;
+}
+.pc-diff--list .pc-diff__mark:empty {
+  display: none;
+}
 .pc-pinned {
   margin-top: 6px;
   color: var(--pw-ink-2);
