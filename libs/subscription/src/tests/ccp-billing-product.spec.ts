@@ -38,7 +38,7 @@ describe('billing_products shape', () => {
     expect(errs.join('\n')).toMatch(/foo is not allowed/);
     expect(errs.join('\n')).toMatch(/extra is not allowed/);
     expect(errs.join('\n')).toMatch(/repeats a provider and interval/);
-    expect(errs.join('\n')).toMatch(/provider must be STRIPE, APP_STORE or GOOGLE_PLAY/);
+    expect(errs.join('\n')).toMatch(/provider must be STRIPE, APP_STORE, GOOGLE_PLAY or RAZORPAY/);
   });
   it('refuses a yearly Stripe product and a Stripe id with dots', () => {
     const errs = billingProductsShapeErrors({ products: [{ provider: 'STRIPE', interval: 'YEAR', product_id: 'a.b' }] }).join('\n');

@@ -36,12 +36,13 @@ const errs = (p: Record<string, unknown>) => planCreatePayloadErrors(p);
 const withP = (patch: Partial<Record<keyof PlanCreatePayload, unknown>>) => ({ ...VALID, ...patch }) as Record<string, unknown>;
 
 describe('CCP PLAN_CREATE catalog entry and chain (PC-1, PC-2)', () => {
-  it('PC-U-1 catalog row 17: PLAN_CREATE is catalog, not tenant-scoped, requested through platform:catalog:draft; the closed set is 17', () => {
-    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(17);
+  it('PC-U-1 catalog row 17: PLAN_CREATE is catalog, not tenant-scoped, requested through platform:catalog:draft; the closed set is 17 (18 with India Billing BILLING_REGION_CHANGE, row 18)', () => {
+    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(18);
     expect(COMMERCIAL_ACTION_TYPES[16]).toBe('PLAN_CREATE');
     expect(COMMERCIAL_ACTIONS.PLAN_CREATE).toEqual({ domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null });
-    // No new requester scope: platform:catalog:draft governs exactly the three catalog actions.
-    expect(Object.entries(COMMERCIAL_ACTIONS).filter(([, d]) => d.requester_scope === 'platform:catalog:draft').map(([a]) => a).sort()).toEqual(['PLAN_CREATE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH']);
+    // No new requester scope: platform:catalog:draft governs exactly the catalog actions (India Billing Q3 adds
+    // BILLING_REGION_CHANGE under the same scope).
+    expect(Object.entries(COMMERCIAL_ACTIONS).filter(([, d]) => d.requester_scope === 'platform:catalog:draft').map(([a]) => a).sort()).toEqual(['BILLING_REGION_CHANGE', 'PLAN_CREATE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH']);
   });
 
   it('PC-U-2 the chain is Finance → Owner, always, with the catalog step scopes (owner: approve + publish), the same as a version publish', () => {

@@ -169,7 +169,7 @@ export interface CatalogChangeRequest {
 
 // CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED) — one billing product per
 // plan and interval on the web (Stripe), the App Store and Google Play, created and priced by the console.
-export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY'; // + India Billing §4.2
 export type BillingInterval = 'MONTH' | 'YEAR';
 export interface BillingProductLink {
   provider: BillingProvider;

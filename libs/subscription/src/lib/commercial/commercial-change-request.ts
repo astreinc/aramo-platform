@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { BILLING_PRODUCTS_KEY, billingProductsShapeErrors } from '../billing/sync/billing-product.js';
+import { billingRegionChangeErrors } from '../billing/region/region-guard.js';
 
 import type { CommercialPolicyContent } from './commercial-policy.js';
 import { canonicalJson } from './commercial-policy.js';
@@ -57,6 +58,10 @@ export const COMMERCIAL_ACTION_TYPES = [
   // grows from 16 to 17) — create a new catalog plan and its PUBLISHED version 1 from the console, after
   // the Finance → Owner chain (PC-1…PC-12). Applied by the CCP-B2 governed catalog apply.
   'PLAN_CREATE',
+  // India Billing Regions + Razorpay Directive v1.0 (LOCKED) ruling Q3 (catalog row 18; the closed set grows
+  // from 17 to 18) — change one billing region (its switches, price tax mode and selling entity). Chain:
+  // the ACTIVE policy's Finance approval. Turning a region ON is refused by G-3 at apply.
+  'BILLING_REGION_CHANGE',
 ] as const;
 export type CommercialActionType = (typeof COMMERCIAL_ACTION_TYPES)[number];
 
@@ -103,6 +108,8 @@ export const COMMERCIAL_ACTIONS: Readonly<Record<CommercialActionType, Commercia
   PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   // CCP PLAN_CREATE (PC-1): catalog_manager through platform:catalog:draft; the product is in the payload.
   PLAN_CREATE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
+  // India Billing Q3: catalog_manager through platform:catalog:draft; the region is in the payload.
+  BILLING_REGION_CHANGE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'finance_admin' }, // TD-A3-5
   ROLE_GRANT: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
   ROLE_REVOKE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
@@ -265,6 +272,17 @@ export const COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS: Readonly<Partial<Record<Comme
  * CommercialApplyService): APPROVED | APPLY_FAILED → APPLYING → APPLIED | APPLY_FAILED in one local
  * transaction (DB guard, union block "CCP-C8-PR"; its APPLY_EXPIRED pairs are the AD-4 branch).
  */
+/**
+ * India Billing Q3 — BILLING_REGION_CHANGE: APPROVED | APPLY_FAILED → APPLYING → APPLIED | APPLY_FAILED in
+ * one local transaction (DB guard, union block "BILLING_REGION_CHANGE"; its APPLY_EXPIRED pairs are the
+ * AD-4 branch).
+ */
+export const COMMERCIAL_BILLING_REGION_CHANGE_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
 export const COMMERCIAL_C8PR_PAYMENT_RECORD_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
   APPROVED: ['APPLYING'],
   APPLY_FAILED: ['APPLYING'],
@@ -317,6 +335,7 @@ export const APPLY_EXPIRABLE_ACTIONS: readonly CommercialActionType[] = [
   'CREDIT', 'DISCOUNT', 'REFUND', // CCP-C4 (AD-4: every applyable type)
   'PAYMENT_RECORD', // CCP-C8-PR (PR-4: the apply deadline applies unchanged, K-1)
   'PLAN_CREATE', // CCP PLAN_CREATE (PC-2: the apply deadline applies unchanged)
+  'BILLING_REGION_CHANGE', // India Billing Q3 (AD-4 unchanged)
 ];
 export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean {
   if (!(APPLY_EXPIRABLE_ACTIONS as readonly string[]).includes(action_type)) return false;
@@ -370,6 +389,8 @@ export function canTransitionFor(
   if (isBillingAdjustmentAction(action_type)) return (COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS[from] ?? []).includes(to);
   // CCP-C8-PR (PR-4): PAYMENT_RECORD — the A6 apply pairs (its APPLY_EXPIRED pairs: the AD-4 branch above).
   if (action_type === 'PAYMENT_RECORD') return (COMMERCIAL_C8PR_PAYMENT_RECORD_TRANSITIONS[from] ?? []).includes(to);
+  // India Billing Q3: BILLING_REGION_CHANGE — the A6 apply pairs (its APPLY_EXPIRED pairs: the AD-4 branch above).
+  if (action_type === 'BILLING_REGION_CHANGE') return (COMMERCIAL_BILLING_REGION_CHANGE_TRANSITIONS[from] ?? []).includes(to);
   // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs (its
   // APPLY_EXPIRED pairs are the AD-4 branch above, CCP-B5-R).
   if (action_type === 'SUPPORT_EXTENSION' && kind === 'NORMAL') return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
@@ -438,6 +459,7 @@ export function chainOf(rule: CommercialChainRule, domain: CommercialDomain, bas
  *                               invented — the escalated chain until the refund policy sets one)
  *   PLAN_VERSION_PUBLISH, PLAN_RETIRE (catalog publish)          → Finance → Owner
  *   PLAN_CREATE (catalog row 17, PC-2; no threshold, no bypass)  → Finance → Owner
+ *   BILLING_REGION_CHANGE (catalog row 18, India Billing Q3)     → Finance
  *   POLICY_ACTIVATE (Q1)                                         → Finance → Owner
  *   ROLE_GRANT, ROLE_REVOKE (D6 owner/finance grants; Q2 others) → a distinct platform_owner
  *   every other action (no threshold dimension; D6 "below threshold", DDR v1.2 §3.1
@@ -486,6 +508,8 @@ export function resolveRequiredChain(
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'D6 catalog publish' });
     case 'PLAN_CREATE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'PC-2 plan creation (Finance then Owner)' });
+    case 'BILLING_REGION_CHANGE':
+      return chainOf('FINANCE_ONLY', def.domain, { ruling: 'India Billing Q3 billing region change (Finance)' });
     case 'POLICY_ACTIVATE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'Q1 policy activation' });
     case 'ROLE_GRANT':
@@ -767,6 +791,11 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // (commercial-plan-create.ts). Validated at create and again at apply.
     case 'PLAN_CREATE':
       errors.push(...planCreatePayloadErrors(p));
+      break;
+    // India Billing Q3 — the BILLING_REGION_CHANGE payload (region/region-guard.ts): a closed key set, the
+    // registration identifiers by shape only (§5). Validated at create and again at apply.
+    case 'BILLING_REGION_CHANGE':
+      errors.push(...billingRegionChangeErrors(p));
       break;
     default:
       break;

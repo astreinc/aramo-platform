@@ -108,13 +108,13 @@ describe('CCP-R3-W W-2 — contract terms', () => {
 });
 
 describe('CCP-R3-W W-3 — financial request text', () => {
-  it('R3W-R-1 the scope list is CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD (keyed on a list; PAYMENT_RECORD an action since CCP-C8-PR, merge train TD-MERGE-50); every other action type of the 17 (PLAN_CREATE added, amendment 548e610e) is never masked', () => {
+  it('R3W-R-1 the scope list is CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD (keyed on a list; PAYMENT_RECORD an action since CCP-C8-PR, merge train TD-MERGE-50); every other action type of the 18 (PLAN_CREATE added, amendment 548e610e; BILLING_REGION_CHANGE, India Billing Q3) is never masked', () => {
     expect([...FINANCIAL_REQUEST_ACTION_TYPES]).toEqual(['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD']);
     expect((COMMERCIAL_ACTION_TYPES as readonly string[]).includes('PAYMENT_RECORD')).toBe(true);
     expect(isFinancialRequestAction('PAYMENT_RECORD')).toBe(true);
     const others = COMMERCIAL_ACTION_TYPES.filter((a) => !FINANCIAL_REQUEST_ACTION_TYPES.includes(a));
     expect(others.length).toBe(COMMERCIAL_ACTION_TYPES.length - 4);
-    expect(others.length).toBe(13);
+    expect(others.length).toBe(14);
     for (const action_type of others) {
       const f = projectChangeRequestFinance({ ...credit, action_type, payload: { note: 'x' }, required_chain: { basis: {} } }, nonRequester);
       expect(f.reason, action_type).toBe(credit.reason);
@@ -199,8 +199,9 @@ describe('CCP-R3-W W-3 — provenance (the requester exception is reliable, else
   it('R3W-P-1 the LAST writer of guard_commercial_change_request() makes payload, reason and requested_by immutable after INSERT (requester text is set only at create)', () => {
     const last = lastWriter('guard_commercial_change_request');
     // PLAN_CREATE (20261101200000) re-creates the guard as the 20261027000000 body plus additive
-    // PLAN_CREATE blocks; the payload/reason/requested_by immutability is unchanged.
-    expect(last).toBe('20261101200000_ccp_plan_create');
+    // PLAN_CREATE blocks, and India Billing (20261113100000) as that body plus additive
+    // BILLING_REGION_CHANGE blocks; the payload/reason/requested_by immutability is unchanged.
+    expect(last).toBe('20261113100000_india_billing_regions');
     const body = sql(last);
     const block = body.slice(body.indexOf('IF NEW."id" IS DISTINCT FROM OLD."id"'), body.indexOf("RAISE EXCEPTION 'CommercialChangeRequest payload, chain and identity are immutable'"));
     for (const col of ['payload', 'payload_checksum', 'reason', 'requested_by', 'action_type', 'created_at']) expect(block, col).toContain(`NEW."${col}" IS DISTINCT FROM OLD."${col}"`);

@@ -84,7 +84,7 @@ model Plan {
 // SHA-256 of its canonical JSON and is recomputed by a DB CHECK. Immutable once PUBLISHED and no
 // DELETE (trigger, migration 20261025160000). At most one PUBLISHED version per plan (the
 // plan's current version). Publishing and retiring are applied by CCP-A6 from approved
-// PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests; A5 ships repository methods only.
+// PLAN_VERSION_PUBLISH /  // CHECK: PLAN_VERSION_PUBLISH | PLAN_RETIRE | PLAN_CREATE | BILLING_REGION_CHANGEchange requests; A5 ships repository methods only.
 model PlanVersion {
   id               String               @id @db.Uuid
   plan_id          String               @db.Uuid
@@ -116,7 +116,7 @@ model PlanVersion {
 model PlanVersionPrice {
   id                 String      @id @db.Uuid
   plan_version_id    String      @db.Uuid
-  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY (M-A12 W1-G: a store pin's ref is the store product id)
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY | RAZORPAY (M-A12, India Billing)| APP_STORE | GOOGLE_PLAY | RAZORPAY (M-A12: a store purchase| APP_STORE | GOOGLE_PLAY | RAZORPAY (M-A12, India Billing; null for| APP_STORE | GOOGLE_PLAY | RAZORPAY (M-A12 W1-G: a store pin's ref is the store product id)
   provider           String
   provider_price_ref String
   // M-A12 A1-1 — CHECK: MONTH | YEAR (a Stripe pin is MONTH). Migration 20261104100000.
@@ -125,8 +125,8 @@ model PlanVersionPrice {
   created_at         DateTime    @db.Timestamptz(3)
   plan_version       PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  // M-A12 — both unique indexes are PARTIAL in SQL (WHERE provider = 'STRIPE'): one Stripe pin per
-  // version, and a Stripe price belongs to one version. Store pins are unique per
+  // M-A12 — both unique indexes are PARTIAL in SQL (WHERE provider IN ('STRIPE', 'RAZORPAY') since India
+  // Billing 20261113100000): one web pin per (version, provider), and a web price belongs to one version. Store pins are unique per
   // (plan_version_id, provider, interval) (PlanVersionPrice_store_version_interval_key) and a store
   // product may pin several versions of ONE plan (trigger). Store pins are read with findFirst/findMany.
   @@unique([plan_version_id, provider])
@@ -331,13 +331,15 @@ model BillingEvent {
 
 // Sign Signup Amendment A1 §2.6 — the provider billing account Aramo created from
 // the organization profile (one per tenant). CHECK provider: STRIPE.
+// India Billing Q9 (migration 20261113100000): one row per (tenant, provider); CHECK provider STRIPE | RAZORPAY.
 model TenantBillingAccount {
-  tenant_id   String   @id @db.Uuid
+  tenant_id   String   @db.Uuid
   provider    String
   account_ref String
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
+  @@id([tenant_id, provider])
   @@unique([provider, account_ref])
   @@schema("subscription")
 }
@@ -856,9 +858,9 @@ model CommercialCatalogApplication {
 model BillingProduct {
   id           String   @id @db.Uuid
   plan_id      String   @db.Uuid
-  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY
+  // CHECK: STRIPE | APP_STORE | GOOGLE_PLAY | RAZORPAY
   provider     String
-  // CHECK: MONTH | YEAR (a Stripe product is MONTH)
+  // CHECK: MONTH | YEAR (a Stripe or Razorpay product is MONTH)
   interval     String
   product_id   String
   external_ref String?
@@ -1053,7 +1055,7 @@ model ContractAmendment {
 // SQL); no Prisma relation.
 model BillingProviderCommand {
   id                    String    @id @db.Uuid
-  // CHECK: STRIPE
+  // CHECK: STRIPE | RAZORPAY (India Billing 20261113100000)
   provider              String
   // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE (C1) | CREDIT_GRANT | CREDIT_REVERSE |
   // DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE (CCP-C4, constraint union)
@@ -1435,5 +1437,48 @@ model RenewalNoticeDelivery {
   @@unique([subscription_id, notice_kind, term_end, channel])
   @@index([tenant_id])
   @@index([status])
+  @@schema("subscription")
+}
+
+// Aramo India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.1 / §5 (migration 20261113100000).
+// The merchant of record of a billing region. registration: named registration identifiers (gstin,
+// pan, state_code, place_of_supply_rule, note), data only, never used to compute anything (CCP-C5).
+model SellingEntity {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key          String          @unique
+  display_name String
+  legal_name   String
+  // CHECK: ISO 3166-1 alpha-2
+  country      String
+  registration Json            @default("{}")
+  active       Boolean         @default(false)
+  created_at   DateTime        @default(now()) @db.Timestamptz(3)
+  updated_at   DateTime        @default(now()) @updatedAt @db.Timestamptz(3)
+  regions      BillingRegion[]
+
+  @@schema("subscription")
+}
+
+// India Billing §4.1 — one row per sold country: its web gateway, currency, merchant of record and
+// switches (master, Personal web, Business web). Seeded US = STRIPE/USD/ON, IN = RAZORPAY/INR/OFF (G-1).
+model BillingRegion {
+  // CHECK: ISO 3166-1 alpha-2
+  country              String        @id
+  // CHECK: STRIPE | RAZORPAY
+  gateway              String
+  // CHECK: ISO 4217
+  currency             String
+  selling_entity_id    String        @db.Uuid
+  enabled              Boolean       @default(false)
+  personal_web_enabled Boolean       @default(false)
+  business_web_enabled Boolean       @default(false)
+  // CHECK: UNSET | INCLUSIVE | EXCLUSIVE (whether a configured price includes tax; UNSET until a C5 amendment)
+  price_tax_mode       String        @default("UNSET")
+  updated_by           String?
+  created_at           DateTime      @default(now()) @db.Timestamptz(3)
+  updated_at           DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+  selling_entity       SellingEntity @relation(fields: [selling_entity_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([selling_entity_id])
   @@schema("subscription")
 }

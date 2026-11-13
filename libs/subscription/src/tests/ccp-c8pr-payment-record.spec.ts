@@ -38,8 +38,8 @@ const open = (payment_terms: unknown) => ({ plan_key: 'aramo-sign-enterprise-v1'
 const PREPAID = { billing_mode: 'PREPAID', currency: 'USD', timezone: 'America/New_York', obligations: [{ obligation_ref: 'INITIAL', due_date: '2026-11-01', amount_minor: 1_200_000, description: 'Year 1 prepaid' }] };
 
 describe('CCP-C8-PR PAYMENT_RECORD (pure)', () => {
-  it('C8PR-U-1 catalog row 16: PAYMENT_RECORD is billing, tenant-scoped, requested through platform:payment:request (PS-6); the closed set was 16 (CCP PLAN_CREATE, catalog row 17, makes it 17)', () => {
-    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(17);
+  it('C8PR-U-1 catalog row 16: PAYMENT_RECORD is billing, tenant-scoped, requested through platform:payment:request (PS-6); the closed set was 16 (CCP PLAN_CREATE, catalog row 17, makes it 17, India Billing BILLING_REGION_CHANGE, row 18, makes it 18)', () => {
+    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(18);
     expect(COMMERCIAL_ACTION_TYPES.indexOf('PAYMENT_RECORD')).toBe(15);
     expect(COMMERCIAL_ACTIONS.PAYMENT_RECORD).toEqual({ domain: 'billing', tenant_scoped: true, requester_scope: 'platform:payment:request', requester_role: null });
     // No other action reads the new scope (PS-1: it authorizes PAYMENT_RECORD only).

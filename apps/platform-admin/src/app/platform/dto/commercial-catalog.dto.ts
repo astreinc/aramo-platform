@@ -176,9 +176,9 @@ export interface CatalogVersionDetailDto {
   /** CCP Billing Products — the plan's billing products as this version sees them (ids, sync status, link). */
   billing_products: BillingProductViewDto[];
   /** BP-2 — the channels this plan may sell on. */
-  billing_eligible: ('STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY')[];
+  billing_eligible: ('STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY')[];
   /** BP-11 — the billing products a publish of this plan starts from (what the plan sells on today). */
-  billing_carry_forward: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
+  billing_carry_forward: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
 }
 
 // CCP Billing Products Directive v1.0 (LOCKED) §3.4 — the billing-product routes on this controller.
@@ -189,7 +189,7 @@ export class BillingPreviewDto {
     name: 'isBillingProductList',
     validator: { validate: (v: unknown) => Array.isArray(v) && billingProductsShapeErrors({ products: v }).length === 0, defaultMessage: () => 'products must be 0..6 billing products { provider, interval, product_id }' },
   })
-  products!: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
+  products!: { provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY'; interval: 'MONTH' | 'YEAR'; product_id: string }[];
 }
 
 /** POST plans/:planId/billing-assets/apple-review-screenshot — the image as base64 (BP-7). */
@@ -200,7 +200,7 @@ export class UploadReviewScreenshotDto {
 }
 
 export interface BillingProductViewDto {
-  provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+  provider: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY';
   interval: 'MONTH' | 'YEAR';
   product_id: string;
   origin: 'CREATED' | 'ADOPTED' | null;

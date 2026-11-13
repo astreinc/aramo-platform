@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { currentPublishedVersion, PlanVersionRepository, PlanVersionStateError } from '../../plan-version.repository.js';
 import { planVersionTerms } from '../../plan-version.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { isWebBillingProvider } from '../billing-provider.port.js';
 
 import {
   billingProductsRuleErrors,
@@ -259,8 +260,9 @@ export class BillingProductsService {
         } else if (permanent.product_id !== job.product_id) {
           throw new PlanVersionStateError(`${provider} ${interval} is permanently ${permanent.product_id}`);
         }
-        if (provider === 'STRIPE') {
-          await this.versions.pinProviderPrice({ plan_version_id: job.plan_version_id, provider: 'STRIPE', provider_price_ref: String(outcome.external_price_ref), created_by: 'ccp-billing-sync', at: this.clock() }, tx);
+        if (isWebBillingProvider(provider)) {
+          // India Billing §4.2 — a web provider (Stripe, Razorpay) pins its price, one per (version, provider).
+          await this.versions.pinProviderPrice({ plan_version_id: job.plan_version_id, provider, provider_price_ref: String(outcome.external_price_ref), created_by: 'ccp-billing-sync', at: this.clock() }, tx);
         } else {
           await this.versions.pinStoreProduct({ plan_version_id: job.plan_version_id, provider, product_id: job.product_id, interval, created_by: 'ccp-billing-sync', at: this.clock() }, tx);
         }

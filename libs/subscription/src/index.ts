@@ -1023,6 +1023,8 @@ export {
 // Aramo Sign Mobile M-A12 W1-G with Amendment A1 — in-app store billing (App Store, Google Play),
 // regional list prices (A1-3) and the store price reconciliation.
 export { STORE_BILLING_PROVIDERS, isStoreBillingProvider, type StoreBillingProviderKey } from './lib/billing/billing-provider.port.js';
+// India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.2 — the web billing providers (Stripe, Razorpay).
+export { WEB_BILLING_PROVIDERS, isWebBillingProvider, type WebBillingProviderKey } from './lib/billing/billing-provider.port.js';
 export {
   StoreBillingService,
   StoreBillingRefusedError,
@@ -1112,3 +1114,30 @@ export {
   type MismatchEntry,
 } from './lib/billing/sync/billing-products.service.js';
 export { REVIEW_SCREENSHOT_SIZES } from './lib/billing/sync/review-screenshot.js';
+
+// Aramo India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.1, §4.4, §5, §6 — the billing region
+// model (regions, selling entities, the fail-closed sell decision, the G-3 guard) and the country port.
+export {
+  BILLING_COUNTRY_PORT,
+  BILLING_GATEWAY_CONFIGURED,
+  BillingRegionChangeError,
+  BillingRegionIntegrityError,
+  BillingRegionService,
+  GSTIN_PATTERN,
+  PAN_PATTERN,
+  PRICE_TAX_MODES,
+  SELLING_ENTITY_REGISTRATION_KEYS,
+  billingRegionChangeErrors,
+  regionEnableRefusal,
+  registrationErrors,
+  type BillingCountryPort,
+  type BillingGatewayConfigured,
+  type BillingRegionChange,
+  type BillingRegionView,
+  type BillingSegment,
+  type PriceTaxMode,
+  type RegionEnableRefusal,
+  type RegionSellRefusal,
+  type SellingEntityRegistrationKey,
+  type SellingEntityView,
+} from './lib/billing/region/index.js';

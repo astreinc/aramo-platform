@@ -3982,7 +3982,7 @@ export interface components {
              * @description M-A12 W1-G item 5 — where the open self-service plan is billed (null without one).
              * @enum {string|null}
              */
-            managed_by?: "STRIPE" | "APP_STORE" | "GOOGLE_PLAY" | null;
+            managed_by?: "STRIPE" | "APP_STORE" | "GOOGLE_PLAY" | "RAZORPAY" | null;
             /** @description M-A12 A1-2 — the caller may buy a plan in the app now. */
             store_purchase_eligible?: boolean;
             /** @enum {string|null} */

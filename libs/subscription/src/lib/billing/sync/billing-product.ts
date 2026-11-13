@@ -3,10 +3,11 @@
 // channel eligibility (BP-2), the permanent-id rules (BP-3) and the carry-forward check (BP-11).
 // No I/O here; the change-request service and the sync engine call these.
 
-export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+// India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.2 — RAZORPAY (web, India) joins the set.
+export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY';
 export type BillingInterval = 'MONTH' | 'YEAR';
 
-export const BILLING_PROVIDERS: readonly BillingProvider[] = ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY'];
+export const BILLING_PROVIDERS: readonly BillingProvider[] = ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY', 'RAZORPAY'];
 
 /** The payload key a PLAN_VERSION_PUBLISH carries (closed shape, checksummed with the request). */
 export const BILLING_PRODUCTS_KEY = 'billing_products';
@@ -85,7 +86,7 @@ export function billingProductsShapeErrors(v: unknown): string[] {
       }
       const x = e as Record<string, unknown>;
       for (const k of Object.keys(x)) if (!['provider', 'interval', 'product_id'].includes(k)) errors.push(`${p}.${k} is not allowed`);
-      if (!(BILLING_PROVIDERS as readonly unknown[]).includes(x['provider'])) errors.push(`${p}.provider must be STRIPE, APP_STORE or GOOGLE_PLAY`);
+      if (!(BILLING_PROVIDERS as readonly unknown[]).includes(x['provider'])) errors.push(`${p}.provider must be STRIPE, APP_STORE, GOOGLE_PLAY or RAZORPAY`);
       if (x['interval'] !== 'MONTH' && x['interval'] !== 'YEAR') errors.push(`${p}.interval must be MONTH or YEAR`);
       if (x['provider'] === 'STRIPE' && x['interval'] !== 'MONTH') errors.push(`${p}: a Stripe product is MONTH`);
       const id = x['product_id'];
@@ -137,7 +138,8 @@ export interface BillingPlanFacts {
  */
 export function eligibleProviders(plan: BillingPlanFacts): readonly BillingProvider[] {
   if (plan.sales_model !== 'SELF_SERVICE') return [];
-  if (plan.tenant_kind === 'PERSONAL') return BILLING_PROVIDERS;
+  // Unchanged by WS-A (the RAZORPAY eligibility is the India Billing catalog workstream's): the three channels.
+  if (plan.tenant_kind === 'PERSONAL') return ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY'];
   if (plan.tenant_kind === 'BUSINESS') return ['STRIPE'];
   return [];
 }
