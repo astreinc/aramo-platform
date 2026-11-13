@@ -19,7 +19,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION, publishTestPlanV1 } from './fixtures/ccp-a5.js';
-import { M_A12_STORE_MIGRATION, SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION } from './fixtures/m-a12.js';
+import { INDIA_BILLING_ACCOUNT_KEY_FIXTURE, M_A12_STORE_MIGRATION, SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION } from './fixtures/m-a12.js';
 import { LEGAL_DOCUMENTS_BEFORE_TOS_V20 } from './support/legal-registry.js';
 
 // Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1 — on real Postgres 17:
@@ -38,7 +38,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION, M_A12_STORE_MIGRATION, SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION, M_A12_STORE_MIGRATION, SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION, INDIA_BILLING_ACCOUNT_KEY_FIXTURE);
 
 const KEY = 'sign.envelopes';
 const STORAGE = 'sign.storage_bytes';
