@@ -9,6 +9,7 @@ export const PROVIDER_LABEL: Record<BillingProvider, string> = {
   STRIPE: 'Web (Stripe)',
   APP_STORE: 'iPhone (App Store)',
   GOOGLE_PLAY: 'Android (Google Play)',
+  RAZORPAY: 'Web India (Razorpay)', // India Billing (CONTRACT: console labels)
 };
 
 export const BILLING_PRODUCTS_INTRO =

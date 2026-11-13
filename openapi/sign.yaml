@@ -8430,7 +8430,7 @@ components:
           type: boolean
         managed_by:
           type: [string, 'null']
-          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, RAZORPAY, null]
           description: M-A12 W1-G item 5 — where the open self-service plan is billed (null without one).
         store_purchase_eligible:
           type: boolean

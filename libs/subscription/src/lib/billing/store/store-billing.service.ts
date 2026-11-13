@@ -90,7 +90,7 @@ export interface StoreCaller {
 }
 
 export interface StoreAccountView {
-  managed_by: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | null;
+  managed_by: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY' | null; // + RAZORPAY (India Billing §4.2; WS-B computes it)
   store_purchase_eligible: boolean;
   store_purchase_block_reason: StorePurchaseBlockReason | null;
   manage_url: string | null;

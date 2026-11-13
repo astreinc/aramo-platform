@@ -765,8 +765,9 @@ export class SubscriptionLifecycleService {
       billing_email: profile.billing_email,
       address: profile.address,
     });
+    // India Billing Q9 — one account per (tenant, provider): the bound web provider's row only.
     await this.prisma.tenantBillingAccount.upsert({
-      where: { tenant_id },
+      where: { tenant_id_provider: { tenant_id, provider } },
       create: { tenant_id, provider, account_ref },
       update: { provider, account_ref },
     });
@@ -776,7 +777,7 @@ export class SubscriptionLifecycleService {
   /** The tenant's mapped provider billing account, else its latest subscription's (null: none yet). */
   private async existingBillingAccount(tenant_id: string, product_key: ProductKey): Promise<string | null> {
     const provider = this.billing.provider;
-    const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id } });
+    const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id_provider: { tenant_id, provider } } });
     if (mapped !== null && mapped.provider === provider) return mapped.account_ref;
     const prior = await this.prisma.tenantSubscription.findFirst({
       where: { tenant_id, product_key, billing_provider: provider, billing_account_ref: { not: null } },

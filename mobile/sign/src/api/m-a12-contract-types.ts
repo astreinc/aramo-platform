@@ -101,7 +101,7 @@ export interface BillingPlanStoreFields {
   readonly regional_price?: RegionalPrice | null;
 }
 
-export type ManagedBy = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+export type ManagedBy = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY';
 
 export type StorePurchaseBlockReason =
   | 'store_billing_disabled'
