@@ -1180,6 +1180,7 @@
       "NATIVE_INTEGRITY_CHECK",
       "NodeDnsAdapter",
       "NotConfiguredIdentityRetirement",
+      "ORGANIZATION_BILLING_REGIONS",
       "ORGANIZATION_COUNTRY_NOT_SUPPORTED",
       "ORGANIZATION_DETAILS_INVALID",
       "ORGANIZATION_PROFILE_INCOMPLETE",
@@ -1269,6 +1270,7 @@
       "TenantUserLifecycleService",
       "TestModeRobotCheck",
       "TurnstileRobotCheckAdapter",
+      "US_ONLY",
       "US_STATE_CODES",
       "UnconfiguredNativeIntegrityCheck",
       "assertSeatAvailableTx",
@@ -1323,6 +1325,7 @@
       "isTenantLastOwnerViolation",
       "isTenantStatus",
       "linkedProviderCount",
+      "lockedProfileIneligibility",
       "looksRandom",
       "mayResendPersonalOtp",
       "mmdbVersion",
@@ -1335,9 +1338,11 @@
       "normalizeE164",
       "normalizeEmail",
       "normalizeIdp",
+      "normalizeInPhone",
       "normalizePrivacyEmail",
       "normalizeSlug",
       "normalizeUsPhone",
+      "organizationProfileIneligibility",
       "parseServiceAccount",
       "personalPilotCap",
       "personalRiskConfig",
@@ -1361,6 +1366,7 @@
       "smsVerificationAdapterFromEnv",
       "unknownGeoEvidence",
       "usProfileIneligibility",
+      "validateOrganizationDetails",
       "validateUsOrganizationDetails"
     ],
     "@aramo/import": [
@@ -2647,6 +2653,9 @@
       "BILLING_COMMAND_TRANSITIONS",
       "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
+      "BILLING_COUNTRY_PORT",
+      "BILLING_GATEWAY_CONFIGURED",
+      "BILLING_GATEWAY_REGISTRY",
       "BILLING_MODES",
       "BILLING_PRICE_PROVIDER",
       "BILLING_PRODUCTS_KEY",
@@ -2657,6 +2666,7 @@
       "BILLING_PROVIDER_READ_PORT",
       "BILLING_PROVIDER_SEAT_PORT",
       "BILLING_READ_SCOPE",
+      "BILLING_REGION_APPLY_FAILURE_CODES",
       "BILLING_STATUS_AVAILABILITY",
       "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
       "BILLING_STATUS_MAX_INVOICE_LIMIT",
@@ -2671,10 +2681,14 @@
       "BillingCommandError",
       "BillingCommandService",
       "BillingFinanceReportService",
+      "BillingNotSellableError",
       "BillingProductsError",
       "BillingProductsService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingRegionChangeError",
+      "BillingRegionIntegrityError",
+      "BillingRegionService",
       "BillingRevenueReportService",
       "BillingStatusQueryError",
       "BillingStatusReadService",
@@ -2717,6 +2731,7 @@
       "COMMERCIAL_AUDIT_EXPORT_MAX_ROWS",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
       "COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS",
+      "COMMERCIAL_BILLING_REGION_APPLY_FAULT_HOOK",
       "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
       "COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS",
       "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
@@ -2761,6 +2776,8 @@
       "CommercialAuditRepository",
       "CommercialBillingAdjustmentLedger",
       "CommercialBillingAdjustmentService",
+      "CommercialBillingRegionApplyService",
+      "CommercialBillingRegionReadService",
       "CommercialCatalogApplyService",
       "CommercialCatalogError",
       "CommercialCatalogPlanView",
@@ -2803,6 +2820,7 @@
       "FreePersonalSubscriptionService",
       "GOOGLE_PLAY_PORT",
       "GOVERNED_SUBSCRIPTION_OPEN",
+      "GSTIN_PATTERN",
       "GooglePlayAdapter",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
       "INITIAL_OBLIGATION_REF",
@@ -2834,6 +2852,7 @@
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "OUTSTANDING_STATUSES",
       "OVERVIEW_PRODUCT_KEYS",
+      "PAN_PATTERN",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PAYMENT_CORRECTIONS",
       "PAYMENT_DUE_STATES",
@@ -2875,6 +2894,7 @@
       "POLICY_TARGET_CHECKSUM_KEY",
       "PORTAL_CONFIGURATION_STATES",
       "PRICE_CHANGE_UNDEFINED_DETAIL",
+      "PRICE_TAX_MODES",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PROVIDER_TEXT_KEYS",
@@ -2886,6 +2906,11 @@
       "PlatformOwnerBootstrapRefusedError",
       "PolicyActivationRefusedError",
       "ProductContextError",
+      "RAZORPAY_COUNTRY",
+      "RAZORPAY_CURRENCY",
+      "RAZORPAY_DEFAULT_API_BASE",
+      "RAZORPAY_STATUS_MAP",
+      "RAZORPAY_SUBSCRIPTION_TOTAL_COUNT",
       "REFUND_CATEGORIES",
       "REFUND_DISPATCH_REFUSED_EVENT",
       "REFUND_EXECUTION_FLAG",
@@ -2909,6 +2934,8 @@
       "REVENUE_PIPELINE_DEFAULT_MONTHS",
       "REVENUE_PIPELINE_MAX_MONTHS",
       "REVIEW_SCREENSHOT_SIZES",
+      "RazorpayBillingProvider",
+      "RazorpayCatalogWriter",
       "RefundRemainderGate",
       "RefundRemainderRefusedError",
       "RefundReportQueryError",
@@ -2920,6 +2947,7 @@
       "SELF_SERVICE_CANCEL_STEP",
       "SELF_SERVICE_PRODUCTS",
       "SELF_SERVICE_PRODUCT_REGISTRY",
+      "SELLING_ENTITY_REGISTRATION_KEYS",
       "SIGN_PRODUCT_KEY",
       "SIGN_USAGE_BILLING_FLAG",
       "STORAGE_CAPACITY_KEY",
@@ -2938,6 +2966,7 @@
       "SelfServiceBillingService",
       "SelfServiceRefusedError",
       "SignTemplateEntitlementService",
+      "StaticBillingGatewayRegistry",
       "StaticUpcomingLegalChangeSource",
       "StoreBillingRefusedError",
       "StoreBillingService",
@@ -2970,10 +2999,12 @@
       "USAGE_REPORT_LEASE_MS",
       "USAGE_REPORT_MAX_ATTEMPTS",
       "USAGE_ROLLUP_LOCK_KEY",
+      "UnboundBillingGatewayError",
       "UsagePeriodReconciliationService",
       "UsageProviderReportService",
       "UsageReconciliationError",
       "UsageRollupService",
+      "WEB_BILLING_PROVIDERS",
       "accountingPeriodOf",
       "activatePolicyVersionInTx",
       "actorSatisfiesStep",
@@ -2998,6 +3029,8 @@
       "billingLockKey",
       "billingPeriodAt",
       "billingProductsShapeErrors",
+      "billingRegionChangeErrors",
+      "billingSegmentOf",
       "billingSettingsUrl",
       "boundedExceptionChain",
       "buildAuditCsv",
@@ -3064,6 +3097,7 @@
       "isApplyServiceAction",
       "isApprovalExpired",
       "isBillingAdjustmentAction",
+      "isBillingRegionApplicable",
       "isCalendarDate",
       "isCatalogApplicable",
       "isContractPriced",
@@ -3076,6 +3110,8 @@
       "isPlatformLastOwnerViolation",
       "isProductKey",
       "isStoreBillingProvider",
+      "isWebBillingProvider",
+      "isWebProvider",
       "isWithinPastDueGrace",
       "legalChangeAudience",
       "legalEffectiveFrom",
@@ -3122,6 +3158,11 @@
       "productOfMeteredUnit",
       "projectApprovalNotes",
       "projectChangeRequestFinance",
+      "razorpayApiBase",
+      "razorpayCredentials",
+      "razorpayProviderStatus",
+      "razorpaySubscriptionState",
+      "razorpayTargetPrice",
       "readPlatformSubject",
       "reconcileStorePrices",
       "reconcileUsageLines",
@@ -3132,7 +3173,9 @@
       "refundReportState",
       "refundReservations",
       "refundableRemainder",
+      "regionEnableRefusal",
       "regionalPricesOf",
+      "registrationErrors",
       "renderLegalChangeNotice",
       "renderRenewalNotice",
       "renewalNoticeLeadDays",
@@ -3178,6 +3221,7 @@
       "validatePayload",
       "validateRecordInput",
       "validateUsageInput",
+      "verifyRazorpaySignature",
       "verifyStripeSignature",
       "withPriceUnit",
       "withRegionalPrices",
@@ -4449,6 +4493,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/india-billing-regions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/m-a7-privacy-requests-operator.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4552,6 +4602,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/india-billing-routing.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -5325,6 +5381,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/india-billing-regions-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -7990,6 +8052,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/india-billing-regions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -9072,6 +9140,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/india-billing-d-migrations.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -11060,6 +11134,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/billing-regions/BillingRegionsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/commercial/catalog/CatalogView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -11818,6 +11898,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/india-billing-regions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11917,6 +12003,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/india-billing-razorpay-webhook.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/india-billing-routing.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -14464,6 +14562,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/india-billing-regions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -14544,6 +14648,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/fixtures/tos-v20-acceptance.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/india-billing-razorpay-webhook.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/india-billing-routing.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

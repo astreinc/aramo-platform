@@ -11237,6 +11237,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-regions.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts"
     },
     {
@@ -20980,6 +20985,36 @@
     },
     {
       "from": "doc/platform-console/platform-console-architecture-inventory.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/programs/india-billing/CONTRACT.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261113100000_india_billing_regions/migration.sql"
+    },
+    {
+      "from": "doc/programs/india-billing/CONTRACT.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider.port.ts"
+    },
+    {
+      "from": "doc/programs/india-billing/CONTRACT.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/gateway-registry.ts"
+    },
+    {
+      "from": "doc/programs/india-billing/CONTRACT.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/region/billing-country.port.ts"
+    },
+    {
+      "from": "doc/programs/india-billing/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/programs/india-billing/DIRECTIVE-LOCKED.md",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
@@ -31082,6 +31117,11 @@
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/razorpay-wire.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
     },
     {
@@ -31093,6 +31133,11 @@
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/razorpay-wire.spec.ts"
     },
     {
       "from": "eslint.config.mjs",
@@ -31807,6 +31852,11 @@
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
@@ -32732,6 +32782,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -32837,6 +32893,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -34965,6 +35027,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/razorpay-billing.provider.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
       "to": "libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts"
     },
     {
@@ -34972,6 +35040,12 @@
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/sync/razorpay-catalog.writer.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -36065,6 +36139,11 @@
       "from": "pact/consumers/intelligence-integration-consumer/vitest.config.ts",
       "status": "unscoped",
       "to": "libs/intelligence-integration/src/client.ts"
+    },
+    {
+      "from": "pact/consumers/platform-web-consumer/src/platform-commercial-billing-regions.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/billing-regions/billing-regions-api.ts"
     },
     {
       "from": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts",
@@ -38072,6 +38151,11 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/razorpay-wire.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
     },
     {
@@ -38083,6 +38167,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/razorpay-wire.spec.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
