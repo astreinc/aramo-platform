@@ -20,6 +20,7 @@ import type {
 } from '../../api/m-a12-contract-types';
 import type { components } from '../../api/generated/sign';
 import type { PlansEntry } from '../../navigation/types';
+import { PRODUCTION_API_BASE_URL } from '../../config/env';
 
 export type Plan = components['schemas']['BillingPlan'] & BillingPlanStoreFields;
 export type Account = components['schemas']['BillingAccount'] & BillingAccountStoreFields;
@@ -29,6 +30,17 @@ export const MANAGE_ON_WEB = 'Manage your plan at sign.aramo.ai';
 // CCP Billing Products Directive v1.0 (LOCKED) BP-2b — a Business organization's plan is managed only by its
 // admin on the web; the app never sells or changes it and never points a Business user elsewhere to buy.
 export const ORG_PLAN_COPY = 'Your organization’s plan is managed by your admin.';
+
+// PO ruling 2026-11-13 (supersedes BP-2b for a Business ADMIN only): Business plans are priced per
+// user, which the App Store and Google Play cannot sell, so the app tells the admin to finish users,
+// roles and access and choose the plan on the web, and links there. A Business member who is not an
+// admin still sees ORG_PLAN_COPY only, with no link.
+export const BUSINESS_WEB_COPY =
+  'Business plans are priced per user. Add your users, set their roles and access, and choose your plan on the web at sign.aramo.ai.';
+export const BUSINESS_PLAN_URL = `${PRODUCTION_API_BASE_URL}/sign/settings/billing`;
+export const BUSINESS_MEMBERS_URL = `${PRODUCTION_API_BASE_URL}/sign/settings/members`;
+export const BUSINESS_PLAN_LABEL = 'Choose a plan on the web';
+export const BUSINESS_MEMBERS_LABEL = 'Users, roles and access';
 
 export const PLANS_COPY = {
   askAdmin: ORG_PLAN_COPY,
@@ -82,6 +94,27 @@ export function blockCopy(reason: StorePurchaseBlockReason | string | null | und
 /** BP-2b — a Business organization's account (per-seat billing), as the billing account reports it. */
 export function isOrganizationAccount(account: Account | null | undefined): boolean {
   return account?.price_unit === 'SEAT' || (account?.seats !== null && account?.seats !== undefined);
+}
+
+/** A Business organization's account (the tenant kind, or per-seat billing). */
+export function isBusinessAccount(account: Account | null | undefined): boolean {
+  return account?.tenant_kind === 'BUSINESS' || isOrganizationAccount(account);
+}
+
+export interface BusinessWebLinks {
+  readonly message: string;
+  readonly plan: { readonly label: string; readonly url: string };
+  readonly members: { readonly label: string; readonly url: string };
+}
+
+/** PO 2026-11-13 — the web note and links for a Business admin; null for everyone else. */
+export function businessWebLinks(account: Account | null | undefined): BusinessWebLinks | null {
+  if (!isBusinessAccount(account) || account?.can_manage_billing !== true) return null;
+  return {
+    message: BUSINESS_WEB_COPY,
+    plan: { label: BUSINESS_PLAN_LABEL, url: BUSINESS_PLAN_URL },
+    members: { label: BUSINESS_MEMBERS_LABEL, url: BUSINESS_MEMBERS_URL },
+  };
 }
 
 /** Plans the app can show: active, self-service or free (never contact-sales or operator). */
@@ -224,6 +257,10 @@ export function planAction(input: {
   const { plan, account } = input;
   if (isCurrent(plan, account)) return { kind: 'current', message: null };
   if (plan.sales_model === 'FREE') return { kind: 'none', message: null };
+  // PO 2026-11-13 — the app never sells a Business plan: the admin gets the web note and links
+  // (businessWebLinks, shown under the card); any other member is told the admin manages it.
+  if (isBusinessAccount(account))
+    return account?.can_manage_billing === true ? { kind: 'none', message: null } : { kind: 'blocked', message: ORG_PLAN_COPY };
   if (!input.storeOn) return { kind: 'blocked', message: MANAGE_ON_WEB };
   const reason = account?.store_purchase_block_reason ?? null;
   if (reason) return { kind: 'blocked', message: blockCopy(reason, account) };

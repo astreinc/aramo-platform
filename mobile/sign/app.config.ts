@@ -34,7 +34,7 @@ const config: ExpoConfig = {
   name: 'Aramo Sign',
   slug: 'aramo-sign',
   scheme: 'aramosign',
-  version: '1.0.0',
+  version: '1.0.1',
   orientation: 'portrait',
   // The aramo mark on the Sign accent; regenerate with scripts/draw-app-icon.swift.
   icon: './assets/icon.png',

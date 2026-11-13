@@ -3,10 +3,14 @@
 // fallback (no price, no link) while store billing is off.
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { MANAGE_ON_WEB, PLANS_COPY, STORE_NOTE } from '../../../features/plans/plansModel';
+import { BUSINESS_MEMBERS_URL, BUSINESS_PLAN_URL, BUSINESS_WEB_COPY, MANAGE_ON_WEB, ORG_PLAN_COPY, PLANS_COPY, STORE_NOTE } from '../../../features/plans/plansModel';
 import { account, plan } from '../../../features/plans/__tests__/plansFixtures';
 import type { StoreProductInfo } from '../../../features/plans/storePort';
 import { PlansView } from '../PlansScreen';
+
+jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const webBrowser = require('expo-web-browser') as { openBrowserAsync: jest.Mock };
 
 const STORE_PRICES: Record<string, StoreProductInfo> = {
   'std.year.ios': { productId: 'std.year.ios', displayPrice: '₹7,999.00', currency: 'INR', offerToken: null },
@@ -87,5 +91,35 @@ describe('PlansView', () => {
   it('the current plan is marked', () => {
     render(<PlansView {...props({ account: account({ subscription: { plan_key: 'standard', plan_name: 'Standard', source: 'SELF_SERVICE', ended_at: null } as never }) })} />);
     expect(screen.getByTestId('plan-current')).toBeTruthy();
+  });
+
+  // PO 2026-11-13 — Business plans are per user: the admin finishes users, roles and access and
+  // chooses the plan on the web; the app shows no price, no buy and no store note for Business.
+  const businessPlans = [
+    plan('business', { name: 'Business', tenant_kind: 'BUSINESS', store_products: [] }),
+    plan('professional', { name: 'Professional', tenant_kind: 'BUSINESS', store_products: [] }),
+  ];
+
+  it('a Business admin sees the per-user note and links to the web plan and users pages', () => {
+    webBrowser.openBrowserAsync.mockClear();
+    render(<PlansView {...props({ plans: businessPlans, account: account({ tenant_kind: 'BUSINESS', can_manage_billing: true }) })} />);
+    expect(screen.getByTestId('plans-business-message').props.children).toBe(BUSINESS_WEB_COPY);
+    expect(screen.queryByTestId('plan-continue')).toBeNull();
+    expect(screen.queryByTestId('plan-price')).toBeNull();
+    expect(screen.queryByTestId('plan-blocked')).toBeNull();
+    expect(screen.queryByText(PLANS_COPY.priceUnavailable)).toBeNull();
+    expect(screen.queryByTestId('store-note')).toBeNull();
+    expect(screen.queryByTestId('plans-restore')).toBeNull();
+    fireEvent.press(screen.getByTestId('plans-business-plan'));
+    expect(webBrowser.openBrowserAsync).toHaveBeenCalledWith(BUSINESS_PLAN_URL);
+    fireEvent.press(screen.getByTestId('plans-business-members'));
+    expect(webBrowser.openBrowserAsync).toHaveBeenCalledWith(BUSINESS_MEMBERS_URL);
+  });
+
+  it('a Business member who is not an admin is told the admin manages it, with no link', () => {
+    render(<PlansView {...props({ plans: businessPlans, account: account({ tenant_kind: 'BUSINESS', can_manage_billing: false }) })} />);
+    expect(screen.getByTestId('plan-blocked').props.children).toBe(ORG_PLAN_COPY);
+    expect(screen.queryByTestId('plans-business-web')).toBeNull();
+    expect(screen.queryByTestId('plans-restore')).toBeNull();
   });
 });

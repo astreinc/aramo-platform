@@ -21,10 +21,12 @@ import { allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import { signKeys, useBillingAccount, useOnline } from '../../features/inbox/queries';
 import { Segments } from '../../features/inbox/ui';
 import {
+  businessWebLinks,
   featureLines,
   initialPlanKey,
   intervalLabel,
   intervals,
+  isBusinessAccount,
   isCurrent,
   perInterval,
   planAction,
@@ -183,6 +185,9 @@ export function PlansView({
     : { kind: 'none' as const, message: null };
   const limit = limitBanner(allowanceModel(account));
   const personal = account?.tenant_kind === 'PERSONAL';
+  // PO 2026-11-13 — a Business admin finishes users, roles and access and chooses the plan on the web.
+  const businessWeb = businessWebLinks(account);
+  const business = isBusinessAccount(account);
   const storeManaged =
     (platform === 'ios' && account?.managed_by === 'APP_STORE') ||
     (platform === 'android' && account?.managed_by === 'GOOGLE_PLAY');
@@ -264,7 +269,29 @@ export function PlansView({
           </Text>
         ) : null}
       </Card>
-      {storeOn && platform ? (
+      {businessWeb ? (
+        <View testID="plans-business-web">
+        <Card style={styles.card}>
+          <Text testID="plans-business-message" style={[text, { fontSize: 15, lineHeight: 21 }]}>
+            {businessWeb.message}
+          </Text>
+          <Button
+            testID="plans-business-plan"
+            title={businessWeb.plan.label}
+            disabled={!online}
+            onPress={() => open(businessWeb.plan.url)}
+          />
+          <Button
+            testID="plans-business-members"
+            title={businessWeb.members.label}
+            variant="text"
+            disabled={!online}
+            onPress={() => open(businessWeb.members.url)}
+          />
+        </Card>
+        </View>
+      ) : null}
+      {storeOn && platform && !business ? (
         <>
           <Text testID="store-note" style={[secondary, { fontSize: 13, lineHeight: 18 }]}>
             {STORE_NOTE[platform]}
