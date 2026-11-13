@@ -22,7 +22,9 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository, PersonalSignupRepository } from '@aramo/identity';
 import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/sign';
 import {
+  BILLING_GATEWAY_REGISTRY,
   BILLING_PROVIDER_PORT,
+  type BillingGatewayRegistry,
   BillingWebhookInboxService,
   type BillingProviderPort,
   BillingProviderUnavailableError,
@@ -339,6 +341,9 @@ export class EsignBillingController {
     @Optional() private readonly store?: StoreBillingService,
     // Sign Business per-seat pricing — seats (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly seats?: SeatBillingService,
+    // India Billing (directive v1.0 §4.3, §4.7) — the web gateways by key (SubscriptionModule provides
+    // it; unbound only in unit specs, where the Razorpay webhook is then 404).
+    @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
   ) {}
 
   /** O-3 — whether the caller is the organization owner or an admin (their live role keys in this tenant). */
@@ -843,6 +848,51 @@ export class EsignBillingController {
         return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
       } catch (e) {
         logWebhookFailed(this.log, 'stripe_billing', e);
+        throw e;
+      }
+    });
+    if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
+      const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
+      this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);
+    }
+    return { received: true, outcome: result.outcome };
+  }
+
+  /**
+   * India Billing (directive v1.0 §4.7, G-4) — the Razorpay webhook: NO session; authenticity is the
+   * X-Razorpay-Signature header (hex HMAC-SHA256 over the raw body). Dark (404, no such endpoint) unless
+   * SIGN_RAZORPAY_BILLING_ENABLED is exactly '1' and the registry is bound. Not authentic → 401. Each
+   * event is recorded in the billing webhook inbox and processed at most once; the subscription state
+   * is re-fetched from Razorpay before it is applied. A processing failure → 5xx (Razorpay redelivers).
+   */
+  @Post('webhook/razorpay')
+  @HttpCode(HttpStatus.OK)
+  async razorpayWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-razorpay-signature') signature: string | undefined,
+    @Headers('x-razorpay-event-id') eventId: string | undefined,
+    @RequestId() requestId: string,
+  ): Promise<{ received: true; outcome: WebhookResult['outcome'] }> {
+    if (process.env['SIGN_RAZORPAY_BILLING_ENABLED'] !== '1' || this.gateways === undefined) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
+    const gateway = this.gateways.billing('RAZORPAY');
+    const raw = req.rawBody;
+    let evt;
+    try {
+      if (raw === undefined) throw new BillingWebhookSignatureError('MISSING');
+      evt = gateway.verifyWebhook(raw, signature, Math.floor(Date.now() / 1000), { event_id: eventId });
+    } catch (e) {
+      if (e instanceof BillingWebhookSignatureError) {
+        logWebhookRejected(this.log, 'razorpay_billing', e.reason);
+        throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.reason } });
+      }
+      throw billingHttpError(e, requestId);
+    }
+    // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
+    const result = await this.run(requestId, async () => {
+      try {
+        return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
+      } catch (e) {
+        logWebhookFailed(this.log, 'razorpay_billing', e);
         throw e;
       }
     });

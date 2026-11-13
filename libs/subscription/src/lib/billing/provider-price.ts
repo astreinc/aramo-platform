@@ -3,6 +3,8 @@ import { currentPublishedVersion } from '../plan-version.repository.js';
 import { priceUnitOf, type PlanPriceUnit, type PlanVersionContent } from '../plan-version.js';
 import type { ProductKey } from '../product-registry.js';
 
+import type { WebBillingProviderKey } from './billing-provider.port.js';
+
 // CCP-A5 (MP-A2 N-17; Charter D3 "moved into PlanVersion data, with an env-parity check during
 // cutover") — the provider price is pinned to the plan version (subscription."PlanVersionPrice")
 // and replaces STRIPE_PLAN_PRICES as the authority. During cutover the env stays a FALLBACK:
@@ -23,6 +25,11 @@ type Db = Tx | PrismaService;
 export const BILLING_PRICE_PROVIDER = 'STRIPE' as const;
 export type BillingPriceProvider = typeof BILLING_PRICE_PROVIDER;
 
+// India Billing Regions + Razorpay (directive v1.0 §4.3) — the checkout price and the webhook price
+// resolution take the web gateway (default STRIPE = BILLING_PRICE_PROVIDER, so every existing call is
+// unchanged). STRIPE_PLAN_PRICES is a Stripe cutover map: it never applies to another gateway (a
+// Razorpay price is its version pin only, the Razorpay plan id in provider_price_ref).
+
 /** STRIPE_PLAN_PRICES = "plan-key=price_x,other-key=price_y" (operator config; cutover fallback). */
 export function parsePlanPrices(raw: string | undefined): Map<string, string> {
   const m = new Map<string, string>();
@@ -41,11 +48,18 @@ export type EffectivePrice =
   | { readonly ok: false; readonly reason: 'NO_PRICE' | 'PARITY_MISMATCH' };
 
 /** The checkout price of a plan's CURRENT (PUBLISHED) version under the cutover rule. */
-export async function effectiveProviderPrice(db: Db, version_id: string, plan_key: string, env: ReadonlyMap<string, string>, price_unit: PlanPriceUnit = 'ACCOUNT'): Promise<EffectivePrice> {
-  const pin = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: version_id, provider: BILLING_PRICE_PROVIDER } } });
+export async function effectiveProviderPrice(
+  db: Db,
+  version_id: string,
+  plan_key: string,
+  env: ReadonlyMap<string, string>,
+  price_unit: PlanPriceUnit = 'ACCOUNT',
+  provider: WebBillingProviderKey = BILLING_PRICE_PROVIDER,
+): Promise<EffectivePrice> {
+  const pin = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: version_id, provider } } });
   // Per-seat Implementation A1-5 — a per-seat version sells only on its pinned price: the env map
   // carries per-account prices, which would bill the old price once per seat.
-  const envRef = price_unit === 'SEAT' ? undefined : env.get(plan_key);
+  const envRef = price_unit === 'SEAT' || provider !== BILLING_PRICE_PROVIDER ? undefined : env.get(plan_key);
   if (pin !== null) {
     if (envRef !== undefined && envRef !== pin.provider_price_ref) return { ok: false, reason: 'PARITY_MISMATCH' };
     return { ok: true, ref: pin.provider_price_ref, source: 'PIN' };
@@ -102,9 +116,15 @@ export async function storeProductsOfVersion(db: Db, plan_version_id: string): P
 }
 
 /** A provider price → a version of a sellable plan of the SAME product, else null (planForPrice). */
-export async function resolvePriceToVersion(db: Db, price_ref: string, product_key: ProductKey, env: ReadonlyMap<string, string>): Promise<PriceResolution | null> {
+export async function resolvePriceToVersion(
+  db: Db,
+  price_ref: string,
+  product_key: ProductKey,
+  env: ReadonlyMap<string, string>,
+  provider: WebBillingProviderKey = BILLING_PRICE_PROVIDER,
+): Promise<PriceResolution | null> {
   const pin = await db.planVersionPrice.findUnique({
-    where: { provider_provider_price_ref: { provider: BILLING_PRICE_PROVIDER, provider_price_ref: price_ref } },
+    where: { provider_provider_price_ref: { provider, provider_price_ref: price_ref } },
     include: { plan_version: { include: { plan: true } } },
   });
   if (pin !== null) {
@@ -113,6 +133,8 @@ export async function resolvePriceToVersion(db: Db, price_ref: string, product_k
     if (v.status === 'DRAFT' || !v.plan.sellable || v.plan.product_key !== product_key) return null;
     return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'PIN' };
   }
+  // The env fallback is Stripe's cutover map only.
+  if (provider !== BILLING_PRICE_PROVIDER) return null;
   for (const [key, price] of env) {
     if (price !== price_ref) continue;
     const plan = await db.plan.findUnique({ where: { key } });

@@ -146,7 +146,9 @@ export interface BillingProviderPort {
   // plans use one whose cancellation terms match the approved contract).
   createPortalSession(account_ref: string, return_url: string, configuration?: string): Promise<{ url: string }>;
   retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;
-  verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent;
+  // India Billing (§4.7) — `context.event_id`: the provider's delivery event id when it is sent as a
+  // header (Razorpay); a provider whose payload carries its id ignores it (Stripe).
+  verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number, context?: { event_id?: string | undefined }): VerifiedBillingEvent;
 }
 
 // ---------------------------------------------------------------------------------------

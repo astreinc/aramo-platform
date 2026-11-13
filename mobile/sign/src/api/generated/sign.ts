@@ -2553,6 +2553,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/billing/webhook/razorpay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Razorpay webhook receiver (India Billing).
+         * @description No session. Authenticity is the X-Razorpay-Signature header (hex HMAC-SHA256 over the raw body). Each event is recorded in the billing webhook inbox and processed at most once (keyed by X-Razorpay-Event-Id); the subscription state is re-fetched from Razorpay before it is applied. A processing failure returns 5xx so Razorpay redelivers. 404 while Razorpay billing is off (SIGN_RAZORPAY_BILLING_ENABLED not 1).
+         */
+        post: operations["receiveRazorpayBillingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/billing/webhook/stripe": {
         parameters: {
             query?: never;
@@ -10043,6 +10063,56 @@ export interface operations {
                 };
             };
             /** @description Store billing is off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    receiveRazorpayBillingWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Razorpay-Signature": string;
+                "X-Razorpay-Event-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        outcome: "APPLIED" | "IGNORED" | "DUPLICATE";
+                    };
+                };
+            };
+            /** @description The signature is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Razorpay billing is off. */
             404: {
                 headers: {
                     [name: string]: unknown;

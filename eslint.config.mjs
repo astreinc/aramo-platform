@@ -548,6 +548,12 @@ export default [
       // scripts/verify-vocabulary.sh.
       'libs/subscription/src/lib/billing/sync/apple-asc-wire.ts',
       'libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts',
+      // India Billing Regions + Razorpay Directive v1.0 (LOCKED) — PO ruling 2026-11-13 (India Billing
+      // directive §3 Q4): the same vendor-integration exception for the Razorpay wire file + its
+      // boundary spec (Razorpay's account-object field, notify field and account path → Aramo's
+      // `account_ref` only). Paired in lockstep with scripts/verify-vocabulary.sh.
+      'libs/subscription/src/lib/billing/razorpay-wire.ts',
+      'libs/subscription/src/tests/razorpay-wire.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

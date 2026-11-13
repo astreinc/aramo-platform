@@ -5249,6 +5249,59 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/webhook/razorpay:
+    post:
+      operationId: receiveRazorpayBillingWebhook
+      summary: Razorpay webhook receiver (India Billing).
+      description: >
+        No session. Authenticity is the X-Razorpay-Signature header (hex HMAC-SHA256 over the raw body). Each event is recorded in the billing webhook inbox and processed at most once (keyed by X-Razorpay-Event-Id); the subscription state is re-fetched from Razorpay before it is applied. A processing failure returns 5xx so Razorpay redelivers. 404 while Razorpay billing is off (SIGN_RAZORPAY_BILLING_ENABLED not 1).
+      tags: [billing]
+      security: []
+      parameters:
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Razorpay-Event-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE]
+        '401':
+          description: The signature is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Razorpay billing is off.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
   /v1/sign/billing/webhook/stripe:
     post:
       operationId: receiveStripeBillingWebhook

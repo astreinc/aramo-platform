@@ -187,6 +187,9 @@ describe('M-A12 — storePurchaseBlock (A1-2, W1-G item 5): who may buy in the a
     expect(storePurchaseBlock({ ...base, active_members: 2 })).toBe('store_purchase_seats_unsupported');
     expect(storePurchaseBlock({ ...base, active_members: null })).toBe('store_purchase_seats_unsupported');
   });
+  it('India Billing §4.8: an open Razorpay (web) subscription is managed elsewhere, like Stripe', () => {
+    expect(storePurchaseBlock({ ...base, open: { source: 'SELF_SERVICE', billing_provider: 'RAZORPAY' } })).toBe('billing_managed_elsewhere');
+  });
   it('an open FREE, DEVELOPMENT or store subscription does not block (upgrade / change in the store)', () => {
     expect(storePurchaseBlock({ ...base, open: { source: 'FREE', billing_provider: null } })).toBeNull();
     expect(storePurchaseBlock({ ...base, open: { source: 'DEVELOPMENT', billing_provider: null } })).toBeNull();
@@ -224,6 +227,14 @@ describe('M-A12 — StoreBillingService', () => {
       expect(await refusal(h.svc.createIntent(business, 'sign', { platform: 'ios', product_id: 'ai.aramo.sign.business.monthly' }))).toBe('409 billing_managed_elsewhere');
       h.db.subs = [{ id: 'm', tenant_id: T1, source: 'MANUAL', billing_provider: null, billing_subscription_ref: null, ended_at: null }];
       expect(await refusal(h.svc.createIntent(business, 'sign', { platform: 'android', product_id: 'ai.aramo.sign.business.annual' }))).toBe('409 billing_managed_elsewhere');
+    });
+
+    it('India Billing §4.8: an open Razorpay subscription → 409 billing_managed_elsewhere (intent and verify)', async () => {
+      const h = setup();
+      h.db.subs.push({ id: 'r', tenant_id: T1, source: 'SELF_SERVICE', billing_provider: 'RAZORPAY', billing_subscription_ref: 'sub_rzp_1', ended_at: null });
+      expect(await refusal(h.svc.createIntent(business, 'sign', { platform: 'ios', product_id: 'ai.aramo.sign.business.monthly' }))).toBe('409 billing_managed_elsewhere');
+      expect(await refusal(h.svc.verify(business, 'sign', { platform: 'ios', product_id: 'ai.aramo.sign.business.monthly', intent_id: '019a1200-0000-7000-8000-0000000000ff', signed_transaction: 'jws-good' }))).toBe('409 billing_managed_elsewhere');
+      expect(h.db.intents).toHaveLength(0);
     });
 
     it('A5: a PERSONAL tenant buys a Personal product only, a BUSINESS tenant never a Personal one; unknown products are refused', async () => {
@@ -360,6 +371,9 @@ describe('M-A12 — StoreBillingService', () => {
       expect(await h.svc.accountView(business, 'sign', 'w')).toMatchObject({ managed_by: 'GOOGLE_PLAY', manage_url: 'https://play.google.com/store/account/subscriptions?package=ai.aramo.sign&sku=ai.aramo.sign.business.annual' });
       h.db.subs = [{ id: 's', tenant_id: T1, source: 'SELF_SERVICE', billing_provider: 'STRIPE', billing_subscription_ref: 'sub', ended_at: null }];
       expect(await h.svc.accountView(business, 'sign', 'https://sign.aramo.ai/sign/settings/billing')).toEqual({ managed_by: 'STRIPE', store_purchase_eligible: false, store_purchase_block_reason: 'billing_managed_elsewhere', manage_url: 'https://sign.aramo.ai/sign/settings/billing' });
+      // India Billing §4.8 — a Razorpay plan is managed on the web (Aramo's manage page), like Stripe.
+      h.db.subs = [{ id: 'r', tenant_id: T1, source: 'SELF_SERVICE', billing_provider: 'RAZORPAY', billing_subscription_ref: 'sub_rzp', ended_at: null }];
+      expect(await h.svc.accountView(business, 'sign', 'https://sign.aramo.ai/sign/settings/billing')).toEqual({ managed_by: 'RAZORPAY', store_purchase_eligible: false, store_purchase_block_reason: 'billing_managed_elsewhere', manage_url: 'https://sign.aramo.ai/sign/settings/billing' });
     });
 
     it('plans: the store products of each published version and the regional prices of a country (A1-3); none while dark', async () => {

@@ -263,6 +263,11 @@
     },
     {
       "method": "POST",
+      "path": "/v1/sign/billing/webhook/razorpay",
+      "class": "XP"
+    },
+    {
+      "method": "POST",
       "path": "/v1/sign/me/apple/revoke/callback",
       "class": "XP"
     },

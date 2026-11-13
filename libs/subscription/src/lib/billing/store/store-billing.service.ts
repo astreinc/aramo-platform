@@ -4,7 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { planVersionTerms, regionalPricesOf } from '../../plan-version.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { assertProductKey, openBaseSubscription, type ProductKey } from '../../product-registry.js';
-import { type ProviderSubscriptionState, type StoreBillingProviderKey, type VerifiedBillingEvent, isStoreBillingProvider } from '../billing-provider.port.js';
+import { type ProviderSubscriptionState, type StoreBillingProviderKey, type VerifiedBillingEvent, isStoreBillingProvider, isWebBillingProvider } from '../billing-provider.port.js';
 import { BillingWebhookInboxService } from '../billing-webhook-inbox.service.js';
 import { isGovernedSubscription, takeBillingLock } from '../governed-subscription.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfilePort } from '../organization-billing-profile.port.js';
@@ -90,7 +90,8 @@ export interface StoreCaller {
 }
 
 export interface StoreAccountView {
-  managed_by: 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY' | null; // + RAZORPAY (India Billing §4.2; WS-B computes it)
+  // India Billing §4.8 — RAZORPAY is a web gateway, managed on the web like STRIPE.
+  managed_by: 'STRIPE' | 'RAZORPAY' | 'APP_STORE' | 'GOOGLE_PLAY' | null;
   store_purchase_eligible: boolean;
   store_purchase_block_reason: StorePurchaseBlockReason | null;
   manage_url: string | null;
@@ -117,7 +118,8 @@ export function storePurchaseBlock(input: {
   if (!input.enabled) return 'store_billing_disabled';
   if (!input.can_manage || (input.tenant_kind === 'PERSONAL' && !input.personal_open)) return 'not_billing_manager';
   if (input.open !== null) {
-    if (input.open.source === 'SELF_SERVICE' && input.open.billing_provider === 'STRIPE') return 'billing_managed_elsewhere';
+    // India Billing §4.8 — any web gateway (Stripe, Razorpay) manages the plan on the web.
+    if (input.open.source === 'SELF_SERVICE' && isWebBillingProvider(input.open.billing_provider)) return 'billing_managed_elsewhere';
     // An open governed (MANUAL) subscription is managed by Aramo (the rows passed in are open).
     if (input.open.source === 'MANUAL') return 'billing_managed_elsewhere';
   }
@@ -164,7 +166,7 @@ export class StoreBillingService {
   /** GET account — where the plan is managed and whether the caller may buy in the app. */
   async accountView(caller: StoreCaller, product_key: ProductKey, web_manage_url: string): Promise<StoreAccountView> {
     const open = await this.openRow(caller.tenant_id, assertProductKey(product_key));
-    const managed_by = open !== null && open.source === 'SELF_SERVICE' && (open.billing_provider === 'STRIPE' || isStoreBillingProvider(open.billing_provider)) ? (open.billing_provider as StoreAccountView['managed_by']) : null;
+    const managed_by = open !== null && open.source === 'SELF_SERVICE' && (isWebBillingProvider(open.billing_provider) || isStoreBillingProvider(open.billing_provider)) ? (open.billing_provider as StoreAccountView['managed_by']) : null;
     const reason = storePurchaseBlock({
       enabled: this.enabled(),
       can_manage: caller.can_manage,
@@ -178,7 +180,7 @@ export class StoreBillingService {
         ? APPLE_MANAGE_SUBSCRIPTIONS_URL
         : managed_by === 'GOOGLE_PLAY'
           ? googlePlayManageUrl(this.google?.packageName ?? 'ai.aramo.sign', open?.store_product_id ?? null)
-          : managed_by === 'STRIPE'
+          : isWebBillingProvider(managed_by)
             ? web_manage_url
             : null;
     return { managed_by, store_purchase_eligible: reason === null, store_purchase_block_reason: reason, manage_url };
@@ -244,7 +246,7 @@ export class StoreBillingService {
     await this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, caller.tenant_id);
       const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(caller.tenant_id, product_key) });
-      if (open !== null && ((open.source === 'SELF_SERVICE' && open.billing_provider === 'STRIPE') || isGovernedSubscription(open))) throw new StoreBillingRefusedError('billing_managed_elsewhere');
+      if (open !== null && ((open.source === 'SELF_SERVICE' && isWebBillingProvider(open.billing_provider)) || isGovernedSubscription(open))) throw new StoreBillingRefusedError('billing_managed_elsewhere');
       await tx.checkoutIntent.create({
         data: { id: intent_id, tenant_id: caller.tenant_id, user_id: caller.user_id, plan_id: plan.id, provider, store_product_id: input.product_id },
       });
@@ -286,7 +288,7 @@ export class StoreBillingService {
   private async assertMayBind(caller: StoreCaller, product_key: ProductKey): Promise<void> {
     if (!caller.can_manage || (caller.tenant_kind === 'PERSONAL' && !caller.personal_open)) throw new StoreBillingRefusedError('not_billing_manager');
     const open = await this.openRow(caller.tenant_id, product_key);
-    if (open !== null && ((open.source === 'SELF_SERVICE' && open.billing_provider === 'STRIPE') || isGovernedSubscription(open))) throw new StoreBillingRefusedError('billing_managed_elsewhere');
+    if (open !== null && ((open.source === 'SELF_SERVICE' && isWebBillingProvider(open.billing_provider)) || isGovernedSubscription(open))) throw new StoreBillingRefusedError('billing_managed_elsewhere');
   }
 
   private wrap<T>(p: Promise<T>): Promise<T> {
