@@ -14,6 +14,8 @@ import { Btn, ErrorBox } from '../ui';
 // in the last month of the commitment, effective at its end. After a cancel is requested and before
 // it takes effect, "Keep my subscription" opens the Stripe billing page, where the subscription can
 // be renewed: the provider adapter has no resume command (reported gap), so no undo is invented here.
+// India Billing Regions + Razorpay (directive v1.0 §4.11) — the copy names no provider; a Razorpay-billed
+// plan has no billing page to renew on (`onKeep` absent), so the way back is to contact Aramo.
 
 export const EXPORT_DAYS_AFTER_END = 90;
 
@@ -64,7 +66,8 @@ export function CancelSubscription({
 }: {
   personal: boolean;
   onChanged?: () => void;
-  onKeep: () => void;
+  /** Opens the provider billing page where a scheduled cancel can be undone; absent when there is none. */
+  onKeep?: () => void;
   busy?: boolean;
   loader?: () => Promise<SelfServiceBilling>;
   cancel?: typeof billingApi.selfServiceCancel;
@@ -107,16 +110,20 @@ export function CancelSubscription({
       <div className="sg-grid" style={{ gap: 8 }} data-testid="billing-cancel-scheduled">
         {pending ? (
           <div className="sg-note" data-testid="billing-cancel-pending">
-            Cancellation requested. Stripe is confirming it
+            Cancellation requested. It’s being confirmed with the payment provider
             {sub.current_period_end !== null ? `; your subscription will end on ${fullDate(sub.current_period_end)}.` : '.'}
           </div>
-        ) : (
+        ) : onKeep !== undefined ? (
           <div>
             <Btn disabled={busy} onClick={onKeep} data-testid="billing-keep-subscription">
               Keep my subscription
             </Btn>
-            <p className="sg-help">Changed your mind? Renew the subscription on the Stripe billing page before it ends.</p>
+            <p className="sg-help">Changed your mind? Renew the subscription on the secure billing page before it ends.</p>
           </div>
+        ) : (
+          <p className="sg-help" data-testid="billing-keep-contact">
+            Changed your mind? Contact Aramo before it ends to keep your subscription.
+          </p>
         )}
       </div>
     );

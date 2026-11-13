@@ -55,7 +55,7 @@ describe('CancelSubscription', () => {
     fireEvent.click(screen.getByTestId('billing-cancel-open'));
     fireEvent.click(screen.getByTestId('billing-cancel-submit'));
     await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
-    expect(await screen.findByTestId('billing-cancel-pending')).toHaveTextContent('Cancellation requested. Stripe is confirming it; your subscription will end on October 18, 2027.');
+    expect(await screen.findByTestId('billing-cancel-pending')).toHaveTextContent('Cancellation requested. It’s being confirmed with the payment provider; your subscription will end on October 18, 2027.');
     expect(onChanged).toHaveBeenCalled();
     expect(screen.queryByTestId('billing-keep-subscription')).toBeNull();
   });
@@ -69,7 +69,7 @@ describe('CancelSubscription', () => {
     expect(screen.getByTestId('billing-cancel-confirm')).toBeInTheDocument();
   });
 
-  it('a confirmed scheduled cancel offers "Keep my subscription" (the Stripe billing page)', async () => {
+  it('a confirmed scheduled cancel offers "Keep my subscription" (the provider billing page)', async () => {
     const onKeep = vi.fn();
     render(<CancelSubscription personal onKeep={onKeep} loader={vi.fn().mockResolvedValue(view({ actions: { cancel: { available: false, reason: 'ALREADY_CANCELING' }, upgrade: { available: false, reason: null } } }, { cancel_at_period_end: true }))} />);
     fireEvent.click(await screen.findByTestId('billing-keep-subscription'));
@@ -94,5 +94,11 @@ describe('CancelSubscription', () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
     rerender(<CancelSubscription personal={false} onKeep={vi.fn()} loader={vi.fn().mockRejectedValue(new Error('503'))} />);
     await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('India Billing — without a provider billing page (Razorpay) a scheduled cancel points to Aramo, not a portal', async () => {
+    render(<CancelSubscription personal loader={vi.fn().mockResolvedValue(view({ actions: { cancel: { available: false, reason: 'ALREADY_CANCELING' }, upgrade: { available: false, reason: null } } }, { cancel_at_period_end: true }))} />);
+    expect(await screen.findByTestId('billing-keep-contact')).toHaveTextContent('Contact Aramo before it ends to keep your subscription.');
+    expect(screen.queryByTestId('billing-keep-subscription')).toBeNull();
   });
 });
