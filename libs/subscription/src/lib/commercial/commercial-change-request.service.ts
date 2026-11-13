@@ -1439,7 +1439,7 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   // under the same rule, so the hint covers CONVERSION too.
   // CCP-C4 — the billing adjustments (`…/billing-adjustment`) are requester-only under the same rule.
   // CCP-C8-PR (PR-2, PR-4) — PAYMENT_RECORD is applied by the same route (requester-only).
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type) && req.action_type !== 'PAYMENT_RECORD') return false;
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type) && req.action_type !== 'PAYMENT_RECORD' && req.action_type !== 'BILLING_REGION_CHANGE') return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

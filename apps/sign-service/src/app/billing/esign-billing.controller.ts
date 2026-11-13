@@ -22,7 +22,14 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository, PersonalSignupRepository } from '@aramo/identity';
 import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/sign';
 import {
+  BILLING_GATEWAY_REGISTRY,
   BILLING_PROVIDER_PORT,
+  type BillingGatewayRegistry,
+  BillingRegionService,
+  type BillingRegionView,
+  type BillingSegment,
+  type RegionSellRefusal,
+  type WebBillingProviderKey,
   BillingWebhookInboxService,
   type BillingProviderPort,
   BillingProviderUnavailableError,
@@ -56,6 +63,7 @@ import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { type SignWebhookSource, logWebhookFailed, logWebhookRejected } from '../webhook-log.js';
 import { ESIGN_READ_SCOPE, SenderContextService } from '../sender/sender-context.service.js';
 
+import { BillingCountryAdapter } from './billing-country.adapter.js';
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
 
 // Aramo Sign launch — self-service billing on esign.aramo.ai (v1/sign/billing).
@@ -118,8 +126,35 @@ export function personalPaidCheckoutEnabled(env: NodeJS.ProcessEnv = process.env
   return env['SIGN_PERSONAL_PAID_CHECKOUT_ENABLED']?.trim() === '1';
 }
 
-/** Sign Catalog v2 §4.3 — the only residence a Personal paid plan is sold to. */
+/**
+ * Sign Catalog v2 §4.3 — the only residence a Personal paid plan was sold to. India Billing Regions +
+ * Razorpay (directive v1.0 §2) supersedes it: Personal paid sells to residents of any billing region
+ * whose Personal switch is ON (the region store decides). Kept as the legacy rule when no region store
+ * is bound (unit specs).
+ */
 export const PERSONAL_PAID_RESIDENCE = 'US';
+
+/**
+ * India Billing (directive v1.0 §4.4, §4.9) — the caller's billing region decision. `open` = the country
+ * has a region selling the segment (a gateway that is not configured still counts as open: checkout then
+ * answers the existing 503). `legacy` = no region store or country port bound (Personal: US residents only;
+ * Business: unchanged).
+ */
+export interface CallerRegion {
+  country: string | null;
+  open: boolean;
+  sellable: boolean;
+  region: BillingRegionView | null;
+  refusal: RegionSellRefusal | null;
+  legacy: boolean;
+}
+
+/** India Billing §4.11 — the plan price shown for a region (Money; the regional MONTH price on a Razorpay region). */
+export interface DisplayMoney {
+  amount_minor: number;
+  currency: string;
+  interval: string | null;
+}
 
 export type PersonalUpgradeReason = 'not_available_in_country' | 'billing_manage_required' | 'not_purchasable';
 
@@ -157,6 +192,17 @@ function salesContactUrl(): string | null {
 
 function consoleBase(): string {
   return signBaseUrl() ?? DEFAULT_SIGN_BASE_URL;
+}
+
+/**
+ * Sign Catalog v2 §4.3 / India Billing §2 — a Personal account whose residence has no region selling
+ * Personal plans. The stable reason stays `personal_paid_us_only`; the text names no country list.
+ */
+export function personalCountryRefusal(requestId: string): AramoError {
+  return new AramoError('ESIGN_BILLING_CONFLICT', 'Paid plans for personal accounts aren’t available in your country yet', 409, {
+    requestId,
+    details: { reason: 'personal_paid_us_only' },
+  });
 }
 
 export function billingHttpError(e: unknown, requestId: string): AramoError {
@@ -214,6 +260,10 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     if (e.reason === 'SEATS_NOT_APPLICABLE') {
       // Sign Business per-seat pricing — `seats` for a plan priced per organization.
       return new AramoError('VALIDATION_ERROR', 'This plan is priced per organization; it has no seat count', 422, { requestId, details: { reason: 'seats_not_applicable' } });
+    }
+    if (e.reason === 'BILLING_REGION_NOT_SELLABLE') {
+      // India Billing §4.9 — the residence's region does not sell Personal plans (the existing reason).
+      return personalCountryRefusal(requestId);
     }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
@@ -339,7 +389,41 @@ export class EsignBillingController {
     @Optional() private readonly store?: StoreBillingService,
     // Sign Business per-seat pricing — seats (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly seats?: SeatBillingService,
+    // India Billing (directive v1.0 §4.3, §4.7) — the web gateways by key (SubscriptionModule provides
+    // it; unbound only in unit specs, where the Razorpay webhook is then 404).
+    @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
+    // India Billing Regions + Razorpay (directive v1.0 §4.4, §4.9) — the region store and the routing
+    // country (both bound in sign-service; unbound only in unit specs ⇒ the legacy US-only rules).
+    @Optional() private readonly regions?: BillingRegionService,
+    @Optional() private readonly countries?: BillingCountryAdapter,
   ) {}
+
+  /** India Billing — the caller's billing region for its segment (fail closed). */
+  private async callerRegion(tenant_id: string, kind: string): Promise<CallerRegion> {
+    const segment: BillingSegment = kind === 'PERSONAL' ? 'PERSONAL' : 'BUSINESS';
+    if (this.regions === undefined || this.regions === null || this.countries === undefined || this.countries === null) {
+      if (segment === 'PERSONAL') {
+        const us = await this.personalUsResident(tenant_id);
+        return { country: us ? PERSONAL_PAID_RESIDENCE : null, open: us, sellable: us, region: null, refusal: us ? null : 'region_not_supported', legacy: true };
+      }
+      return { country: null, open: true, sellable: true, region: null, refusal: null, legacy: true };
+    }
+    let country: string | null = null;
+    try {
+      country = (await this.countries.countryOf(tenant_id)).country;
+    } catch (e) {
+      this.log.warn(`billing country lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const sell = await this.regions.sellable(country, segment);
+    if (sell.ok) return { country, open: true, sellable: true, region: sell.region, refusal: null, legacy: false };
+    const region = sell.reason === 'gateway_not_configured' && country !== null ? await this.regions.get(country) : null;
+    return { country, open: sell.reason === 'gateway_not_configured', sellable: false, region, refusal: sell.reason, legacy: false };
+  }
+
+  /** India Billing — the web gateway the caller's catalog prices on (Stripe unless its region routes elsewhere). */
+  private static gatewayOf(r: CallerRegion): WebBillingProviderKey {
+    return r.region?.gateway ?? 'STRIPE';
+  }
 
   /** O-3 — whether the caller is the organization owner or an admin (their live role keys in this tenant). */
   private async managesSeats(auth: AuthContextType): Promise<boolean> {
@@ -421,9 +505,26 @@ export class EsignBillingController {
       can_manage_billing: can_manage && (kind === 'BUSINESS' || personalOpen),
       upgrade: kind === 'PERSONAL' ? await this.personalUpgrade(auth.tenant_id, view.subscription, can_manage && personalOpen) : null,
       ...store,
+      // India Billing §4.11 — a Razorpay-billed plan's price in its region's currency (null otherwise).
+      display_price: store.managed_by === 'RAZORPAY' && view.subscription !== null ? await this.razorpayDisplayPrice(auth.tenant_id, view.subscription.plan_key) : null,
       // Sign Business per-seat pricing (directive v1.0 §3.3.4).
       ...(await this.seatView(auth, kind)),
     };
+  }
+
+  /** India Billing §4.11 — the regional MONTH price of a Razorpay-billed plan for the tenant's region (or null). */
+  private async razorpayDisplayPrice(tenant_id: string, plan_key: string): Promise<DisplayMoney | null> {
+    if (this.regions === undefined || this.regions === null || this.countries === undefined || this.countries === null) return null;
+    try {
+      const { country } = await this.countries.countryOf(tenant_id);
+      const region = country === null ? null : await this.regions.get(country);
+      if (region === null || region.gateway !== 'RAZORPAY') return null;
+      const shown = await this.displayPrices({ country, open: true, sellable: false, region, refusal: null, legacy: false }, 'RAZORPAY');
+      return shown.get(plan_key) ?? null;
+    } catch (e) {
+      this.log.warn(`display price lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
   }
 
   /** After a store state is applied: the subscribing-owner role, and (Personal) the Free fallback. */
@@ -483,22 +584,59 @@ export class EsignBillingController {
     tenant_id: string,
     subscription: { plan_key: string; ended_at: Date | null } | null,
     may_buy: boolean,
-  ): Promise<{ available: boolean; reason: PersonalUpgradeReason | null; plan_key: string; price_minor: number | null; commitment_months: number | null } | null> {
+  ): Promise<{
+    available: boolean;
+    reason: PersonalUpgradeReason | null;
+    plan_key: string;
+    price_minor: number | null;
+    commitment_months: number | null;
+    currency: string | null;
+    billing_gateway: WebBillingProviderKey;
+  } | null> {
     // Dark: no offer at all.
     if (!personalPaidCheckoutEnabled()) return null;
     if (subscription !== null && subscription.ended_at === null && subscription.plan_key !== FreePersonalPlanKey) return null;
-    const plan = (await this.lifecycle.catalog(SIGN_PRODUCT_KEY, tenant_id, 'PERSONAL')).find(
+    // India Billing §4.4 — the residence's region routes the catalog (its gateway's price pins).
+    const region = await this.callerRegion(tenant_id, 'PERSONAL');
+    const gateway = EsignBillingController.gatewayOf(region);
+    const plan = (await this.lifecycle.catalog(SIGN_PRODUCT_KEY, tenant_id, 'PERSONAL', gateway)).find(
       (p) => p.tenant_kind === 'PERSONAL' && p.sales_model === 'SELF_SERVICE' && p.key !== FreePersonalPlanKey && p.price !== null,
     );
     if (plan === undefined) return null;
-    const reason: PersonalUpgradeReason | null = !(await this.personalUsResident(tenant_id))
+    const reason: PersonalUpgradeReason | null = !region.open
       ? 'not_available_in_country'
       : !may_buy
         ? 'billing_manage_required'
         : !plan.purchasable
           ? 'not_purchasable'
           : null;
-    return { available: reason === null, reason, plan_key: plan.key, price_minor: plan.price?.amount_minor ?? null, commitment_months: plan.commitment_months };
+    const shown = (await this.displayPrices(region, gateway)).get(plan.key);
+    const display = gateway === 'STRIPE' ? (plan.price ?? null) : (shown ?? null);
+    return {
+      available: reason === null,
+      reason,
+      plan_key: plan.key,
+      price_minor: display?.amount_minor ?? null,
+      commitment_months: plan.commitment_months,
+      currency: display?.currency ?? null,
+      billing_gateway: gateway,
+    };
+  }
+
+  /**
+   * India Billing §4.11, ruling Q8 — on a Razorpay region the price shown is the version's regional MONTH
+   * price of the region's country (plan key → price; a plan without one has none and is not sold there).
+   * Empty on a Stripe region (the list price stays the shown price).
+   */
+  private async displayPrices(region: CallerRegion, gateway: WebBillingProviderKey): Promise<Map<string, DisplayMoney>> {
+    const out = new Map<string, DisplayMoney>();
+    if (gateway === 'STRIPE' || region.region === null || this.store === undefined) return out;
+    const offers = await this.store.planOffers(SIGN_PRODUCT_KEY, region.region.country);
+    for (const [key, offer] of offers) {
+      const month = offer.regional_prices.find((r) => r.interval === 'MONTH' && r.currency === region.region?.currency);
+      if (month !== undefined) out.set(key, { amount_minor: month.amount_minor, currency: month.currency, interval: 'MONTH' });
+    }
+    return out;
   }
 
   @Get('plans')
@@ -513,16 +651,26 @@ export class EsignBillingController {
       // Sign Catalog v2 §4.3 — the tenant's kind selects the terms and what is purchasable.
       const kind = await this.ctx.tenantKind(auth.tenant_id, requestId);
       const terms = approvedLegalDocument(checkoutTermsDocument(kind));
-      const catalog = await this.lifecycle.catalog(SIGN_PRODUCT_KEY, auth.tenant_id, kind);
+      // India Billing Regions + Razorpay (directive v1.0 §4.4, §4.11) — the caller's region routes the
+      // catalog: its gateway's price pins decide what is purchasable, its currency is the billing
+      // currency, and on a Razorpay region the regional price is the shown price (display_price).
+      const region = await this.callerRegion(auth.tenant_id, kind);
+      const gateway = EsignBillingController.gatewayOf(region);
+      const catalog = await this.lifecycle.catalog(SIGN_PRODUCT_KEY, auth.tenant_id, kind, gateway);
       // Sign Catalog v2 §4.3 — a Personal plan is purchasable only while the flag is on, and only
-      // for a US resident.
-      const personalSellable = kind === 'PERSONAL' && personalPaidCheckoutEnabled() && (await this.personalUsResident(auth.tenant_id));
+      // for a resident of a region selling Personal plans (India Billing §2; the US before it).
+      const personalSellable = kind === 'PERSONAL' && personalPaidCheckoutEnabled() && region.open;
+      // India Billing §4.9 — a Business organization in a country no region sells to buys nothing online
+      // (a country not yet entered keeps today's behaviour: checkout asks for the organization profile).
+      const businessClosed = kind !== 'PERSONAL' && !region.legacy && !region.open && region.country !== null;
       const country = queried ?? (kind === 'PERSONAL' ? await this.residenceOf(auth.tenant_id) : null);
       const offers = this.store !== undefined ? await this.store.planOffers(SIGN_PRODUCT_KEY, country) : new Map();
+      const shown = await this.displayPrices(region, gateway);
       return {
         // M-A12 R-2 — `catalog` is already filtered to the caller's tenant kind (A5).
         plans: catalog.map((p) => {
-          const plan = p.tenant_kind === 'PERSONAL' && p.purchasable && !personalSellable ? { ...p, purchasable: false } : p;
+          const closed = p.purchasable && ((p.tenant_kind === 'PERSONAL' && !personalSellable) || (p.tenant_kind !== 'PERSONAL' && businessClosed));
+          const plan = closed ? { ...p, purchasable: false } : p;
           const offer = offers.get(p.key);
           const regional = offer?.regional_prices ?? [];
           return {
@@ -531,10 +679,15 @@ export class EsignBillingController {
             // The monthly regional price when one exists, else the annual one; every interval in regional_prices.
             regional_price: regional.find((r: { interval: string }) => r.interval === 'MONTH') ?? regional[0] ?? null,
             regional_prices: regional,
+            // India Billing §4.11 — the price to show for the caller's billing region (Stripe: the list price).
+            display_price: gateway === 'STRIPE' ? plan.price : (shown.get(p.key) ?? null),
           };
         }),
         terms: terms === null ? null : { version: terms.version, url: terms.url },
         sales_contact_url: salesContactUrl(),
+        // India Billing §4.11 — the web gateway and currency of the caller's billing region.
+        billing_gateway: gateway,
+        billing_currency: region.region?.currency ?? 'USD',
       };
     });
   }
@@ -678,12 +831,8 @@ export class EsignBillingController {
             details: { reason: 'personal_paid_checkout_not_enabled' },
           });
         }
-        if (!(await this.personalUsResident(auth.tenant_id))) {
-          throw new AramoError('ESIGN_BILLING_CONFLICT', 'Paid plans for personal accounts are available to US residents only', 409, {
-            requestId,
-            details: { reason: 'personal_paid_us_only' },
-          });
-        }
+        // India Billing §2 — residents of a region selling Personal plans (the US, and India once ON).
+        if (!(await this.callerRegion(auth.tenant_id, 'PERSONAL')).open) throw personalCountryRefusal(requestId);
       }
       const user = await this.identity.findUserById(auth.sub);
       if (user?.email == null) throw new AramoError('VALIDATION_ERROR', 'Your account has no email address', 400, { requestId });
@@ -843,6 +992,51 @@ export class EsignBillingController {
         return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
       } catch (e) {
         logWebhookFailed(this.log, 'stripe_billing', e);
+        throw e;
+      }
+    });
+    if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
+      const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
+      this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);
+    }
+    return { received: true, outcome: result.outcome };
+  }
+
+  /**
+   * India Billing (directive v1.0 §4.7, G-4) — the Razorpay webhook: NO session; authenticity is the
+   * X-Razorpay-Signature header (hex HMAC-SHA256 over the raw body). Dark (404, no such endpoint) unless
+   * SIGN_RAZORPAY_BILLING_ENABLED is exactly '1' and the registry is bound. Not authentic → 401. Each
+   * event is recorded in the billing webhook inbox and processed at most once; the subscription state
+   * is re-fetched from Razorpay before it is applied. A processing failure → 5xx (Razorpay redelivers).
+   */
+  @Post('webhook/razorpay')
+  @HttpCode(HttpStatus.OK)
+  async razorpayWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-razorpay-signature') signature: string | undefined,
+    @Headers('x-razorpay-event-id') eventId: string | undefined,
+    @RequestId() requestId: string,
+  ): Promise<{ received: true; outcome: WebhookResult['outcome'] }> {
+    if (process.env['SIGN_RAZORPAY_BILLING_ENABLED'] !== '1' || this.gateways === undefined) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
+    const gateway = this.gateways.billing('RAZORPAY');
+    const raw = req.rawBody;
+    let evt;
+    try {
+      if (raw === undefined) throw new BillingWebhookSignatureError('MISSING');
+      evt = gateway.verifyWebhook(raw, signature, Math.floor(Date.now() / 1000), { event_id: eventId });
+    } catch (e) {
+      if (e instanceof BillingWebhookSignatureError) {
+        logWebhookRejected(this.log, 'razorpay_billing', e.reason);
+        throw new AramoError('AUTH_REQUIRED', 'Webhook signature verification failed', 401, { requestId, details: { reason: e.reason } });
+      }
+      throw billingHttpError(e, requestId);
+    }
+    // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
+    const result = await this.run(requestId, async () => {
+      try {
+        return await (this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
+      } catch (e) {
+        logWebhookFailed(this.log, 'razorpay_billing', e);
         throw e;
       }
     });

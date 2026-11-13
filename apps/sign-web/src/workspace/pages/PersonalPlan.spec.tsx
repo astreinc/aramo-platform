@@ -112,7 +112,7 @@ describe('PersonalPlanPanel', () => {
   it('an unavailable upgrade shows its reason and no checkout button', async () => {
     vi.stubGlobal('fetch', stub([free({ upgrade: { available: false, plan_key: STANDARD_KEY, price_minor: 1000, commitment_months: 12, reason: 'not_available_in_country' } })], plans));
     render(<PersonalPlanPanel />);
-    expect(await screen.findByTestId('personal-plan-upgrade-unavailable')).toHaveTextContent('Standard is available to US residents for now.');
+    expect(await screen.findByTestId('personal-plan-upgrade-unavailable')).toHaveTextContent('Standard isn’t available in your country yet.');
     expect(screen.queryByTestId('personal-plan-upgrade-btn')).toBeNull();
     expect(screen.queryByTestId('personal-plan-terms-agree')).toBeNull();
   });
@@ -120,7 +120,7 @@ describe('PersonalPlanPanel', () => {
   it.each([
     [400, 'VALIDATION_ERROR', 'TERMS_NOT_ACCEPTED', 'Check “I agree” to accept the terms before you continue.'],
     [403, 'FORBIDDEN', 'personal_paid_checkout_not_enabled', 'Upgrading to Standard isn’t available yet.'],
-    [409, 'ESIGN_BILLING_CONFLICT', 'personal_paid_us_only', 'Standard is available to US residents for now.'],
+    [409, 'ESIGN_BILLING_CONFLICT', 'personal_paid_us_only', 'Standard isn’t available in your country yet.'],
   ])('a %i %s refusal (%s) is explained, not a crash', async (status, code, reason, text) => {
     vi.stubGlobal('fetch', stub([free()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? refusal(status, code, reason) : plans(url))));
     render(<PersonalPlanPanel />);
@@ -175,5 +175,39 @@ describe('PersonalPlanPanel', () => {
     render(<PersonalPlanPanel />);
     expect(await screen.findByTestId('personal-plan-cancel')).toHaveTextContent('Standard ends on');
     expect(screen.getByTestId('personal-plan-cancel')).toHaveTextContent('returns to the Free plan');
+  });
+
+  // India Billing Regions + Razorpay (directive v1.0 §4.11) — an India resident (region ON) sees the INR
+  // price and the auto-pay mandate disclosure BEFORE the redirect; a Razorpay-billed plan has no provider
+  // portal: the Aramo manage section replaces "Manage billing or cancel".
+  it('India: the INR offer shows ₹ and the Razorpay auto-pay mandate disclosure before checkout', async () => {
+    const fetch = stub([free({ upgrade: { available: true, plan_key: STANDARD_KEY, price_minor: 89900, commitment_months: 12, currency: 'INR', billing_gateway: 'RAZORPAY' } })], (url) =>
+      url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://rzp.io/i/sub_test' }, 201) : plans(url),
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(<PersonalPlanPanel />);
+    const offer = await screen.findByTestId('personal-plan-upgrade');
+    expect(offer).toHaveTextContent('₹899/month');
+    expect(offer).not.toHaveTextContent('$');
+    expect(await screen.findByTestId('personal-plan-checkout-page')).toHaveTextContent('You’ll approve a monthly auto-pay mandate (UPI, card or net banking) on Razorpay’s secure page.');
+    fireEvent.click(screen.getByTestId('personal-plan-terms-agree'));
+    fireEvent.click(screen.getByTestId('personal-plan-upgrade-btn'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://rzp.io/i/sub_test'));
+  });
+
+  it('US: the checkout line names no provider', async () => {
+    vi.stubGlobal('fetch', stub([free()], plans));
+    render(<PersonalPlanPanel />);
+    expect(await screen.findByTestId('personal-plan-checkout-page')).toHaveTextContent('Enter payment details on the secure checkout page.');
+    expect(screen.getByTestId('personal-plan-upgrade')).not.toHaveTextContent('Stripe');
+  });
+
+  it('a Razorpay-billed Standard plan: ₹ price, the Aramo manage section, no provider portal button', async () => {
+    const rzp = free({ ...STANDARD, managed_by: 'RAZORPAY', display_price: { amount_minor: 89900, currency: 'INR', interval: 'MONTH' } });
+    vi.stubGlobal('fetch', stub([rzp]));
+    render(<PersonalPlanPanel />);
+    expect(await screen.findByTestId('personal-plan-current')).toHaveTextContent('Standard · ₹899/month');
+    expect(screen.getByTestId('personal-plan-manage-razorpay')).toHaveTextContent('Manage subscription');
+    expect(screen.queryByTestId('personal-plan-manage')).toBeNull();
   });
 });

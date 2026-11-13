@@ -12,7 +12,7 @@ import type { Logger } from '@nestjs/common';
 // phone number or a message (they may carry personal data or secrets).
 
 // M-A12 W1-G — the in-app store notifications (App Store Server Notifications v2, Google RTDN).
-export type SignWebhookSource = 'whatsapp' | 'sms_inbound_aws' | 'stripe_identity' | 'stripe_connect' | 'stripe_billing' | 'app_store_billing' | 'google_play_billing';
+export type SignWebhookSource = 'whatsapp' | 'sms_inbound_aws' | 'stripe_identity' | 'stripe_connect' | 'stripe_billing' | 'app_store_billing' | 'google_play_billing' | 'razorpay_billing';
 
 const token = (v: string): string => (v.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 64) || 'unknown');
 

@@ -5,6 +5,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import {
   AUTHORITY_STATEMENT_VERSION,
   BILLING_REGION_US,
+  ORGANIZATION_BILLING_REGIONS,
   authorityStatementSha256,
 } from './util/us-organization.js';
 
@@ -18,8 +19,18 @@ export class OrganizationRegionService {
 
   /** Hold the tenant's organization profile to the US (idempotent). */
   async lockUs(tenant_id: string): Promise<void> {
+    await this.lock(tenant_id, BILLING_REGION_US);
+  }
+
+  /**
+   * India Billing §4.9 — hold the tenant's organization profile to `region` (US or IN; idempotent: an
+   * existing hold is kept, never moved — ruling Q10). The caller decides the region is open.
+   */
+  async lock(tenant_id: string, region: string): Promise<void> {
+    const r = region.trim().toUpperCase();
+    if (!ORGANIZATION_BILLING_REGIONS.includes(r)) throw new Error(`organization billing region ${region} is not supported`);
     await this.prisma.tenantBillingRegionPolicy.createMany({
-      data: [{ tenant_id, region: BILLING_REGION_US }],
+      data: [{ tenant_id, region: r }],
       skipDuplicates: true,
     });
   }

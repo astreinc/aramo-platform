@@ -7,6 +7,7 @@ import {
   PROVIDER_LABEL,
   STORE_LISTING_LIMITS,
   billingEditorErrors,
+  channelWhere,
   formatMinor,
   needsReviewScreenshot,
   sellsInStores,
@@ -97,7 +98,7 @@ export function BillingProductsEditor(props: {
               <Checkbox unstyled aria-label={`Sell on ${PROVIDER_LABEL[r.provider]}`} checked={r.selected} disabled={busy} onChange={(e) => set(i, { selected: e.target.checked })} />
             </span>
             <span role="cell" className="pc-diff__field">
-              {PROVIDER_LABEL[r.provider]}
+              {channelWhere(r.provider)}
             </span>
             <span role="cell" className="pc-diff__after">
               <Input
@@ -135,7 +136,7 @@ export function BillingProductsEditor(props: {
             />
           </label>
           <p className="pc-addons__intro">What shoppers see on the App Store and Google Play (the plan’s internal description is never shown to them).</p>
-          <p className="pc-addons__intro" data-testid="sells-in">{`The apps sell this version in: ${sellsIn.map((c) => `${countryName(c)} (${c})`).join(', ')}. Web (Stripe): United States. Add a regional price above to sell in another country.`}</p>
+          <p className="pc-addons__intro" data-testid="sells-in">{`The apps sell this version in: ${sellsIn.map((c) => `${countryName(c)} (${c})`).join(', ')}. Web (Stripe): United States. Web India (Razorpay): India. Add a regional price above to sell in another country.`}</p>
         </div>
       ) : null}
       {needsReviewScreenshot(rows) ? (
@@ -165,7 +166,15 @@ export function BillingProductsEditor(props: {
                       <span role="cell" className="pc-diff__after">{c.error}</span>
                     </div>,
                   ]
-                : c.prices.map((p) => (
+                : c.provider === 'RAZORPAY' && c.prices.length === 0
+                  ? [
+                      // India Billing Q8 — no IN / INR monthly price on the version: nothing is created at Razorpay.
+                      <div key={`${c.provider}-none`} role="row" className="pc-diff__row">
+                        <span role="cell" className="pc-diff__field">{PROVIDER_LABEL[c.provider]}</span>
+                        <span role="cell" className="pc-diff__after">Not sold in India: this version has no India (INR) monthly price. Add one in Regional prices to sell on Razorpay.</span>
+                      </div>,
+                    ]
+                  : c.prices.map((p) => (
                     <div key={`${c.provider}-${p.country}`} role="row" className={`pc-diff__row${p.available ? '' : ' pc-diff__row--changed'}`}>
                       <span role="cell" className="pc-diff__field">{`${PROVIDER_LABEL[c.provider]} · ${p.country}`}</span>
                       <span role="cell" className="pc-diff__after">

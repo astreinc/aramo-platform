@@ -31,6 +31,8 @@ const PATH: Readonly<Record<NavIconKey, string>> = {
   rec: 'M7 7h10l-3-3M17 17H7l3 3',
   bars: 'M3 21h18M6 17v-5M11 17V7M16 17v-8M21 17V4',
   pulse: 'M3 12h4l3-8 4 16 3-8h4',
+  // India Billing Regions + Razorpay (§4.10) — Billing regions (same 24-unit grid and stroke).
+  globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9M12 3c-2.5 2.5-3.8 5.5-3.8 9s1.3 6.5 3.8 9',
 };
 
 export function NavIcon({ name }: { readonly name: NavIconKey }) {

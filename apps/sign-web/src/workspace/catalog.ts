@@ -43,9 +43,38 @@ export const COMING_SOON: readonly string[] = [
   'Priority support',
 ];
 
+/**
+ * India Billing Regions + Razorpay (directive v1.0 §4.11) — a price in minor units, in the currency the
+ * backend reports (USD shows $, INR shows ₹). Whole amounts show no decimals ("$10", "₹899").
+ */
+export function formatMinor(minor: number, currency = 'USD'): string {
+  const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : 'USD';
+  const whole = minor % 100 === 0;
+  return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
+    style: 'currency',
+    currency: code,
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  }).format(minor / 100);
+}
+
+/** A US-dollar price (catalog constants with no currency field: the signup cards, the Free allowance copy). */
 export function usd(minor: number): string {
-  const amount = minor / 100;
-  return `$${Number.isInteger(amount) ? amount : amount.toFixed(2)}`;
+  return formatMinor(minor, 'USD');
+}
+
+/** India Billing §4.11 — the web gateway of the caller's billing region (GET plans / the upgrade offer). */
+export type BillingGateway = 'STRIPE' | 'RAZORPAY';
+
+/**
+ * India Billing §4.11 — what the payer approves on Razorpay's page, shown BEFORE the redirect (Razorpay's
+ * hosted page carries no Aramo renewal text).
+ */
+export const RAZORPAY_MANDATE_TEXT = 'You’ll approve a monthly auto-pay mandate (UPI, card or net banking) on Razorpay’s secure page.';
+
+/** The line under a checkout button: where payment details are entered. */
+export function checkoutPageText(gateway: BillingGateway | null | undefined): string {
+  return gateway === 'RAZORPAY' ? RAZORPAY_MANDATE_TEXT : 'Enter payment details on the secure checkout page.';
 }
 
 /** Per-seat directive §3.5 — the most seats one organization buys online (the API's bound). */

@@ -15,6 +15,7 @@ import type { ProviderAdjustmentRequest } from '../lib/billing/billing-provider.
 import { BillingStatusReadService } from '../lib/billing/billing-status-read.service.js';
 import { STRIPE_READ_ADAPTER_METHODS, StripeBillingReadAdapter } from '../lib/billing/stripe-billing-read.adapter.js';
 import { StripeBillingProvider } from '../lib/billing/stripe-billing.provider.js';
+import { RazorpayBillingProvider } from '../lib/billing/razorpay-billing.provider.js';
 import { wireAccountParams, wireInvoiceState } from '../lib/billing/stripe-wire.js';
 import { SubscriptionLifecycleService } from '../lib/billing/subscription-lifecycle.service.js';
 import { TAX_NOT_ENABLED_REASON, taxAvailability } from '../lib/billing/tax-availability.js';
@@ -133,6 +134,30 @@ describe('CCP-C5 the no-tax-call guard — source scan', () => {
     const identitySrc = readFileSync(resolve(REPO, IDENTITY), 'utf8');
     expect(identitySrc).not.toMatch(/STRIPE_SECRET_KEY['"]|\btax/i);
     expect([...identitySrc.matchAll(/['`](\/v1\/[a-z_/]+)/g)].map((m) => m[1]).every((p) => p?.startsWith('/v1/identity/'))).toBe(true);
+  });
+
+  it('C5-G-1R India Billing (directive v1.0 §4.5): the only readers of the Razorpay key and the only clients of its API host are the Razorpay adapter (and its catalog writer)', () => {
+    const PROVIDER = 'libs/subscription/src/lib/billing/razorpay-billing.provider.ts';
+    // WS-C's catalog writer — allowed (it should reuse the adapter's exported readers, so it is
+    // normally absent from both lists).
+    const WRITER = 'libs/subscription/src/lib/billing/sync/razorpay-catalog.writer.ts';
+    const allowed = [PROVIDER, WRITER];
+    const all = ['libs', 'apps'].flatMap((r) => sources(resolve(REPO, r)));
+    const readers = all
+      .filter((f) => /process\.env\[['"]RAZORPAY_KEY_(?:ID|SECRET)['"]\]|process\.env\.RAZORPAY_KEY_(?:ID|SECRET)\b/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(REPO, f))
+      .sort();
+    expect(readers).toContain(PROVIDER);
+    expect(readers.filter((r) => !allowed.includes(r))).toEqual([]);
+    const hosts = all
+      .filter((f) => /api\.razorpay\.com/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(REPO, f))
+      .sort();
+    expect(hosts).toContain(PROVIDER);
+    expect(hosts.filter((h) => !allowed.includes(h))).toEqual([]);
+    // No Razorpay env name has a segment starting TAX (C5-T-4 covers the readers; this pins the names).
+    const names = [...readFileSync(resolve(REPO, PROVIDER), 'utf8').matchAll(/process\.env\[['"]([A-Z0-9_]+)['"]\]/g)].map((m) => m[1] ?? '');
+    expect(names.sort()).toEqual(['RAZORPAY_API_BASE', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET']);
   });
 
   it('C5-G-2 no billing source names a provider tax parameter or endpoint (calculation, collection, rates, ids or behaviour)', () => {
@@ -337,6 +362,65 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     const params = wireAccountParams(details);
     expect(Object.keys(params).filter(hasTaxToken)).toEqual([]);
     expect(Object.values(params)).not.toContain('12-3456789');
+  });
+});
+
+describe('CCP-C5 the no-tax-call guard — fake provider client on every Razorpay call (India Billing §4.5)', () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  it('C5-G-4R no recorded Razorpay request asks for tax, on every provider-calling method (a new method fails here until covered)', async () => {
+    process.env['RAZORPAY_KEY_ID'] = 'rzp_test_c5';
+    process.env['RAZORPAY_KEY_SECRET'] = 'secret_c5';
+    process.env['RAZORPAY_WEBHOOK_SECRET'] = 'whsec_c5';
+    process.env['RAZORPAY_API_BASE'] = 'http://provider.c5.test';
+    Object.assign(process.env, TAX_ENV_ON);
+    const recorded: Recorded[] = [];
+    const p = new RazorpayBillingProvider(async (url, init) => {
+      const u = new URL(url);
+      const body = typeof init?.body === 'string' ? init.body : '';
+      recorded.push({ method: String(init?.method), path: u.pathname, query: [...u.searchParams.keys()], body_keys: body === '' ? [] : Object.keys(JSON.parse(body) as object), body, headers: Object.keys((init?.headers as Record<string, string>) ?? {}) });
+      return new Response(JSON.stringify({ id: 'sub_c5', short_url: 'https://rzp.c5.test/l', status: 'active', quantity: 1, notes: { tenant_id: 't-c5' } }), { status: 200 });
+    });
+    const CALLS: Record<string, () => Promise<unknown>> = {
+      upsertBillingAccount: async () => {
+        const details = { tenant_id: 't-c5', legal_name: 'Acme Pvt Ltd', billing_email: 'billing@acme.test', address: { line1: '1 MG Rd', line2: null, city: 'Bengaluru', state: 'KA', postal_code: '560001', country: 'IN' } };
+        await p.upsertBillingAccount(null, details);
+        await p.upsertBillingAccount('acct_c5', details);
+      },
+      createCheckoutSession: async () => {
+        const req = { intent_id: 'i-c5', tenant_id: 't-c5', user_id: 'u-c5', user_email: 'owner@acme.test', price_ref: 'plan_c5', success_url: 'https://e/ok', cancel_url: 'https://e/no', disclosure: 'renews monthly', collect_address: true };
+        await p.createCheckoutSession({ ...req, account_ref: null });
+        await p.createCheckoutSession({ ...req, account_ref: 'acct_c5', quantity: 3 });
+      },
+      createPortalSession: () => p.createPortalSession('acct_c5', 'https://e/settings'),
+      retrieveSubscription: () => p.retrieveSubscription('sub_c5'),
+      cancelSubscription: async () => {
+        await p.cancelSubscription('sub_c5', { at_period_end: true });
+        await p.cancelSubscription('sub_c5', { at_period_end: false });
+      },
+      expireCheckoutSession: () => p.expireCheckoutSession('sub_c5'),
+      retrieveCheckoutSession: () => p.retrieveCheckoutSession('sub_c5'),
+      updateSubscriptionQuantity: async () => {
+        await p.updateSubscriptionQuantity('sub_c5', 3, 'create_prorations');
+        await p.updateSubscriptionQuantity('sub_c5', 2, 'none');
+      },
+    };
+    const callable = methodNames(p).filter((m) => !['isConfigured', 'mode', 'verifyWebhook', 'call'].includes(m));
+    expect(callable).toEqual(Object.keys(CALLS).sort());
+    for (const c of Object.values(CALLS)) await c();
+    // upsert 2 + checkout 2 + portal 0 (no provider call) + retrieve 1 + cancel 2 + expire 1 + session 1 + seats 4 (PATCH + GET each).
+    expect(recorded.length).toBe(13);
+    for (const r of recorded) {
+      const where = `${r.method} ${r.path}`;
+      expect(hasTaxToken(r.path), where).toBe(false);
+      expect(r.query.filter(hasTaxToken), where).toEqual([]);
+      expect(r.body_keys.filter(hasTaxToken), where).toEqual([]);
+      expect(r.body, where).not.toMatch(/tax|gst/i);
+      expect(r.headers.filter(hasTaxToken), where).toEqual([]);
+    }
   });
 });
 

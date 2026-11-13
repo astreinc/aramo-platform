@@ -500,6 +500,9 @@ export interface BillingPlan {
   // Sign Business per-seat directive §3.3.4 — how the list price is charged (SEAT = per user).
   // Optional only for older backends; absent reads as ACCOUNT (per organization).
   price_unit?: PriceUnit;
+  // India Billing §4.11 — the price shown for the caller's billing region (Stripe: `price`; Razorpay: the
+  // regional INR price, null when the plan has none there). Absent on older backends (read `price`).
+  display_price?: Money | null;
 }
 
 /** Per-seat directive §3.1 — ACCOUNT = per organization; SEAT = per user (seat). */
@@ -521,6 +524,10 @@ export interface BillingCatalog {
   plans: BillingPlan[];
   terms: { version: string; url: string } | null;
   sales_contact_url: string | null;
+  // India Billing Regions + Razorpay (directive v1.0 §4.11) — the caller's billing region: its web
+  // gateway and currency. Absent on older backends (read as STRIPE / USD).
+  billing_gateway?: 'STRIPE' | 'RAZORPAY';
+  billing_currency?: string;
 }
 
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
@@ -571,7 +578,21 @@ export interface BillingAccount {
   // Catalog v2 directive (fc755040…) §4.3 — the in-place Personal upgrade (Free → Standard), when
   // the backend offers one. Absent on older backends; null when the feature is off or no upgrade
   // applies; `reason` says why it isn't available (e.g. not_available_in_country).
-  upgrade?: { available: boolean; plan_key: string; price_minor: number | null; commitment_months: number | null; reason?: string | null } | null;
+  // India Billing §4.11 — `currency` of price_minor and the `billing_gateway` of the checkout (absent: USD / STRIPE).
+  upgrade?: {
+    available: boolean;
+    plan_key: string;
+    price_minor: number | null;
+    commitment_months: number | null;
+    reason?: string | null;
+    currency?: string | null;
+    billing_gateway?: 'STRIPE' | 'RAZORPAY';
+  } | null;
+  // M-A12 A1-2 — where the open plan is billed (STRIPE / RAZORPAY: on the web; a store: in the app).
+  // India Billing §4.11 — a RAZORPAY plan has no provider portal: Aramo's own manage section is shown.
+  managed_by?: 'STRIPE' | 'RAZORPAY' | 'APP_STORE' | 'GOOGLE_PLAY' | null;
+  // India Billing §4.11 — the current plan's price for its billing region (Razorpay: the regional price).
+  display_price?: Money | null;
   // Sign Business per-seat directive §3.3.4 — the pinned version's pricing unit (null: no
   // subscription), its seats (null unless SEAT), and whether the caller may change them (owner /
   // admin, Stripe-billed, SEAT; O-3). Optional only for older backends.
@@ -999,7 +1020,7 @@ function billingRefusalMessage(reason: unknown, details?: Record<string, unknown
   if (reason === 'TERMS_NOT_ACCEPTED') return 'Check “I agree” to accept the terms before you continue.';
   if (reason === 'PORTAL_NOT_CONFIGURED') return 'Billing management will be available soon; contact support@aramo.ai.';
   if (reason === 'personal_paid_checkout_not_enabled') return 'Upgrading to Standard isn’t available yet.';
-  if (reason === 'personal_paid_us_only') return 'Standard is available to US residents for now.';
+  if (reason === 'personal_paid_us_only') return 'Standard isn’t available in your country yet.';
   return null;
 }
 

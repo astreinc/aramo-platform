@@ -10,7 +10,16 @@ import type { OrganizationBillingAddress } from './organization-billing-profile.
 // providers too. Every Stripe-only port below (checkout, portal, commands, read, adjustments) keeps
 // its `provider` = 'STRIPE' in practice; a store is reached only through the store ports
 // (billing/store/store-billing.port.ts).
-export type BillingProviderKey = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+// India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.2 — RAZORPAY is a web billing provider
+// (India), like STRIPE (the US). Web checkout is per billing region (region/billing-region.service.ts).
+export type BillingProviderKey = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY';
+
+export const WEB_BILLING_PROVIDERS = ['STRIPE', 'RAZORPAY'] as const;
+export type WebBillingProviderKey = (typeof WEB_BILLING_PROVIDERS)[number];
+
+export function isWebBillingProvider(p: string | null | undefined): p is WebBillingProviderKey {
+  return p === 'STRIPE' || p === 'RAZORPAY';
+}
 
 export const STORE_BILLING_PROVIDERS = ['APP_STORE', 'GOOGLE_PLAY'] as const;
 export type StoreBillingProviderKey = (typeof STORE_BILLING_PROVIDERS)[number];
@@ -137,7 +146,9 @@ export interface BillingProviderPort {
   // plans use one whose cancellation terms match the approved contract).
   createPortalSession(account_ref: string, return_url: string, configuration?: string): Promise<{ url: string }>;
   retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;
-  verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent;
+  // India Billing (§4.7) — `context.event_id`: the provider's delivery event id when it is sent as a
+  // header (Razorpay); a provider whose payload carries its id ignores it (Stripe).
+  verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number, context?: { event_id?: string | undefined }): VerifiedBillingEvent;
 }
 
 // ---------------------------------------------------------------------------------------

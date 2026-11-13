@@ -512,6 +512,14 @@ services:
       - STRIPE_SECRET_KEY
       - STRIPE_WEBHOOK_SECRET
       - STRIPE_PLAN_PRICES
+      # India Billing Regions + Razorpay (directive v1.0 LOCKED §4.5, §6) — the Razorpay gateway. Dark:
+      # the webhook route is 404 unless SIGN_RAZORPAY_BILLING_ENABLED=1, and the gateway reports not
+      # configured unless all three secrets are set. Secrets enter only via the box .env (pipe).
+      - RAZORPAY_KEY_ID
+      - RAZORPAY_KEY_SECRET
+      - RAZORPAY_WEBHOOK_SECRET
+      - RAZORPAY_API_BASE
+      - SIGN_RAZORPAY_BILLING_ENABLED
       - BILLING_PAST_DUE_GRACE_DAYS
       - SIGN_BILLING_RECONCILE_ENABLED
       - SIGN_BILLING_RECONCILE_INTERVAL_MS
@@ -960,6 +968,13 @@ services:
       - CCP_ASC_SUBSCRIPTION_GROUP_ID
       - STRIPE_SECRET_KEY
       - STRIPE_API_BASE
+      # India Billing (directive v1.0 §4.6, G-2/G-4) — the Razorpay catalog writer and the region switch's
+      # gateway check (same values as sign-service; unset ⇒ Razorpay not configured, nothing is sent).
+      - RAZORPAY_KEY_ID
+      - RAZORPAY_KEY_SECRET
+      - RAZORPAY_WEBHOOK_SECRET
+      - RAZORPAY_API_BASE
+      - SIGN_RAZORPAY_BILLING_ENABLED
     # Sign Personal (Free) — offline MaxMind GeoLite2 databases, read-only (written by
     # deploy/geoip/docker-compose.geoip.yml; a replaced file is picked up without a restart). A
     # missing directory / file ⇒ network country UNKNOWN ⇒ a risk signal, not a refusal.

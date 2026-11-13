@@ -10,6 +10,7 @@ import {
   planVersionContentFromRows,
   planVersionTerms,
 } from './plan-version.js';
+import type { WebBillingProviderKey } from './billing/billing-provider.port.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-18) — the store for subscription."PlanVersion" and its
@@ -186,7 +187,7 @@ export class PlanVersionRepository {
    * existing pin is never changed: a different price is a new version. Re-pinning the SAME
    * price is idempotent. Applied by A6 (incl. the v1 cutover pins); A5 never calls it.
    */
-  async pinProviderPrice(input: { plan_version_id: string; provider: 'STRIPE'; provider_price_ref: string; created_by: string; at?: Date }, db?: Tx): Promise<{ created: boolean }> {
+  async pinProviderPrice(input: { plan_version_id: string; provider: WebBillingProviderKey; provider_price_ref: string; created_by: string; at?: Date }, db?: Tx): Promise<{ created: boolean }> {
     const ref = input.provider_price_ref.trim();
     if (ref === '') throw new PlanVersionContentError('provider_price_ref must be non-empty');
     // CCP-B2-backend — `db` runs the pin inside the caller's (governed apply) transaction.

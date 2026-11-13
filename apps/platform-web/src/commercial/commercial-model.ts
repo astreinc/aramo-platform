@@ -72,6 +72,7 @@ export const ACTION_LABEL: Readonly<Record<string, string>> = {
   DISCOUNT: 'Discount',
   CONVERSION: 'Subscription conversion',
   PLAN_CREATE: 'Create plan', // CCP PLAN_CREATE (catalog row 17)
+  BILLING_REGION_CHANGE: 'Billing region change', // India Billing Q3 (catalog row 18)
 };
 
 export function actionLabel(type: string): string {
@@ -443,6 +444,9 @@ export function summaryOf(r: ChangeRequest, me: Me): string {
       const name = typeof p['name'] === 'string' ? p['name'] : 'a plan';
       return typeof p['plan_key'] === 'string' ? `Create plan ${name} (${p['plan_key']})` : `Create plan ${name}`;
     }
+    case 'BILLING_REGION_CHANGE':
+      // India Billing Q3 — "Change billing region India (IN)".
+      return typeof p['country'] === 'string' ? `Change billing region ${regionName(p['country'])}` : 'Change a billing region';
     default:
       return `${actionLabel(r.action_type)} · ${productLabel(r.product_key)}`;
   }
@@ -491,6 +495,8 @@ export function effectRows(r: ChangeRequest, me: Me): EffectRow[] {
       return [{ field: 'Active commercial policy', before: null, after: typeof p['policy_version_id'] === 'string' ? shortId(p['policy_version_id']) : '—' }];
     case 'PLAN_CREATE':
       return planCreateEffectRows(p);
+    case 'BILLING_REGION_CHANGE':
+      return billingRegionEffectRows(p);
     default:
       return [{ field: actionLabel(r.action_type), before: null, after: productLabel(r.product_key) }];
   }
@@ -695,4 +701,59 @@ export function planCreateEffectRows(p: Record<string, unknown>): EffectRow[] {
     { field: 'Storage', before: null, after: sto === undefined ? 'Not included' : sto['unlimited'] === true ? 'Unlimited' : storage === null ? '—' : `${String(Math.round((storage / 1024 ** 3) * 100) / 100)} GB` },
     { field: 'Features', before: null, after: features.length === 0 ? 'None' : features.join(', ') },
   ];
+}
+
+// ── India Billing Regions + Razorpay (ruling Q3, §4.10) ─────────────────────────────────────────
+
+const REGION_NAMES: Readonly<Record<string, string>> = { US: 'United States', IN: 'India' };
+
+/** "India (IN)"; an unnamed country is its code. */
+export function regionName(country: string): string {
+  const n = REGION_NAMES[country];
+  return n === undefined ? country : `${n} (${country})`;
+}
+
+/** How a region's prices handle GST, in plain words (recorded only; nothing computes tax). */
+export const PRICE_TAX_MODE_LABEL: Readonly<Record<string, string>> = {
+  UNSET: 'Not set yet',
+  INCLUSIVE: 'Prices include GST',
+  EXCLUSIVE: 'Prices exclude GST',
+};
+
+/** The registration identifiers of a selling entity, in the order and words the console shows them. */
+export const REGISTRATION_FIELDS: readonly { readonly key: string; readonly label: string }[] = [
+  { key: 'gstin', label: 'GSTIN' },
+  { key: 'pan', label: 'PAN' },
+  { key: 'state_code', label: 'State code' },
+  { key: 'place_of_supply_rule', label: 'Place of supply rule' },
+  { key: 'note', label: 'Note' },
+];
+
+/**
+ * India Billing Q3 — what the Finance approver approves on a BILLING_REGION_CHANGE: each field the request
+ * sets (an absent field is unchanged, so it is not listed). The current value is on the Billing regions page;
+ * `before` is null here as for the other catalog requests.
+ */
+export function billingRegionEffectRows(p: Record<string, unknown>): EffectRow[] {
+  const onOff = (v: unknown): string => (v === true ? 'On' : 'Off');
+  const rows: EffectRow[] = [{ field: 'Region', before: null, after: typeof p['country'] === 'string' ? regionName(p['country']) : '—' }];
+  if (typeof p['enabled'] === 'boolean') rows.push({ field: 'Region selling (master switch)', before: null, after: onOff(p['enabled']) });
+  if (typeof p['personal_web_enabled'] === 'boolean') rows.push({ field: 'Personal web sales', before: null, after: onOff(p['personal_web_enabled']) });
+  if (typeof p['business_web_enabled'] === 'boolean') rows.push({ field: 'Business web sales', before: null, after: onOff(p['business_web_enabled']) });
+  if (typeof p['price_tax_mode'] === 'string') rows.push({ field: 'GST in prices', before: null, after: PRICE_TAX_MODE_LABEL[p['price_tax_mode']] ?? p['price_tax_mode'] });
+  const e = p['selling_entity'];
+  if (typeof e === 'object' && e !== null && !Array.isArray(e)) {
+    const o = e as Record<string, unknown>;
+    if (typeof o['display_name'] === 'string') rows.push({ field: 'Selling entity name', before: null, after: o['display_name'] });
+    if (typeof o['legal_name'] === 'string') rows.push({ field: 'Selling entity legal name', before: null, after: o['legal_name'] });
+    if (typeof o['active'] === 'boolean') rows.push({ field: 'Selling entity', before: null, after: o['active'] ? 'Active' : 'Inactive' });
+    const reg = o['registration'];
+    if (typeof reg === 'object' && reg !== null && !Array.isArray(reg)) {
+      const r = reg as Record<string, unknown>;
+      const set = REGISTRATION_FIELDS.filter((f) => typeof r[f.key] === 'string');
+      if (set.length === 0) rows.push({ field: 'Registration', before: null, after: 'Cleared' });
+      for (const f of set) rows.push({ field: `Registration · ${f.label}`, before: null, after: String(r[f.key]) });
+    }
+  }
+  return rows;
 }

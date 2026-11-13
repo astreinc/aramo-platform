@@ -201,6 +201,14 @@ TIER2_EXCLUDES=(
   # stays fully enforced). Paired in lockstep with the eslint.config.mjs entries.
   "libs/subscription/src/lib/billing/sync/apple-asc-wire.ts"
   "libs/subscription/src/tests/ccp-apple-asc-wire.spec.ts"
+  # India Billing Regions + Razorpay Directive v1.0 (LOCKED) — PO ruling 2026-11-13 (India Billing
+  # directive §3 Q4): the same vendor-integration exception, same restrictions, for the Razorpay
+  # wire file + its boundary spec: ONLY Razorpay's vendor-defined account-object field, its
+  # subscription-create notify field and its account path, and their translation to Aramo's
+  # `account_ref`; no Aramo-owned logic (razorpay-billing.provider.ts stays fully enforced). Paired in
+  # lockstep with the eslint.config.mjs entries.
+  "libs/subscription/src/lib/billing/razorpay-wire.ts"
+  "libs/subscription/src/tests/razorpay-wire.spec.ts"
   # M4 PR-3: submittal-create negative-shape spec (F23 standing pattern)
   # legitimately enumerates the forbidden Match-Class vocabulary as part
   # of its leakage-detection logic. Same structural pattern as the M3

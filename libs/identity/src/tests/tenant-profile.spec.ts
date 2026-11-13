@@ -164,3 +164,35 @@ describe('TenantProfileService — US billing-region lock', () => {
     expect(updateProfile).toHaveBeenCalledWith('t1', { country_code: 'IN' });
   });
 });
+
+// India Billing Regions + Razorpay (directive v1.0 §4.9) — a tenant held to India keeps a complete
+// Indian profile (no region switch, Q10); a US hold is unchanged above.
+describe('TenantProfileService — India billing-region lock', () => {
+  const inRow = () =>
+    row({
+      legal_name: 'Acme India Pvt Ltd',
+      address_line1: '1 MG Road',
+      city: 'Bengaluru',
+      state_province: 'Karnataka',
+      postal_code: '560001',
+      country_code: 'IN',
+      primary_contact_email: 'billing@acme.test',
+    });
+  function locked() {
+    const current = inRow();
+    const findProfileById = vi.fn(async () => current);
+    const updateProfile = vi.fn(async (_id: string, patch: Record<string, string | null>) => row({ ...current, ...patch }));
+    const svc = new TenantProfileService({ findProfileById, updateProfile } as never, { regionOf: vi.fn(async () => 'IN') } as never);
+    return { svc, updateProfile };
+  }
+  const reason = async (p: Promise<unknown>) => p.then(() => 'resolved', (e: unknown) => (e as AramoError).context.details?.['reason']);
+
+  it('allows ordinary edits; refuses leaving India or an invalid PIN code', async () => {
+    const { svc, updateProfile } = locked();
+    await svc.updateProfile({ tenantId: 't1', body: { city: 'Mysuru', postal_code: '570001' }, requestId: RID });
+    expect(updateProfile).toHaveBeenCalledWith('t1', { city: 'Mysuru', postal_code: '570001' });
+    expect(await reason(locked().svc.updateProfile({ tenantId: 't1', body: { country_code: 'US' }, requestId: RID }))).toBe('organization_country_not_supported');
+    expect(await reason(locked().svc.updateProfile({ tenantId: 't1', body: { postal_code: '78701' }, requestId: RID }))).toBe('organization_profile_incomplete');
+  });
+});
+

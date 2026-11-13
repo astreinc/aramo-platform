@@ -9,10 +9,32 @@ export const PROVIDER_LABEL: Record<BillingProvider, string> = {
   STRIPE: 'Web (Stripe)',
   APP_STORE: 'iPhone (App Store)',
   GOOGLE_PLAY: 'Android (Google Play)',
+  RAZORPAY: 'Web India (Razorpay)', // India Billing (CONTRACT: console labels)
 };
 
+/**
+ * India Billing Regions + Razorpay (directive v1.0 §4.6, §4.10) — where each web gateway sells: Stripe on the
+ * web in the United States (the US list price), Razorpay on the web in India (the version's IN / INR monthly
+ * regional price; a version without one is not sold in India).
+ */
+export const WEB_CHANNEL_COUNTRY: Partial<Record<BillingProvider, string>> = {
+  STRIPE: 'United States',
+  RAZORPAY: 'India',
+};
+
+/** "Web (Stripe): United States" / "Web India (Razorpay): India"; a store channel: its label alone. */
+export function channelWhere(provider: BillingProvider): string {
+  const where = WEB_CHANNEL_COUNTRY[provider];
+  return where === undefined ? PROVIDER_LABEL[provider] : `${PROVIDER_LABEL[provider]}: ${where}`;
+}
+
+/** A web gateway (Stripe, Razorpay): MONTH only, a gateway-style product id, no store listing. */
+export function isWebProvider(provider: BillingProvider): boolean {
+  return provider === 'STRIPE' || provider === 'RAZORPAY';
+}
+
 export const BILLING_PRODUCTS_INTRO =
-  'One billing product per channel, created and priced from this catalog. On approval, Aramo creates or updates the product in Stripe, the App Store and Google Play at exactly this version’s prices; a channel sells the version once its sync succeeds. Nothing is created by hand in the stores.';
+  'One billing product per channel, created and priced from this catalog. On approval, Aramo creates or updates the product in Stripe, Razorpay, the App Store and Google Play at exactly this version’s prices; a channel sells the version once its sync succeeds. Nothing is created by hand in the stores or gateways.';
 
 export interface BillingEditorRow {
   provider: BillingProvider;
@@ -35,7 +57,7 @@ export function defaultProductId(provider: BillingProvider, plan_key: string): s
   const kindAt = parts.findIndex((x) => x === 'personal' || x === 'business' || x === 'professional');
   if (kindAt > 0) parts.unshift(...parts.splice(kindAt, 1));
   const slug = parts.join('_').replace(/[^a-z0-9_]/g, '');
-  return provider === 'STRIPE' ? `aramo_sign_${slug}` : `ai.aramo.sign.${slug}.monthly`;
+  return isWebProvider(provider) ? `aramo_sign_${slug}` : `ai.aramo.sign.${slug}.monthly`;
 }
 
 /** The editor's starting rows for a publish of `detail`'s version. */
@@ -46,7 +68,9 @@ export function initialBillingRows(detail: Pick<CatalogVersionDetail, 'billing_e
     return {
       provider,
       interval: 'MONTH' as const,
-      selected: true,
+      // India Billing (§1: India ships OFF) — Razorpay starts unticked unless the plan already has it; every other
+      // eligible channel starts ticked, as before.
+      selected: provider === 'RAZORPAY' ? permanent !== undefined || carried !== undefined : true,
       product_id: permanent?.product_id ?? carried?.product_id ?? defaultProductId(provider, plan_key),
       locked: permanent !== undefined,
       sold: carried !== undefined,
@@ -69,7 +93,7 @@ export interface StoreListingInput {
 
 /** True when a selected row is a store (App Store / Google Play): the request then needs the store listing. */
 export function sellsInStores(rows: BillingEditorRow[]): boolean {
-  return rows.some((r) => r.selected && r.provider !== 'STRIPE');
+  return rows.some((r) => r.selected && !isWebProvider(r.provider));
 }
 
 /** The store listing's errors (empty = valid, or no store selected). */
@@ -99,7 +123,7 @@ export function billingEditorErrors(rows: BillingEditorRow[], screenshotId: stri
   if (unconfirmedStops.length > 0) errors.push(`The stores sell this plan in ${unconfirmedStops.join(', ')} today: add a regional price there, or confirm the stop.`);
   for (const r of rows) {
     if (!r.selected) continue;
-    const ok = r.provider === 'STRIPE' ? STRIPE_ID.test(r.product_id) : STORE_ID.test(r.product_id);
+    const ok = isWebProvider(r.provider) ? STRIPE_ID.test(r.product_id) : STORE_ID.test(r.product_id);
     if (!ok) errors.push(`${PROVIDER_LABEL[r.provider]}: the product id ${r.product_id === '' ? 'is empty' : 'has characters the store does not accept'}`);
   }
   if (needsReviewScreenshot(rows) && screenshotId === null) errors.push('A new App Store product needs the review screenshot of the in-app Plans screen.');

@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { currentPublishedVersion, PlanVersionRepository, PlanVersionStateError } from '../../plan-version.repository.js';
 import { planVersionTerms } from '../../plan-version.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { isWebBillingProvider } from '../billing-provider.port.js';
 
 import {
   billingProductsRuleErrors,
@@ -27,6 +28,7 @@ import {
 } from './billing-sync.port.js';
 import { appleTerritory } from './apple-territories.js';
 import { enqueueBillingProductSync } from './billing-sync-enqueue.js';
+import { BillingNotSellableError, RAZORPAY_COUNTRY, RAZORPAY_CURRENCY } from './razorpay-catalog.writer.js';
 import { imageDimensions, reviewScreenshotDimensionsError } from './review-screenshot.js';
 
 // CCP Billing Products Directive v1.0 (LOCKED) §3.3 — the billing-products service:
@@ -259,8 +261,9 @@ export class BillingProductsService {
         } else if (permanent.product_id !== job.product_id) {
           throw new PlanVersionStateError(`${provider} ${interval} is permanently ${permanent.product_id}`);
         }
-        if (provider === 'STRIPE') {
-          await this.versions.pinProviderPrice({ plan_version_id: job.plan_version_id, provider: 'STRIPE', provider_price_ref: String(outcome.external_price_ref), created_by: 'ccp-billing-sync', at: this.clock() }, tx);
+        if (isWebBillingProvider(provider)) {
+          // India Billing §4.2 — a web provider (Stripe, Razorpay) pins its price, one per (version, provider).
+          await this.versions.pinProviderPrice({ plan_version_id: job.plan_version_id, provider, provider_price_ref: String(outcome.external_price_ref), created_by: 'ccp-billing-sync', at: this.clock() }, tx);
         } else {
           await this.versions.pinStoreProduct({ plan_version_id: job.plan_version_id, provider, product_id: job.product_id, interval, created_by: 'ccp-billing-sync', at: this.clock() }, tx);
         }
@@ -271,7 +274,12 @@ export class BillingProductsService {
       });
       this.log.log(`billing product synced: ${provider} ${job.product_id} (${outcome.origin}${outcome.store_state ? `, ${outcome.store_state}` : ''})`);
     } catch (e) {
-      if (e instanceof BillingSyncError) {
+      if (e instanceof BillingNotSellableError) {
+        // India Billing Q8 — the version has no IN / INR price: nothing was created at Razorpay and this
+        // channel does not sell the version. Settled for a person (add the price in a new version); no
+        // other channel's job is affected.
+        await settle({ status: 'NEEDS_ATTENTION', last_error: e.message });
+      } else if (e instanceof BillingSyncError) {
         if (e.code === 'NOT_CONFIGURED') {
           await settle({ status: 'NOT_CONFIGURED', next_attempt_at: new Date(now.getTime() + NOT_CONFIGURED_RECHECK_MS), last_error: e.message });
         } else if (e.retryable && job.attempts <= BACKOFF_MS.length) {
@@ -333,7 +341,8 @@ export class BillingProductsService {
     const products = sold.map((s) => {
       const p = permanent.find((x) => x.provider === s.provider && x.interval === s.interval);
       // A Stripe purchase link holds the PRICE id; the billing product is the Stripe product (BP-3 default).
-      const fallback = s.provider === 'STRIPE' ? defaultProductId('STRIPE', plan.key, s.interval) : s.product_id;
+      // India Billing: a Razorpay purchase link holds the Razorpay PLAN id; the billing product is Aramo's id.
+      const fallback = isWebBillingProvider(s.provider) ? defaultProductId(s.provider, plan.key, s.interval) : s.product_id;
       return { provider: s.provider, interval: s.interval, product_id: p?.product_id ?? fallback };
     });
     return { products, eligible: eligibleProviders(plan) };
@@ -357,6 +366,7 @@ export class BillingProductsService {
           live = [];
         }
       }
+      // Stripe compares the US price; Razorpay its IN / INR price (the target carries only that); stores every price.
       const prices = bp.provider === 'STRIPE' ? target.prices.filter((p) => p.country === 'US') : target.prices;
       for (const p of prices) {
         const l = live.find((x) => x.country === p.country);
@@ -383,11 +393,19 @@ export class BillingProductsService {
     const terms = planVersionTerms(row);
     const plan = terms.plan;
     const prices: BillingTargetPrice[] = [];
-    if (plan.billing_interval === interval && plan.list_price_minor !== null && plan.currency !== null) {
-      prices.push({ country: 'US', currency: plan.currency, amount_minor: plan.list_price_minor });
+    if (provider === 'RAZORPAY') {
+      // India Billing Q8 — the Razorpay price is the version's regional IN / INR price of the interval, and
+      // only that (no US list price is needed or sent). None: the target has no price and the writer
+      // reports the version as not sold in India (BillingNotSellableError), never an error for other channels.
+      const india = (terms.regional_prices ?? []).find((r) => r.interval === interval && r.country === RAZORPAY_COUNTRY && r.currency === RAZORPAY_CURRENCY);
+      if (india !== undefined) prices.push({ country: india.country, currency: india.currency, amount_minor: india.amount_minor });
+    } else {
+      if (plan.billing_interval === interval && plan.list_price_minor !== null && plan.currency !== null) {
+        prices.push({ country: 'US', currency: plan.currency, amount_minor: plan.list_price_minor });
+      }
+      for (const r of terms.regional_prices ?? []) if (r.interval === interval) prices.push({ country: r.country, currency: r.currency, amount_minor: r.amount_minor });
+      if (!prices.some((p) => p.country === 'US')) throw new BillingSyncError('PROVIDER_REJECTED', `the catalog has no US ${interval} list price for ${plan.key}`, false);
     }
-    for (const r of terms.regional_prices ?? []) if (r.interval === interval) prices.push({ country: r.country, currency: r.currency, amount_minor: r.amount_minor });
-    if (!prices.some((p) => p.country === 'US')) throw new BillingSyncError('PROVIDER_REJECTED', `the catalog has no US ${interval} list price for ${plan.key}`, false);
     const permanent = await this.prisma.billingProduct.findUnique({ where: { plan_id_provider_interval: { plan_id: row.plan_id, provider, interval } } });
     let review_screenshot: BillingSyncTarget['review_screenshot'] = null;
     if (screenshot_asset_id !== null) {
@@ -402,7 +420,7 @@ export class BillingProductsService {
       plan_key: plan.key,
       // A1-1 — the store listing of the request; the internal plan description never reaches a store.
       display_name: request.listing?.name.trim() ?? plan.name,
-      description: request.listing?.description.trim() ?? (provider === 'STRIPE' ? plan.description ?? '' : ''),
+      description: request.listing?.description.trim() ?? (isWebBillingProvider(provider) ? plan.description ?? '' : ''),
       stop_countries: request.stop_countries ?? [],
       plan_version_id: row.id,
       version_number: row.version_number,

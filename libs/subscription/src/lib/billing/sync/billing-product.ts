@@ -3,10 +3,11 @@
 // channel eligibility (BP-2), the permanent-id rules (BP-3) and the carry-forward check (BP-11).
 // No I/O here; the change-request service and the sync engine call these.
 
-export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY';
+// India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.2 — RAZORPAY (web, India) joins the set.
+export type BillingProvider = 'STRIPE' | 'APP_STORE' | 'GOOGLE_PLAY' | 'RAZORPAY';
 export type BillingInterval = 'MONTH' | 'YEAR';
 
-export const BILLING_PROVIDERS: readonly BillingProvider[] = ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY'];
+export const BILLING_PROVIDERS: readonly BillingProvider[] = ['STRIPE', 'APP_STORE', 'GOOGLE_PLAY', 'RAZORPAY'];
 
 /** The payload key a PLAN_VERSION_PUBLISH carries (closed shape, checksummed with the request). */
 export const BILLING_PRODUCTS_KEY = 'billing_products';
@@ -85,12 +86,14 @@ export function billingProductsShapeErrors(v: unknown): string[] {
       }
       const x = e as Record<string, unknown>;
       for (const k of Object.keys(x)) if (!['provider', 'interval', 'product_id'].includes(k)) errors.push(`${p}.${k} is not allowed`);
-      if (!(BILLING_PROVIDERS as readonly unknown[]).includes(x['provider'])) errors.push(`${p}.provider must be STRIPE, APP_STORE or GOOGLE_PLAY`);
+      if (!(BILLING_PROVIDERS as readonly unknown[]).includes(x['provider'])) errors.push(`${p}.provider must be STRIPE, APP_STORE, GOOGLE_PLAY or RAZORPAY`);
       if (x['interval'] !== 'MONTH' && x['interval'] !== 'YEAR') errors.push(`${p}.interval must be MONTH or YEAR`);
       if (x['provider'] === 'STRIPE' && x['interval'] !== 'MONTH') errors.push(`${p}: a Stripe product is MONTH`);
+      // India Billing §7 — YEAR prices on Razorpay are out of v1: MONTH only.
+      if (x['provider'] === 'RAZORPAY' && x['interval'] !== 'MONTH') errors.push(`${p}: a Razorpay product is MONTH`);
       const id = x['product_id'];
-      const idOk = typeof id === 'string' && (x['provider'] === 'STRIPE' ? STRIPE_PRODUCT_ID.test(id) : BILLING_PRODUCT_ID.test(id));
-      if (!idOk) errors.push(`${p}.product_id must be a ${x['provider'] === 'STRIPE' ? 'Stripe' : 'store'} product id`);
+      const idOk = typeof id === 'string' && (isWebProvider(x['provider']) ? STRIPE_PRODUCT_ID.test(id) : BILLING_PRODUCT_ID.test(id));
+      if (!idOk) errors.push(`${p}.product_id must be a ${x['provider'] === 'STRIPE' ? 'Stripe' : x['provider'] === 'RAZORPAY' ? 'web' : 'store'} product id`);
       const key = `${String(x['provider'])}:${String(x['interval'])}`;
       if (seen.has(key)) errors.push(`${p} repeats a provider and interval`);
       seen.add(key);
@@ -131,21 +134,33 @@ export interface BillingPlanFacts {
 }
 
 /**
- * BP-2 (PO 2026-11-11) — the channels a plan may have a billing product on. PERSONAL self-service:
- * web (Stripe), App Store and Google Play. BUSINESS self-service: web (Stripe) only (the tenant admin
- * manages it on the web; the apps never sell a Business plan). Every other plan: none (sales-led).
+ * BP-2 (PO 2026-11-11), as superseded by the India Billing Regions + Razorpay Directive v1.0 (LOCKED) §2
+ * ("BUSINESS = web gateways only, Stripe and/or Razorpay; still never App Store or Google Play") and
+ * §4.6 — the channels a plan may have a billing product on. PERSONAL self-service: web (Stripe, US),
+ * web India (Razorpay), App Store and Google Play. BUSINESS self-service: the web gateways only, Stripe
+ * and Razorpay (the tenant admin manages it on the web; the apps never sell a Business plan). Every
+ * other plan: none (sales-led).
  */
 export function eligibleProviders(plan: BillingPlanFacts): readonly BillingProvider[] {
   if (plan.sales_model !== 'SELF_SERVICE') return [];
-  if (plan.tenant_kind === 'PERSONAL') return BILLING_PROVIDERS;
-  if (plan.tenant_kind === 'BUSINESS') return ['STRIPE'];
+  if (plan.tenant_kind === 'PERSONAL') return ['STRIPE', 'RAZORPAY', 'APP_STORE', 'GOOGLE_PLAY'];
+  if (plan.tenant_kind === 'BUSINESS') return ['STRIPE', 'RAZORPAY'];
   return [];
 }
 
-/** BP-3 — the default product id: `ai.aramo.sign.<plan_slug>.<interval>` (stores), `aramo_sign_<plan_slug>` (Stripe). */
+/** A web gateway (Stripe, Razorpay): MONTH only, a gateway-style product id, no store listing. */
+export function isWebProvider(provider: unknown): provider is 'STRIPE' | 'RAZORPAY' {
+  return provider === 'STRIPE' || provider === 'RAZORPAY';
+}
+
+/**
+ * BP-3 — the default product id: `ai.aramo.sign.<plan_slug>.<interval>` (stores), `aramo_sign_<plan_slug>`
+ * (Stripe, and Razorpay, where it is Aramo's own product id carried in the plan notes: Razorpay assigns
+ * its plan ids itself).
+ */
 export function defaultProductId(provider: BillingProvider, plan_key: string, interval: BillingInterval): string {
   const slug = planSlug(plan_key);
-  if (provider === 'STRIPE') return `aramo_sign_${slug}`;
+  if (isWebProvider(provider)) return `aramo_sign_${slug}`;
   return `ai.aramo.sign.${slug}.${interval === 'MONTH' ? 'monthly' : 'yearly'}`;
 }
 
@@ -217,7 +232,8 @@ export function billingProductsRuleErrors(input: {
       errors.push({ code: 'CHANNEL_DROPPED', message: `the plan sells on ${s.provider} (${s.interval}); carry it forward or choose to stop selling on ${s.provider}` });
     }
   }
-  if (input.payload.listing === undefined && input.payload.products.some((p) => p.provider !== 'STRIPE')) {
+  // A store listing is for the stores only (App Store, Google Play); a web gateway needs none.
+  if (input.payload.listing === undefined && input.payload.products.some((p) => !isWebProvider(p.provider))) {
     errors.push({ code: 'LISTING_REQUIRED', message: 'a store product needs the store name and description (what the App Store and Google Play show)' });
   }
   const newApple = input.payload.products.some((p) => p.provider === 'APP_STORE' && !input.existing.some((e) => e.provider === 'APP_STORE' && e.interval === p.interval));

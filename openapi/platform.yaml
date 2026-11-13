@@ -3998,6 +3998,37 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialCatalogConflict'
 
+  # India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.10 — Commercial › Billing regions (reads).
+  # Served by apps/platform-admin. A change is a BILLING_REGION_CHANGE change request on the shared
+  # change-request route (requester scope platform:catalog:draft; chain Finance), applied by its
+  # requester through POST /platform/commercial/change-requests/{id}/apply.
+  /platform/commercial/billing-regions:
+    get:
+      operationId: listPlatformCommercialBillingRegions
+      tags: [Platform Commercial Catalog]
+      summary: List the country billing regions (gateway, currency, selling entity, switches).
+      description: |
+        Read-only. Every billing region: its web gateway (`STRIPE` or `RAZORPAY`), currency, selling
+        entity and its registration identifiers (data only: nothing computes tax; never shown to
+        tenants), master / Personal / Business switches and price tax mode, whether the gateway's
+        credentials are set on the server (`gateway_configured`, G-2), the G-3 refusal that would stop
+        it being switched on now (`enable_refusal`), and the region's open BILLING_REGION_CHANGE
+        requests. Requires `platform:catalog:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The billing regions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingRegionList'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   # CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-23) — governed manual <-> self-service
   # conversion. Served by apps/platform-admin.
   /platform/commercial/change-requests/{id}/convert:
@@ -8742,7 +8773,7 @@ components:
           format: uuid
         provider:
           type: string
-          enum: [STRIPE]
+          enum: [STRIPE, RAZORPAY]
         command_kind:
           type: string
           # CCP-C4 adds the billing-adjustment kinds.
@@ -8853,7 +8884,7 @@ components:
           format: uuid
         provider:
           type: string
-          enum: [STRIPE]
+          enum: [STRIPE, RAZORPAY]
         provider_event_id:
           type: string
         event_type:
@@ -8925,7 +8956,7 @@ components:
       properties:
         provider:
           type: string
-          enum: [STRIPE]
+          enum: [STRIPE, RAZORPAY]
         invoice_ref:
           type: string
         number:
@@ -9025,7 +9056,7 @@ components:
           $ref: '#/components/schemas/BillingStatusAvailability'
         provider:
           type: [string, 'null']
-          enum: [STRIPE, null]
+          enum: [STRIPE, RAZORPAY, null]
         mode:
           type: [string, 'null']
           enum: [test, live, null]
@@ -9088,7 +9119,7 @@ components:
       properties:
         provider:
           type: string
-          enum: [STRIPE]
+          enum: [STRIPE, RAZORPAY]
         availability:
           type: string
           enum: [AVAILABLE, BILLING_UNAVAILABLE, LIVE_MODE_HELD, PROVIDER_UNAVAILABLE]
@@ -9286,7 +9317,7 @@ components:
           type: [string, 'null']
         billing_provider:
           type: [string, 'null']
-          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, RAZORPAY, null]
           description: Sign Mobile M-A12 W1-G item 8 — the billing channel; store revenue is net of the store fee (the store is the merchant of record).
         status_since:
           type: [string, 'null']
@@ -9389,7 +9420,7 @@ components:
           type: [string, 'null']
         billing_provider:
           type: [string, 'null']
-          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, null]
+          enum: [STRIPE, APP_STORE, GOOGLE_PLAY, RAZORPAY, null]
           description: Sign Mobile M-A12 W1-G item 8 — the billing channel of the subscription.
         provider_price_ref:
           type: [string, 'null']
@@ -9453,7 +9484,7 @@ components:
           type: [string, 'null']
         provider:
           type: string
-          enum: [STRIPE]
+          enum: [STRIPE, RAZORPAY]
         subscription_ref:
           type: string
         detected_at:
@@ -10130,7 +10161,11 @@ components:
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with `details.reason` `plan_key_taken` (a plan exists) or
         `plan_create_open` (another open PLAN_CREATE names it). The created plan is ACTIVE and not
         sellable; no provider price is pinned.
-      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND, PAYMENT_RECORD, PLAN_CREATE]
+        India Billing Regions (catalog row 18): `BILLING_REGION_CHANGE` changes one billing region (its
+        switches, price tax mode and selling entity). Requested with `platform:catalog:draft`; chain
+        Finance. Turning a region ON is refused unless its gateway is configured, its selling entity
+        is active and (for a Razorpay region) its price tax mode is set.
+      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND, PAYMENT_RECORD, PLAN_CREATE, BILLING_REGION_CHANGE]
 
     CommercialChangeRequestState:
       type: string
@@ -10505,7 +10540,7 @@ components:
         tenant_id: { type: string, format: uuid }
         product_key: { type: string }
         subscription_id: { type: string, format: uuid }
-        provider: { type: string, enum: [STRIPE] }
+        provider: { type: string, enum: [STRIPE, RAZORPAY] }
         provider_target_ref: { type: string }
         provider_object_ref: { type: [string, 'null'] }
         discount_bps: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
@@ -11064,6 +11099,65 @@ components:
         display_order:
           type: integer
 
+    BillingRegion:
+      type: object
+      description: India Billing §4.1 — one country billing region (read model).
+      additionalProperties: false
+      required: [country, gateway, currency, enabled, personal_web_enabled, business_web_enabled, price_tax_mode, selling_entity, gateway_configured, enable_refusal, registration, open_requests]
+      properties:
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        gateway: { type: string, enum: [STRIPE, RAZORPAY] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        enabled: { type: boolean, description: The master switch. }
+        personal_web_enabled: { type: boolean }
+        business_web_enabled: { type: boolean }
+        price_tax_mode:
+          type: string
+          enum: [UNSET, INCLUSIVE, EXCLUSIVE]
+          description: Whether configured prices include GST (recorded only; nothing computes tax).
+        selling_entity:
+          $ref: '#/components/schemas/SellingEntity'
+        gateway_configured: { type: boolean, description: G-2 — the gateway credentials are set on the server. }
+        enable_refusal:
+          type: [string, 'null']
+          enum: [gateway_not_configured, selling_entity_inactive, price_tax_mode_unset, null]
+          description: G-3 — why the region could not be switched on now (null when it could).
+        registration:
+          type: object
+          description: §5 — the selling entity's named registration identifiers (gstin, pan, state_code, place_of_supply_rule, note). Data only.
+          additionalProperties: { type: string }
+        open_requests:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, state, requested_by, created_at, expires_at]
+            properties:
+              id: { type: string, format: uuid }
+              state: { type: string }
+              requested_by: { type: string }
+              created_at: { type: string, format: date-time }
+              expires_at: { type: [string, 'null'], format: date-time }
+    SellingEntity:
+      type: object
+      additionalProperties: false
+      required: [id, key, display_name, legal_name, country, active]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        display_name: { type: string }
+        legal_name: { type: string }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        active: { type: boolean }
+    BillingRegionList:
+      type: object
+      additionalProperties: false
+      required: [regions]
+      properties:
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingRegion'
     CommercialCatalog:
       type: object
       additionalProperties: false
@@ -11340,7 +11434,7 @@ components:
     # CCP Billing Products, One Catalog Across Web and Apps, Directive v1.0 (LOCKED).
     BillingProvider:
       type: string
-      enum: [STRIPE, APP_STORE, GOOGLE_PLAY]
+      enum: [STRIPE, APP_STORE, GOOGLE_PLAY, RAZORPAY]
     BillingProductLink:
       type: object
       additionalProperties: false

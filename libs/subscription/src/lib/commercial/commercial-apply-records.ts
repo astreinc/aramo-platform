@@ -71,6 +71,11 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   POLICY_TARGET_CHANGED: 'The policy version changed after it was approved; the approvers did not see this content.',
   POLICY_TARGET_MALFORMED: 'The policy version content does not parse as a commercial policy.',
   POLICY_ACTIVE_CHANGED: 'Another policy version became active after this request was raised; raise a new request against the current policy.',
+  // India Billing Regions + Razorpay (ruling Q3, §6 G-3) — BILLING_REGION_CHANGE; nothing was changed.
+  BILLING_REGION_NOT_FOUND: 'There is no billing region for this country, so nothing was changed.',
+  BILLING_REGION_GATEWAY_NOT_CONFIGURED: 'Add the gateway keys on the server first: the region cannot be switched on while its payment gateway is not configured. Nothing was changed; apply again once the keys are set.',
+  BILLING_REGION_SELLING_ENTITY_INACTIVE: 'Activate the selling entity: the region cannot be switched on while the entity that sells in it is inactive. Nothing was changed.',
+  BILLING_REGION_PRICE_TAX_MODE_UNSET: 'Set how prices handle GST: the region cannot be switched on until its prices are marked as including or excluding GST (this needs the GST amendment). Nothing was changed.',
   UNEXPECTED: 'The apply failed unexpectedly and was rolled back; it can be retried.',
   // CCP-C4 — the Stripe-side billing adjustments (credits, discounts, refunds)
   // CCP-DG (Charter Amendment A2 RX-D1) — gate 2 (commercial policy) and gate 1 (operational switch)

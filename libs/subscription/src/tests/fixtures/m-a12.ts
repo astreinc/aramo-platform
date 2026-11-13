@@ -14,3 +14,10 @@ export const M_A12_STORE_MIGRATION = resolve(__dirname, '../../../prisma/migrati
  * each fixed set applies this schema migration right after the M-A12 one (never its catalog data part).
  */
 export const SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION = resolve(__dirname, '../../../prisma/migrations/20261108100000_sign_business_per_seat/migration.sql');
+
+/**
+ * India Billing Regions + Razorpay (directive v1.0 LOCKED, Q9) — TenantBillingAccount is keyed
+ * (tenant_id, provider), and the lifecycle upserts on that key. A fixed set that reaches checkout applies
+ * this fixture (the account part of 20261113100000_india_billing_regions, verbatim) after the seat schema.
+ */
+export const INDIA_BILLING_ACCOUNT_KEY_FIXTURE = resolve(__dirname, './india-billing-account-key.sql');

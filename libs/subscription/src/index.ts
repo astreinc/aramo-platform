@@ -262,6 +262,10 @@ export {
   BILLING_COUNTRY_NOT_SUPPORTED,
   DOMAIN_NOT_AUTHORITATIVE,
   billingCountrySupported,
+  // India Billing Regions + Razorpay (directive v1.0 §4.4, §4.9, Q6) — routing and the activation guard.
+  webActivationCountryOk,
+  billingSegmentOf,
+  type CheckoutRoute,
   checkoutTermsDocument,
   personalCheckoutDisclosure,
   businessCheckoutDisclosure,
@@ -553,6 +557,19 @@ export {
   type CommercialPolicyApplyFaultHook,
   type CommercialPolicyApplyResult,
 } from './lib/commercial/commercial-policy-apply.service.js';
+// India Billing Regions + Razorpay (ruling Q3, §4.10) — the governed BILLING_REGION_CHANGE apply and the
+// console reads behind Commercial › Billing regions.
+export {
+  BILLING_REGION_APPLY_FAILURE_CODES,
+  COMMERCIAL_BILLING_REGION_APPLY_FAULT_HOOK,
+  CommercialBillingRegionApplyService,
+  CommercialBillingRegionReadService,
+  isBillingRegionApplicable,
+  type BillingRegionConsoleDetail,
+  type BillingRegionConsoleView,
+  type CommercialBillingRegionApplyFaultHook,
+  type CommercialBillingRegionApplyResult,
+} from './lib/commercial/commercial-billing-region-apply.service.js';
 // CCP-B4 (PBD §5.3 row B4; MP-A2 N-3) — enterprise contract records (written only by the A6
 // apply; state, plan and commitment read through TenantSubscription) and their read model.
 export {
@@ -1023,6 +1040,8 @@ export {
 // Aramo Sign Mobile M-A12 W1-G with Amendment A1 — in-app store billing (App Store, Google Play),
 // regional list prices (A1-3) and the store price reconciliation.
 export { STORE_BILLING_PROVIDERS, isStoreBillingProvider, type StoreBillingProviderKey } from './lib/billing/billing-provider.port.js';
+// India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.2 — the web billing providers (Stripe, Razorpay).
+export { WEB_BILLING_PROVIDERS, isWebBillingProvider, type WebBillingProviderKey } from './lib/billing/billing-provider.port.js';
 export {
   StoreBillingService,
   StoreBillingRefusedError,
@@ -1095,6 +1114,7 @@ export {
   billingProductsShapeErrors,
   defaultProductId,
   eligibleProviders,
+  isWebProvider,
   STORE_LISTING_LIMITS,
   storeListingErrors,
   type BillingInterval,
@@ -1112,3 +1132,53 @@ export {
   type MismatchEntry,
 } from './lib/billing/sync/billing-products.service.js';
 export { REVIEW_SCREENSHOT_SIZES } from './lib/billing/sync/review-screenshot.js';
+// India Billing Regions + Razorpay (§4.6) — the Razorpay catalog writer (one plan per published version).
+export { BillingNotSellableError, RazorpayCatalogWriter, RAZORPAY_COUNTRY, RAZORPAY_CURRENCY, razorpayTargetPrice } from './lib/billing/sync/razorpay-catalog.writer.js';
+
+// Aramo India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.1, §4.4, §5, §6 — the billing region
+// model (regions, selling entities, the fail-closed sell decision, the G-3 guard) and the country port.
+export {
+  BILLING_COUNTRY_PORT,
+  BILLING_GATEWAY_CONFIGURED,
+  BillingRegionChangeError,
+  BillingRegionIntegrityError,
+  BillingRegionService,
+  GSTIN_PATTERN,
+  PAN_PATTERN,
+  PRICE_TAX_MODES,
+  SELLING_ENTITY_REGISTRATION_KEYS,
+  billingRegionChangeErrors,
+  regionEnableRefusal,
+  registrationErrors,
+  type BillingCountryPort,
+  type BillingGatewayConfigured,
+  type BillingRegionChange,
+  type BillingRegionView,
+  type BillingSegment,
+  type PriceTaxMode,
+  type RegionEnableRefusal,
+  type RegionSellRefusal,
+  type SellingEntityRegistrationKey,
+  type SellingEntityView,
+} from './lib/billing/region/index.js';
+// India Billing Regions + Razorpay (directive v1.0 LOCKED §4.3, §4.5, WS-B) — the web gateways, the
+// gateway registry and the Razorpay adapter (dark until its credentials are set).
+export {
+  BILLING_GATEWAY_REGISTRY,
+  StaticBillingGatewayRegistry,
+  UnboundBillingGatewayError,
+  type BillingGatewayBinding,
+  type BillingGatewayRegistry,
+} from './lib/billing/gateway-registry.js';
+export {
+  RAZORPAY_DEFAULT_API_BASE,
+  RAZORPAY_STATUS_MAP,
+  RAZORPAY_SUBSCRIPTION_TOTAL_COUNT,
+  RazorpayBillingProvider,
+  razorpayApiBase,
+  razorpayCredentials,
+  razorpayProviderStatus,
+  razorpaySubscriptionState,
+  verifyRazorpaySignature,
+  type RazorpayFetch,
+} from './lib/billing/razorpay-billing.provider.js';

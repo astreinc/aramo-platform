@@ -38,7 +38,7 @@ describe('billing_products shape', () => {
     expect(errs.join('\n')).toMatch(/foo is not allowed/);
     expect(errs.join('\n')).toMatch(/extra is not allowed/);
     expect(errs.join('\n')).toMatch(/repeats a provider and interval/);
-    expect(errs.join('\n')).toMatch(/provider must be STRIPE, APP_STORE or GOOGLE_PLAY/);
+    expect(errs.join('\n')).toMatch(/provider must be STRIPE, APP_STORE, GOOGLE_PLAY or RAZORPAY/);
   });
   it('refuses a yearly Stripe product and a Stripe id with dots', () => {
     const errs = billingProductsShapeErrors({ products: [{ provider: 'STRIPE', interval: 'YEAR', product_id: 'a.b' }] }).join('\n');
@@ -53,9 +53,9 @@ describe('billing_products shape', () => {
   });
 });
 
-describe('eligibility (BP-2)', () => {
-  it('Personal self-service sells on all three channels', () => expect(eligibleProviders(PERSONAL)).toEqual(['STRIPE', 'APP_STORE', 'GOOGLE_PLAY']));
-  it('Business self-service sells on the web only', () => expect(eligibleProviders(BUSINESS)).toEqual(['STRIPE']));
+describe('eligibility (BP-2, as superseded by India Billing §2 / §4.6)', () => {
+  it('Personal self-service sells on both web gateways and both stores', () => expect(eligibleProviders(PERSONAL)).toEqual(['STRIPE', 'RAZORPAY', 'APP_STORE', 'GOOGLE_PLAY']));
+  it('Business self-service sells on the web gateways only (Stripe and Razorpay, never a store)', () => expect(eligibleProviders(BUSINESS)).toEqual(['STRIPE', 'RAZORPAY']));
   it('contract, enterprise and operator plans have no billing product', () => {
     expect(eligibleProviders({ tenant_kind: 'BUSINESS', sales_model: 'CONTACT_SALES' })).toEqual([]);
     expect(eligibleProviders({ tenant_kind: null, sales_model: 'OPERATOR' })).toEqual([]);
@@ -69,6 +69,23 @@ describe('default ids (BP-3)', () => {
     expect(defaultProductId('APP_STORE', 'aramo-sign-standard-personal-v1', 'MONTH')).toBe('ai.aramo.sign.personal_standard.monthly');
     expect(defaultProductId('GOOGLE_PLAY', 'aramo-sign-standard-personal-v1', 'YEAR')).toBe('ai.aramo.sign.personal_standard.yearly');
     expect(defaultProductId('STRIPE', 'aramo-sign-standard-business-v1', 'MONTH')).toBe('aramo_sign_business_standard');
+  });
+  it('India Billing: a Razorpay product follows the Stripe id convention (Aramo id in the plan notes)', () => {
+    expect(defaultProductId('RAZORPAY', 'aramo-sign-standard-business-v1', 'MONTH')).toBe('aramo_sign_business_standard');
+  });
+});
+
+describe('Razorpay billing products (India Billing §4.6, §7)', () => {
+  const razorpay = { provider: 'RAZORPAY' as const, interval: 'MONTH' as const, product_id: 'aramo_sign_personal_standard' };
+  it('accepts a monthly Razorpay product; refuses YEAR and a dotted id', () => {
+    expect(billingProductsShapeErrors({ products: [stripe, razorpay] })).toEqual([]);
+    const errs = billingProductsShapeErrors({ products: [{ provider: 'RAZORPAY', interval: 'YEAR', product_id: 'a.b' }] }).join('\n');
+    expect(errs).toMatch(/a Razorpay product is MONTH/);
+    expect(errs).toMatch(/must be a web product id/);
+  });
+  it('a Razorpay product needs no store listing, and a Business plan may sell on it', () => {
+    expect(billingProductsRuleErrors({ payload: { products: [razorpay] }, plan: PERSONAL, existing: [], taken_elsewhere: [], sold: [] })).toEqual([]);
+    expect(billingProductsRuleErrors({ payload: { products: [stripe, razorpay] }, plan: BUSINESS, existing: [], taken_elsewhere: [], sold: [] })).toEqual([]);
   });
 });
 

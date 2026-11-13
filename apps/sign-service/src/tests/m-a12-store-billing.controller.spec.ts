@@ -77,7 +77,7 @@ describe('M-A12 — GET plans and GET account', () => {
   it('plans: the kind-filtered catalog, each plan with its store products and the regional price of the queried country (monthly first)', async () => {
     const { controller, store, lifecycle } = setup();
     const out = (await controller.plans(auth(), 'r', 'in')) as { plans: Record<string, unknown>[] };
-    expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'BUSINESS');
+    expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'BUSINESS', 'STRIPE');
     expect(store['planOffers']).toHaveBeenCalledWith('sign', 'IN');
     expect(out.plans[0]).toMatchObject({
       key: 'aramo-sign-business-v2',

@@ -2553,6 +2553,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/billing/webhook/razorpay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Razorpay webhook receiver (India Billing).
+         * @description No session. Authenticity is the X-Razorpay-Signature header (hex HMAC-SHA256 over the raw body). Each event is recorded in the billing webhook inbox and processed at most once (keyed by X-Razorpay-Event-Id); the subscription state is re-fetched from Razorpay before it is applied. A processing failure returns 5xx so Razorpay redelivers. 404 while Razorpay billing is off (SIGN_RAZORPAY_BILLING_ENABLED not 1).
+         */
+        post: operations["receiveRazorpayBillingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/billing/webhook/stripe": {
         parameters: {
             query?: never;
@@ -3878,6 +3898,12 @@ export interface components {
             regional_price?: null | components["schemas"]["BillingRegionalPrice"];
             /** @description M-A12 A1-3 — every published regional price for the caller's billing country (MONTH and YEAR). */
             regional_prices?: components["schemas"]["BillingRegionalPrice"][];
+            /** @description India Billing Regions + Razorpay (directive v1.0 §4.11, ruling Q8) — the price to show for the caller's billing region. On a Stripe region it is `price`; on a Razorpay region it is the version's regional MONTH price in the region's currency (null when the version has none; such a plan is not sold there). */
+            display_price?: {
+                amount_minor?: number;
+                currency?: string;
+                interval?: string | null;
+            } | null;
         };
         BillingRegionalPrice: {
             country: string;
@@ -3982,13 +4008,19 @@ export interface components {
              * @description M-A12 W1-G item 5 — where the open self-service plan is billed (null without one).
              * @enum {string|null}
              */
-            managed_by?: "STRIPE" | "APP_STORE" | "GOOGLE_PLAY" | null;
+            managed_by?: "STRIPE" | "APP_STORE" | "GOOGLE_PLAY" | "RAZORPAY" | null;
             /** @description M-A12 A1-2 — the caller may buy a plan in the app now. */
             store_purchase_eligible?: boolean;
             /** @enum {string|null} */
             store_purchase_block_reason?: "store_billing_disabled" | "not_billing_manager" | "store_purchase_seats_unsupported" | "billing_managed_elsewhere" | null;
             /** @description The store subscription-management page (App Store / Google Play) or the web billing page (Stripe); null without a self-service plan. */
             manage_url?: string | null;
+            /** @description India Billing Regions + Razorpay (directive v1.0 §4.11) — the current Razorpay-billed plan's regional MONTH price in its region's currency; null otherwise (the list price applies). */
+            display_price?: {
+                amount_minor?: number;
+                currency?: string;
+                interval?: string | null;
+            } | null;
         };
         SelfServiceActionState: {
             available: boolean;
@@ -9595,6 +9627,13 @@ export interface operations {
                         /** @description The APPROVED Terms of Service a checkout must accept (version, url); null while none is approved. */
                         terms: Record<string, never> | null;
                         sales_contact_url: string | null;
+                        /**
+                         * @description India Billing Regions + Razorpay (directive v1.0 §4.4, §4.11) — the web gateway of the caller's billing region (Personal residence, Business registered country); STRIPE when no region routes elsewhere. A RAZORPAY checkout shows the auto-pay mandate disclosure before the redirect.
+                         * @enum {string}
+                         */
+                        billing_gateway?: "STRIPE" | "RAZORPAY";
+                        /** @description India Billing §4.11 — the ISO 4217 currency of the caller's billing region (USD when none). */
+                        billing_currency?: string;
                     };
                 };
             };
@@ -10043,6 +10082,56 @@ export interface operations {
                 };
             };
             /** @description Store billing is off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    receiveRazorpayBillingWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Razorpay-Signature": string;
+                "X-Razorpay-Event-Id"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: boolean;
+                        /** @enum {string} */
+                        outcome: "APPLIED" | "IGNORED" | "DUPLICATE";
+                    };
+                };
+            };
+            /** @description The signature is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Razorpay billing is off. */
             404: {
                 headers: {
                     [name: string]: unknown;
