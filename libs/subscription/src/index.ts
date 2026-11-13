@@ -1112,3 +1112,25 @@ export {
   type MismatchEntry,
 } from './lib/billing/sync/billing-products.service.js';
 export { REVIEW_SCREENSHOT_SIZES } from './lib/billing/sync/review-screenshot.js';
+// India Billing Regions + Razorpay (directive v1.0 LOCKED §4.3, §4.5, WS-B) — the web gateways, the
+// gateway registry and the Razorpay adapter (dark until its credentials are set).
+export { WEB_BILLING_PROVIDERS, isWebBillingProvider, type WebBillingProviderKey } from './lib/billing/billing-provider.port.js';
+export {
+  BILLING_GATEWAY_REGISTRY,
+  StaticBillingGatewayRegistry,
+  UnboundBillingGatewayError,
+  type BillingGatewayBinding,
+  type BillingGatewayRegistry,
+} from './lib/billing/gateway-registry.js';
+export {
+  RAZORPAY_DEFAULT_API_BASE,
+  RAZORPAY_STATUS_MAP,
+  RAZORPAY_SUBSCRIPTION_TOTAL_COUNT,
+  RazorpayBillingProvider,
+  razorpayApiBase,
+  razorpayCredentials,
+  razorpayProviderStatus,
+  razorpaySubscriptionState,
+  verifyRazorpaySignature,
+  type RazorpayFetch,
+} from './lib/billing/razorpay-billing.provider.js';

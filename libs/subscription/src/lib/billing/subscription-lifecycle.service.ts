@@ -25,7 +25,9 @@ import {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
   isStoreBillingProvider,
+  isWebBillingProvider,
 } from './billing-provider.port.js';
+import { BILLING_GATEWAY_REGISTRY, type BillingGatewayRegistry } from './gateway-registry.js';
 import { STORE_SUBSCRIPTION_READER, type StoreSubscriptionReader } from './store/store-billing.port.js';
 import {
   BILLING_COMMAND_UNCONFIRMED_STATES,
@@ -422,6 +424,9 @@ export class SubscriptionLifecycleService {
     // M-A12 W1-G — the store re-fetch (App Store Server API / Android Publisher). Unbound: a store
     // event or reconcile is IGNORED (nothing is applied from a payload).
     @Optional() @Inject(STORE_SUBSCRIPTION_READER) private readonly stores?: StoreSubscriptionReader,
+    // India Billing (directive v1.0 §4.3) — the web gateways by key: a row of another web gateway than
+    // the bound one (Razorpay) is re-fetched from its own gateway. Unbound: such a row is IGNORED.
+    @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -921,6 +926,13 @@ export class SubscriptionLifecycleService {
       if (this.stores === undefined || !this.stores.isConfigured(provider)) return { outcome: 'IGNORED', detail: `${provider} billing is not configured`, tenant_id: null };
       return this.applyProviderState(await this.stores.retrieve(provider, subscription_ref), product_key, at, confirmation);
     }
+    // India Billing §4.3 — a web row is re-fetched from ITS gateway; the bound provider (Stripe) is
+    // exactly the bound port, as before.
+    if (provider !== this.billing.provider) {
+      const gateway = isWebBillingProvider(provider) && this.gateways !== undefined && this.gateways.configured(provider) ? this.gateways.billing(provider) : null;
+      if (gateway === null) return { outcome: 'IGNORED', detail: `${provider} billing is not configured`, tenant_id: null };
+      return this.applyProviderState(await gateway.retrieveSubscription(subscription_ref), product_key, at, confirmation);
+    }
     const state = await this.billing.retrieveSubscription(subscription_ref);
     return this.applyProviderState(state, product_key, at, confirmation);
   }
@@ -1370,7 +1382,8 @@ export class SubscriptionLifecycleService {
     if (price_ref === null) return null;
     // M-A12 — a store product resolves through its store pins only (no env fallback).
     if (isStoreBillingProvider(provider)) return resolveStoreProductToVersion(tx, provider, price_ref, product_key);
-    return resolvePriceToVersion(tx, price_ref, product_key, this.prices());
+    // India Billing §4.3 — a web price resolves through ITS gateway's pins (Razorpay: no env fallback).
+    return resolvePriceToVersion(tx, price_ref, product_key, this.prices(), provider === 'RAZORPAY' ? 'RAZORPAY' : 'STRIPE');
   }
 
   /**
