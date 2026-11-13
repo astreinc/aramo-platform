@@ -6785,6 +6785,7 @@
     "libs/subscription/src/tests/fixtures/ccp-plan-create-compensating.sql",
     "libs/subscription/src/tests/fixtures/ccp-r3-alert-compensating.sql",
     "libs/subscription/src/tests/fixtures/commercial-policy-seed.ts",
+    "libs/subscription/src/tests/fixtures/india-billing-account-key.sql",
     "libs/subscription/src/tests/fixtures/m-a12.ts",
     "libs/subscription/src/tests/fixtures/organization-billing-profile.fake.ts",
     "libs/subscription/src/tests/fixtures/sign-usage-metering-compensating.sql",
