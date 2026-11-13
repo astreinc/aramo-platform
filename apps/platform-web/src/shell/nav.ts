@@ -30,7 +30,9 @@ export type NavIconKey =
   | 'due'
   | 'rec'
   | 'bars'
-  | 'pulse';
+  | 'pulse'
+  // India Billing Regions + Razorpay (§4.10) — Commercial › Billing regions.
+  | 'globe';
 
 export type NavKey =
   | 'dashboard'
@@ -50,6 +52,7 @@ export type NavKey =
   | 'approvals'
   | 'subscriptions'
   | 'catalog'
+  | 'billingRegions' // India Billing Regions + Razorpay (§4.10)
   | 'contracts'
   | 'policy'
   | 'audit'
@@ -128,6 +131,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: 'approvals', label: 'Approvals', to: '/commercial/approvals', scope: CP.approvalRead, icon: 'check' },
       { key: 'subscriptions', label: 'Subscriptions', to: '/commercial/subscriptions', scope: CP.subscriptionRead, icon: 'repeat' },
       { key: 'catalog', label: 'Catalog', to: '/commercial/catalog', scope: CP.catalogRead, icon: 'tag' },
+      // India Billing Regions + Razorpay (directive v1.0 §4.10): after Catalog, same read scope.
+      { key: 'billingRegions', label: 'Billing regions', to: '/commercial/billing-regions', scope: CP.catalogRead, icon: 'globe' },
       { key: 'contracts', label: 'Contracts', to: '/commercial/contracts', scope: CP.subscriptionRead, icon: 'contract' },
       { key: 'policy', label: 'Policy', to: '/commercial/policy', scope: CP.approvalRead, icon: 'scale' },
       // CCP-B6 (merge train TD-MERGE-32): the support-extension workflow. CCP-UI-V12 (AM-1): after
@@ -190,6 +195,7 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p === '/commercial' || p.startsWith('/commercial/approvals')) return 'approvals';
   if (p.startsWith('/commercial/subscriptions')) return 'subscriptions';
   if (p.startsWith('/commercial/catalog')) return 'catalog';
+  if (p.startsWith('/commercial/billing-regions')) return 'billingRegions';
   if (p.startsWith('/commercial/contracts')) return 'contracts';
   if (p.startsWith('/commercial/policy')) return 'policy';
   if (p.startsWith('/commercial/audit')) return 'audit';

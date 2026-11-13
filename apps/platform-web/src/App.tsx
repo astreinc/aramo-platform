@@ -29,6 +29,8 @@ import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
 import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
 import { SubscriptionsView } from './commercial/subscriptions/SubscriptionsView';
 import { CatalogView } from './commercial/catalog/CatalogView';
+// India Billing Regions + Razorpay (directive v1.0 §4.10) — Commercial › Billing regions.
+import { BillingRegionsView } from './commercial/billing-regions/BillingRegionsView';
 import { PolicyView } from './commercial-governance/PolicyView';
 import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
 import { ContractsView } from './contracts/ContractsView';
@@ -208,6 +210,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* CCP-B2 (PBD §5.3 row B2) — the product and plan catalog; draft actions gate on
             platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
         <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />
+        {/* India Billing Regions + Razorpay (directive v1.0 §4.10, ruling Q3) — the country billing regions,
+            read with platform:catalog:read; a change request needs platform:catalog:draft (gated in the view). */}
+        <Route path="/commercial/billing-regions" element={commercialGate(CP.catalogRead, 'billing regions', <BillingRegionsView session={session} />)} />
         {/* CCP-B4 — Commercial › Contracts (handoff §5.5), gated on platform:subscription:read
             (CCP A1 §4.1; catalog_manager and super_admin get the Commercial card, TD-B4-3). */}
         <Route path="/commercial/contracts" element={commercialGate(CONTRACT_READ_SCOPE, 'contracts', <ContractsView session={session} />)} />

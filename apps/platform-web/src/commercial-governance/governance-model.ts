@@ -397,6 +397,7 @@ const ACTION_LABEL: Readonly<Record<string, string>> = {
   DISCOUNT: 'Discount',
   CONVERSION: 'Conversion',
   PLAN_CREATE: 'Create plan', // CCP PLAN_CREATE (catalog row 17)
+  BILLING_REGION_CHANGE: 'Billing region change', // India Billing Q3 (catalog row 18)
 };
 
 /** The Detail cell: a short reading of the structured payload (the record holds no free text). */
