@@ -24,6 +24,8 @@ import { PlatformCommercialApplyController } from './platform-commercial-apply.c
 import { PlatformCommercialUsageController } from './platform-commercial-usage.controller.js';
 import { PlatformCommercialSubscriptionsController } from './platform-commercial-subscriptions.controller.js';
 import { PlatformCommercialCatalogController } from './platform-commercial-catalog.controller.js';
+// India Billing Regions + Razorpay (directive v1.0 §4.10) — Commercial › Billing regions (reads).
+import { PlatformCommercialBillingRegionsController } from './platform-commercial-billing-regions.controller.js';
 import { PlatformCommercialGovernanceController } from './platform-commercial-governance.controller.js';
 import { PlatformCommercialContractController } from './platform-commercial-contract.controller.js';
 // CCP-C8-PR — the contract payment-status read (PR-10, PR-11).
@@ -104,7 +106,7 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
   // CCP-D2 — revenue reporting (platform:billing:read; amounts only with platform:billing:amount:read, else FINANCE_SCOPE_REQUIRED).
   // CCP-A8 — the support exception overlay (platform:subscription:support / :read gates).
   // CCP-D3 — read-only alert register and metrics (platform:billing:read / platform:approval:read).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialContractPaymentsController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialRevenueController, PlatformCommercialSupportExtensionController, PlatformCommercialObservabilityController, PlatformCommercialSubscriptionsController, PlatformCommercialBillingAdjustmentController, PlatformCommercialRefundReportController, PlatformPrivacyRequestsController],
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialBillingRegionsController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialContractPaymentsController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialRevenueController, PlatformCommercialSupportExtensionController, PlatformCommercialObservabilityController, PlatformCommercialSubscriptionsController, PlatformCommercialBillingAdjustmentController, PlatformCommercialRefundReportController, PlatformPrivacyRequestsController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).
