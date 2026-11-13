@@ -3998,6 +3998,37 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialCatalogConflict'
 
+  # India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.10 — Commercial › Billing regions (reads).
+  # Served by apps/platform-admin. A change is a BILLING_REGION_CHANGE change request on the shared
+  # change-request route (requester scope platform:catalog:draft; chain Finance), applied by its
+  # requester through POST /platform/commercial/change-requests/{id}/apply.
+  /platform/commercial/billing-regions:
+    get:
+      operationId: listPlatformCommercialBillingRegions
+      tags: [Platform Commercial Catalog]
+      summary: List the country billing regions (gateway, currency, selling entity, switches).
+      description: |
+        Read-only. Every billing region: its web gateway (`STRIPE` or `RAZORPAY`), currency, selling
+        entity and its registration identifiers (data only: nothing computes tax; never shown to
+        tenants), master / Personal / Business switches and price tax mode, whether the gateway's
+        credentials are set on the server (`gateway_configured`, G-2), the G-3 refusal that would stop
+        it being switched on now (`enable_refusal`), and the region's open BILLING_REGION_CHANGE
+        requests. Requires `platform:catalog:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The billing regions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingRegionList'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   # CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-23) — governed manual <-> self-service
   # conversion. Served by apps/platform-admin.
   /platform/commercial/change-requests/{id}/convert:
@@ -11068,6 +11099,65 @@ components:
         display_order:
           type: integer
 
+    BillingRegion:
+      type: object
+      description: India Billing §4.1 — one country billing region (read model).
+      additionalProperties: false
+      required: [country, gateway, currency, enabled, personal_web_enabled, business_web_enabled, price_tax_mode, selling_entity, gateway_configured, enable_refusal, registration, open_requests]
+      properties:
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        gateway: { type: string, enum: [STRIPE, RAZORPAY] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        enabled: { type: boolean, description: The master switch. }
+        personal_web_enabled: { type: boolean }
+        business_web_enabled: { type: boolean }
+        price_tax_mode:
+          type: string
+          enum: [UNSET, INCLUSIVE, EXCLUSIVE]
+          description: Whether configured prices include GST (recorded only; nothing computes tax).
+        selling_entity:
+          $ref: '#/components/schemas/SellingEntity'
+        gateway_configured: { type: boolean, description: G-2 — the gateway credentials are set on the server. }
+        enable_refusal:
+          type: [string, 'null']
+          enum: [gateway_not_configured, selling_entity_inactive, price_tax_mode_unset, null]
+          description: G-3 — why the region could not be switched on now (null when it could).
+        registration:
+          type: object
+          description: §5 — the selling entity's named registration identifiers (gstin, pan, state_code, place_of_supply_rule, note). Data only.
+          additionalProperties: { type: string }
+        open_requests:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, state, requested_by, created_at, expires_at]
+            properties:
+              id: { type: string, format: uuid }
+              state: { type: string }
+              requested_by: { type: string }
+              created_at: { type: string, format: date-time }
+              expires_at: { type: [string, 'null'], format: date-time }
+    SellingEntity:
+      type: object
+      additionalProperties: false
+      required: [id, key, display_name, legal_name, country, active]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        display_name: { type: string }
+        legal_name: { type: string }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        active: { type: boolean }
+    BillingRegionList:
+      type: object
+      additionalProperties: false
+      required: [regions]
+      properties:
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingRegion'
     CommercialCatalog:
       type: object
       additionalProperties: false

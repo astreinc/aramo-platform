@@ -15,16 +15,17 @@ import { ROLE_SCOPES, SEVEN_ROLES, sessionFor, type FixtureRole } from './test-f
 
 // Merge train TD-MERGE-32: + CCP-B6 'Support extensions' (platform:subscription:read). CCP-UI-V12
 // (AM-1): Support extensions sits after Policy, before Audit.
-const ITEMS = ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions', 'Audit'] as const;
+// India Billing Regions + Razorpay (§4.10): + 'Billing regions' after Catalog (platform:catalog:read).
+const ITEMS = ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions', 'Audit'] as const;
 
 /** The expected Commercial items per role (from the A1 bundles; recorded in CCP-B1-acceptance.md). */
 const EXPECTED: Readonly<Record<FixtureRole, readonly (typeof ITEMS)[number][]>> = {
-  platform_owner: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
-  finance_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
-  commercial_ops: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions'],
-  catalog_manager: ['Approvals', 'Catalog', 'Policy'],
-  support_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions'],
-  read_only_auditor: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
+  platform_owner: ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
+  finance_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
+  commercial_ops: ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions'],
+  catalog_manager: ['Approvals', 'Catalog', 'Billing regions', 'Policy'],
+  support_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions'],
+  read_only_auditor: ['Approvals', 'Subscriptions', 'Catalog', 'Billing regions', 'Contracts', 'Policy', 'Support extensions', 'Audit'],
   super_admin: [],
 };
 
@@ -48,6 +49,7 @@ const ROUTE: Readonly<Record<(typeof ITEMS)[number], string>> = {
   Approvals: '/commercial/approvals',
   Subscriptions: '/commercial/subscriptions',
   Catalog: '/commercial/catalog',
+  'Billing regions': '/commercial/billing-regions',
   Contracts: '/commercial/contracts',
   Policy: '/commercial/policy',
   Audit: '/commercial/audit',

@@ -12,8 +12,11 @@ const COUNTRY_OPTIONS = storeCountryOptions();
 // DRAFT (a published version's prices are immutable; a change is a new version approved Finance →
 // Owner through "Request publish").
 
+// India Billing Regions + Razorpay (directive v1.0 §4.10, ruling Q8) — the regional prices now also price the
+// web in India: the India (INR) monthly price is the Razorpay price.
+export const REGIONAL_PRICES_TITLE = 'Regional prices (stores and web)';
 export const REGIONAL_PRICES_INTRO =
-  'Where the apps sell, and at what price. The App Store and Google Play sell this plan in the United States (the list price above) and in each country listed here, at exactly this price in that country’s store currency. A country the stores sell in today with no price here is stopped only when the publish request confirms it. Web (Stripe) sells at the US price.';
+  'Where the apps and the web sell, and at what price. The App Store and Google Play sell this plan in the United States (the list price above) and in each country listed here, at exactly this price in that country’s store currency. A country the stores sell in today with no price here is stopped only when the publish request confirms it. On the web, Stripe sells in the United States at the list price, and the India (INR) monthly price here is also the India web (Razorpay) price: a version without one is not sold on the web in India.';
 
 export type RegionalPriceEdit = { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null };
 
@@ -49,7 +52,7 @@ export function RegionalPricesEditor(props: { version: CatalogVersion; canDraft:
 
   return (
     <div className="pc-addons" data-testid="regional-prices">
-      <div className="pc-caps pc-caps--16">Regional prices (store billing)</div>
+      <div className="pc-caps pc-caps--16">{REGIONAL_PRICES_TITLE}</div>
       <p className="pc-addons__intro">{REGIONAL_PRICES_INTRO}</p>
       {rows.length === 0 ? (
         <p className="pc-addons__intro" data-testid="regional-prices-empty">

@@ -135,6 +135,9 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
       serializes: 'catalog (W-1 list prices; plan terms are catalog information); CCP Billing Products: billing-product ids, sync status and store list prices (catalog information, no W field)',
     },
     'platform-commercial-usage.controller.ts': { handlers: ['reconciliation', 'periods'], serializes: 'D1 usage (no W field)' },
+    // India Billing Regions + Razorpay (§4.10): the region read. Regions, selling entities and their registration
+    // identifiers are platform configuration (catalog readers), not tenant money, contract terms or requester text.
+    'platform-commercial-billing-regions.controller.ts': { handlers: ['list'], serializes: 'billing regions (platform configuration: gateway, switches, selling entity, registration identifiers; no W field)' },
     // Merge train TD-MERGE-50 (C8-PR): the contract payments read. Payment terms, amounts and the receipt
     // records (evidence included) go only to a Finance amount holder (contractPaymentsDto amount_access);
     // every other billing reader gets obligation statuses and the FA-4 booleans.
@@ -144,7 +147,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
   it('R3W-SCAN-3 route enumeration: every commercial controller is classified, and the handler set of each classified controller is exactly the listed one', () => {
     const controllers = appFiles.filter((f) => /^platform-commercial-.*\.controller\.ts$/.test(f)).sort();
     expect(controllers).toEqual(Object.keys(ROUTES).sort());
-    expect(controllers.length).toBe(18);
+    expect(controllers.length).toBe(19); // + India Billing Regions (billing-regions)
     let total = 0;
     for (const f of controllers) {
       const src = code(read(resolve(APP, f)));
@@ -153,7 +156,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
       expect(handlers.sort(), f).toEqual([...ROUTES[f]!.handlers].sort());
     }
     expect(total).toBe(Object.values(ROUTES).reduce((n, r) => n + r.handlers.length, 0));
-    expect(total).toBe(49); // 44 + C8-PR contractPayments (TD-MERGE-50) + Sign Mobile M-A12 A1-3 storePriceReconciliation + CCP Billing Products billingPreview / uploadReviewScreenshot / retryBillingSync
+    expect(total).toBe(50); // 44 + C8-PR contractPayments (TD-MERGE-50) + Sign Mobile M-A12 A1-3 storePriceReconciliation + CCP Billing Products billingPreview / uploadReviewScreenshot / retryBillingSync + India Billing billing-regions list
   });
 
   it('R3W-SCAN-4 lib side: the audit stream is read out only by the A2 repository (feed + export, both through withholdAuditPayloadAmounts); the other readers select no requester text', () => {

@@ -34,6 +34,8 @@ import {
 // CCP-B2-backend — the catalog publish / retire apply rides the same command and route.
 import { CommercialCatalogApplyService, type CommercialCatalogApplicationRow, isCatalogApplicable } from './commercial-catalog-apply.service.js';
 import { CommercialPolicyApplyService } from './commercial-policy-apply.service.js';
+// India Billing Regions + Razorpay (ruling Q3) — BILLING_REGION_CHANGE rides the same command and route.
+import { CommercialBillingRegionApplyService, isBillingRegionApplicable } from './commercial-billing-region-apply.service.js';
 import { changeCarriesContract, type ContractAmendmentBlock, type ContractEndBlock, type ContractRecordBlock } from './commercial-contract.js';
 import { ContractApplyConflict, type ContractEffect, amendContractInTx, contractOfSubscription, endContractInTx, recordContractInTx } from './commercial-contract.repository.js';
 import { approvalExpiresAt } from './commercial-policy-boundaries.js';
@@ -282,6 +284,7 @@ export class CommercialApplyService {
     @Optional() @Inject(COMMERCIAL_APPLY_FAULT_HOOK) private readonly fault?: CommercialApplyFaultHook,
     @Optional() private readonly catalog?: CommercialCatalogApplyService,
     @Optional() private readonly policy?: CommercialPolicyApplyService,
+    @Optional() private readonly billingRegion?: CommercialBillingRegionApplyService,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -305,6 +308,11 @@ export class CommercialApplyService {
     if (this.policy !== undefined && head.action_type === 'POLICY_ACTIVATE') {
       const p = await this.policy.apply(actor, head, ctx);
       return { request: p.request, application: null, catalog_application: null, replayed: p.replayed };
+    }
+    // India Billing Q3 — BILLING_REGION_CHANGE (catalog domain, not tenant-scoped; recorded by its audit events).
+    if (this.billingRegion !== undefined && isBillingRegionApplicable(head.action_type)) {
+      const r = await this.billingRegion.apply(actor, head, ctx);
+      return { request: r.request, application: null, catalog_application: null, replayed: r.replayed };
     }
     // TD-A6-3 (approved) — the ORIGINAL requester, a human, holding the requester scope.
     let scope: string;

@@ -553,6 +553,19 @@ export {
   type CommercialPolicyApplyFaultHook,
   type CommercialPolicyApplyResult,
 } from './lib/commercial/commercial-policy-apply.service.js';
+// India Billing Regions + Razorpay (ruling Q3, §4.10) — the governed BILLING_REGION_CHANGE apply and the
+// console reads behind Commercial › Billing regions.
+export {
+  BILLING_REGION_APPLY_FAILURE_CODES,
+  COMMERCIAL_BILLING_REGION_APPLY_FAULT_HOOK,
+  CommercialBillingRegionApplyService,
+  CommercialBillingRegionReadService,
+  isBillingRegionApplicable,
+  type BillingRegionConsoleDetail,
+  type BillingRegionConsoleView,
+  type CommercialBillingRegionApplyFaultHook,
+  type CommercialBillingRegionApplyResult,
+} from './lib/commercial/commercial-billing-region-apply.service.js';
 // CCP-B4 (PBD §5.3 row B4; MP-A2 N-3) — enterprise contract records (written only by the A6
 // apply; state, plan and commitment read through TenantSubscription) and their read model.
 export {
@@ -1097,6 +1110,7 @@ export {
   billingProductsShapeErrors,
   defaultProductId,
   eligibleProviders,
+  isWebProvider,
   STORE_LISTING_LIMITS,
   storeListingErrors,
   type BillingInterval,
@@ -1114,6 +1128,8 @@ export {
   type MismatchEntry,
 } from './lib/billing/sync/billing-products.service.js';
 export { REVIEW_SCREENSHOT_SIZES } from './lib/billing/sync/review-screenshot.js';
+// India Billing Regions + Razorpay (§4.6) — the Razorpay catalog writer (one plan per published version).
+export { BillingNotSellableError, RazorpayCatalogWriter, RAZORPAY_COUNTRY, RAZORPAY_CURRENCY, razorpayTargetPrice } from './lib/billing/sync/razorpay-catalog.writer.js';
 
 // Aramo India Billing Regions + Razorpay Directive v1.0 (LOCKED) §4.1, §4.4, §5, §6 — the billing region
 // model (regions, selling entities, the fail-closed sell decision, the G-3 guard) and the country port.
