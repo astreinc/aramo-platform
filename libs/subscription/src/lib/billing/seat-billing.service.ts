@@ -5,7 +5,8 @@ import { type PlanPriceUnit, planVersionTerms, priceUnitOf } from '../plan-versi
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type ProductKey, openBaseSubscription } from '../product-registry.js';
 
-import { BILLING_PROVIDER_SEAT_PORT, type BillingProviderSeatPort, BillingProviderUnavailableError } from './billing-provider.port.js';
+import { BILLING_PROVIDER_SEAT_PORT, type BillingProviderSeatPort, BillingProviderUnavailableError, isWebBillingProvider } from './billing-provider.port.js';
+import { BILLING_GATEWAY_REGISTRY, type BillingGatewayRegistry } from './gateway-registry.js';
 import { takeBillingLock } from './governed-subscription.js';
 import { MAX_SEATS, validSeatCount } from './subscription-lifecycle.service.js';
 
@@ -74,8 +75,11 @@ export function effectivePurchasedSeats(row: Pick<SeatRow, 'current_period_end' 
   return row.seat_quantity;
 }
 
+// India Billing Regions + Razorpay (directive v1.0 ruling Q7) — a Razorpay-billed (web) row changes its
+// seats too, through its own gateway's seat port (the subscription's billing_provider); a store or
+// contract row never does.
 function changeable(row: SeatRow): boolean {
-  return row.source === 'SELF_SERVICE' && row.billing_provider === 'STRIPE' && row.billing_subscription_ref !== null && row.seat_quantity !== null;
+  return row.source === 'SELF_SERVICE' && isWebBillingProvider(row.billing_provider) && row.billing_subscription_ref !== null && row.seat_quantity !== null;
 }
 
 @Injectable()
@@ -84,7 +88,16 @@ export class SeatBillingService {
     private readonly prisma: PrismaService,
     // Bound by SubscriptionModule (the Stripe adapter). Unbound: no seat change is possible.
     @Optional() @Inject(BILLING_PROVIDER_SEAT_PORT) private readonly provider?: BillingProviderSeatPort,
+    // India Billing §4.3 — the web gateways by key (Razorpay). Unbound: only the bound (Stripe) seat port.
+    @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
   ) {}
+
+  /** The seat port of the row's web gateway: the bound port for STRIPE (unchanged), else the registry's. */
+  private seatPortFor(billing_provider: string | null): BillingProviderSeatPort | undefined {
+    if (billing_provider === 'STRIPE' && this.provider !== undefined) return this.provider;
+    if (!isWebBillingProvider(billing_provider) || this.gateways === undefined) return undefined;
+    return this.gateways.seats(billing_provider) ?? undefined;
+  }
 
   /** The tenant's seat state (null: no open subscription of the product). */
   async seatState(tenant_id: string, product_key: ProductKey, at: Date = new Date()): Promise<SeatState | null> {
@@ -108,7 +121,8 @@ export class SeatBillingService {
     if (!validSeatCount(input.seats)) throw new SeatChangeRefusedError('seats_not_applicable', { max: MAX_SEATS });
     const row = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, input.product_key), include: { plan_version: true } });
     if (row === null || priceUnitOf(planVersionTerms(row.plan_version)) !== 'SEAT' || !changeable(row)) throw new SeatChangeRefusedError('seats_not_applicable');
-    if (this.provider === undefined || !this.provider.isConfigured()) throw new BillingProviderUnavailableError('seat changes need the billing provider');
+    const port = this.seatPortFor(row.billing_provider);
+    if (port === undefined || !port.isConfigured()) throw new BillingProviderUnavailableError('seat changes need the billing provider');
     if (input.seats < input.used) throw new SeatChangeRefusedError('seats_below_usage', { used: input.used });
     // A decrease whose period already ended has taken effect: compare against what is in force now.
     const paid = effectivePurchasedSeats(row, at) as number;
@@ -120,12 +134,12 @@ export class SeatBillingService {
     let effective: 'NOW' | 'PERIOD_END';
     if (input.seats >= paid) {
       // Cancel a scheduled decrease first (the paid quantity, no proration), then prorate only above it.
-      if (pending !== null) await this.provider.updateSubscriptionQuantity(ref, paid, 'none', key('restore'));
-      if (input.seats > paid) await this.provider.updateSubscriptionQuantity(ref, input.seats, 'create_prorations', key('increase'));
+      if (pending !== null) await port.updateSubscriptionQuantity(ref, paid, 'none', key('restore'));
+      if (input.seats > paid) await port.updateSubscriptionQuantity(ref, input.seats, 'create_prorations', key('increase'));
       next = { seat_quantity: input.seats, seat_pending_quantity: null };
       effective = 'NOW';
     } else {
-      await this.provider.updateSubscriptionQuantity(ref, input.seats, 'none', key('decrease'));
+      await port.updateSubscriptionQuantity(ref, input.seats, 'none', key('decrease'));
       next = { seat_quantity: paid, seat_pending_quantity: input.seats };
       effective = 'PERIOD_END';
     }

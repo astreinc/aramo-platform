@@ -262,6 +262,10 @@ export {
   BILLING_COUNTRY_NOT_SUPPORTED,
   DOMAIN_NOT_AUTHORITATIVE,
   billingCountrySupported,
+  // India Billing Regions + Razorpay (directive v1.0 §4.4, §4.9, Q6) — routing and the activation guard.
+  webActivationCountryOk,
+  billingSegmentOf,
+  type CheckoutRoute,
   checkoutTermsDocument,
   personalCheckoutDisclosure,
   businessCheckoutDisclosure,

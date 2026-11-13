@@ -4727,6 +4727,13 @@ paths:
                     description: The APPROVED Terms of Service a checkout must accept (version, url); null while none is approved.
                   sales_contact_url:
                     type: [string, 'null']
+                  billing_gateway:
+                    type: string
+                    enum: [STRIPE, RAZORPAY]
+                    description: India Billing Regions + Razorpay (directive v1.0 §4.4, §4.11) — the web gateway of the caller's billing region (Personal residence, Business registered country); STRIPE when no region routes elsewhere. A RAZORPAY checkout shows the auto-pay mandate disclosure before the redirect.
+                  billing_currency:
+                    type: string
+                    description: India Billing §4.11 — the ISO 4217 currency of the caller's billing region (USD when none).
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -8302,6 +8309,16 @@ components:
           description: M-A12 A1-3 — every published regional price for the caller's billing country (MONTH and YEAR).
           items:
             $ref: '#/components/schemas/BillingRegionalPrice'
+        display_price:
+          type: [object, 'null']
+          description: India Billing Regions + Razorpay (directive v1.0 §4.11, ruling Q8) — the price to show for the caller's billing region. On a Stripe region it is `price`; on a Razorpay region it is the version's regional MONTH price in the region's currency (null when the version has none; such a plan is not sold there).
+          properties:
+            amount_minor:
+              type: integer
+            currency:
+              type: string
+            interval:
+              type: [string, 'null']
     BillingRegionalPrice:
       type: object
       required: [country, currency, amount_minor, interval]
@@ -8494,6 +8511,16 @@ components:
         manage_url:
           type: [string, 'null']
           description: The store subscription-management page (App Store / Google Play) or the web billing page (Stripe); null without a self-service plan.
+        display_price:
+          type: [object, 'null']
+          description: India Billing Regions + Razorpay (directive v1.0 §4.11) — the current Razorpay-billed plan's regional MONTH price in its region's currency; null otherwise (the list price applies).
+          properties:
+            amount_minor:
+              type: integer
+            currency:
+              type: string
+            interval:
+              type: [string, 'null']
     SelfServiceActionState:
       type: object
       additionalProperties: false

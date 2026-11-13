@@ -196,6 +196,8 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
       'libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql',
       'libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql',
       'libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql',
+      // India Billing Regions + Razorpay §4.9 — the region policy CHECK admits 'IN' (unrelated to CCP).
+      'libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql',
     ]);
     for (const dep of [
       'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',

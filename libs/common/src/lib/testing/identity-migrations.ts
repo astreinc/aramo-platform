@@ -158,6 +158,9 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   'libs/identity/prisma/migrations/20261108200000_external_identity_idp_apple/migration.sql',
   'libs/identity/prisma/migrations/20261108200100_pending_identity_link/migration.sql',
   'libs/identity/prisma/migrations/20261108200200_sign_personal_app_attest_key/migration.sql',
+  // India Billing Regions + Razorpay §4.9 — TenantBillingRegionPolicy_region_check admits 'IN'. Additive;
+  // no returned shape changes, so no pact verify-api registration.
+  'libs/identity/prisma/migrations/20261113110000_tenant_billing_region_policy_in/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

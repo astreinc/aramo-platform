@@ -337,6 +337,16 @@ export {
   validateUsOrganizationDetails,
   type ProfileAddressFields,
   type UsOrganizationDetails,
+  // India Billing Regions + Razorpay §2, §4.9 — Business signup / profile for a region-accepted country.
+  BILLING_REGION_IN,
+  ORGANIZATION_BILLING_REGIONS,
+  US_ONLY,
+  normalizeInPhone,
+  validateOrganizationDetails,
+  organizationProfileIneligibility,
+  lockedProfileIneligibility,
+  type OrganizationCountryAcceptance,
+  type OrganizationDetails,
 } from './lib/util/us-organization.js';
 
 // Domain-Enforcement P3 (LOCKED) — one organization per email domain: the domain
