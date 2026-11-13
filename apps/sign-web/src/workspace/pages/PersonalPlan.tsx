@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog } from '../api';
-import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, usd } from '../catalog';
+import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, checkoutPageText, formatMinor } from '../catalog';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 import { checkoutReturn } from './Billing';
@@ -16,9 +16,15 @@ import { AllowanceChip, BUSINESS_SIGNUP_URL } from './PersonalAllowance';
 // from checkout never asserts the upgrade; the page waits for /account to report the new plan.
 // Checkout needs the Personal terms accepted ({ plan_key, accept_terms: true }); `upgrade: null`
 // on /account (feature off, or nothing to offer) hides the offer entirely.
+//
+// India Billing Regions + Razorpay (directive v1.0 §4.11) — prices show in the currency the backend
+// reports (an India resident sees the INR price once India is ON). A Razorpay checkout shows the auto-pay
+// mandate disclosure before the redirect (Razorpay's page carries no Aramo renewal text). A
+// Razorpay-billed plan has no provider portal: an Aramo "Manage subscription" section (cancel at the end of
+// the period) replaces the portal button.
 
 const UNAVAILABLE_REASON: Readonly<Record<string, string>> = {
-  not_available_in_country: 'Standard is available to US residents for now.',
+  not_available_in_country: 'Standard isn’t available in your country yet.',
 };
 
 function unavailableText(reason: string | null | undefined): string {
@@ -95,6 +101,10 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const sub = account.subscription;
   const allowance = account.allowance.subscribed ? account.allowance : null;
   const price = offer?.price_minor ?? STANDARD_PERSONAL_OFFER.price_minor;
+  const currency = offer?.currency ?? 'USD';
+  const gateway = offer?.billing_gateway ?? 'STRIPE';
+  const managedByRazorpay = account.managed_by === 'RAZORPAY';
+  const currentPrice = account.display_price ?? sub?.list_price ?? null;
   const commitment = offer != null ? offer.commitment_months : STANDARD_PERSONAL_OFFER.commitment_months;
   const upgradeKey = offer?.plan_key ?? STANDARD_PERSONAL_OFFER.plan_key;
 
@@ -102,7 +112,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
     <div className="sg-grid" data-testid="personal-plan-panel">
       {returned === 'success' && waiting ? (
         <div className="sg-note" data-testid="personal-plan-confirming">
-          Payment received by Stripe. Confirming your upgrade with Aramo…
+          Payment received. Confirming your upgrade with Aramo…
         </div>
       ) : null}
       {returned === 'success' && gaveUp ? (
@@ -118,7 +128,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
         <div className="sg-card__body sg-grid" style={{ gap: 10 }}>
           <div>
             <strong>{onFree ? 'Free' : (sub?.plan_name ?? 'Standard')}</strong>
-            <span className="sg-muted">{onFree ? ' · $0' : sub?.list_price != null ? ` · ${usd(sub.list_price.amount_minor)}/month` : ''}</span>
+            <span className="sg-muted">{onFree ? ' · $0' : currentPrice != null ? ` · ${formatMinor(currentPrice.amount_minor, currentPrice.currency)}/month` : ''}</span>
           </div>
           {onFree ? (
             <div className="sg-muted" data-testid="personal-plan-free-terms">
@@ -141,16 +151,22 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
               Cancellation requested; Standard ends on {fmtDate(sub.current_period_end)} and your account then returns to the Free plan.
             </div>
           ) : null}
-          {!onFree && sub?.billing_managed === true ? (
+          {!onFree && sub?.billing_managed === true && !managedByRazorpay ? (
             <div>
               <Btn disabled={busy} onClick={() => act(billingApi.portal)} data-testid="personal-plan-manage">
                 Manage billing or cancel
               </Btn>
-              <p className="sg-help">Update your payment method, download invoices or cancel on the Stripe billing page.</p>
+              <p className="sg-help">Update your payment method, download invoices or cancel on the secure billing page.</p>
+            </div>
+          ) : null}
+          {!onFree && sub?.billing_managed === true && managedByRazorpay ? (
+            <div data-testid="personal-plan-manage-razorpay">
+              <strong>Manage subscription</strong>
+              <p className="sg-help">Your plan is paid by auto-pay through Razorpay. You can cancel it here; it then ends at the end of the current billing period.</p>
             </div>
           ) : null}
           {!onFree && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
-            <CancelSubscription personal busy={busy} onKeep={() => act(billingApi.portal)} onChanged={reload} />
+            <CancelSubscription personal busy={busy} onKeep={managedByRazorpay ? undefined : () => act(billingApi.portal)} onChanged={reload} />
           ) : null}
         </div>
       </section>
@@ -160,7 +176,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
           <div className="sg-card__head">
             Upgrade to {STANDARD_PERSONAL_OFFER.name}
             <span className="sg-card__end">
-              <strong>{usd(price)}/month</strong>
+              <strong>{formatMinor(price, currency)}/month</strong>
             </span>
           </div>
           <div className="sg-card__body sg-grid" style={{ gap: 10 }}>
@@ -172,8 +188,8 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
             </ul>
             <div className="sg-muted" data-testid="personal-plan-upgrade-terms">
               {commitment !== null
-                ? `${usd(price)}/month, ${commitment}-month commitment billed monthly. Renews month to month after the commitment. Cancel online in Settings, effective at the end of the commitment; no partial refunds. You then return to Free.`
-                : `${usd(price)}/month, billed monthly. Cancel online in Settings; you then return to Free.`}{' '}
+                ? `${formatMinor(price, currency)}/month, ${commitment}-month commitment billed monthly. Renews month to month after the commitment. Cancel online in Settings, effective at the end of the commitment; no partial refunds. You then return to Free.`
+                : `${formatMinor(price, currency)}/month, billed monthly. Cancel online in Settings; you then return to Free.`}{' '}
               Plus applicable tax. Your documents stay in this account.
             </div>
             {!upgradeOpen ? (
@@ -203,7 +219,9 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
                 >
                   {busy ? 'Opening checkout…' : `Upgrade to ${STANDARD_PERSONAL_OFFER.name}`}
                 </Btn>
-                <p className="sg-help">Enter payment details on the secure Stripe checkout page.</p>
+                <p className={gateway === 'RAZORPAY' ? 'sg-note' : 'sg-help'} data-testid="personal-plan-checkout-page">
+                  {checkoutPageText(gateway)}
+                </p>
               </>
             )}
             <p className="sg-help" style={{ marginBottom: 0 }}>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { ApiError } from '@aramo/fe-foundation';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type BillingSeats, type Money } from '../api';
-import { MAX_SEATS, parseSeats, seatsUsedText } from '../catalog';
+import { MAX_SEATS, checkoutPageText, parseSeats, seatsUsedText, type BillingGateway } from '../catalog';
 import { Btn, Check, ErrorBox, Loading, TextIn, fmtDate } from '../ui';
 import { useOptionalWorkspace } from '../workspace';
 
@@ -31,6 +31,10 @@ import { UsageCharges } from './UsageCharges';
 // sends the seat count; the current SEAT subscription shows "N of M seats used" and, for the
 // owner / an admin (`can_manage_seats`, O-3), Add a seat / Change seats (POST …/billing/seats:
 // an increase is prorated now, a decrease applies at the period end, never below the seats in use).
+// India Billing Regions + Razorpay (directive v1.0 §4.11): a plan shows its `display_price` (the regional
+// INR price on a Razorpay region) in the reported currency; a Razorpay checkout shows the auto-pay mandate
+// disclosure before the redirect; a Razorpay-billed subscription has no provider portal, so an Aramo
+// "Manage subscription" section (cancel at the end of the period, change seats) replaces the portal button.
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   TRIALING: ['Trial', 'blue'],
@@ -179,6 +183,7 @@ function PlanCard({
   needsTerms,
   salesUrl,
   defaultSeats = 1,
+  gateway = 'STRIPE',
 }: {
   plan: BillingPlan;
   canBuy: boolean;
@@ -189,8 +194,11 @@ function PlanCard({
   needsTerms: boolean;
   salesUrl: string | null;
   defaultSeats?: number;
+  gateway?: BillingGateway;
 }) {
   const perSeat = plan.price_unit === 'SEAT';
+  // India Billing §4.11 — the price for the caller's billing region (older backends: the list price).
+  const shown = plan.display_price !== undefined ? plan.display_price : plan.price;
   const seatsId = useId();
   const [seatsRaw, setSeatsRaw] = useState(String(Math.max(1, defaultSeats)));
   const seats = perSeat ? parseSeats(seatsRaw, 1) : null;
@@ -214,14 +222,14 @@ function PlanCard({
         <div data-testid="billing-plan-price">
           {contactSales ? (
             <strong>Contact sales</strong>
-          ) : plan.price !== null ? (
+          ) : shown !== null ? (
             <>
-              <strong>{priceText(plan.price, plan.price_unit)}</strong>
+              <strong>{priceText(shown, plan.price_unit)}</strong>
               {plan.tenant_kind === 'BUSINESS' && !perSeat ? <span className="sg-muted"> per organization</span> : null}
               <div className="sg-muted">
                 {plan.commitment_months !== null ? `${plan.commitment_months}-month commitment, billed monthly` : 'Month to month'} · plus applicable tax
               </div>
-              {plan.tenant_kind === 'BUSINESS' && plan.price.interval === 'MONTH' ? (
+              {plan.tenant_kind === 'BUSINESS' && shown.interval === 'MONTH' ? (
                 <p className="sg-help" style={{ margin: '6px 0 0' }} data-testid="billing-plan-renewal">
                   {businessRenewalText(plan.commitment_months)}
                 </p>
@@ -272,8 +280,8 @@ function PlanCard({
                 <p className="sg-help" style={{ margin: 0 }}>
                   {seats === null
                     ? `Enter a number of seats from 1 to ${MAX_SEATS}.`
-                    : plan.price !== null
-                      ? `${seats} seat${seats === 1 ? '' : 's'} · ${money({ ...plan.price, amount_minor: plan.price.amount_minor * seats })}. Everyone who sends documents uses a seat, including you.`
+                    : shown !== null
+                      ? `${seats} seat${seats === 1 ? '' : 's'} · ${money({ ...shown, amount_minor: shown.amount_minor * seats })}. Everyone who sends documents uses a seat, including you.`
                       : 'Everyone who sends documents uses a seat, including you.'}
                 </p>
               </div>
@@ -286,7 +294,13 @@ function PlanCard({
             >
               {busy ? 'Opening checkout…' : 'Subscribe'}
             </Btn>
-            {!plan.purchasable ? <p className="sg-help">Online checkout isn’t available yet.</p> : <p className="sg-help">Enter payment details on the secure Stripe checkout page.</p>}
+            {!plan.purchasable ? (
+              <p className="sg-help">Online checkout isn’t available yet.</p>
+            ) : (
+              <p className={gateway === 'RAZORPAY' ? 'sg-note' : 'sg-help'} data-testid={`billing-checkout-page-${plan.key}`}>
+                {checkoutPageText(gateway)}
+              </p>
+            )}
           </>
         ) : null}
       </div>
@@ -451,12 +465,14 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
   // Business organizations see the business plans; Free Personal is not offered here.
   const plans = (catalog?.plans ?? []).filter((p) => p.tenant_kind === 'BUSINESS' && p.status === 'ACTIVE');
   const needsTerms = catalog?.terms != null;
+  const managedByRazorpay = account.managed_by === 'RAZORPAY';
+  const currentPrice = account.display_price ?? sub?.list_price ?? null;
 
   return (
     <div className="sg-grid" data-testid="billing-panel">
       {returned === 'success' && waiting ? (
         <div className="sg-note" data-testid="billing-confirming">
-          Payment received by Stripe. Confirming your subscription with Aramo…
+          Payment received. Confirming your subscription with Aramo…
         </div>
       ) : null}
       {returned === 'success' && gaveUp ? (
@@ -489,7 +505,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
             <>
               <div>
                 <strong>{sub.plan_name}</strong>
-                {sub.list_price != null ? <span className="sg-muted"> · {priceText(sub.list_price, account.price_unit)}</span> : null}
+                {currentPrice != null ? <span className="sg-muted"> · {priceText(currentPrice, account.price_unit)}</span> : null}
                 {sub.source !== 'SELF_SERVICE' ? <span className="sg-muted"> · arranged with Aramo</span> : null}
               </div>
               {sub.commitment_end != null ? (
@@ -541,16 +557,24 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
             </div>
           ) : null}
           <Usage a={account} />
-          {account.can_manage_billing && sub?.billing_managed === true ? (
+          {account.can_manage_billing && sub?.billing_managed === true && !managedByRazorpay ? (
             <div>
               <Btn disabled={busy} onClick={() => act(billingApi.portal)} data-testid="billing-manage">
                 Manage billing or cancel
               </Btn>
-              <p className="sg-help">Update your payment method, download invoices or cancel on the Stripe billing page.</p>
+              <p className="sg-help">Update your payment method, download invoices or cancel on the secure billing page.</p>
+            </div>
+          ) : null}
+          {account.can_manage_billing && sub?.billing_managed === true && managedByRazorpay ? (
+            <div data-testid="billing-manage-razorpay">
+              <strong>Manage subscription</strong>
+              <p className="sg-help">
+                Your plan is paid by auto-pay through Razorpay. Cancel it here (it ends at the end of the current billing period){account.seats != null ? ' or change the number of users above' : ''}.
+              </p>
             </div>
           ) : null}
           {account.can_manage_billing && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
-            <CancelSubscription personal={false} busy={busy} onKeep={() => act(billingApi.portal)} onChanged={reload} />
+            <CancelSubscription personal={false} busy={busy} onKeep={managedByRazorpay ? undefined : () => act(billingApi.portal)} onChanged={reload} />
           ) : null}
           {!account.can_manage_billing ? <p className="sg-help">Only an organization admin can change the plan.</p> : null}
           {!account.self_service_eligible ? <p className="sg-help">Plans for personal accounts aren’t available yet.</p> : null}
@@ -584,6 +608,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
                 termsAccepted={terms}
                 salesUrl={catalog?.sales_contact_url ?? null}
                 defaultSeats={account.seats?.used ?? 1}
+                gateway={catalog?.billing_gateway ?? 'STRIPE'}
                 onBuy={(seats) => act(() => billingApi.checkout(p.key, needsTerms ? terms : undefined, seats))}
               />
             ))}

@@ -44,7 +44,7 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, TENANT_MEMBERSHIP_PORT, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
+import { BILLING_COUNTRY_PORT, ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, TENANT_MEMBERSHIP_PORT, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -93,6 +93,7 @@ import { EsignOwnerActivationService } from './billing/esign-owner-activation.se
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
 import { OrganizationBillingProfileAdapter } from './billing/organization-billing-profile.adapter.js';
+import { BillingCountryAdapter } from './billing/billing-country.adapter.js';
 import { TenantMembershipAdapter } from './billing/tenant-membership.adapter.js';
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
 import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
@@ -204,6 +205,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
       providers: [
         { provide: PLAN_ELIGIBILITY_PORT, useClass: AtsPlanEligibilityAdapter },
         { provide: ORGANIZATION_BILLING_PROFILE_PORT, useClass: OrganizationBillingProfileAdapter },
+        // India Billing Regions + Razorpay (directive v1.0 §4.4, Q6) — the account's routing country
+        // (Personal: declared residence; Business: the organization's registered country).
+        { provide: BILLING_COUNTRY_PORT, useClass: BillingCountryAdapter },
         // M-A12 A1-2 — in-app purchase needs exactly one active member (the purchaser).
         { provide: TENANT_MEMBERSHIP_PORT, useClass: TenantMembershipAdapter },
       ],
@@ -326,6 +330,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
+    // India Billing Regions + Razorpay §4.4 — the routing country, also read by the billing controller.
+    BillingCountryAdapter,
     SenderContextService,
     SenderEnvelopeService,
     // M-A13 R-4 — Word to PDF conversion (dark unless SIGN_WORD_CONVERSION_ENABLED=1 + SIGN_WORD_CONVERTER_URL).

@@ -8,6 +8,7 @@ import { type ProductKey, assertProductKey, isProductKey, openBaseSubscription }
 
 import { BillingCommandService, type BillingCommandRow } from './billing-command.service.js';
 import { BILLING_COMMAND_UNCONFIRMED_STATES } from './billing-provider-command.js';
+import { WEB_BILLING_PROVIDERS } from './billing-provider.port.js';
 import { takeBillingLock } from './governed-subscription.js';
 import { SubscriptionLifecycleService } from './subscription-lifecycle.service.js';
 
@@ -190,7 +191,8 @@ export class SelfServiceBillingService {
     if (conversion !== null || release !== null) throw new SelfServiceRefusedError('CONVERSION_IN_PROGRESS');
     const row = await db.tenantSubscription.findFirst({
       // M-A12 — a store-billed row is managed in the store, never through a Stripe command.
-      where: { ...openBaseSubscription(tenant_id, product_key), source: 'SELF_SERVICE', billing_provider: 'STRIPE', billing_subscription_ref: { not: null } },
+      // India Billing (ruling Q7) — a Razorpay-billed (web) row is cancelled through its own gateway.
+      where: { ...openBaseSubscription(tenant_id, product_key), source: 'SELF_SERVICE', billing_provider: { in: [...WEB_BILLING_PROVIDERS] }, billing_subscription_ref: { not: null } },
       include: { plan: { select: { key: true } } },
     });
     if (row === null) throw new SelfServiceRefusedError('NO_SELF_SERVICE_SUBSCRIPTION');

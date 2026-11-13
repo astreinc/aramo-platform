@@ -88,6 +88,37 @@ describe('BillingPanel', () => {
     assign.mockReset();
   });
 
+  // India Billing Regions + Razorpay (directive v1.0 §4.11) — a Razorpay region: the regional INR price
+  // (display_price), the auto-pay mandate disclosure before the redirect; a Razorpay-billed subscription
+  // has the Aramo manage section and no provider portal button.
+  it('India: a Razorpay region shows the ₹ display price and the auto-pay mandate before checkout', async () => {
+    catalogFor = () => ({ ...CATALOG, plans: [{ ...BUSINESS, display_price: { amount_minor: 149900, currency: 'INR', interval: 'MONTH' } }], billing_gateway: 'RAZORPAY', billing_currency: 'INR' });
+    vi.stubGlobal('fetch', stub([account()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://rzp.io/i/sub_b' }, 201) : undefined)));
+    render(<BillingPanel />);
+    const card = await screen.findByTestId(`billing-plan-${BUSINESS.key}`);
+    expect(card).toHaveTextContent('₹1,499/month');
+    expect(card).not.toHaveTextContent('$20');
+    expect(screen.getByTestId(`billing-checkout-page-${BUSINESS.key}`)).toHaveTextContent('You’ll approve a monthly auto-pay mandate (UPI, card or net banking) on Razorpay’s secure page.');
+    fireEvent.click(screen.getByTestId(`billing-subscribe-${BUSINESS.key}`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://rzp.io/i/sub_b'));
+    catalogFor = () => CATALOG;
+  });
+
+  it('US: the checkout line names no provider', async () => {
+    vi.stubGlobal('fetch', stub([account()]));
+    render(<BillingPanel />);
+    expect(await screen.findByTestId(`billing-checkout-page-${BUSINESS.key}`)).toHaveTextContent('Enter payment details on the secure checkout page.');
+    expect(screen.getByTestId(`billing-plan-${BUSINESS.key}`)).toHaveTextContent('$20/month');
+  });
+
+  it('a Razorpay-billed subscription: the Aramo manage section, no provider portal button', async () => {
+    vi.stubGlobal('fetch', stub([account({ ...ACTIVE, managed_by: 'RAZORPAY', display_price: { amount_minor: 149900, currency: 'INR', interval: 'MONTH' } })]));
+    render(<BillingPanel />);
+    expect(await screen.findByTestId('billing-manage-razorpay')).toHaveTextContent('Manage subscription');
+    expect(screen.queryByTestId('billing-manage')).toBeNull();
+    expect(screen.getByTestId('billing-current')).toHaveTextContent('₹1,499/month');
+  });
+
   it('no plan: the business catalog with prices, commitment and features; Subscribe goes to the server-issued checkout', async () => {
     const fetch = stub([account()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_1' }, 201) : undefined));
     vi.stubGlobal('fetch', fetch);

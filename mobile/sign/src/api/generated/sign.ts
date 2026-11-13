@@ -3898,6 +3898,12 @@ export interface components {
             regional_price?: null | components["schemas"]["BillingRegionalPrice"];
             /** @description M-A12 A1-3 — every published regional price for the caller's billing country (MONTH and YEAR). */
             regional_prices?: components["schemas"]["BillingRegionalPrice"][];
+            /** @description India Billing Regions + Razorpay (directive v1.0 §4.11, ruling Q8) — the price to show for the caller's billing region. On a Stripe region it is `price`; on a Razorpay region it is the version's regional MONTH price in the region's currency (null when the version has none; such a plan is not sold there). */
+            display_price?: {
+                amount_minor?: number;
+                currency?: string;
+                interval?: string | null;
+            } | null;
         };
         BillingRegionalPrice: {
             country: string;
@@ -4009,6 +4015,12 @@ export interface components {
             store_purchase_block_reason?: "store_billing_disabled" | "not_billing_manager" | "store_purchase_seats_unsupported" | "billing_managed_elsewhere" | null;
             /** @description The store subscription-management page (App Store / Google Play) or the web billing page (Stripe); null without a self-service plan. */
             manage_url?: string | null;
+            /** @description India Billing Regions + Razorpay (directive v1.0 §4.11) — the current Razorpay-billed plan's regional MONTH price in its region's currency; null otherwise (the list price applies). */
+            display_price?: {
+                amount_minor?: number;
+                currency?: string;
+                interval?: string | null;
+            } | null;
         };
         SelfServiceActionState: {
             available: boolean;
@@ -9615,6 +9627,13 @@ export interface operations {
                         /** @description The APPROVED Terms of Service a checkout must accept (version, url); null while none is approved. */
                         terms: Record<string, never> | null;
                         sales_contact_url: string | null;
+                        /**
+                         * @description India Billing Regions + Razorpay (directive v1.0 §4.4, §4.11) — the web gateway of the caller's billing region (Personal residence, Business registered country); STRIPE when no region routes elsewhere. A RAZORPAY checkout shows the auto-pay mandate disclosure before the redirect.
+                         * @enum {string}
+                         */
+                        billing_gateway?: "STRIPE" | "RAZORPAY";
+                        /** @description India Billing §4.11 — the ISO 4217 currency of the caller's billing region (USD when none). */
+                        billing_currency?: string;
                     };
                 };
             };

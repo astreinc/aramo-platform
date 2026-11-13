@@ -26,8 +26,12 @@ import {
   type VerifiedBillingEvent,
   isStoreBillingProvider,
   isWebBillingProvider,
+  type WebBillingProviderKey,
 } from './billing-provider.port.js';
 import { BILLING_GATEWAY_REGISTRY, type BillingGatewayRegistry } from './gateway-registry.js';
+import { BILLING_COUNTRY_PORT, type BillingCountryPort } from './region/billing-country.port.js';
+import { BillingRegionService } from './region/billing-region.service.js';
+import type { BillingRegionView, BillingSegment, RegionSellRefusal } from './region/billing-region.view.js';
 import { STORE_SUBSCRIPTION_READER, type StoreSubscriptionReader } from './store/store-billing.port.js';
 import {
   BILLING_COMMAND_UNCONFIRMED_STATES,
@@ -166,7 +170,20 @@ export type BillingRefusal =
   | 'BILLING_MANAGED_ELSEWHERE'
   // Sign Business per-seat pricing (directive v1.0 §3.3) — `seats` given for a plan priced per account,
   // or out of range (422 seats_not_applicable).
-  | 'SEATS_NOT_APPLICABLE';
+  | 'SEATS_NOT_APPLICABLE'
+  // India Billing Regions + Razorpay (directive v1.0 §4.4, §4.9) — the account's country has no billing
+  // region selling this segment (region unknown, OFF, or its segment switch OFF). The detail is the
+  // RegionSellRefusal. A Business tenant is refused as ORGANIZATION_PROFILE_REQUIRED instead (the
+  // existing organization_country_not_supported / organization_profile_incomplete UX).
+  | 'BILLING_REGION_NOT_SELLABLE';
+
+/**
+ * India Billing (directive v1.0 §4.4, ruling Q6) — the web gateway a checkout routes to. `region` is null
+ * on the legacy route (no country port or region store bound: Stripe, with the US-only guards).
+ */
+export type CheckoutRoute =
+  | { ok: true; gateway: WebBillingProviderKey; region: BillingRegionView | null; country: string | null }
+  | { ok: false; reason: RegionSellRefusal; country: string | null };
 
 /** Sign Business per-seat pricing — the seats a checkout or a seat change may name. */
 export const MAX_SEATS = 1000;
@@ -265,6 +282,22 @@ export function businessCheckoutDisclosure(terms: { billing_interval: string | n
 /** Fail closed: only an explicit US billing country may activate. */
 export function billingCountrySupported(account_country: string | null): boolean {
   return account_country?.trim().toUpperCase() === BILLING_COUNTRY_ALLOWED;
+}
+
+/**
+ * India Billing (directive v1.0 ruling Q6) — the activation country guard of a web provider state.
+ * STRIPE keeps the US `account_country` rule exactly. RAZORPAY supplies no billing address: it activates
+ * only when the subscription's tenant country has a region selling its segment whose gateway is RAZORPAY
+ * (`razorpayRegionOk`, resolved before the transaction; anything else, including no answer, holds).
+ */
+export function webActivationCountryOk(provider: string, account_country: string | null, razorpayRegionOk: boolean | null): boolean {
+  if (provider === 'RAZORPAY') return razorpayRegionOk === true;
+  return billingCountrySupported(account_country);
+}
+
+/** India Billing — the billing segment of a tenant (or plan) kind: PERSONAL, else BUSINESS. */
+export function billingSegmentOf(kind: string | null | undefined): BillingSegment {
+  return kind === 'PERSONAL' ? 'PERSONAL' : 'BUSINESS';
 }
 
 export const STORAGE_CAPACITY_KEY = 'sign.storage_bytes';
@@ -427,8 +460,56 @@ export class SubscriptionLifecycleService {
     // India Billing (directive v1.0 §4.3) — the web gateways by key: a row of another web gateway than
     // the bound one (Razorpay) is re-fetched from its own gateway. Unbound: such a row is IGNORED.
     @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
+    // India Billing (directive v1.0 §4.4, §4.9) — the account's routing country (bound by the composing
+    // service; subscription never imports identity) and the billing region store. Unbound (either): the
+    // legacy route — Stripe, with the US-only guards (Personal residence in the caller, the US
+    // organization profile, the US account_country activation guard). A RAZORPAY state never activates
+    // without both (fail closed).
+    @Optional() @Inject(BILLING_COUNTRY_PORT) private readonly countries?: BillingCountryPort,
+    @Optional() private readonly regions?: BillingRegionService,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
+  }
+
+  /**
+   * India Billing (directive v1.0 §4.4, ruling Q6) — the web gateway of a checkout for the tenant's
+   * routing country and segment. Bound: the region decides (fail closed: no country, no region, region or
+   * segment OFF, or its gateway not configured ⇒ refused). Unbound: the legacy Stripe route.
+   */
+  async checkoutRoute(tenant_id: string, segment: BillingSegment): Promise<CheckoutRoute> {
+    if (this.countries === undefined || this.regions === undefined) return { ok: true, gateway: 'STRIPE', region: null, country: null };
+    let country: string | null;
+    try {
+      country = (await this.countries.countryOf(tenant_id)).country;
+    } catch (e) {
+      this.log.warn(`billing country lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return { ok: false, reason: 'region_not_supported', country: null };
+    }
+    const sell = await this.regions.sellable(country, segment);
+    return sell.ok ? { ok: true, gateway: sell.region.gateway, region: sell.region, country } : { ok: false, reason: sell.reason, country };
+  }
+
+  /** The billing port of a web gateway: STRIPE is the bound port (unchanged); another through the registry. */
+  private gatewayPort(gateway: WebBillingProviderKey): BillingProviderPort {
+    if (gateway === this.billing.provider) return this.billing;
+    if (this.gateways === undefined) throw new BillingRefusedError('BILLING_UNAVAILABLE', `${gateway} billing is not bound`);
+    return this.gateways.billing(gateway);
+  }
+
+  /**
+   * India Billing ruling Q6 — a RAZORPAY activation: the tenant's routing country has a region selling the
+   * segment, and that region's gateway is RAZORPAY. Fail closed (unbound, lookup failure ⇒ false).
+   */
+  private async razorpayRegionOk(tenant_id: string, segment: BillingSegment): Promise<boolean> {
+    if (this.countries === undefined || this.regions === undefined) return false;
+    try {
+      const { country } = await this.countries.countryOf(tenant_id);
+      const sell = await this.regions.sellable(country, segment);
+      return sell.ok && sell.region.gateway === 'RAZORPAY';
+    } catch (e) {
+      this.log.warn(`razorpay activation region check failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
   }
 
   private async eligible(tenant_id: string | null, rule: string | null): Promise<boolean> {
@@ -457,8 +538,16 @@ export class SubscriptionLifecycleService {
    * The public plan catalog (the pre-catalog operator plan is excluded).
    * With a tenant, eligibility and purchasability are evaluated for it.
    */
-  async catalog(product_key: ProductKey, tenant_id: string | null = null, tenant_kind: string | null = null): Promise<CatalogPlanView[]> {
+  async catalog(
+    product_key: ProductKey,
+    tenant_id: string | null = null,
+    tenant_kind: string | null = null,
+    // India Billing §4.4 — the web gateway the tenant's region routes to (price pin and configured-check).
+    gateway: WebBillingProviderKey = 'STRIPE',
+  ): Promise<CatalogPlanView[]> {
     const prices = this.prices();
+    const port = gateway === this.billing.provider ? this.billing : this.gateways !== undefined && this.gateways.configured(gateway) ? this.gateways.billing(gateway) : null;
+    const gatewayConfigured = port !== null && port.isConfigured();
     const plans = await this.prisma.plan.findMany({
       // Public catalog only: operator / legacy plans are never presented.
       where: { product_key: assertProductKey(product_key), display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR }, sales_model: { not: 'OPERATOR' } },
@@ -477,7 +566,7 @@ export class SubscriptionLifecycleService {
       const terms = planVersionTerms(version);
       const p = terms.plan;
       const eligible = await this.eligible(tenant_id, p.eligibility);
-      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, priceUnitOf(terms));
+      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, priceUnitOf(terms), gateway);
       out.push({
         key: plan.key,
         name: plan.name,
@@ -509,7 +598,7 @@ export class SubscriptionLifecycleService {
         features: terms.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
         // Sign Catalog v2 §4.3 — with the tenant's kind, only a plan of that kind is purchasable.
         purchasable:
-          plan.sellable && plan.status === 'ACTIVE' && this.billing.isConfigured() && price.ok && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind)),
+          plan.sellable && plan.status === 'ACTIVE' && gatewayConfigured && price.ok && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind)),
         price_unit: priceUnitOf(terms),
       });
     }
@@ -629,7 +718,14 @@ export class SubscriptionLifecycleService {
     const tenant_kind = input.tenant_kind ?? 'BUSINESS';
     const personal = tenant_kind === 'PERSONAL';
     const product_key = assertProductKey(input.product_key);
-    if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
+    // India Billing (directive v1.0 §4.4, ruling Q6) — the tenant's routing country picks the region and
+    // its gateway. A gateway that is not configured is the existing BILLING_UNAVAILABLE; any other region
+    // refusal is taken below, before any side effect, at the point of the existing country refusals.
+    const route = await this.checkoutRoute(input.tenant_id, billingSegmentOf(tenant_kind));
+    if (!route.ok && route.reason === 'gateway_not_configured') throw new BillingRefusedError('BILLING_UNAVAILABLE');
+    const gateway: WebBillingProviderKey = route.ok ? route.gateway : 'STRIPE';
+    const port = this.gatewayPort(gateway);
+    if (!port.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const plan = await this.prisma.plan.findUnique({ where: { key: input.plan_key } });
     // CCP-A5 — what is sold is the plan's current (PUBLISHED) version.
     const version = plan === null ? null : await currentPublishedVersion(this.prisma, plan.id);
@@ -646,7 +742,7 @@ export class SubscriptionLifecycleService {
     }
     const seat_quantity = perSeat ? (input.seats ?? 1) : null;
     // CCP-A5 (D3) — the version's pinned price, else the env (cutover); a pin/env disagreement fails closed.
-    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices(), perSeat ? 'SEAT' : 'ACCOUNT');
+    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices(), perSeat ? 'SEAT' : 'ACCOUNT', gateway);
     if (!effective.ok) {
       throw new BillingRefusedError('BILLING_UNAVAILABLE', effective.reason === 'PARITY_MISMATCH' ? 'provider price parity mismatch for the plan version' : 'no provider price configured for the plan');
     }
@@ -655,7 +751,7 @@ export class SubscriptionLifecycleService {
     // version must be affirmatively accepted.
     // Sign Catalog v2 §4.3 — a PERSONAL tenant accepts the Personal Terms.
     const terms = approvedLegalDocument(checkoutTermsDocument(tenant_kind, this.legal), this.legal);
-    if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
+    if (terms === null && port.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
     // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The
     // authoritative decision is re-taken under the billing lock below (C-2). A DEVELOPMENT row may
@@ -673,9 +769,16 @@ export class SubscriptionLifecycleService {
     // Sign Catalog v2 §4.3 — a PERSONAL tenant has no organization profile or domain: its billing
     // address is collected in the provider checkout (the US activation guard still applies), and a
     // prior billing account of the tenant is reused.
+    // India Billing §4.9 — a region refusal: a Personal tenant is not sold to (BILLING_REGION_NOT_SELLABLE);
+    // a Business tenant gets the organization-profile refusal it gets today (a null country is an
+    // incomplete profile, any other a country not supported).
+    if (!route.ok) {
+      if (personal) throw new BillingRefusedError('BILLING_REGION_NOT_SELLABLE', route.reason);
+      throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', route.country === null ? 'organization_profile_incomplete' : 'organization_country_not_supported');
+    }
     const account_ref = personal
-      ? await this.existingBillingAccount(input.tenant_id, product_key)
-      : await this.ensureBillingAccount(input.tenant_id, product_key, await this.lockedBillingProfile(input.tenant_id));
+      ? await this.existingBillingAccount(input.tenant_id, product_key, port.provider)
+      : await this.ensureBillingAccount(input.tenant_id, product_key, await this.lockedBillingProfile(input.tenant_id, route.country), port);
     const intent_id = uuidv7();
     await this.prisma.$transaction(async (tx) => {
       // CCP-A6 (C-2) — the C-1 / C-5 decision under the shared billing lock, in the transaction
@@ -691,7 +794,7 @@ export class SubscriptionLifecycleService {
           tenant_id: input.tenant_id,
           user_id: input.user_id,
           plan_id: plan.id,
-          provider: this.billing.provider,
+          provider: port.provider,
           terms_version: terms?.version ?? null,
           terms_sha256: terms?.sha256 ?? null,
           seat_quantity,
@@ -716,7 +819,7 @@ export class SubscriptionLifecycleService {
       // CCP-C2 (C-12) — consumed exactly once: bound to this checkout in this transaction.
       if (release !== null) await (this.conversions as CommercialConversionLedger).consumeForCheckoutInTx(tx, release, { id: intent_id, user_id: input.user_id }, at);
     });
-    const session = await this.billing.createCheckoutSession({
+    const session = await port.createCheckoutSession({
       intent_id,
       tenant_id: input.tenant_id,
       user_id: input.user_id,
@@ -735,13 +838,18 @@ export class SubscriptionLifecycleService {
     return { url: session.url };
   }
 
-  /** The eligible (US) organization billing profile; the tenant is then held to the US (§2.5). */
-  private async lockedBillingProfile(tenant_id: string): Promise<OrganizationBillingProfile> {
+  /**
+   * The eligible organization billing profile; the tenant is then held to its region (§2.5). India
+   * Billing §4.9 — the profile's country must be the routing country the region was chosen for (the
+   * legacy route, `country` null, keeps the US-only profile rule of the bound port).
+   */
+  private async lockedBillingProfile(tenant_id: string, country: string | null = null): Promise<OrganizationBillingProfile> {
     if (this.orgProfile === undefined) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_profile_incomplete');
     const r = await this.orgProfile.eligibleProfile(tenant_id);
     if ('refused' in r) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', r.refused);
+    if (country !== null && r.profile.address.country.toUpperCase() !== country.toUpperCase()) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_country_not_supported');
     if (!(await this.domainAuthoritative(tenant_id))) throw new BillingRefusedError('DOMAIN_VERIFICATION_REQUIRED');
-    await this.orgProfile.lockRegion(tenant_id);
+    await this.orgProfile.lockRegion(tenant_id, r.profile.address.country.toUpperCase());
     return r.profile;
   }
 
@@ -761,16 +869,16 @@ export class SubscriptionLifecycleService {
    * the organization profile. Reuses the mapped account, else the latest
    * subscription's account; the mapping is persisted in TenantBillingAccount.
    */
-  private async ensureBillingAccount(tenant_id: string, product_key: ProductKey, profile: OrganizationBillingProfile): Promise<string> {
-    const provider = this.billing.provider;
-    const existing = await this.existingBillingAccount(tenant_id, product_key);
-    const account_ref = await this.billing.upsertBillingAccount(existing, {
+  private async ensureBillingAccount(tenant_id: string, product_key: ProductKey, profile: OrganizationBillingProfile, port: BillingProviderPort = this.billing): Promise<string> {
+    const provider = port.provider;
+    const existing = await this.existingBillingAccount(tenant_id, product_key, provider);
+    const account_ref = await port.upsertBillingAccount(existing, {
       tenant_id,
       legal_name: profile.legal_name,
       billing_email: profile.billing_email,
       address: profile.address,
     });
-    // India Billing Q9 — one account per (tenant, provider): the bound web provider's row only.
+    // India Billing Q9 — one account per (tenant, provider): the routed web gateway's row only.
     await this.prisma.tenantBillingAccount.upsert({
       where: { tenant_id_provider: { tenant_id, provider } },
       create: { tenant_id, provider, account_ref },
@@ -780,8 +888,7 @@ export class SubscriptionLifecycleService {
   }
 
   /** The tenant's mapped provider billing account, else its latest subscription's (null: none yet). */
-  private async existingBillingAccount(tenant_id: string, product_key: ProductKey): Promise<string | null> {
-    const provider = this.billing.provider;
+  private async existingBillingAccount(tenant_id: string, product_key: ProductKey, provider: BillingProviderKey = this.billing.provider): Promise<string | null> {
     const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id_provider: { tenant_id, provider } } });
     if (mapped !== null && mapped.provider === provider) return mapped.account_ref;
     const prior = await this.prisma.tenantSubscription.findFirst({
@@ -949,10 +1056,18 @@ export class SubscriptionLifecycleService {
     product_key: ProductKey,
     at: Date = new Date(),
     confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+    // India Billing §4.3 — a session of another web gateway (Razorpay) is read from its own command port.
+    provider: BillingProviderKey = this.billing.provider,
   ): Promise<ApplyResult> {
     assertProductKey(product_key);
-    if (this.providerCommands === undefined) return { outcome: 'IGNORED', detail: 'checkout session reads are not configured', tenant_id: null };
-    const session = await this.providerCommands.retrieveCheckoutSession(session_ref);
+    const reader =
+      provider === this.billing.provider
+        ? this.providerCommands
+        : isWebBillingProvider(provider) && this.gateways !== undefined && this.gateways.configured(provider)
+          ? (this.gateways.commands(provider) ?? undefined)
+          : undefined;
+    if (reader === undefined) return { outcome: 'IGNORED', detail: 'checkout session reads are not configured', tenant_id: null };
+    const session = await reader.retrieveCheckoutSession(session_ref);
     const intent = await this.prisma.checkoutIntent.findFirst({
       where: { provider: session.provider, provider_session_ref: session.session_ref },
       include: { plan: true },
@@ -1006,11 +1121,14 @@ export class SubscriptionLifecycleService {
     // Sign Catalog v2 §4.3 — a PERSONAL plan's tenant has no organization domain: no domain hold.
     const planKind = existing !== null ? (await this.prisma.plan.findUnique({ where: { id: existing.plan_id }, select: { tenant_kind: true } }))?.tenant_kind : intent?.plan.tenant_kind;
     const domainOk = planKind === 'PERSONAL' || (await this.domainAuthoritative(tenant_id));
+    // India Billing ruling Q6 — a RAZORPAY state carries no billing address: its country guard is the
+    // tenant's routing region (read here, outside the billing transaction, like the domain claim).
+    const razorpayOk = state.provider === 'RAZORPAY' ? await this.razorpayRegionOk(tenant_id, billingSegmentOf(planKind)) : null;
 
     return this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, tenant_id);
       const mapped = mapProviderStatus(state.provider_status);
-      const result = await this.applyLocked(tx, tenant_id, product_key, state, mapped, intent, domainOk, at, confirmation);
+      const result = await this.applyLocked(tx, tenant_id, product_key, state, mapped, intent, domainOk, at, confirmation, razorpayOk);
       // CCP-C1 (C-22, C-23) — the state is applied: confirm the cancel commands it proves, in the
       // same transaction (never before the state is applied, never on a command's own commit).
       // Only a lifecycle wired with the command port confirms (SubscriptionModule always binds it;
@@ -1040,13 +1158,15 @@ export class SubscriptionLifecycleService {
     domainOk: boolean,
     at: Date,
     confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+    razorpayOk: boolean | null = null,
   ): Promise<ApplyResult> {
     const row = await tx.tenantSubscription.findFirst({
       where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
     });
     // A1 §2.6 — activation guard (fail closed: a missing country is not US).
     // M-A12 A1-3 — Stripe stays US-only; a store is the merchant of record in its own countries.
-    const countryOk = isStoreBillingProvider(state.provider) || billingCountrySupported(state.account_country);
+    // India Billing ruling Q6 — Razorpay: the tenant's region must sell the segment through Razorpay.
+    const countryOk = isStoreBillingProvider(state.provider) || webActivationCountryOk(state.provider, state.account_country, razorpayOk);
     // P3 §4 — and the domain guard (fail closed: not AUTHORITATIVE holds).
     const intent_id = intent?.id ?? null;
     await this.guardFlag(tx, tenant_id, state, intent_id, BILLING_COUNTRY_NOT_SUPPORTED, !countryOk, at);

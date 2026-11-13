@@ -7,8 +7,9 @@ import {
 } from '../tenant.repository.js';
 import { OrganizationRegionService } from '../organization-region.service.js';
 import {
+  BILLING_REGION_IN,
   ORGANIZATION_COUNTRY_NOT_SUPPORTED,
-  usProfileIneligibility,
+  lockedProfileIneligibility,
 } from '../util/us-organization.js';
 
 import {
@@ -82,14 +83,21 @@ export class TenantProfileService {
   // profile. Tenants without a lock (Astre, console-provisioned) are unchanged.
   private async assertRegion(tenantId: string, next: TenantProfileRow, requestId: string): Promise<void> {
     if (this.region === undefined) return;
-    if ((await this.region.regionOf(tenantId)) === null) return;
-    const reason = usProfileIneligibility(next);
+    const region = await this.region.regionOf(tenantId);
+    if (region === null) return;
+    // India Billing §4.9 — a tenant held to India keeps a complete Indian profile (the US rule otherwise).
+    const reason = lockedProfileIneligibility(next, region);
     if (reason === null) return;
+    const india = region === BILLING_REGION_IN;
     throw new AramoError(
       'VALIDATION_ERROR',
       reason === ORGANIZATION_COUNTRY_NOT_SUPPORTED
-        ? 'Aramo Sign is currently available to organizations registered in the United States.'
-        : 'Your organization’s legal name, US address and billing email are required.',
+        ? india
+          ? 'Your organization is registered in India; its address must stay in India.'
+          : 'Aramo Sign is currently available to organizations registered in the United States.'
+        : india
+          ? 'Your organization’s legal name, Indian address and billing email are required.'
+          : 'Your organization’s legal name, US address and billing email are required.',
       400,
       { requestId, details: { reason } },
     );

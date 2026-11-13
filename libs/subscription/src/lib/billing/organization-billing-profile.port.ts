@@ -26,8 +26,12 @@ export interface OrganizationBillingProfile {
 
 export interface OrganizationBillingProfilePort {
   eligibleProfile(tenant_id: string): Promise<{ profile: OrganizationBillingProfile } | { refused: OrganizationProfileRefusal }>;
-  /** Hold the tenant's organization profile to the US (idempotent). */
-  lockRegion(tenant_id: string): Promise<void>;
+  /**
+   * Hold the tenant's organization profile to its region (idempotent). India Billing (directive v1.0
+   * §4.9) — `region` is the ISO alpha-2 country the checkout was routed for (the profile's country);
+   * omitted, the US (the A1 behaviour).
+   */
+  lockRegion(tenant_id: string, region?: string): Promise<void>;
   /**
    * Domain-Enforcement P3 §4 (sending gate, ruling 5) — true only when the
    * tenant's email-domain claim is AUTHORITATIVE. A new self-service

@@ -16,9 +16,13 @@ import {
   BILLING_PROVIDER_PORT,
   type BillingProviderAdjustmentPort,
   type BillingProviderCommandPort,
+  type BillingProviderKey,
   type BillingProviderPort,
   BillingProviderUnavailableError,
+  type WebBillingProviderKey,
+  isWebBillingProvider,
 } from './billing-provider.port.js';
+import { BILLING_GATEWAY_REGISTRY, type BillingGatewayRegistry } from './gateway-registry.js';
 import {
   type AdjustmentCommandParams,
   BILLING_COMMAND_ACTIONS,
@@ -82,7 +86,10 @@ export type BillingCommandErrorCode =
   | 'INVALID_CURSOR'
   // CCP-DG (Charter Amendment A2 RX-5…RX-7) — the runbook re-arm of a FAILED REFUND_CREATE is gated.
   | 'REFUND_EXECUTION_NOT_RELEASED'
-  | 'REFUND_POLICY_NOT_APPROVED';
+  | 'REFUND_POLICY_NOT_APPROVED'
+  // India Billing Regions + Razorpay (directive v1.0 §7, ruling Q7) — refunds, credits and discounts stay
+  // Stripe-only: an adjustment of a subscription billed by another web gateway (Razorpay) is refused.
+  | 'GATEWAY_ADJUSTMENT_NOT_SUPPORTED';
 
 export class BillingCommandError extends Error {
   constructor(
@@ -209,7 +216,62 @@ export class BillingCommandService {
     // CCP-C4 — the Stripe-side billing adjustments. Unbound: an adjustment command is never
     // dispatched (it is FAILED ADJUSTMENTS_NOT_CONFIGURED, with no provider call).
     @Optional() @Inject(BILLING_PROVIDER_ADJUSTMENT_PORT) private readonly adjustments?: BillingProviderAdjustmentPort,
+    // India Billing (directive v1.0 §4.3, ruling Q7) — the web gateways by key: a cancel or checkout
+    // expire of a Razorpay-billed subscription is dispatched through Razorpay's own ports. Unbound: only
+    // the bound (Stripe) ports; a command of another gateway is never claimed.
+    @Optional() @Inject(BILLING_GATEWAY_REGISTRY) private readonly gateways?: BillingGatewayRegistry,
   ) {}
+
+  /** The billing / command ports of a command's gateway: the bound ports for STRIPE (unchanged). */
+  private portsFor(provider: string): { billing: BillingProviderPort; commands: BillingProviderCommandPort } | null {
+    if (provider === this.billing.provider) return this.commands === undefined ? null : { billing: this.billing, commands: this.commands };
+    if (!isWebBillingProvider(provider) || this.gateways === undefined || !this.gateways.configured(provider)) return null;
+    const commands = this.gateways.commands(provider);
+    return commands === null ? null : { billing: this.gateways.billing(provider), commands };
+  }
+
+  /** India Billing — the other web gateways whose commands may be dispatched now (configured, not live-mode). */
+  private extraDispatchProviders(): WebBillingProviderKey[] {
+    if (this.gateways === undefined) return [];
+    const out: WebBillingProviderKey[] = [];
+    for (const p of ['RAZORPAY'] as const) {
+      if (p === this.billing.provider || !this.gateways.configured(p)) continue;
+      const commands = this.gateways.commands(p);
+      // Production hold (PBD §7.3) — a live-mode gateway key is held the same way as live Stripe.
+      if (commands !== null && commands.isConfigured() && commands.mode() !== 'live') out.push(p);
+    }
+    return out;
+  }
+
+  /**
+   * India Billing (ruling Q7) — the gateway a command acts through: the billing provider of its target
+   * (the open SELF_SERVICE row, a held activation, or the open checkout). An adjustment of a row billed by
+   * another web gateway than Stripe is refused (directive §7). Default: the bound provider (Stripe).
+   */
+  private async commandProvider(t: Tx, kind: BillingCommandKind, tenant_id: string, product_key: ProductKey, target_ref: string, params: Record<string, unknown>): Promise<string> {
+    const bound = this.billing.provider;
+    if (isAdjustmentCommandKind(kind)) {
+      const row = await t.tenantSubscription.findFirst({
+        where: { id: String(params['subscription_id'] ?? ''), tenant_id, product_key, source: 'SELF_SERVICE', ended_at: null },
+        select: { billing_provider: true },
+      });
+      if (row !== null && row.billing_provider !== bound && isWebBillingProvider(row.billing_provider)) {
+        throw new BillingCommandError('GATEWAY_ADJUSTMENT_NOT_SUPPORTED', `refunds, credits and discounts are not available for a subscription billed by ${row.billing_provider}`, { provider: row.billing_provider });
+      }
+      return bound;
+    }
+    if (kind === 'SUBSCRIPTION_CANCEL') {
+      const row = await t.tenantSubscription.findFirst({
+        where: { tenant_id, product_key, billing_subscription_ref: target_ref, source: 'SELF_SERVICE', ended_at: null },
+        select: { billing_provider: true },
+      });
+      if (row !== null && isWebBillingProvider(row.billing_provider)) return row.billing_provider;
+      const held = await t.billingReconciliationFlag.findFirst({ where: { tenant_id, subscription_ref: target_ref, resolved_at: null }, select: { provider: true } });
+      return held !== null && isWebBillingProvider(held.provider) ? held.provider : bound;
+    }
+    const intent = await t.checkoutIntent.findFirst({ where: { tenant_id, provider_session_ref: target_ref, status: 'CREATED', plan: { product_key } }, select: { provider: true } });
+    return intent !== null && isWebBillingProvider(intent.provider) ? intent.provider : bound;
+  }
 
   /**
    * Record one Stripe-owned operation for (change request, step). A local write only: pass the
@@ -254,11 +316,12 @@ export class BillingCommandService {
         return { command: existing as BillingCommandRow, replayed: true };
       }
       // A self-service request targets its own open SELF_SERVICE row only (never a held activation).
-      await this.assertTargetOwned(t, input.command_kind, input.tenant_id, product_key, input.target_ref, params, !selfService);
+      const provider = await this.commandProvider(t, input.command_kind as BillingCommandKind, input.tenant_id, product_key, input.target_ref, params);
+      await this.assertTargetOwned(t, input.command_kind, input.tenant_id, product_key, input.target_ref, params, !selfService, provider);
       const command = await t.billingProviderCommand.create({
         data: {
           id: uuidv7(),
-          provider: this.billing.provider,
+          provider,
           command_kind: input.command_kind,
           change_request_id: input.change_request_id ?? null,
           self_service_request_id: input.self_service_request_id ?? null,
@@ -316,8 +379,16 @@ export class BillingCommandService {
   }
 
   /** The target must be a provider object of THIS tenant and product (never another tenant's). */
-  private async assertTargetOwned(t: Tx, kind: BillingCommandKind, tenant_id: string, product_key: ProductKey, target_ref: string, params: Record<string, unknown> = {}, allowHeld = true): Promise<void> {
-    const provider = this.billing.provider;
+  private async assertTargetOwned(
+    t: Tx,
+    kind: BillingCommandKind,
+    tenant_id: string,
+    product_key: ProductKey,
+    target_ref: string,
+    params: Record<string, unknown> = {},
+    allowHeld = true,
+    provider: string = this.billing.provider,
+  ): Promise<void> {
     if (isAdjustmentCommandKind(kind)) {
       // CCP-C4 — the tenant's OPEN self-service (Stripe-owned) row of this product, and the target is
       // its provider account (credits), its provider subscription (discounts), or an invoice paid
@@ -412,6 +483,9 @@ export class BillingCommandService {
   async dispatchDue(at: Date, limit = 25): Promise<DispatchTally> {
     const tally: DispatchTally = { skipped: null, claimed: 0, accepted: 0, retry_wait: 0, failed: 0, lost_fence: 0 };
     if (this.commands === undefined || !this.commands.isConfigured()) return { ...tally, skipped: 'NOT_CONFIGURED' };
+    // India Billing — the gateways whose commands are claimed: the bound one (Stripe) and any other
+    // configured, test-mode web gateway (Razorpay). A command of an unconfigured gateway stays PENDING.
+    const providers = [this.billing.provider as string, ...this.extraDispatchProviders()];
     // Production hold (PBD §7.3) — live Stripe is out of C1's scope; commands stay PENDING.
     // CCP-C4: the adjustment port is held the same way (TD-C1-3; live billing is not authorized).
     if (this.commands.mode() === 'live' || this.adjustments?.mode() === 'live') {
@@ -419,7 +493,7 @@ export class BillingCommandService {
       return { ...tally, skipped: 'LIVE_MODE' };
     }
     for (let i = 0; i < limit; i += 1) {
-      const cmd = await this.claim(at);
+      const cmd = await this.claim(at, providers);
       if (cmd === null) break;
       tally.claimed += 1;
       const outcome = await this.dispatchClaimed(cmd, at);
@@ -429,15 +503,16 @@ export class BillingCommandService {
   }
 
   /** One autocommit statement: the oldest due command → DISPATCHING (attempt counted, leased). */
-  private async claim(at: Date): Promise<BillingCommandRow | null> {
+  private async claim(at: Date, providers: readonly string[]): Promise<BillingCommandRow | null> {
     const lease = new Date(at.getTime() + BILLING_COMMAND_LEASE_MS);
     const rows = await this.prisma.$queryRaw<BillingCommandRow[]>`
       UPDATE "subscription"."BillingProviderCommand" c
          SET "state" = 'DISPATCHING', "attempts" = c."attempts" + 1, "lease_until" = ${lease}, "updated_at" = ${at}
        WHERE c."id" = (
          SELECT q."id" FROM "subscription"."BillingProviderCommand" q
-          WHERE (q."state" IN ('PENDING', 'RETRY_WAIT') AND (q."next_attempt_at" IS NULL OR q."next_attempt_at" <= ${at}))
-             OR (q."state" = 'DISPATCHING' AND q."lease_until" <= ${at})
+          WHERE ((q."state" IN ('PENDING', 'RETRY_WAIT') AND (q."next_attempt_at" IS NULL OR q."next_attempt_at" <= ${at}))
+             OR (q."state" = 'DISPATCHING' AND q."lease_until" <= ${at}))
+            AND q."provider" = ANY(${[...providers]}::text[])
           ORDER BY q."created_at", q."id"
           LIMIT 1
           FOR UPDATE SKIP LOCKED)
@@ -490,14 +565,20 @@ export class BillingCommandService {
 
   /** The provider side of one command. Throws CommandRefusal (permanent) or a provider error. */
   private async perform(cmd: BillingCommandRow): Promise<string | { detail: string; object_ref: string | null }> {
-    if (isAdjustmentCommandKind(cmd.command_kind)) return this.performAdjustment(cmd);
-    const commands = this.commands as BillingProviderCommandPort;
+    if (isAdjustmentCommandKind(cmd.command_kind)) {
+      // India Billing §7 — refunds, credits and discounts stay Stripe-only.
+      if (cmd.provider !== this.billing.provider) throw new CommandRefusal('GATEWAY_ADJUSTMENT_NOT_SUPPORTED', `${cmd.command_kind} is not available for ${cmd.provider}`);
+      return this.performAdjustment(cmd);
+    }
+    const ports = this.portsFor(cmd.provider);
+    if (ports === null) throw new BillingProviderUnavailableError(`${cmd.provider} commands are not configured`);
+    const commands = ports.commands;
     if (cmd.command_kind === 'SUBSCRIPTION_CANCEL') {
       const mode = cancelModeOf(cmd.params);
       if (mode === null) throw new CommandRefusal('INVALID_PARAMS', 'cancel mode missing');
       // Re-read the provider object first: never act on another tenant's subscription, and do not
       // repeat an operation the provider already shows in effect.
-      const state = await this.billing.retrieveSubscription(cmd.target_ref);
+      const state = await ports.billing.retrieveSubscription(cmd.target_ref);
       if (state.tenant_id !== null && state.tenant_id !== cmd.tenant_id) throw new CommandRefusal('TENANT_MISMATCH', 'provider metadata tenant does not match the command');
       if (subscriptionCancelConfirmed(cmd.params, state, mapProviderStatus(state.provider_status).ends)) return 'already in effect at the provider';
       await commands.cancelSubscription(cmd.target_ref, { at_period_end: mode === 'AT_PERIOD_END' }, cmd.idempotency_key);
@@ -623,8 +704,13 @@ export class BillingCommandService {
         const res = isAdjustmentCommandKind(c.command_kind)
           ? await this.lifecycle.syncAdjustmentCommand(c.id, product_key, at, REFETCH_CONFIRMATION)
           : c.command_kind === 'SUBSCRIPTION_CANCEL'
-            ? await this.lifecycle.syncSubscription(c.target_ref, product_key, at, REFETCH_CONFIRMATION)
-            : await this.lifecycle.syncCheckoutSession(c.target_ref, product_key, at, REFETCH_CONFIRMATION);
+            ? // India Billing — re-fetched from the command's own gateway (Stripe unchanged).
+              c.provider === this.billing.provider
+              ? await this.lifecycle.syncSubscription(c.target_ref, product_key, at, REFETCH_CONFIRMATION)
+              : await this.lifecycle.syncSubscription(c.target_ref, product_key, at, REFETCH_CONFIRMATION, c.provider as BillingProviderKey)
+            : c.provider === this.billing.provider
+              ? await this.lifecycle.syncCheckoutSession(c.target_ref, product_key, at, REFETCH_CONFIRMATION)
+              : await this.lifecycle.syncCheckoutSession(c.target_ref, product_key, at, REFETCH_CONFIRMATION, c.provider as BillingProviderKey);
         tally.results.push(res);
       } catch (err) {
         tally.failed += 1;

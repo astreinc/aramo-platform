@@ -109,8 +109,8 @@ describe('Sign Catalog v2 — Personal paid billing (sign-service)', () => {
     const a = (await onFree.controller.account(auth(OWNER), 'r')) as Record<string, unknown>;
     expect(onFree.personal!.ensureFreeSubscription).toHaveBeenCalled();
     expect(a).toMatchObject({ tenant_kind: 'PERSONAL', self_service_eligible: true, can_manage_billing: true, allowance: { limit: 5, daily: { limit: 2 } } });
-    expect(a['upgrade']).toEqual({ available: true, reason: null, plan_key: STANDARD, price_minor: 1000, commitment_months: 12 });
-    expect(onFree.lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL');
+    expect(a['upgrade']).toEqual({ available: true, reason: null, plan_key: STANDARD, price_minor: 1000, commitment_months: 12, currency: 'USD', billing_gateway: 'STRIPE' });
+    expect(onFree.lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL', 'STRIPE');
 
     // A non-owner sees the offer but cannot take it; no price configured → not available.
     expect(((await onFree.controller.account(auth(['sign:envelope:read'], 'u-x'), 'r')) as Record<string, unknown>)['upgrade']).toMatchObject({ available: false, reason: 'billing_manage_required' });
@@ -128,7 +128,7 @@ describe('Sign Catalog v2 — Personal paid billing (sign-service)', () => {
       vi.setSystemTime(new Date('2026-11-02T11:59:59.999-05:00'));
       const { controller, lifecycle } = setup();
       const out = (await controller.plans(auth(OWNER), 'r')) as { terms: { version: string; url: string } | null };
-      expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL');
+      expect(lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL', 'STRIPE');
       expect(out.terms).toEqual({ version: '1.0', url: 'https://sign.aramo.ai/legal/personal-terms/1.0' });
       vi.setSystemTime(new Date('2026-11-02T12:00:00-05:00'));
       const after = (await setup().controller.plans(auth(OWNER), 'r')) as { terms: { version: string; url: string } | null };

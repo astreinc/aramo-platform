@@ -16,11 +16,14 @@ import {
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   normalizeEmail,
-  validateUsOrganizationDetails,
-  type UsOrganizationDetails,
+  BILLING_REGION_IN,
+  BILLING_REGION_US,
+  validateOrganizationDetails,
+  type OrganizationDetails,
 } from '@aramo/identity';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import {
+  BillingRegionService,
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LegalAcceptanceService,
@@ -166,8 +169,33 @@ export class SignSignupService {
     // Domain-Enforcement P3 (LOCKED) — one organization per email domain.
     private readonly domainClaims: DomainClaimService,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
+    // India Billing Regions + Razorpay (directive v1.0 §2, §4.9) — the billing region store
+    // (SubscriptionModule, via PlatformModule). Unbound: US only.
+    @Optional() private readonly billingRegions?: BillingRegionService,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
+  }
+
+  /**
+   * India Billing §2 — Business signup accepts a non-US country whose billing region is ON with its
+   * Business switch ON (India only, and only once an operator has switched it ON). Fail closed. The
+   * gateway configured-check is the checkout's (this process does not hold the gateway credentials).
+   */
+  /** A1 §2.5 — hold the profile to its region (the US exactly as before; India once open). */
+  private async holdRegion(tenant_id: string, country: string): Promise<void> {
+    if (country === BILLING_REGION_US) await this.region.lockUs(tenant_id);
+    else await this.region.lock(tenant_id, country);
+  }
+
+  private async businessSignupOpen(country: string): Promise<boolean> {
+    if (country === BILLING_REGION_US || this.billingRegions === undefined || this.billingRegions === null) return false;
+    try {
+      const region = await this.billingRegions.get(country);
+      return region !== null && region.enabled && region.business_web_enabled;
+    } catch (e) {
+      this.log.warn(`billing region lookup failed for ${country}: ${e instanceof Error ? e.name : 'error'}`);
+      return false;
+    }
   }
 
   private readonly legal: readonly LegalDocumentVersion[];
@@ -265,7 +293,10 @@ export class SignSignupService {
     // Sign Signup Amendment A1 (LOCKED) §2 — the organization details and the
     // signer's authority attestation are required, and validated (US only:
     // 50 states + DC), BEFORE anything is claimed or created.
-    const organization = validateUsOrganizationDetails(input.organization, input.request_id);
+    // India Billing §2 — a non-US country only while its region sells to BUSINESS (US rules unchanged).
+    const requested = typeof (input.organization as { country_code?: unknown } | null)?.country_code === 'string' ? String((input.organization as { country_code: string }).country_code).trim().toUpperCase() : BILLING_REGION_US;
+    const open = requested === BILLING_REGION_IN ? await this.businessSignupOpen(requested) : false;
+    const organization = validateOrganizationDetails(input.organization, input.request_id, (c) => c === requested && open);
     if ((input.organization as { authority_attested?: unknown }).authority_attested !== true) {
       throw new AramoError('VALIDATION_ERROR', 'Confirm that you are authorized to act for the organization', 400, {
         requestId: input.request_id,
@@ -358,7 +389,7 @@ export class SignSignupService {
     owner_email: string;
     owner_display_name: string | null;
     request_id: string;
-    organization: UsOrganizationDetails;
+    organization: OrganizationDetails;
     signup_request_id: string;
     ip: string;
     at: Date;
@@ -409,7 +440,7 @@ export class SignSignupService {
         owner_role_authority: 'system',
       });
       // A1 §2.4/§2.5 — hold the profile to the US; record the signer's attestation.
-      await this.region.lockUs(tenant.id);
+      await this.holdRegion(tenant.id, args.organization.country_code);
       await this.region.recordAttestation(this.attestationFor(tenant.id, args.signup_request_id, args.owner_email, args.organization, args.ip, args.at));
       return { tenant_id: tenant.id, owner_user_id: owner.user.id };
     } catch (err) {
@@ -422,19 +453,19 @@ export class SignSignupService {
   private async finishAdopted(
     row: { id: string; email: string; terms_ref: string | null; created_at: Date },
     adopted: { tenant_id: string; user_id: string },
-    organization: UsOrganizationDetails,
+    organization: OrganizationDetails,
     ip: string,
     now: Date,
   ): Promise<void> {
     // The crashed attempt wrote the profile in the tenant insert; make sure
     // its lock and attestation exist too (both idempotent).
-    await this.region.lockUs(adopted.tenant_id);
+    await this.holdRegion(adopted.tenant_id, organization.country_code);
     await this.region.recordAttestation(this.attestationFor(adopted.tenant_id, row.id, row.email, organization, ip, now));
     await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
     await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
   }
 
-  private attestationFor(tenant_id: string, signup_request_id: string, email: string, o: UsOrganizationDetails, ip: string, at: Date) {
+  private attestationFor(tenant_id: string, signup_request_id: string, email: string, o: OrganizationDetails, ip: string, at: Date) {
     return {
       tenant_id,
       signup_request_id,
@@ -527,7 +558,7 @@ export class SignSignupService {
 }
 
 /** A1 §2.2 — the validated details as tenant profile columns. */
-export function profileFields(o: UsOrganizationDetails): Record<string, string | null> {
+export function profileFields(o: OrganizationDetails): Record<string, string | null> {
   return {
     legal_name: o.legal_name,
     address_line1: o.address_line1,

@@ -7,6 +7,11 @@ import {
   normalizeUsPhone,
   usProfileIneligibility,
   validateUsOrganizationDetails,
+  US_ONLY,
+  lockedProfileIneligibility,
+  normalizeInPhone,
+  organizationProfileIneligibility,
+  validateOrganizationDetails,
 } from '../lib/util/us-organization.js';
 
 // Aramo-Sign-Signup-Federated-Owner Amendment A1 (LOCKED) §2.2 — the field
@@ -120,5 +125,57 @@ describe('US rules', () => {
   it('the authority statement is an attestation in the signer’s own words, hashed as a template', () => {
     expect(authorityStatement('Acme LLC')).toBe('I am authorized to act for Acme LLC and to accept the Aramo terms on its behalf.');
     expect(authorityStatementSha256()).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+// India Billing Regions + Razorpay (directive v1.0 §2, §4.9) — Business signup and the organization
+// profile accept India only while its billing region sells to BUSINESS (the caller's acceptance); the US
+// rules are unchanged; every other country is refused as before.
+describe('validateOrganizationDetails (India Billing §2)', () => {
+  const india = {
+    legal_name: 'Manjal Trading Pvt Ltd',
+    address_line1: '12 Anna Salai',
+    city: 'Chennai',
+    state_province: 'Tamil Nadu',
+    postal_code: '600002',
+    country_code: 'in',
+    primary_contact_email: 'Billing@Manjal.co.in',
+    primary_contact_name: 'Pat Owner',
+    signer_title: 'Director',
+    primary_contact_phone: '098400 12345',
+  };
+  const open = (c: string) => c === 'IN';
+
+  it('the US (and an omitted country) is validateUsOrganizationDetails exactly, whatever the acceptance', () => {
+    expect(validateOrganizationDetails(valid, 'r')).toEqual(validateUsOrganizationDetails(valid, 'r'));
+    expect(validateOrganizationDetails(valid, 'r', open)).toEqual(validateUsOrganizationDetails(valid, 'r'));
+  });
+
+  it('India while its region is OFF (the default): refused organization_country_not_supported — exactly US-only', () => {
+    expect(reasonOf(() => validateOrganizationDetails(india, 'r'))).toMatchObject({ reason: 'organization_country_not_supported', field: 'country_code' });
+    expect(reasonOf(() => validateOrganizationDetails(india, 'r', US_ONLY))).toMatchObject({ reason: 'organization_country_not_supported' });
+  });
+
+  it('India while accepted: validated with the Indian rules (PIN code, +91 mobile)', () => {
+    expect(validateOrganizationDetails(india, 'r', open)).toMatchObject({ country_code: 'IN', state_province: 'Tamil Nadu', postal_code: '600002', primary_contact_phone: '+919840012345', primary_contact_email: 'billing@manjal.co.in' });
+    expect(reasonOf(() => validateOrganizationDetails({ ...india, postal_code: '06000' }, 'r', open))).toMatchObject({ reason: 'organization_details_invalid', field: 'postal_code' });
+    expect(reasonOf(() => validateOrganizationDetails({ ...india, primary_contact_phone: '+1 202 555 0100' }, 'r', open))).toMatchObject({ field: 'primary_contact_phone' });
+    expect(normalizeInPhone('+91 98400 12345')).toBe('+919840012345');
+  });
+
+  it('any other country is refused even when accepted', () => {
+    expect(reasonOf(() => validateOrganizationDetails({ ...india, country_code: 'GB' }, 'r', () => true))).toMatchObject({ reason: 'organization_country_not_supported' });
+  });
+
+  it('the stored-profile rule: US unchanged; India only while accepted; a held region keeps its rules', () => {
+    const p = { legal_name: 'A', address_line1: '1', city: 'C', state_province: 'Karnataka', postal_code: '560001', country_code: 'IN', primary_contact_email: 'b@a.test' };
+    expect(organizationProfileIneligibility(p)).toBe('organization_country_not_supported');
+    expect(organizationProfileIneligibility(p, open)).toBeNull();
+    expect(organizationProfileIneligibility({ ...p, postal_code: '5600' }, open)).toBe('organization_profile_incomplete');
+    const us = { ...p, state_province: 'TX', postal_code: '78701', country_code: 'US' };
+    expect(organizationProfileIneligibility(us, open)).toBe(usProfileIneligibility(us));
+    expect(lockedProfileIneligibility(p, 'IN')).toBeNull();
+    expect(lockedProfileIneligibility(us, 'IN')).toBe('organization_country_not_supported');
+    expect(lockedProfileIneligibility(p, 'US')).toBe('organization_country_not_supported');
   });
 });
