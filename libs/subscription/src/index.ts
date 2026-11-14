@@ -48,6 +48,8 @@ export {
   stripeSubscriptionState,
   verifyStripeSignature,
 } from './lib/billing/stripe-billing.provider.js';
+// Stripe API Upgrade directive v1.0 §4 Q2 — the explicit live-billing switch.
+export { SIGN_STRIPE_LIVE_BILLING_FLAG, liveStripeBillingEnabled, liveStripeBillingHeld } from './lib/billing/live-billing-switch.js';
 // CCP-C3 — the read-only provider port, its GET-only Stripe adapter and the read-through status service.
 export {
   BILLING_PROVIDER_ADJUSTMENT_PORT,

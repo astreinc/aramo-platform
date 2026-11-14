@@ -278,9 +278,13 @@ describe('CCP-C4 Stripe adapter (stubbed fetch; no network)', () => {
     expect(calls[1]).toMatchObject({ method: 'GET' });
   });
 
-  it('C4-U-10 discount: a coupon with the deterministic id (duration once) then the subscription update, both keyed; an existing coupon (a retry) is not an error; removal is a DELETE of the subscription discount', async () => {
+  it('C4-U-10 discount: a coupon with the deterministic id (duration once) then the subscription update, both keyed; an existing coupon (a retry) is not an error; removal clears the subscription discounts with a keyed update (Stripe API Upgrade directive v1.0 B-2: no DELETE route)', async () => {
     const r = adjustmentRequestOf({ id: U, command_kind: 'DISCOUNT_APPLY', tenant_id: 'ten-1', target_ref: 'sub_1', params: { subscription_id: U, discount_bps: 1_999, coupon_ref: 'aramo-ccp-cr-discount_apply' } });
-    replies.push({ status: 400, json: { error: { message: 'Coupon already exists.' } } }, { status: 200, json: { id: 'sub_1', discount: { id: 'di_1', coupon: { id: 'aramo-ccp-cr-discount_apply' } } } });
+    // 2026-09-30.endive shape: `discounts` (expanded) and the coupon under `source.coupon` (B-2/B-3).
+    replies.push(
+      { status: 400, json: { error: { message: 'Coupon already exists.' } } },
+      { status: 200, json: { id: 'sub_1', discounts: [{ id: 'di_1', source: { type: 'coupon', coupon: 'aramo-ccp-cr-discount_apply' } }] } },
+    );
     expect(await p.executeAdjustment(r, 'k1')).toEqual({ object_ref: 'di_1' });
     expect(calls.map((c) => [c.method, c.url.replace('http://stripe.c4.invalid', ''), c.idem])).toEqual([
       ['POST', '/v1/coupons', 'k1-coupon'],
@@ -289,10 +293,32 @@ describe('CCP-C4 Stripe adapter (stubbed fetch; no network)', () => {
     expect(new URLSearchParams(calls[0]?.body).get('percent_off')).toBe('19.99');
     expect(new URLSearchParams(calls[0]?.body).get('duration')).toBe('once');
     expect(new URLSearchParams(calls[1]?.body).get('discounts[0][coupon]')).toBe('aramo-ccp-cr-discount_apply');
+    expect(new URLSearchParams(calls[1]?.body).get('expand[]')).toBe('discounts');
     const rm = adjustmentRequestOf({ id: U, command_kind: 'DISCOUNT_REMOVE', tenant_id: 'ten-1', target_ref: 'sub_1', params: { subscription_id: U, coupon_ref: 'aramo-ccp-cr-discount_apply' } });
-    await p.executeAdjustment(rm, 'k2');
-    expect(calls[2]).toMatchObject({ method: 'DELETE', idem: 'k2' });
-    expect(calls[2]?.url).toMatch(/\/v1\/subscriptions\/sub_1\/discount$/);
+    expect(await p.executeAdjustment(rm, 'k2')).toEqual({ object_ref: 'sub_1' });
+    expect(calls[2]).toMatchObject({ method: 'POST', idem: 'k2' });
+    expect(calls[2]?.url).toMatch(/\/v1\/subscriptions\/sub_1$/);
+    expect(calls[2]?.body).toBe('discounts=');
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+  });
+
+  it('C4-U-10b discount re-read (2026-09-30.endive shapes): the subscription is read with its discounts expanded; the discount whose source coupon is the command coupon is the effect; another coupon or none is not', async () => {
+    const apply = adjustmentRequestOf({ id: U, command_kind: 'DISCOUNT_APPLY', tenant_id: 'ten-1', target_ref: 'sub_1', params: { subscription_id: U, discount_bps: 1_000, coupon_ref: 'aramo-c' } });
+    const rm = adjustmentRequestOf({ id: U, command_kind: 'DISCOUNT_REMOVE', tenant_id: 'ten-1', target_ref: 'sub_1', params: { subscription_id: U, coupon_ref: 'aramo-c' } });
+    // The coupon as an expanded object, behind another discount: the matching one is found.
+    replies.push({ status: 200, json: { id: 'sub_1', livemode: false, metadata: { tenant_id: 'ten-1' }, discounts: [{ id: 'di_0', source: { type: 'coupon', coupon: 'other' } }, { id: 'di_1', source: { type: 'coupon', coupon: { id: 'aramo-c' } } }] } });
+    expect(await p.readAdjustmentEffect(apply, null)).toMatchObject({ object_ref: 'di_1', present: true, provider_status: 'active', tenant_id: 'ten-1' });
+    expect(calls[0]).toMatchObject({ method: 'GET' });
+    expect(calls[0]?.url).toMatch(/\/v1\/subscriptions\/sub_1\?expand%5B%5D=discounts$/);
+    // Only another coupon: not applied (the first discount is reported); the removal is in effect.
+    replies.push({ status: 200, json: { id: 'sub_1', discounts: [{ id: 'di_0', source: { type: 'coupon', coupon: 'other' } }] } });
+    expect(await p.readAdjustmentEffect(apply, null)).toMatchObject({ object_ref: 'di_0', present: false, provider_status: 'active' });
+    // No discounts: the removal is in effect.
+    replies.push({ status: 200, json: { id: 'sub_1', discounts: [] } });
+    expect(await p.readAdjustmentEffect(rm, null)).toMatchObject({ object_ref: 'sub_1', present: true, provider_status: 'none' });
+    // An unexpanded entry (a bare discount id): its coupon is unknown, so it never counts as applied.
+    replies.push({ status: 200, json: { id: 'sub_1', discounts: ['di_9'] } });
+    expect(await p.readAdjustmentEffect(apply, null)).toMatchObject({ object_ref: 'di_9', present: false, provider_status: 'active' });
   });
 
   // C4-U-11 (refund: the invoice ownership read, then one keyed refund POST) lives in stripe-wire.spec.ts:

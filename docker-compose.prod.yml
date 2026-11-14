@@ -510,6 +510,9 @@ services:
       # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price
       # ids; the reconcile sweep is opt-in.
       - STRIPE_SECRET_KEY
+      # Stripe API Upgrade directive v1.0 §4 Q2 — exactly 1 releases live Stripe billing (commands,
+      # status reads, usage reports) with a live-mode key; unset ⇒ a live key stays held.
+      - SIGN_STRIPE_LIVE_BILLING_ENABLED
       - STRIPE_WEBHOOK_SECRET
       - STRIPE_PLAN_PRICES
       # India Billing Regions + Razorpay (directive v1.0 LOCKED §4.5, §6) — the Razorpay gateway. Dark:
@@ -967,6 +970,8 @@ services:
       - CCP_ASC_APP_ID
       - CCP_ASC_SUBSCRIPTION_GROUP_ID
       - STRIPE_SECRET_KEY
+      # Stripe API Upgrade directive v1.0 §4 Q2 — the live-billing switch (same value as sign-service).
+      - SIGN_STRIPE_LIVE_BILLING_ENABLED
       - STRIPE_API_BASE
       # India Billing (directive v1.0 §4.6, G-2/G-4) — the Razorpay catalog writer and the region switch's
       # gateway check (same values as sign-service; unset ⇒ Razorpay not configured, nothing is sent).

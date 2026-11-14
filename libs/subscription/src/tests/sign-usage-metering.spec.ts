@@ -98,7 +98,7 @@ describe('Stripe meter events (wire + adapter)', () => {
     expect(url).toBe('https://stripe.test/v1/billing/meter_events');
     expect(init.method).toBe('POST');
     const headers = init.headers as Record<string, string>;
-    expect(headers['stripe-version']).toBe('2024-06-20');
+    expect(headers['stripe-version']).toBe('2026-09-30.endive');
     expect(headers['idempotency-key']).toBe('aramo-usage-019a-entry');
     const body = new URLSearchParams(String(init.body));
     expect(body.get('event_name')).toBe('aramo_sign_sms');
