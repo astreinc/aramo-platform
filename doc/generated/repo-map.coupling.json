@@ -21019,6 +21019,21 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "doc/programs/stripe-endive/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/payments/stripe-connect-payment.provider.ts"
+    },
+    {
+      "from": "doc/programs/stripe-endive/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/sign/src/lib/identity-verification/stripe-identity.adapter.ts"
+    },
+    {
+      "from": "doc/programs/stripe-endive/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
       "from": "doc/recon/as-built/D01-system-context-topology.md",
       "status": "unscoped",
       "to": "apps/api/src/main.ts"
