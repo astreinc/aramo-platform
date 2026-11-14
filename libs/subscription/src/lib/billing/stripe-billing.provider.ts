@@ -38,8 +38,12 @@ import {
   wirePortalAccountParams,
   wireRefundParams,
   wireRefundState,
-  wireSubscriptionDiscount,
+  wireInvoiceQuery,
+  wireSubscriptionDiscountClearParams,
+  wireSubscriptionDiscountExpandParams,
   wireSubscriptionDiscountParams,
+  wireSubscriptionDiscountQuery,
+  wireSubscriptionDiscounts,
   wireSubscriptionQuery,
   WIRE_METER_EVENTS_PATH,
   wireMeterEventParams,
@@ -55,13 +59,14 @@ import {
 //   STRIPE_API_BASE        optional override (tests point it at a local stand-in)
 // Webhooks: Stripe-Signature `t=<unix>,v1=<hex>` = HMAC-SHA256(secret, `${t}.${raw}`),
 // verified in constant time within a ±300 s window before anything is parsed.
-// The API version is pinned so response shapes are stable.
+// The API version is pinned so response shapes are stable (Stripe API Upgrade directive v1.0:
+// 2026-09-30.endive; Connect payments and identity verification pin the same value).
 //
 // CCP-C1 — also the command port (cancel a subscription, expire a checkout session, read a
 // session). A provider refusal (4xx other than 429) is reported non-retryable; network
 // failures, 429 and 5xx stay retryable (BillingProviderUnavailableError.retryable).
 
-export const STRIPE_API_VERSION = '2024-06-20';
+export const STRIPE_API_VERSION = '2026-09-30.endive';
 export const STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
 
 function form(params: Record<string, string | undefined>): string {
@@ -84,8 +89,8 @@ export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderS
     (obj['items'] as { data?: Array<{ id?: string; quantity?: number; price?: { id?: string }; current_period_start?: number; current_period_end?: number }> } | undefined)?.data ?? [];
   const quantity = items[0]?.quantity;
   const metadata = (obj['metadata'] as Record<string, unknown> | undefined) ?? {};
-  // Period fields live on the subscription in the pinned API version; newer
-  // versions moved them onto the items — accept either.
+  // Period fields live on the items in the pinned API version (2026-09-30.endive); the older
+  // subscription-level fields are still accepted (a dual-shape fallback for older payloads).
   const start = obj['current_period_start'] ?? items[0]?.current_period_start;
   const end = obj['current_period_end'] ?? items[0]?.current_period_end;
   return {
@@ -107,8 +112,9 @@ export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderS
 }
 
 // The Stripe subscription an event concerns: checkout completion (subscription
-// mode), any subscription lifecycle event, and invoice events (pinned version:
-// invoice.subscription; newer: parent.subscription_details.subscription).
+// mode), any subscription lifecycle event, and invoice events (pinned version
+// 2026-09-30.endive: parent.subscription_details.subscription; the older
+// invoice.subscription is still accepted as a dual-shape fallback).
 export function stripeEventSubscriptionRef(type: string, o: Record<string, unknown>): string | null {
   const ref = (v: unknown): string | null =>
     typeof v === 'string' && v !== '' ? v : typeof (v as { id?: unknown } | null)?.id === 'string' ? (v as { id: string }).id : null;
@@ -175,6 +181,32 @@ export function stripeSecretKey(): string | undefined {
 
 export function stripeApiBase(): string {
   return (process.env['STRIPE_API_BASE'] ?? 'https://api.stripe.com').replace(/\/+$/, '');
+}
+
+/**
+ * Stripe API Upgrade directive v1.0 B-1 — the payment intent a refund (and the refund / dispute
+ * reads) draws on, from the invoice's payments. None → null (the invoice has no payment). One →
+ * that one. More than one → the single `paid` one (directive: refund against the paid one);
+ * otherwise, or when the payment list is incomplete, it fails closed (non-retryable): Aramo never
+ * guesses which payment a refund draws on.
+ */
+export function stripeInvoicePaymentRef(inv: { payment_refs: readonly string[]; paid_payment_refs: readonly string[]; payments_complete: boolean }): string | null {
+  if (inv.payment_refs.length === 0) return null;
+  if (!inv.payments_complete) throw new BillingProviderUnavailableError('the invoice payment list is incomplete: the payment is ambiguous', false);
+  if (inv.payment_refs.length === 1) return inv.payment_refs[0] as string;
+  if (inv.paid_payment_refs.length === 1) return inv.paid_payment_refs[0] as string;
+  throw new BillingProviderUnavailableError(`the invoice has ${inv.payment_refs.length} payments: the payment is ambiguous`, false);
+}
+
+/**
+ * Stripe API Upgrade directive v1.0 B-2/B-3 — the subscription discount Aramo reads: the one whose
+ * coupon is `coupon_ref` when present, else the first (Aramo attaches one coupon; an apply replaces
+ * the list). Nulls when the subscription has none.
+ */
+export function stripeSubscriptionDiscount(obj: Record<string, unknown>, coupon_ref: string | null = null): { coupon_ref: string | null; discount_ref: string | null } {
+  const all = wireSubscriptionDiscounts(obj);
+  const hit = coupon_ref === null ? undefined : all.find((d) => d.coupon_ref === coupon_ref);
+  return hit ?? all[0] ?? { coupon_ref: null, discount_ref: null };
 }
 
 @Injectable()
@@ -258,6 +290,9 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       'metadata[intent_id]': req.intent_id,
       'subscription_data[metadata][tenant_id]': req.tenant_id,
       'subscription_data[metadata][intent_id]': req.intent_id,
+      // Stripe API Upgrade directive v1.0 §7 Q1 (PO 2026-11-14) — flexible billing mode is ADOPTED:
+      // no billing-mode parameter is sent, so a subscription Checkout creates at 2026-09-30.endive is
+      // in Stripe's default flexible mode (proration and invoice calculation per that mode).
       // CCP-C5 (PBD §5.2 row C5, §10) — no tax parameter is sent: the provider is never asked to
       // calculate or collect tax before Stripe Tax registration. The former env opt-in is removed,
       // and no flag replaces it (enabling tax is a future release with its own authorization).
@@ -337,18 +372,25 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
         } catch (e) {
           if (!(e instanceof BillingProviderUnavailableError) || e.retryable || !/already exists/i.test(e.detail)) throw e;
         }
-        const sub = await this.call('POST', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`, form(wireSubscriptionDiscountParams(req.coupon_ref as string)), idempotency_key);
-        return { object_ref: wireSubscriptionDiscount(sub).discount_ref ?? (req.coupon_ref as string) };
+        const sub = await this.call(
+          'POST',
+          `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`,
+          form({ ...wireSubscriptionDiscountParams(req.coupon_ref as string), ...wireSubscriptionDiscountExpandParams() }),
+          idempotency_key,
+        );
+        return { object_ref: stripeSubscriptionDiscount(sub, req.coupon_ref ?? null).discount_ref ?? (req.coupon_ref as string) };
       }
       case 'DISCOUNT_REMOVE': {
-        await this.call('DELETE', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}/discount`, undefined, idempotency_key);
+        // B-2 — the subscription update clears its discounts (the former DELETE …/discount route is gone).
+        await this.call('POST', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`, form(wireSubscriptionDiscountClearParams()), idempotency_key);
         return { object_ref: req.target_ref };
       }
       case 'REFUND_CREATE': {
-        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}?${wireInvoiceQuery()}`));
         if (inv.account_ref !== req.account_ref) throw new BillingProviderUnavailableError('the invoice was not paid from the tenant billing account', false);
-        if (inv.payment_ref === null) throw new BillingProviderUnavailableError('the invoice has no payment to refund', false);
-        const r = await this.call('POST', '/v1/refunds', form(wireRefundParams(inv.payment_ref, req.amount_minor as number, req)), idempotency_key);
+        const payment_ref = stripeInvoicePaymentRef(inv);
+        if (payment_ref === null) throw new BillingProviderUnavailableError('the invoice has no payment to refund', false);
+        const r = await this.call('POST', '/v1/refunds', form(wireRefundParams(payment_ref, req.amount_minor as number, req)), idempotency_key);
         return { object_ref: requireId(r, 'refund') };
       }
     }
@@ -374,20 +416,21 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       }
       case 'DISCOUNT_APPLY':
       case 'DISCOUNT_REMOVE': {
-        const sub = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`);
-        const d = wireSubscriptionDiscount(sub);
+        const sub = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}?${wireSubscriptionDiscountQuery()}`);
+        const d = stripeSubscriptionDiscount(sub, req.coupon_ref ?? null);
         const has = d.coupon_ref === req.coupon_ref;
         const tenant_id = asString(((sub['metadata'] as Record<string, unknown> | undefined) ?? {})['tenant_id']);
-        return none({ object_ref: d.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, provider_status: d.coupon_ref === null ? 'none' : 'active', tenant_id, live: sub['livemode'] === true });
+        return none({ object_ref: d.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, provider_status: d.coupon_ref === null && d.discount_ref === null ? 'none' : 'active', tenant_id, live: sub['livemode'] === true });
       }
       case 'REFUND_CREATE': {
         // CCP-C4-R — always the authoritative picture of the payment: the invoice (paying account,
         // payment, currency, amount paid) and every refund of that payment; the command's refund is
         // found by its object ref, else by the command id in its metadata.
-        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
-        const refunds = inv.payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`)).map(wireRefundState);
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}?${wireInvoiceQuery()}`));
+        const payment_ref = stripeInvoicePaymentRef(inv);
+        const refunds = payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(payment_ref)}&limit=100`)).map(wireRefundState);
         const committed = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending' || r.status === 'requires_action').reduce((n, r) => n + r.amount_minor, 0);
-        const facts = { refundable_remainder_minor: inv.payment_ref === null ? 0 : Math.max(inv.amount_paid_minor - committed, 0), payment_currency: inv.currency };
+        const facts = { refundable_remainder_minor: payment_ref === null ? 0 : Math.max(inv.amount_paid_minor - committed, 0), payment_currency: inv.currency };
         const mine = refunds.find((r) => (object_ref !== null ? r.object_ref === object_ref : r.command_id === req.command_id));
         if (mine === undefined) return none({ ...facts, observed_amount_minor: null });
         return none({ ...facts, object_ref: mine.object_ref, present: mine.status === 'succeeded' && mine.amount_minor === req.amount_minor, provider_status: mine.status, tenant_id: mine.tenant_id, live: mine.live, observed_amount_minor: mine.amount_minor });
@@ -397,13 +440,14 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
 
   async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
     // CCP-C4-P — GET only: the invoice, every refund of its payment, every dispute on it.
-    const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(invoice_ref)}`));
+    const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(invoice_ref)}?${wireInvoiceQuery()}`));
+    const payment_ref = stripeInvoicePaymentRef(inv);
     let refunds: Array<Record<string, unknown>> = [];
     let disputes: Array<Record<string, unknown>> = [];
     let complete = true;
-    if (inv.payment_ref !== null) {
-      const r = await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
-      const d = await this.call('GET', `/v1/disputes?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
+    if (payment_ref !== null) {
+      const r = await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(payment_ref)}&limit=100`);
+      const d = await this.call('GET', `/v1/disputes?payment_intent=${encodeURIComponent(payment_ref)}&limit=100`);
       refunds = wireListData(r);
       disputes = wireListData(d);
       complete = wireListComplete(r) && wireListComplete(d);
@@ -412,7 +456,7 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       provider: 'STRIPE',
       invoice_ref,
       account_ref: inv.account_ref,
-      payment_ref: inv.payment_ref,
+      payment_ref,
       currency: inv.currency,
       captured_minor: inv.amount_paid_minor,
       refunds: refunds.map(wireRefundState).map((x) => ({ object_ref: x.object_ref, amount_minor: x.amount_minor, status: x.status, command_id: x.command_id })),

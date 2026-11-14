@@ -23,6 +23,7 @@ import {
   isWebBillingProvider,
 } from './billing-provider.port.js';
 import { BILLING_GATEWAY_REGISTRY, type BillingGatewayRegistry } from './gateway-registry.js';
+import { liveStripeBillingHeld } from './live-billing-switch.js';
 import {
   type AdjustmentCommandParams,
   BILLING_COMMAND_ACTIONS,
@@ -486,10 +487,11 @@ export class BillingCommandService {
     // India Billing — the gateways whose commands are claimed: the bound one (Stripe) and any other
     // configured, test-mode web gateway (Razorpay). A command of an unconfigured gateway stays PENDING.
     const providers = [this.billing.provider as string, ...this.extraDispatchProviders()];
-    // Production hold (PBD §7.3) — live Stripe is out of C1's scope; commands stay PENDING.
-    // CCP-C4: the adjustment port is held the same way (TD-C1-3; live billing is not authorized).
-    if (this.commands.mode() === 'live' || this.adjustments?.mode() === 'live') {
-      this.log.warn('billing commands not dispatched: the provider key is live-mode (live Stripe is not authorized)');
+    // Production hold (PBD §7.3) — with a live-mode key, commands stay PENDING unless live Stripe
+    // billing is released by the explicit switch (Stripe API Upgrade directive v1.0 §4 Q2,
+    // SIGN_STRIPE_LIVE_BILLING_ENABLED=1). CCP-C4: the adjustment port is held the same way.
+    if (liveStripeBillingHeld(this.commands.mode()) || (this.adjustments !== undefined && liveStripeBillingHeld(this.adjustments.mode()))) {
+      this.log.warn('billing commands not dispatched: the provider key is live-mode and live Stripe billing is not enabled (SIGN_STRIPE_LIVE_BILLING_ENABLED)');
       return { ...tally, skipped: 'LIVE_MODE' };
     }
     for (let i = 0; i < limit; i += 1) {

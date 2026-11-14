@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { adjustmentRequestOf } from '../lib/billing/billing-provider-command.js';
-import { StripeBillingProvider, stripeEventSubscriptionRef, stripeSubscriptionState } from '../lib/billing/stripe-billing.provider.js';
+import {
+  StripeBillingProvider,
+  stripeEventSubscriptionRef,
+  stripeInvoicePaymentRef,
+  stripeSubscriptionDiscount,
+  stripeSubscriptionState,
+} from '../lib/billing/stripe-billing.provider.js';
 import { StripeBillingReadAdapter } from '../lib/billing/stripe-billing-read.adapter.js';
 import {
   isWireSubscriptionEvent,
@@ -12,11 +18,16 @@ import {
   wireCheckoutAccountParams,
   wireInvoiceListPath,
   wireInvoicePayment,
+  wireInvoiceQuery,
   wireInvoiceState,
   wireListData,
   wirePortalAccountParams,
   wirePortalConfigurationPath,
   wirePortalConfigurationState,
+  wireSubscriptionDiscountClearParams,
+  wireSubscriptionDiscountExpandParams,
+  wireSubscriptionDiscountQuery,
+  wireSubscriptionDiscounts,
   wireSubscriptionQuery,
 } from '../lib/billing/stripe-wire.js';
 
@@ -64,6 +75,57 @@ describe('Stripe wire → Aramo', () => {
     expect(isWireSubscriptionEvent('customer.subscription.updated')).toBe(true);
     expect(isWireSubscriptionEvent('customer.updated')).toBe(false);
     expect(stripeEventSubscriptionRef('customer.subscription.deleted', { id: 'sub_2' })).toBe('sub_2');
+  });
+
+  // Stripe API Upgrade directive v1.0 B-7 / B-8 — 2026-09-30.endive payloads ONLY (no older field present).
+  it('B-7 a subscription with its period ONLY on the item (no subscription-level period fields) reads the item period', () => {
+    const sub = {
+      id: 'sub_7',
+      object: 'subscription',
+      customer: { id: 'cus_7', address: { country: 'US' } },
+      status: 'active',
+      cancel_at_period_end: false,
+      billing_mode: { type: 'flexible' },
+      discounts: [],
+      metadata: { tenant_id: 't7' },
+      items: { object: 'list', data: [{ id: 'si_7', quantity: 4, price: { id: 'price_7' }, current_period_start: 1_790_000_000, current_period_end: 1_792_592_000 }] },
+    };
+    expect(Object.keys(sub)).not.toContain('current_period_start');
+    const s = stripeSubscriptionState(sub);
+    expect(s).toMatchObject({ subscription_ref: 'sub_7', account_ref: 'cus_7', account_country: 'US', price_ref: 'price_7', item_ref: 'si_7', quantity: 4, tenant_id: 't7' });
+    expect(s.current_period_start.getTime()).toBe(1_790_000_000_000);
+    expect(s.current_period_end.getTime()).toBe(1_792_592_000_000);
+  });
+
+  it('B-8 an invoice event linked ONLY through parent.subscription_details names its subscription', () => {
+    const inv = { id: 'in_8', object: 'invoice', customer: 'cus_8', parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_8', metadata: {} } } };
+    expect(Object.keys(inv)).not.toContain('subscription');
+    for (const type of ['invoice.paid', 'invoice.payment_failed', 'invoice.finalized']) expect(stripeEventSubscriptionRef(type, inv)).toBe('sub_8');
+    expect(stripeEventSubscriptionRef('invoice.paid', { ...inv, parent: { type: 'subscription_details', subscription_details: { subscription: { id: 'sub_8x' } } } })).toBe('sub_8x');
+    expect(wireInvoiceState(inv)).toMatchObject({ invoice_ref: 'in_8', subscription_ref: 'sub_8', account_ref: 'cus_8' });
+    // A one-off invoice (no subscription parent) names none.
+    expect(stripeEventSubscriptionRef('invoice.paid', { id: 'in_9', parent: null })).toBeNull();
+  });
+
+  it('B-2/B-3 a subscription\'s discounts (the list, coupon under source.coupon; an unexpanded entry is a bare id)', () => {
+    expect(wireSubscriptionDiscountQuery()).toBe('expand%5B%5D=discounts');
+    expect(wireSubscriptionDiscountExpandParams()).toEqual({ 'expand[]': 'discounts' });
+    expect(wireSubscriptionDiscountClearParams()).toEqual({ discounts: '' });
+    expect(
+      wireSubscriptionDiscounts({
+        discounts: [{ id: 'di_1', object: 'discount', source: { type: 'coupon', coupon: 'aramo-c' } }, { id: 'di_2', source: { type: 'coupon', coupon: { id: 'other', object: 'coupon' } } }, 'di_3', null, ''],
+      }),
+    ).toEqual([
+      { coupon_ref: 'aramo-c', discount_ref: 'di_1' },
+      { coupon_ref: 'other', discount_ref: 'di_2' },
+      { coupon_ref: null, discount_ref: 'di_3' },
+    ]);
+    // The removed singular field is not read.
+    expect(wireSubscriptionDiscounts({ discount: { id: 'di_old', coupon: { id: 'aramo-c' } } })).toEqual([]);
+    expect(wireSubscriptionDiscounts({ discounts: [] })).toEqual([]);
+    expect(stripeSubscriptionDiscount({ discounts: [{ id: 'di_0', source: { coupon: 'x' } }, { id: 'di_1', source: { coupon: 'aramo-c' } }] }, 'aramo-c')).toEqual({ coupon_ref: 'aramo-c', discount_ref: 'di_1' });
+    expect(stripeSubscriptionDiscount({ discounts: [{ id: 'di_0', source: { coupon: 'x' } }] }, 'aramo-c')).toEqual({ coupon_ref: 'x', discount_ref: 'di_0' });
+    expect(stripeSubscriptionDiscount({ discounts: [] }, 'aramo-c')).toEqual({ coupon_ref: null, discount_ref: null });
   });
 });
 
@@ -185,7 +247,8 @@ const STRIPE_INVOICE = {
   object: 'invoice',
   number: 'ARAMO-0001',
   customer: 'cus_1',
-  subscription: 'sub_1',
+  // 2026-09-30.endive shape (B-8): the subscription link sits under parent.subscription_details only.
+  parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_1' } },
   status: 'open',
   currency: 'usd',
   total: 4900,
@@ -244,9 +307,11 @@ describe('CCP-C3 Stripe read wire → Aramo', () => {
     });
     // No vendor account key survives the translation.
     expect(Object.keys(inv)).not.toContain('customer');
-    // Newer API: the subscription sits under parent.subscription_details; the account may be expanded.
+    // Pinned API (2026-09-30.endive): the subscription sits under parent.subscription_details; the account may be expanded.
     const newer = wireInvoiceState({ id: 'in_2', status: 'paid', customer: { id: 'cus_1' }, parent: { subscription_details: { subscription: 'sub_1' } } });
     expect(newer).toMatchObject({ account_ref: 'cus_1', subscription_ref: 'sub_1', provider_status: 'paid', due_at: null, total_minor: 0, currency: null });
+    // The older top-level link is still accepted (dual-shape fallback, kept).
+    expect(wireInvoiceState({ id: 'in_4', customer: 'cus_1', subscription: 'sub_9' })).toMatchObject({ subscription_ref: 'sub_9' });
     // Missing or malformed fields fail to null / 0, never to a guess.
     expect(wireInvoiceState({ id: 'in_3', amount_due: 'x', created: -1 })).toMatchObject({ subscription_ref: null, amount_due_minor: 0, created_at: null, account_ref: '' });
   });
@@ -300,7 +365,7 @@ describe('CCP-C3 StripeBillingReadAdapter (GET-only) against a local stand-in', 
 
   it('C3-W-4 every provider request is GET with no body and no idempotency key; results are translated', async () => {
     standIn({
-      '/v1/subscriptions/sub_1': { json: { id: 'sub_1', status: 'past_due', customer: { id: 'cus_1', address: { country: 'US' } }, metadata: { tenant_id: 't1' }, current_period_start: 10, current_period_end: 20 } },
+      '/v1/subscriptions/sub_1': { json: { id: 'sub_1', status: 'past_due', customer: { id: 'cus_1', address: { country: 'US' } }, metadata: { tenant_id: 't1' }, items: { data: [{ id: 'si_1', quantity: 1, current_period_start: 10, current_period_end: 20 }] } } },
       '/v1/invoices': { json: { object: 'list', data: [STRIPE_INVOICE, { ...STRIPE_INVOICE, id: 'in_0', status: 'paid', amount_remaining: 0 }] } },
       '/v1/billing_portal/configurations/bpc_terms': { json: STRIPE_PORTAL_CONFIGURATION },
     });
@@ -364,16 +429,59 @@ describe('CCP-C4 Stripe refund wire (stubbed fetch)', () => {
     process.env = { ...env };
   });
 
-  it('C4-U-13 wireInvoicePayment reads the paying account and the payment', () => {
-    expect(wireInvoicePayment({ customer: 'cus_1', payment_intent: { id: 'pi_1' }, currency: 'usd', amount_paid: 900 })).toEqual({ account_ref: 'cus_1', payment_ref: 'pi_1', currency: 'usd', amount_paid_minor: 900 });
+  // Stripe API Upgrade directive v1.0 B-1 — the invoice names no payment intent itself; the payment is
+  // read from its expanded `payments` list (InvoicePayment.payment of type payment_intent).
+  const pays = (...p: Array<{ pi: unknown; status?: string; type?: string }>) => ({
+    object: 'list',
+    data: p.map((x, i) => ({ id: `inpay_${i}`, object: 'invoice_payment', status: x.status ?? 'paid', payment: { type: x.type ?? 'payment_intent', payment_intent: x.pi } })),
+    has_more: false,
   });
 
-  it('C4-U-11 refund: the invoice is read first and must have been paid from the tenant account; then ONE keyed refund POST on its payment', async () => {
+  it('C4-U-13 wireInvoicePayment reads the paying account and the payment intents of the invoice payments', () => {
+    expect(wireInvoiceQuery()).toBe('expand%5B%5D=payments');
+    expect(wireInvoicePayment({ customer: 'cus_1', payments: pays({ pi: { id: 'pi_1', object: 'payment_intent' } }), currency: 'usd', amount_paid: 900 })).toEqual({
+      account_ref: 'cus_1',
+      payment_refs: ['pi_1'],
+      paid_payment_refs: ['pi_1'],
+      payments_complete: true,
+      currency: 'usd',
+      amount_paid_minor: 900,
+    });
+    // Two attempts with the same intent are one payment; another payment type is not a payment intent.
+    expect(wireInvoicePayment({ customer: 'cus_1', payments: pays({ pi: 'pi_1', status: 'canceled' }, { pi: 'pi_1' }, { pi: 'x', type: 'out_of_band_payment' }) })).toMatchObject({ payment_refs: ['pi_1'], paid_payment_refs: ['pi_1'] });
+    // No payments (an unpaid invoice), and the removed top-level field is not read.
+    expect(wireInvoicePayment({ customer: 'cus_1', payment_intent: 'pi_old', payments: pays() })).toMatchObject({ payment_refs: [], payments_complete: true });
+    expect(wireInvoicePayment({ customer: 'cus_1', payments: { ...pays({ pi: 'pi_1' }), has_more: true } })).toMatchObject({ payment_refs: ['pi_1'], payments_complete: false });
+  });
+
+  it('B-1 the payment a refund draws on: none → null; one → it; several → the single paid one; otherwise, or an incomplete list, fails closed (non-retryable)', () => {
+    expect(stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays() }))).toBeNull();
+    expect(stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays({ pi: 'pi_1', status: 'open' }) }))).toBe('pi_1');
+    expect(stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays({ pi: 'pi_0', status: 'canceled' }, { pi: 'pi_1', status: 'paid' }) }))).toBe('pi_1');
+    expect(() => stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays({ pi: 'pi_0', status: 'paid' }, { pi: 'pi_1', status: 'paid' }) }))).toThrow(/ambiguous/);
+    expect(() => stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays({ pi: 'pi_0', status: 'open' }, { pi: 'pi_1', status: 'open' }) }))).toThrow(/ambiguous/);
+    expect(() => stripeInvoicePaymentRef(wireInvoicePayment({ payments: { ...pays({ pi: 'pi_1' }), has_more: true } }))).toThrow(/incomplete/);
+    try {
+      stripeInvoicePaymentRef(wireInvoicePayment({ payments: pays({ pi: 'pi_0' }, { pi: 'pi_1' }) }));
+    } catch (e) {
+      expect(e).toMatchObject({ name: 'BillingProviderUnavailableError', retryable: false });
+    }
+  });
+
+  it('C4-U-11 refund: the invoice is read first (payments expanded) and must have been paid from the tenant account; then ONE keyed refund POST on its payment', async () => {
     const r = adjustmentRequestOf({ id: U, command_kind: 'REFUND_CREATE', tenant_id: 'ten-1', target_ref: 'in_1', params: { subscription_id: U, amount_minor: 4_000, currency: 'USD', account_ref: 'acct_1' } });
-    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_other', payment_intent: 'pi_1' } });
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_other', payments: pays({ pi: 'pi_1' }) } });
     await expect(c4.executeAdjustment(r, 'k')).rejects.toMatchObject({ retryable: false });
     expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
-    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1' } }, { status: 200, json: { id: 're_1', status: 'pending' } });
+    expect(calls[0]?.url).toMatch(/\/v1\/invoices\/in_1\?expand%5B%5D=payments$/);
+    // No payment on the invoice: refused, nothing posted.
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payments: pays() } });
+    await expect(c4.executeAdjustment(r, 'k')).rejects.toMatchObject({ retryable: false, detail: expect.stringMatching(/no payment/) });
+    // Two paid payment intents: ambiguous, refused, nothing posted.
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payments: pays({ pi: 'pi_1' }, { pi: 'pi_2' }) } });
+    await expect(c4.executeAdjustment(r, 'k')).rejects.toMatchObject({ retryable: false, detail: expect.stringMatching(/ambiguous/) });
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payments: pays({ pi: 'pi_0', status: 'canceled' }, { pi: 'pi_1' }) } }, { status: 200, json: { id: 're_1', status: 'pending' } });
     expect(await c4.executeAdjustment(r, 'k')).toEqual({ object_ref: 're_1' });
     const post = calls.filter((c) => c.method === 'POST');
     expect(post).toHaveLength(1);
@@ -382,8 +490,34 @@ describe('CCP-C4 Stripe refund wire (stubbed fetch)', () => {
     expect(new URLSearchParams(post[0]?.body).get('amount')).toBe('4000');
     // a pending refund is not yet the effect (pending until the refund succeeds)
     // CCP-C4-R: the read is the payment's whole picture (invoice, then every refund of its payment).
-    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1', amount_paid: 10_000, currency: 'usd' } }, { status: 200, json: { data: [{ id: 're_0', status: 'succeeded', amount: 1_000, metadata: {} }, { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } }] } });
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payments: pays({ pi: 'pi_1' }), amount_paid: 10_000, currency: 'usd' } }, { status: 200, json: { data: [{ id: 're_0', status: 'succeeded', amount: 1_000, metadata: {} }, { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } }] } });
     expect(await c4.readAdjustmentEffect(r, 're_1')).toMatchObject({ present: false, provider_status: 'pending', object_ref: 're_1', observed_amount_minor: 4_000, refundable_remainder_minor: 5_000, payment_currency: 'usd' });
+  });
+
+  it('B-1 the payment picture (GET only): the invoice with its payments expanded, then every refund and dispute of its payment intent; no payment → no refund / dispute reads', async () => {
+    replies.push(
+      { status: 200, json: { id: 'in_1', customer: 'acct_1', payments: pays({ pi: { id: 'pi_7' } }), amount_paid: 4_900, currency: 'usd' } },
+      { status: 200, json: { data: [{ id: 're_1', status: 'succeeded', amount: 900, metadata: { aramo_command_id: U } }], has_more: false } },
+      { status: 200, json: { data: [{ id: 'dp_1', status: 'needs_response', amount: 4_000 }], has_more: false } },
+    );
+    const pic = await c4.readPaymentPicture('in_1');
+    expect(pic).toMatchObject({ invoice_ref: 'in_1', account_ref: 'acct_1', payment_ref: 'pi_7', currency: 'usd', captured_minor: 4_900, complete: true, live: false });
+    expect(pic.refunds).toEqual([{ object_ref: 're_1', amount_minor: 900, status: 'succeeded', command_id: U }]);
+    expect(pic.disputes).toEqual([{ object_ref: 'dp_1', amount_minor: 4_000, status: 'needs_response' }]);
+    expect(calls.map((c) => [c.method, c.url.replace('http://stripe.c4.invalid', '')])).toEqual([
+      ['GET', '/v1/invoices/in_1?expand%5B%5D=payments'],
+      ['GET', '/v1/refunds?payment_intent=pi_7&limit=100'],
+      ['GET', '/v1/disputes?payment_intent=pi_7&limit=100'],
+    ]);
+    calls = [];
+    replies.push({ status: 200, json: { id: 'in_2', customer: 'acct_1', payments: pays(), amount_paid: 0, currency: 'usd' } });
+    expect(await c4.readPaymentPicture('in_2')).toMatchObject({ payment_ref: null, refunds: [], disputes: [], complete: true });
+    expect(calls).toHaveLength(1);
+    // Ambiguous (two paid payment intents): the read fails closed, nothing further is read.
+    calls = [];
+    replies.push({ status: 200, json: { id: 'in_3', customer: 'acct_1', payments: pays({ pi: 'pi_1' }, { pi: 'pi_2' }) } });
+    await expect(c4.readPaymentPicture('in_3')).rejects.toMatchObject({ retryable: false });
+    expect(calls).toHaveLength(1);
   });
 
 });

@@ -10,6 +10,7 @@ import {
   type ProviderInvoiceState,
   type ProviderPortalConfigurationState,
 } from './billing-provider.port.js';
+import { liveStripeBillingHeld } from './live-billing-switch.js';
 import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
 // CCP-C3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C3; Charter §3 "Payments,
@@ -139,7 +140,8 @@ export class BillingStatusReadService {
 
   private gate(): { availability: 'BILLING_UNAVAILABLE' | 'LIVE_MODE_HELD'; mode: 'test' | 'live' | null; detail: string } | null {
     if (!this.reader.isConfigured()) return { availability: 'BILLING_UNAVAILABLE', mode: null, detail: 'the billing provider is not configured for this service' };
-    if (this.reader.mode() === 'live') {
+    // Stripe API Upgrade directive v1.0 §4 Q2 — a live-mode key is read only with the live switch on.
+    if (liveStripeBillingHeld(this.reader.mode())) {
       return { availability: 'LIVE_MODE_HELD', mode: 'live', detail: 'provider reads run in test mode only until the live-billing release is authorized' };
     }
     return null;
@@ -174,7 +176,7 @@ export class BillingStatusReadService {
     const gated = this.gate();
     if (gated !== null) return { ...base, ...gated };
     base.provider = this.reader.provider;
-    base.mode = 'test';
+    base.mode = this.reader.mode();
 
     // The tenant's Stripe-owned row for this product: the open one, else the most recent.
     const where = { tenant_id, product_key: product, source: 'SELF_SERVICE', billing_account_ref: { not: null }, billing_subscription_ref: { not: null } };
@@ -235,7 +237,7 @@ export class BillingStatusReadService {
     };
     const gated = this.gate();
     if (gated !== null) return { ...base, ...gated, configuration_state: configuration_ref === null ? 'NOT_CONFIGURED' : null };
-    base.mode = 'test';
+    base.mode = this.reader.mode();
     if (configuration_ref === null) {
       return { ...base, configuration_state: 'NOT_CONFIGURED', detail: 'STRIPE_PORTAL_CONFIGURATION is not set (commitment plans are refused the portal)' };
     }

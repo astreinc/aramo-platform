@@ -3,7 +3,7 @@
 // usage authority; the provider receives one meter event per ledger entry, keyed by the entry id
 // so a redelivery can never be counted twice.
 //
-// Stripe (REST, no SDK; API version pinned by STRIPE_API_VERSION 2024-06-20): Billing Meter
+// Stripe (REST, no SDK; API version pinned by STRIPE_API_VERSION 2026-09-30.endive): Billing Meter
 // Events, POST /v1/billing/meter_events. The legacy subscription-item usage records endpoint is
 // not used (it is retired in later API versions). The Stripe adapter implements this port.
 

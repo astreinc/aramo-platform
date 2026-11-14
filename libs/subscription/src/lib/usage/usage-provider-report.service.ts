@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
 import { BillingProviderUnavailableError } from '../billing/billing-provider.port.js';
+import { liveStripeBillingHeld } from '../billing/live-billing-switch.js';
 import { USAGE_METER_REPORT_PORT, type UsageMeterReportPort } from '../billing/usage-meter.port.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -64,7 +65,8 @@ export class UsageProviderReportService {
   private hold(): UsageReportHold | null {
     if (!usageBillingEnabled(this.env)) return 'DISABLED';
     if (!this.port.meterReportingConfigured()) return 'NOT_CONFIGURED';
-    if (this.port.mode() === 'live') return 'LIVE_MODE';
+    // Stripe API Upgrade directive v1.0 §4 Q2 — a live-mode key reports only with the live switch on.
+    if (liveStripeBillingHeld(this.port.mode(), this.env)) return 'LIVE_MODE';
     return null;
   }
 
@@ -72,7 +74,7 @@ export class UsageProviderReportService {
     const held = this.hold();
     const out = { held, claimed: 0, reported: 0, skipped: 0, failed: 0, deferred: 0 };
     if (held !== null) {
-      if (held === 'LIVE_MODE') this.log.warn('usage reports not sent: the provider key is live-mode (live billing is not authorized)');
+      if (held === 'LIVE_MODE') this.log.warn('usage reports not sent: the provider key is live-mode and live Stripe billing is not enabled (SIGN_STRIPE_LIVE_BILLING_ENABLED)');
       return out;
     }
     const due = await this.prisma.usageProviderReport.findMany({

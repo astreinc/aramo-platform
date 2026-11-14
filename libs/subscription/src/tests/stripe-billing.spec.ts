@@ -69,6 +69,7 @@ describe('stripeEventSubscriptionRef', () => {
   it('resolves the subscription of checkout, subscription and invoice events only', () => {
     expect(stripeEventSubscriptionRef('checkout.session.completed', { mode: 'subscription', subscription: 'sub_1' })).toBe('sub_1');
     expect(stripeEventSubscriptionRef('checkout.session.completed', { mode: 'payment', subscription: 'sub_1' })).toBeNull();
+    // The older top-level invoice link (dual-shape fallback, kept); the pinned 2026-09-30.endive shape is parent.subscription_details.
     expect(stripeEventSubscriptionRef('invoice.payment_failed', { subscription: { id: 'sub_3' } })).toBe('sub_3');
     expect(stripeEventSubscriptionRef('invoice.paid', { parent: { subscription_details: { subscription: 'sub_4' } } })).toBe('sub_4');
     expect(stripeEventSubscriptionRef('charge.refunded', { id: 'ch_1' })).toBeNull();
@@ -89,7 +90,7 @@ describe('StripeBillingProvider (local stand-in)', () => {
         res.setHeader('content-type', 'application/json');
         if (req.url === '/v1/checkout/sessions') return res.end(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/cs_1' }));
         if (req.url === '/v1/billing_portal/sessions') return res.end(JSON.stringify({ url: 'https://billing.stripe.test/p' }));
-        if (req.url?.split('?')[0] === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', status: 'past_due', current_period_start: 1, current_period_end: 2, items: { data: [] } }));
+        if (req.url?.split('?')[0] === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', status: 'past_due', items: { data: [{ id: 'si_1', quantity: 1, current_period_start: 1, current_period_end: 2 }] } }));
         res.statusCode = 404;
         res.end(JSON.stringify({ error: { message: 'No such subscription' } }));
       });
@@ -146,7 +147,7 @@ describe('StripeBillingProvider (local stand-in)', () => {
 
   it('verifies, then parses, a webhook', () => {
     process.env['STRIPE_WEBHOOK_SECRET'] = SECRET;
-    const body = JSON.stringify({ id: 'evt_9', type: 'invoice.paid', created: 5, data: { object: { subscription: 'sub_1' } } });
+    const body = JSON.stringify({ id: 'evt_9', type: 'invoice.paid', created: 5, data: { object: { parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_1' } } } } });
     const evt = new StripeBillingProvider().verifyWebhook(Buffer.from(body), sign(body, 1000), 1000);
     expect(evt).toEqual({ id: 'evt_9', type: 'invoice.paid', created: new Date(5000), subscription_ref: 'sub_1' });
     expect(() => new StripeBillingProvider().verifyWebhook(Buffer.from(body), sign(body, 1000, 'x'), 1000)).toThrow(BillingWebhookSignatureError);

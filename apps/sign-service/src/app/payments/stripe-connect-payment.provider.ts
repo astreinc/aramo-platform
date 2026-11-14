@@ -35,7 +35,7 @@ import { signStripeConnectConfig, type SignStripeConnectConfig } from './sign-pa
 // Webhooks: Stripe-Signature `t=<unix>,v1=<hex>` = HMAC-SHA256(secret, `${t}.${raw}`),
 // verified in constant time within ±300 s before anything is parsed.
 
-export const SIGN_STRIPE_API_VERSION = '2024-06-20';
+export const SIGN_STRIPE_API_VERSION = '2026-09-30.endive';
 export const SIGN_STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
 
 function form(params: Record<string, string | undefined>): string {

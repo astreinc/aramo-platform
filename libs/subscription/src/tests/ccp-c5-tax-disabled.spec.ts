@@ -232,8 +232,9 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
         return new Response(
           // Merge train (TD-MERGE-43): the generic object also carries a payment and an amount paid,
           // so the CCP-C4 refund calls reach every request they make. It names no paying account, so
-          // the refund request below binds the empty account the wire mapper then reads.
-          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [{ id: 'si_c5', quantity: 1 }] }, payment_intent: 'pi_c5', currency: 'usd', amount_paid: 4900 }),
+          // the refund request below binds the empty account the wire mapper then reads. Stripe API
+          // Upgrade directive v1.0 B-1: the payment is in the invoice's (expanded) `payments` list.
+          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [{ id: 'si_c5', quantity: 1 }] }, payments: { object: 'list', data: [{ status: 'paid', payment: { type: 'payment_intent', payment_intent: 'pi_c5' } }], has_more: false }, currency: 'usd', amount_paid: 4900 }),
           { status: 200 },
         );
       }),

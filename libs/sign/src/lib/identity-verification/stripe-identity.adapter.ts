@@ -26,7 +26,7 @@ import {
 // of birth is requested. R-5: of the result only the outcome, the issuing country and —
 // transiently, for the name comparison — the first and last name are read.
 
-export const STRIPE_IDENTITY_API_VERSION = '2024-06-20';
+export const STRIPE_IDENTITY_API_VERSION = '2026-09-30.endive';
 export const STRIPE_IDENTITY_WEBHOOK_TOLERANCE_SEC = 300;
 
 // The verification-session events that mean "the result may have changed".

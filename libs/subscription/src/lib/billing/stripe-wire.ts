@@ -140,7 +140,8 @@ export function wireInvoiceState(obj: Record<string, unknown>): {
     invoice_ref: String(obj['id'] ?? ''),
     number: wireStr(obj['number']),
     account_ref: wireAccountRef(obj),
-    // Pinned API version: invoice.subscription; newer versions: parent.subscription_details.subscription.
+    // Pinned API version 2026-09-30.endive: parent.subscription_details.subscription; the older
+    // invoice.subscription is still accepted (a dual-shape fallback kept for older payloads).
     subscription_ref: wireRef(obj['subscription']) ?? wireRef(parent?.subscription_details?.subscription),
     provider_status: String(obj['status'] ?? ''),
     currency: wireStr(obj['currency']),
@@ -228,16 +229,88 @@ export function wireSubscriptionDiscountParams(coupon_ref: string): Record<strin
   return { 'discounts[0][coupon]': coupon_ref };
 }
 
-/** A Stripe subscription → its current discount (coupon id and discount object id), or nulls. */
-export function wireSubscriptionDiscount(obj: Record<string, unknown>): { coupon_ref: string | null; discount_ref: string | null } {
-  const d = obj['discount'] as { id?: unknown; coupon?: unknown } | null | undefined;
-  if (d === null || d === undefined || typeof d !== 'object') return { coupon_ref: null, discount_ref: null };
-  return { coupon_ref: wireRef(d.coupon), discount_ref: wireStr(d.id) };
+/**
+ * Stripe API Upgrade directive v1.0 (2026-09-30.endive) B-2 — a subscription read or update that
+ * returns its discounts as objects (`discounts` is a list of ids unless expanded).
+ */
+export function wireSubscriptionDiscountQuery(): string {
+  return `${encodeURIComponent('expand[]')}=discounts`;
 }
 
-/** A Stripe invoice → the account that paid it and the payment a refund draws on. */
-export function wireInvoicePayment(obj: Record<string, unknown>): { account_ref: string; payment_ref: string | null; currency: string | null; amount_paid_minor: number } {
-  return { account_ref: wireAccountRef(obj), payment_ref: wireRef(obj['payment_intent']), currency: wireStr(obj['currency']), amount_paid_minor: wireInt(obj['amount_paid']) };
+/** The same expansion, as a form param of a subscription update. */
+export function wireSubscriptionDiscountExpandParams(): Record<string, string> {
+  return { 'expand[]': 'discounts' };
+}
+
+/**
+ * Remove every discount of the subscription (B-2: the singular discount route is gone; an empty
+ * `discounts` value clears the list).
+ */
+export function wireSubscriptionDiscountClearParams(): Record<string, string> {
+  return { discounts: '' };
+}
+
+/**
+ * A Stripe subscription → each of its discounts (coupon id and discount object id). B-2: the list
+ * `discounts` replaces the singular field; B-3: the coupon is read from `source.coupon` (an id, or an
+ * object when expanded). An unexpanded entry is a bare discount id (its coupon unknown).
+ */
+export function wireSubscriptionDiscounts(obj: Record<string, unknown>): Array<{ coupon_ref: string | null; discount_ref: string | null }> {
+  const list = obj['discounts'];
+  if (!Array.isArray(list)) return [];
+  const out: Array<{ coupon_ref: string | null; discount_ref: string | null }> = [];
+  for (const d of list) {
+    if (typeof d === 'string') {
+      if (d !== '') out.push({ coupon_ref: null, discount_ref: d });
+      continue;
+    }
+    if (d === null || typeof d !== 'object') continue;
+    const o = d as { id?: unknown; source?: { coupon?: unknown } | null };
+    out.push({ coupon_ref: wireRef(o.source?.coupon), discount_ref: wireStr(o.id) });
+  }
+  return out;
+}
+
+/**
+ * Stripe API Upgrade directive v1.0 B-1 — an invoice read that includes its payments (the invoice no
+ * longer names a payment intent itself; `payments` is returned only when expanded).
+ */
+export function wireInvoiceQuery(): string {
+  return `${encodeURIComponent('expand[]')}=payments`;
+}
+
+/**
+ * A Stripe invoice (read with wireInvoiceQuery) → the account that paid it and the payments a refund
+ * may draw on: the distinct payment-intent ids among its payments (`payments.data[].payment` of type
+ * `payment_intent`), those whose invoice payment is `paid`, and whether the list is complete.
+ */
+export function wireInvoicePayment(obj: Record<string, unknown>): {
+  account_ref: string;
+  payment_refs: string[];
+  paid_payment_refs: string[];
+  payments_complete: boolean;
+  currency: string | null;
+  amount_paid_minor: number;
+} {
+  const payments = obj['payments'] as Record<string, unknown> | null | undefined;
+  const all: string[] = [];
+  const paid: string[] = [];
+  for (const p of payments !== null && typeof payments === 'object' ? wireListData(payments) : []) {
+    const pay = p['payment'] as { type?: unknown; payment_intent?: unknown } | null | undefined;
+    if (pay === null || pay === undefined || typeof pay !== 'object' || pay.type !== 'payment_intent') continue;
+    const ref = wireRef(pay.payment_intent);
+    if (ref === null) continue;
+    if (!all.includes(ref)) all.push(ref);
+    if (p['status'] === 'paid' && !paid.includes(ref)) paid.push(ref);
+  }
+  return {
+    account_ref: wireAccountRef(obj),
+    payment_refs: all,
+    paid_payment_refs: paid,
+    payments_complete: payments === null || payments === undefined || typeof payments !== 'object' ? true : wireListComplete(payments),
+    currency: wireStr(obj['currency']),
+    amount_paid_minor: wireInt(obj['amount_paid']),
+  };
 }
 
 /** A refund of `amount_minor` of one payment. */
@@ -270,7 +343,7 @@ export function wireDisputeState(obj: Record<string, unknown>): { object_ref: st
 
 // ---------------------------------------------------------------------------------------
 // Sign usage / metered billing (Feature Parity D-2, A1) — Stripe Billing Meter Events
-// (POST /v1/billing/meter_events, available at the pinned API version 2024-06-20). Pure
+// (POST /v1/billing/meter_events, available at the pinned API version 2026-09-30.endive). Pure
 // translation of Aramo's meter-event report to Stripe's parameter names; the payload key that
 // names the billing account is Stripe's own vendor field (vocabulary-gate exception above).
 

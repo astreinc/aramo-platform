@@ -154,7 +154,7 @@ describe('CCP-C1 StripeBillingProvider command port (local stand-in)', () => {
       subscription_ref: null,
       checkout_session_ref: 'cs_ok',
     });
-    const paid = JSON.stringify({ id: 'evt_y', type: 'invoice.paid', created: 5, data: { object: { subscription: 'sub_1' } } });
+    const paid = JSON.stringify({ id: 'evt_y', type: 'invoice.paid', created: 5, data: { object: { parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_1' } } } } });
     expect(p.verifyWebhook(Buffer.from(paid), sign(paid, 1000), 1000)).toEqual({ id: 'evt_y', type: 'invoice.paid', created: new Date(5000), subscription_ref: 'sub_1' });
   });
 });

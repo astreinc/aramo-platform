@@ -270,7 +270,7 @@ describe('Stripe seat quantity (§3.3.1-§3.3.3)', () => {
         const headers = (init.headers as Record<string, string>) ?? {};
         requests.push({ method: String(init.method), path: u.pathname, body: new URLSearchParams(typeof init.body === 'string' ? init.body : ''), key: headers['idempotency-key'] });
         return new Response(
-          JSON.stringify({ id: 'sub_1', url: 'https://checkout.test/s', status: 'active', items: { data: [{ id: 'si_1', quantity: 4, price: { id: 'price_seat' } }] }, current_period_start: 1, current_period_end: 2 }),
+          JSON.stringify({ id: 'sub_1', url: 'https://checkout.test/s', status: 'active', items: { data: [{ id: 'si_1', quantity: 4, price: { id: 'price_seat' }, current_period_start: 1, current_period_end: 2 }] } }),
           { status: 200 },
         );
       }),
