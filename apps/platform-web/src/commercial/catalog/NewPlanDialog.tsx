@@ -6,6 +6,7 @@ import { CommercialRequestDialog, RequestField, type CommercialDiffRow } from '.
 import { catalogApi, type CatalogChangeRequest } from './catalog-api';
 import {
   EMPTY_NEW_PLAN,
+  NEW_PLAN_ANNUAL_HINT,
   NEW_PLAN_ENVELOPE_KEY,
   NEW_PLAN_SALES_MODELS,
   NEW_PLAN_STORAGE_KEY,
@@ -110,6 +111,7 @@ export function NewPlanDialog({ availableKeys, existingKeys, chain, onClose, onS
       </FormRow>
       {form.salesModel === 'SELF_SERVICE' ? <RequestField label="Price per month (USD)" value={form.price} onChange={(v) => edit({ price: v })} placeholder="15" /> : null}
       <RequestField label="Commitment (months)" value={form.commitmentMonths} onChange={(v) => edit({ commitmentMonths: v })} placeholder="Empty for none" />
+      {form.salesModel === 'SELF_SERVICE' ? <p className="pc-field__hint">{NEW_PLAN_ANNUAL_HINT}</p> : null}
       <FormRow label="Support tier">
         {(id) => (
           <Select id={id} unstyled className="pw-select" value={form.supportTier} onChange={(e) => edit({ supportTier: e.target.value as NewPlanForm['supportTier'] })}>

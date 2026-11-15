@@ -121,15 +121,22 @@ model PlanVersionPrice {
   provider_price_ref String
   // M-A12 A1-1 — CHECK: MONTH | YEAR (a Stripe pin is MONTH). Migration 20261104100000.
   interval           String      @default("MONTH")
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — the billing term a web pin sells (CHECK: MONTHLY |
+  // ANNUAL_COMMIT; web providers only). NULL = the legacy pin of a version without content.terms (its one
+  // derived term). Migration 20261115100000.
+  term               String?
   created_by         String
   created_at         DateTime    @db.Timestamptz(3)
   plan_version       PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  // M-A12 — both unique indexes are PARTIAL in SQL (WHERE provider IN ('STRIPE', 'RAZORPAY') since India
-  // Billing 20261113100000): one web pin per (version, provider), and a web price belongs to one version. Store pins are unique per
+  // M-A12 — the web unique indexes are PARTIAL in SQL (WHERE provider IN ('STRIPE', 'RAZORPAY') since India
+  // Billing 20261113100000): one web pin per (version, provider, term) (PlanVersionPrice_plan_version_id_provider_key,
+  // an EXPRESSION index on COALESCE(term, 'LEGACY') since 20261115100000, so not declared here: web pins are
+  // read with findFirst),
+  // and a web price belongs to one version. Store pins are unique per
   // (plan_version_id, provider, interval) (PlanVersionPrice_store_version_interval_key) and a store
   // product may pin several versions of ONE plan (trigger). Store pins are read with findFirst/findMany.
-  @@unique([plan_version_id, provider])
+  @@index([plan_version_id, provider])
   @@unique([provider, provider_price_ref])
   @@schema("subscription")
 }
@@ -248,6 +255,10 @@ model TenantSubscription {
   // migration 20261108100000.
   seat_quantity                      Int?
   seat_pending_quantity              Int?
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — the billing term the subscription is on (CHECK:
+  // MONTHLY | ANNUAL_COMMIT). NULL = legacy (every row opened before migration 20261115100000, and
+  // MANUAL / DEVELOPMENT / FREE rows): its commitment columns stand as written.
+  term                               String?
   plan                               Plan        @relation(fields: [plan_id], references: [id])
   plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
   // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.
@@ -306,6 +317,9 @@ model CheckoutIntent {
   terms_sha256         String?
   // Sign Business per-seat pricing — the seats bought at checkout (NULL = not seat-priced; CHECK >= 1).
   seat_quantity        Int?
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — the billing term chosen (CHECK: MONTHLY |
+  // ANNUAL_COMMIT; NULL = legacy / store intent).
+  term                 String?
   plan                 Plan      @relation(fields: [plan_id], references: [id])
 
   @@index([tenant_id])

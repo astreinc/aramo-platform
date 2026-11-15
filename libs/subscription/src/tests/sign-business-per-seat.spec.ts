@@ -331,7 +331,7 @@ function checkoutHarness(content: PlanVersionContent, pinned: string | null = 'p
   const prisma = {
     plan: { findUnique: async () => plan },
     planVersion: { findFirst: async () => version },
-    planVersionPrice: { findUnique: async () => (pinned === null ? null : { provider_price_ref: pinned }) },
+    planVersionPrice: { findFirst: async () => (pinned === null ? null : { provider_price_ref: pinned }) },
     tenantSubscription: { findFirst: async () => null },
     tenantBillingAccount: { findUnique: async () => null, upsert: async () => ({}) },
     checkoutIntent: { update: async () => ({}) },
@@ -385,7 +385,7 @@ describe('checkout seats (§3.3.1)', () => {
 
   it('A1-5: a SEAT version sells only on its pin — the env per-account price is ignored', async () => {
     const env = new Map([['aramo-sign-standard-business-v1', 'price_env_account']]);
-    const db = (pin: string | null) => ({ planVersionPrice: { findUnique: async () => (pin === null ? null : { provider_price_ref: pin }) } }) as never;
+    const db = (pin: string | null) => ({ planVersionPrice: { findFirst: async () => (pin === null ? null : { provider_price_ref: pin }) } }) as never;
     const key = 'aramo-sign-standard-business-v1';
     expect(await effectiveProviderPrice(db(null), 'v-1', key, env, 'SEAT')).toEqual({ ok: false, reason: 'NO_PRICE' });
     expect(await effectiveProviderPrice(db('price_seat'), 'v-1', key, env, 'SEAT')).toEqual({ ok: true, ref: 'price_seat', source: 'PIN' });
@@ -417,7 +417,7 @@ describe('plans read price_unit (§3.3.4)', () => {
       activation_note: null,
       versions: [versionOf(c)],
     }));
-    const prisma = { plan: { findMany: async () => rows }, planVersionPrice: { findUnique: async () => null } };
+    const prisma = { plan: { findMany: async () => rows }, planVersionPrice: { findFirst: async () => null } };
     const svc = new SubscriptionLifecycleService(prisma as never, {} as never, { provider: 'STRIPE', isConfigured: () => true } as never, {} as never);
     const plans = await svc.catalog('sign');
     expect(plans.map((p) => [p.key, p.price_unit])).toEqual([

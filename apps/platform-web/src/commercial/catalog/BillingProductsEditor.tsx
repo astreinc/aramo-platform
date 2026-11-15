@@ -7,6 +7,7 @@ import {
   PROVIDER_LABEL,
   STORE_LISTING_LIMITS,
   billingEditorErrors,
+  channelTermsNote,
   channelWhere,
   formatMinor,
   needsReviewScreenshot,
@@ -99,6 +100,7 @@ export function BillingProductsEditor(props: {
             </span>
             <span role="cell" className="pc-diff__field">
               {channelWhere(r.provider)}
+              <span className="pc-field__hint">{channelTermsNote(r.provider)}</span>
             </span>
             <span role="cell" className="pc-diff__after">
               <Input

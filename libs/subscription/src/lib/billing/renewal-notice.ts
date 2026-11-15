@@ -3,8 +3,20 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
-import { planVersionTerms } from '../plan-version.js';
+import { billingTermOf, hasExplicitTerms, type PlanVersionContent, planVersionTerms } from '../plan-version.js';
+import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 (Q2) — the monthly price an ANNUAL_COMMIT subscription
+ * continues at after its commitment: the plan's CURRENT published version's MONTHLY term when that version
+ * carries explicit terms, else the subscription's own version's MONTHLY term; null when neither sells one
+ * (the subscription then continues at its own price, the legacy rule).
+ */
+export function postCommitmentMonthlyPrice(pinned: Pick<PlanVersionContent, 'plan' | 'terms'>, current: Pick<PlanVersionContent, 'plan' | 'terms'> | null): number | null {
+  const from = current !== null && hasExplicitTerms(current) ? current : hasExplicitTerms(pinned) ? pinned : null;
+  return from === null ? null : (billingTermOf(from, 'MONTHLY')?.list_price_minor ?? null);
+}
 
 // Aramo Sign Remaining-Work Consolidated Directive v1.0 (LOCKED, 32e5e3e1) Workstream A3 — the Aramo
 // renewal notice. For each open self-service subscription that continues automatically after a term
@@ -174,22 +186,34 @@ export class RenewalNoticeRepository {
       orderBy: [{ commitment_end: 'asc' }, { id: 'asc' }],
       take: limit,
     });
-    return rows.map((r) => {
-      const terms = planVersionTerms(r.plan_version).plan;
-      return {
+    const out: RenewalNoticeDue[] = [];
+    for (const r of rows) {
+      const content = planVersionTerms(r.plan_version);
+      const terms = content.plan;
+      // Billing terms — an ANNUAL_COMMIT row: its term's commitment, and after it the plan's MONTHLY price (Q2).
+      // A legacy row (no term): its version's commitment and list price, exactly as before.
+      let commitment_months = terms.commitment_months;
+      let price_minor = terms.list_price_minor;
+      if (r.term === 'ANNUAL_COMMIT') {
+        commitment_months = billingTermOf(content, 'ANNUAL_COMMIT')?.commitment_months ?? null;
+        const current = await currentPublishedVersion(this.prisma, r.plan_id);
+        price_minor = postCommitmentMonthlyPrice(content, current === null ? null : planVersionTerms(current)) ?? billingTermOf(content, 'ANNUAL_COMMIT')?.list_price_minor ?? null;
+      }
+      out.push({
         subscription_id: r.id,
         tenant_id: r.tenant_id,
         product_key: r.product_key,
         activated_by: r.activated_by,
         tenant_kind: terms.tenant_kind ?? r.plan.tenant_kind ?? 'BUSINESS',
         plan_name: terms.name || r.plan.name,
-        commitment_months: terms.commitment_months,
+        commitment_months,
         term_end: r.commitment_end as Date,
-        price_minor: terms.list_price_minor,
+        price_minor,
         currency: terms.currency,
         billing_interval: terms.billing_interval,
-      };
-    });
+      });
+    }
+    return out;
   }
 
   /**

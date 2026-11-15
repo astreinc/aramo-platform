@@ -175,6 +175,8 @@ export class PlatformCommercialCatalogController {
     if (body.regional_prices !== undefined) edits.regional_prices = body.regional_prices.map((r) => ({ ...r }));
     // Sign per-seat pricing (directive v1.0 §3.4) — the DRAFT's price unit (SEAT: BUSINESS self-service only, else 422).
     if (body.price_unit !== undefined) edits.price_unit = body.price_unit;
+    // Billing terms (directive v1.0 §3.1) — the DRAFT's ANNUAL_COMMIT price (null removes the annual term).
+    if (body.annual_commit_price_minor !== undefined) edits.annual_commit_price_minor = body.annual_commit_price_minor;
     const v = await run(requestId, () =>
       this.catalog.updateDraft(actorOf(auth), versionId, { expected_content_checksum: body.expected_content_checksum, edits, ...(body.note !== undefined ? { note: body.note } : {}) }, ctxOf(requestId)),
     );
@@ -257,5 +259,11 @@ export function summaryDto(v: CatalogVersionSummary): CatalogVersionSummaryDto {
 
 /** The editor terms, with the A3 D1 / A4 D2 add-on unit prices copied (a fresh array per response). */
 function termsDto(t: CatalogVersionSummary['terms']): CatalogVersionTermsDto {
-  return { ...t, unit_prices: t.unit_prices.map((u) => ({ ...u })), regional_prices: (t.regional_prices ?? []).map((r) => ({ ...r })) };
+  return {
+    ...t,
+    unit_prices: t.unit_prices.map((u) => ({ ...u })),
+    regional_prices: (t.regional_prices ?? []).map((r) => ({ ...r })),
+    billing_terms: (t.billing_terms ?? []).map((b) => ({ ...b })),
+    explicit_terms: t.explicit_terms ?? false,
+  };
 }

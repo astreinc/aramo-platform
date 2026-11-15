@@ -672,7 +672,9 @@ describe('sign-mobile → billing and store (M-A12 W1-G)', () => {
       .willRespondWith(200, (b) => {
         b.jsonBody({
           // Sign Business per-seat pricing — each plan's price unit (ACCOUNT | SEAT; "/ user / month" for SEAT).
-          plans: eachLike({ key: like('aramo-sign-standard-business-v1'), name: like('Business'), purchasable: boolean(false), store_products: [], regional_price: null, regional_prices: [], price_unit: like('SEAT') }),
+          // Sign Monthly and Annual-Commitment Pricing v1.0 §3.6 — each plan's billing terms (an array: the app
+          // sells the MONTHLY term through its store product; a contract-priced plan lists none).
+          plans: eachLike({ key: like('aramo-sign-standard-business-v1'), name: like('Business'), purchasable: boolean(false), store_products: [], regional_price: null, regional_prices: [], price_unit: like('SEAT'), billing_terms: like([]) }),
         });
       })
       .executeTest(async (mock) => {

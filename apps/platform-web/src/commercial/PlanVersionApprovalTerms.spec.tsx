@@ -33,6 +33,22 @@ describe('A3/A4 publish approval terms', () => {
     expect(none.rows[1]).toEqual({ field: 'Add-on unit prices', value: 'None sold' });
   });
 
+  it('billing terms: the approvers see the Annual price (12-month commitment) when the version offers it', () => {
+    const terms = {
+      ...draft.terms,
+      explicit_terms: true,
+      billing_terms: [
+        { term: 'MONTHLY' as const, list_price_minor: 6900, commitment_months: null },
+        { term: 'ANNUAL_COMMIT' as const, list_price_minor: 5900, commitment_months: 12 },
+      ],
+    };
+    const m = planVersionApprovalModel({ ...detail, version: { ...draft, terms } }, UNITS, SUM);
+    expect(m.rows.slice(0, 2)).toEqual([
+      { field: 'Price', value: '$69 / month' },
+      { field: 'Annual price', value: '$59 / month, 12-month commitment, billed monthly (web only)' },
+    ]);
+  });
+
   it('A4-AP-W-1 the drawer panel loads the version and shows the add-on prices being approved', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

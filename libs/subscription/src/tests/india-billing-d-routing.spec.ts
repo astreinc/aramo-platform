@@ -107,8 +107,8 @@ function checkoutHarness(o: { kind: 'PERSONAL' | 'BUSINESS'; country: string | n
     plan: { findUnique: async () => plan },
     planVersion: { findFirst: async () => version },
     planVersionPrice: {
-      findUnique: async ({ where }: { where: { plan_version_id_provider: { provider: string } } }) => {
-        const p = where.plan_version_id_provider.provider;
+      findFirst: async ({ where }: { where: { provider: string } }) => {
+        const p = where.provider;
         priceLookups.push(p);
         return { provider_price_ref: p === 'STRIPE' ? 'price_stripe' : 'plan_rzp' };
       },

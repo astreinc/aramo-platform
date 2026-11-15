@@ -2626,6 +2626,7 @@
       "A6_APPLICABLE_ACTIONS",
       "ADJUSTMENT_PARAM_KEYS",
       "ADJUSTMENT_STEP",
+      "ANNUAL_COMMIT_MONTHS",
       "APPLE_APP_STORE_PORT",
       "APPLE_MANAGE_SUBSCRIPTIONS_URL",
       "APPLE_ROOT_CA_G3_PEM",
@@ -2671,6 +2672,7 @@
       "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
       "BILLING_STATUS_MAX_INVOICE_LIMIT",
       "BILLING_SYNC_TIMING",
+      "BILLING_TERMS",
       "BILLING_WEBHOOK_INBOX_STATUSES",
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
@@ -2692,6 +2694,7 @@
       "BillingRevenueReportService",
       "BillingStatusQueryError",
       "BillingStatusReadService",
+      "BillingTermRolloverService",
       "BillingWebhookInboxQueryError",
       "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
@@ -2843,6 +2846,7 @@
       "MAX_REGIONAL_PRICES",
       "MAX_REGIONAL_PRICE_MINOR",
       "MAX_SEATS",
+      "MAX_TERM_PRICE_MINOR",
       "MAX_UNIT_PRICE_MINOR",
       "METERED_UNIT_KEYS",
       "METERED_USAGE_OPTIONS",
@@ -3015,6 +3019,7 @@
       "aggregateLedger",
       "appleStoreConfig",
       "appleSubscriptionState",
+      "applyAnnualCommitPriceEdit",
       "applyCatalogDraftEdits",
       "applyPriceUnitEdit",
       "applyRegionalPriceEdits",
@@ -3033,6 +3038,8 @@
       "billingRegionChangeErrors",
       "billingSegmentOf",
       "billingSettingsUrl",
+      "billingTermOf",
+      "billingTermsRefusal",
       "boundedExceptionChain",
       "buildAuditCsv",
       "businessCheckoutDisclosure",
@@ -3050,6 +3057,7 @@
       "checkProviderPriceParity",
       "checkSupportExtension",
       "checkoutCutoverReport",
+      "checkoutDisclosureTerms",
       "checkoutTermsDocument",
       "classifyRevenueRow",
       "commercialAlertThresholds",
@@ -3063,6 +3071,7 @@
       "daysUntil",
       "decideRefundExecution",
       "decideSupportExtension",
+      "defaultBillingTerm",
       "defaultProductId",
       "describeLegalChange",
       "diffAlerts",
@@ -3082,6 +3091,7 @@
       "evidenceVisible",
       "explanationOf",
       "financeAmountAccess",
+      "findWebPin",
       "formatCheckoutCutoverReport",
       "formatNoticeDate",
       "formatReconciliationReport",
@@ -3090,6 +3100,7 @@
       "googlePlayConfig",
       "googlePlayManageUrl",
       "graceStateAt",
+      "hasExplicitTerms",
       "inAppContextRef",
       "invoicePaymentState",
       "isA6Applicable",
@@ -3099,6 +3110,7 @@
       "isApprovalExpired",
       "isBillingAdjustmentAction",
       "isBillingRegionApplicable",
+      "isBillingTerm",
       "isCalendarDate",
       "isCatalogApplicable",
       "isContractPriced",
@@ -3143,6 +3155,7 @@
       "periodSegments",
       "personalCheckoutDisclosure",
       "personalSignupMode",
+      "pinTermFor",
       "planCreateAvailableKeys",
       "planCreateContent",
       "planCreatePayloadErrors",
@@ -3154,6 +3167,7 @@
       "planVersionTerms",
       "playSubscriptionState",
       "policyRangeErrors",
+      "postCommitmentMonthlyPrice",
       "postTerminationExportDays",
       "priceFigure",
       "priceUnitOf",
@@ -3188,6 +3202,7 @@
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "resolveStoreProductToVersion",
+      "rolloverVersion",
       "runPlatformOwnerBootstrap",
       "seatColumnsAfterProviderState",
       "seatPriceUnitRefusal",
@@ -3205,12 +3220,17 @@
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
       "subjectUserOf",
+      "subscriptionCommitmentMonths",
       "subscriptionSends",
+      "subscriptionTerm",
+      "subscriptionTermPrice",
       "supportExtensionWindow",
       "systemLegalClock",
       "takeBillingLock",
       "taxAvailability",
       "templateSha256",
+      "termRolloverDue",
+      "termSwitchRefusal",
       "thresholdOf",
       "unitPriceOf",
       "unlinkedReceipts",
@@ -3226,6 +3246,8 @@
       "validateUsageInput",
       "verifyRazorpaySignature",
       "verifyStripeSignature",
+      "versionTerms",
+      "withBillingTerms",
       "withPriceUnit",
       "withRegionalPrices",
       "withUnitPrices",
@@ -4653,6 +4675,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-billing-terms.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9166,6 +9194,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/sign-billing-terms.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/sign-business-per-seat.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -11324,6 +11358,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/workspace/billing-terms.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/AccountClose.spec.tsx",
         "project": "aramo-sign-web",
@@ -12096,6 +12136,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-billing-terms.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -14699,6 +14745,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-billing-terms.controller.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

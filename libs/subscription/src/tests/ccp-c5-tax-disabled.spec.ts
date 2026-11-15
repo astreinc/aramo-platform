@@ -295,6 +295,8 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
       await p.updateSubscriptionQuantity('sub_c5', 3, 'create_prorations', 'k-seats-1');
       await p.updateSubscriptionQuantity('sub_c5', 2, 'none', 'k-seats-2');
     },
+    // Sign Monthly and Annual-Commitment Pricing (Q2): the item moved to another price, no proration.
+    updateSubscriptionPrice: (p) => p.updateSubscriptionPrice('sub_c5', 'price_c5_monthly', 'k-term-1'),
   };
   const READ_CALLS: Record<string, (a: StripeBillingReadAdapter) => Promise<unknown>> = {
     retrieveSubscription: (a) => a.retrieveSubscription('sub_c5'),
@@ -325,8 +327,9 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     // re-verify + refund)), readAdjustmentEffect 12 (2 reads each for the 2 credit, 2 discount and
     // refund operations: credit 1 + 1, discount 1 + 1, refund 2 + 2) and readPaymentPicture 3, plus
     // (Sign usage metering) reportMeterEvent 1, plus (Sign Business per-seat pricing)
-    // updateSubscriptionQuantity 6 (2 changes, each GET + POST + GET).
-    expect(recorded.length).toBe(43);
+    // updateSubscriptionQuantity 6 (2 changes, each GET + POST + GET), plus (billing terms)
+    // updateSubscriptionPrice 3 (GET + POST + GET).
+    expect(recorded.length).toBe(46);
     for (const w of ['POST /v1/refunds', 'POST /v1/coupons', 'GET /v1/disputes', 'GET /v1/refunds']) expect(recorded.map((r) => `${r.method} ${r.path}`), w).toContain(w);
     expect(new Set(recorded.map((r) => `${r.method} ${r.path}`)).size).toBeGreaterThanOrEqual(9);
     for (const r of recorded) {

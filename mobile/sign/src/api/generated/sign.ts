@@ -3886,6 +3886,8 @@ export interface components {
                 available: boolean;
             }[];
             purchasable: boolean;
+            /** @description Sign Monthly and Annual-Commitment Pricing v1.0 §3.5 — every billing term the published version sells, MONTHLY first, each billed monthly at its own price. A version without explicit terms shows ONE term derived from its price and commitment (a commitment → ANNUAL_COMMIT). Empty for a contract-priced plan. On a non-Stripe web gateway only the default term is listed. The plan-level price, commitment_months and purchasable are the default term's. */
+            billing_terms?: components["schemas"]["BillingTermOption"][];
             /** @description M-A12 W1-G — the store products pinned to the plan's published version (empty while store billing is off). The interval comes from the pin. */
             store_products?: {
                 /** @enum {string} */
@@ -3904,6 +3906,25 @@ export interface components {
                 currency?: string;
                 interval?: string | null;
             } | null;
+        };
+        /** @description Sign Monthly and Annual-Commitment Pricing v1.0 — one billing term of a plan. */
+        BillingTermOption: {
+            /** @enum {string} */
+            term: "MONTHLY" | "ANNUAL_COMMIT";
+            /** @description The term's monthly price (per seat when price_unit is SEAT). */
+            price: {
+                amount_minor: number;
+                currency: string;
+                /** @enum {string} */
+                interval: "MONTH";
+            };
+            /** @description null for MONTHLY (cancel anytime); 12 for ANNUAL_COMMIT. */
+            commitment_months: number | null;
+            /** @description The term a checkout without `term` buys. */
+            default: boolean;
+            purchasable: boolean;
+            /** @description True for an ANNUAL_COMMIT term of a two-term version (the apps sell the MONTHLY term only). */
+            web_only: boolean;
         };
         BillingRegionalPrice: {
             country: string;
@@ -3971,6 +3992,11 @@ export interface components {
                 grace_until?: string | null;
                 billing_managed: boolean;
                 commitment_months?: number | null;
+                /**
+                 * @description Sign Monthly and Annual-Commitment Pricing v1.0 — the subscription's billing term (a subscription sold before terms reads as its version's one derived term; null for a contract-priced plan).
+                 * @enum {string|null}
+                 */
+                term?: "MONTHLY" | "ANNUAL_COMMIT" | null;
                 /** Format: date-time */
                 commitment_end?: string | null;
                 cancel_requested_within_commitment?: boolean;
@@ -9678,6 +9704,11 @@ export interface operations {
                     accept_terms?: boolean;
                     /** @description Sign Business per-seat pricing (directive v1.0 §3.3.1) — the seats to buy on a plan whose price_unit is SEAT (default 1; the provider line-item quantity). Given for a plan priced per organization → 422 seats_not_applicable. */
                     seats?: number;
+                    /**
+                     * @description Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — the billing term to buy (both are billed monthly): MONTHLY (no commitment, cancel anytime) or ANNUAL_COMMIT (12-month commitment at its own monthly price, web only). Omitted: the plan's default term (MONTHLY when the plan sells it, else its only term). A term the plan does not sell on the caller's gateway → 422 term_not_available; any other value → 400 term_invalid. Recorded on the checkout and the subscription; the commitment comes from the chosen term.
+                     * @enum {string}
+                     */
+                    term?: "MONTHLY" | "ANNUAL_COMMIT";
                 };
             };
         };
@@ -9695,7 +9726,7 @@ export interface operations {
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             409: components["responses"]["BillingConflict"];
-            /** @description VALIDATION_ERROR seats_not_applicable — `seats` was given for a plan priced per organization. */
+            /** @description VALIDATION_ERROR seats_not_applicable — `seats` was given for a plan priced per organization; VALIDATION_ERROR term_not_available — `term` names a billing term the plan does not sell on the caller's gateway. */
             422: {
                 headers: {
                     [name: string]: unknown;

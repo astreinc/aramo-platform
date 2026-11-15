@@ -10951,8 +10951,31 @@ components:
     CommercialCatalogVersionTerms:
       type: object
       additionalProperties: false
-      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices, price_unit, tenant_kind]
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present, unit_prices, regional_prices, price_unit, tenant_kind, billing_terms, explicit_terms]
       properties:
+        billing_terms:
+          type: array
+          description: >-
+            Sign Monthly and Annual-Commitment Pricing v1.0 — every billing term the version sells, MONTHLY first
+            (billed monthly, no commitment), then ANNUAL_COMMIT when set (billed monthly at its own price, 12-month
+            commitment, web only). A version without explicit terms shows its one term derived from the plan
+            price and commitment; a contract-priced version none.
+          items:
+            type: object
+            additionalProperties: false
+            required: [term, list_price_minor, commitment_months]
+            properties:
+              term:
+                type: string
+                enum: [MONTHLY, ANNUAL_COMMIT]
+              list_price_minor:
+                type: integer
+                description: The monthly price of the term (minor units; per seat on a per-seat version).
+              commitment_months:
+                type: [integer, 'null']
+        explicit_terms:
+          type: boolean
+          description: True when the version carries explicit billing terms (authored with the two-term model).
         price_unit:
           type: string
           enum: [ACCOUNT, SEAT]
@@ -11353,6 +11376,15 @@ components:
         expected_content_checksum:
           type: string
           pattern: '^[0-9a-f]{64}$'
+        annual_commit_price_minor:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 100000000
+          description: >-
+            Sign Monthly and Annual-Commitment Pricing v1.0 — the ANNUAL_COMMIT monthly price of the DRAFT (minor
+            units; 12-month commitment, billed monthly, web only). Setting it gives the draft explicit terms
+            (MONTHLY at the list price with no commitment); null removes the annual term. Self-service plans with
+            a monthly list price only (else 409 term_missing / contract_priced).
         price_unit:
           type: string
           enum: [ACCOUNT, SEAT]

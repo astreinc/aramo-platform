@@ -28,6 +28,15 @@ export function channelWhere(provider: BillingProvider): string {
   return where === undefined ? PROVIDER_LABEL[provider] : `${PROVIDER_LABEL[provider]}: ${where}`;
 }
 
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 — which billing terms each channel sells: Stripe every term
+ * of the version (Monthly and, when set, the 12-month-commitment Annual price, one monthly price each); the
+ * App Store, Google Play and Razorpay the Monthly term only.
+ */
+export function channelTermsNote(provider: BillingProvider): string {
+  return provider === 'STRIPE' ? 'Sells every term of this version (Monthly, and Annual when set)' : 'Sells the Monthly term only';
+}
+
 /** A web gateway (Stripe, Razorpay): MONTH only, a gateway-style product id, no store listing. */
 export function isWebProvider(provider: BillingProvider): boolean {
   return provider === 'STRIPE' || provider === 'RAZORPAY';

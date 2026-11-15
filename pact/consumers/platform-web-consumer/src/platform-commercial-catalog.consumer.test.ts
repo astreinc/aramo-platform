@@ -78,6 +78,8 @@ const TERMS = like({
   storage_present: boolean(true),
   // Sign Business per-seat pricing — ACCOUNT | SEAT (always present; ACCOUNT when the content has no price_unit).
   price_unit: like('ACCOUNT'),
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — always present (false: no explicit billing terms).
+  explicit_terms: boolean(false),
 });
 
 function versionBody(o: { id?: unknown; status?: 'DRAFT' | 'PUBLISHED' | 'RETIRED'; version_number?: number } = {}): Record<string, unknown> {

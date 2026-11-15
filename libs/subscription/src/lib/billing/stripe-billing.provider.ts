@@ -344,6 +344,22 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
     return stripeSubscriptionState(await this.call('GET', `${path}?${wireSubscriptionQuery()}`));
   }
 
+  async updateSubscriptionPrice(subscription_ref: string, price_ref: string, idempotency_key: string): Promise<ProviderSubscriptionState> {
+    if (price_ref.trim() === '') throw new BillingProviderUnavailableError('price_ref must be non-empty', false);
+    const path = `/v1/subscriptions/${encodeURIComponent(subscription_ref)}`;
+    const current = stripeSubscriptionState(await this.call('GET', `${path}?${wireSubscriptionQuery()}`));
+    if (current.item_ref === null || current.item_ref === undefined) throw new BillingProviderUnavailableError('subscription without an item', false);
+    if (current.price_ref === price_ref) return current;
+    const quantity = current.quantity ?? 1;
+    await this.call(
+      'POST',
+      path,
+      form({ 'items[0][id]': current.item_ref, 'items[0][price]': price_ref, 'items[0][quantity]': String(quantity), proration_behavior: 'none' }),
+      idempotency_key,
+    );
+    return stripeSubscriptionState(await this.call('GET', `${path}?${wireSubscriptionQuery()}`));
+  }
+
   async expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void> {
     await this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}/expire`, '', idempotency_key);
   }

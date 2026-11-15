@@ -475,6 +475,18 @@ export interface Money {
   interval?: string | null;
 }
 
+// Sign Monthly and Annual-Commitment Pricing v1.0 — a billing term of a plan: both are billed monthly;
+// MONTHLY has no commitment, ANNUAL_COMMIT a 12-month commitment at its own (discounted) price.
+export type BillingTerm = 'MONTHLY' | 'ANNUAL_COMMIT';
+export interface BillingTermOption {
+  term: BillingTerm;
+  price: { amount_minor: number; currency: string; interval: 'MONTH' };
+  commitment_months: number | null;
+  default: boolean;
+  purchasable: boolean;
+  web_only: boolean;
+}
+
 // Commercial Plans Amendment A1 — a catalog plan as the backend reports it.
 export interface BillingPlan {
   key: string;
@@ -503,6 +515,9 @@ export interface BillingPlan {
   // India Billing §4.11 — the price shown for the caller's billing region (Stripe: `price`; Razorpay: the
   // regional INR price, null when the plan has none there). Absent on older backends (read `price`).
   display_price?: Money | null;
+  // Billing terms — every term the plan sells (MONTHLY first). Absent on older backends (one term derived
+  // from price / commitment_months).
+  billing_terms?: BillingTermOption[];
 }
 
 /** Per-seat directive §3.1 — ACCOUNT = per organization; SEAT = per user (seat). */
@@ -546,6 +561,8 @@ export interface BillingAccount {
     grace_until: string | null;
     billing_managed: boolean;
     commitment_months?: number | null;
+    // Billing terms — the term the subscription is on (absent on older backends).
+    term?: BillingTerm | null;
     commitment_end?: string | null;
     cancel_requested_within_commitment?: boolean;
     eligibility_state?: 'OK' | 'LAPSED' | null;
@@ -587,6 +604,8 @@ export interface BillingAccount {
     reason?: string | null;
     currency?: string | null;
     billing_gateway?: 'STRIPE' | 'RAZORPAY';
+    // Billing terms — the offer's terms (absent on older backends).
+    billing_terms?: BillingTermOption[];
   } | null;
   // M-A12 A1-2 — where the open plan is billed (STRIPE / RAZORPAY: on the web; a store: in the app).
   // India Billing §4.11 — a RAZORPAY plan has no provider portal: Aramo's own manage section is shown.
@@ -605,11 +624,13 @@ export const billingApi = {
   plans: () => apiClient.get<BillingCatalog>(`${BILLING}/plans`),
   account: () => apiClient.get<BillingAccount>(`${BILLING}/account`),
   // Per-seat directive §3.3.1 — `seats` only for a SEAT plan (the backend refuses it otherwise).
-  checkout: (plan_key: string, accept_terms?: boolean, seats?: number) =>
+  // Billing terms — `term` chooses MONTHLY or ANNUAL_COMMIT (omitted: the plan's default term).
+  checkout: (plan_key: string, accept_terms?: boolean, seats?: number, term?: BillingTerm) =>
     apiClient.post<{ url: string }>(`${BILLING}/checkout`, {
       plan_key,
       ...(accept_terms === undefined ? {} : { accept_terms }),
       ...(seats === undefined ? {} : { seats }),
+      ...(term === undefined ? {} : { term }),
     }),
   // Per-seat directive §3.3.3 — change the seat count (owner / admin): an increase is prorated now,
   // a decrease applies at the period end; never below the seats in use.
@@ -1017,6 +1038,7 @@ function billingRefusalMessage(reason: unknown, details?: Record<string, unknown
   }
   if (reason === 'seats_not_applicable') return 'Seats can’t be changed for this subscription.';
   if (reason === 'seats_unchanged') return 'That’s already your number of seats.';
+  if (reason === 'term_not_available') return 'That billing option isn’t available for this plan. Choose another option and try again.';
   if (reason === 'TERMS_NOT_ACCEPTED') return 'Check “I agree” to accept the terms before you continue.';
   if (reason === 'PORTAL_NOT_CONFIGURED') return 'Billing management will be available soon; contact support@aramo.ai.';
   if (reason === 'personal_paid_checkout_not_enabled') return 'Upgrading to Standard isn’t available yet.';

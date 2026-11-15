@@ -97,6 +97,12 @@ describe('India Billing §4.3 — provider prices per gateway', () => {
     return {
       seen,
       planVersionPrice: {
+        // Billing terms — a web pin is read by (version, provider, term) with findFirst (term null = the legacy pin).
+        findFirst: vi.fn(async ({ where }: { where: { plan_version_id: string; provider: string; term: string | null } }) => {
+          seen.push(where);
+          const pin = pins.find((p) => p.provider === where.provider && p.plan_version_id === where.plan_version_id && where.term === null);
+          return pin === undefined ? null : { ...pin, term: null };
+        }),
         findUnique: vi.fn(async ({ where }: { where: Record<string, { plan_version_id?: string; provider: string; provider_price_ref?: string }> }) => {
           seen.push(where);
           const w = where['plan_version_id_provider'] ?? where['provider_provider_price_ref'];
@@ -115,14 +121,14 @@ describe('India Billing §4.3 — provider prices per gateway', () => {
     const d = db([{ plan_version_id: 'v1', provider: 'RAZORPAY', provider_price_ref: 'plan_rzp' }]);
     expect(await effectiveProviderPrice(d as never, 'v1', 'k', ENV)).toEqual({ ok: true, ref: 'price_env', source: 'ENV' });
     expect(await effectiveProviderPrice(d as never, 'v1', 'k', ENV, 'ACCOUNT', 'RAZORPAY')).toEqual({ ok: true, ref: 'plan_rzp', source: 'PIN' });
-    expect(d.seen).toEqual([{ plan_version_id_provider: { plan_version_id: 'v1', provider: 'STRIPE' } }, { plan_version_id_provider: { plan_version_id: 'v1', provider: 'RAZORPAY' } }]);
+    expect(d.seen).toEqual([{ plan_version_id: 'v1', provider: 'STRIPE', term: null }, { plan_version_id: 'v1', provider: 'RAZORPAY', term: null }]);
     const none = db([]);
     expect(await effectiveProviderPrice(none as never, 'v1', 'k', ENV, 'ACCOUNT', 'RAZORPAY')).toEqual({ ok: false, reason: 'NO_PRICE' });
   });
 
   it('resolvePriceToVersion: a Razorpay plan id resolves through its RAZORPAY pin only (no env fallback)', async () => {
     const d = db([{ plan_version_id: 'v1', provider: 'RAZORPAY', provider_price_ref: 'plan_rzp' }]);
-    expect(await resolvePriceToVersion(d as never, 'plan_rzp', 'sign', ENV, 'RAZORPAY')).toEqual({ plan_id: 'pl', plan_version_id: 'v1', version_status: 'PUBLISHED', source: 'PIN' });
+    expect(await resolvePriceToVersion(d as never, 'plan_rzp', 'sign', ENV, 'RAZORPAY')).toEqual({ plan_id: 'pl', plan_version_id: 'v1', version_status: 'PUBLISHED', source: 'PIN', term: null });
     // The Stripe lookup of the same ref finds no Stripe pin.
     expect(d.seen[0]).toEqual({ provider_provider_price_ref: { provider: 'RAZORPAY', provider_price_ref: 'plan_rzp' } });
     // An env-mapped Stripe price never resolves as a Razorpay price.

@@ -1184,3 +1184,34 @@ export {
   verifyRazorpaySignature,
   type RazorpayFetch,
 } from './lib/billing/razorpay-billing.provider.js';
+
+// Aramo Sign Monthly and Annual-Commitment Pricing Directive v1.0 (LOCKED 2026-11-15) — the billing terms of a
+// plan version (MONTHLY, ANNUAL_COMMIT), the term a subscription is on, the switching rule (Q4) and the
+// post-commitment move to the MONTHLY price (Q2).
+export {
+  ANNUAL_COMMIT_MONTHS,
+  BILLING_TERMS,
+  MAX_TERM_PRICE_MINOR,
+  billingTermOf,
+  billingTermsRefusal,
+  defaultBillingTerm,
+  hasExplicitTerms,
+  isBillingTerm,
+  versionTerms,
+  withBillingTerms,
+  type BillingTerm,
+  type PlanVersionBillingTerm,
+} from './lib/plan-version.js';
+export { applyAnnualCommitPriceEdit } from './lib/commercial/commercial-catalog.js';
+export {
+  checkoutDisclosureTerms,
+  subscriptionCommitmentMonths,
+  subscriptionTerm,
+  subscriptionTermPrice,
+  termSwitchRefusal,
+  type CatalogTermView,
+  type TermSwitchRefusal,
+} from './lib/billing/subscription-lifecycle.service.js';
+export { findWebPin, pinTermFor, type PinTerm } from './lib/billing/provider-price.js';
+export { postCommitmentMonthlyPrice } from './lib/billing/renewal-notice.js';
+export { BillingTermRolloverService, rolloverVersion, termRolloverDue, type TermRolloverCounts, type TermRolloverRow } from './lib/billing/term-rollover.service.js';

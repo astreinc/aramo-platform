@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { PROVIDER_LABEL, formatMinor } from './catalog/billing-products-model';
 import { catalogApi, type BillingPreviewChannel, type BillingProductsPayload, type CatalogMeteredUnit, type CatalogVersionDetail } from './catalog/catalog-api';
-import { money, unitName, unitPriceText, versionTitle } from './catalog/catalog-model';
+import { annualTermOf, money, unitName, unitPriceText, versionTitle } from './catalog/catalog-model';
 
 // Sign Feature Parity Amendments A3 (D1) / A4 (D2) — what Finance and the Owner approve on a
 // PLAN_VERSION_PUBLISH request: the version's terms INCLUDING its add-on unit prices, and the
@@ -29,6 +29,9 @@ export interface PlanVersionApprovalModel {
 export function planVersionApprovalModel(d: CatalogVersionDetail, units: readonly CatalogMeteredUnit[], approvedChecksum: string | null): PlanVersionApprovalModel {
   const t = d.version.terms;
   const rows: ApprovalTermRow[] = [{ field: 'Price', value: t.list_price_minor === null ? 'Contract-priced' : `${money(t.list_price_minor)} / month` }];
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — the approvers see both prices when the version offers the annual term.
+  const annual = annualTermOf(t);
+  if (annual !== null) rows.push({ field: 'Annual price', value: `${money(annual.list_price_minor)} / month, 12-month commitment, billed monthly (web only)` });
   const prices = t.unit_prices ?? [];
   if (prices.length === 0) rows.push({ field: 'Add-on unit prices', value: 'None sold' });
   for (const u of prices) rows.push({ field: `Add-on · ${unitName(u.unit_key, units)}`, value: `${unitPriceText(u.unit_price_minor)} per unit` });

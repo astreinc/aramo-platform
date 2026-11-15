@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { ApiError } from '@aramo/fe-foundation';
 
-import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type BillingSeats, type Money } from '../api';
-import { MAX_SEATS, checkoutPageText, parseSeats, seatsUsedText, type BillingGateway } from '../catalog';
+import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type BillingSeats, type BillingTerm, type Money } from '../api';
+import { MAX_SEATS, checkoutPageText, initialTerm, parseSeats, planTerms, seatsUsedText, termDisclosureText, termLabel, type BillingGateway, type TermCode } from '../catalog';
 import { Btn, Check, ErrorBox, Loading, TextIn, fmtDate } from '../ui';
 import { useOptionalWorkspace } from '../workspace';
 
 import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
+import { TermChoice } from './TermChoice';
 import { UsageCharges } from './UsageCharges';
 
 // Aramo Sign launch — the organization's plan, usage and self-service billing.
@@ -187,8 +188,8 @@ function PlanCard({
 }: {
   plan: BillingPlan;
   canBuy: boolean;
-  /** `seats` is given for a SEAT plan only. */
-  onBuy: (seats?: number) => void;
+  /** `seats` is given for a SEAT plan only; `term` only when the plan offers two billing terms. */
+  onBuy: (seats?: number, term?: BillingTerm) => void;
   busy: boolean;
   termsAccepted: boolean;
   needsTerms: boolean;
@@ -202,6 +203,15 @@ function PlanCard({
   const seatsId = useId();
   const [seatsRaw, setSeatsRaw] = useState(String(Math.max(1, defaultSeats)));
   const seats = perSeat ? parseSeats(seatsRaw, 1) : null;
+  // Billing terms — a plan selling Monthly and Annual offers the choice (Monthly first); one term keeps the single price line.
+  const terms = planTerms(plan);
+  const twoTerms = terms.length > 1;
+  const [termChoice, setTermChoice] = useState<TermCode | null>(initialTerm(terms));
+  const chosen = twoTerms ? terms.find((t) => t.term === termChoice) : undefined;
+  const monthlyTerm = terms.find((t) => t.term === 'MONTHLY');
+  // Seat total: the chosen term's price when two are offered.
+  const seatPrice = chosen !== undefined && shown !== null ? { ...shown, amount_minor: chosen.amount_minor } : shown;
+  const purchasable = chosen !== undefined ? chosen.purchasable : plan.purchasable;
   const lines = [
     allowanceLine(plan, 'sign.envelopes', 'E-Signs'),
     allowanceLine(plan, 'sign.forms', 'forms'),
@@ -222,6 +232,16 @@ function PlanCard({
         <div data-testid="billing-plan-price">
           {contactSales ? (
             <strong>Contact sales</strong>
+          ) : shown !== null && twoTerms ? (
+            <>
+              {plan.tenant_kind === 'BUSINESS' && !perSeat ? <div className="sg-muted">Per organization · plus applicable tax</div> : <div className="sg-muted">{perSeat ? 'Per user · ' : ''}Plus applicable tax</div>}
+              <TermChoice name={`term-${plan.key}`} terms={terms} value={termChoice} onChange={setTermChoice} testId={`billing-plan-terms-${plan.key}`} />
+              {chosen !== undefined ? (
+                <p className="sg-help" style={{ margin: '6px 0 0' }} data-testid="billing-plan-renewal">
+                  {termDisclosureText(chosen, monthlyTerm)}
+                </p>
+              ) : null}
+            </>
           ) : shown !== null ? (
             <>
               <strong>{priceText(shown, plan.price_unit)}</strong>
@@ -261,7 +281,7 @@ function PlanCard({
         ) : null}
         {!contactSales && canBuy && plan.eligible ? (
           <>
-            {perSeat && plan.purchasable ? (
+            {perSeat && purchasable ? (
               <div className="sg-grid" style={{ gap: 4 }}>
                 <label htmlFor={seatsId}>
                   <strong>Seats</strong>
@@ -280,21 +300,21 @@ function PlanCard({
                 <p className="sg-help" style={{ margin: 0 }}>
                   {seats === null
                     ? `Enter a number of seats from 1 to ${MAX_SEATS}.`
-                    : shown !== null
-                      ? `${seats} seat${seats === 1 ? '' : 's'} · ${money({ ...shown, amount_minor: shown.amount_minor * seats })}. Everyone who sends documents uses a seat, including you.`
+                    : seatPrice !== null
+                      ? `${seats} seat${seats === 1 ? '' : 's'} · ${money({ ...seatPrice, amount_minor: seatPrice.amount_minor * seats })}. Everyone who sends documents uses a seat, including you.`
                       : 'Everyone who sends documents uses a seat, including you.'}
                 </p>
               </div>
             ) : null}
             <Btn
               variant="primary"
-              disabled={busy || !plan.purchasable || (needsTerms && !termsAccepted) || (perSeat && seats === null)}
-              onClick={() => onBuy(perSeat && seats !== null ? seats : undefined)}
+              disabled={busy || !purchasable || (needsTerms && !termsAccepted) || (perSeat && seats === null)}
+              onClick={() => onBuy(perSeat && seats !== null ? seats : undefined, chosen?.term)}
               data-testid={`billing-subscribe-${plan.key}`}
             >
-              {busy ? 'Opening checkout…' : 'Subscribe'}
+              {busy ? 'Opening checkout…' : chosen !== undefined ? `Subscribe ${termLabel(chosen.term)}` : 'Subscribe'}
             </Btn>
-            {!plan.purchasable ? (
+            {!purchasable ? (
               <p className="sg-help">Online checkout isn’t available yet.</p>
             ) : (
               <p className={gateway === 'RAZORPAY' ? 'sg-note' : 'sg-help'} data-testid={`billing-checkout-page-${plan.key}`}>
@@ -510,7 +530,11 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
               </div>
               {sub.commitment_end != null ? (
                 <div className="sg-muted" data-testid="billing-commitment">
-                  {sub.commitment_months ?? 12}-month commitment, billed monthly · commitment ends {fmtDate(sub.commitment_end)}
+                  {sub.commitment_months != null ? `${sub.commitment_months}-month commitment, billed monthly · commitment ends` : 'Commitment ends'} {fmtDate(sub.commitment_end)}
+                </div>
+              ) : sub.term === 'MONTHLY' ? (
+                <div className="sg-muted" data-testid="billing-term">
+                  Monthly · no commitment, cancel anytime
                 </div>
               ) : null}
               {sub.status === 'PAST_DUE' && sub.grace_until !== null && sub.sending ? (
@@ -522,7 +546,9 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
               {sub.cancel_at_period_end && sub.current_period_end !== null ? (
                 <div className="sg-note" data-testid="billing-cancel">
                   Cancellation requested; the subscription is set to end on {fmtDate(sub.current_period_end)}.
-                  {sub.cancel_requested_within_commitment ? ' This is before the end of your 12-month commitment; Aramo will confirm how the commitment applies.' : ''}{' '}
+                  {sub.cancel_requested_within_commitment
+                    ? ` This is before the end of your ${sub.commitment_months != null ? `${sub.commitment_months}-month ` : ''}commitment; Aramo will confirm how the commitment applies.`
+                    : ''}{' '}
                   Envelopes already sent can still be signed.
                 </div>
               ) : null}
@@ -609,7 +635,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
                 salesUrl={catalog?.sales_contact_url ?? null}
                 defaultSeats={account.seats?.used ?? 1}
                 gateway={catalog?.billing_gateway ?? 'STRIPE'}
-                onBuy={(seats) => act(() => billingApi.checkout(p.key, needsTerms ? terms : undefined, seats))}
+                onBuy={(seats, term) => act(() => billingApi.checkout(p.key, needsTerms ? terms : undefined, seats, term))}
               />
             ))}
           </div>

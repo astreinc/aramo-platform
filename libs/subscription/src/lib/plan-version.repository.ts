@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import {
+  type BillingTerm,
+  billingTermOf,
+  defaultBillingTerm,
+  hasExplicitTerms,
   type PlanVersionContent,
   PlanVersionContentError,
   type PlanVersionStatus,
@@ -187,18 +191,33 @@ export class PlanVersionRepository {
    * existing pin is never changed: a different price is a new version. Re-pinning the SAME
    * price is idempotent. Applied by A6 (incl. the v1 cutover pins); A5 never calls it.
    */
-  async pinProviderPrice(input: { plan_version_id: string; provider: WebBillingProviderKey; provider_price_ref: string; created_by: string; at?: Date }, db?: Tx): Promise<{ created: boolean }> {
+  async pinProviderPrice(
+    input: { plan_version_id: string; provider: WebBillingProviderKey; provider_price_ref: string; created_by: string; at?: Date; term?: BillingTerm },
+    db?: Tx,
+  ): Promise<{ created: boolean }> {
     const ref = input.provider_price_ref.trim();
     if (ref === '') throw new PlanVersionContentError('provider_price_ref must be non-empty');
     // CCP-B2-backend — `db` runs the pin inside the caller's (governed apply) transaction.
     const run = async (tx: Tx): Promise<{ created: boolean }> => {
-      const existing = await tx.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: input.plan_version_id, provider: input.provider } } });
+      // Sign Monthly and Annual-Commitment Pricing v1.0 §3.2 — a version with explicit terms pins one price per
+      // term (default: its MONTHLY term); a version without keeps its one legacy pin (term NULL).
+      const version = await tx.planVersion.findUnique({ where: { id: input.plan_version_id } });
+      if (version === null) throw new PlanVersionStateError(`unknown plan version ${input.plan_version_id}`);
+      const content = planVersionTerms(version);
+      let term: BillingTerm | null = null;
+      if (hasExplicitTerms(content)) {
+        term = input.term ?? defaultBillingTerm(content)?.term ?? null;
+        if (term === null || billingTermOf(content, term) === null) throw new PlanVersionStateError(`plan version ${input.plan_version_id} does not sell the ${input.term ?? 'default'} term`);
+      } else if (input.term !== undefined && input.term !== defaultBillingTerm(content)?.term) {
+        throw new PlanVersionStateError(`plan version ${input.plan_version_id} sells one term only (${defaultBillingTerm(content)?.term ?? 'none'})`);
+      }
+      const existing = await tx.planVersionPrice.findFirst({ where: { plan_version_id: input.plan_version_id, provider: input.provider, term } });
       if (existing !== null) {
-        if (existing.provider_price_ref !== ref) throw new PlanVersionStateError(`plan version ${input.plan_version_id} is already pinned to another ${input.provider} price`);
+        if (existing.provider_price_ref !== ref) throw new PlanVersionStateError(`plan version ${input.plan_version_id} is already pinned to another ${input.provider}${term === null ? '' : ` ${term}`} price`);
         return { created: false };
       }
       await tx.planVersionPrice.create({
-        data: { id: uuidv7(), plan_version_id: input.plan_version_id, provider: input.provider, provider_price_ref: ref, created_by: input.created_by, created_at: input.at ?? new Date() },
+        data: { id: uuidv7(), plan_version_id: input.plan_version_id, provider: input.provider, provider_price_ref: ref, term, created_by: input.created_by, created_at: input.at ?? new Date() },
       });
       return { created: true };
     };

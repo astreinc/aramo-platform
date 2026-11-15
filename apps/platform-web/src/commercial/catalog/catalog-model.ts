@@ -1,6 +1,6 @@
 import type { PillSpec } from '../../components';
 
-import type { CatalogMeteredUnit, CatalogOpenRequest, CatalogPlan, CatalogPriceUnit, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
+import type { CatalogBillingTerm, CatalogMeteredUnit, CatalogOpenRequest, CatalogPlan, CatalogPriceUnit, CatalogVersion, CatalogVersionTerms, PlanVersionStatus } from './catalog-api';
 
 // CCP-B2 — the pure view model of the Catalog screen (handoff §5.4; Commercial Control Plane
 // v1.0.dc.html "// catalog"): every label, line and enabled/disabled decision is computed here
@@ -88,7 +88,47 @@ export function isContractOnly(plan: CatalogPlan): boolean {
 }
 
 export function priceText(terms: CatalogVersionTerms): string {
-  return terms.list_price_minor === null || terms.contract_priced ? 'Contract only' : `${money(terms.list_price_minor)} / mo`;
+  if (terms.list_price_minor === null || terms.contract_priced) return 'Contract only';
+  const annual = annualTermOf(terms);
+  return annual === null ? `${money(terms.list_price_minor)} / mo` : `${money(terms.list_price_minor)} / mo · Annual ${money(annual.list_price_minor)} / mo`;
+}
+
+// ── Sign Monthly and Annual-Commitment Pricing v1.0: the two billing terms ─────────────────────
+
+export const ANNUAL_TERM_LABEL = 'Annual price per month (USD, 12-month commitment)';
+export const ANNUAL_TERM_HINT = 'Optional. Billed monthly with a 12-month commitment, sold on the web only. Leave empty for monthly only.';
+
+/** The version's ANNUAL_COMMIT term when it carries explicit terms (a legacy commitment is not an annual option). */
+export function annualTermOf(t: CatalogVersionTerms): CatalogBillingTerm | null {
+  if (t.explicit_terms !== true) return null;
+  return t.billing_terms?.find((b) => b.term === 'ANNUAL_COMMIT') ?? null;
+}
+
+/** The saving of the annual option against the monthly price (whole percent, rounded down), or null. */
+export function annualSavingPercent(monthly_minor: number | null, annual_minor: number | null): number | null {
+  if (monthly_minor === null || annual_minor === null || monthly_minor <= 0 || annual_minor >= monthly_minor) return null;
+  return Math.floor(((monthly_minor - annual_minor) * 100) / monthly_minor);
+}
+
+/**
+ * "Monthly $15 / mo (no commitment) · Annual $12 / mo (12-month commitment, saves 20%)"; a version with one
+ * (derived) term: its price and commitment as before; contract-priced: "Contract only".
+ */
+export function billingTermsLine(t: CatalogVersionTerms): string {
+  if (t.list_price_minor === null || t.contract_priced) return 'Contract only';
+  const annual = annualTermOf(t);
+  if (annual === null) {
+    const legacy = t.billing_terms?.[0];
+    const commitment = legacy?.commitment_months ?? null;
+    return `${money(t.list_price_minor)} / mo${commitment !== null ? ` (${String(commitment)}-month commitment)` : t.explicit_terms === true ? ' (no commitment)' : ''}`;
+  }
+  const saving = annualSavingPercent(t.list_price_minor, annual.list_price_minor);
+  return `Monthly ${money(t.list_price_minor)} / mo (no commitment) · Annual ${money(annual.list_price_minor)} / mo (12-month commitment${saving !== null ? `, saves ${String(saving)}%` : ''})`;
+}
+
+/** Billing terms are sold by self-service plans with a list price only. */
+export function annualTermApplies(plan: Pick<CatalogPlan, 'sales_model'>, t: CatalogVersionTerms): boolean {
+  return plan.sales_model === 'SELF_SERVICE' && !t.contract_priced && t.list_price_minor !== null;
 }
 
 export interface PlanRowModel {
@@ -134,7 +174,7 @@ export const LOCK_TEXT_PUBLISHED = 'Published versions are immutable. To change 
 export const LOCK_TEXT_VIEW_ONLY = 'View only — editing a draft needs the Catalog manager role.';
 export const V1_LOCK_TITLE = 'v1 release limitation — the schema supports more';
 
-export type EditorFieldKey = 'price' | 'envelopes' | 'storage';
+export type EditorFieldKey = 'price' | 'annual' | 'envelopes' | 'storage';
 
 export interface EditorField {
   readonly key: EditorFieldKey;
@@ -147,6 +187,8 @@ export interface EditorField {
   /** The design's white (editable draft) or grey (read-only) input. */
   readonly editable: boolean;
   readonly title?: string;
+  /** A short help line under the field (the annual option). */
+  readonly hint?: string;
 }
 
 export interface EditorModel {
@@ -163,6 +205,10 @@ function termValue(key: EditorFieldKey, t: CatalogVersionTerms): { value: string
   switch (key) {
     case 'price':
       return { value: t.list_price_minor === null ? '' : String(t.list_price_minor / 100), placeholder: t.contract_priced ? 'Contract' : '' };
+    case 'annual': {
+      const annual = annualTermOf(t);
+      return { value: annual === null ? '' : String(annual.list_price_minor / 100), placeholder: t.contract_priced ? 'Contract' : 'Monthly only' };
+    }
     case 'envelopes':
       return { value: t.envelopes_per_month === null ? '' : String(t.envelopes_per_month), placeholder: t.envelopes_unlimited ? 'Unlimited' : '' };
     case 'storage':
@@ -172,10 +218,11 @@ function termValue(key: EditorFieldKey, t: CatalogVersionTerms): { value: string
 
 const FIELD_LABEL: Readonly<Record<EditorFieldKey, string>> = {
   price: 'Price per month (USD)',
+  annual: ANNUAL_TERM_LABEL,
   envelopes: 'Envelopes per month',
   storage: 'Storage (GB)',
 };
-const FIELD_ORDER: readonly EditorFieldKey[] = ['price', 'envelopes', 'storage'];
+const FIELD_ORDER: readonly EditorFieldKey[] = ['price', 'annual', 'envelopes', 'storage'];
 
 /**
  * The version editor. `canDraft` = the caller holds platform:catalog:draft. Only a DRAFT seen by a
@@ -189,7 +236,8 @@ export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean
   const fields = FIELD_ORDER.map((key): EditorField => {
     const base = termValue(key, v.terms);
     const missing = (key === 'envelopes' && !v.terms.envelopes_present) || (key === 'storage' && !v.terms.storage_present);
-    const readOnly = !editable || (key === 'price' && contractOnly) || missing;
+    const annualOff = key === 'annual' && (contractOnly || !annualTermApplies(plan, v.terms));
+    const readOnly = !editable || (key === 'price' && contractOnly) || missing || annualOff;
     return {
       key,
       label: FIELD_LABEL[key],
@@ -197,6 +245,7 @@ export function editorOf(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean
       placeholder: base.placeholder,
       readOnly,
       editable,
+      ...(key === 'annual' ? { hint: ANNUAL_TERM_HINT } : {}),
     };
   });
   return {
@@ -291,8 +340,15 @@ export function draftDiff(
   units: readonly CatalogMeteredUnit[] = [],
   opts: { readonly pricingUnit?: boolean } = {},
 ): DiffRowModel[] {
+  const annualText = (t: CatalogVersionTerms): string => {
+    const a = annualTermOf(t);
+    return a === null ? 'Not offered' : `${money(a.list_price_minor)} / mo`;
+  };
+  const anyAnnual = annualTermOf(before) !== null || annualTermOf(after) !== null;
   const rows: [string, string, string][] = [
     ['Price', priceDiffText(before), priceDiffText(after)],
+    // Billing terms — the annual option (12-month commitment) when either side offers it.
+    ...(anyAnnual ? [['Annual (12-month commitment)', annualText(before), annualText(after)] as [string, string, string]] : []),
     [labels === 'dialog' ? 'Envelopes per month' : 'Envelopes', envelopesText(before), envelopesText(after)],
     ...(opts.pricingUnit === false ? [] : [['Pricing unit', pricingUnitText(before), pricingUnitText(after)] as [string, string, string]]),
     ['Storage', storageText(before), storageText(after)],
@@ -450,6 +506,11 @@ export function parseFieldInput(key: EditorFieldKey, raw: string): FieldParse {
   const n = Number(s);
   if (!Number.isFinite(n) || n < 0) return { ok: false };
   if (key === 'price') return { ok: true, value: Math.round(n * 100) };
+  // Billing terms — the annual monthly price: at least one cent, at most $1,000,000 ('' removes the option).
+  if (key === 'annual') {
+    const minor = Math.round(n * 100);
+    return minor >= 1 && minor <= 100_000_000 ? { ok: true, value: minor } : { ok: false };
+  }
   if (key === 'envelopes') return Number.isInteger(n) ? { ok: true, value: n } : { ok: false };
   return { ok: true, value: gbToBytes(n) };
 }
