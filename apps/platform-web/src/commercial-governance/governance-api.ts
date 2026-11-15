@@ -23,8 +23,19 @@ export interface PolicyContent {
   past_due_grace_days: number;
   /** CCP-FIX1 (Charter Amendment A1 AD-1): optional; present only when the version declares an apply deadline. */
   apply_expiry_hours?: number;
+  /**
+   * CCP-DG (Charter Amendment A2 RX-1, RX-11): optional; the three refund keys are present together
+   * or not at all (the server's strict parser refuses anything else).
+   */
+  refund_execution_enabled?: boolean;
+  refund_policy_ref?: string;
+  refund_policy_sha256?: string;
 }
 export type PolicyEditableKey = Exclude<keyof PolicyContent, 'format_version' | 'currency'>;
+/** Charter Amendment A2 (RX-1) — the refund keys, edited together as one group. */
+export type RefundPolicyKey = 'refund_execution_enabled' | 'refund_policy_ref' | 'refund_policy_sha256';
+/** The numeric settings (one input each). */
+export type PolicyNumericKey = Exclude<PolicyEditableKey, RefundPolicyKey>;
 
 export interface PolicyVersion {
   id: string;
