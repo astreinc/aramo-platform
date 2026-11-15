@@ -21,3 +21,11 @@ export const SIGN_BUSINESS_PER_SEAT_SCHEMA_MIGRATION = resolve(__dirname, '../..
  * this fixture (the account part of 20261113100000_india_billing_regions, verbatim) after the seat schema.
  */
 export const INDIA_BILLING_ACCOUNT_KEY_FIXTURE = resolve(__dirname, './india-billing-account-key.sql');
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing (directive v1.0 LOCKED 2026-11-15) — the `term` columns
+ * (TenantSubscription.term, CheckoutIntent.term, PlanVersionPrice.term) are read by the Prisma client on every
+ * query, so each fixed set applies this migration last. It touches only tables those sets already have
+ * (PlanVersion, PlanVersionPrice, CheckoutIntent, TenantSubscription), so the migration itself is applied whole.
+ */
+export const SIGN_BILLING_TERMS_MIGRATION = resolve(__dirname, '../../../prisma/migrations/20261115100000_sign_billing_terms/migration.sql');
