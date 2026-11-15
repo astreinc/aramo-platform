@@ -20989,6 +20989,31 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"
+    },
+    {
+      "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-dark-state-verification.md"
+    },
+    {
+      "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-billing-adjustment.ts"
+    },
+    {
+      "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
+    },
+    {
+      "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/refund-execution-gate.ts"
+    },
+    {
       "from": "doc/programs/india-billing/CONTRACT.md",
       "status": "unscoped",
       "to": "libs/subscription/prisma/migrations/20261113100000_india_billing_regions/migration.sql"
