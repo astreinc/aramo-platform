@@ -109,7 +109,8 @@ describe('Sign Catalog v2 — Personal paid billing (sign-service)', () => {
     const a = (await onFree.controller.account(auth(OWNER), 'r')) as Record<string, unknown>;
     expect(onFree.personal!.ensureFreeSubscription).toHaveBeenCalled();
     expect(a).toMatchObject({ tenant_kind: 'PERSONAL', self_service_eligible: true, can_manage_billing: true, allowance: { limit: 5, daily: { limit: 2 } } });
-    expect(a['upgrade']).toEqual({ available: true, reason: null, plan_key: STANDARD, price_minor: 1000, commitment_months: 12, currency: 'USD', billing_gateway: 'STRIPE' });
+    // Billing terms — the offer carries the plan's terms (this catalog fake carries none).
+    expect(a['upgrade']).toEqual({ available: true, reason: null, plan_key: STANDARD, price_minor: 1000, commitment_months: 12, currency: 'USD', billing_gateway: 'STRIPE', billing_terms: [] });
     expect(onFree.lifecycle.catalog).toHaveBeenCalledWith('sign', 't-1', 'PERSONAL', 'STRIPE');
 
     // A non-owner sees the offer but cannot take it; no price configured → not available.

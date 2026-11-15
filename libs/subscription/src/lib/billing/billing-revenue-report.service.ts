@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { planVersionTerms, type PlanVersionContent } from '../plan-version.js';
+import { billingTermOf, planVersionTerms, type PlanVersionContent } from '../plan-version.js';
 import { PRODUCT_KEYS, assertProductKey, type ProductKey } from '../product-registry.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -68,6 +68,8 @@ export interface RevenueSourceRow {
   readonly commitment_end: Date | null;
   readonly current_period_end: Date | null;
   readonly billing_subscription_ref: string | null;
+  /** Billing terms — the row's term (MONTHLY | ANNUAL_COMMIT); null/absent = legacy (the version's list price). */
+  readonly term?: string | null;
 }
 
 export interface RevenueLine {
@@ -188,6 +190,12 @@ export function classifyRevenueRow(r: RevenueSourceRow): { monthly_minor: number
     return { reason: reason === 'CONTRACT_PRICED' || reason === 'NON_USD_CURRENCY' || reason === 'PLAN_VERSION_INTEGRITY' ? reason : 'NO_LIST_PRICE' };
   }
   if (price.list_price.billing_interval !== REVENUE_BILLING_INTERVAL) return { reason: 'NON_MONTHLY_INTERVAL' };
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — both terms are billed monthly: a row sold on a term
+  // carries that term's monthly price (ANNUAL_COMMIT its discounted one).
+  if (r.term === 'MONTHLY' || r.term === 'ANNUAL_COMMIT') {
+    const term = billingTermOf(terms, r.term);
+    if (term !== null) return { monthly_minor: term.list_price_minor };
+  }
   return { monthly_minor: price.list_price.amount_minor };
 }
 
@@ -310,7 +318,7 @@ export class BillingRevenueReportService {
         `SELECT ts.id::text AS subscription_id, ts.tenant_id::text AS tenant_id, ts.product_key, ts.source, ts.status,
                 p.key AS plan_key, v.id::text AS plan_version_id, v.version_number, v.content, v.content_checksum,
                 (SELECT c.id::text FROM subscription."Contract" c WHERE c.tenant_subscription_id = ts.id) AS contract_id,
-                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref
+                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref, ts.term
            FROM subscription."TenantSubscription" ts
            JOIN subscription."Plan" p ON p.id = ts.plan_id
            JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id

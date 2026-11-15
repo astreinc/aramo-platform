@@ -211,3 +211,39 @@ describe('PersonalPlanPanel', () => {
     expect(screen.queryByTestId('personal-plan-manage')).toBeNull();
   });
 });
+
+describe('PersonalPlanPanel — Monthly and Annual billing terms', () => {
+  const assign = vi.fn();
+  beforeEach(() => {
+    configureAuthConsumer('sign');
+    vi.stubGlobal('location', { ...window.location, search: '', assign });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    assign.mockReset();
+  });
+  const TERMS = { version: '1.0', url: 'https://legal.aramo.test/sign-personal-terms-1.0' };
+  const plans = (url: string) => (url.endsWith('/v1/sign/billing/plans') ? json({ plans: [], terms: TERMS, sales_contact_url: null }) : undefined);
+
+  it('the Standard offer with two terms: Monthly by default, Annual on choice, and checkout sends the term', async () => {
+    const offer = {
+      available: true, plan_key: STANDARD_KEY, price_minor: 1200, commitment_months: null,
+      billing_terms: [
+        { term: 'MONTHLY' as const, price: { amount_minor: 1200, currency: 'USD', interval: 'MONTH' as const }, commitment_months: null, default: true, purchasable: true, web_only: false },
+        { term: 'ANNUAL_COMMIT' as const, price: { amount_minor: 1000, currency: 'USD', interval: 'MONTH' as const }, commitment_months: 12, default: false, purchasable: true, web_only: true },
+      ],
+    };
+    const fetch = stub([free({ upgrade: offer })], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_a' }, 201) : plans(url)));
+    vi.stubGlobal('fetch', fetch);
+    render(<PersonalPlanPanel />);
+    expect(await screen.findByTestId('personal-plan-terms-choice')).toHaveTextContent('Save $2/month (17%)');
+    expect(screen.getByTestId('personal-plan-upgrade-terms')).toHaveTextContent('$12/month, billed monthly with no commitment. Cancel anytime');
+    fireEvent.click(screen.getByRole('radio', { name: /Annual/ }));
+    expect(screen.getByTestId('personal-plan-upgrade-terms')).toHaveTextContent('$10/month, 12-month commitment billed monthly. After the commitment it continues month to month at the Monthly price ($12/month)');
+    fireEvent.click(await screen.findByTestId('personal-plan-terms-agree'));
+    fireEvent.click(screen.getByTestId('personal-plan-upgrade-btn'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/cs_a'));
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ plan_key: STANDARD_KEY, accept_terms: true, term: 'ANNUAL_COMMIT' });
+  });
+});

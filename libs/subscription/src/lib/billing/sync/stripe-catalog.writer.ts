@@ -6,6 +6,7 @@ import {
   type BillingProductSyncPort,
   type BillingSyncOutcome,
   type BillingSyncTarget,
+  type BillingTargetTerm,
   type LiveProviderPrice,
   type PreviewProviderPrice,
   type SyncFetch,
@@ -65,25 +66,36 @@ export class StripeCatalogWriter implements BillingProductSyncPort {
         await this.post(`/v1/products/${enc(t.product_id)}`, { name: t.display_name, description: t.description, active: 'true' });
       }
     }
-    const lookup = lookupKey(t.plan_version_id, t.interval);
-    const found = (await this.get(`/v1/prices?lookup_keys%5B%5D=${enc(lookup)}&limit=1`))?.data?.[0];
-    let price = found;
-    if (price !== undefined && !(price.product === t.product_id && price.unit_amount === us.amount_minor && price.currency === 'usd' && price.recurring?.interval === INTERVAL[t.interval])) {
-      throw new BillingSyncError('PROVIDER_REJECTED', `Stripe price ${lookup} exists with different terms; a published version's price is immutable`, false);
+    // Sign Monthly and Annual-Commitment Pricing v1.0 §3.2 — one monthly Stripe Price per billing term of the
+    // version (default term first). The legacy slot (a version without explicit terms) and the MONTHLY term
+    // keep the version + interval lookup key, so every existing price still resolves; ANNUAL_COMMIT adds a
+    // term suffix.
+    const terms = t.web_terms !== undefined && t.web_terms.length > 0 ? t.web_terms : [{ term: 'MONTHLY' as const, amount_minor: us.amount_minor, pin_term: null }];
+    const refs: { pin_term: BillingTargetTerm['pin_term']; external_price_ref: string }[] = [];
+    for (const term of terms) {
+      const lookup = lookupKey(t.plan_version_id, t.interval, term.pin_term);
+      const found = (await this.get(`/v1/prices?lookup_keys%5B%5D=${enc(lookup)}&limit=1`))?.data?.[0];
+      let price = found;
+      if (price !== undefined && !(price.product === t.product_id && price.unit_amount === term.amount_minor && price.currency === 'usd' && price.recurring?.interval === INTERVAL[t.interval])) {
+        throw new BillingSyncError('PROVIDER_REJECTED', `Stripe price ${lookup} exists with different terms; a published version's price is immutable`, false);
+      }
+      if (price === undefined) {
+        price = await this.post('/v1/prices', {
+          product: t.product_id,
+          currency: 'usd',
+          unit_amount: String(term.amount_minor),
+          'recurring[interval]': INTERVAL[t.interval],
+          lookup_key: lookup,
+          'metadata[aramo_plan_version_id]': t.plan_version_id,
+          'metadata[aramo_version_number]': String(t.version_number),
+          ...(term.pin_term !== null ? { 'metadata[aramo_billing_term]': term.term } : {}),
+        }, `ccp-price-${lookup}`);
+      }
+      if (typeof price.id !== 'string') throw new BillingSyncError('TRANSIENT', 'Stripe returned no price id');
+      refs.push({ pin_term: term.pin_term, external_price_ref: price.id });
     }
-    if (price === undefined) {
-      price = await this.post('/v1/prices', {
-        product: t.product_id,
-        currency: 'usd',
-        unit_amount: String(us.amount_minor),
-        'recurring[interval]': INTERVAL[t.interval],
-        lookup_key: lookup,
-        'metadata[aramo_plan_version_id]': t.plan_version_id,
-        'metadata[aramo_version_number]': String(t.version_number),
-      }, `ccp-price-${lookup}`);
-    }
-    if (typeof price.id !== 'string') throw new BillingSyncError('TRANSIENT', 'Stripe returned no price id');
-    return { status: 'SYNCED', origin, external_ref: null, external_price_ref: price.id, store_state: null, detail: null };
+    const primary = refs[0] as (typeof refs)[number];
+    return { status: 'SYNCED', origin, external_ref: null, external_price_ref: primary.external_price_ref, store_state: null, detail: null, ...(t.web_terms !== undefined && t.web_terms.length > 0 ? { term_price_refs: refs } : {}) };
   }
 
   async preview(t: BillingSyncTarget): Promise<PreviewProviderPrice[]> {
@@ -146,9 +158,14 @@ export class StripeCatalogWriter implements BillingProductSyncPort {
   }
 }
 
-/** The Stripe price lookup key of a version's price (one per version + interval). */
-export function lookupKey(plan_version_id: string, interval: 'MONTH' | 'YEAR'): string {
-  return `aramo_${plan_version_id}_${interval.toLowerCase()}`;
+/**
+ * The Stripe price lookup key of a version's price: one per version + interval, and (billing terms) per
+ * ANNUAL_COMMIT term. The legacy slot (term null) and the MONTHLY term keep the original key, so an existing
+ * price (a version without explicit terms) is resolved exactly as before.
+ */
+export function lookupKey(plan_version_id: string, interval: 'MONTH' | 'YEAR', pin_term: BillingTargetTerm['pin_term'] = null): string {
+  const base = `aramo_${plan_version_id}_${interval.toLowerCase()}`;
+  return pin_term === 'ANNUAL_COMMIT' ? `${base}_annual_commit` : base;
 }
 
 function usPrice(t: Pick<BillingSyncTarget, 'prices'>): { amount_minor: number } {

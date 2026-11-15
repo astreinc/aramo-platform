@@ -4,7 +4,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { currentPublishedVersion, PlanVersionRepository, PlanVersionStateError } from '../../plan-version.repository.js';
-import { planVersionTerms } from '../../plan-version.js';
+import { defaultBillingTerm, planVersionTerms, versionTerms } from '../../plan-version.js';
+import { pinTermFor } from '../provider-price.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { isWebBillingProvider } from '../billing-provider.port.js';
 
@@ -263,7 +264,15 @@ export class BillingProductsService {
         }
         if (isWebBillingProvider(provider)) {
           // India Billing §4.2 — a web provider (Stripe, Razorpay) pins its price, one per (version, provider).
-          await this.versions.pinProviderPrice({ plan_version_id: job.plan_version_id, provider, provider_price_ref: String(outcome.external_price_ref), created_by: 'ccp-billing-sync', at: this.clock() }, tx);
+          // Billing terms §3.2 — Stripe pins one price per term slot of the version (its legacy pin when the
+          // version has no explicit terms); Razorpay its one (default-term) price.
+          const refs = outcome.term_price_refs ?? [{ pin_term: null, external_price_ref: String(outcome.external_price_ref) }];
+          for (const r of refs) {
+            await this.versions.pinProviderPrice(
+              { plan_version_id: job.plan_version_id, provider, provider_price_ref: r.external_price_ref, created_by: 'ccp-billing-sync', at: this.clock(), ...(r.pin_term !== null ? { term: r.pin_term } : {}) },
+              tx,
+            );
+          }
         } else {
           await this.versions.pinStoreProduct({ plan_version_id: job.plan_version_id, provider, product_id: job.product_id, interval, created_by: 'ccp-billing-sync', at: this.clock() }, tx);
         }
@@ -400,8 +409,11 @@ export class BillingProductsService {
       const india = (terms.regional_prices ?? []).find((r) => r.interval === interval && r.country === RAZORPAY_COUNTRY && r.currency === RAZORPAY_CURRENCY);
       if (india !== undefined) prices.push({ country: india.country, currency: india.currency, amount_minor: india.amount_minor });
     } else {
-      if (plan.billing_interval === interval && plan.list_price_minor !== null && plan.currency !== null) {
-        prices.push({ country: 'US', currency: plan.currency, amount_minor: plan.list_price_minor });
+      // Billing terms — the US price is the DEFAULT term's (the MONTHLY term on a two-term version: the plan
+      // list price equals it), so the stores sell the MONTHLY term only; Stripe also gets every term below.
+      const def = defaultBillingTerm(terms);
+      if (plan.billing_interval === interval && def !== null && plan.currency !== null) {
+        prices.push({ country: 'US', currency: plan.currency, amount_minor: def.list_price_minor });
       }
       for (const r of terms.regional_prices ?? []) if (r.interval === interval) prices.push({ country: r.country, currency: r.currency, amount_minor: r.amount_minor });
       if (!prices.some((p) => p.country === 'US')) throw new BillingSyncError('PROVIDER_REJECTED', `the catalog has no US ${interval} list price for ${plan.key}`, false);
@@ -427,6 +439,10 @@ export class BillingProductsService {
       prices,
       known_external_ref: permanent?.external_ref ?? null,
       review_screenshot,
+      // Billing terms §3.2 — Stripe prices every term of the version (one monthly price each).
+      ...(provider === 'STRIPE' && interval === 'MONTH'
+        ? { web_terms: versionTerms(terms).map((t) => ({ term: t.term, amount_minor: t.list_price_minor, pin_term: pinTermFor(terms, t.term) })) }
+        : {}),
     };
   }
 

@@ -3,6 +3,8 @@
 // create-or-adopt, then name / description, prices and countries. Idempotent: running it twice with the
 // same target changes nothing the second time. Never logs a credential.
 
+import type { BillingTerm } from '../../plan-version.js';
+
 import type { BillingInterval, BillingProvider } from './billing-product.js';
 
 /** One price of the target: the US list price (country US) or a regional price (BP-5: exact amounts). */
@@ -12,6 +14,17 @@ export interface BillingTargetPrice {
   /** ISO 4217. */
   currency: string;
   amount_minor: number;
+}
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 §3.2 — one billing term a web gateway (Stripe) prices:
+ * its US monthly amount and the pin slot it is linked to (`pin_term` null = the version's legacy pin, a
+ * version without explicit terms). Stripe makes one monthly price per entry.
+ */
+export interface BillingTargetTerm {
+  term: BillingTerm;
+  amount_minor: number;
+  pin_term: BillingTerm | null;
 }
 
 export interface BillingSyncTarget {
@@ -34,6 +47,11 @@ export interface BillingSyncTarget {
   known_external_ref: string | null;
   /** BP-7 — the Apple review screenshot, when the request carried one. */
   review_screenshot: { file_name: string; content_type: string; bytes: Uint8Array; sha256: string } | null;
+  /**
+   * Billing terms — the terms Stripe prices (one monthly price each, default term first). Absent or empty:
+   * the US price is the one (legacy) price. The stores sell the MONTHLY term only (its price is the US price).
+   */
+  web_terms?: readonly BillingTargetTerm[];
 }
 
 export interface BillingSyncOutcome {
@@ -44,6 +62,8 @@ export interface BillingSyncOutcome {
   external_ref: string | null;
   /** The provider price the purchase link uses (the Stripe price id); null for a store product. */
   external_price_ref: string | null;
+  /** Billing terms — one provider price per term slot (Stripe); absent: `external_price_ref` is the one (default) price. */
+  term_price_refs?: { pin_term: BillingTerm | null; external_price_ref: string }[];
   /** The provider's own state of the product (display only). */
   store_state: string | null;
   detail: string | null;

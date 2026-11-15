@@ -46,6 +46,8 @@ const { like, uuid, integer, eachLike, regex, boolean, fromProviderState } = Mat
 //  10. POST /v1/sign/billing/checkout (governed subscription) 409 ESIGN_BILLING_CONFLICT
 //      details.reason governed_subscription_open (CCP-A6, Conversion Rule C-1 / C-4: the
 //      Settings → Plan & billing checkout of apps/sign-web/src/workspace/api.ts)
+//  10a. POST /v1/sign/billing/checkout (term not a term)   400 VALIDATION_ERROR details.reason term_invalid
+//      (Sign Monthly and Annual-Commitment Pricing v1.0 §3.3/§3.6: `term` is MONTHLY | ANNUAL_COMMIT)
 //  11. GET  /v1/sign/billing/account (held activation)      200 pending_activation (CCP-A6-R, C-8)
 //      POST /v1/sign/billing/seats (not owner / admin)       403 seat_manage_role_required (per-seat pricing)
 //  12. GET  /v1/sign/billing/self-service                   200 every action unavailable,
@@ -805,6 +807,39 @@ describe('sign-workspace → POST /v1/sign/billing/checkout (governed subscripti
         expect(res.status).toBe(409);
         const out = (await res.json()) as { error: { code: string; details: { reason: string } } };
         expect(out.error.details.reason).toBe('governed_subscription_open');
+      });
+  });
+});
+
+// Sign Monthly and Annual-Commitment Pricing Directive v1.0 (LOCKED 2026-11-15) §3.3 / §3.6 — the checkout
+// request carries the billing term (MONTHLY | ANNUAL_COMMIT; omitted = the plan's default term). Anything else
+// is refused 400 term_invalid before the lifecycle (no intent, no provider call). Same billing owner as above.
+describe('sign-workspace → POST /v1/sign/billing/checkout (billing term not a term)', () => {
+  it('is refused 400 VALIDATION_ERROR reason term_invalid', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE, 'Content-Type': 'application/json' };
+    const body = { plan_key: 'aramo-sign-standard-business-v1', accept_terms: true, term: 'YEARLY' };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a self-service checkout naming a billing term that is not MONTHLY or ANNUAL_COMMIT')
+      .withRequest('POST', '/v1/sign/billing/checkout', (b) => {
+        b.headers(headers).jsonBody(body);
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: like('term must be MONTHLY or ANNUAL_COMMIT'),
+            request_id: like('req-1'),
+            details: { reason: 'term_invalid' },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/checkout`, { method: 'POST', headers, body: JSON.stringify(body) });
+        expect(res.status).toBe(400);
+        const out = (await res.json()) as { error: { code: string; details: { reason: string } } };
+        expect(out.error.details.reason).toBe('term_invalid');
       });
   });
 });

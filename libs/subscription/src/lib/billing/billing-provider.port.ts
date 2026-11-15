@@ -353,4 +353,10 @@ export interface BillingProviderSeatPort {
   isConfigured(): boolean;
   /** Set the quantity of the subscription's (single) item. Returns the provider's state after the change. */
   updateSubscriptionQuantity(subscription_ref: string, quantity: number, proration: SeatProrationBehavior, idempotency_key: string): Promise<ProviderSubscriptionState>;
+  /**
+   * Sign Monthly and Annual-Commitment Pricing v1.0 (Q2, Q4) — move the subscription's (single) item to another
+   * price of the same product WITHOUT proration (the next period is billed at the new price), keeping its
+   * quantity. Optional: a gateway without it never switches terms.
+   */
+  updateSubscriptionPrice?(subscription_ref: string, price_ref: string, idempotency_key: string): Promise<ProviderSubscriptionState>;
 }

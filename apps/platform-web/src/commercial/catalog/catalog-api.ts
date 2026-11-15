@@ -40,6 +40,20 @@ export interface CatalogVersionTerms {
    * covered by content_checksum). ACCOUNT (or absent) = per organization; SEAT = per seat.
    */
   price_unit?: CatalogPriceUnit;
+  /**
+   * Sign Monthly and Annual-Commitment Pricing v1.0 — every billing term the version sells (MONTHLY first; a
+   * version without explicit terms: its one derived term). Absent from an older platform-admin.
+   */
+  billing_terms?: CatalogBillingTerm[];
+  /** True when the version carries explicit billing terms. */
+  explicit_terms?: boolean;
+}
+
+/** One billing term of a version: its own monthly price (minor units) and commitment. */
+export interface CatalogBillingTerm {
+  term: 'MONTHLY' | 'ANNUAL_COMMIT';
+  list_price_minor: number;
+  commitment_months: number | null;
 }
 
 /** Per-seat directive §3.1 — how a version's list price is charged. */
@@ -157,6 +171,8 @@ export interface CatalogDraftEdits {
   regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
   /** Per-seat directive §3.4 — SEAT prices the draft per seat; ACCOUNT per organization (BUSINESS self-service only). */
   price_unit?: CatalogPriceUnit;
+  /** Billing terms — the ANNUAL_COMMIT monthly price (minor units, 12-month commitment), or null to remove it. */
+  annual_commit_price_minor?: number | null;
 }
 
 export interface CatalogChangeRequest {

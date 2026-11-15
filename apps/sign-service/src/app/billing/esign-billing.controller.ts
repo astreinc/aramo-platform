@@ -43,6 +43,8 @@ import {
   SelfServiceBillingService,
   SelfServiceRefusedError,
   validSeatCount,
+  isBillingTerm,
+  type CatalogTermView,
   type SelfServiceRefusal,
   SubscriptionLifecycleService,
   TENANT_ACTIVATION_PENDING_MESSAGE,
@@ -256,6 +258,10 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     if (e.reason === 'BILLING_MANAGED_ELSEWHERE') {
       // M-A12 W1-G item 5 — the plan is billed through the App Store or Google Play.
       return new AramoError('ESIGN_BILLING_CONFLICT', 'Your plan is managed in the app store. Manage it there.', 409, { requestId, details: { reason: 'billing_managed_elsewhere' } });
+    }
+    if (e.reason === 'TERM_NOT_AVAILABLE') {
+      // Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — a billing term the plan does not sell here.
+      return new AramoError('VALIDATION_ERROR', 'That billing option isn’t available for this plan', 422, { requestId, details: { reason: 'term_not_available' } });
     }
     if (e.reason === 'SEATS_NOT_APPLICABLE') {
       // Sign Business per-seat pricing — `seats` for a plan priced per organization.
@@ -592,6 +598,7 @@ export class EsignBillingController {
     commitment_months: number | null;
     currency: string | null;
     billing_gateway: WebBillingProviderKey;
+    billing_terms: CatalogTermView[];
   } | null> {
     // Dark: no offer at all.
     if (!personalPaidCheckoutEnabled()) return null;
@@ -620,7 +627,21 @@ export class EsignBillingController {
       commitment_months: plan.commitment_months,
       currency: display?.currency ?? null,
       billing_gateway: gateway,
+      // Sign Monthly and Annual-Commitment Pricing v1.0 §3.5 — the options the offer sells (MONTHLY first).
+      billing_terms: EsignBillingController.termsFor(plan.billing_terms, gateway, display),
     };
+  }
+
+  /**
+   * Billing terms §3.5 — the terms shown for the caller's gateway: Stripe every term of the version; another
+   * web gateway (Razorpay, India) its default term only, at its regional display price when it has one.
+   */
+  private static termsFor(terms: readonly CatalogTermView[] | undefined, gateway: WebBillingProviderKey, display: DisplayMoney | null): CatalogTermView[] {
+    if (terms === undefined) return [];
+    if (gateway === 'STRIPE') return [...terms];
+    return terms
+      .filter((t) => t.default)
+      .map((t) => (display === null ? t : { ...t, price: { amount_minor: display.amount_minor, currency: display.currency, interval: 'MONTH' as const } }));
   }
 
   /**
@@ -675,6 +696,8 @@ export class EsignBillingController {
           const regional = offer?.regional_prices ?? [];
           return {
             ...plan,
+            // Billing terms §3.5 — every term on Stripe; the default term only on another web gateway.
+            billing_terms: EsignBillingController.termsFor(plan.billing_terms, gateway, gateway === 'STRIPE' ? null : (shown.get(p.key) ?? null)),
             store_products: offer?.store_products ?? [],
             // The monthly regional price when one exists, else the annual one; every interval in regional_prices.
             regional_price: regional.find((r: { interval: string }) => r.interval === 'MONTH') ?? regional[0] ?? null,
@@ -809,7 +832,7 @@ export class EsignBillingController {
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
   @BillingBoundary()
-  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown; seats?: unknown }) {
+  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown; seats?: unknown; term?: unknown }) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
       // Sign Catalog v2 §4.3 — BUSINESS, or a bound PERSONAL tenant while Personal sending is on
@@ -821,6 +844,10 @@ export class EsignBillingController {
       // Sign Business per-seat pricing (§3.3.1) — seats is an integer 1..1000 (a per-seat plan only).
       if (body.seats !== undefined && !validSeatCount(body.seats)) {
         throw new AramoError('VALIDATION_ERROR', 'seats must be an integer from 1 to 1000', 400, { requestId, details: { reason: 'seats_invalid' } });
+      }
+      // Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — the billing term (omitted: the plan's default term).
+      if (body.term !== undefined && !isBillingTerm(body.term)) {
+        throw new AramoError('VALIDATION_ERROR', 'term must be MONTHLY or ANNUAL_COMMIT', 400, { requestId, details: { reason: 'term_invalid' } });
       }
       if (tenant.kind === 'PERSONAL') {
         // Sign Catalog v2 §4.3 — dark unless enabled; then US residents only. Both before any
@@ -848,6 +875,7 @@ export class EsignBillingController {
         accept_terms: body.accept_terms === true,
         tenant_kind: tenant.kind,
         ...(body.seats !== undefined ? { seats: body.seats as number } : {}),
+        ...(isBillingTerm(body.term) ? { term: body.term } : {}),
       });
     });
   }

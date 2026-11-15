@@ -201,3 +201,10 @@ export function pendingPlanCreateLine(r: { readonly name: string; readonly plan_
 export function planCreateApplyable(r: { readonly state: string; readonly requested_by: string }, me: string): boolean {
   return r.requested_by === me && (r.state === 'APPROVED' || r.state === 'APPLY_FAILED');
 }
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 — a new plan is created with one price (PLAN_CREATE is a
+ * closed, checksummed payload); the optional Annual price (12-month commitment, billed monthly) is set on the
+ * version editor of a later draft.
+ */
+export const NEW_PLAN_ANNUAL_HINT = 'To offer an Annual option (12-month commitment, billed monthly at its own price), set it on the version editor after the plan is created. Leave the commitment empty for monthly with no commitment.';

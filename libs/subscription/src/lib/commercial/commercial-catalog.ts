@@ -1,13 +1,20 @@
 import {
+  ANNUAL_COMMIT_MONTHS,
+  billingTermsRefusal,
+  hasExplicitTerms,
   MAX_REGIONAL_PRICE_MINOR,
+  MAX_TERM_PRICE_MINOR,
   MAX_UNIT_PRICE_MINOR,
   type PlanPriceUnit,
+  type PlanVersionBillingTerm,
   type PlanVersionContent,
   PlanVersionContentError,
   type PlanVersionRegionalPriceTerm,
   parsePlanVersionContent,
   priceUnitOf,
   seatPriceUnitRefusal,
+  versionTerms,
+  withBillingTerms,
   withPriceUnit,
   withRegionalPrices,
   withUnitPrices,
@@ -41,6 +48,11 @@ import { isMeteredUnitKey } from '../usage/metered-units.js';
 //                plan with a list price may be priced per seat ("SEAT") or per account ("ACCOUNT", the key
 //                omitted). Part of the content, published only through PLAN_VERSION_PUBLISH. Refused with
 //                `price_unit_not_applicable` on any other plan.
+//   billing      Sign Monthly and Annual-Commitment Pricing v1.0 §3.1 — the optional ANNUAL_COMMIT price of a
+//   terms        DRAFT of a self-service plan (12-month commitment, billed monthly at its own price, web only).
+//                Setting it gives the draft explicit terms: MONTHLY = the list price (no commitment, so the
+//                plan commitment is cleared), ANNUAL_COMMIT = the given price. null removes the annual term
+//                (the draft keeps a MONTHLY-only term). A list-price edit moves the MONTHLY term with it.
 
 /** The Sign envelope allowance the editor's "Envelopes per month" reads and edits. */
 export const CATALOG_ENVELOPE_ALLOWANCE_KEY = 'sign.envelopes';
@@ -87,6 +99,10 @@ export interface CatalogVersionTerms {
   readonly price_unit: PlanPriceUnit;
   /** The plan's tenant kind (BUSINESS | PERSONAL | null): the console offers per-seat only for BUSINESS. */
   readonly tenant_kind: string | null;
+  /** Billing terms — every term the version sells (MONTHLY first; a version without explicit terms: its one derived term). */
+  readonly billing_terms: readonly PlanVersionBillingTerm[];
+  /** Billing terms — true when the version carries explicit terms (authored with the two-term model). */
+  readonly explicit_terms: boolean;
 }
 
 /** M-A12 A1-3 — one regional-price edit: set (amount_minor) or remove (null) the (country, interval) entry. */
@@ -113,6 +129,8 @@ export interface CatalogDraftEdits {
   readonly regional_prices?: readonly CatalogRegionalPriceEdit[];
   /** Per-seat pricing — SEAT (a BUSINESS self-service plan with a list price only) or ACCOUNT. */
   readonly price_unit?: PlanPriceUnit;
+  /** Billing terms — the ANNUAL_COMMIT monthly price (minor units, 1..MAX_TERM_PRICE_MINOR), or null to remove it. */
+  readonly annual_commit_price_minor?: number | null;
 }
 
 export function isContractPriced(content: PlanVersionContent): boolean {
@@ -146,6 +164,8 @@ export function catalogTermsOf(content: PlanVersionContent): CatalogVersionTerms
     regional_prices: (content.regional_prices ?? []).map((r) => ({ country: r.country, currency: r.currency, amount_minor: r.amount_minor, interval: r.interval })),
     price_unit: priceUnitOf(content),
     tenant_kind: content.plan.tenant_kind,
+    billing_terms: versionTerms(content).map((t) => ({ term: t.term, list_price_minor: t.list_price_minor, commitment_months: t.commitment_months })),
+    explicit_terms: hasExplicitTerms(content),
   };
 }
 
@@ -165,6 +185,11 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
     if (isContractPriced(content)) throw new CatalogDraftEditError('contract_priced', 'this plan is contract-priced: its price is set by contract, not in the catalog');
     plan = { ...plan, list_price_minor: edits.list_price_minor };
   }
+  // Billing terms — the MONTHLY term follows the list price (an explicit-terms draft).
+  const terms =
+    content.terms === undefined || plan.list_price_minor === null
+      ? content.terms
+      : content.terms.map((t) => (t.term === 'MONTHLY' ? { ...t, list_price_minor: plan.list_price_minor as number } : t));
   if (edits.envelopes_per_month !== undefined) {
     const v = edits.envelopes_per_month;
     if (v !== null && !nonNegInt(v)) throw new CatalogDraftEditError('term_missing', 'envelopes_per_month must be a non-negative integer or null');
@@ -179,10 +204,42 @@ export function applyCatalogDraftEdits(content: PlanVersionContent, edits: Catal
     if (storage(content) === undefined) throw new CatalogDraftEditError('term_missing', `this version carries no ${CATALOG_STORAGE_CAPACITY_KEY} capacity`, { term: CATALOG_STORAGE_CAPACITY_KEY });
     capacities = capacities.map((c) => (c.capacity_key === CATALOG_STORAGE_CAPACITY_KEY ? { ...c, limit_quantity: v, unlimited: v === null } : c));
   }
-  const edited = parsePlanVersionContent({ ...content, plan, allowances, capacities });
+  let edited: PlanVersionContent;
+  try {
+    edited = parsePlanVersionContent({ ...content, plan, allowances, capacities, ...(terms === undefined ? {} : { terms }) });
+  } catch (e) {
+    if (e instanceof PlanVersionContentError) throw new CatalogDraftEditError('term_missing', e.message);
+    throw e;
+  }
   const priced = edits.unit_prices === undefined ? edited : applyUnitPriceEdits(edited, edits.unit_prices);
   const regional = edits.regional_prices === undefined ? priced : applyRegionalPriceEdits(priced, edits.regional_prices);
-  return edits.price_unit === undefined ? regional : applyPriceUnitEdit(regional, edits.price_unit);
+  const united = edits.price_unit === undefined ? regional : applyPriceUnitEdit(regional, edits.price_unit);
+  return edits.annual_commit_price_minor === undefined ? united : applyAnnualCommitPriceEdit(united, edits.annual_commit_price_minor);
+}
+
+/**
+ * Billing terms (§3.1) — set (a price) or remove (null) the ANNUAL_COMMIT term of a DRAFT. Setting it on a
+ * version without explicit terms gives it explicit terms: MONTHLY at the list price with no commitment.
+ */
+export function applyAnnualCommitPriceEdit(content: PlanVersionContent, price: number | null): PlanVersionContent {
+  if (price !== null && (!nonNegInt(price) || price < 1 || price > MAX_TERM_PRICE_MINOR)) {
+    throw new CatalogDraftEditError('term_missing', `annual_commit_price_minor must be an integer 1..${MAX_TERM_PRICE_MINOR} (minor units) or null`, { term: 'ANNUAL_COMMIT' });
+  }
+  if (isContractPriced(content)) throw new CatalogDraftEditError('contract_priced', 'this plan is contract-priced: it has no billing terms');
+  const refusal = billingTermsRefusal(content.plan);
+  if (refusal !== null) throw new CatalogDraftEditError('term_missing', `this plan cannot carry billing terms: ${refusal}`, { term: 'ANNUAL_COMMIT' });
+  const monthly_price = content.plan.list_price_minor as number;
+  if (monthly_price < 1) throw new CatalogDraftEditError('term_missing', 'a plan with billing terms needs a MONTHLY list price of at least 1 (minor units)', { term: 'MONTHLY' });
+  const monthly: PlanVersionBillingTerm = { term: 'MONTHLY', list_price_minor: monthly_price, commitment_months: null };
+  // Removing the annual term of a version WITHOUT explicit terms changes nothing.
+  if (price === null && !hasExplicitTerms(content)) return content;
+  const next: PlanVersionBillingTerm[] = price === null ? [monthly] : [monthly, { term: 'ANNUAL_COMMIT', list_price_minor: price, commitment_months: ANNUAL_COMMIT_MONTHS }];
+  try {
+    return withBillingTerms(content, next);
+  } catch (e) {
+    if (e instanceof PlanVersionContentError) throw new CatalogDraftEditError('term_missing', e.message);
+    throw e;
+  }
 }
 
 /** Per-seat pricing — the price unit of a DRAFT (SEAT only on a BUSINESS self-service plan with a list price). */

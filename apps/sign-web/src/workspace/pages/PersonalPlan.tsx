@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog } from '../api';
-import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, checkoutPageText, formatMinor } from '../catalog';
+import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, checkoutPageText, formatMinor, initialTerm, termDisclosureText, termLabel, type TermCode } from '../catalog';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 import { checkoutReturn } from './Billing';
 import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
+import { TermChoice } from './TermChoice';
 import { AllowanceChip, BUSINESS_SIGNUP_URL } from './PersonalAllowance';
 
 // Aramo-Sign-Catalog-v2-Pricing-and-Features-Directive-v1_0-LOCKED §4.3 / §4.4 — the Personal
@@ -70,6 +71,8 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const [agreed, setAgreed] = useState(false);
   // The Personal terms a checkout must accept (GET /plans is tenant-kind aware); undefined = loading.
   const [terms, setTerms] = useState<BillingCatalog['terms'] | undefined>(undefined);
+  // Billing terms — the option chosen on a Standard offer that sells Monthly and Annual (null: the default).
+  const [termChoice, setTermChoice] = useState<TermCode | null>(null);
 
   const act = (fn: () => Promise<{ url: string }>) => {
     setBusy(true);
@@ -107,6 +110,11 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const currentPrice = account.display_price ?? sub?.list_price ?? null;
   const commitment = offer != null ? offer.commitment_months : STANDARD_PERSONAL_OFFER.commitment_months;
   const upgradeKey = offer?.plan_key ?? STANDARD_PERSONAL_OFFER.plan_key;
+  // Billing terms — a Standard offer selling two terms shows the Monthly / Annual choice (Monthly first).
+  const offerTerms = (offer?.billing_terms ?? []).map((t) => ({ term: t.term, amount_minor: t.price.amount_minor, currency: t.price.currency, commitment_months: t.commitment_months, purchasable: t.purchasable, default: t.default }));
+  const twoTerms = offerTerms.length > 1;
+  const chosenCode = termChoice ?? initialTerm(offerTerms);
+  const chosen = twoTerms ? offerTerms.find((t) => t.term === chosenCode) : undefined;
 
   return (
     <div className="sg-grid" data-testid="personal-plan-panel">
@@ -137,7 +145,11 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
           ) : null}
           {!onFree && sub?.commitment_end != null ? (
             <div className="sg-muted" data-testid="personal-plan-commitment">
-              {sub.commitment_months ?? STANDARD_PERSONAL_OFFER.commitment_months}-month commitment, billed monthly · commitment ends {fmtDate(sub.commitment_end)}
+              {sub.commitment_months != null ? `${sub.commitment_months}-month commitment, billed monthly · commitment ends` : 'Commitment ends'} {fmtDate(sub.commitment_end)}
+            </div>
+          ) : !onFree && sub?.term === 'MONTHLY' ? (
+            <div className="sg-muted" data-testid="personal-plan-term">
+              Monthly · no commitment, cancel anytime
             </div>
           ) : null}
           {allowance !== null && allowance.limit !== null ? (
@@ -176,7 +188,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
           <div className="sg-card__head">
             Upgrade to {STANDARD_PERSONAL_OFFER.name}
             <span className="sg-card__end">
-              <strong>{formatMinor(price, currency)}/month</strong>
+              <strong>{chosen !== undefined ? formatMinor(chosen.amount_minor, chosen.currency) : formatMinor(price, currency)}/month</strong>
             </span>
           </div>
           <div className="sg-card__body sg-grid" style={{ gap: 10 }}>
@@ -186,8 +198,11 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
               <li>{STANDARD_PERSONAL_OFFER.storage} storage</li>
               <li>For individuals and sole proprietors</li>
             </ul>
+            {twoTerms ? <TermChoice name="personal-term" terms={offerTerms} value={chosenCode} onChange={setTermChoice} testId="personal-plan-terms-choice" /> : null}
             <div className="sg-muted" data-testid="personal-plan-upgrade-terms">
-              {commitment !== null
+              {chosen !== undefined
+                ? `${termDisclosureText(chosen, offerTerms.find((t) => t.term === 'MONTHLY'))} No partial refunds. You then return to Free.`
+                : commitment !== null
                 ? `${formatMinor(price, currency)}/month, ${commitment}-month commitment billed monthly. Renews month to month after the commitment. Cancel online in Settings, effective at the end of the commitment; no partial refunds. You then return to Free.`
                 : `${formatMinor(price, currency)}/month, billed monthly. Cancel online in Settings; you then return to Free.`}{' '}
               Plus applicable tax. Your documents stay in this account.
@@ -213,11 +228,11 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
                 </label>
                 <Btn
                   variant="primary"
-                  disabled={busy || !agreed}
-                  onClick={() => act(() => billingApi.checkout(upgradeKey, true))}
+                  disabled={busy || !agreed || (chosen !== undefined && !chosen.purchasable)}
+                  onClick={() => act(() => (chosen !== undefined ? billingApi.checkout(upgradeKey, true, undefined, chosen.term) : billingApi.checkout(upgradeKey, true)))}
                   data-testid="personal-plan-upgrade-btn"
                 >
-                  {busy ? 'Opening checkout…' : `Upgrade to ${STANDARD_PERSONAL_OFFER.name}`}
+                  {busy ? 'Opening checkout…' : `Upgrade to ${STANDARD_PERSONAL_OFFER.name}${chosen !== undefined ? ` (${termLabel(chosen.term)})` : ''}`}
                 </Btn>
                 <p className={gateway === 'RAZORPAY' ? 'sg-note' : 'sg-help'} data-testid="personal-plan-checkout-page">
                   {checkoutPageText(gateway)}

@@ -1,6 +1,6 @@
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
-import { priceUnitOf, type PlanPriceUnit, type PlanVersionContent } from '../plan-version.js';
+import { type BillingTerm, defaultBillingTerm, hasExplicitTerms, planVersionTerms, priceUnitOf, type PlanPriceUnit, type PlanVersionContent } from '../plan-version.js';
 import type { ProductKey } from '../product-registry.js';
 
 import type { WebBillingProviderKey } from './billing-provider.port.js';
@@ -43,6 +43,22 @@ export function parsePlanPrices(raw: string | undefined): Map<string, string> {
   return m;
 }
 
+// Sign Monthly and Annual-Commitment Pricing Directive v1.0 (LOCKED) §3.2 — a web pin sells one billing
+// term. A version WITH content.terms pins one price per term (PlanVersionPrice.term set); a version
+// without (every version before the directive) keeps its one legacy pin (term NULL), which sells the
+// version's one derived term. `PinTerm` names the slot: a term, or null for the legacy pin.
+export type PinTerm = BillingTerm | null;
+
+/** The pin slot a term of a version sells through: the term on a version with explicit terms, else the legacy pin. */
+export function pinTermFor(content: Pick<PlanVersionContent, 'terms'>, term: BillingTerm): PinTerm {
+  return hasExplicitTerms(content) ? term : null;
+}
+
+/** The web pin of a version, provider and slot (null: not pinned). */
+export function findWebPin(db: Db, plan_version_id: string, provider: WebBillingProviderKey, term: PinTerm) {
+  return db.planVersionPrice.findFirst({ where: { plan_version_id, provider, term } });
+}
+
 export type EffectivePrice =
   | { readonly ok: true; readonly ref: string; readonly source: 'PIN' | 'ENV' }
   | { readonly ok: false; readonly reason: 'NO_PRICE' | 'PARITY_MISMATCH' };
@@ -55,11 +71,14 @@ export async function effectiveProviderPrice(
   env: ReadonlyMap<string, string>,
   price_unit: PlanPriceUnit = 'ACCOUNT',
   provider: WebBillingProviderKey = BILLING_PRICE_PROVIDER,
+  // Billing terms — the pin slot (a term of a version with explicit terms, else the legacy pin).
+  term: PinTerm = null,
 ): Promise<EffectivePrice> {
-  const pin = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: version_id, provider } } });
+  const pin = await findWebPin(db, version_id, provider, term);
   // Per-seat Implementation A1-5 — a per-seat version sells only on its pinned price: the env map
   // carries per-account prices, which would bill the old price once per seat.
-  const envRef = price_unit === 'SEAT' || provider !== BILLING_PRICE_PROVIDER ? undefined : env.get(plan_key);
+  // Billing terms — the env map is one price per plan: it stands in for the legacy pin only.
+  const envRef = price_unit === 'SEAT' || provider !== BILLING_PRICE_PROVIDER || term !== null ? undefined : env.get(plan_key);
   if (pin !== null) {
     if (envRef !== undefined && envRef !== pin.provider_price_ref) return { ok: false, reason: 'PARITY_MISMATCH' };
     return { ok: true, ref: pin.provider_price_ref, source: 'PIN' };
@@ -74,6 +93,21 @@ export interface PriceResolution {
   readonly version_status: string;
   // M-A12 — STORE: resolved through a store product pin (stable across versions of one plan).
   readonly source: 'PIN' | 'ENV' | 'STORE';
+  // Billing terms — the term the price sells: a web pin's term, else the version's default term (the legacy
+  // pin and the env fallback sell the version's one derived term). Null for a store product (its interval
+  // decides) or a version without a list price.
+  readonly term: BillingTerm | null;
+}
+
+/** The term a resolved web pin sells: its own, else the version's default (derived) term. */
+function pinSells(pin_term: string | null | undefined, version: { id: string; content: unknown; content_checksum: string }): BillingTerm | null {
+  if (pin_term === 'MONTHLY' || pin_term === 'ANNUAL_COMMIT') return pin_term;
+  // The term is informational here: the opened version's terms are verified (checksum) where they are applied.
+  try {
+    return defaultBillingTerm(planVersionTerms(version))?.term ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ---- M-A12 W1-G: store product pins ---------------------------------------------------------
@@ -96,7 +130,7 @@ export async function resolveStoreProductToVersion(db: Db, provider: StoreProvid
   );
   const v = (ranked[0] as (typeof pins)[number]).plan_version;
   if (!v.plan.sellable || v.plan.product_key !== product_key) return null;
-  return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'STORE' };
+  return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'STORE', term: null };
 }
 
 /** The billed interval of a store product (from its pin), or null when the product is not pinned. */
@@ -131,7 +165,7 @@ export async function resolvePriceToVersion(
     const v = pin.plan_version;
     // A pinned price is authoritative: it never falls through to the env mapping.
     if (v.status === 'DRAFT' || !v.plan.sellable || v.plan.product_key !== product_key) return null;
-    return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'PIN' };
+    return { plan_id: v.plan_id, plan_version_id: v.id, version_status: v.status, source: 'PIN', term: pinSells(pin.term, v) };
   }
   // The env fallback is Stripe's cutover map only.
   if (provider !== BILLING_PRICE_PROVIDER) return null;
@@ -141,11 +175,13 @@ export async function resolvePriceToVersion(
     if (plan === null || !plan.sellable || plan.product_key !== product_key) continue;
     const current = await currentPublishedVersion(db, plan.id);
     if (current === null) continue;
-    const pinned = await db.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: current.id, provider: BILLING_PRICE_PROVIDER } } });
+    const pinned = await findWebPin(db, current.id, BILLING_PRICE_PROVIDER, null);
     if (pinned !== null) continue;
     // A1-5 — a per-seat version never resolves through the env (per-account) map.
     if (priceUnitOf(current.content as Pick<PlanVersionContent, 'price_unit'>) === 'SEAT') continue;
-    return { plan_id: plan.id, plan_version_id: current.id, version_status: current.status, source: 'ENV' };
+    // Billing terms — the env map is a legacy (single-price) mapping: a version with explicit terms never uses it.
+    if (hasExplicitTerms(current.content as Pick<PlanVersionContent, 'terms'>)) continue;
+    return { plan_id: plan.id, plan_version_id: current.id, version_status: current.status, source: 'ENV', term: pinSells(null, current) };
   }
   return null;
 }
@@ -204,7 +240,8 @@ export async function checkProviderPriceParity(prisma: PrismaService, raw: strin
         continue;
       }
       const at = { plan_version_id: current.id, version_number: current.version_number };
-      const pin = await tx.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: current.id, provider: BILLING_PRICE_PROVIDER } } });
+      // Billing terms — the env map is one price per plan: it is compared with the legacy pin.
+      const pin = await findWebPin(tx, current.id, BILLING_PRICE_PROVIDER, null);
       if (pin !== null) {
         out.push({ ...base, ...at, pinned_price_ref: pin.provider_price_ref, status: pin.provider_price_ref === envRef ? 'MATCH' : 'MISMATCH' });
         continue;

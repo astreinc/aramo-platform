@@ -59,10 +59,11 @@ describe('CCP-B2 catalog model', () => {
     expect(ed.lockText).toBeNull();
     expect(ed.fields.map((f) => [f.key, f.readOnly])).toEqual([
       ['price', false],
+      ['annual', false],
       ['envelopes', false],
       ['storage', false],
     ]);
-    expect(ed.fields.map((f) => f.value)).toEqual(['69', '1000', '50']);
+    expect(ed.fields.map((f) => f.value)).toEqual(['69', '', '1000', '50']);
     expect(editorOf(TEAM, draft, false).fields.every((f) => f.readOnly)).toBe(true);
     expect(editorOf(TEAM, draft, false).lockText).toBe(LOCK_TEXT_VIEW_ONLY);
     const entDraft = { ...ENTERPRISE.versions[0]!, status: 'DRAFT' as const };

@@ -472,3 +472,52 @@ describe('Journey A — organization owner without Sign access', () => {
   });
 });
 
+
+// Sign Monthly and Annual-Commitment Pricing v1.0 §3.5 — a plan selling both terms offers the choice (Monthly
+// first, with the saving on Annual), the disclosure states the chosen term, and checkout sends `term`.
+describe('BillingPanel — Monthly and Annual billing terms', () => {
+  const assign = vi.fn();
+  const TWO_TERMS: BillingPlan = {
+    ...BUSINESS,
+    commitment_months: null,
+    billing_terms: [
+      { term: 'MONTHLY', price: { amount_minor: 2000, currency: 'USD', interval: 'MONTH' }, commitment_months: null, default: true, purchasable: true, web_only: false },
+      { term: 'ANNUAL_COMMIT', price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' }, commitment_months: 12, default: false, purchasable: true, web_only: true },
+    ],
+  };
+  beforeEach(() => {
+    configureAuthConsumer('sign');
+    vi.stubGlobal('location', { ...window.location, search: '', assign });
+    catalogFor = () => ({ ...CATALOG, plans: [TWO_TERMS] });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    assign.mockReset();
+    catalogFor = () => CATALOG;
+  });
+
+  it('shows both options with commitment and saving, defaults to Monthly and sends the chosen term', async () => {
+    const fetch = stub([account()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_t' }, 201) : undefined));
+    vi.stubGlobal('fetch', fetch);
+    render(<BillingPanel />);
+    const choice = await screen.findByTestId(`billing-plan-terms-${BUSINESS.key}`);
+    expect(screen.getByTestId(`billing-plan-terms-${BUSINESS.key}-MONTHLY`)).toHaveTextContent('Monthly · $20/month · No commitment, cancel anytime');
+    expect(screen.getByTestId(`billing-plan-terms-${BUSINESS.key}-ANNUAL_COMMIT`)).toHaveTextContent('Annual · $15/month · 12-month commitment, billed monthly');
+    expect(choice).toHaveTextContent('Save $5/month (25%)');
+    expect(screen.getByTestId('billing-plan-renewal')).toHaveTextContent('billed monthly with no commitment. Cancel anytime');
+    fireEvent.click(screen.getByRole('radio', { name: /Annual/ }));
+    expect(screen.getByTestId('billing-plan-renewal')).toHaveTextContent('12-month commitment billed monthly. After the commitment it continues month to month at the Monthly price ($20/month)');
+    fireEvent.click(screen.getByTestId(`billing-subscribe-${BUSINESS.key}`));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/cs_t'));
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ plan_key: BUSINESS.key, term: 'ANNUAL_COMMIT' });
+  });
+
+  it('a MONTHLY subscription shows its term and no commitment line', async () => {
+    const monthly = account({ ...ACTIVE, subscription: { ...ACTIVE.subscription!, commitment_months: null, commitment_end: null, term: 'MONTHLY' } });
+    vi.stubGlobal('fetch', stub([monthly]));
+    render(<BillingPanel />);
+    expect(await screen.findByTestId('billing-term')).toHaveTextContent('Monthly · no commitment, cancel anytime');
+    expect(screen.queryByTestId('billing-commitment')).toBeNull();
+  });
+});

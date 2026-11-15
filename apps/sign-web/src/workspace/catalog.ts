@@ -85,6 +85,73 @@ export function seatsUsedText(used: number, purchased: number): string {
   return `${used} of ${purchased} seat${purchased === 1 ? '' : 's'} used`;
 }
 
+// ── Billing terms (Sign Monthly and Annual-Commitment Pricing Directive v1.0) ──────────────────────────
+// Both terms are billed monthly: MONTHLY has no commitment (cancel anytime, it ends at the end of the paid
+// month); ANNUAL_COMMIT has a 12-month commitment at its own price, then continues month to month at the
+// Monthly price. A plan from an older backend (no billing_terms) reads as one term from its price fields.
+
+export type TermCode = 'MONTHLY' | 'ANNUAL_COMMIT';
+
+export interface TermOption {
+  term: TermCode;
+  amount_minor: number;
+  currency: string;
+  commitment_months: number | null;
+  purchasable: boolean;
+  default: boolean;
+}
+
+interface TermSource {
+  price?: { amount_minor: number; currency: string } | null;
+  commitment_months: number | null;
+  purchasable?: boolean;
+  billing_terms?: { term: TermCode; price: { amount_minor: number; currency: string }; commitment_months: number | null; default: boolean; purchasable: boolean }[];
+}
+
+/** The terms of a plan: its billing_terms (MONTHLY first), else one derived from price / commitment. */
+export function planTerms(p: TermSource): TermOption[] {
+  if (p.billing_terms !== undefined) {
+    return p.billing_terms.map((t) => ({ term: t.term, amount_minor: t.price.amount_minor, currency: t.price.currency, commitment_months: t.commitment_months, purchasable: t.purchasable, default: t.default }));
+  }
+  if (p.price == null) return [];
+  return [{ term: p.commitment_months !== null ? 'ANNUAL_COMMIT' : 'MONTHLY', amount_minor: p.price.amount_minor, currency: p.price.currency, commitment_months: p.commitment_months, purchasable: p.purchasable ?? true, default: true }];
+}
+
+/** The term a choice starts on: MONTHLY when offered, else the default, else the first. */
+export function initialTerm(terms: readonly TermOption[]): TermCode | null {
+  return (terms.find((t) => t.term === 'MONTHLY') ?? terms.find((t) => t.default) ?? terms[0])?.term ?? null;
+}
+
+/** "No commitment, cancel anytime" / "12-month commitment, billed monthly". */
+export function termCommitmentText(t: Pick<TermOption, 'commitment_months'>): string {
+  return t.commitment_months !== null ? `${t.commitment_months}-month commitment, billed monthly` : 'No commitment, cancel anytime';
+}
+
+/** The option's name: "Monthly" / "Annual". */
+export function termLabel(term: TermCode): string {
+  return term === 'ANNUAL_COMMIT' ? 'Annual' : 'Monthly';
+}
+
+/** "Save $2/month (20%)" against the Monthly price; null when there is no saving. */
+export function termSavingText(t: Pick<TermOption, 'amount_minor' | 'currency'>, monthly: Pick<TermOption, 'amount_minor'> | undefined): string | null {
+  if (monthly === undefined || monthly.amount_minor <= t.amount_minor || monthly.amount_minor <= 0) return null;
+  const diff = monthly.amount_minor - t.amount_minor;
+  const pct = Math.round((diff / monthly.amount_minor) * 100);
+  return `Save ${formatMinor(diff, t.currency)}/month${pct > 0 ? ` (${pct}%)` : ''}`;
+}
+
+/**
+ * The disclosure of a chosen term on a plan that offers two, shown before the redirect. MONTHLY: no
+ * commitment, cancel anytime, it ends at the end of the paid month. ANNUAL_COMMIT: the commitment billed
+ * monthly, then month to month at the Monthly price.
+ */
+export function termDisclosureText(t: TermOption, monthly: TermOption | undefined): string {
+  const price = `${formatMinor(t.amount_minor, t.currency)}/month`;
+  if (t.commitment_months === null) return `${price}, billed monthly with no commitment. Cancel anytime; your plan ends at the end of the month you’ve paid for.`;
+  const after = monthly !== undefined && monthly.term === 'MONTHLY' ? ` at the Monthly price (${formatMinor(monthly.amount_minor, monthly.currency)}/month)` : '';
+  return `${price}, ${t.commitment_months}-month commitment billed monthly. After the commitment it continues month to month${after} until you cancel; a cancellation inside the commitment takes effect at its end.`;
+}
+
 /** A seat count typed by the owner: a whole number between `min` and MAX_SEATS, else null. */
 export function parseSeats(raw: string, min: number): number | null {
   const t = raw.trim();

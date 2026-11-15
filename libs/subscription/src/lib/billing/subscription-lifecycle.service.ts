@@ -8,7 +8,19 @@ import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-bill
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
-import { PIN_REASON_PROVIDER_PLAN_CHANGE, type PlanPriceUnit, planVersionTerms, priceUnitOf } from '../plan-version.js';
+import {
+  type BillingTerm,
+  billingTermOf,
+  defaultBillingTerm,
+  hasExplicitTerms,
+  PIN_REASON_PROVIDER_PLAN_CHANGE,
+  type PlanPriceUnit,
+  type PlanVersionBillingTerm,
+  type PlanVersionContent,
+  planVersionTerms,
+  priceUnitOf,
+  versionTerms,
+} from '../plan-version.js';
 import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
@@ -45,7 +57,7 @@ import {
 } from './billing-provider-command.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
-import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion, resolveStoreProductToVersion, storePinInterval } from './provider-price.js';
+import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, pinTermFor, resolvePriceToVersion, resolveStoreProductToVersion, storePinInterval } from './provider-price.js';
 import { GOVERNED_SUBSCRIPTION_OPEN, isGovernedSubscription, takeBillingLock } from './governed-subscription.js';
 import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
@@ -175,7 +187,11 @@ export type BillingRefusal =
   // region selling this segment (region unknown, OFF, or its segment switch OFF). The detail is the
   // RegionSellRefusal. A Business tenant is refused as ORGANIZATION_PROFILE_REQUIRED instead (the
   // existing organization_country_not_supported / organization_profile_incomplete UX).
-  | 'BILLING_REGION_NOT_SELLABLE';
+  | 'BILLING_REGION_NOT_SELLABLE'
+  // Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — the checkout named a billing term the plan's
+  // published version does not sell on this channel (e.g. ANNUAL_COMMIT on a single-term version, or on
+  // Razorpay, which sells the default term only): 422 term_not_available.
+  | 'TERM_NOT_AVAILABLE';
 
 /**
  * India Billing (directive v1.0 §4.4, ruling Q6) — the web gateway a checkout routes to. `region` is null
@@ -252,13 +268,24 @@ function formatMinor(amount_minor: number, currency: string): string {
  * states the self-service rules as built (DR-C2-1: no early cancellation inside the commitment;
  * an at-period-end cancel from the last commitment month; month to month afterwards).
  */
-export function personalCheckoutDisclosure(terms: { list_price_minor: number | null; currency: string | null; billing_interval: string | null; commitment_months: number | null }): string | null {
+export function personalCheckoutDisclosure(terms: {
+  list_price_minor: number | null;
+  currency: string | null;
+  billing_interval: string | null;
+  commitment_months: number | null;
+  // Billing terms (Q2) — the MONTHLY price an ANNUAL_COMMIT term continues at after its commitment (explicit terms only).
+  after_commitment_price_minor?: number | null;
+}): string | null {
   if (terms.list_price_minor === null || terms.currency === null) return null;
   const interval = (terms.billing_interval ?? 'MONTH').toUpperCase() === 'YEAR' ? 'year' : 'month';
   const price = `${formatMinor(terms.list_price_minor, terms.currency)} per ${interval}, charged each ${interval} until you cancel.`;
+  const after =
+    terms.after_commitment_price_minor !== undefined && terms.after_commitment_price_minor !== null
+      ? ` After the commitment it continues month to month at ${formatMinor(terms.after_commitment_price_minor, terms.currency)} per month; you can cancel any time and it ends at the end of the current month.`
+      : ` After the commitment, you can cancel any time and it ends at the end of the current ${interval}.`;
   const commitment =
     terms.commitment_months !== null
-      ? ` This plan has a ${terms.commitment_months}-month commitment: it renews automatically each ${interval}, and you can cancel online from the last month of the commitment so it ends at the end of that month. After the commitment, you can cancel any time and it ends at the end of the current ${interval}.`
+      ? ` This plan has a ${terms.commitment_months}-month commitment: it renews automatically each ${interval}, and you can cancel online from the last month of the commitment so it ends at the end of that month.${after}`
       : ` It renews automatically each ${interval}; you can cancel online any time and it ends at the end of the current ${interval}.`;
   return `${price}${commitment} No refunds for partial periods. When it ends, your account returns to the Free plan.`;
 }
@@ -273,10 +300,87 @@ export const CHECKOUT_SUBMIT_MESSAGE_MAX = 1200;
  * settings, a cancellation taking effect at the end of the current monthly period. Only a monthly
  * plan has approved wording; any other interval shows none (null).
  */
-export function businessCheckoutDisclosure(terms: { billing_interval: string | null; commitment_months: number | null }): string | null {
+export function businessCheckoutDisclosure(terms: {
+  billing_interval: string | null;
+  commitment_months: number | null;
+  currency?: string | null;
+  // Billing terms (Q2) — the MONTHLY price an ANNUAL_COMMIT term continues at after its commitment (explicit terms only).
+  after_commitment_price_minor?: number | null;
+}): string | null {
   if ((terms.billing_interval ?? 'MONTH').toUpperCase() !== 'MONTH') return null;
-  const start = terms.commitment_months !== null ? `Your plan starts with a ${terms.commitment_months}-month commitment, billed monthly. After that it continues` : 'Your plan is billed monthly and continues';
+  const at =
+    terms.after_commitment_price_minor !== undefined && terms.after_commitment_price_minor !== null && terms.currency !== undefined && terms.currency !== null
+      ? ` at the monthly price (${formatMinor(terms.after_commitment_price_minor, terms.currency)})`
+      : '';
+  const start =
+    terms.commitment_months !== null
+      ? `Your plan starts with a ${terms.commitment_months}-month commitment, billed monthly. After that it continues${at}`
+      : 'Your plan is billed monthly and continues';
   return `${start} month to month until you cancel in your billing settings; a cancellation takes effect at the end of the current monthly period.`;
+}
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 §3.5 — the disclosure facts of the CHOSEN term. A version
+ * without explicit terms discloses its plan fields exactly as before.
+ */
+export function checkoutDisclosureTerms(content: Pick<PlanVersionContent, 'plan' | 'terms'>, chosen: PlanVersionBillingTerm, explicit: boolean) {
+  const p = content.plan;
+  if (!explicit) return { list_price_minor: p.list_price_minor, currency: p.currency, billing_interval: p.billing_interval, commitment_months: p.commitment_months };
+  return {
+    list_price_minor: chosen.list_price_minor,
+    currency: p.currency,
+    billing_interval: 'MONTH',
+    commitment_months: chosen.commitment_months,
+    after_commitment_price_minor: chosen.term === 'ANNUAL_COMMIT' ? (billingTermOf(content, 'MONTHLY')?.list_price_minor ?? null) : null,
+  };
+}
+
+/**
+ * Sign Monthly and Annual-Commitment Pricing v1.0 — the commitment (months) a subscription row is held to:
+ * a monthly store row none (M-A12 A1-1); a row sold on a term its term's commitment; a legacy row (no term)
+ * its pinned version's plan commitment, as before.
+ */
+export function subscriptionCommitmentMonths(row: { term?: string | null; store_interval?: string | null }, content: Pick<PlanVersionContent, 'plan' | 'terms'>): number | null {
+  if (row.store_interval === 'MONTH') return null;
+  if (row.term === 'MONTHLY' || row.term === 'ANNUAL_COMMIT') return billingTermOf(content, row.term)?.commitment_months ?? null;
+  return content.plan.commitment_months;
+}
+
+/** The billing term a subscription row is on: its own, else (legacy) its version's derived default term. */
+export function subscriptionTerm(row: { term?: string | null; store_interval?: string | null }, content: Pick<PlanVersionContent, 'plan' | 'terms'>): BillingTerm | null {
+  if (row.term === 'MONTHLY' || row.term === 'ANNUAL_COMMIT') return row.term;
+  if (row.store_interval === 'MONTH') return 'MONTHLY';
+  return defaultBillingTerm(content)?.term ?? null;
+}
+
+/** The monthly price a term is billed at: its own price (a per-seat version: per seat). */
+export function subscriptionTermPrice(row: { term?: string | null; store_interval?: string | null }, content: Pick<PlanVersionContent, 'plan' | 'terms'>): number | null {
+  const term = subscriptionTerm(row, content);
+  if (row.term == null) return content.plan.list_price_minor;
+  return term === null ? null : (billingTermOf(content, term)?.list_price_minor ?? null);
+}
+
+/**
+ * Q4 (PO 2026-11-15) — the switching rule between terms: MONTHLY → ANNUAL_COMMIT anytime; ANNUAL_COMMIT →
+ * MONTHLY only once the current period reaches the commitment end. Null = allowed, else the refusal.
+ */
+export type TermSwitchRefusal = 'term_unchanged' | 'term_not_available' | 'commitment_in_force' | 'term_switch_not_supported';
+export function termSwitchRefusal(
+  row: { term: string | null; source: string; billing_provider: string | null; commitment_end: Date | null; current_period_end: Date | null },
+  content: Pick<PlanVersionContent, 'plan' | 'terms'>,
+  target: BillingTerm,
+): TermSwitchRefusal | null {
+  // Only a Stripe-billed self-service row sold on a version with explicit terms has a term to switch
+  // (a store row is MONTHLY only; Razorpay sells the default term only).
+  if (row.source !== 'SELF_SERVICE' || row.billing_provider !== 'STRIPE' || !hasExplicitTerms(content) || (row.term !== 'MONTHLY' && row.term !== 'ANNUAL_COMMIT')) {
+    return 'term_switch_not_supported';
+  }
+  if (row.term === target) return 'term_unchanged';
+  if (billingTermOf(content, target) === null) return 'term_not_available';
+  if (row.term === 'ANNUAL_COMMIT' && row.commitment_end !== null && (row.current_period_end === null || row.current_period_end.getTime() < row.commitment_end.getTime())) {
+    return 'commitment_in_force';
+  }
+  return null;
 }
 
 /** Fail closed: only an explicit US billing country may activate. */
@@ -336,6 +440,22 @@ export interface CatalogPlanView {
   purchasable: boolean;
   // Sign Business per-seat pricing (directive v1.0 §3.3.4) — the PUBLISHED version's price unit.
   price_unit: PlanPriceUnit;
+  // Sign Monthly and Annual-Commitment Pricing v1.0 §3.5 — every billing term the published version sells
+  // (MONTHLY first): its own monthly price, its commitment and whether it can be bought now. A version
+  // without explicit terms shows its one derived term (the plan's price and commitment, as before). The
+  // plan-level price / commitment_months / purchasable stay the DEFAULT term (MONTHLY when sold).
+  billing_terms: CatalogTermView[];
+}
+
+export interface CatalogTermView {
+  term: BillingTerm;
+  price: { amount_minor: number; currency: string; interval: 'MONTH' };
+  commitment_months: number | null;
+  /** The term a checkout without `term` buys. */
+  default: boolean;
+  purchasable: boolean;
+  /** ANNUAL_COMMIT is sold on the web only; MONTHLY also in the apps. */
+  web_only: boolean;
 }
 
 export interface SubscriptionView {
@@ -353,6 +473,8 @@ export interface SubscriptionView {
   // A1 — the commitment term and its cancellation flag (separate from the
   // monthly invoice period), and the plan-eligibility state.
   commitment_months: number | null;
+  // Sign Monthly and Annual-Commitment Pricing v1.0 — the billing term (a legacy row: its version's derived term).
+  term: BillingTerm | null;
   commitment_end: Date | null;
   cancel_requested_within_commitment: boolean;
   eligibility_state: string | null;
@@ -566,7 +688,25 @@ export class SubscriptionLifecycleService {
       const terms = planVersionTerms(version);
       const p = terms.plan;
       const eligible = await this.eligible(tenant_id, p.eligibility);
-      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, priceUnitOf(terms), gateway);
+      const unit = priceUnitOf(terms);
+      const def = defaultBillingTerm(terms);
+      // The default term's pin (a version without explicit terms: its legacy pin, as before).
+      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, unit, gateway, def === null ? null : pinTermFor(terms, def.term));
+      const sellable = plan.sellable && plan.status === 'ACTIVE' && gatewayConfigured && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind));
+      // Billing terms §3.5 — every term with its own pin; Razorpay (India) sells the default term only.
+      const billing_terms: CatalogTermView[] = [];
+      for (const t of versionTerms(terms)) {
+        const isDefault = t.term === def?.term;
+        const termPrice = isDefault ? price : gateway === 'STRIPE' ? await effectiveProviderPrice(this.prisma, version.id, plan.key, prices, unit, gateway, pinTermFor(terms, t.term)) : null;
+        billing_terms.push({
+          term: t.term,
+          price: { amount_minor: t.list_price_minor, currency: p.currency ?? 'USD', interval: 'MONTH' },
+          commitment_months: t.commitment_months,
+          default: isDefault,
+          purchasable: sellable && termPrice !== null && termPrice.ok,
+          web_only: t.term === 'ANNUAL_COMMIT' && hasExplicitTerms(terms),
+        });
+      }
       out.push({
         key: plan.key,
         name: plan.name,
@@ -597,9 +737,9 @@ export class SubscriptionLifecycleService {
         })),
         features: terms.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
         // Sign Catalog v2 §4.3 — with the tenant's kind, only a plan of that kind is purchasable.
-        purchasable:
-          plan.sellable && plan.status === 'ACTIVE' && gatewayConfigured && price.ok && eligible && (tenant_kind === null || planMatchesTenantKind(plan.tenant_kind, tenant_kind)),
-        price_unit: priceUnitOf(terms),
+        purchasable: sellable && price.ok,
+        price_unit: unit,
+        billing_terms,
       });
     }
     return out;
@@ -623,8 +763,11 @@ export class SubscriptionLifecycleService {
     const storage = await this.capacity.status(tenant_id, product_key, STORAGE_CAPACITY_KEY);
     const exportDays = postTerminationExportDays();
     // CCP-A5 — the subscription's terms come from its PINNED version (grandfathering).
-    const terms = row === null ? null : planVersionTerms(row.plan_version).plan;
-    const features = row === null ? [] : planVersionTerms(row.plan_version).features;
+    const content = row === null ? null : planVersionTerms(row.plan_version);
+    const terms = content === null ? null : content.plan;
+    const features = content === null ? [] : content.features;
+    // Billing terms — the row's term price (a legacy row: the version's list price, as before).
+    const termPrice = row === null || content === null ? null : subscriptionTermPrice(row, content);
     return {
       subscription:
         row === null
@@ -641,14 +784,16 @@ export class SubscriptionLifecycleService {
               cancel_at_period_end: row.cancel_at_period_end,
               grace_until: row.grace_until,
               billing_managed: row.billing_account_ref !== null || isStoreBillingProvider(row.billing_provider),
-              // M-A12 A1-1 — a monthly store subscription carries no commitment.
-              commitment_months: row.store_interval === 'MONTH' ? null : (terms?.commitment_months ?? null),
+              // M-A12 A1-1 — a monthly store subscription carries no commitment. Billing terms — a row sold on
+              // a term is held to that term's commitment.
+              commitment_months: content === null ? null : subscriptionCommitmentMonths(row, content),
+              term: content === null ? null : subscriptionTerm(row, content),
               commitment_end: row.commitment_end,
               cancel_requested_within_commitment: row.cancel_requested_within_commitment,
               eligibility_state: row.eligibility_state,
               list_price:
-                terms !== null && terms.list_price_minor !== null && terms.currency !== null
-                  ? { amount_minor: terms.list_price_minor, currency: terms.currency, interval: terms.billing_interval }
+                terms !== null && termPrice !== null && terms.currency !== null
+                  ? { amount_minor: termPrice, currency: terms.currency, interval: terms.billing_interval }
                   : null,
               features: features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
               export_access_until: row.ended_at !== null && exportDays !== null ? new Date(row.ended_at.getTime() + exportDays * 86_400_000) : null,
@@ -712,6 +857,10 @@ export class SubscriptionLifecycleService {
     // Sign Business per-seat pricing (directive v1.0 §3.3.1) — the seats of a per-seat version (default 1);
     // refused (SEATS_NOT_APPLICABLE) for a version priced per account.
     seats?: number;
+    // Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — the billing term (default: the version's MONTHLY
+    // term, else its only term); a term the version does not sell on the routed gateway is refused
+    // (TERM_NOT_AVAILABLE). Per seat: the term's price is per seat.
+    term?: BillingTerm;
     at?: Date;
   }): Promise<{ url: string }> {
     const at = input.at ?? new Date();
@@ -741,8 +890,18 @@ export class SubscriptionLifecycleService {
       throw new BillingRefusedError('SEATS_NOT_APPLICABLE', perSeat ? `seats must be an integer 1..${MAX_SEATS}` : 'this plan is priced per organization, not per seat');
     }
     const seat_quantity = perSeat ? (input.seats ?? 1) : null;
+    // Billing terms §3.3 — the chosen term (default MONTHLY, else the version's only term). Razorpay (India)
+    // sells the default term only (its MONTH-only behaviour is unchanged).
+    const content = planVersionTerms(version);
+    const defaultTerm = defaultBillingTerm(content);
+    const chosen = input.term === undefined ? defaultTerm : billingTermOf(content, input.term);
+    if (chosen === null || (gateway !== 'STRIPE' && chosen.term !== defaultTerm?.term)) {
+      throw new BillingRefusedError('TERM_NOT_AVAILABLE', `the plan does not sell the ${input.term ?? 'default'} term${gateway !== 'STRIPE' ? ` on ${gateway}` : ''}`);
+    }
+    const explicit = hasExplicitTerms(content);
     // CCP-A5 (D3) — the version's pinned price, else the env (cutover); a pin/env disagreement fails closed.
-    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices(), perSeat ? 'SEAT' : 'ACCOUNT', gateway);
+    // Billing terms — the chosen term's pin (a version without explicit terms: its legacy pin).
+    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices(), perSeat ? 'SEAT' : 'ACCOUNT', gateway, pinTermFor(content, chosen.term));
     if (!effective.ok) {
       throw new BillingRefusedError('BILLING_UNAVAILABLE', effective.reason === 'PARITY_MISMATCH' ? 'provider price parity mismatch for the plan version' : 'no provider price configured for the plan');
     }
@@ -798,6 +957,7 @@ export class SubscriptionLifecycleService {
           terms_version: terms?.version ?? null,
           terms_sha256: terms?.sha256 ?? null,
           seat_quantity,
+          term: chosen.term,
         },
       });
       if (terms !== null) {
@@ -830,9 +990,11 @@ export class SubscriptionLifecycleService {
       cancel_url: input.cancel_url,
       ...(seat_quantity !== null ? { quantity: seat_quantity } : {}),
       // Remaining-Work A1 — a Business checkout shows its renewal disclosure at submit too.
+      // Billing terms — the disclosure states the CHOSEN term: its price and commitment (MONTHLY: none,
+      // cancel anytime) and, for ANNUAL_COMMIT, the MONTHLY price it continues at (Q2).
       ...(personal
-        ? { collect_address: true, disclosure: personalCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }
-        : { disclosure: businessCheckoutDisclosure(planVersionTerms(version).plan) ?? undefined }),
+        ? { collect_address: true, disclosure: personalCheckoutDisclosure(checkoutDisclosureTerms(content, chosen, explicit)) ?? undefined }
+        : { disclosure: businessCheckoutDisclosure(checkoutDisclosureTerms(content, chosen, explicit)) ?? undefined }),
     });
     await this.prisma.checkoutIntent.update({ where: { id: intent_id }, data: { provider_session_ref: session.session_ref } });
     return { url: session.url };
@@ -912,7 +1074,8 @@ export class SubscriptionLifecycleService {
     // CCP-A5 — the commitment term of the subscription's pinned version.
     const version = await this.prisma.planVersion.findUniqueOrThrow({ where: { id: row.plan_version_id } });
     const configuration = process.env['STRIPE_PORTAL_CONFIGURATION']?.trim() || undefined;
-    if (planVersionTerms(version).plan.commitment_months !== null && configuration === undefined) {
+    // Billing terms — the commitment of the ROW's term (a MONTHLY row of a two-term version has none).
+    if (subscriptionCommitmentMonths(row, planVersionTerms(version)) !== null && configuration === undefined) {
       throw new BillingRefusedError('PORTAL_NOT_CONFIGURED', 'the billing portal for commitment plans needs an approved portal configuration');
     }
     return this.billing.createPortalSession(row.billing_account_ref, return_url, configuration);
@@ -1225,11 +1388,10 @@ export class SubscriptionLifecycleService {
   ) {
     const resolved = await this.planForPrice(tx, state.price_ref, product_key, state.provider);
     const plan_id = resolved?.plan_id ?? intent.plan_id;
-    const version =
-      resolved !== null && resolved.version_status === 'PUBLISHED'
-        ? await tx.planVersion.findUniqueOrThrow({ where: { id: resolved.plan_version_id } })
-        : await currentPublishedVersion(tx, plan_id);
-    return { plan_id, version };
+    const pinned = resolved !== null && resolved.version_status === 'PUBLISHED';
+    const version = pinned ? await tx.planVersion.findUniqueOrThrow({ where: { id: resolved.plan_version_id } }) : await currentPublishedVersion(tx, plan_id);
+    // Billing terms — the term the provider price sells (only when that price's version is the one opened).
+    return { plan_id, version, term: pinned ? resolved.term : null };
   }
 
   /**
@@ -1278,6 +1440,7 @@ export class SubscriptionLifecycleService {
       current_period_end: Date | null;
       seat_quantity: number | null;
       seat_pending_quantity: number | null;
+      term?: string | null;
     },
     state: ProviderSubscriptionState,
     provider: ReturnType<typeof mapProviderStatus>,
@@ -1315,7 +1478,15 @@ export class SubscriptionLifecycleService {
     // M-A12 A1-1 — a store product change inside the subscription (e.g. monthly → annual in the same
     // store group) moves the billed interval: MONTH clears the commitment, YEAR starts the plan's.
     const storeTerms = await this.storeIntervalUpdate(tx, row, state, pin?.plan_version_id ?? row.plan_version_id);
-    const commitment_end = storeTerms !== null && 'commitment_end' in storeTerms ? (storeTerms.commitment_end ?? null) : row.commitment_end;
+    // Billing terms — a provider price change between the terms of a version (e.g. the post-commitment move to
+    // the MONTHLY price, or MONTHLY → ANNUAL_COMMIT) moves the row's term; ANNUAL_COMMIT starts its commitment.
+    const termTerms = await this.termUpdate(tx, row, state, pin);
+    const commitment_end =
+      termTerms.commitment_end !== undefined
+        ? termTerms.commitment_end
+        : storeTerms !== null && 'commitment_end' in storeTerms
+          ? (storeTerms.commitment_end ?? null)
+          : row.commitment_end;
     const cancelWithin =
       state.cancel_at_period_end && commitment_end !== null && state.current_period_end.getTime() < commitment_end.getTime();
     // Sign Business per-seat pricing (directive v1.0 §3.3.2) — the purchased seats follow the provider item
@@ -1333,6 +1504,7 @@ export class SubscriptionLifecycleService {
         billing_account_ref: isStoreBillingProvider(state.provider) ? null : state.account_ref,
         ...(state.store !== undefined ? { store_product_id: state.store.product_id, store_environment: state.store.environment } : {}),
         ...(storeTerms ?? {}),
+        ...termTerms,
         provider_state_at: at,
         ended_at: mapped.ends ? at : null,
         ...(pin !== null ? { plan_id: pin.plan_id, plan_version_id: pin.plan_version_id } : {}),
@@ -1361,7 +1533,7 @@ export class SubscriptionLifecycleService {
     tx: Tx,
     tenant_id: string,
     product_key: ProductKey,
-    intent: { id: string; user_id: string; plan_id: string; plan: { key: string }; seat_quantity?: number | null },
+    intent: { id: string; user_id: string; plan_id: string; plan: { key: string }; seat_quantity?: number | null; term?: string | null },
     state: ProviderSubscriptionState,
     mapped: ReturnType<typeof mapProviderStatus>,
     at: Date,
@@ -1371,7 +1543,7 @@ export class SubscriptionLifecycleService {
     // The plan is the one the owner chose at checkout; a provider price that maps
     // to a different sellable plan wins (plan change made in the provider).
     // CCP-A5 — the price resolves to a VERSION; else the checkout plan's current version.
-    const { plan_id, version } = await this.activationTarget(tx, intent, state, product_key);
+    const { plan_id, version, term: priceTerm } = await this.activationTarget(tx, intent, state, product_key);
     const plan = await tx.plan.findUniqueOrThrow({ where: { id: plan_id } });
     if (plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout plan belongs to another product than ${product_key}`, tenant_id };
     if (version === null) return { outcome: 'IGNORED', detail: `plan ${plan.key} has no published version`, tenant_id };
@@ -1404,7 +1576,19 @@ export class SubscriptionLifecycleService {
     // commitment (the user cancels any time in the store), YEAR the plan's commitment.
     const store_interval = isStoreBillingProvider(state.provider) ? await storePinInterval(tx, state.provider, state.price_ref) : null;
     if (isStoreBillingProvider(state.provider) && store_interval === null) return { outcome: 'IGNORED', detail: `${state.provider} product is not pinned to a plan`, tenant_id };
-    const commitment_months = store_interval === 'MONTH' ? null : terms.commitment_months;
+    // Sign Monthly and Annual-Commitment Pricing v1.0 §3.3 — on a version with explicit terms the row records
+    // its term and the commitment comes from it: the provider price's term, else the checkout's, else the
+    // default. A store purchase is MONTHLY (the stores sell the MONTHLY term only). A version without explicit
+    // terms keeps the legacy rule (no term recorded; its plan commitment, none for a monthly store row).
+    const content = planVersionTerms(version);
+    const term: BillingTerm | null = !hasExplicitTerms(content)
+      ? null
+      : isStoreBillingProvider(state.provider)
+        ? store_interval === 'MONTH'
+          ? 'MONTHLY'
+          : null
+        : (priceTerm ?? (intent.term === 'MONTHLY' || intent.term === 'ANNUAL_COMMIT' ? intent.term : null) ?? defaultBillingTerm(content)?.term ?? null);
+    const commitment_months = store_interval === 'MONTH' ? null : hasExplicitTerms(content) ? (term === null ? null : (billingTermOf(content, term)?.commitment_months ?? null)) : terms.commitment_months;
     await tx.tenantSubscription.create({
       data: {
         id,
@@ -1433,6 +1617,7 @@ export class SubscriptionLifecycleService {
         cancel_at_period_end: state.cancel_at_period_end,
         provider_state_at: at,
         seat_quantity,
+        term,
       },
     });
     await tx.checkoutIntent.update({ where: { id: intent.id }, data: { status: 'COMPLETED', completed_at: at } });
@@ -1474,6 +1659,33 @@ export class SubscriptionLifecycleService {
     if (priceUnitOf(planVersionTerms(version)) !== 'SEAT') return { seat_quantity: null, seat_pending_quantity: null };
     const quantity = isStoreBillingProvider(state.provider) ? 1 : (state.quantity ?? row.seat_quantity ?? 1);
     return seatColumnsAfterProviderState({ ...row, provider_quantity: quantity, provider_period_end: state.current_period_end });
+  }
+
+  /**
+   * Billing terms — the term / commitment columns of a WEB row after a provider update ({}: unchanged). The
+   * term the provider price sells on the row's (re-)pinned version; a version without explicit terms carries
+   * no term. → ANNUAL_COMMIT starts a 12-month commitment at the provider period start; → MONTHLY keeps the
+   * commitment columns as they stand (a commitment is never released by a price change).
+   */
+  private async termUpdate(
+    tx: Tx,
+    row: { term?: string | null; plan_version_id: string; product_key: string },
+    state: ProviderSubscriptionState,
+    pin: PriceResolution | null,
+  ): Promise<{ term?: BillingTerm | null; commitment_start?: Date; commitment_end?: Date }> {
+    if (!isWebBillingProvider(state.provider)) return {};
+    const version_id = pin?.plan_version_id ?? row.plan_version_id;
+    const content = planVersionTerms(await tx.planVersion.findUniqueOrThrow({ where: { id: version_id } }));
+    if (!hasExplicitTerms(content)) return pin !== null && row.term != null ? { term: null } : {};
+    const sold = pin ?? (await this.planForPrice(tx, state.price_ref, assertProductKey(row.product_key), state.provider));
+    const next = sold !== null && sold.plan_version_id === version_id ? sold.term : null;
+    if (next === null || next === row.term) return {};
+    if (next === 'ANNUAL_COMMIT') {
+      const months = billingTermOf(content, 'ANNUAL_COMMIT')?.commitment_months ?? null;
+      const anchor = state.current_period_start.getTime() > 0 ? state.current_period_start : new Date();
+      return months === null ? { term: next } : { term: next, commitment_start: anchor, commitment_end: addMonthsClamped(anchor, months) };
+    }
+    return { term: next };
   }
 
   /** M-A12 A1-1 — the interval / commitment columns of a store row after a provider update (null: unchanged). */

@@ -76,6 +76,11 @@ export class UpdateCatalogDraftDto {
   regional_prices?: { country: string; interval: 'MONTH' | 'YEAR'; currency: string; amount_minor: number | null }[];
   /** Sign per-seat pricing — SEAT (BUSINESS self-service plans only; else 422 price_unit_not_applicable) or ACCOUNT. */
   @IsOptional() @IsIn(['ACCOUNT', 'SEAT']) price_unit?: 'ACCOUNT' | 'SEAT';
+  /**
+   * Sign Monthly and Annual-Commitment Pricing v1.0 §3.1 — the ANNUAL_COMMIT monthly price (minor units, 12-month
+   * commitment, billed monthly, web only), or null to remove the annual term.
+   */
+  @IsOptional() @IsInt() @Min(1) @Max(100_000_000) annual_commit_price_minor?: number | null;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
@@ -99,6 +104,10 @@ export interface CatalogVersionTermsDto {
   price_unit: 'ACCOUNT' | 'SEAT';
   /** The plan's tenant kind (BUSINESS | PERSONAL | null). */
   tenant_kind: string | null;
+  /** Billing terms — every term the version sells (MONTHLY first; a version without explicit terms: its one derived term). */
+  billing_terms: { term: 'MONTHLY' | 'ANNUAL_COMMIT'; list_price_minor: number; commitment_months: number | null }[];
+  /** Billing terms — true when the version carries explicit terms. */
+  explicit_terms: boolean;
 }
 
 export interface CatalogOpenRequestDto {

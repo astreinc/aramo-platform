@@ -47,6 +47,17 @@ import { METERED_UNIT_KEYS, isMeteredUnitKey } from './usage/metered-units.js';
 //                       covered by the content checksum, drafted and published through the governed
 //                       PLAN_VERSION_PUBLISH chain, immutable once published. Only a BUSINESS
 //                       SELF_SERVICE plan with a list price may carry it.
+//   terms               Aramo Sign Monthly and Annual-Commitment Pricing Directive v1.0 (LOCKED 2026-11-15) §3.1
+//                       — the BILLING TERMS a version sells: MONTHLY (billed monthly, no commitment, cancel
+//                       anytime) and optionally ANNUAL_COMMIT (billed monthly at its own price, 12-month
+//                       commitment, web only). An OPTIONAL format-1 key: absent on every version written before
+//                       it (so every existing checksum is unchanged), and such a version reads as ONE term
+//                       derived from plan.list_price_minor / plan.commitment_months (versionTerms). When present:
+//                       MONTHLY first, then ANNUAL_COMMIT; plan.list_price_minor equals the MONTHLY price and
+//                       plan.commitment_months is null (the plan fields stay the MONTHLY term, so every reader of
+//                       the plan fields sees the no-commitment price). Covered by the content checksum, drafted
+//                       and published through PLAN_VERSION_PUBLISH, immutable once published. price_unit stays
+//                       version-level: a per-seat version prices each term per seat.
 
 export const PLAN_VERSION_CONTENT_FORMAT = 1;
 export const PLAN_VERSION_STATUSES = ['DRAFT', 'PUBLISHED', 'RETIRED'] as const;
@@ -123,7 +134,58 @@ export interface PlanVersionContent {
   readonly regional_prices?: readonly PlanVersionRegionalPriceTerm[];
   /** Per-seat pricing — present only as "SEAT"; absent = priced per account. */
   readonly price_unit?: 'SEAT';
+  /** Billing terms — absent = one term derived from the plan fields (versionTerms); never empty. */
+  readonly terms?: readonly PlanVersionBillingTerm[];
 }
+
+// ---- billing terms (Monthly and Annual-Commitment Pricing Directive v1.0) ----------------------
+
+export const BILLING_TERMS = ['MONTHLY', 'ANNUAL_COMMIT'] as const;
+export type BillingTerm = (typeof BILLING_TERMS)[number];
+export function isBillingTerm(v: unknown): v is BillingTerm {
+  return v === 'MONTHLY' || v === 'ANNUAL_COMMIT';
+}
+/** The commitment of an ANNUAL_COMMIT term (months). */
+export const ANNUAL_COMMIT_MONTHS = 12;
+
+/** One billing term of a version: its own monthly price (minor units of plan.currency) and commitment. */
+export interface PlanVersionBillingTerm {
+  readonly term: BillingTerm;
+  readonly list_price_minor: number;
+  /** null for MONTHLY; 12 for ANNUAL_COMMIT (a legacy-derived term keeps the version's own commitment). */
+  readonly commitment_months: number | null;
+}
+
+/**
+ * The effective billing terms of a version: its `terms` when present; else ONE term derived from the
+ * plan fields (a commitment → ANNUAL_COMMIT with that commitment, none → MONTHLY). A version without a
+ * list price (contract-priced) has no term.
+ */
+export function versionTerms(content: Pick<PlanVersionContent, 'plan' | 'terms'>): readonly PlanVersionBillingTerm[] {
+  if (content.terms !== undefined) return content.terms;
+  const p = content.plan;
+  if (p.list_price_minor === null) return [];
+  return [{ term: p.commitment_months !== null ? 'ANNUAL_COMMIT' : 'MONTHLY', list_price_minor: p.list_price_minor, commitment_months: p.commitment_months }];
+}
+
+/** True when the version carries explicit terms (a version authored with the two-term model). */
+export function hasExplicitTerms(content: Pick<PlanVersionContent, 'terms'>): boolean {
+  return content.terms !== undefined;
+}
+
+/** The term a checkout sells when none is named: MONTHLY when the version has it, else its only term. */
+export function defaultBillingTerm(content: Pick<PlanVersionContent, 'plan' | 'terms'>): PlanVersionBillingTerm | null {
+  const terms = versionTerms(content);
+  return terms.find((t) => t.term === 'MONTHLY') ?? terms[0] ?? null;
+}
+
+/** The named term of a version, or null (not sold on it). */
+export function billingTermOf(content: Pick<PlanVersionContent, 'plan' | 'terms'>, term: BillingTerm): PlanVersionBillingTerm | null {
+  return versionTerms(content).find((t) => t.term === term) ?? null;
+}
+
+/** The upper bound of a term price (minor units). */
+export const MAX_TERM_PRICE_MINOR = 100_000_000;
 
 /** Per-seat pricing — the price unit of a version as the APIs present it. */
 export type PlanPriceUnit = 'ACCOUNT' | 'SEAT';
@@ -283,7 +345,7 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   const CONTENT_KEYS = ['format', 'plan', 'allowances', 'allowance_windows', 'capacities', 'features'];
   exactKeys(
     raw,
-    [...CONTENT_KEYS, ...(['unit_prices', 'regional_prices', 'price_unit'] as const).filter((k) => k in raw)],
+    [...CONTENT_KEYS, ...(['unit_prices', 'regional_prices', 'price_unit', 'terms'] as const).filter((k) => k in raw)],
     'content',
   );
   if (raw['format'] !== PLAN_VERSION_CONTENT_FORMAT) throw new PlanVersionContentError(`content.format must be ${PLAN_VERSION_CONTENT_FORMAT}`);
@@ -338,6 +400,7 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
   const unit_prices = 'unit_prices' in raw ? parseUnitPrices(raw, plan.product_key) : undefined;
   const regional_prices = 'regional_prices' in raw ? parseRegionalPrices(raw) : undefined;
   if ('price_unit' in raw) assertSeatPriceUnitAllowed(raw['price_unit'], plan);
+  const terms = 'terms' in raw ? parseBillingTerms(raw, plan) : undefined;
   return {
     format: 1,
     plan,
@@ -348,7 +411,65 @@ export function parsePlanVersionContent(raw: unknown): PlanVersionContent {
     ...(unit_prices === undefined ? {} : { unit_prices }),
     ...(regional_prices === undefined ? {} : { regional_prices }),
     ...('price_unit' in raw ? { price_unit: 'SEAT' as const } : {}),
+    ...(terms === undefined ? {} : { terms }),
   };
+}
+
+/** Why a plan may not carry explicit billing terms (null = it may). */
+export function billingTermsRefusal(plan: Pick<PlanVersionPlanTerms, 'sales_model' | 'list_price_minor' | 'currency' | 'billing_interval'>): string | null {
+  if (plan.sales_model !== 'SELF_SERVICE') return 'only a self-service plan has billing terms';
+  if (plan.list_price_minor === null || plan.currency === null) return 'a contract-priced plan has no billing terms';
+  if ((plan.billing_interval ?? 'MONTH') !== 'MONTH') return 'billing terms are billed monthly: the plan interval must be MONTH';
+  return null;
+}
+
+/**
+ * Billing terms — the strict `terms` parser: MONTHLY (commitment null) first, then an optional
+ * ANNUAL_COMMIT (commitment 12); no duplicate; the plan fields equal the MONTHLY term (price, no commitment).
+ */
+function parseBillingTerms(raw: Obj, plan: PlanVersionPlanTerms): PlanVersionBillingTerm[] {
+  const rows = arr(raw, 'terms');
+  if (rows.length === 0) throw new PlanVersionContentError('content.terms must be omitted when the version has no explicit terms (never empty)');
+  if (rows.length > BILLING_TERMS.length) throw new PlanVersionContentError(`content.terms holds at most ${BILLING_TERMS.length} entries`);
+  const refusal = billingTermsRefusal(plan);
+  if (refusal !== null) throw new PlanVersionContentError(`content.terms: ${refusal}`);
+  const out = rows.map((a, i) => {
+    const w = `content.terms[${i}]`;
+    exactKeys(a, ['term', 'list_price_minor', 'commitment_months'], w);
+    const term = a['term'];
+    if (!isBillingTerm(term)) throw new PlanVersionContentError(`${w}.term must be MONTHLY or ANNUAL_COMMIT`);
+    const list_price_minor = int(a, 'list_price_minor', w);
+    if (list_price_minor < 1 || list_price_minor > MAX_TERM_PRICE_MINOR) throw new PlanVersionContentError(`${w}.list_price_minor must be 1..${MAX_TERM_PRICE_MINOR}`);
+    const commitment_months = intOrNull(a, 'commitment_months', w);
+    if (term === 'MONTHLY' && commitment_months !== null) throw new PlanVersionContentError(`${w}: a MONTHLY term has no commitment (commitment_months null)`);
+    if (term === 'ANNUAL_COMMIT' && commitment_months !== ANNUAL_COMMIT_MONTHS) throw new PlanVersionContentError(`${w}: an ANNUAL_COMMIT term has a ${ANNUAL_COMMIT_MONTHS}-month commitment`);
+    return { term, list_price_minor, commitment_months } as PlanVersionBillingTerm;
+  });
+  if (out[0]?.term !== 'MONTHLY') throw new PlanVersionContentError('content.terms must start with the MONTHLY term');
+  if (out.length === 2 && out[1]?.term !== 'ANNUAL_COMMIT') throw new PlanVersionContentError('content.terms must not repeat a term');
+  const monthly = out[0];
+  if (plan.list_price_minor !== monthly.list_price_minor) throw new PlanVersionContentError('content.plan.list_price_minor must equal the MONTHLY term price');
+  if (plan.commitment_months !== null) throw new PlanVersionContentError('content.plan.commitment_months must be null when the version carries terms (the commitment is a term)');
+  return out;
+}
+
+/**
+ * Billing terms — the content document with the given terms (canonical order MONTHLY, ANNUAL_COMMIT).
+ * `null` omits the key, so the document stays byte-identical to its single-term form. The plan's list
+ * price follows the MONTHLY term and its commitment is cleared (the commitment is a term).
+ */
+export function withBillingTerms(content: PlanVersionContent, terms: readonly PlanVersionBillingTerm[] | null): PlanVersionContent {
+  const { terms: _drop, ...rest } = content;
+  void _drop;
+  if (terms === null) return parsePlanVersionContent(rest);
+  const sorted = [...terms].sort((a, b) => BILLING_TERMS.indexOf(a.term) - BILLING_TERMS.indexOf(b.term));
+  const monthly = sorted.find((t) => t.term === 'MONTHLY');
+  const plan = monthly === undefined ? rest.plan : { ...rest.plan, list_price_minor: monthly.list_price_minor, commitment_months: null };
+  return parsePlanVersionContent({
+    ...rest,
+    plan,
+    terms: sorted.map((t) => ({ term: t.term, list_price_minor: t.list_price_minor, commitment_months: t.commitment_months })),
+  });
 }
 
 /** Why a plan may not be priced per seat (null = it may). */

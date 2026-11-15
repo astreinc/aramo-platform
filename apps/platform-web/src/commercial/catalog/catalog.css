@@ -249,6 +249,17 @@
   font-size: var(--pw-fs-12-5);
   font-weight: 600;
 }
+/* Billing terms — the annual option's help line and the version's terms line. */
+.pc-field__hint {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--pw-fs-12-5);
+  color: var(--pw-muted);
+}
+.pc-terms {
+  margin: 8px 0;
+  font-size: var(--pw-fs-12-5);
+}
 .pc-field__label--lock {
   display: flex;
   align-items: center;

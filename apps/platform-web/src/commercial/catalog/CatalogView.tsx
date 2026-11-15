@@ -23,6 +23,7 @@ import {
   openRequestOf,
   openRequestSentence,
   parseFieldInput,
+  billingTermsLine,
   parseUnitPriceInput,
   pinnedLine,
   PRICED_PER_SEAT_LABEL,
@@ -211,7 +212,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
       return;
     }
     setInvalid(null);
-    const field = key === 'price' ? 'list_price_minor' : key === 'envelopes' ? 'envelopes_per_month' : 'storage_bytes';
+    const field = key === 'price' ? 'list_price_minor' : key === 'annual' ? 'annual_commit_price_minor' : key === 'envelopes' ? 'envelopes_per_month' : 'storage_bytes';
     const prior = saving.current;
     const run = (async () => {
       if (prior) await prior;
@@ -538,6 +539,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     <span className="pc-editor__meta">{editor.meta}</span>
                   </div>
                   {editor.lockText !== null ? <div className="pc-lock">{`🔒 ${editor.lockText}`}</div> : null}
+                  <p className="pc-terms" data-testid="billing-terms-line">{billingTermsLine(version.terms)}</p>
                   <div className="pc-fields">
                     {editor.fields.map((f) => (
                       <label key={f.key} className="pc-field" title={f.title}>
@@ -555,6 +557,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                           onChange={(e) => setInputs((m) => ({ ...m, [f.key]: e.target.value }))}
                           onBlur={() => void saveField(f.key)}
                         />
+                        {f.hint !== undefined ? <span className="pc-field__hint">{f.hint}</span> : null}
                       </label>
                     ))}
                     {perSeat !== null ? (

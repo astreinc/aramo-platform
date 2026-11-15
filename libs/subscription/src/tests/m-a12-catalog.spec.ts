@@ -36,7 +36,7 @@ function lifecycleWith(plans: { key: string; tenant_kind: string | null }[]): Su
       versions: [{ id: `v-${String(i)}`, content, content_checksum: planVersionChecksum(content) }],
     };
   });
-  const prisma = { plan: { findMany: async () => rows }, planVersionPrice: { findUnique: async () => null } };
+  const prisma = { plan: { findMany: async () => rows }, planVersionPrice: { findFirst: async () => null } };
   const billing = { provider: 'STRIPE', isConfigured: () => true };
   return new SubscriptionLifecycleService(prisma as never, {} as never, billing as never, {} as never);
 }

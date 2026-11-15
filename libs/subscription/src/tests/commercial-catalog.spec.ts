@@ -63,6 +63,9 @@ describe('CCP-B2 catalog model', () => {
       // Sign Business per-seat pricing — no price_unit key: per account; the plan's tenant kind.
       price_unit: 'ACCOUNT',
       tenant_kind: 'BUSINESS',
+      // Billing terms — no explicit terms: one term derived from the plan (a 12-month commitment → ANNUAL_COMMIT).
+      billing_terms: [{ term: 'ANNUAL_COMMIT', list_price_minor: 2000, commitment_months: 12 }],
+      explicit_terms: false,
     });
     expect(catalogTermsOf(ENTERPRISE)).toMatchObject({ contract_priced: true, envelopes_present: false, storage_present: false, list_price_minor: null });
     expect(isContractPriced(ENTERPRISE)).toBe(true);
