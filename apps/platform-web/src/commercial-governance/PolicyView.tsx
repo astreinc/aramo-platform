@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Input, useOptionalToast } from '@aramo/fe-foundation';
+import { Button, Input, Switch, useOptionalToast } from '@aramo/fe-foundation';
 import { ApiError } from '@aramo/fe-foundation';
 
 import { Pill, SkeletonPanel, WithdrawFailedActivationDialog, formatTimestamp } from '../components';
@@ -23,7 +23,10 @@ import {
   STATE_LABEL,
   shortRequestId,
   NOT_SET,
+  refundRows,
+  validateRefundDraft,
   type PolicyRow,
+  type RefundPatch,
 } from './governance-model';
 import { governanceErrorText } from './governance-errors';
 import './governance.css';
@@ -126,6 +129,24 @@ export function PolicyView() {
     }
   };
 
+  // CCP-DG (Charter Amendment A2 RX-1, RX-11): the three refund keys go in ONE patch (all or none).
+  const saveRefund = async (v: PolicyVersion, patch: RefundPatch): Promise<boolean> => {
+    setEditError(null);
+    try {
+      const out = await governanceApi.updatePolicyDraft(v.id, { content: patch });
+      setData((d) =>
+        d === null
+          ? d
+          : { ...d, versions: d.versions.map((x) => (x.id === v.id ? out.version : x)) },
+      );
+      return true;
+    } catch (e) {
+      setEditError(governanceErrorText(e));
+      void load();
+      return false;
+    }
+  };
+
   const createDraft = async (from: PolicyVersion): Promise<void> => {
     try {
       const out = await governanceApi.createPolicyDraft({ source_version_id: from.id });
@@ -150,7 +171,8 @@ export function PolicyView() {
   const editable = current?.status === 'DRAFT' && canAuthor && current.open_request === null;
   // CCP-FIX1: the draft editor also lists the optional apply deadline, so it can be set.
   const rows = current === undefined ? [] : policyRows(current, active, { includeOptional: editable });
-  const changedCount = rows.filter((r) => r.changed).length;
+  const refund = current === undefined ? [] : refundRows(current, active);
+  const changedCount = [...rows, ...refund].filter((r) => r.changed).length;
   const why = !canRequest
     ? 'Needs the Finance admin role.'
     : open !== null
@@ -326,6 +348,15 @@ export function PolicyView() {
                     </td>
                   </tr>
                 ))}
+                {current !== undefined ? (
+                  <RefundGroup
+                    key={`${current.id}:${current.content_checksum}`}
+                    version={current}
+                    rows={refund}
+                    editable={editable}
+                    onSave={(patch) => saveRefund(current, patch)}
+                  />
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -432,6 +463,97 @@ export function PolicyView() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * CCP-DG (Charter Amendment A2 RX-1, RX-11) — the "Refund execution" group: read on every version
+ * ("Not set" when absent); on an editable draft, a toggle and two texts saved together after the
+ * client-side mirror of the server's all-or-none and format rules.
+ */
+function RefundGroup({
+  version,
+  rows,
+  editable,
+  onSave,
+}: {
+  readonly version: PolicyVersion;
+  readonly rows: ReturnType<typeof refundRows>;
+  readonly editable: boolean;
+  readonly onSave: (patch: RefundPatch) => Promise<boolean>;
+}) {
+  const c = version.content;
+  const [enabled, setEnabled] = useState(c?.refund_execution_enabled === true);
+  const [ref, setRef] = useState(c?.refund_policy_ref ?? '');
+  const [sha, setSha] = useState(c?.refund_policy_sha256 ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const save = async (): Promise<void> => {
+    const out = validateRefundDraft({ enabled, ref, sha256: sha }, c);
+    setError(out.error);
+    if (out.patch === null) return;
+    setSaving(true);
+    try {
+      await onSave(out.patch);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const editor = (key: string) => {
+    if (key === 'refund_execution_enabled')
+      return <Switch aria-label="Refund execution" checked={enabled} onCheckedChange={setEnabled} />;
+    const isRef = key === 'refund_policy_ref';
+    return (
+      <Input
+        unstyled
+        className="pw-pol-input pw-pol-input--text"
+        type="text"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label={isRef ? 'Refund policy reference' : 'Refund policy SHA-256'}
+        placeholder={NOT_SET}
+        value={isRef ? ref : sha}
+        onChange={(e) => (isRef ? setRef : setSha)(e.target.value)}
+      />
+    );
+  };
+  return (
+    <>
+      <tr className="pw-pol-group">
+        <th colSpan={4} scope="colgroup" className="pw-pol-group__title">
+          Refund execution
+        </th>
+      </tr>
+      {rows.map((r) => (
+        <tr key={r.field.key} className={r.changed ? 'pw-pol-row pw-pol-row--changed' : 'pw-pol-row'}>
+          <td className="pw-pol-row__mark">
+            {r.changed ? '~' : ''}
+            {r.changed ? <span className="pw-sr-only"> changed</span> : null}
+          </td>
+          <td>
+            <div className="pw-pol-row__label">{r.field.label}</div>
+            <div className="pw-pol-row__help">{r.field.help}</div>
+          </td>
+          <td className="pw-pol-row__active pw-pol-row__wrap">{r.active}</td>
+          <td className="pw-pol-row__mine pw-pol-row__wrap">{editable ? editor(r.field.key) : r.mine}</td>
+        </tr>
+      ))}
+      {editable ? (
+        <tr className="pw-pol-row">
+          <td />
+          <td colSpan={3}>
+            <Button unstyled className="pw-gov-btn pw-gov-btn--secondary" disabled={saving} onClick={() => void save()}>
+              Save refund settings
+            </Button>
+            {error !== null ? (
+              <div role="alert" className="pw-alert pw-alert--error pw-pol-refund-error">
+                {error}
+              </div>
+            ) : null}
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }
 

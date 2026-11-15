@@ -3,8 +3,9 @@ import type {
   ChainKey,
   ChainState,
   PolicyContent,
-  PolicyEditableKey,
+  PolicyNumericKey,
   PolicyVersion,
+  RefundPolicyKey,
   Roster,
   RosterOperator,
 } from './governance-api';
@@ -89,7 +90,7 @@ export const money = (dollars: number): string =>
   `$${dollars.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
 export interface PolicyField {
-  readonly key: PolicyEditableKey;
+  readonly key: PolicyNumericKey;
   readonly label: string;
   readonly help: string;
   /** Document units → the number shown and edited (%, $, days, hours). */
@@ -248,12 +249,130 @@ export function policyRows(
   });
 }
 
+// ---- refund execution keys (Charter Amendment A2 RX-1, RX-11) ----------------------------
+
+/** RX-D3 — `<DOCUMENT-ID>@<major>.<minor>` (the server parser's REFUND_POLICY_REF_FORMAT). */
+export const REFUND_POLICY_REF_FORMAT = /^[A-Z0-9-]+@[0-9]+\.[0-9]+$/;
+/** RX-D3 — 64 lowercase hex characters (the server parser's REFUND_POLICY_SHA256_FORMAT). */
+export const REFUND_POLICY_SHA256_FORMAT = /^[0-9a-f]{64}$/;
+
+export interface RefundField {
+  readonly key: RefundPolicyKey;
+  readonly label: string;
+  readonly help: string;
+}
+export const REFUND_FIELDS: readonly RefundField[] = [
+  {
+    key: 'refund_execution_enabled',
+    label: 'Refund execution',
+    help: 'This version permits new refund execution. Not set: refund execution is disabled.',
+  },
+  {
+    key: 'refund_policy_ref',
+    label: 'Refund policy reference',
+    help: 'The approved refund policy document and version, e.g. ARAMO-COM-REFUND-POL-001@1.0.',
+  },
+  {
+    key: 'refund_policy_sha256',
+    label: 'Refund policy SHA-256',
+    help: 'The SHA-256 of that LOCKED document: 64 lowercase hex characters.',
+  },
+];
+
+export interface RefundRow {
+  readonly field: RefundField;
+  readonly active: string;
+  readonly mine: string;
+  readonly declared: boolean;
+  readonly changed: boolean;
+}
+
+const refundShow = (c: PolicyContent | null, k: RefundPolicyKey): string | null | undefined => {
+  if (c === null) return null;
+  const x = c[k];
+  if (x === undefined) return undefined;
+  return typeof x === 'boolean' ? (x ? 'On' : 'Off') : x;
+};
+
+/** The three refund rows of `v` against the active version; "Not set" when a version does not declare them. */
+export function refundRows(v: PolicyVersion, active: PolicyVersion | undefined): RefundRow[] {
+  const ac = active?.content ?? null;
+  return REFUND_FIELDS.map((f) => {
+    const mine = refundShow(v.content, f.key);
+    const act = refundShow(ac, f.key);
+    const show = (x: string | null | undefined): string =>
+      x === null ? '—' : x === undefined ? NOT_SET : x;
+    return {
+      field: f,
+      active: show(act),
+      mine: show(mine),
+      declared: mine !== null && mine !== undefined,
+      changed: mine !== null && act !== null && mine !== act,
+    };
+  });
+}
+
+/** The refund editor's inputs: the toggle and the two texts. */
+export interface RefundDraftInput {
+  readonly enabled: boolean;
+  readonly ref: string;
+  readonly sha256: string;
+}
+export type RefundPatch = Pick<PolicyContent, RefundPolicyKey>;
+
+/**
+ * Client-side mirror of the server's RX-1 rule: all three set, or all cleared (toggle off and both
+ * texts empty), each in its RX-D3 format. A draft that already declares the keys cannot drop them
+ * (the server merges a draft edit and never removes a key; revocation is "Off", RX-9).
+ * `patch: null` with no error = nothing to send.
+ */
+export function validateRefundDraft(
+  input: RefundDraftInput,
+  current: PolicyContent | null,
+): { patch: RefundPatch | null; error: string | null } {
+  const ref = input.ref.trim();
+  const sha = input.sha256.trim();
+  const declared = typeof current?.refund_execution_enabled === 'boolean';
+  if (!input.enabled && ref === '' && sha === '') {
+    return declared
+      ? {
+          patch: null,
+          error:
+            'A draft that sets the refund settings cannot clear them. Turn refund execution off instead, or create a draft from a version without them.',
+        }
+      : { patch: null, error: null };
+  }
+  if (ref === '' || sha === '') {
+    return {
+      patch: null,
+      error: 'Set all three refund settings together (reference and SHA-256 are both required), or clear them all.',
+    };
+  }
+  if (!REFUND_POLICY_REF_FORMAT.test(ref)) {
+    return { patch: null, error: 'Refund policy reference must look like DOCUMENT-ID@1.0.' };
+  }
+  if (!REFUND_POLICY_SHA256_FORMAT.test(sha)) {
+    return { patch: null, error: 'Refund policy SHA-256 must be 64 lowercase hex characters.' };
+  }
+  const patch: RefundPatch = {
+    refund_execution_enabled: input.enabled,
+    refund_policy_ref: ref,
+    refund_policy_sha256: sha,
+  };
+  const same =
+    current !== null &&
+    current.refund_execution_enabled === patch.refund_execution_enabled &&
+    current.refund_policy_ref === patch.refund_policy_ref &&
+    current.refund_policy_sha256 === patch.refund_policy_sha256;
+  return { patch: same ? null : patch, error: null };
+}
+
 /** The activation dialog's Before → after rows: every changed setting, or "no change". */
 export function activationDiff(
   v: PolicyVersion,
   active: PolicyVersion | undefined,
 ): Array<[string, string, string]> {
-  const rows = policyRows(v, active)
+  const rows = [...policyRows(v, active), ...refundRows(v, active)]
     .filter((r) => r.changed)
     .map((r): [string, string, string] => [r.field.label, r.active, r.mine]);
   return rows.length > 0

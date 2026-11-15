@@ -256,6 +256,30 @@
 .pw-pol-error {
   margin: 0 20px 12px;
 }
+/* CCP-DG (Charter Amendment A2 RX-11) — the refund execution group. */
+.pw-pol-group__title {
+  padding: 14px 16px 6px;
+  border-top: 1px solid var(--pw-rule);
+  font-size: var(--pw-fs-13);
+  font-weight: 700;
+  text-align: left;
+}
+.pw-pol-row__wrap {
+  max-width: 280px;
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+  white-space: normal;
+  word-break: break-all;
+}
+.pw-pol-input--text {
+  width: 260px;
+  max-width: 100%;
+  font-family: var(--pw-mono);
+}
+.pw-pol-refund-error {
+  margin-top: 8px;
+  white-space: normal;
+}
 
 /* ─────────── Audit (§5.7) ─────────── */
 

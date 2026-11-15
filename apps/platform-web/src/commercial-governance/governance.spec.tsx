@@ -27,6 +27,8 @@ import {
   eventLabel,
   planRoleChange,
   policyRows,
+  refundRows,
+  validateRefundDraft,
 } from './governance-model';
 import { PolicyView } from './PolicyView';
 
@@ -50,6 +52,12 @@ const CONTENT = {
   support_extension_cumulative_window_days: 365,
   approval_expiry_hours: 72,
   past_due_grace_days: 7,
+};
+// The LOCKED refund policy ARAMO-COM-REFUND-POL-001@1.0 (Charter Amendment A2 RX-D3).
+const REFUND = {
+  refund_execution_enabled: true,
+  refund_policy_ref: 'ARAMO-COM-REFUND-POL-001@1.0',
+  refund_policy_sha256: 'cc8950ed24c5719976ed611d5fd7d1d00a2c83d12915ac0edd86b583e4cdf6c5',
 };
 const version = (o: Partial<PolicyVersion>): PolicyVersion => ({
   id: V1,
@@ -162,6 +170,42 @@ describe('CCP-B5 governance model', () => {
     const v2 = version({ id: V2, version_number: 2, status: 'DRAFT', content: { ...CONTENT, apply_expiry_hours: 72 } });
     expect(policyRows(v2, ACTIVE).at(-1)).toMatchObject({ active: 'Not set', mine: '72 h', raw: 72, declared: true, changed: true });
     expect(activationDiff(v2, ACTIVE)).toEqual([['Apply window (TTL)', 'Not set', '72 h']]);
+  });
+
+  it('DG-W-1 the refund execution keys (Charter Amendment A2 RX-1, RX-11): three rows on every version, "Not set" when absent; shown and diffed once a version declares them', () => {
+    expect(refundRows(DRAFT, ACTIVE).map((r) => [r.field.label, r.active, r.mine, r.declared, r.changed])).toEqual([
+      ['Refund execution', 'Not set', 'Not set', false, false],
+      ['Refund policy reference', 'Not set', 'Not set', false, false],
+      ['Refund policy SHA-256', 'Not set', 'Not set', false, false],
+    ]);
+    const v2 = version({ id: V2, version_number: 2, status: 'DRAFT', content: { ...CONTENT, ...REFUND } });
+    expect(refundRows(v2, ACTIVE).map((r) => [r.active, r.mine, r.changed])).toEqual([
+      ['Not set', 'On', true],
+      ['Not set', 'ARAMO-COM-REFUND-POL-001@1.0', true],
+      ['Not set', REFUND.refund_policy_sha256, true],
+    ]);
+    expect(activationDiff(v2, ACTIVE)).toEqual([
+      ['Refund execution', 'Not set', 'On'],
+      ['Refund policy reference', 'Not set', 'ARAMO-COM-REFUND-POL-001@1.0'],
+      ['Refund policy SHA-256', 'Not set', REFUND.refund_policy_sha256],
+    ]);
+    // RX-9 revocation: only the toggle differs.
+    const off = version({ id: V2, version_number: 3, status: 'DRAFT', content: { ...CONTENT, ...REFUND, refund_execution_enabled: false } });
+    expect(activationDiff(off, v2)).toEqual([['Refund execution', 'On', 'Off']]);
+  });
+
+  it('DG-W-2 the refund draft check mirrors the server parser: all three or none, the RX-D3 formats, no clearing once set', () => {
+    const sha = REFUND.refund_policy_sha256;
+    const ref = REFUND.refund_policy_ref;
+    expect(validateRefundDraft({ enabled: false, ref: '', sha256: '' }, CONTENT)).toEqual({ patch: null, error: null });
+    expect(validateRefundDraft({ enabled: true, ref: '', sha256: '' }, CONTENT).error).toMatch(/all three/);
+    expect(validateRefundDraft({ enabled: false, ref, sha256: '' }, CONTENT).error).toMatch(/all three/);
+    expect(validateRefundDraft({ enabled: true, ref: 'aramo-refund@1', sha256: sha }, CONTENT).error).toMatch(/reference/);
+    expect(validateRefundDraft({ enabled: true, ref, sha256: sha.toUpperCase() }, CONTENT).error).toMatch(/64 lowercase hex/);
+    expect(validateRefundDraft({ enabled: true, ref, sha256: sha.slice(1) }, CONTENT).error).toMatch(/64 lowercase hex/);
+    expect(validateRefundDraft({ enabled: true, ref: ` ${ref} `, sha256: sha }, CONTENT)).toEqual({ patch: REFUND, error: null });
+    expect(validateRefundDraft({ enabled: true, ref, sha256: sha }, { ...CONTENT, ...REFUND })).toEqual({ patch: null, error: null });
+    expect(validateRefundDraft({ enabled: false, ref: '', sha256: '' }, { ...CONTENT, ...REFUND }).error).toMatch(/cannot clear/);
   });
 
   it('B5-W-2 a role change is one request per toggled role; removing Platform owner from the last owner is refused', () => {
@@ -306,6 +350,57 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     fireEvent.change(ttl, { target: { value: '72' } });
     fireEvent.blur(ttl);
     await waitFor(() => expect(update).toHaveBeenCalledWith(V2, { content: { apply_expiry_hours: 72 } }));
+  });
+
+  it('DG-W-3 the draft editor saves the three refund keys in one PATCH; a partial or malformed set is refused client-side (nothing sent); the activation dialog diffs them', async () => {
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(
+      list({ can_author: true, can_request_activation: true }),
+    );
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    const saved = { ...DRAFT, content: { ...CONTENT, credit_escalation_threshold_minor: 30_000, approval_expiry_hours: 48, ...REFUND }, content_checksum: 'c'.repeat(64) };
+    const update = vi.spyOn(governanceApi, 'updatePolicyDraft').mockResolvedValue({ version: saved });
+    render(<PolicyView />);
+    expect(await screen.findByRole('columnheader', { name: 'Refund execution' })).toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: 'Refund execution' });
+    const ref = screen.getByLabelText('Refund policy reference');
+    const sha = screen.getByLabelText('Refund policy SHA-256');
+    expect(ref).toHaveAttribute('placeholder', 'Not set');
+    const save = screen.getByRole('button', { name: 'Save refund settings' });
+    // Partial: toggle on alone.
+    fireEvent.click(toggle);
+    fireEvent.click(save);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/all three/);
+    // Bad format.
+    fireEvent.change(ref, { target: { value: 'refund-policy' } });
+    fireEvent.change(sha, { target: { value: REFUND.refund_policy_sha256 } });
+    fireEvent.click(save);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/reference must look like/);
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(ref, { target: { value: REFUND.refund_policy_ref } });
+    fireEvent.click(save);
+    await waitFor(() => expect(update).toHaveBeenCalledWith(V2, { content: REFUND }));
+    expect(await screen.findByText('5 setting(s) differ from v1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Request activation…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Request activation · policy v2' });
+    expect(within(dialog).getByText('ARAMO-COM-REFUND-POL-001@1.0')).toBeInTheDocument();
+    expect(within(dialog).getByText(REFUND.refund_policy_sha256)).toBeInTheDocument();
+  });
+
+  it('DG-W-4 a non-draft version reads the refund keys (no inputs); "Not set" when absent', async () => {
+    const active = version({ content: { ...CONTENT, ...REFUND } });
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue({
+      versions: [active],
+      active_version_id: V1,
+      open_request: null,
+      caller: { can_author: false, can_request_activation: false },
+    });
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    render(<PolicyView />);
+    expect(await screen.findByRole('columnheader', { name: 'Refund execution' })).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save refund settings' })).toBeNull();
+    expect(screen.getAllByText('ARAMO-COM-REFUND-POL-001@1.0')).toHaveLength(2);
+    expect(screen.getAllByText('On')).toHaveLength(2);
   });
 
   it('B5-W-5 platform_owner can draft but not request activation (TD-A3-5): the button is disabled with the reason; read_only_auditor sees the view-only note and no inputs', async () => {
