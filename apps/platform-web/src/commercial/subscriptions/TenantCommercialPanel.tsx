@@ -9,6 +9,7 @@ import type { PlatformTenantSign } from '../../platform-api';
 import { supportExtensionApi, type SupportExtension, type SupportExtensionList, type SupportExtensionOutcome } from '../support-extensions/support-extension-api';
 import { breachLine, overlayView, roleLabels } from '../support-extensions/support-extension-model';
 import { RequestExtensionDialog } from '../support-extensions/SupportExtensionDialogs';
+import { governanceApi } from '../../commercial-governance/governance-api';
 
 import { subscriptionsApi, type BillingInvoiceLink, type ChangeRequestRef, type HeldFlag, type ProductCommercial, type TenantCommercial } from './subscriptions-api';
 import {
@@ -32,6 +33,8 @@ import {
   type TenantActionKey,
 } from './subscriptions-model';
 import { TenantRequestDialog, type DialogKind } from './TenantCommercialDialogs';
+import { activeRefundPolicyRef } from './refund-model';
+import { RefundRequestDialog } from './RefundRequestDialog';
 
 import '../support-extensions/support-extensions.css';
 import './subscriptions.css';
@@ -81,6 +84,9 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
   const canEntitlement = hasScope(session, 'platform:entitlement:request');
   const canSupport = hasScope(session, CP.subscriptionSupport);
   const canBilling = hasScope(session, 'platform:billing:read');
+  // Console Refund Request directive §2 items 2–3, Amendment A2 (A2-2): the refund requester is
+  // Commercial ops (platform:billing:request); Finance and the Owner approve; the requester applies.
+  const canRefund = canBilling && hasScope(session, 'platform:billing:request');
   // The console session is a signed-in person (service principals never hold a console session);
   // the server re-checks NOT_HUMAN on every governed act regardless.
   const human = true;
@@ -92,6 +98,8 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
   const [invoice, setInvoice] = useState<BillingInvoiceLink | null>(null);
   const [dialog, setDialog] = useState<{ readonly kind: DialogKind; readonly product: ProductCommercial; readonly flag?: HeldFlag } | null>(null);
   const [extending, setExtending] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [refundPolicyRef, setRefundPolicyRef] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ readonly tone: 'ok' | 'warn' | 'error'; readonly text: string; readonly requestId?: string } | null>(null);
   const [applying, setApplying] = useState<string | null>(null);
 
@@ -126,7 +134,9 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
       setState({ status: 'error', message: loadError(err) });
     }
     setSupport(await supportExtensionApi.list(tenantId).catch(() => null));
-  }, [tenantId, canBilling]);
+    // The refund action is offered only while the ACTIVE policy declares the refund keys (A2 RX-6).
+    setRefundPolicyRef(canRefund ? activeRefundPolicyRef(await governanceApi.listPolicyVersions().catch(() => null)) : null);
+  }, [tenantId, canBilling, canRefund]);
 
   useEffect(() => {
     void load();
@@ -161,7 +171,11 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
     if (r === null) return;
     setApplying(r.id);
     try {
-      if (r.action_type === 'CONVERSION') {
+      if (r.action_type === 'REFUND') {
+        // CCP-C4: the governed refund apply sends a durable command; Stripe confirms by webhook.
+        const out = await subscriptionsApi.billingAdjustment(r.id);
+        toast.show(out.request.state === 'APPLIED' ? 'Refund applied.' : 'Refund sent to Stripe — awaiting confirmation.');
+      } else if (r.action_type === 'CONVERSION') {
         const out = await subscriptionsApi.convert(r.id);
         toast.show(out.conversion.pending_provider ? 'Sent to Stripe — awaiting confirmation.' : out.request.state === 'APPLIED' ? 'Conversion applied.' : `Conversion ${out.conversion.status.toLowerCase().replace(/_/g, ' ')}.`);
       } else {
@@ -238,6 +252,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
             canSubscription={canSubscription}
             canEntitlement={canEntitlement}
             canSupport={canSupport}
+            refund={{ canRequest: canRefund, policyRef: refundPolicyRef }}
             human={human}
             meId={session.sub}
             meName={identity.name}
@@ -246,6 +261,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
             onAction={(key, flag) => {
               setNotice(null);
               if (key === 'extension') setExtending(true);
+              else if (key === 'refund') setRefunding(true);
               else setDialog({ kind: key, product: p, ...(flag ? { flag } : {}) });
             }}
             onApply={() => void apply(p)}
@@ -263,6 +279,19 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
           policy={support?.policy ?? null}
           onClose={() => setDialog(null)}
           onDone={onRequested}
+        />
+      ) : null}
+      {refunding && refundPolicyRef !== null ? (
+        <RefundRequestDialog
+          tenantId={tenantId}
+          tenantName={tenantName}
+          policyRef={refundPolicyRef}
+          policy={support?.policy ?? null}
+          onClose={() => setRefunding(false)}
+          onDone={(request, submitted) => {
+            setRefunding(false);
+            onRequested(request, submitted);
+          }}
         />
       ) : null}
       {extending && signProduct?.subscription && support?.subscriptions[0] ? (
@@ -295,6 +324,7 @@ interface ProductCardProps {
   readonly canEntitlement: boolean;
   readonly canSupport: boolean;
   readonly human: boolean;
+  readonly refund?: { readonly canRequest: boolean; readonly policyRef: string | null };
   readonly meId: string;
   readonly meName: string;
   readonly now: Date;
@@ -309,7 +339,7 @@ function ProductCard(props: ProductCardProps) {
   const ent = ENTITLEMENT_PILL[p.entitlement.state];
   const badge = s ? sourceBadge(s, true) : null;
   const prov = provenanceText(p.entitlement);
-  const actions = tenantActions({ product: p, canSubscription: props.canSubscription, canEntitlement: props.canEntitlement, canSupport: props.canSupport, human: props.human, now });
+  const actions = tenantActions({ product: p, canSubscription: props.canSubscription, canEntitlement: props.canEntitlement, canSupport: props.canSupport, human: props.human, now, ...(props.refund ? { refund: props.refund } : {}) });
   const reasons = actions.filter((a) => a.domain !== '');
   // Counts only (A1-4a). An ended row (or a tenant with no sending account) has no current
   // allowance: the designed empty state of the same bar (R-13; DV-B3-7).

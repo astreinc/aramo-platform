@@ -91,3 +91,37 @@ export interface BillingPortalConfigurationResponseDto {
   detail: string | null;
   read_at: string;
 }
+
+// Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 item 1 — the refundable payments of a
+// tenant's open self-service subscription (Finance amount holders only).
+export class RefundablePaymentsQueryDto {
+  @IsIn([...PRODUCT_KEYS]) product_key!: ProductKey;
+}
+
+export interface RefundablePaymentDto {
+  invoice_ref: string;
+  number: string | null;
+  payment_ref: string | null;
+  currency: string | null;
+  amount_paid_minor: number;
+  created_at: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  refunded_minor: number | null;
+  reserved_minor: number | null;
+  disputed_lost_minor: number | null;
+  remainder_minor: number | null;
+  refusal: string | null;
+  live: boolean;
+}
+
+export interface RefundablePaymentsResponseDto {
+  tenant_id: string;
+  product_key: string;
+  availability: string;
+  mode: 'test' | 'live' | null;
+  subscription_id: string | null;
+  payments: RefundablePaymentDto[];
+  detail: string | null;
+  read_at: string;
+}

@@ -322,7 +322,7 @@ export function openRequestText(r: OpenRequestRef, pendingProvider: boolean): st
 
 // ── actions and their reasons (handoff §5.9 "Actions", design `act`) ────────────────────────
 
-export type TenantActionKey = 'plan' | 'cancel' | 'grant' | 'revoke' | 'extension' | 'convert';
+export type TenantActionKey = 'plan' | 'cancel' | 'grant' | 'revoke' | 'extension' | 'convert' | 'refund';
 
 export interface TenantAction {
   readonly key: TenantActionKey;
@@ -342,6 +342,12 @@ export interface ActionContext {
   readonly canSupport: boolean;
   readonly human: boolean;
   readonly now: Date;
+  /**
+   * Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 items 2–3, Amendment A2 (A2-2): the
+   * caller holds platform:billing:request (Commercial ops), and the ACTIVE policy declares the refund
+   * keys (its `refund_policy_ref`, else null = the action is not offered at all).
+   */
+  readonly refund?: { readonly canRequest: boolean; readonly policyRef: string | null };
 }
 
 const OPS = 'Needs the Commercial ops role.';
@@ -402,6 +408,12 @@ export function tenantActions(ctx: ActionContext): TenantAction[] {
         OPS,
       ),
     );
+    // Console Refund Request directive §2 item 2: a refund binds the OPEN self-service row (RF-5,
+    // Q2 (a)); offered only to the refund requester (Commercial ops, A2-2) and only while the ACTIVE policy declares the
+    // refund keys. Which payment and how much is decided in the dialog against the server's remainder.
+    if (ctx.refund?.canRequest === true && ctx.refund.policyRef !== null) {
+      out.push(make('refund', 'Request refund…', '', true, OPS));
+    }
   }
   return out;
 }
@@ -418,6 +430,17 @@ const FAILURE_TEXT: Readonly<Record<string, string>> = {
   APPLY_EXPIRED: 'The apply deadline has passed. Make a new request.',
 };
 
+/** Console Refund Request directive — the server's refund refusals (Amendment A1 RF-3..RF-5, A2 RX-*), in plain words. */
+export const REFUND_REFUSAL_TEXT: Readonly<Record<string, string>> = {
+  REFUND_PAYMENT_DISPUTED: 'The payment has an open dispute. Refunds wait until it is resolved.',
+  REFUND_REMAINDER_UNVERIFIABLE: 'Stripe couldn’t confirm what is left to refund on this payment, so it can’t be refunded from here.',
+  REFUND_PAYMENT_MISMATCH: 'This payment doesn’t belong to the tenant’s open self-service subscription.',
+  REFUND_CURRENCY_MISMATCH: 'The currency doesn’t match the payment.',
+  REFUND_EXCEEDS_REMAINDER: 'The amount is more than what is left to refund on this payment.',
+  REFUND_EXECUTION_NOT_RELEASED: 'Refund execution is switched off on the server.',
+  REFUND_POLICY_NOT_APPROVED: 'The active commercial policy doesn’t enable refunds.',
+};
+
 /** The refusal line for a failed create, apply or convert. */
 export function refusalLine(err: unknown): string {
   if (!(err instanceof ApiError)) return 'Something went wrong. Try again in a minute.';
@@ -429,6 +452,7 @@ export function refusalLine(err: unknown): string {
   const code = `${err.status} ${err.code ?? 'ERROR'}${reason ? ` · ${reason}` : ''}`;
   if (reason === 'apply_failed' && failure) return `Apply failed: ${failure}. ${FAILURE_TEXT[failure] ?? explanation ?? err.message} (${code})`;
   if (reason === 'apply_expired') return `Refused: ${FAILURE_TEXT['APPLY_EXPIRED']} (${code})`;
+  if (refusal && REFUND_REFUSAL_TEXT[refusal]) return `Refused: ${REFUND_REFUSAL_TEXT[refusal]} (${code})`;
   if (reason === 'apply_refused' && refusal) return `Refused: ${refusal}. ${explanation ?? 'Nothing changed.'} (${code})`;
   if (reason === 'open_request_exists') return `Refused: another request on this product is open. It must close first. (${code})`;
   if (reason === 'not_requester') return `Refused: only the person who made the request can apply it. (${code})`;

@@ -17,11 +17,15 @@ import {
   type BillingPortalConfigurationStatus,
   type BillingStatusInvoice,
   type TenantBillingStatus,
+  RefundablePaymentsService,
+  type RefundablePayments,
 } from '@aramo/subscription';
 
 import {
   BillingPortalConfigurationQueryDto,
+  RefundablePaymentsQueryDto,
   TenantBillingStatusQueryDto,
+  type RefundablePaymentsResponseDto,
   type BillingPortalConfigurationResponseDto,
   type BillingStatusInvoiceDto,
   type TenantBillingStatusResponseDto,
@@ -124,6 +128,36 @@ export function tenantBillingStatusDto(s: TenantBillingStatus, amount_access: bo
   };
 }
 
+// Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 item 1 — dates as ISO strings; every
+// field is a Finance amount-holder field (the route refuses anyone else).
+export function refundablePaymentsDto(r: RefundablePayments): RefundablePaymentsResponseDto {
+  return {
+    tenant_id: r.tenant_id,
+    product_key: r.product_key,
+    availability: r.availability,
+    mode: r.mode,
+    subscription_id: r.subscription_id,
+    payments: r.payments.map((p) => ({
+      invoice_ref: p.invoice_ref,
+      number: p.number,
+      payment_ref: p.payment_ref,
+      currency: p.currency,
+      amount_paid_minor: p.amount_paid_minor,
+      created_at: iso(p.created_at),
+      period_start: iso(p.period_start),
+      period_end: iso(p.period_end),
+      refunded_minor: p.refunded_minor,
+      reserved_minor: p.reserved_minor,
+      disputed_lost_minor: p.disputed_lost_minor,
+      remainder_minor: p.remainder_minor,
+      refusal: p.refusal,
+      live: p.live,
+    })),
+    detail: r.detail,
+    read_at: r.read_at.toISOString(),
+  };
+}
+
 export function billingPortalConfigurationDto(s: BillingPortalConfigurationStatus): BillingPortalConfigurationResponseDto {
   return {
     provider: s.provider,
@@ -146,7 +180,45 @@ export class PlatformCommercialBillingStatusController {
     @Optional() private readonly store?: StoreBillingService,
     // CCP Billing Products BP-12 — the all-channel price-mismatch report (US price included).
     @Optional() private readonly billingProducts?: BillingProductsService,
+    // Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 item 1.
+    @Optional() private readonly refundable?: RefundablePaymentsService,
   ) {}
+
+  /**
+   * Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 item 1 — the refundable payments of the
+   * tenant's OPEN self-service subscription: each paid invoice's payment id, provider refunds, Aramo
+   * outstanding refund requests and the refundable remainder, decided by the existing remainder rule
+   * (Amendment A1 RF-3..RF-5). READ-ONLY. Every row is a tenant monetary figure. Readers: a Finance
+   * amount holder (platform:billing:read AND platform:billing:amount:read; CCP-R3 FA-1), or — the
+   * narrow FA-1 exception of Console Refund Request Amendment A2 (A2-3) — a refund requester
+   * (platform:billing:read AND platform:billing:request, i.e. commercial_ops), who authors the refund
+   * amount and so may see what is refundable on THIS route only. Anyone else is refused 403.
+   */
+  @Get('tenants/:tenant_id/refundable-payments')
+  @RequireScopes('platform:billing:read')
+  async refundablePayments(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Query() query: RefundablePaymentsQueryDto,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RefundablePaymentsResponseDto> {
+    assertPlatform(auth, requestId);
+    if (!amountAccess(auth) && !auth.scopes.includes('platform:billing:request')) {
+      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Refundable payments need the Finance amount permission or the refund request permission', 403, {
+        requestId,
+        details: { reason: 'refundable_payments_scope_required', required_scope_any: ['platform:billing:amount:read', 'platform:billing:request'] },
+      });
+    }
+    if (this.refundable === undefined) throw new AramoError('INTERNAL_ERROR', 'refundable payments are not available in this service', 500, { requestId });
+    try {
+      return refundablePaymentsDto(await this.refundable.list(tenant_id, query.product_key));
+    } catch (err) {
+      if (err instanceof BillingStatusQueryError) {
+        throw new AramoError('VALIDATION_ERROR', err.message, 400, { requestId, details: { reason: err.code.toLowerCase() } });
+      }
+      throw err;
+    }
+  }
 
   /**
    * Aramo Sign Mobile M-A12 Amendment A1-3 — the reconciliation report: every store product pinned to a

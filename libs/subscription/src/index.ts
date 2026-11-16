@@ -689,6 +689,14 @@ export {
   type RefundRemainderRefusal,
   type RefundRemainderResult,
 } from './lib/commercial/refund-remainder.js';
+export {
+  REFUNDABLE_PAYMENTS_INVOICE_LIMIT,
+  RefundablePaymentsService,
+  refundablePaymentRow,
+  type RefundablePayment,
+  type RefundablePayments,
+  type RefundablePaymentsAvailability,
+} from './lib/commercial/refundable-payments.service.js';
 export { REFUND_OUTSTANDING_STATES, RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf, refundReservations } from './lib/commercial/refund-remainder.gate.js';
 export {
   CommercialRefundReportService,

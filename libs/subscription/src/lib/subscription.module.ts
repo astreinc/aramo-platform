@@ -19,6 +19,7 @@ import { CommercialBillingAdjustmentLedger } from './commercial/commercial-billi
 import { CommercialBillingAdjustmentService } from './commercial/commercial-billing-adjustment.service.js';
 import { RefundRemainderGate } from './commercial/refund-remainder.gate.js';
 import { CommercialRefundReportService } from './commercial/commercial-refund-report.service.js';
+import { RefundablePaymentsService } from './commercial/refundable-payments.service.js';
 import { CommercialConversionLedger } from './commercial/commercial-conversion.ledger.js';
 import { CommercialConversionService } from './commercial/commercial-conversion.service.js';
 import { SupportExtensionService } from './commercial/support-extension.service.js';
@@ -195,6 +196,7 @@ const REGION_PROVIDERS: Provider[] = [
     CommercialBillingAdjustmentService,
     RefundRemainderGate,
     CommercialRefundReportService,
+    RefundablePaymentsService,
     SupportExtensionService,
     PlanVersionRepository,
     UsageRollupService,
@@ -212,7 +214,7 @@ const REGION_PROVIDERS: Provider[] = [
     ...REGION_PROVIDERS,
     ...GATEWAY_PROVIDERS,
   ],
-  exports: [BillingRegionService, AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, CommercialBillingRegionApplyService, CommercialBillingRegionReadService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT, StoreBillingService, BillingProductsService, STORE_SUBSCRIPTION_READER, SeatBillingService, BillingTermRolloverService, BILLING_PROVIDER_SEAT_PORT, BILLING_GATEWAY_REGISTRY, RazorpayBillingProvider],
+  exports: [BillingRegionService, AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, CommercialBillingRegionApplyService, CommercialBillingRegionReadService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, RefundablePaymentsService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT, StoreBillingService, BillingProductsService, STORE_SUBSCRIPTION_READER, SeatBillingService, BillingTermRolloverService, BILLING_PROVIDER_SEAT_PORT, BILLING_GATEWAY_REGISTRY, RazorpayBillingProvider],
 })
 export class SubscriptionModule {
   /**
@@ -267,6 +269,7 @@ export class SubscriptionModule {
         CommercialBillingAdjustmentService,
         RefundRemainderGate,
         CommercialRefundReportService,
+        RefundablePaymentsService,
         SupportExtensionService,
         PlanVersionRepository,
         UsageRollupService,
@@ -284,7 +287,7 @@ export class SubscriptionModule {
         ...GATEWAY_PROVIDERS,
         ...(opts.providers ?? []),
       ],
-      exports: [BillingRegionService, AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, CommercialBillingRegionApplyService, CommercialBillingRegionReadService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT, StoreBillingService, BillingProductsService, STORE_SUBSCRIPTION_READER, SeatBillingService, BillingTermRolloverService, BILLING_PROVIDER_SEAT_PORT, BILLING_GATEWAY_REGISTRY, RazorpayBillingProvider],
+      exports: [BillingRegionService, AllowanceService, CapacityService, SignTemplateEntitlementService, LegalAcceptanceService, LegalChangeNoticeRepository, RenewalNoticeRepository, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, CommercialPolicyApplyService, CommercialBillingRegionApplyService, CommercialBillingRegionReadService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, ContractPaymentReadService, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, BillingRevenueReportService, SupportExtensionService, CommercialAlertService, CommercialSubscriptionReadService, SelfServiceBillingService, CommercialBillingAdjustmentLedger, CommercialBillingAdjustmentService, RefundRemainderGate, CommercialRefundReportService, RefundablePaymentsService, BILLING_PROVIDER_ADJUSTMENT_PORT, MeteredUsageService, USAGE_RECORDER, UsageProviderReportService, UsagePeriodReconciliationService, USAGE_METER_REPORT_PORT, StoreBillingService, BillingProductsService, STORE_SUBSCRIPTION_READER, SeatBillingService, BillingTermRolloverService, BILLING_PROVIDER_SEAT_PORT, BILLING_GATEWAY_REGISTRY, RazorpayBillingProvider],
     };
   }
 }
