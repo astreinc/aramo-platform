@@ -9090,13 +9090,13 @@ components:
         availability:
           type: string
           description: A billing-status availability, or NO_OPEN_SUBSCRIPTION (a refund binds the open self-service subscription).
-        mode: { type: string, enum: [test, live], nullable: true }
-        subscription_id: { type: string, format: uuid, nullable: true }
+        mode: { type: [string, 'null'], enum: [test, live, null] }
+        subscription_id: { type: [string, 'null'], format: uuid }
         payments:
           type: array
           items:
             $ref: '#/components/schemas/RefundablePayment'
-        detail: { type: string, nullable: true }
+        detail: { type: [string, 'null'] }
         read_at: { type: string, format: date-time }
     RefundablePayment:
       type: object
@@ -9104,20 +9104,19 @@ components:
       required: [invoice_ref, number, payment_ref, currency, amount_paid_minor, created_at, period_start, period_end, refunded_minor, reserved_minor, disputed_lost_minor, remainder_minor, refusal, live]
       properties:
         invoice_ref: { type: string }
-        number: { type: string, nullable: true }
-        payment_ref: { type: string, nullable: true }
-        currency: { type: string, nullable: true, description: ISO 4217, upper case. }
+        number: { type: [string, 'null'] }
+        payment_ref: { type: [string, 'null'] }
+        currency: { type: [string, 'null'], description: 'ISO 4217, upper case.' }
         amount_paid_minor: { type: integer }
-        created_at: { type: string, format: date-time, nullable: true }
-        period_start: { type: string, format: date-time, nullable: true }
-        period_end: { type: string, format: date-time, nullable: true }
-        refunded_minor: { type: integer, nullable: true, description: Provider refunds (confirmed or pending) not tracked by an outstanding Aramo request. }
-        reserved_minor: { type: integer, nullable: true, description: Outstanding Aramo REFUND requests on this payment. }
-        disputed_lost_minor: { type: integer, nullable: true }
-        remainder_minor: { type: integer, nullable: true, description: What a new refund may still take; null when it could not be decided. }
+        created_at: { type: [string, 'null'], format: date-time }
+        period_start: { type: [string, 'null'], format: date-time }
+        period_end: { type: [string, 'null'], format: date-time }
+        refunded_minor: { type: [integer, 'null'], description: 'Provider refunds (confirmed or pending) not tracked by an outstanding Aramo request.' }
+        reserved_minor: { type: [integer, 'null'], description: Outstanding Aramo REFUND requests on this payment. }
+        disputed_lost_minor: { type: [integer, 'null'] }
+        remainder_minor: { type: [integer, 'null'], description: 'What a new refund may still take; null when it could not be decided.' }
         refusal:
-          type: string
-          nullable: true
+          type: [string, 'null']
           enum: [REFUND_PAYMENT_DISPUTED, REFUND_REMAINDER_UNVERIFIABLE, REFUND_PAYMENT_MISMATCH, REFUND_CURRENCY_MISMATCH, REFUND_EXCEEDS_REMAINDER, null]
         live: { type: boolean }
     TenantBillingStatusResponse:
