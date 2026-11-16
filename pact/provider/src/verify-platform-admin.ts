@@ -917,6 +917,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               ...o,
             });
             billingReader.invoices.set(ref, [invoice({}), invoice({ invoice_ref: 'in_pact_c3_0', number: 'PACT-0000', provider_status: 'paid', amount_paid_minor: 4900, amount_remaining_minor: 0 })]);
+            // Console Refund Request directive §2 item 4 — the paid invoice's payment picture (refundable-payments).
+            adjustmentReader.invoices.set('in_pact_c3_0', account);
             return undefined;
           },
           'a billing portal configuration is set': async () => {

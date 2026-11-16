@@ -416,3 +416,31 @@ describe('CCP-B3 Tenant › Commercial — Apply only via apply_actionable (TD-B
     expect(screen.getByTestId('open-request').textContent).not.toMatch(/Applied/);
   });
 });
+
+// Aramo-CCP-Console-Refund-Request-Directive-v1_0-LOCKED §2 items 2–3 + Amendment A2 (A2-2): the
+// refund requester is Commercial ops; Finance and the Owner approve; the action shows only on an open
+// self-service row while the ACTIVE policy declares the refund keys.
+describe('Console Refund Request — "Request refund…" on Tenant › Commercial', () => {
+  beforeEach(setup);
+  afterEach(teardown);
+
+  it('RFR-P-1 Commercial ops sees it on a self-service row when the ACTIVE policy enables refunds', async () => {
+    installFetch(world({ tenant: commercial({ subscription: STRIPE_ROW() }), refundPolicyRef: 'ARAMO-COM-REFUND-POL-001@1.0' }), 'commercial_ops');
+    renderAt();
+    expect(await action('Request refund…')).toBeEnabled();
+  });
+
+  it('RFR-P-2 not offered without the policy refund keys, on a governed row, or to Finance / Owner (approvers)', async () => {
+    installFetch(world({ tenant: commercial({ subscription: STRIPE_ROW() }) }), 'commercial_ops');
+    renderAt();
+    await card();
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Aramo Sign' })).queryByRole('button', { name: 'Request refund…' })).toBeNull());
+  });
+
+  it.each(['finance_admin', 'platform_owner'])('RFR-P-3 %s (approver) is not offered the request', async (role) => {
+    installFetch(world({ tenant: commercial({ subscription: STRIPE_ROW() }), refundPolicyRef: 'ARAMO-COM-REFUND-POL-001@1.0' }), role);
+    renderAt();
+    await card();
+    expect(within(await card()).queryByRole('button', { name: 'Request refund…' })).toBeNull();
+  });
+});

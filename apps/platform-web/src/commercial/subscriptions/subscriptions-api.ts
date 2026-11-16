@@ -10,6 +10,9 @@ import { apiClient } from '@aramo/fe-foundation';
 //   POST /platform/commercial/change-requests/{id}/apply            CCP-A6 / A7 governed apply (requester only)
 //   POST /platform/commercial/change-requests/{id}/convert          CCP-C2 conversion apply (requester only)
 //   GET  /platform/commercial/change-requests/{id}/conversion       CCP-C2 conversion state
+//   GET  /platform/commercial/tenants/{id}/refundable-payments      Console Refund Request directive §2 item 1
+//                                                                  (Finance amount holders only)
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment  CCP-C4 governed refund apply (requester only)
 // The console NEVER mutates commercial state itself (PLATFORM-UX-1 Amendment A1-2): every act is
 // a change request, or the requester's governed apply of an approved one, and the server decides.
 // No money is read for display (A1-4a): the billing-status read is used only for the provider's
@@ -145,8 +148,37 @@ export interface BillingInvoiceLink {
   tax?: { enabled: boolean; reason?: string } | null;
 }
 
+/** Console Refund Request directive §2 item 1 — one paid invoice and what may still be refunded on it. */
+export interface RefundablePayment {
+  invoice_ref: string;
+  number: string | null;
+  payment_ref: string | null;
+  currency: string | null;
+  amount_paid_minor: number;
+  created_at: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  refunded_minor: number | null;
+  reserved_minor: number | null;
+  disputed_lost_minor: number | null;
+  remainder_minor: number | null;
+  refusal: string | null;
+  live: boolean;
+}
+
+export interface RefundablePayments {
+  tenant_id: string;
+  product_key: string;
+  availability: string;
+  mode: 'test' | 'live' | null;
+  subscription_id: string | null;
+  payments: RefundablePayment[];
+  detail: string | null;
+  read_at: string;
+}
+
 /** The action types the tab creates (CCP-A3 closed set). */
-export type TenantActionType = 'SUBSCRIPTION_CHANGE' | 'SUBSCRIPTION_END' | 'ENTITLEMENT_GRANT' | 'ENTITLEMENT_REVOKE' | 'CONVERSION';
+export type TenantActionType = 'SUBSCRIPTION_CHANGE' | 'SUBSCRIPTION_END' | 'ENTITLEMENT_GRANT' | 'ENTITLEMENT_REVOKE' | 'CONVERSION' | 'REFUND';
 
 export interface TenantRequestInput {
   readonly action_type: TenantActionType;
@@ -195,6 +227,15 @@ export const subscriptionsApi = {
       payment_overdue: out.payment_overdue === true,
       tax: out.tax ?? null,
     };
+  },
+
+  refundablePayments(tenantId: string): Promise<RefundablePayments> {
+    return apiClient.get(`${BASE}/tenants/${encodeURIComponent(tenantId)}/refundable-payments?product_key=${SIGN_PRODUCT}`);
+  },
+
+  /** CCP-C4 governed apply of an approved REFUND (requester only); Stripe confirms by webhook. */
+  billingAdjustment(id: string): Promise<{ request: ChangeRequestRef }> {
+    return apiClient.post(`${CR}/${encodeURIComponent(id)}/billing-adjustment`);
   },
 
   /** Create the change request; submit it for approval unless it is saved as a draft. */

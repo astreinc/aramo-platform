@@ -20989,6 +20989,31 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "doc/programs/ccp-console-refund/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/subscriptions/TenantCommercialDialogs.tsx"
+    },
+    {
+      "from": "doc/programs/ccp-console-refund/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/programs/ccp-console-refund/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/programs/ccp-console-refund/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/programs/ccp-console-refund/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
       "from": "doc/programs/ccp-refund-release/DIRECTIVE-LOCKED.md",
       "status": "unscoped",
       "to": "doc/legal/aramo-sign/terms-of-service-2.0.md"

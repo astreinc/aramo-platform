@@ -164,6 +164,8 @@ export interface World {
   pendingProvider: Record<string, boolean>;
   /** Answer for POST …/{id}/apply and …/{id}/convert (default 200 APPLIED). */
   onApply?: (id: string, kind: 'apply' | 'convert') => { status: number; body: unknown };
+  /** Console Refund Request directive — the ACTIVE policy's refund_policy_ref (undefined = no refund keys). */
+  refundPolicyRef?: string;
   calls: { method: string; path: string; body: unknown }[];
 }
 
@@ -230,6 +232,10 @@ export function installFetch(w: World, role: string) {
     if (/^\/platform\/commercial\/tenants\/[^/]+\/billing-status$/.test(path)) return json({ availability: 'BILLING_UNAVAILABLE', invoices: [] });
     if (path === '/platform/commercial/support-extensions') return json(w.support);
     if (path === '/platform/commercial/catalog') return json(CATALOG);
+    if (path === '/platform/commercial/policy-versions') {
+      const content = w.refundPolicyRef ? { refund_execution_enabled: true, refund_policy_ref: w.refundPolicyRef, refund_policy_sha256: 'a'.repeat(64) } : {};
+      return json({ versions: [{ id: 'pv-2', version_number: 2, status: 'ACTIVE', content }], active_version_id: 'pv-2' });
+    }
     if (path === '/platform/commercial/change-requests') {
       if (method === 'POST') return json({ request: requestRef(CR_NEW, body, 'DRAFT'), replayed: false }, 201);
       return json({ requests: [], next_cursor: null });

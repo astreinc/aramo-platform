@@ -131,6 +131,8 @@ const INBOX = '/platform/commercial/billing-webhook-inbox';
 // answers provider reads through a fake read port (no Stripe in the verifier).
 const C3_TENANT = 'cca10000-0000-7000-8000-0000000000c3';
 const BILLING_STATUS = `/platform/commercial/tenants/${C3_TENANT}/billing-status`;
+// Console Refund Request directive §2 item 4 — the refundable payments of the open self-service row.
+const REFUNDABLE = `/platform/commercial/tenants/${C3_TENANT}/refundable-payments`;
 const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
 // Sign Mobile M-A12 A1-3 — the store price reconciliation report.
 const STORE_PRICE_REC = '/platform/commercial/store-price-reconciliation';
@@ -288,6 +290,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/billing-adjustment/resolve', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment/resolve`, scope: 'platform:approval:read' },
   { name: 'GET finance/refunds', method: 'GET', path: REFUND_REPORT, scope: 'platform:billing:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
+  { name: 'GET tenants/{tenant_id}/refundable-payments', method: 'GET', path: REFUNDABLE, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
   { name: 'GET store-price-reconciliation', method: 'GET', path: STORE_PRICE_REC, scope: 'platform:billing:read' },
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
@@ -1569,6 +1572,52 @@ describe('platform-web → GET /platform/commercial/change-requests/{id}/billing
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
         expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── Console Refund Request — refundable payments (read-only) ─────────────────
+
+describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/refundable-payments (Console Refund Request)', () => {
+  it('commercial_ops (the refund requester, Amendment A2) reads the paid invoice with its payment ref and refundable remainder', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a Stripe-owned subscription and invoices exists', { tenant_id: C3_TENANT })
+      .uponReceiving('a refundable payments read by commercial_ops')
+      .withRequest('GET', REFUNDABLE, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ product_key: 'sign' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_id: uuid(C3_TENANT),
+          product_key: 'sign',
+          availability: 'AVAILABLE',
+          mode: 'test',
+          subscription_id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+          payments: eachLike({
+            invoice_ref: like('in_pact_c3_0'),
+            number: like('PACT-0000'),
+            payment_ref: like('pi_pact_c3_0'),
+            currency: like('USD'),
+            amount_paid_minor: integer(4900),
+            created_at: iso(),
+            period_start: iso(),
+            period_end: iso(),
+            refunded_minor: integer(0),
+            reserved_minor: integer(0),
+            disputed_lost_minor: integer(0),
+            remainder_minor: integer(4900),
+            refusal: null,
+            live: false,
+          }),
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REFUNDABLE}?product_key=sign`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['payments'] as unknown[]).length).toBe(1);
       });
   });
 });

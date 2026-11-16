@@ -2915,6 +2915,7 @@
       "RAZORPAY_DEFAULT_API_BASE",
       "RAZORPAY_STATUS_MAP",
       "RAZORPAY_SUBSCRIPTION_TOTAL_COUNT",
+      "REFUNDABLE_PAYMENTS_INVOICE_LIMIT",
       "REFUND_CATEGORIES",
       "REFUND_DISPATCH_REFUSED_EVENT",
       "REFUND_EXECUTION_FLAG",
@@ -2943,6 +2944,7 @@
       "RefundRemainderGate",
       "RefundRemainderRefusedError",
       "RefundReportQueryError",
+      "RefundablePaymentsService",
       "RegistryUpcomingLegalChangeSource",
       "RenewalNoticeRepository",
       "RenewalNoticeService",
@@ -3189,6 +3191,7 @@
       "refundPolicyRefBindingError",
       "refundReportState",
       "refundReservations",
+      "refundablePaymentRow",
       "refundableRemainder",
       "regionEnableRefusal",
       "regionalPricesOf",
@@ -4512,6 +4515,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -5406,6 +5415,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -8072,6 +8087,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11935,6 +11956,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -14606,6 +14633,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
