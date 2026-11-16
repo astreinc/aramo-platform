@@ -4515,6 +4515,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -5409,6 +5415,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -8075,6 +8087,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11938,6 +11956,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -14609,6 +14633,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-refund-request-refundable-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
