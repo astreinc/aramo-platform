@@ -1209,6 +1209,27 @@ export interface SignMeSettings {
   default_field_size: string;
   offer_saved_signature_on_links?: boolean;
 }
+// UAT PRF-01 — the user's Sign profile (M-A12 W1-E; GET/PUT /v1/sign/me/profile), the
+// same record the app's My profile edits. Optional fields are null when empty.
+export interface SignProfile {
+  display_name: string;
+  title: string | null;
+  company: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+  phone: string | null;
+  email?: string | null;
+  updated_at?: string | null;
+}
+export const profileApi = {
+  get: () => apiClient.get<SignProfile>('/v1/sign/me/profile'),
+  put: (p: Omit<SignProfile, 'email' | 'updated_at'>) => apiClient.put<SignProfile>('/v1/sign/me/profile', p),
+};
+
 export const savedMarksApi = {
   get: () => apiClient.get<SavedMarks>('/v1/sign/me/signature'),
   settings: () => apiClient.get<SignMeSettings>('/v1/sign/me/settings'),

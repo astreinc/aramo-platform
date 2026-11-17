@@ -14,6 +14,8 @@ import { PersonalPlanPanel } from './PersonalPlan';
 import { PrivacyRequestsSection } from './PrivacyRequests';
 // UAT SIG-05 — the default signature and initials (the app's Account section, on the web).
 import { SavedSignatureSection } from './SavedSignature';
+// UAT PRF-01 — the Sign profile (the app's My profile).
+import { MyProfileSection } from './MyProfile';
 // UAT SIG-12 — the date format stamped on envelopes the user sends (the app's Preferences).
 import { SignPreferencesSection } from './SignPreferences';
 import { RetentionSection } from './Retention';
@@ -36,6 +38,8 @@ function useOrgLink(): (orgUrl: string) => string {
 
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
+  // UAT PRF-01 — the Sign profile (the app's My profile, M-A12 W1-E).
+  { key: 'profile', label: 'My profile' },
   { key: 'billing', label: 'Plan & billing' },
   // Domain-Enforcement P3 §4 — the organization's email-domain verification
   // (organization owner / admin: tenant:admin:domain). Key matches Billing's
@@ -59,7 +63,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const allowed = personalWs
-    ? ['personal', 'billing', 'retention']
+    ? ['personal', 'profile', 'billing', 'retention']
     : SECTIONS.map((s) => s.key)
         .filter((k) => k !== 'members' || ctx.permissions.members === true)
         .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
@@ -88,6 +92,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
         </nav>
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
+          {section === 'profile' ? <MyProfileSection /> : null}
           {/* Catalog v2 §4.3 — Personal accounts see their own plan and the Standard upgrade. */}
           {section === 'billing' ? personalWs ? <PersonalPlanPanel /> : <BillingPanel /> : null}
           {section === 'domain' ? <DomainCard /> : null}
