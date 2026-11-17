@@ -63,8 +63,9 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'ai.aramo.sign',
-    // Play requires a higher versionCode for every upload (1 = internal test 2026-11-02).
-    versionCode: 5,
+    // Play requires a higher versionCode for every upload (1 = internal test 2026-11-02;
+    // 6 was a local-only build 2026-11-08; 7 = first production build).
+    versionCode: 7,
     // Android App Links, verified against assetlinks.json on the Sign host (P-3 / P-6).
     intentFilters: [
       {
@@ -97,6 +98,8 @@ const config: ExpoConfig = {
       'android.permission.READ_EXTERNAL_STORAGE',
       'android.permission.WRITE_EXTERNAL_STORAGE',
       'android.permission.DOWNLOAD_WITHOUT_NOTIFICATION',
+      // No advertising ID: Play Console declares "No" (2026-11-17); block any library merge.
+      'com.google.android.gms.permission.AD_ID',
     ],
     // No cloud backup of app files (encrypted drafts / cache). Tokens are already
     // excluded by expo-secure-store's backup rules.
