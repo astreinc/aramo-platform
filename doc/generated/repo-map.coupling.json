@@ -21069,6 +21069,11 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "doc/programs/sign-android-play-release/DIRECTIVE-LOCKED.md",
+      "status": "unscoped",
+      "to": "mobile/sign/app.config.ts"
+    },
+    {
       "from": "doc/programs/stripe-endive/DIRECTIVE-LOCKED.md",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/payments/stripe-connect-payment.provider.ts"
