@@ -151,3 +151,9 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-saved__img { max-height: 64px; max-width: 100%; object-fit: contain; }
 /* M-A16 §2 — "Save to my Aramo inbox" on the signed screen. */
 .sg-saveinbox { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 12px 0 4px; }
+/* UAT SIG-16 — Find in the document. */
+.sg-find { position: sticky; top: 0; z-index: 3; align-self: stretch; display: flex; justify-content: flex-end; }
+.sg-find__bar { display: flex; align-items: center; gap: 6px; background: var(--sg-surface); border: 1px solid var(--sg-line); border-radius: 10px; padding: 6px; box-shadow: 0 2px 8px rgba(20, 24, 31, 0.08); }
+.sg-find__input { min-height: 36px; width: min(260px, 50vw); }
+.sg-find__hit { position: absolute; background: rgba(255, 213, 79, 0.45); border-radius: 2px; pointer-events: none; }
+.sg-find__hit--on { background: rgba(255, 152, 0, 0.6); outline: 2px solid #e65100; }

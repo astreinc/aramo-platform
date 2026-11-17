@@ -1,21 +1,28 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { PdfDocument } from './pdf-view';
+import { PdfDocument, findOnPage } from './pdf-view';
 import type { SignField } from './sign-api';
 
 // UAT SIG-03 — an on-page check box is the box itself (no "Check" badge spilling over
 // its caption or the neighbouring box), and tapping its caption toggles that box.
 
 vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }));
+// A 612×792 page; PDF y is bottom-up, the viewport top-down (as pdf.js converts it).
+// Page 1 says "Terms", page 2 says "Signature schedule" (UAT SIG-16 find).
+const { viewport, TEXT } = vi.hoisted(() => ({
+  viewport: { width: 612, height: 792, convertToViewportRectangle: ([x1 = 0, y1 = 0, x2 = 0, y2 = 0]: number[]) => [x1, 792 - y1, x2, 792 - y2] },
+  TEXT: { 1: 'Terms of service', 2: 'Signature schedule' } as Record<number, string>,
+}));
 vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: {},
   getDocument: () => ({
     promise: Promise.resolve({
-      numPages: 1,
-      getPage: async () => ({
-        getViewport: () => ({ width: 612, height: 792 }),
+      numPages: 2,
+      getPage: async (n: number) => ({
+        getViewport: () => viewport,
         render: () => ({ promise: Promise.resolve(), cancel: () => undefined }),
+        getTextContent: async () => ({ items: [{ str: TEXT[n] ?? '', transform: [12, 0, 0, 12, 72, 700], width: 100, height: 12 }] }),
       }),
       destroy: async () => undefined,
     }),
@@ -69,5 +76,35 @@ describe('on-page check box (UAT SIG-03)', () => {
     const [yes] = await screen.findAllByTestId('sg-onpage-field');
     expect(yes).toHaveClass('sg-onpage--done');
     expect(yes).toHaveTextContent('✓');
+  });
+});
+
+describe('Find in the document (UAT SIG-16)', () => {
+  it('findOnPage boxes a matching run in page percentages, case-insensitively', () => {
+    const hits = findOnPage(1, [{ str: 'Signature schedule', transform: [12, 0, 0, 12, 72, 700], width: 100, height: 12 }, { str: 'other', transform: [1, 0, 0, 1, 0, 0], width: 5 }], viewport, '  SCHEDULE ');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ page: 1 });
+    expect(hits[0]!.left).toBeCloseTo((72 / 612) * 100);
+    expect(hits[0]!.top).toBeCloseTo(((792 - 712) / 792) * 100);
+    expect(findOnPage(0, [{ str: 'x', transform: [1, 0, 0, 1, 0, 0] }], viewport, '   ')).toEqual([]);
+  });
+
+  it('finds the word on page 2, says "1 of 1" and highlights it there', async () => {
+    show(() => undefined);
+    fireEvent.click(await screen.findByTestId('sg-find-open'));
+    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: 'signature' } });
+    fireEvent.click(screen.getByTestId('sg-find-go'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('1 of 1');
+    const pages = screen.getAllByLabelText(/^Page \d$/);
+    expect(pages[1]!.querySelector('.sg-find__hit--on')).not.toBeNull();
+    expect(pages[0]!.querySelector('.sg-find__hit')).toBeNull();
+  });
+
+  it('a word that is not there says "No matches"', async () => {
+    show(() => undefined);
+    fireEvent.click(await screen.findByTestId('sg-find-open'));
+    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: 'zebra' } });
+    fireEvent.click(screen.getByTestId('sg-find-go'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('No matches');
   });
 });
