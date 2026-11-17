@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { stashInboxClaim } from '../inbox-claim-handoff';
 import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
@@ -829,15 +830,42 @@ export function QesCallback({ token }: { readonly token: string }): JSX.Element 
 }
 
 // ── End-state screens: plain language, no link into any Aramo app ──
-export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
+// (M-A16 §2 — the one exception: "Save to my Aramo inbox" on the signed screen.)
+export function EndState({ tone, title, body, children }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string; readonly children?: React.ReactNode }) {
   return (
     <main className="sg-center" data-testid="sg-end-state">
       <div className={`sg-card sg-card--${tone}`}>
         <h1>{title}</h1>
         <p>{body}</p>
+        {children}
         <p className="sg-muted sg-small">You can close this page.</p>
       </div>
     </main>
+  );
+}
+
+// M-A16 §2 — after signing from an emailed link: hand the token to the workspace (this
+// tab's sessionStorage, never a URL) and open it; the workspace adds it to the inbox.
+function SaveToInbox({ token }: { readonly token: string }) {
+  const [blocked, setBlocked] = useState(false);
+  const save = () => {
+    if (!stashInboxClaim(token)) {
+      setBlocked(true);
+      return;
+    }
+    window.location.assign('/');
+  };
+  return (
+    <div className="sg-saveinbox" data-testid="sg-save-to-inbox">
+      <Btn variant="secondary" onClick={save}>
+        Save to my Aramo inbox
+      </Btn>
+      <p className="sg-muted sg-small">
+        {blocked
+          ? 'Your browser blocked this. In Aramo Sign, open Waiting for me and paste the “Review and sign” link from your email.'
+          : 'Sign in to Aramo Sign to keep this document in your inbox.'}
+      </p>
+    </div>
   );
 }
 
@@ -1386,7 +1414,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
           tone="ok"
           title={title ? `You've signed ${title}` : "You've signed"}
           body={allSigned ? "Everyone has signed. We'll email you a link to download your signed copy." : "Your part is done. Others still need to sign; when everyone has, we'll email you a link to your signed copy."}
-        />
+        >
+          {view?.inbox_save_available === true ? <SaveToInbox token={token} /> : null}
+        </EndState>
       </>
     );
   if (screen === 'network')

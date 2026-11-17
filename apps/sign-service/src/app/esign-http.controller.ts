@@ -407,8 +407,10 @@ export class EsignSignerController {
       const view = await this.service.getSignerDocumentView(ctx);
       // M-A15 §4.1 — after the view's gates: whose saved signature this session may use.
       const saved_marks = (await this.savedMarks?.viewFor(ctx)) ?? null;
+      // M-A16 §3 — the finished screen's "Save to my Aramo inbox" (emailed links only).
+      const inbox_save_available = (await this.savedMarks?.inboxSaveAvailable(ctx)) ?? false;
       // B3 — the delegate action is offered only while sign.delegate_signing is available.
-      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE), saved_marks };
+      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE), saved_marks, inbox_save_available };
     } catch (e) {
       throw toHttp(e, requestId);
     }

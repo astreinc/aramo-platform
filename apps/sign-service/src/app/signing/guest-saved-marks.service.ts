@@ -72,6 +72,16 @@ export class GuestSavedMarksService {
     }
   }
 
+  /** M-A16 §3 — offer "Save to my Aramo inbox" (emailed-link sessions only). Never fails the view. */
+  async inboxSaveAvailable(ctx: SessionContext): Promise<boolean> {
+    try {
+      return await this.bindings.inboxSaveAvailable(ctx);
+    } catch (e) {
+      this.logger.warn(`inbox save lookup failed: ${(e as Error).name}`);
+      return false;
+    }
+  }
+
   /** §4.2 — save as my default, from a signed-in (INBOX / SELF) session only. */
   async save(ctx: SessionContext, body: unknown, requestId: string): Promise<GuestSavedMarkView> {
     const o = body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null;

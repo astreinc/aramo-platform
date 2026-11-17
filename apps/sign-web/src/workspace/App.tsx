@@ -8,6 +8,7 @@ import { EnvelopeList } from './pages/EnvelopeList';
 import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizard';
 import { BillingPanel } from './pages/Billing';
 import { InboxPage } from './pages/Inbox';
+import { PendingInboxClaim } from './PendingInboxClaim';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage } from './pages/WorkspacePages';
 import { ReportsRoute } from './pages/Reports';
@@ -186,6 +187,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
       <LegalAcceptanceGate />
       {/* Privacy Notice 1.1 E-6 — a dismissible notice of an upcoming legal-document version (every account). */}
       <LegalChangeNotice />
+      {/* M-A16 §4 — "Save to my Aramo inbox" handed off from the web signing page. */}
+      <PendingInboxClaim />
       <Routes>
         <Route index element={<Dashboard />} />
         <Route path="envelopes" element={<EnvelopeList />} />

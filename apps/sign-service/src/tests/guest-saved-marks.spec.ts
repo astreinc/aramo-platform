@@ -149,3 +149,12 @@ describe('M-A15 §5 — settings: offer_saved_signature_on_links is optional on 
     expect(() => validateSettings({ date_format: 'MM/DD/YYYY', default_field_size: 'M', offer_saved_signature_on_links: 'no' }, 'r')).toThrow();
   });
 });
+
+describe('M-A16 §3 — "Save to my Aramo inbox" applies to emailed-link sessions only', () => {
+  it('LINK and legacy (NULL) yes; INBOX, SELF and HOSTED no', async () => {
+    for (const [origin, want] of [['LINK', true], [null, true], ['INBOX', false], ['SELF', false], ['HOSTED', false]] as const) {
+      const { prisma } = prismaWith({ session: { origin, authenticated_user_id: null }, signer: null });
+      expect(await repo(prisma).inboxSaveAvailable(ctx)).toBe(want);
+    }
+  });
+});

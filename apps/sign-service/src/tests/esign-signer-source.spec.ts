@@ -45,8 +45,8 @@ describe('EsignSignerController F3 — source + document routes', () => {
     const res = await controller.document({ token: 'tok' }, 'req-1');
 
     // B3 — can_delegate is false unless the engine says so and delegate signing is available.
-    // M-A15 — saved_marks is null without the saved-marks service.
-    expect(res).toEqual({ ...view, can_delegate: false, saved_marks: null });
+    // M-A15 / M-A16 — without the saved-marks service: no saved marks, no inbox save.
+    expect(res).toEqual({ ...view, can_delegate: false, saved_marks: null, inbox_save_available: false });
     expect(port.getSourcePdf).not.toHaveBeenCalled();
     expect(JSON.stringify(res)).not.toContain(TENANT);
   });

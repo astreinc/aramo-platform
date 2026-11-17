@@ -89,6 +89,18 @@ export async function verifiedUserByEmail(client: RawClient, email: string): Pro
 export class GuestSavedMarksRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * M-A16 §3 — "Save to my Aramo inbox" applies to an emailed-link session only (LINK,
+   * or NULL for a legacy session); INBOX / SELF / HOSTED sessions are never claimable.
+   */
+  async inboxSaveAvailable(ctx: SessionContext): Promise<boolean> {
+    const session = await this.prisma.signingSession.findFirst({
+      where: { id: ctx.session_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id },
+      select: { origin: true },
+    });
+    return session !== null && (session.origin === null || session.origin === 'LINK');
+  }
+
   /** §3 — the user whose saved marks this signing session may use, or null. */
   async bindingFor(ctx: SessionContext): Promise<SavedMarksBinding | null> {
     const session = await this.prisma.signingSession.findFirst({

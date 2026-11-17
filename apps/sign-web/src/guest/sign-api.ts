@@ -75,6 +75,8 @@ export interface SignerDocumentView {
   // M-A15 §4.1 — the signer's own saved signature / initials, decided by the server from
   // this signing session (null: nothing to offer; absent: an older server).
   saved_marks?: GuestSavedMarks | null;
+  // M-A16 §3 — offer "Save to my Aramo inbox" after signing (emailed-link sessions only).
+  inbox_save_available?: boolean;
 }
 
 // M-A15 §4.1 — a saved mark offered on this signing page.

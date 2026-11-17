@@ -489,3 +489,41 @@ describe('signer app — saved signature (M-A15)', () => {
     await screen.findAllByText('1 of 3 required fields filled');
   });
 });
+
+// Aramo-Sign-Mobile-Amendment-M-A16 §2 / §3 — "Save to my Aramo inbox" on the signed
+// screen, for emailed-link sessions only; the token goes to sessionStorage, never a URL.
+describe('signer app — Save to my Aramo inbox (M-A16)', () => {
+  async function signAll() {
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(await screen.findByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    await screen.findAllByText('1 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await screen.findAllByText('2 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    await screen.findAllByText('3 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
+    await screen.findByText(/You've signed/);
+  }
+
+  it('an emailed link offers it; selecting it keeps the token in sessionStorage and opens the workspace', async () => {
+    transport({ document: () => json({ ...VIEW, inbox_save_available: true }) });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, pathname: '/s/tok-123', assign });
+    await signAll();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to my Aramo inbox' }));
+    expect(window.sessionStorage.getItem('aramo-sign-inbox-claim')).toBe('tok-123');
+    expect(assign).toHaveBeenCalledWith('/');
+    window.sessionStorage.removeItem('aramo-sign-inbox-claim');
+  });
+
+  it('not offered for an inbox, Sign now or hosted session', async () => {
+    transport({ document: () => json({ ...VIEW, inbox_save_available: false }) });
+    await signAll();
+    expect(screen.queryByTestId('sg-save-to-inbox')).toBeNull();
+  });
+});
