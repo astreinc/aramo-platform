@@ -41,7 +41,7 @@ import type { InboxItem } from '../../features/inbox/types';
 import { EmptyState } from '../../features/inbox/ui';
 import { stashGuestToken } from '../../links/guestTokenVault';
 import { receivedShareTarget } from '../../features/share/shareCompleted';
-import { useShare } from '../../features/share/useShare';
+import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
@@ -68,6 +68,9 @@ export interface ReceivedEnvelopeViewProps {
   /** Share the signed PDF (COMPLETED + can_download only, M-A4 §3.7). */
   readonly onShare?: () => void;
   readonly shareBusy?: boolean;
+  /** UAT CMP-01 — "Download signed PDF" (Android: the system folder picker; iOS: Save to Files). */
+  readonly onDownload?: () => void;
+  readonly downloadBusy?: boolean;
   /** M-A7 §5.2 — "Report this envelope" (every received envelope). */
   readonly onReport?: () => void;
 }
@@ -82,6 +85,8 @@ export function ReceivedEnvelopeView({
   busy,
   onShare,
   shareBusy,
+  onDownload,
+  downloadBusy,
   onReport,
 }: ReceivedEnvelopeViewProps) {
   const t = useTheme();
@@ -144,6 +149,16 @@ export function ReceivedEnvelopeView({
           onPress={onSignedCopy}
         />
       ) : null}
+      {onDownload && receivedShareTarget(item) ? (
+        <Button
+          testID="received-download"
+          title="Download signed PDF"
+          variant="secondary"
+          disabled={!online}
+          busy={downloadBusy}
+          onPress={onDownload}
+        />
+      ) : null}
       {onShare && receivedShareTarget(item) ? (
         <Button
           testID="received-share"
@@ -186,6 +201,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const sharer = useShare();
+  const saver = useSaveCopy();
   const [reportOpen, setReportOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const item = findInboxItem(inbox.data, inboxItemId);
@@ -279,6 +295,8 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         onRemove={() => void remove()}
         onShare={() => sharer.share(receivedShareTarget(item))}
         shareBusy={sharer.busy}
+        onDownload={() => saver.save(receivedShareTarget(item))}
+        downloadBusy={saver.busy}
         onReport={() => setReportOpen(true)}
       />
       <ReportSheet

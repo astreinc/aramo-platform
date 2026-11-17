@@ -512,7 +512,8 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             onPress={confirmDelete}
           />
         ) : null}
-        {/* M-A13 #7: a completed envelope offers View signed copy and Save a copy too. */}
+        {/* M-A13 #7: a completed envelope offers View signed copy and Download signed PDF
+            (was "Save a copy"; UAT CMP-01 — the web's wording is "Download"). */}
         {shareTarget ? (
           <Button
             testID="action-view-signed"
@@ -525,7 +526,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
         {shareTarget ? (
           <Button
             testID="action-save"
-            title="Save a copy"
+            title="Download signed PDF"
             variant="secondary"
             busy={saver.busy}
             disabled={!online}
