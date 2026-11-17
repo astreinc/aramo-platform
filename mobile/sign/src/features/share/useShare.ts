@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 
 import { useServices } from '../../app/ServicesContext';
 import { useToast } from '../../components/Toast';
-import { saveCompleted, savedMessage } from './saveCopy';
+import { saveCompleted, savedMessage, saveOnePdf } from './saveCopy';
 import { shareCompleted, type ShareTarget } from './shareCompleted';
 import { nativeSaveFolder, nativeShareFiles, nativeShareSheet } from './shareNative';
 
@@ -36,6 +36,31 @@ export function useShare(): {
       });
   }
   return { busy, share };
+}
+
+/** UAT CMP-02 — "Download" the PDF on screen (certificate or one document). */
+export function useSaveOnePdf(): {
+  readonly busy: boolean;
+  readonly save: (pdf: { readonly title: string; readonly base64: string }) => void;
+} {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const running = useRef(false);
+  function save(pdf: { readonly title: string; readonly base64: string }): void {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    void saveOnePdf(pdf, { folder: nativeSaveFolder, files: nativeShareFiles, sheet: nativeShareSheet, platform: Platform.OS })
+      .then((r) => {
+        if (r.kind === 'refused') toast.show(r.message);
+        else if (r.kind === 'saved' && Platform.OS === 'android') toast.show('Downloaded.');
+      })
+      .finally(() => {
+        running.current = false;
+        setBusy(false);
+      });
+  }
+  return { busy, save };
 }
 
 /** M-A13 #7 — "Save a copy": Android folder picker; iOS share sheet (Save to Files). */

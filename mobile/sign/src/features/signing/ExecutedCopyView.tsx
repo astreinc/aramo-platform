@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { Button } from '../../components/Button';
 import { useTheme } from '../../theme';
 import { shortDate } from '../inbox/agreementsModel';
 import { EmptyState, Segments } from '../inbox/ui';
@@ -21,11 +22,16 @@ export function ExecutedCopyView({
   completedAt,
   parts,
   initialKey,
+  onDownload,
+  downloadBusy = false,
 }: {
   readonly subject?: string | null;
   readonly completedAt?: string | null;
   readonly parts: readonly ExecutedPart[];
   readonly initialKey?: string;
+  /** UAT CMP-02 — "Download" the part on screen (certificate or document). */
+  readonly onDownload?: (part: ExecutedPart) => void;
+  readonly downloadBusy?: boolean;
 }) {
   const t = useTheme();
   const { width } = useWindowDimensions();
@@ -56,6 +62,15 @@ export function ExecutedCopyView({
             items={parts.map((p) => ({ key: p.key, label: p.title }))}
             value={part.key}
             onChange={setKey}
+          />
+        ) : null}
+        {onDownload ? (
+          <Button
+            testID="executed-download"
+            title={part.key === 'certificate' ? 'Download certificate' : 'Download'}
+            variant="secondary"
+            busy={downloadBusy}
+            onPress={() => onDownload(part)}
           />
         ) : null}
       </View>
