@@ -161,6 +161,13 @@ export interface SignerDisclosure {
 }
 
 // Aramo Sign launch — the signer's signed copy (from the completion email link).
+// M-A5 §2.2 — what a copy recipient sees: the documents as sent (no signer data).
+export interface RecipientCopy {
+  subject: string;
+  sent_at: string | null;
+  documents: { title: string; content_type: string; source_base64: string }[];
+}
+
 export interface ExecutedCopy {
   subject: string;
   completed_at: string | null;
@@ -208,6 +215,10 @@ export const signApi = {
   },
   executed(token: string): Promise<ExecutedCopy> {
     return post<ExecutedCopy>('executed', { token });
+  },
+  // M-A5 §2.2 / UAT CMP-14 — a copy recipient's documents (as sent), by the COPY_VIEW token.
+  copy(token: string): Promise<RecipientCopy> {
+    return post<RecipientCopy>('copy', { token });
   },
   documentView(token: string): Promise<SignerDocumentView> {
     return post<SignerDocumentView>('document', { token });

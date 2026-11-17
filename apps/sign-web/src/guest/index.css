@@ -157,3 +157,6 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-find__input { min-height: 36px; width: min(260px, 50vw); }
 .sg-find__hit { position: absolute; background: rgba(255, 213, 79, 0.45); border-radius: 2px; pointer-events: none; }
 .sg-find__hit--on { background: rgba(255, 152, 0, 0.6); outline: 2px solid #e65100; }
+/* UAT CMP-14 — a copy recipient's documents (/c/:token). */
+.sg-copydoc { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--sg-line); flex-wrap: wrap; }
+.sg-copydoc__actions { display: inline-flex; gap: 8px; }
