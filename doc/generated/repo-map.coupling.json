@@ -21019,6 +21019,11 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "doc/programs/ccp-asc-approved-listing/AMENDMENT-A1-LOCKED.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-apple-asc-client.spec.ts"
+    },
+    {
       "from": "doc/programs/ccp-asc-approved-listing/DIRECTIVE-LOCKED.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/sync/apple-asc.client.ts"
