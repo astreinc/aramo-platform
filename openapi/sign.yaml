@@ -1064,6 +1064,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/saved-mark:
+    post:
+      operationId: saveSignerDefaultMark
+      security: []
+      summary: Save the signer's default signature or initials from the signing page.
+      description: >-
+        Aramo-Sign-Mobile-Amendment-M-A15 §4.2. Token-authorized. Allowed only for a signed-in signing session
+        (SELF, or INBOX per M-A15 A1) whose recipient is a SIGNER or WITNESS, after the same gates as the signer
+        document view; writes to that user's own saved signature (validated as M-A3 §4). An emailed-link session is
+        refused 403 INSUFFICIENT_PERMISSIONS details.reason saved_mark_not_allowed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, slot, kind, image_data_url]
+              properties:
+                token: { type: string }
+                slot: { type: string, enum: [signature, initials] }
+                kind: { type: string, enum: [TYPED, DRAWN] }
+                typed_name: { type: string, maxLength: 100 }
+                font_key: { type: string, maxLength: 40 }
+                image_data_url: { type: string }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind, image_data_url]
+                properties:
+                  kind: { type: string, enum: [TYPED, DRAWN] }
+                  typed_name: { type: [string, 'null'] }
+                  image_data_url: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a signed-in signing session (saved_mark_not_allowed), or a signer-view gate refused.
   /v1/sign/signing/delegate:
     post:
       operationId: delegateSigning
@@ -6916,6 +6958,68 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/sign/inbox/{id}/remove-from-inbox:
+    post:
+      operationId: removeFromMyInbox
+      summary: Delete a received envelope from this user's inbox (any state) to their Deleted folder.
+      description: >-
+        Aramo-Sign-Mobile-Amendment-M-A17. Session (esign consumer) only; keyed by the signed-in user. The id is a claimed item's id or a discovered item's handle. Nothing else changes (envelope, sender, other recipients, the emailed link); never part of Retention and Purge.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [removed]
+                properties:
+                  removed: { type: boolean }
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/inbox/{id}/return-to-inbox:
+    post:
+      operationId: returnToMyInbox
+      summary: Restore a received envelope this user deleted from their inbox (M-A17).
+      description: >-
+        Aramo-Sign-Mobile-Amendment-M-A17. Session (esign consumer) only; the id is a claimed item's id or a discovered item's handle.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [restored]
+                properties:
+                  restored: { type: boolean }
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/inbox/{id}/restore:
     post:
       operationId: restoreFromInbox

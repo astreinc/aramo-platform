@@ -2317,6 +2317,7 @@
       "ExecutedArtifactLedgerMismatchError",
       "ExecutedDocumentReissueRefusedError",
       "ExecutionService",
+      "GuestSavedMarksRepository",
       "HOSTED_SESSION_STARTED_EVENT",
       "HOSTED_SESSION_TTL_MS",
       "IDENTITY_VERIFICATION_CANCELLED_EVENT",
@@ -2455,6 +2456,7 @@
       "WITNESS_ATTESTED_EVENT",
       "abuseReportConfig",
       "abuseReporterKey",
+      "activeUserTenant",
       "allSigningRecipientsSigned",
       "applyReminderLimits",
       "assertIdentityVerificationCleared",
@@ -2538,6 +2540,7 @@
       "toLifecycleEvent",
       "validateBrandingLogo",
       "verifiedNameMatches",
+      "verifiedUserByEmail",
       "verifyAccessCode",
       "verifyEventChain",
       "verifyKmsEvidenceSignatureWithPublicKey",
@@ -8522,6 +8525,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/guest-saved-marks.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/inbox-discovery.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -11374,6 +11383,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/PendingInboxClaim.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/sign-web/src/workspace/api-seats.spec.ts",
         "project": "aramo-sign-web",
@@ -11429,7 +11444,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeMessage.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Inbox.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/MyProfile.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -11471,7 +11498,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/SavedSignature.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/SignInMethods.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/SignPreferences.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -14023,6 +14062,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/guest-saved-marks.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -14072,6 +14117,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox-removal.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
