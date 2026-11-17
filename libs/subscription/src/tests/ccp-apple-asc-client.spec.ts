@@ -34,6 +34,7 @@ interface FakeSub {
   state: string;
   loc: { id: string; name: string; description: string; state?: string } | null;
   prices: Record<string, string>; // territory → point id
+  scheduled?: Record<string, { pid: string; startDate: string }[]>; // territory → changes after today
   availability: { id: string; territories: string[]; newTerritories: boolean } | null;
   shot: { id: string; md5: string | null } | null;
 }
@@ -69,6 +70,7 @@ class FakeAsc {
   writes: string[] = [];
   uploads: { url: string; bytes: number }[] = [];
   failNext: { status: number; body: string } | null = null;
+  priceBodies: { territory: string; startDate: string | null; preserveCurrentPrice: boolean }[] = [];
   tokens: string[] = [];
   private seq = 1;
 
@@ -153,15 +155,28 @@ class FakeAsc {
       const terr = q.get('filter[territory]')!;
       const pid = s.prices[terr];
       if (pid === undefined) return json(200, { data: [], included: [] });
-      const amount = (this.points[terr] ?? []).find((x) => point(s.id, terr, x.p) === pid)!.amount;
+      const amountOf = (id: string) => (this.points[terr] ?? []).find((x) => point(s.id, terr, x.p) === id)!.amount;
+      const rows = [{ pid, startDate: null as string | null }, ...(s.scheduled?.[terr] ?? [])];
       return json(200, {
-        data: [{ type: 'subscriptionPrices', id: `price-${terr}`, attributes: { startDate: null, preserved: false, planType: 'UPFRONT' }, relationships: { subscriptionPricePoint: { data: { type: 'subscriptionPricePoints', id: pid } } } }],
-        included: [{ type: 'subscriptionPricePoints', id: pid, attributes: wirePricePointAttributes(amount) }],
+        data: rows.map((r, i) => ({ type: 'subscriptionPrices', id: `price-${terr}-${i}`, attributes: { startDate: r.startDate, preserved: false, planType: 'UPFRONT' }, relationships: { subscriptionPricePoint: { data: { type: 'subscriptionPricePoints', id: r.pid } } } })),
+        included: [...new Set(rows.map((r) => r.pid))].map((id) => ({ type: 'subscriptionPricePoints', id, attributes: wirePricePointAttributes(amountOf(id)) })),
       });
     }
     if (path === '/v1/subscriptionPrices' && method === 'POST') {
       const r = body!.data['relationships'];
-      this.subs.get(r.subscription.data.id)!.prices[r.territory.data.id] = r.subscriptionPricePoint.data.id;
+      const a = body!.data['attributes'];
+      const s = this.subs.get(r.subscription.data.id)!;
+      const terr = r.territory.data.id as string;
+      this.priceBodies.push({ territory: terr, startDate: a.startDate, preserveCurrentPrice: a.preserveCurrentPrice });
+      if (a.startDate !== null) {
+        s.scheduled = { ...(s.scheduled ?? {}), [terr]: [...(s.scheduled?.[terr] ?? []), { pid: r.subscriptionPricePoint.data.id, startDate: a.startDate }] };
+        return json(201, { data: { type: 'subscriptionPrices', id: 'p' } });
+      }
+      // The live answer for an approved product that already has a price (prod, 2026-11-17).
+      if (s.state === 'APPROVED' && s.prices[terr] !== undefined) {
+        return json(409, { errors: [{ status: '409', code: 'STATE_ERROR', title: 'The request cannot be fulfilled because of the state of another resource.', detail: 'Initial price cannot be created again after subscription is approved.' }] });
+      }
+      s.prices[terr] = r.subscriptionPricePoint.data.id;
       return json(201, { data: { type: 'subscriptionPrices', id: 'p' } });
     }
     if ((m = /^\/v1\/subscriptions\/(\w+)\/planAvailabilities$/.exec(path))) {
@@ -400,7 +415,7 @@ describe('an approved App Store listing (approved-listing directive, prod 2026-1
     expect(asc.writes.some((w) => w.startsWith('PATCH /v1/subscriptionLocalizations'))).toBe(false);
     const s = asc.subs.get(SUB)!;
     expect(s.loc).toMatchObject({ name: 'Personal - Standard', description: '25 sends a month' });
-    expect(s.prices['USA']).toBe(point(SUB, 'USA', '10128'));
+    expect(s.scheduled?.['USA']).toEqual([{ pid: point(SUB, 'USA', '10128'), startDate: '2026-11-12' }]);
   });
 
   it('treats a 409 UNMODIFIABLE on PATCH (another locked state) the same way', async () => {
@@ -409,7 +424,7 @@ describe('an approved App Store listing (approved-listing directive, prod 2026-1
     expect(out.status).toBe('SYNCED');
     expect(out.detail).toMatch(/^App Store text not changed/);
     expect(asc.writes).toContain('PATCH /v1/subscriptionLocalizations/f909786b-loc');
-    expect(asc.subs.get(SUB)!.prices['USA']).toBe(point(SUB, 'USA', '10128'));
+    expect(asc.subs.get(SUB)!.scheduled?.['USA']?.[0]?.pid).toBe(point(SUB, 'USA', '10128'));
   });
 
   it('adds no note when the approved text already matches the catalog', async () => {
@@ -435,5 +450,50 @@ describe('an approved App Store listing (approved-listing directive, prod 2026-1
     const err = await c2.sync(target(v5)).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(BillingSyncError);
     expect((err as BillingSyncError).code).toBe('PROVIDER_REJECTED');
+  });
+});
+
+describe('a price change on an approved App Store product (approved-listing directive A1, prod 2026-11-17)', () => {
+  const approvedAt10 = () => {
+    asc.seedExisting();
+    const s = asc.subs.get(SUB)!;
+    s.state = 'APPROVED';
+    s.prices = { USA: point(SUB, 'USA', '10128'), IND: point(SUB, 'IND', '20002') };
+    s.loc = { id: 'f909786b-loc', name: 'Standard', description: '25 sends a month and 1 GB storage', state: 'APPROVED' };
+  };
+  const at = (usd: number, inr: number) => target({ prices: [{ country: 'US', currency: 'USD', amount_minor: usd }, { country: 'IN', currency: 'INR', amount_minor: inr }], stop_countries: [] });
+
+  it('schedules the change from tomorrow (UTC) for everyone, never a second initial price', async () => {
+    approvedAt10();
+    const out = await client.sync(at(999, 49900));
+    expect(out.status).toBe('SYNCED');
+    expect(asc.priceBodies).toEqual([
+      { territory: 'USA', startDate: '2026-11-12', preserveCurrentPrice: false },
+      { territory: 'IND', startDate: '2026-11-12', preserveCurrentPrice: false },
+    ]);
+    const s = asc.subs.get(SUB)!;
+    expect(s.prices['USA']).toBe(point(SUB, 'USA', '10128'));
+    expect(s.scheduled?.['USA']).toEqual([{ pid: point(SUB, 'USA', '10127'), startDate: '2026-11-12' }]);
+  });
+
+  it('is idempotent: a retry with the change already scheduled writes no price', async () => {
+    approvedAt10();
+    await client.sync(at(999, 49900));
+    asc.priceBodies = [];
+    await client.sync(at(999, 49900));
+    expect(asc.priceBodies).toEqual([]);
+  });
+
+  it('writes nothing when the approved price already matches', async () => {
+    approvedAt10();
+    await client.sync(at(1000, 99900));
+    expect(asc.priceBodies).toEqual([]);
+  });
+
+  it('keeps the immediate price for a product Apple has not approved yet', async () => {
+    asc.seedExisting();
+    await client.sync(target());
+    expect(asc.priceBodies).toEqual([{ territory: 'USA', startDate: null, preserveCurrentPrice: false }]);
+    expect(asc.subs.get(SUB)!.prices['USA']).toBe(point(SUB, 'USA', '10128'));
   });
 });
