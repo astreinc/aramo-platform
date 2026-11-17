@@ -555,7 +555,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile envel
       expect(put.status).toBe(200);
       expect(put.body).toMatchObject({ display_name: 'Ben Brown', company: 'Acme', country: 'US', phone: '+14155550123', title: null });
       expect((await http().get('/v1/sign/me/profile').set(await H(ANN))).body.display_name).not.toBe('Ben Brown');
-      expect((await http().get('/v1/sign/me/settings').set(await H(BEN))).body).toEqual({ date_format: 'MM/DD/YYYY', default_field_size: 'M' });
+      // M-A15 §5 — offer_saved_signature_on_links defaults to true.
+      expect((await http().get('/v1/sign/me/settings').set(await H(BEN))).body).toEqual({ date_format: 'MM/DD/YYYY', default_field_size: 'M', offer_saved_signature_on_links: true });
       expect((await http().put('/v1/sign/me/settings').set(await H(BEN)).send({ date_format: 'DD.MM.YYYY', default_field_size: 'M' })).status).toBe(400);
       expect((await http().put('/v1/sign/me/settings').set(await H(BEN)).send({ date_format: 'DD/MM/YYYY', default_field_size: 'L' })).status).toBe(200);
       const created = await http().post('/v1/sign/sender/envelopes').set(await H(BEN)).send({ mode: 'self', subject: 'Dated' });

@@ -146,3 +146,6 @@ p { line-height: 1.5; margin: 0 0 12px; }
 /* M-A7 §5.2 — the Report action (Help panel and landing card). */
 .sg-help__link { color: #fff; text-decoration: underline; }
 .sg-report-line { margin: 4px 0 0; text-align: center; }
+/* M-A15 §6 — the saved default signature / initials in the adopt dialog. */
+.sg-saved { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--sg-line); border-radius: 10px; background: #fff; }
+.sg-saved__img { max-height: 64px; max-width: 100%; object-fit: contain; }

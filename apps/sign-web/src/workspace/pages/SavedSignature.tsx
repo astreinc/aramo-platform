@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '@aramo/fe-foundation';
 
 import { SIGNATURE_FONT_STACK, initialsOf, trimmedSignaturePng, typedSignaturePng } from '../../signature-image';
-import { SAVED_MARK_FONT_KEY, errorMessage, savedMarksApi, type SavedMark, type SavedMarkTarget, type SavedMarks } from '../api';
-import { Btn, ErrorBox, Field, TextIn, fmtDate } from '../ui';
+import { SAVED_MARK_FONT_KEY, errorMessage, savedMarksApi, type SavedMark, type SavedMarkTarget, type SavedMarks, type SignMeSettings } from '../api';
+import { Btn, Check, ErrorBox, Field, TextIn, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
 
 // UAT SIG-05 — Settings → Your default signature and initials: the web counterpart of
 // the Aramo Sign app's Account → Default signature / Default initials (Sign Mobile
 // M-A3 §4). View, add or replace (type or draw), and remove. The same defaults the app
-// offers when signing; the web signing page does not use them yet (pending a ruling on
-// the guest-zone boundary, Sign Unified Product S-2 §4.1.3).
+// and the web signing page offer when signing (M-A15), and the M-A15 §5 opt-out for
+// signing links emailed to the user.
 
 const LABEL: Record<SavedMarkTarget, string> = { signature: 'Signature', initials: 'Initials' };
 
@@ -21,6 +21,27 @@ export function SavedSignatureSection() {
   const [editing, setEditing] = useState<SavedMarkTarget | null>(null);
   const [removing, setRemoving] = useState<SavedMarkTarget | null>(null);
   const [busy, setBusy] = useState(false);
+  // M-A15 §5 — offer the saved signature on signing links sent to the user's email.
+  const [settings, setSettings] = useState<SignMeSettings | null>(null);
+
+  useEffect(() => {
+    savedMarksApi.settings().then(
+      (s) => setSettings(typeof s?.date_format === 'string' ? s : null),
+      () => setSettings(null),
+    );
+  }, []);
+
+  const setOffer = async (on: boolean) => {
+    if (settings === null) return;
+    const before = settings;
+    setSettings({ ...settings, offer_saved_signature_on_links: on });
+    try {
+      await savedMarksApi.putSettings({ date_format: before.date_format, default_field_size: before.default_field_size, offer_saved_signature_on_links: on });
+    } catch (e) {
+      setSettings(before);
+      setError(errorMessage(e, 'Couldn’t save that setting. Try again.'));
+    }
+  };
 
   const load = useCallback(() => {
     setError('');
@@ -67,8 +88,14 @@ export function SavedSignatureSection() {
             ))
           : null}
         <p className="sg-help" style={{ marginTop: 12 }}>
-          Offered when you sign in the Aramo Sign app, so you don’t draw or type it each time. You can always use a different one when signing.
+          Offered when you sign, so you don’t draw or type it each time. You can always use a different one when signing.
         </p>
+        {settings !== null ? (
+          <label className="sg-settings-row" data-testid="offer-on-links">
+            <Check checked={settings.offer_saved_signature_on_links !== false} onChange={(e) => void setOffer(e.target.checked)} />
+            <span>Also offer it on signing links emailed to {ctx.user.email ?? 'my email address'}</span>
+          </label>
+        ) : null}
       </div>
       {editing !== null ? (
         <MarkDialog
@@ -161,7 +188,8 @@ function MarkDialog({
   onSaved: (m: SavedMark) => void;
 }) {
   const [tab, setTab] = useState<'TYPED' | 'DRAWN'>('TYPED');
-  const [typed, setTyped] = useState(target === 'initials' ? initialsOf(suggestedName) : suggestedName);
+  // As in the app: the full name is typed (and stored as typed_name); initials are derived.
+  const [typed, setTyped] = useState(suggestedName);
   const [drawn, setDrawn] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -204,7 +232,8 @@ function MarkDialog({
     setDrawn(false);
   };
 
-  const ready = tab === 'TYPED' ? typed.trim().length > 0 : drawn;
+  const shown = target === 'initials' ? initialsOf(typed) : typed.trim();
+  const ready = tab === 'TYPED' ? shown.length > 0 : drawn;
   const save = async () => {
     setSaving(true);
     setError('');
@@ -212,7 +241,7 @@ function MarkDialog({
       const name = typed.trim().slice(0, 100);
       const body =
         tab === 'TYPED'
-          ? { kind: 'TYPED' as const, typed_name: name, font_key: SAVED_MARK_FONT_KEY, image_data_url: await typedSignaturePng(name) }
+          ? { kind: 'TYPED' as const, typed_name: name, font_key: SAVED_MARK_FONT_KEY, image_data_url: await typedSignaturePng(target === 'initials' ? initialsOf(name) : name) }
           : { kind: 'DRAWN' as const, image_data_url: canvasRef.current ? trimmedSignaturePng(canvasRef.current) : '' };
       onSaved(await savedMarksApi.put(target, body));
     } catch (e) {
@@ -249,14 +278,14 @@ function MarkDialog({
       </div>
       {tab === 'TYPED' ? (
         <>
-          <Field label={target === 'initials' ? 'Your initials' : 'Your full name'} htmlFor="mark-typed">
+          <Field label="Your full name" htmlFor="mark-typed">
             <TextIn id="mark-typed" value={typed} maxLength={100} onChange={(e) => setTyped(e.target.value)} data-testid="mark-typed" />
           </Field>
           <div
             aria-label={`${label} preview`}
             style={{ minHeight: 72, border: '1px solid var(--line)', borderRadius: 10, display: 'flex', alignItems: 'center', padding: '0 16px', fontFamily: SIGNATURE_FONT_STACK, fontSize: 30, marginTop: 12 }}
           >
-            {typed.trim() || <span className="sg-muted" style={{ fontFamily: 'inherit', fontSize: 14 }}>Preview</span>}
+            {shown || <span className="sg-muted" style={{ fontFamily: 'inherit', fontSize: 14 }}>Preview</span>}
           </div>
         </>
       ) : (

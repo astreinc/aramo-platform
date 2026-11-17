@@ -647,14 +647,20 @@ export class EsignService {
     });
   }
 
-  // ── PX-V1 F3 — signer document view: positioned fields + document metadata for
-  // the Sign Web viewer. Disclosure-gated (same guard as fillField). Returns only
-  // the signer's own (or unbound) fields; NO tenant_id, NO source bytes. ──
-  async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
+  // The gates every signer view (and M-A15 §4.2 save-as-default) passes first: eligible,
+  // access code cleared, e-records consent accepted, identity verification cleared.
+  async assertSignerViewGates(ctx: SessionContext): Promise<void> {
     await this.assertEligible(this.prisma, ctx);
     await this.assertAccessCodeCleared(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     await assertIdentityVerificationCleared(this.prisma, ctx);
+  }
+
+  // ── PX-V1 F3 — signer document view: positioned fields + document metadata for
+  // the Sign Web viewer. Disclosure-gated (same guard as fillField). Returns only
+  // the signer's own (or unbound) fields; NO tenant_id, NO source bytes. ──
+  async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
+    await this.assertSignerViewGates(ctx);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
     // M-A6 §2.4 — the server-filled name, resolved only when a field needs it.

@@ -373,6 +373,13 @@ export {
   type SignIdempotencyScope,
   type SignIdempotencyBegin,
 } from './lib/sign-idempotency.repository.js';
+// M-A15 — saved signature on the web signing page (whose marks a session may use).
+export {
+  GuestSavedMarksRepository,
+  activeUserTenant,
+  verifiedUserByEmail,
+  type SavedMarksBinding,
+} from './lib/guest-saved-marks.repository.js';
 export {
   SignSavedSignatureRepository,
   type SavedSignatureSlot,
@@ -395,6 +402,7 @@ export {
   type SignUserProfileValue,
   type SignUserProfileRow,
   type SignUserSettingsValue,
+  type SignUserSettingsWrite,
   type SignUserDataCounts,
 } from './lib/sign-user-profile.repository.js';
 export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';

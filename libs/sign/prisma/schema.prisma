@@ -1472,6 +1472,8 @@ model SignUserSettings {
   user_id            String   @db.Uuid
   date_format        String   @default("MM/DD/YYYY")
   default_field_size String   @default("M")
+  // M-A15 §5 — offer this user's saved signature on emailed signing links (§3.2).
+  offer_saved_signature_on_links Boolean @default(true)
   created_at         DateTime @default(now()) @db.Timestamptz
   updated_at         DateTime @default(now()) @db.Timestamptz
 

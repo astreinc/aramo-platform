@@ -38,6 +38,8 @@ function stub(marks: SavedMarks, calls: Call[]) {
       const method = (init?.method ?? 'GET').toUpperCase();
       calls.push({ method, url, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
       if (url.endsWith('/v1/sign/me/signature') && method === 'GET') return json(marks);
+      if (url.endsWith('/v1/sign/me/settings') && method === 'GET') return json({ date_format: 'DD/MM/YYYY', default_field_size: 'L', offer_saved_signature_on_links: true });
+      if (url.endsWith('/v1/sign/me/settings') && method === 'PUT') return json(JSON.parse(String(init?.body)));
       if (url.includes('/v1/sign/me/') && method === 'PUT') {
         const b = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return json({ ...b, typed_name: b['typed_name'] ?? null, font_key: b['font_key'] ?? null, updated_at: '2026-11-17T10:00:00Z' });
@@ -72,17 +74,18 @@ describe('Settings — default signature and initials (UAT SIG-05)', () => {
     expect(screen.getByTestId('edit-initials')).toHaveTextContent('Add');
   });
 
-  it('adds typed initials (derived from the name) as the app does', async () => {
+  it('adds typed initials: the full name is stored, the initials derived (as the app does)', async () => {
     const calls: Call[] = [];
     stub({ signature: null, initials: null }, calls);
     show();
     fireEvent.click(await screen.findByTestId('edit-initials'));
-    expect(screen.getByTestId('mark-typed')).toHaveValue('PL');
+    expect(screen.getByTestId('mark-typed')).toHaveValue('Pat Lee');
+    expect(screen.getByLabelText('initials preview')).toHaveTextContent('PL');
     fireEvent.click(screen.getByTestId('save-mark'));
     await waitFor(() => expect(screen.getByAltText('Your default initials')).toBeInTheDocument());
     const put = calls.find((c) => c.method === 'PUT');
     expect(put?.url).toMatch(/\/v1\/sign\/me\/initials$/);
-    expect(put?.body).toEqual({ kind: 'TYPED', typed_name: 'PL', font_key: 'system-script', image_data_url: 'data:image/png;base64,AAAA' });
+    expect(put?.body).toEqual({ kind: 'TYPED', typed_name: 'Pat Lee', font_key: 'system-script', image_data_url: 'data:image/png;base64,AAAA' });
   });
 
   it('removes the signature after confirming', async () => {
@@ -93,5 +96,19 @@ describe('Settings — default signature and initials (UAT SIG-05)', () => {
     fireEvent.click(await screen.findByTestId('confirm-remove-mark'));
     await waitFor(() => expect(screen.getByTestId('saved-signature')).toHaveTextContent('None saved'));
     expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/v1/sign/me/signature'))).toBe(true);
+  });
+
+  it('M-A15 §5: turning off the offer on emailed links keeps the other settings', async () => {
+    const calls: Call[] = [];
+    stub({ signature: SIG, initials: null }, calls);
+    show();
+    const row = await screen.findByTestId('offer-on-links');
+    expect(row).toHaveTextContent('pat@example.com');
+    const box = row.querySelector('input') as HTMLInputElement;
+    expect(box).toBeChecked();
+    fireEvent.click(box);
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/v1/sign/me/settings'))).toBe(true));
+    expect(calls.find((c) => c.method === 'PUT' && c.url.endsWith('/v1/sign/me/settings'))?.body).toEqual({ date_format: 'DD/MM/YYYY', default_field_size: 'L', offer_saved_signature_on_links: false });
+    expect(box).not.toBeChecked();
   });
 });

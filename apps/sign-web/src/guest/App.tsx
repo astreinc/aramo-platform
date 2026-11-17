@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { trimmedSignaturePng } from '../signature-image';
+import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
-import { SignApiError, signApi, type QesStatus, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
+import { SAVED_MARK_FONT_KEY, SignApiError, signApi, type GuestSavedMark, type GuestSavedMarks, type QesStatus, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
 import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isPayment, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
@@ -191,6 +191,24 @@ interface Adopted {
   readonly display: string;
 }
 
+// M-A15 §6 — a saved mark as the value the fill call sends: a TYPED mark sends its text
+// (initials derived from the stored name, as the app does), a DRAWN mark its image.
+export function adoptedFromSaved(saved: GuestSavedMark, kind: 'SIGNATURE' | 'INITIALS'): Adopted {
+  if (saved.kind === 'TYPED' && saved.typed_name !== null && saved.typed_name.trim() !== '') {
+    const text = kind === 'INITIALS' ? initialsOf(saved.typed_name) : saved.typed_name.trim();
+    return { method: 'TYPED', value: text, display: text };
+  }
+  return { method: 'DRAWN', value: saved.image_data_url, display: 'Drawn' };
+}
+
+// M-A15 §4.2 — the stored typed_name. The app stores the full name and derives initials
+// from it; this page types initials directly, so they are stored letter by letter
+// ("RS" → "R S"), which every client derives back to "RS".
+export function typedNameToStore(kind: 'SIGNATURE' | 'INITIALS', text: string): string {
+  const t = text.trim().slice(0, 100);
+  return kind === 'INITIALS' ? t.replace(/\s+/g, '').split('').join(' ').slice(0, 100) : t;
+}
+
 
 // A drawn signature is saved CROPPED to its ink (plus a small margin) so it fills
 // the field box the sender sized (shared helper: ../signature-image).
@@ -355,15 +373,23 @@ function Dialog({ title, onClose, children }: { readonly title: string; readonly
 function AdoptDialog({
   kind,
   suggestedName,
+  saved,
+  canSave,
   onAdopt,
   onClose,
 }: {
   readonly kind: 'SIGNATURE' | 'INITIALS';
   readonly suggestedName: string;
-  readonly onAdopt: (a: Adopted) => void;
+  // M-A15 §6 — the signer's saved mark for this kind (null: none offered).
+  readonly saved: GuestSavedMark | null;
+  // M-A15 §4.1 — a signed-in signing session may save a new default.
+  readonly canSave: boolean;
+  readonly onAdopt: (a: Adopted, saveDefault: boolean) => void;
   readonly onClose: () => void;
 }) {
   const [tab, setTab] = useState<'TYPED' | 'DRAWN'>('TYPED');
+  // As in the app: checked when nothing is saved yet, unchecked when replacing a default.
+  const [saveDefault, setSaveDefault] = useState(saved === null);
   const [typed, setTyped] = useState(kind === 'INITIALS' ? initialsOf(suggestedName) : suggestedName);
   const [drawn, setDrawn] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -407,12 +433,23 @@ function AdoptDialog({
 
   const ready = tab === 'TYPED' ? typed.trim().length > 0 : drawn;
   const adopt = () => {
-    if (tab === 'TYPED') onAdopt({ method: 'TYPED', value: typed.trim(), display: typed.trim() });
-    else onAdopt({ method: 'DRAWN', value: canvasRef.current ? trimmedSignaturePng(canvasRef.current) : '', display: 'Drawn' });
+    const save = canSave && saveDefault;
+    if (tab === 'TYPED') onAdopt({ method: 'TYPED', value: typed.trim(), display: typed.trim() }, save);
+    else onAdopt({ method: 'DRAWN', value: canvasRef.current ? trimmedSignaturePng(canvasRef.current) : '', display: 'Drawn' }, save);
   };
 
   return (
     <Dialog title={kind === 'INITIALS' ? 'Adopt your initials' : 'Adopt your signature'} onClose={onClose}>
+      {saved !== null ? (
+        // M-A15 §6 — the saved default, one tap; Type / Draw below stay available.
+        <div className="sg-saved" data-testid="sg-saved-mark">
+          <img src={saved.image_data_url} alt={`Your saved ${label}`} className="sg-saved__img" />
+          <Btn onClick={() => onAdopt(adoptedFromSaved(saved, kind), false)} data-testid="sg-use-saved">
+            {kind === 'INITIALS' ? 'Use my saved initials' : 'Use my saved signature'}
+          </Btn>
+          <p className="sg-muted sg-small">Or create a different one:</p>
+        </div>
+      ) : null}
       <div className="sg-tabs" role="tablist" aria-label={`How to create your ${label}`}>
         <Btn variant="quiet" role="tab" aria-selected={tab === 'TYPED'} className={tab === 'TYPED' ? 'sg-tab--on' : ''} onClick={() => setTab('TYPED')}>
           Type
@@ -451,6 +488,12 @@ function AdoptDialog({
           </Btn>
         </>
       )}
+      {canSave ? (
+        <label className="sg-agree">
+          <CheckIn checked={saveDefault} onChange={(e) => setSaveDefault(e.target.checked)} data-testid="sg-save-default" />
+          {kind === 'INITIALS' ? 'Save as my default initials' : 'Save as my default signature'}
+        </label>
+      ) : null}
       <p className="sg-muted sg-small">
         By selecting Adopt, you agree this mark is your electronic {label} for this document.
       </p>
@@ -811,6 +854,8 @@ export function App(): JSX.Element {
 function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
+  // M-A15 §4.1 — the signer's saved signature / initials offered on this page.
+  const [savedMarks, setSavedMarks] = useState<GuestSavedMarks | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   // PX-2 — the source bytes (base64) per document, rendered page by page with the
   // signer's fields in place; the browser PDF viewer is only the fallback.
@@ -902,6 +947,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       }
     }
     setView(v);
+    setSavedMarks(v.saved_marks ?? null);
     setDocUrls(urls);
     setDocB64(b64);
     // Restore progress after a reload: the backend returns this signer's own
@@ -989,6 +1035,24 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     fields.find((f) => pending(f) && !isBox(f)) ??
     null;
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
+
+  // M-A15 §4.2 / §6 — "Save as my default" (a signed-in signing session). Best effort:
+  // a failed save never blocks signing.
+  const saveAsDefault = async (kind: 'SIGNATURE' | 'INITIALS', a: Adopted) => {
+    const slot = kind === 'INITIALS' ? 'initials' : 'signature';
+    try {
+      const saved: GuestSavedMark = await signApi.saveMark(
+        token,
+        slot,
+        a.method === 'TYPED'
+          ? { kind: 'TYPED', typed_name: typedNameToStore(kind, a.value), font_key: SAVED_MARK_FONT_KEY, image_data_url: await typedSignaturePng(a.value) }
+          : { kind: 'DRAWN', image_data_url: a.value },
+      );
+      setSavedMarks((m) => (m === null ? m : { ...m, [slot]: saved }));
+    } catch {
+      setNotice(kind === 'INITIALS' ? 'Your initials weren’t saved as your default. Signing isn’t affected.' : 'Your signature wasn’t saved as your default. Signing isn’t affected.');
+    }
+  };
 
   const fill = async (f: SignField, value: string, method?: string): Promise<boolean> => {
     setBusy(true);
@@ -1613,12 +1677,15 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
           kind={adoptFor.field_type === 'INITIALS' ? 'INITIALS' : 'SIGNATURE'}
           suggestedName={typedIn(adoptFor) !== '' ? typedIn(adoptFor) : suggestedName}
           onClose={() => setAdoptFor(null)}
-          onAdopt={(a) => {
+          saved={(adoptFor.field_type === 'INITIALS' ? savedMarks?.initials : savedMarks?.signature) ?? null}
+          canSave={savedMarks?.can_save === true}
+          onAdopt={(a, saveDefault) => {
             const f = adoptFor;
             const kind = f.field_type === 'INITIALS' ? 'INITIALS' : 'SIGNATURE';
             setAdopted((m) => ({ ...m, [kind]: a }));
             setAdoptFor(null);
             void fill(f, a.value, a.method);
+            if (saveDefault) void saveAsDefault(kind, a);
           }}
         />
       ) : null}

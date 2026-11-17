@@ -1197,8 +1197,16 @@ export type SavedMarkWrite =
   | { kind: 'DRAWN'; image_data_url: string };
 // The font key the app sends with a typed mark (mobile adopt.ts SCRIPT_FONT_KEY).
 export const SAVED_MARK_FONT_KEY = 'system-script';
+// M-A15 §5 — the user's Sign settings; the opt-out is optional on PUT.
+export interface SignMeSettings {
+  date_format: string;
+  default_field_size: string;
+  offer_saved_signature_on_links?: boolean;
+}
 export const savedMarksApi = {
   get: () => apiClient.get<SavedMarks>('/v1/sign/me/signature'),
+  settings: () => apiClient.get<SignMeSettings>('/v1/sign/me/settings'),
+  putSettings: (s: SignMeSettings) => apiClient.put<SignMeSettings>('/v1/sign/me/settings', s),
   put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
   remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
 };
