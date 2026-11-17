@@ -115,7 +115,8 @@ export class AppleAscClient implements BillingProductSyncPort {
     const drops = unconfirmedDrops(await this.availableCountries(sub.id), t);
     if (drops.length > 0) throw dropRefusal('The App Store', drops);
     const listingNote = await this.syncLocalization(sub.id, t);
-    for (const p of territories) await this.syncPrice(sub.id, p);
+    const approved = str(sub.attributes?.['state']) === 'APPROVED';
+    for (const p of territories) await this.syncPrice(sub.id, p, approved);
     await this.syncAvailability(sub.id, territories.map((p) => p.territory));
     if (t.review_screenshot !== null) await this.syncScreenshot(sub.id, t.review_screenshot);
     const now = await this.get(`/v1/subscriptions/${enc(sub.id)}`);
@@ -229,7 +230,7 @@ export class AppleAscClient implements BillingProductSyncPort {
     return null;
   }
 
-  private async syncPrice(subId: string, p: TerritoryPrice): Promise<void> {
+  private async syncPrice(subId: string, p: TerritoryPrice, approved: boolean): Promise<void> {
     const points = await this.pricePoints(subId, p.territory, p.currency);
     const exact = points.find((x) => x.amount_minor === p.amount_minor);
     if (exact === undefined) {
@@ -238,10 +239,17 @@ export class AppleAscClient implements BillingProductSyncPort {
     }
     const cur = await this.currentPrice(subId, p.territory);
     if (cur !== null && cur.point_id === exact.id) return;
+    // Approved-listing directive A1 — on an APPROVED product Apple refuses a second "initial" price (HTTP 409
+    // STATE_ERROR "Initial price cannot be created again after subscription is approved", prod 2026-11-17): the
+    // change is scheduled from tomorrow (UTC) and applies to existing subscribers too (PO ruling A1-1:
+    // preserveCurrentPrice false). A change already scheduled to this point is kept (idempotent retry).
+    const change = approved && cur !== null;
+    if (change && cur.scheduled.includes(exact.id)) return;
+    const startDate = change ? new Date(this.clock() + 86_400_000).toISOString().slice(0, 10) : null;
     await this.send('POST', '/v1/subscriptionPrices', {
       data: {
         type: 'subscriptionPrices',
-        attributes: { startDate: null, preserveCurrentPrice: false },
+        attributes: { startDate, preserveCurrentPrice: false },
         relationships: {
           subscription: { data: { type: 'subscriptions', id: subId } },
           subscriptionPricePoint: { data: { type: 'subscriptionPricePoints', id: exact.id } },
@@ -349,7 +357,8 @@ export class AppleAscClient implements BillingProductSyncPort {
   }
 
   /** The price in effect today in a territory: its point id and amount, or null. */
-  private async currentPrice(subId: string, territory: string): Promise<{ point_id: string; amount: string } | null> {
+  /** The price in effect today in a territory, with the price points of changes scheduled after today. */
+  private async currentPrice(subId: string, territory: string): Promise<{ point_id: string; amount: string; scheduled: string[] } | null> {
     const d = await this.get(`/v1/subscriptions/${enc(subId)}/prices?filter%5Bterritory%5D=${enc(territory)}&include=subscriptionPricePoint&limit=50`);
     const today = new Date(this.clock()).toISOString().slice(0, 10);
     const effective = many(d)
@@ -359,11 +368,19 @@ export class AppleAscClient implements BillingProductSyncPort {
       })
       .sort((a, b) => String(a.attributes?.['startDate'] ?? '').localeCompare(String(b.attributes?.['startDate'] ?? '')));
     const cur = effective[effective.length - 1];
+    const scheduled = many(d)
+      .filter((p) => {
+        const sd = p.attributes?.['startDate'];
+        return sd !== null && sd !== undefined && String(sd) > today;
+      })
+      .map((p) => p.relationships?.['subscriptionPricePoint']?.data)
+      .filter((r): r is { type: string; id: string } => r !== undefined && r !== null && !Array.isArray(r))
+      .map((r) => r.id);
     const rel = cur?.relationships?.['subscriptionPricePoint']?.data;
     if (cur === undefined || rel === undefined || rel === null || Array.isArray(rel)) return null;
     const point = (d.included ?? []).find((i) => i.type === 'subscriptionPricePoints' && i.id === rel.id);
     const amount = wirePricePointAmount(point?.attributes);
-    return amount === null ? null : { point_id: rel.id, amount };
+    return amount === null ? null : { point_id: rel.id, amount, scheduled };
   }
 
   // ---- transport ---------------------------------------------------------------------------
