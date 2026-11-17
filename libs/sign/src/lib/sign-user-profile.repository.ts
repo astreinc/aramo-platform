@@ -46,7 +46,14 @@ export interface SignUserProfileRow extends SignUserProfileValue {
 export interface SignUserSettingsValue {
   date_format: SignDateFormat;
   default_field_size: SignFieldSize;
+  // M-A15 §5 — offer the saved signature on emailed signing links (default true).
+  offer_saved_signature_on_links: boolean;
 }
+
+// M-A15 §5 — a PUT may leave the new setting out (clients that send only the first two).
+export type SignUserSettingsWrite = Omit<SignUserSettingsValue, 'offer_saved_signature_on_links'> & {
+  offer_saved_signature_on_links?: boolean;
+};
 
 export interface SignUserDataCounts {
   profiles: number;
@@ -106,17 +113,29 @@ export class SignUserProfileRepository {
     return {
       date_format: (SIGN_DATE_FORMATS as readonly string[]).includes(r?.date_format ?? '') ? (r?.date_format as SignDateFormat) : DEFAULT_SIGN_DATE_FORMAT,
       default_field_size: (SIGN_FIELD_SIZES as readonly string[]).includes(r?.default_field_size ?? '') ? (r?.default_field_size as SignFieldSize) : DEFAULT_SIGN_FIELD_SIZE,
+      offer_saved_signature_on_links: r?.offer_saved_signature_on_links ?? true,
     };
   }
 
-  async putSettings(tenant_id: string, user_id: string, value: SignUserSettingsValue): Promise<SignUserSettingsValue> {
+  async putSettings(tenant_id: string, user_id: string, value: SignUserSettingsWrite): Promise<SignUserSettingsValue> {
     const now = new Date();
-    await this.prisma.signUserSettings.upsert({
+    // An omitted offer_saved_signature_on_links keeps the stored value (default true).
+    const { offer_saved_signature_on_links: offer, ...rest } = value;
+    const r = await this.prisma.signUserSettings.upsert({
       where: { tenant_id_user_id: { tenant_id, user_id } },
-      create: { tenant_id, user_id, ...value, created_at: now, updated_at: now },
-      update: { ...value, updated_at: now },
+      create: { tenant_id, user_id, ...rest, ...(offer !== undefined ? { offer_saved_signature_on_links: offer } : {}), created_at: now, updated_at: now },
+      update: { ...rest, ...(offer !== undefined ? { offer_saved_signature_on_links: offer } : {}), updated_at: now },
     });
-    return value;
+    return { ...rest, offer_saved_signature_on_links: r.offer_saved_signature_on_links };
+  }
+
+  // M-A15 §3.3 — whether this user offers their saved signature on emailed links.
+  async offersSavedSignatureOnLinks(tenant_id: string, user_id: string): Promise<boolean> {
+    const r = await this.prisma.signUserSettings.findUnique({
+      where: { tenant_id_user_id: { tenant_id, user_id } },
+      select: { offer_saved_signature_on_links: true },
+    });
+    return r?.offer_saved_signature_on_links ?? true;
   }
 
   // ── App issues (metadata only) ─────────────────────────────────────────────

@@ -7,6 +7,8 @@ import {
   remindableSigners,
   remindLabel,
   reminderRefusalCopy,
+  isReminderStale,
+  SELF_SIGN_NO_REMINDERS,
   deleteDraftById,
   deleteDraftEnvelope,
   voidEnvelope,
@@ -126,6 +128,23 @@ describe('remind', () => {
       },
     });
     expect(reminderRefusalCopy(daily)).toContain('most reminders allowed in 24 hours');
+  });
+});
+
+describe('reminder on an envelope changed elsewhere (UAT SND-23)', () => {
+  const stale = errorFromBody(409, { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', message: 'envelope status VOIDED is not remindable' } });
+
+  it('a reason-less 409 is a change: the change copy, never "Something went wrong"', () => {
+    expect(isReminderStale(stale)).toBe(true);
+    expect(reminderRefusalCopy(stale)).toBe('This envelope changed. Showing the latest version.');
+  });
+
+  it('the cooldown, daily limit and self-sign refusals are not a change', () => {
+    const cooldown = errorFromBody(429, { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', details: { reason: 'reminder_cooldown' } } });
+    const daily = errorFromBody(429, { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', details: { reason: 'reminder_daily_limit' } } });
+    const self = errorFromBody(409, { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', details: { reason: 'self_sign_no_reminders' } } });
+    expect([cooldown, daily, self].map(isReminderStale)).toEqual([false, false, false]);
+    expect(reminderRefusalCopy(self)).toBe(SELF_SIGN_NO_REMINDERS);
   });
 });
 

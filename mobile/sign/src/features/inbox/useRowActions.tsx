@@ -101,7 +101,14 @@ export function useRowActions(): {
       putDetail(qc, r.value);
       toast.show('Reminder sent');
       void qc.invalidateQueries({ queryKey: signKeys.events(row.envelopeId) });
-    } else toast.show(r.message);
+    } else {
+      toast.show(r.message);
+      // UAT SND-23 — changed elsewhere: refresh the lists so the row shows its new state.
+      if (r.kind === 'stale') {
+        void qc.invalidateQueries({ queryKey: signKeys.detail(row.envelopeId) });
+        refreshLists();
+      }
+    }
   }
 
   async function edit(row: Extract<AgreementRow, { kind: 'sent' }>): Promise<void> {

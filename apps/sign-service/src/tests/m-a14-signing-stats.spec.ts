@@ -62,7 +62,7 @@ const entry = (r: Row) => ({ envelope_id: r.envelope_id, signer: { name: 'x', st
 function service() {
   const repo = {
     selfSignedEnvelopeIds: vi.fn(async (tenant_id: string, user_id: string) => store.self.filter((r) => r.tenant_id === tenant_id && r.user_id === user_id).map((r) => r.envelope_id)),
-    listForUser: vi.fn(async (user_id: string) => (store.bound[user_id] ?? []).map(entry)),
+    removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async (user_id: string) => (store.bound[user_id] ?? []).map(entry)),
     verifiedEmailProof: vi.fn(async () => PROOF),
     listDiscoveredForUser: vi.fn(async (user_id: string) => (store.discovered[user_id] ?? []).map(entry)),
     documentPageCounts: vi.fn(async (ids: readonly string[]) => ids.flatMap((id) => (store.pages[id] ?? []).map((pages) => ({ envelope_id: id, pages })))),

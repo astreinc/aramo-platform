@@ -53,7 +53,7 @@ function service(opts: { session?: Record<string, unknown> | null; email?: strin
         : null,
     ),
     bind: vi.fn(async () => ({ id: BINDING })),
-    listForUser: vi.fn(async () => opts.rows ?? [row()]),
+    removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async () => opts.rows ?? [row()]),
     getForUser: vi.fn(async () => (opts.one === undefined ? row() : opts.one)),
     issueRevalidatedRecipientSession: vi.fn(async () => {
       if (opts.refuse !== undefined) throw new InboxSigningRefusedError(opts.refuse);

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
+import { Btn, TextIn } from './controls.js';
 import { fieldBox, type PageSize } from './field-geometry.js';
 import type { SignField } from './sign-api';
 
@@ -13,6 +14,38 @@ import type { SignField } from './sign-api';
 // stamper draws in). The overlay converts to CSS top-left percentages.
 
 type Pdf = Awaited<ReturnType<typeof import('pdfjs-dist').getDocument>['promise']>;
+
+// UAT SIG-16 — "Find" in the document (the app's More → Find, M-A12 W1-C.2), done in the
+// browser from the PDF already loaded here: no extra request, no token use. A hit is one
+// text run containing the query; its box is in page percentages (top-left origin).
+export interface FindHit {
+  readonly page: number;
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+type TextItemLike = { str?: string; transform?: number[]; width?: number; height?: number };
+type ViewportLike = { width: number; height: number; convertToViewportRectangle: (r: number[]) => number[] };
+
+/** The hits for `query` on one page (case-insensitive; whitespace-trimmed query). */
+export function findOnPage(page: number, items: readonly TextItemLike[], vp: ViewportLike, query: string): FindHit[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return [];
+  const out: FindHit[] = [];
+  for (const it of items) {
+    if (typeof it.str !== 'string' || !it.str.toLowerCase().includes(q) || it.transform === undefined) continue;
+    const x = it.transform[4] ?? 0;
+    const y = it.transform[5] ?? 0;
+    const h = it.height && it.height > 0 ? it.height : Math.abs(it.transform[3] ?? 10);
+    const [x1 = 0, y1 = 0, x2 = 0, y2 = 0] = vp.convertToViewportRectangle([x, y, x + (it.width ?? 0), y + h]);
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    out.push({ page, left: (left / vp.width) * 100, top: (top / vp.height) * 100, width: (Math.abs(x2 - x1) / vp.width) * 100, height: (Math.abs(y2 - y1) / vp.height) * 100 });
+  }
+  return out;
+}
 
 export interface FieldDisplay {
   // What the box shows once filled: typed text, a drawn-image data URL, or a mark.
@@ -77,6 +110,35 @@ export function PdfDocument({
     return () => ro.disconnect();
   }, []);
 
+  // UAT SIG-16 — Find in the document.
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<FindHit[] | null>(null);
+  const [hitIdx, setHitIdx] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const runFind = async () => {
+    if (pdf === null || query.trim() === '') return;
+    setSearching(true);
+    const all: FindHit[] = [];
+    try {
+      for (let i = 0; i < pdf.pages.length; i += 1) {
+        const page = await pdf.doc.getPage(i + 1);
+        const tc = await page.getTextContent();
+        all.push(...findOnPage(i, tc.items as TextItemLike[], page.getViewport({ scale: 1 }) as unknown as ViewportLike, query));
+      }
+    } catch {
+      // A page without a text layer simply has no hits.
+    }
+    setHits(all);
+    setHitIdx(0);
+    setSearching(false);
+  };
+  const current = hits !== null && hits.length > 0 ? hits[Math.min(hitIdx, hits.length - 1)] : undefined;
+  useEffect(() => {
+    if (current === undefined) return;
+    document.getElementById('sg-find-hit')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [current]);
+
   // Bring the active (next) field into view.
   useEffect(() => {
     if (activeField === null) return;
@@ -87,6 +149,63 @@ export function PdfDocument({
 
   return (
     <div className="sg-pages" ref={wrap} data-testid="sg-pages">
+      {pdf !== null ? (
+        <div className="sg-find" data-testid="sg-find">
+          {findOpen ? (
+            <form
+              className="sg-find__bar"
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void runFind();
+              }}
+            >
+              <TextIn
+                className="sg-input sg-find__input"
+                aria-label="Find in document"
+                placeholder="Find in document"
+                value={query}
+                autoFocus
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setHits(null);
+                }}
+                data-testid="sg-find-input"
+              />
+              <Btn type="submit" variant="secondary" disabled={searching || query.trim() === ''} data-testid="sg-find-go">
+                Find
+              </Btn>
+              {hits !== null ? (
+                <>
+                  <span className="sg-small sg-muted" role="status" data-testid="sg-find-count">
+                    {hits.length === 0 ? 'No matches' : `${Math.min(hitIdx, hits.length - 1) + 1} of ${hits.length}`}
+                  </span>
+                  <Btn variant="quiet" disabled={hits.length < 2} aria-label="Previous match" onClick={() => setHitIdx((i) => (i - 1 + hits.length) % hits.length)}>
+                    ‹
+                  </Btn>
+                  <Btn variant="quiet" disabled={hits.length < 2} aria-label="Next match" onClick={() => setHitIdx((i) => (i + 1) % hits.length)} data-testid="sg-find-next">
+                    ›
+                  </Btn>
+                </>
+              ) : null}
+              <Btn
+                variant="quiet"
+                aria-label="Close find"
+                onClick={() => {
+                  setFindOpen(false);
+                  setHits(null);
+                }}
+              >
+                ✕
+              </Btn>
+            </form>
+          ) : (
+            <Btn variant="secondary" className="sg-find__open" onClick={() => setFindOpen(true)} data-testid="sg-find-open">
+              Find
+            </Btn>
+          )}
+        </div>
+      ) : null}
       {pdf === null ? (
         <p className="sg-muted" role="status">
           Loading the document…
@@ -94,12 +213,29 @@ export function PdfDocument({
       ) : (
         pdf.pages.map((page, i) => (
           <Page key={i} doc={pdf.doc} index={i} size={page} cssWidth={Math.max(280, width)}>
+            {hits !== null
+              ? hits
+                  .filter((h) => h.page === i)
+                  .map((h, n) => (
+                    <span
+                      key={`hit-${n}`}
+                      id={h === current ? 'sg-find-hit' : undefined}
+                      className={`sg-find__hit${h === current ? ' sg-find__hit--on' : ''}`}
+                      style={{ left: `${h.left}%`, top: `${h.top}%`, width: `${h.width}%`, height: `${h.height}%` }}
+                      aria-hidden="true"
+                    />
+                  ))
+              : null}
             {fields
               .filter((f) => f.page_number === i)
               .map((f) => {
                 const shown = display(f);
                 const box = fieldBox(f, page);
-                const cls = `sg-onpage${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
+                // UAT SIG-03 — a check box is drawn as the box itself: no "Check" badge, which
+                // is wider than a small box and spilled over its caption and, on a phone, over
+                // the neighbouring box (a tap meant for "Yes" toggled "No").
+                const box_ = f.field_type === 'CHECKBOX';
+                const cls = `sg-onpage${box_ ? ' sg-onpage--box' : ''}${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
                 return (
                   <div
                     key={f.field_id}
@@ -119,15 +255,17 @@ export function PdfDocument({
                     data-testid="sg-onpage-field"
                   >
                     {shown === null ? (
-                      <span className="sg-onpage__cta">{actionLabel(f)}</span>
+                      box_ ? null : <span className="sg-onpage__cta">{actionLabel(f)}</span>
                     ) : shown.kind === 'image' ? (
                       <img src={shown.value} alt="Your signature" className="sg-onpage__img" />
                     ) : (
                       <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
                     {f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0 ? (
-                      // M-A6 §2.3 — the box's caption, beside the box.
-                      <span className="sg-onpage__caption" aria-hidden="true">
+                      // M-A6 §2.3 — the box's caption, beside the box. Like a form label, tapping
+                      // it toggles this box (UAT SIG-03: a larger target that never overlaps
+                      // the box above or below).
+                      <span className="sg-onpage__caption" aria-hidden="true" data-testid="sg-onpage-caption">
                         {f.label}
                       </span>
                     ) : null}

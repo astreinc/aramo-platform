@@ -37,6 +37,7 @@ import { SIGN_DELEGATE_SIGNING_FEATURE, SignFeatureGate } from './sign-feature.g
 import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { identityVerificationHttpError } from './identity-verification/identity-verification-http-error.js';
 import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
+import { GuestSavedMarksService, savedMarkNotAllowed } from './signing/guest-saved-marks.service.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -263,6 +264,8 @@ export class EsignSignerController {
     @Optional() private readonly verification?: RecipientOtpService,
     // Aramo Sign Mobile M-A12 W1-C.2 — "Find in document" (unbound ⇒ 503).
     @Optional() private readonly textLayer?: DocumentTextLayerService,
+    // M-A15 — the saved signature on the web signing page (unbound ⇒ never offered).
+    @Optional() private readonly savedMarks?: GuestSavedMarksService,
   ) {}
 
   // Resolve the session and, when the sender set SMS_OTP on this recipient, require a
@@ -402,8 +405,29 @@ export class EsignSignerController {
     try {
       const ctx = await this.verifiedSession(body.token, requestId);
       const view = await this.service.getSignerDocumentView(ctx);
+      // M-A15 §4.1 — after the view's gates: whose saved signature this session may use.
+      const saved_marks = (await this.savedMarks?.viewFor(ctx)) ?? null;
+      // M-A16 §3 — the finished screen's "Save to my Aramo inbox" (emailed links only).
+      const inbox_save_available = (await this.savedMarks?.inboxSaveAvailable(ctx)) ?? false;
       // B3 — the delegate action is offered only while sign.delegate_signing is available.
-      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE) };
+      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE), saved_marks, inbox_save_available };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // M-A15 §4.2 — "Save as my default" from the signing page: a signed-in (INBOX / SELF)
+  // session only, after the same gates as the view; writes to that user's own saved
+  // signature. An emailed link can never save (403 saved_mark_not_allowed).
+  @Post('saved-mark')
+  @HttpCode(HttpStatus.OK)
+  async savedMark(@Body() body: { token: string } & Record<string, unknown>, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    try {
+      const ctx = await this.verifiedSession(body.token, requestId);
+      await this.service.assertSignerViewGates(ctx);
+      if (this.savedMarks === undefined) throw savedMarkNotAllowed(requestId);
+      return await this.savedMarks.save(ctx, body, requestId);
     } catch (e) {
       throw toHttp(e, requestId);
     }

@@ -363,3 +363,41 @@ describe('sign-web → POST /v1/sign/signing/document (M-A6 field configuration)
       });
   });
 });
+
+// Aramo-Sign-Mobile-Amendment-M-A15 §4.2 — "Save as my default" on the signing page is a
+// signed-in (inbox / Sign now) session only. An emailed-link session is refused with a
+// stable reason; the page keeps signing (a failed save never blocks it).
+describe('sign-web → POST /v1/sign/signing/saved-mark (M-A15)', () => {
+  it('refuses a save from an emailed-link session (403 saved_mark_not_allowed)', async () => {
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a fillable field')
+      .uponReceiving('a save-as-default request from an emailed-link signing session')
+      .withRequest('POST', '/v1/sign/signing/saved-mark', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({
+          token: TOKEN_FILL,
+          slot: 'signature',
+          kind: 'DRAWN',
+          image_data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({ error: { code: like('INSUFFICIENT_PERMISSIONS'), message: like('not available'), details: { reason: 'saved_mark_not_allowed' } } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/saved-mark`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: TOKEN_FILL,
+            slot: 'signature',
+            kind: 'DRAWN',
+            image_data_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+          }),
+        });
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { details: { reason: string } } };
+        expect(body.error.details.reason).toBe('saved_mark_not_allowed');
+      });
+  });
+});

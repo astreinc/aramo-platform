@@ -61,8 +61,8 @@ export function AlmostThereScreen({ envelopeId, documentTitle, onFinishSigning }
           <CircleAction
             testID="almost-save"
             icon="save"
-            label="Save"
-            accessibilityLabel="Save a copy"
+            label="Download"
+            accessibilityLabel="Download signed PDF"
             busy={busy === 'save'}
             disabled={busy !== null}
             onPress={() => run('save')}

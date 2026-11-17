@@ -41,7 +41,7 @@ import type { InboxItem } from '../../features/inbox/types';
 import { EmptyState } from '../../features/inbox/ui';
 import { stashGuestToken } from '../../links/guestTokenVault';
 import { receivedShareTarget } from '../../features/share/shareCompleted';
-import { useShare } from '../../features/share/useShare';
+import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
@@ -68,6 +68,9 @@ export interface ReceivedEnvelopeViewProps {
   /** Share the signed PDF (COMPLETED + can_download only, M-A4 §3.7). */
   readonly onShare?: () => void;
   readonly shareBusy?: boolean;
+  /** UAT CMP-01 — "Download signed PDF" (Android: the system folder picker; iOS: Save to Files). */
+  readonly onDownload?: () => void;
+  readonly downloadBusy?: boolean;
   /** M-A7 §5.2 — "Report this envelope" (every received envelope). */
   readonly onReport?: () => void;
 }
@@ -82,6 +85,8 @@ export function ReceivedEnvelopeView({
   busy,
   onShare,
   shareBusy,
+  onDownload,
+  downloadBusy,
   onReport,
 }: ReceivedEnvelopeViewProps) {
   const t = useTheme();
@@ -144,6 +149,16 @@ export function ReceivedEnvelopeView({
           onPress={onSignedCopy}
         />
       ) : null}
+      {onDownload && receivedShareTarget(item) ? (
+        <Button
+          testID="received-download"
+          title="Download signed PDF"
+          variant="secondary"
+          disabled={!online}
+          busy={downloadBusy}
+          onPress={onDownload}
+        />
+      ) : null}
       {onShare && receivedShareTarget(item) ? (
         <Button
           testID="received-share"
@@ -157,10 +172,9 @@ export function ReceivedEnvelopeView({
       {!online ? (
         <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{OFFLINE_ACTION_REASON}</Text>
       ) : null}
-      {/* W2 — remove and report need a binding; a discovered item has none. */}
-      {hasBindingActions(item) ? (
-        <Button title="Remove from my inbox" variant="text" disabled={!online} onPress={onRemove} />
-      ) : null}
+      {/* M-A17 — "Delete from my inbox" for every received item, added or listed
+          automatically, any state (report still needs a binding). */}
+      <Button testID="received-delete" title="Delete from my inbox" variant="text" disabled={!online} onPress={onRemove} />
       {onReport && hasBindingActions(item) ? (
         <Button
           testID="received-report"
@@ -187,6 +201,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const sharer = useShare();
+  const saver = useSaveCopy();
   const [reportOpen, setReportOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
   const item = findInboxItem(inbox.data, inboxItemId);
@@ -226,14 +241,20 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
     }
   }
 
+  // M-A17 — to the user's Deleted list; the sender and other recipients are unaffected and
+  // the emailed link keeps working (restore from Waiting for me on the web).
   async function remove(): Promise<void> {
     try {
-      await workspace.call('/v1/sign/inbox/{id}', 'delete', { path: { id: inboxItemId } });
+      await workspace.request<{ removed: boolean }>({
+        method: 'POST',
+        path: `/v1/sign/inbox/${encodeURIComponent(inboxItemId)}/remove-from-inbox`,
+        body: {},
+      });
       await qc.invalidateQueries({ queryKey: signKeys.inbox });
-      toast.show('Removed from your inbox');
+      toast.show('Deleted from your inbox. The sender’s envelope isn’t affected.');
       navigation.goBack();
     } catch {
-      toast.show('Couldn’t remove it. Try again.');
+      toast.show('Couldn’t delete it. Try again.');
     }
   }
 
@@ -274,6 +295,8 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         onRemove={() => void remove()}
         onShare={() => sharer.share(receivedShareTarget(item))}
         shareBusy={sharer.busy}
+        onDownload={() => saver.save(receivedShareTarget(item))}
+        downloadBusy={saver.busy}
         onReport={() => setReportOpen(true)}
       />
       <ReportSheet

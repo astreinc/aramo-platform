@@ -4,6 +4,7 @@ import type { LocalDraft } from '../../../state/draftStore';
 import { mergeAgreements, type AgreementRow } from '../agreementsModel';
 import {
   checkEditable,
+  ENVELOPE_CHANGED,
   NOT_EDITABLE,
   NOT_MANAGEABLE,
   NOTHING_TO_REMIND,
@@ -122,6 +123,21 @@ describe('list actions read the detail first', () => {
     expect(net.calls[1]!.url).toMatch(/\/remind$/);
     expect(net.calls[1]!.body).toEqual({ signer_id: 's1' });
     expect(net.calls[1]!.headers['Idempotency-Key']).toBeTruthy();
+  });
+
+  it('remind (UAT SND-23): voided elsewhere -> "stale" with the change copy, no remind call', async () => {
+    const { net, workspace } = workspaceWith(() => ({ status: 200, body: detail({ status: 'VOIDED' }), headers: etag }));
+    expect(await remindFromList(workspace, ID, owner)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
+    expect(net.calls).toHaveLength(1);
+  });
+
+  it('remind (UAT SND-23): the server refuses as changed after the read -> "stale"', async () => {
+    const { workspace } = workspaceWith((req) =>
+      req.method === 'GET'
+        ? { status: 200, body: detail(), headers: etag }
+        : { status: 409, body: { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', message: 'envelope status VOIDED is not remindable' } } },
+    );
+    expect(await remindFromList(workspace, ID, owner)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
   });
 
   it('remind: refused without calling remind when the detail says not the owner', async () => {

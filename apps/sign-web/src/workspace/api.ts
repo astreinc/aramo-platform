@@ -304,6 +304,8 @@ export function formatUsd(amount_minor: number): string {
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
 // Aramo-Sign-Multi-Signer-Amendment — at most this many signers per envelope.
 export const MAX_SIGNERS = 10;
+// Sign Mobile M-A3 §3 — the sender message limit (sign-service MESSAGE_MAX).
+export const ENVELOPE_MESSAGE_MAX = 1000;
 
 export interface EnvelopeDetail {
   id: string;
@@ -325,6 +327,8 @@ export interface EnvelopeDetail {
   // Feature-Parity §1.17 — signers may hand the envelope to someone else (set in DRAFT).
   allow_delegation?: boolean;
   next_signer_id?: string | null;
+  // Sign Mobile M-A3 §3 — the sender's plain-text message to recipients (DRAFT only; null = none).
+  message?: string | null;
   documents: EnvelopeDocument[];
   recipients: Recipient[];
   fields: EnvelopeField[];
@@ -776,6 +780,8 @@ export const senderApi = {
   detail: (id: string) => apiClient.get<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`),
   rename: (id: string, subject: string) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { subject }),
   setRouting: (id: string, routing_mode: RoutingMode) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { routing_mode }),
+  // Sign Mobile M-A3 §3 — the sender message (server sanitizes; > ENVELOPE_MESSAGE_MAX is refused; null clears).
+  setMessage: (id: string, message: string | null) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { message }),
   events: (id: string) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/envelopes/${enc(id)}/events`),
   upload: (id: string, file: { filename: string; title: string; content_base64: string }) =>
     apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, file),
@@ -1011,11 +1017,26 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
+    if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
+    if (isReminderStale(e)) return ENVELOPE_CHANGED;
     // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
     if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+/** UAT SND-23 — same copy as the mobile app (M-A3 §6 revision_mismatch). */
+export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
+
+/**
+ * UAT SND-23 — a reminder refused because the envelope changed elsewhere since it was
+ * read (voided, completed, declined or expired on another device, or every signer done):
+ * 409 ESIGN_REMINDER_NOT_ALLOWED with no reason. The 429 cooldown / daily limit and the
+ * self-sign refusal share the code but carry a details.reason, so they are not a change.
+ */
+export function isReminderStale(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === undefined;
 }
 
 /** Per-seat directive §3.5.2 — the member cap of a per-seat plan (409, details.reason = seat_limit_reached). */
@@ -1085,6 +1106,10 @@ export const inboxApi = {
   sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/sign`),
   signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),
   remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}`),
+  // M-A17 — "Delete from my inbox" (any received item, any state) and Restore; the Deleted folder.
+  removeFromInbox: (id: string) => apiClient.post<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}/remove-from-inbox`, {}),
+  returnToInbox: (id: string) => apiClient.post<{ restored: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}/return-to-inbox`, {}),
+  deleted: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/sign/inbox?folder=deleted'),
 };
 
 // W2 (A3.4) — the inbox item named in the request is gone (an expired or changed
@@ -1155,3 +1180,66 @@ export function sendRefusalMessage(e: unknown, personal: boolean): string {
 export function isCopyRecipient(r: { recipient_kind?: RecipientKind }): boolean {
   return r.recipient_kind === 'RECEIVES_COPY';
 }
+
+// UAT SIG-05 — the signed-in user's default signature and initials (Sign Mobile M-A3 §4:
+// /v1/sign/me/signature and /v1/sign/me/initials, "web and mobile alike"). Keyed by the
+// session's (tenant, user); the same defaults the Aramo Sign app offers when signing.
+export interface SavedMark {
+  kind: 'TYPED' | 'DRAWN';
+  typed_name: string | null;
+  font_key: string | null;
+  image_data_url: string;
+  updated_at: string;
+}
+export interface SavedMarks {
+  signature: SavedMark | null;
+  initials: SavedMark | null;
+}
+export type SavedMarkTarget = 'signature' | 'initials';
+// UAT SIG-12 — the sender's SIGN_DATE format, stamped on envelopes they send (M-A12 W1-E.2).
+export const SIGN_DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
+export type SavedMarkWrite =
+  | { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string }
+  | { kind: 'DRAWN'; image_data_url: string };
+// The font key the app sends with a typed mark (mobile adopt.ts SCRIPT_FONT_KEY).
+export const SAVED_MARK_FONT_KEY = 'system-script';
+// M-A15 §5 — the user's Sign settings; the opt-out is optional on PUT.
+export interface SignMeSettings {
+  date_format: string;
+  default_field_size: string;
+  offer_saved_signature_on_links?: boolean;
+}
+// UAT PRF-01 — the user's Sign profile (M-A12 W1-E; GET/PUT /v1/sign/me/profile), the
+// same record the app's My profile edits. Optional fields are null when empty.
+export interface SignProfile {
+  display_name: string;
+  title: string | null;
+  company: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+  phone: string | null;
+  email?: string | null;
+  updated_at?: string | null;
+}
+export const profileApi = {
+  get: () => apiClient.get<SignProfile>('/v1/sign/me/profile'),
+  put: (p: Omit<SignProfile, 'email' | 'updated_at'>) => apiClient.put<SignProfile>('/v1/sign/me/profile', p),
+};
+
+export const savedMarksApi = {
+  get: () => apiClient.get<SavedMarks>('/v1/sign/me/signature'),
+  settings: () => apiClient.get<SignMeSettings>('/v1/sign/me/settings'),
+  putSettings: (s: SignMeSettings) => apiClient.put<SignMeSettings>('/v1/sign/me/settings', s),
+  // Change some settings: read the current values first so one card never writes back
+  // another card's stale value (the PUT needs date_format and default_field_size).
+  updateSettings: async (patch: Partial<SignMeSettings>): Promise<SignMeSettings> => {
+    const cur = await apiClient.get<SignMeSettings>('/v1/sign/me/settings');
+    return apiClient.put<SignMeSettings>('/v1/sign/me/settings', { ...cur, ...patch });
+  },
+  put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
+  remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
+};

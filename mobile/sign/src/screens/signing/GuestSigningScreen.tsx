@@ -126,6 +126,8 @@ export function GuestSigningScreen({ route, navigation }: Props) {
       // may be meant for someone else) does their profile pre-fill the profile fields.
       {...(self && signedIn ? { prefill } : {})}
       {...(signedIn && !self ? { onClaim: link.claim } : {})}
+      // UAT SIG-14 — a received document can be reported; never the user's own Sign-now document.
+      canReport={!self}
       onDone={done}
       onHeaderFinish={setHeaderFinish}
     />

@@ -48,7 +48,9 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // per-recipient access code (every plan, including Free). Moving any of them to
   // AVAILABLE is a separate PO authorization.
   'sign.witness_signing': 'NOT_AVAILABLE',
-  'sign.delegate_signing': 'NOT_AVAILABLE',
+  // delegate_signing AVAILABLE: PO authorization (R-8) 2026-11-17 (UAT SIG-07) — Business
+  // tenants only (the sender context and the update route keep the Business check).
+  'sign.delegate_signing': 'AVAILABLE',
   // access_code AVAILABLE: PO authorization (R-8) 2026-11-01 (signer path; no sender UI yet).
   'sign.access_code': 'AVAILABLE',
   // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 (Amendment A1)

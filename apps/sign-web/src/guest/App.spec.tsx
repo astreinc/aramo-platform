@@ -324,6 +324,22 @@ describe('signer app — Name and Checkbox fields (M-A6 §2)', () => {
     expect(calls.some((c) => c.path === 'fields/f-name/fill')).toBe(false);
   });
 
+  it('UAT SIG-03: Start / Next field brings a box into view without checking it', async () => {
+    const calls = transport({ document: () => json(BOXES_VIEW) });
+    await toWorkspace();
+    expect(screen.getByText('0 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // Nothing is filled by Start: the counter and the box stay as they were.
+    expect(fillsOf(calls)).toEqual([]);
+    expect(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' })).toBeInTheDocument();
+    expect(screen.getByText('0 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+    // The signer checks it themselves: one 'true', and the counter moves once.
+    fireEvent.click(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' }));
+    await screen.findByRole('button', { name: 'Uncheck: I agree to the terms, page 1' });
+    expect(fillsOf(calls)).toEqual([['f-agree', 'true']]);
+    expect(screen.getByText('1 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+  });
+
   it('a server completion refusal shows its reason', async () => {
     transport({
       document: () => json({ ...BOXES_VIEW, fields: BOXES_VIEW.fields.filter((f) => f.field_id === 'f-name') }),
@@ -419,5 +435,95 @@ describe('signer page branding', () => {
       accent_color: null,
       logo_url: LOGO,
     });
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A15 §6 — the saved signature on the signing page,
+// decided by the server (saved_marks in the view); the page stays session-free.
+describe('signer app — saved signature (M-A15)', () => {
+  const SAVED_SIG = { kind: 'DRAWN', typed_name: null, image_data_url: 'data:image/png;base64,SAVED' };
+  const withSaved = (saved_marks: unknown) => ({ document: () => json({ ...VIEW, saved_marks }) });
+
+  it('"Use my saved signature" fills the field with the saved mark', async () => {
+    const calls = transport(withSaved({ signature: SAVED_SIG, initials: { kind: 'TYPED', typed_name: 'Ravi Shankar', image_data_url: 'data:image/png;base64,INI' }, can_save: false }));
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // Saved TYPED initials send the initials derived from the stored name.
+    fireEvent.click(await screen.findByTestId('sg-use-saved'));
+    await waitFor(() => expect(calls.find((c) => c.path === 'fields/f-init/fill')?.body).toMatchObject({ value: 'RS', signature_method: 'TYPED' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next field' }));
+    expect(await screen.findByAltText('Your saved signature')).toHaveAttribute('src', SAVED_SIG.image_data_url);
+    fireEvent.click(screen.getByTestId('sg-use-saved'));
+    await waitFor(() => expect(calls.find((c) => c.path === 'fields/f-sig/fill')?.body).toMatchObject({ value: SAVED_SIG.image_data_url, signature_method: 'DRAWN' }));
+    // An emailed link (can_save false) never offers or makes a save.
+    expect(calls.some((c) => c.path === 'saved-mark')).toBe(false);
+  });
+
+  it('an emailed link shows no "Save as my default"; a signed-in session saves (initials stored letter by letter)', async () => {
+    transport(withSaved({ signature: SAVED_SIG, initials: null, can_save: false }));
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await screen.findByRole('dialog', { name: 'Adopt your initials' });
+    expect(screen.queryByTestId('sg-save-default')).toBeNull();
+    cleanup();
+
+    const calls = transport({ ...withSaved({ signature: null, initials: null, can_save: true }), 'saved-mark': () => json({ kind: 'TYPED', typed_name: 'R S', image_data_url: 'data:image/png;base64,X' }) });
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // Nothing saved yet: "Save as my default" starts checked, as in the app.
+    expect(await screen.findByTestId('sg-save-default')).toBeChecked();
+    fireEvent.change(screen.getByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    await waitFor(() => expect(calls.find((c) => c.path === 'saved-mark')?.body).toMatchObject({ token: 'tok-123', slot: 'initials', kind: 'TYPED', typed_name: 'R S', font_key: 'system-script' }));
+    expect(calls.find((c) => c.path === 'fields/f-init/fill')?.body).toMatchObject({ value: 'RS' });
+  });
+
+  it('a failed save never blocks signing', async () => {
+    const calls = transport({ ...withSaved({ signature: null, initials: null, can_save: true }), 'saved-mark': () => json({ error: { code: 'INTERNAL_ERROR' } }, 500) });
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(await screen.findByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    expect(await screen.findByText('Your initials weren’t saved as your default. Signing isn’t affected.')).toBeInTheDocument();
+    expect(calls.some((c) => c.path === 'fields/f-init/fill')).toBe(true);
+    await screen.findAllByText('1 of 3 required fields filled');
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A16 §2 / §3 — "Save to my Aramo inbox" on the signed
+// screen, for emailed-link sessions only; the token goes to sessionStorage, never a URL.
+describe('signer app — Save to my Aramo inbox (M-A16)', () => {
+  async function signAll() {
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(await screen.findByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    await screen.findAllByText('1 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await screen.findAllByText('2 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    await screen.findAllByText('3 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
+    await screen.findByText(/You've signed/);
+  }
+
+  it('an emailed link offers it; selecting it keeps the token in sessionStorage and opens the workspace', async () => {
+    transport({ document: () => json({ ...VIEW, inbox_save_available: true }) });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, pathname: '/s/tok-123', assign });
+    await signAll();
+    fireEvent.click(screen.getByRole('button', { name: 'Save to my Aramo inbox' }));
+    expect(window.sessionStorage.getItem('aramo-sign-inbox-claim')).toBe('tok-123');
+    expect(assign).toHaveBeenCalledWith('/');
+    window.sessionStorage.removeItem('aramo-sign-inbox-claim');
+  });
+
+  it('not offered for an inbox, Sign now or hosted session', async () => {
+    transport({ document: () => json({ ...VIEW, inbox_save_available: false }) });
+    await signAll();
+    expect(screen.queryByTestId('sg-save-to-inbox')).toBeNull();
   });
 });

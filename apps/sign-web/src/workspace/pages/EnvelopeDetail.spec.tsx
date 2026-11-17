@@ -70,6 +70,28 @@ afterEach(() => {
   manageAll = false;
 });
 
+describe('EnvelopeDetail — reminder on an envelope changed elsewhere (UAT SND-23)', () => {
+  it('says the envelope changed and shows its latest state', async () => {
+    const open = env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true })] });
+    detail.mockResolvedValueOnce(open).mockResolvedValue(env({ status: 'VOIDED', voided_at: '2026-10-21T00:00:00Z', recipients: [rcp(1)] }));
+    remind.mockRejectedValue(new ApiError(409, 'envelope status VOIDED is not remindable', 'ESIGN_REMINDER_NOT_ALLOWED'));
+    show();
+    fireEvent.click(await screen.findByTestId('remind-s1'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('This envelope changed. Showing the latest version.'));
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('remind-s1')).toBeNull());
+  });
+
+  it('a self-sign refusal is not called a change', async () => {
+    detail.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true })] }));
+    remind.mockRejectedValue(new ApiError(409, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'self_sign_no_reminders' }));
+    show();
+    fireEvent.click(await screen.findByTestId('remind-s1'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith('A document you sign yourself has no one to remind.'));
+    expect(detail).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('EnvelopeDetail — multiple signers', () => {
   it('in order: names the signer whose turn it is and offers Remind only to them', async () => {
     const d = env({ routing_mode: 'SEQUENTIAL', next_signer_id: 's2', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-20T01:00:00Z' }), rcp(2, { can_remind: true }), rcp(3)] });

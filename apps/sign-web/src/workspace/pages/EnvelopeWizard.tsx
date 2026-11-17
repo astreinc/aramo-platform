@@ -4,6 +4,7 @@ import { Input } from '@aramo/fe-foundation';
 
 import {
   E164_RE,
+  ENVELOPE_MESSAGE_MAX,
   errorMessage,
   fileToBase64,
   isAllowanceLimit,
@@ -849,6 +850,10 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       : null;
   const nav = useNavigate();
   const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  // UAT SND-20 — the sender message (M-A3 §3), at most ENVELOPE_MESSAGE_MAX characters,
+  // saved on blur and again before Send if it changed.
+  const [message, setMessage] = useState(env.message ?? '');
+  const savedMessage = useRef(env.message ?? '');
   const [error, setError] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
@@ -856,12 +861,21 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
   const [upgrade, setUpgrade] = useState(false);
   const ready = readinessOf(env);
 
+  // Persist the message when it differs from what the server holds; "" clears it.
+  const saveMessage = async () => {
+    const next = message.trim();
+    if (next === savedMessage.current.trim()) return;
+    await senderApi.setMessage(env.id, next === '' ? null : next);
+    savedMessage.current = next;
+  };
+
   const send = async () => {
     setError('');
     setProblems([]);
     setUpgrade(false);
     setSending(true);
     try {
+      await saveMessage();
       // Navigate straight to the Sent screen; updating the wizard's envelope first
       // would re-render it as SENT and redirect to the detail page instead.
       await senderApi.send(env.id, subject.trim() === '' ? undefined : subject.trim());
@@ -886,8 +900,21 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
               <Field label="Email subject" htmlFor="subject">
                 <TextIn id="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} />
               </Field>
-              <Field label="Message to recipients (proposed)" htmlFor="message">
-                <Area id="message" rows={3} disabled placeholder="Envelope messages are a proposed capability" />
+              <Field label="Message (optional)" htmlFor="message">
+                <Area
+                  id="message"
+                  data-testid="envelope-message"
+                  rows={3}
+                  maxLength={ENVELOPE_MESSAGE_MAX}
+                  value={message}
+                  placeholder="Add a note for the signers"
+                  aria-description={`Plain text, up to ${ENVELOPE_MESSAGE_MAX} characters`}
+                  onChange={(e) => setMessage(e.target.value.slice(0, ENVELOPE_MESSAGE_MAX))}
+                  onBlur={() => void saveMessage().catch((e: unknown) => setError(errorMessage(e, 'Could not save the message')))}
+                />
+                <div className="sg-help" data-testid="envelope-message-count" style={{ textAlign: 'right' }}>
+                  {message.length} / {ENVELOPE_MESSAGE_MAX}
+                </div>
               </Field>
               <div className="sg-grid sg-grid--2">
                 <Field label="Signing window" htmlFor="window">

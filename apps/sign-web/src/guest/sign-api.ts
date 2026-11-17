@@ -72,7 +72,28 @@ export interface SignerDocumentView {
   // M-A12 W1-E.2 — the sender's date format for SIGN_DATE (null: an envelope sent before
   // formats were stamped, which keeps YYYY-MM-DD).
   date_format?: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | null;
+  // M-A15 §4.1 — the signer's own saved signature / initials, decided by the server from
+  // this signing session (null: nothing to offer; absent: an older server).
+  saved_marks?: GuestSavedMarks | null;
+  // M-A16 §3 — offer "Save to my Aramo inbox" after signing (emailed-link sessions only).
+  inbox_save_available?: boolean;
 }
+
+// M-A15 §4.1 — a saved mark offered on this signing page.
+export interface GuestSavedMark {
+  kind: 'TYPED' | 'DRAWN';
+  typed_name: string | null;
+  image_data_url: string;
+}
+export interface GuestSavedMarks {
+  signature: GuestSavedMark | null;
+  initials: GuestSavedMark | null;
+  // True only when this signing session belongs to a signed-in user (inbox / Sign now).
+  can_save: boolean;
+}
+export type GuestSavedMarkSlot = 'signature' | 'initials';
+// The font key the app sends with a typed mark (M-A3 §4).
+export const SAVED_MARK_FONT_KEY = 'system-script';
 
 // Feature-Parity §1.16 — the signer's qualified-signature step (null = not required).
 export interface QesStatus {
@@ -140,6 +161,13 @@ export interface SignerDisclosure {
 }
 
 // Aramo Sign launch — the signer's signed copy (from the completion email link).
+// M-A5 §2.2 — what a copy recipient sees: the documents as sent (no signer data).
+export interface RecipientCopy {
+  subject: string;
+  sent_at: string | null;
+  documents: { title: string; content_type: string; source_base64: string }[];
+}
+
 export interface ExecutedCopy {
   subject: string;
   completed_at: string | null;
@@ -188,8 +216,20 @@ export const signApi = {
   executed(token: string): Promise<ExecutedCopy> {
     return post<ExecutedCopy>('executed', { token });
   },
+  // M-A5 §2.2 / UAT CMP-14 — a copy recipient's documents (as sent), by the COPY_VIEW token.
+  copy(token: string): Promise<RecipientCopy> {
+    return post<RecipientCopy>('copy', { token });
+  },
   documentView(token: string): Promise<SignerDocumentView> {
     return post<SignerDocumentView>('document', { token });
+  },
+  // M-A15 §4.2 — "Save as my default" (a signed-in signing session only; token-scoped).
+  saveMark(
+    token: string,
+    slot: GuestSavedMarkSlot,
+    mark: { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string } | { kind: 'DRAWN'; image_data_url: string },
+  ): Promise<GuestSavedMark> {
+    return post<GuestSavedMark>('saved-mark', { token, slot, ...mark });
   },
   source(token: string, document_id: string): Promise<{ source_base64: string; content_type: string }> {
     return post<{ source_base64: string; content_type: string }>('source', { token, document_id });

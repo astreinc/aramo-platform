@@ -299,6 +299,29 @@ export class RecipientInboxRepository {
     return docs.map((d) => ({ envelope_id: d.envelope_id, pages: Array.isArray(d.page_sizes?.pages) && d.page_sizes.pages.length > 0 ? d.page_sizes.pages.length : null }));
   }
 
+  // ── M-A17 — "Delete from my inbox" (per user; never part of purge) ───────────
+
+  /** The signer rows this user deleted from their inbox. */
+  async removedSignerIds(user_id: string): Promise<Set<string>> {
+    const rows = await this.prisma.recipientInboxRemoval.findMany({ where: { user_id }, select: { signer_id: true } });
+    return new Set(rows.map((r) => r.signer_id));
+  }
+
+  /** Delete this user's entry from their inbox (idempotent). */
+  async removeFromInbox(user_id: string, entry: { signer_id: string; envelope_id: string; envelope_tenant_id: string }): Promise<void> {
+    await this.prisma.recipientInboxRemoval.upsert({
+      where: { user_id_signer_id: { user_id, signer_id: entry.signer_id } },
+      create: { user_id, signer_id: entry.signer_id, envelope_id: entry.envelope_id, envelope_tenant_id: entry.envelope_tenant_id },
+      update: {},
+    });
+  }
+
+  /** Restore it (true when it had been deleted). */
+  async returnToInbox(user_id: string, signer_id: string): Promise<boolean> {
+    const r = await this.prisma.recipientInboxRemoval.deleteMany({ where: { user_id, signer_id } });
+    return r.count > 0;
+  }
+
   getForUser(user_id: string, id: string): Promise<RecipientInboxRow | null> {
     return this.prisma.signRecipientBinding.findFirst({
       where: { id, user_id, revoked_at: null },

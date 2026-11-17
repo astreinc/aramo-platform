@@ -39,7 +39,7 @@ describe('AlmostThereScreen', () => {
     expect(screen.getByText('Now, send a copy to others')).toBeTruthy();
     expect(screen.getByLabelText('Email a copy')).toBeTruthy();
     expect(screen.getByLabelText('Share a copy')).toBeTruthy();
-    expect(screen.getByLabelText('Save a copy')).toBeTruthy();
+    expect(screen.getByLabelText('Download signed PDF')).toBeTruthy();
     fireEvent.press(screen.getByText('Finish Signing'));
     expect(onFinish).toHaveBeenCalledTimes(1);
   });

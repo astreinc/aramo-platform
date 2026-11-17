@@ -41,11 +41,10 @@ export function TasksScreen() {
       onRefresh={() => void Promise.allSettled([recheckOnline(), inbox.refetch()])}
       onFilter={setFilter}
       onSort={setSort}
-      onOpen={(c) =>
-        c.kind === 'needs_me'
-          ? navigation.navigate('Signing', { envelopeId: c.inboxItemId })
-          : navigation.navigate('ReceivedEnvelope', { inboxItemId: c.inboxItemId })
-      }
+      // UAT INB-08 — Sign starts signing (Needs me only); View (and the row) opens the
+      // received envelope in view mode, never the signing flow.
+      onSign={(c) => navigation.navigate('Signing', { envelopeId: c.inboxItemId })}
+      onView={(c) => navigation.navigate('ReceivedEnvelope', { inboxItemId: c.inboxItemId })}
     />
   );
 }
@@ -59,7 +58,8 @@ export function TasksView({
   onRefresh,
   onFilter,
   onSort,
-  onOpen,
+  onSign,
+  onView,
 }: {
   readonly model: ReturnType<typeof tasksModel>;
   readonly filter: TaskFilter;
@@ -69,7 +69,8 @@ export function TasksView({
   readonly onRefresh?: () => void;
   readonly onFilter: (f: TaskFilter) => void;
   readonly onSort: (s: TaskSort) => void;
-  readonly onOpen: (c: TaskCard) => void;
+  readonly onSign: (c: TaskCard) => void;
+  readonly onView: (c: TaskCard) => void;
 }) {
   const t = useTheme();
   const sortIndex = TASK_SORTS.findIndex((s) => s.key === sort);
@@ -82,23 +83,48 @@ export function TasksView({
         </Text>
         <Card>
           {cards.map((c, i) => (
-            <Pressable
+            <View
               key={c.key}
-              testID={`task-${c.inboxItemId}`}
-              onPress={() => onOpen(c)}
-              accessibilityRole="button"
-              accessibilityLabel={[c.subject, c.subtitle, c.due].filter(Boolean).join('. ')}
               style={[styles.row, i < cards.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.color.separator } : null]}
             >
-              <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600', fontFamily: t.font.family }} numberOfLines={2}>
-                {c.subject}
-              </Text>
-              <Text style={{ color: t.color.textSecondary, fontSize: 14, fontFamily: t.font.family }}>{c.subtitle}</Text>
-              {c.due ? <Text style={{ color: t.color.textTertiary, fontSize: 13, fontFamily: t.font.family }}>{c.due}</Text> : null}
-              <Text style={{ color: t.color.accent, fontSize: 15, fontWeight: '600', fontFamily: t.font.family }}>
-                {c.kind === 'needs_me' ? 'Sign ›' : 'View ›'}
-              </Text>
-            </Pressable>
+              {/* The row opens the agreement in view mode (UAT INB-08). */}
+              <Pressable
+                testID={`task-${c.inboxItemId}`}
+                onPress={() => onView(c)}
+                accessibilityRole="button"
+                accessibilityLabel={[c.subject, c.subtitle, c.due].filter(Boolean).join('. ')}
+                accessibilityHint="Opens the agreement"
+                style={{ gap: 3 }}
+              >
+                <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600', fontFamily: t.font.family }} numberOfLines={2}>
+                  {c.subject}
+                </Text>
+                <Text style={{ color: t.color.textSecondary, fontSize: 14, fontFamily: t.font.family }}>{c.subtitle}</Text>
+                {c.due ? <Text style={{ color: t.color.textTertiary, fontSize: 13, fontFamily: t.font.family }}>{c.due}</Text> : null}
+              </Pressable>
+              <View style={styles.actions}>
+                {c.kind === 'needs_me' ? (
+                  <Pressable
+                    testID={`task-sign-${c.inboxItemId}`}
+                    onPress={() => onSign(c)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sign ${c.subject}`}
+                    style={[styles.action, { minHeight: t.size.minTouch }]}
+                  >
+                    <Text style={{ color: t.color.accent, fontSize: 15, fontWeight: '700', fontFamily: t.font.family }}>Sign</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  testID={`task-view-${c.inboxItemId}`}
+                  onPress={() => onView(c)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${c.subject}`}
+                  style={[styles.action, { minHeight: t.size.minTouch }]}
+                >
+                  <Text style={{ color: t.color.accent, fontSize: 15, fontWeight: '600', fontFamily: t.font.family }}>View</Text>
+                </Pressable>
+              </View>
+            </View>
           ))}
         </Card>
       </View>
@@ -141,5 +167,7 @@ export function TasksView({
 
 const styles = StyleSheet.create({
   body: { padding: 16, gap: 14, paddingBottom: 48 },
-  row: { paddingHorizontal: 14, paddingVertical: 12, gap: 3 },
+  row: { paddingHorizontal: 14, paddingVertical: 12, gap: 6 },
+  actions: { flexDirection: 'row', gap: 20 },
+  action: { justifyContent: 'center', paddingRight: 4 },
 });

@@ -22,6 +22,7 @@ import { OfflineBanner } from '../../components/Banner';
 import { fetchSourcePdf } from '../../features/editor/sourcePdf';
 import { useEnvelopeDetail, useOnline } from '../../features/inbox/queries';
 import { EmptyState, Segments } from '../../features/inbox/ui';
+import { useSaveOnePdf } from '../../features/share/useShare';
 import { ExecutedCopyView, type ExecutedPart } from '../../features/signing/ExecutedCopyView';
 import { boxOnPage, PdfPages, type PageLayout } from '../../features/signing/PdfPages';
 import { ZoomablePages } from '../../features/signing/ZoomablePages';
@@ -44,6 +45,7 @@ function ExecutedViewer({
 }) {
   const t = useTheme();
   const { workspace } = useServices();
+  const saver = useSaveOnePdf();
   const q = useQuery({
     queryKey: ['sign', 'sender', 'envelope', envelopeId, 'executed-bytes'],
     queryFn: () =>
@@ -84,7 +86,15 @@ function ExecutedViewer({
       : []),
   ];
   const initialKey = kind === 'certificate' ? 'certificate' : (documentId ?? parts[0]?.key);
-  return <ExecutedCopyView parts={parts} {...(initialKey ? { initialKey } : {})} />;
+  // UAT CMP-02 — "Download certificate" / "Download" the part on screen.
+  return (
+    <ExecutedCopyView
+      parts={parts}
+      {...(initialKey ? { initialKey } : {})}
+      onDownload={(p) => saver.save({ title: p.key === 'certificate' ? 'Certificate of completion' : p.title, base64: p.base64 })}
+      downloadBusy={saver.busy}
+    />
+  );
 }
 
 /** M-A13 #10 — the placed fields over one page, read-only. */

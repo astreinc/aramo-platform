@@ -17,19 +17,29 @@ const inbox: InboxList = {
 };
 
 describe('TasksView', () => {
-  it('lists Needs me and Upcoming; opens a task; changes filter and sort', () => {
+  it('lists Needs me and Upcoming; Sign and View per task; changes filter and sort', () => {
     const rows = mergeAgreements(null, inbox);
-    const onOpen = jest.fn();
+    const onSign = jest.fn();
+    const onView = jest.fn();
     const onFilter = jest.fn();
     const onSort = jest.fn();
     render(
-      <TasksView model={tasksModel(rows, 'all', 'newest')} filter="all" sort="newest" online onFilter={onFilter} onSort={onSort} onOpen={onOpen} />,
+      <TasksView model={tasksModel(rows, 'all', 'newest')} filter="all" sort="newest" online onFilter={onFilter} onSort={onSort} onSign={onSign} onView={onView} />,
     );
     expect(screen.getByRole('header', { name: 'Needs me' })).toBeTruthy();
     expect(screen.getByRole('header', { name: 'Upcoming' })).toBeTruthy();
     expect(screen.getByTestId('tasks-summary').props.children).toBe('1 agreement is waiting for your signature');
+    // UAT INB-08 — Needs me: Sign starts signing; View and the row open view mode.
+    fireEvent.press(screen.getByTestId('task-sign-n1'));
+    expect(onSign).toHaveBeenCalledWith(expect.objectContaining({ inboxItemId: 'n1', kind: 'needs_me' }));
+    fireEvent.press(screen.getByTestId('task-view-n1'));
     fireEvent.press(screen.getByTestId('task-n1'));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ inboxItemId: 'n1', kind: 'needs_me' }));
+    expect(onView).toHaveBeenCalledTimes(2);
+    expect(onSign).toHaveBeenCalledTimes(1);
+    // Upcoming: View only (nothing to sign yet).
+    expect(screen.queryByTestId('task-sign-u1')).toBeNull();
+    fireEvent.press(screen.getByTestId('task-view-u1'));
+    expect(onView).toHaveBeenLastCalledWith(expect.objectContaining({ inboxItemId: 'u1' }));
     fireEvent.press(screen.getByTestId('tasks-sort'));
     expect(onSort).toHaveBeenCalledWith('oldest');
     fireEvent.press(screen.getByTestId('tasks-filter-upcoming'));
@@ -38,7 +48,7 @@ describe('TasksView', () => {
 
   it('empty state', () => {
     render(
-      <TasksView model={tasksModel([], 'all', 'newest')} filter="all" sort="newest" online onFilter={jest.fn()} onSort={jest.fn()} onOpen={jest.fn()} />,
+      <TasksView model={tasksModel([], 'all', 'newest')} filter="all" sort="newest" online onFilter={jest.fn()} onSort={jest.fn()} onSign={jest.fn()} onView={jest.fn()} />,
     );
     expect(screen.getByText('You’re all caught up')).toBeTruthy();
   });

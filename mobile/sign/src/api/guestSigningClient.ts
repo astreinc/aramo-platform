@@ -11,6 +11,10 @@ import { execute, type FetchFn } from './http';
 import type { GuestPath, Operation, RequestJson, SuccessJson } from './types';
 
 const GUEST_PREFIX = '/v1/sign/signing/';
+// Personal Free v1.1 §6.4 / M-A7 §5.2 — "Report this envelope": the public report route
+// the web uses, authorized by this same signing token (UAT SIG-14). The ONLY non-signing
+// path the guest transport may reach, through report() alone.
+const REPORT_PATH = '/v1/sign/report';
 
 /** Refusals after which a signing token must never be used again. */
 const TOKEN_ENDING_REASONS = new Set<string>([
@@ -35,6 +39,8 @@ export interface GuestSigningSession {
   ): Promise<SuccessJson<Operation<P, 'post'>>>;
   /** Untyped escape hatch for signing operations not yet in openapi/sign.yaml (B-12). */
   postRaw<T>(path: `${typeof GUEST_PREFIX}${string}`, body?: Record<string, unknown>): Promise<T>;
+  /** UAT SIG-14 — report this envelope (POST /v1/sign/report with this token). */
+  report(body: { reason?: string; note?: string }): Promise<void>;
   /** Forget the token now (signing task finished, screen left, or link ended). */
   discard(): void;
 }
@@ -52,7 +58,7 @@ export function createGuestSigningClient(deps: {
     open(initial: string): GuestSigningSession {
       let token: string | null = initial;
       async function send<T>(path: string, body: Record<string, unknown> | undefined): Promise<T> {
-        if (!path.startsWith(GUEST_PREFIX))
+        if (!path.startsWith(GUEST_PREFIX) && path !== REPORT_PATH)
           throw new Error('only signing paths are reachable on the guest transport');
         if (token === null) throw clientError('signing_session_ended');
         try {
@@ -78,6 +84,9 @@ export function createGuestSigningClient(deps: {
         },
         postRaw(path, body) {
           return send(path, body);
+        },
+        async report(body) {
+          await send<unknown>(REPORT_PATH, body);
         },
         discard() {
           token = null;

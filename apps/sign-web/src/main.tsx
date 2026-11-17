@@ -18,7 +18,7 @@ async function startWorkspace(root: HTMLElement): Promise<void> {
   m.bootWorkspace(root);
 }
 
-async function startGuest(root: HTMLElement, mode: 'sign' | 'download'): Promise<void> {
+async function startGuest(root: HTMLElement, mode: 'sign' | 'download' | 'copy'): Promise<void> {
   const m = await import('./guest/boot.js');
   m.bootGuest(root, mode);
 }
@@ -27,5 +27,5 @@ const zone = zoneFor(window.location.pathname, window.location.search);
 if (zone === 'workspace') {
   void startWorkspace(container);
 } else {
-  void startGuest(container, zone === 'guest-download' ? 'download' : 'sign');
+  void startGuest(container, zone === 'guest-download' ? 'download' : zone === 'guest-copy' ? 'copy' : 'sign');
 }

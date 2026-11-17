@@ -172,7 +172,9 @@ export class RecipientInboxService {
   async list(auth: AuthContextType, folder?: string, requestId = '') {
     if (folder !== undefined && folder !== 'deleted') throw new AramoError('VALIDATION_ERROR', 'unknown folder', 400, { requestId, details: { folder } });
     const deleted = new Set(this.purges !== undefined ? await this.purges.deletedEnvelopeIds({ kind: 'RECIPIENT', key: auth.sub }) : []);
-    const inFolder = (r: RecipientInboxRow): boolean => (folder === 'deleted') === deleted.has(r.envelope_id);
+    // M-A17 §3 — entries this user deleted from their inbox are listed in the Deleted folder.
+    const removed = await this.repo.removedSignerIds(auth.sub);
+    const inFolder = (r: RecipientInboxRow): boolean => (folder === 'deleted') === (deleted.has(r.envelope_id) || removed.has(r.signer_id));
     const bound = (await this.repo.listForUser(auth.sub)).filter(inFolder).map((row) => ({ row, id: row.id }));
     // Dedupe (rule 5): a recipient reachable through a binding is listed once, as bound.
     const boundSigners = new Set(bound.map((b) => b.row.signer_id));
@@ -257,6 +259,38 @@ export class RecipientInboxService {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });
     }
     return { deleted: true };
+  }
+
+  // M-A17 §4 — a claimed item's id or a discovered item's handle, resolved as :id/sign
+  // resolves them, to this user's own entry. Anything the user cannot see is 404.
+  private async ownEntry(auth: AuthContextType, id: string, requestId: string): Promise<{ signer_id: string; envelope_id: string; envelope_tenant_id: string }> {
+    if (isUuid(id)) {
+      const r = await this.repo.getForUser(auth.sub, id);
+      if (r === null) throw notFound(requestId);
+      return r;
+    }
+    const key = inboxHandleKey();
+    const claims = key === null ? null : openInboxHandle(key, id, auth.sub);
+    if (claims === null) throw notFound(requestId);
+    const proof = await this.repo.verifiedEmailProof(auth.sub);
+    if (proof === null) throw notFound(requestId);
+    const row = (await this.repo.listDiscoveredForUser(auth.sub, proof)).find((d) => d.signer_id === claims.signer_id);
+    if (row === undefined) throw notFound(requestId);
+    return row;
+  }
+
+  // M-A17 §2 — "Delete from my inbox": any received item, any state, to this user's Deleted
+  // folder. Nothing else changes (envelope, sender, other recipients, the emailed link).
+  async removeFromInbox(auth: AuthContextType, id: string, requestId: string) {
+    const entry = await this.ownEntry(auth, id, requestId);
+    await this.repo.removeFromInbox(auth.sub, entry);
+    return { removed: true };
+  }
+
+  // M-A17 §2 — Restore: back to the inbox.
+  async returnToInbox(auth: AuthContextType, id: string, requestId: string) {
+    const entry = await this.ownEntry(auth, id, requestId);
+    return { restored: await this.repo.returnToInbox(auth.sub, entry.signer_id) };
   }
 
   async restoreForMe(auth: AuthContextType, id: string, requestId: string) {

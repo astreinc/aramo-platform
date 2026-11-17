@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { PURGE_LEVELS, errorMessage, fetchSourcePdf, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -101,6 +101,8 @@ export function EnvelopeDetail() {
       load();
     } catch (e) {
       toast(errorMessage(e));
+      // UAT SND-23 — changed elsewhere (e.g. voided on the app): show the latest version.
+      if (isReminderStale(e)) load();
     } finally {
       setBusy(false);
     }

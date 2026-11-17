@@ -102,8 +102,25 @@ export function remindLabel(signers: readonly DetailRecipient[]): string {
   return `Send reminder to ${signers.length} signers`;
 }
 
+/** Copy for a self-sign envelope: there is no one to remind (M-A12 W1-A). */
+export const SELF_SIGN_NO_REMINDERS = 'A document you sign yourself has no one to remind.';
+
+/**
+ * UAT SND-23 — the server refuses a reminder (409 ESIGN_REMINDER_NOT_ALLOWED) when the
+ * envelope changed elsewhere since it was read: voided, completed, declined or expired on
+ * another device, or every signer finished. The app shows the change and reloads the
+ * envelope, as for a 412 — never a generic error. Only the reason-less 409 is a change:
+ * the 429 cooldown / daily limit and the self-sign refusal share the code with a reason.
+ */
+export function isReminderStale(e: ApiError): boolean {
+  // errorFromBody: with no details.reason, `reason` falls back to the code.
+  return e.status === 409 && e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.reason === e.code;
+}
+
 /** Copy for a reminder refusal; the 429 carries the exact retry time (M-A3 §7). */
 export function reminderRefusalCopy(e: ApiError): string {
+  if (e.reason === 'self_sign_no_reminders') return SELF_SIGN_NO_REMINDERS;
+  if (isReminderStale(e)) return refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' });
   if (e.is('reminder_cooldown', 'reminder_daily_limit')) {
     const at =
       e.retryAt ??

@@ -77,10 +77,37 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
       toast(errorMessage(e));
     }
   };
+  // M-A17 — "Delete from my inbox": any received item, any state, to this user's Deleted
+  // list (restorable). The sender and other recipients are unaffected; the emailed link
+  // keeps working.
+  const [deleted, setDeleted] = useState<InboxItem[] | null>(null);
+  const loadDeleted = useCallback(() => {
+    inboxApi.deleted().then(
+      (d) => setDeleted([...d.waiting, ...d.completed, ...d.other]),
+      (e: unknown) => toast(errorMessage(e)),
+    );
+  }, [toast]);
   const remove = async (i: InboxItem) => {
     try {
-      await inboxApi.remove(i.id);
+      await inboxApi.removeFromInbox(i.id);
+      toast('Moved to Deleted. The sender’s envelope isn’t affected.');
       load();
+      if (deleted !== null) loadDeleted();
+    } catch (e) {
+      if (isInboxItemNotFound(e)) {
+        toast(INBOX_ITEM_CHANGED);
+        load();
+        return;
+      }
+      toast(errorMessage(e));
+    }
+  };
+  const restore = async (i: InboxItem) => {
+    try {
+      await inboxApi.returnToInbox(i.id);
+      toast('Restored to your inbox');
+      load();
+      loadDeleted();
     } catch (e) {
       toast(errorMessage(e));
     }
@@ -107,12 +134,10 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
             Signed copy
           </Btn>
         ) : null}{' '}
-        {/* Remove deletes an added (bound) item; a discovered item has nothing to remove. */}
-        {i.source === 'discovered' ? null : (
-          <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Remove ${i.subject} from your inbox`}>
-            Remove
-          </Btn>
-        )}
+        {/* M-A17 — every received item (added or listed automatically), any state. */}
+        <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Delete ${i.subject} from your inbox`} data-testid={`inbox-delete-${i.id}`}>
+          Delete
+        </Btn>
       </td>
     </tr>
   );
@@ -166,6 +191,37 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
           {data.waiting.some(isUpcoming) ? section('Upcoming', data.waiting.filter(isUpcoming), '', 'inbox-upcoming') : null}
           {section('Completed', data.completed, 'No completed documents yet.', 'inbox-completed')}
           {data.other.length > 0 ? section('Other', data.other, '', 'inbox-other') : null}
+          {/* M-A17 — the user's own Deleted list, with Restore. */}
+          {deleted === null ? (
+            <Btn variant="ghost" size="sm" onClick={loadDeleted} data-testid="inbox-show-deleted">
+              Show deleted
+            </Btn>
+          ) : (
+            <section className="sg-card" data-testid="inbox-deleted" style={{ marginBottom: 16 }}>
+              <div className="sg-card__head">Deleted</div>
+              {deleted.length === 0 ? (
+                <div className="sg-empty">Nothing deleted.</div>
+              ) : (
+                <table className="sg-table">
+                  <tbody>
+                    {deleted.map((i) => (
+                      <tr key={i.id} data-testid={`inbox-deleted-row-${i.id}`}>
+                        <td>
+                          <strong>{i.subject}</strong>
+                          <div className="sg-muted">{i.from ?? 'An Aramo Sign sender'}</div>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <Btn size="sm" onClick={() => void restore(i)} data-testid={`inbox-restore-${i.id}`}>
+                            Restore
+                          </Btn>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          )}
         </>
       ) : null}
     </div>

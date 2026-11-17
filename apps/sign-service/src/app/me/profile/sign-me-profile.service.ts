@@ -10,6 +10,7 @@ import {
   type SignFieldSize,
   type SignUserProfileValue,
   type SignUserSettingsValue,
+  type SignUserSettingsWrite,
   SignUserProfileRepository,
 } from '@aramo/sign';
 
@@ -39,7 +40,7 @@ import {
 
 export const PROFILE_OPTIONAL_FIELDS = ['title', 'company', 'address_line1', 'address_line2', 'city', 'region', 'postal_code', 'country', 'phone'] as const;
 const PROFILE_FIELDS = new Set<string>(['display_name', ...PROFILE_OPTIONAL_FIELDS]);
-const SETTINGS_FIELDS = new Set<string>(['date_format', 'default_field_size']);
+const SETTINGS_FIELDS = new Set<string>(['date_format', 'default_field_size', 'offer_saved_signature_on_links']);
 const APP_ISSUE_FIELDS = new Set<string>(['message', 'app_version', 'os', 'os_version', 'device_model', 'screen']);
 export const DISPLAY_NAME_MAX = 120;
 export const PROFILE_FIELD_MAX = 200;
@@ -93,7 +94,7 @@ export function validateProfile(body: unknown, requestId: string): SignUserProfi
   };
 }
 
-export function validateSettings(body: unknown, requestId: string): SignUserSettingsValue {
+export function validateSettings(body: unknown, requestId: string): SignUserSettingsWrite {
   const o = objectBody(body, SETTINGS_FIELDS, requestId);
   const df = o['date_format'];
   if (typeof df !== 'string' || !(SIGN_DATE_FORMATS as readonly string[]).includes(df)) {
@@ -103,7 +104,12 @@ export function validateSettings(body: unknown, requestId: string): SignUserSett
   if (typeof fs !== 'string' || !(SIGN_FIELD_SIZES as readonly string[]).includes(fs)) {
     throw bad(requestId, 'default_field_size must be S, M or L', 'invalid_default_field_size', 'default_field_size');
   }
-  return { date_format: df as SignDateFormat, default_field_size: fs as SignFieldSize };
+  // M-A15 §5 — optional: clients that send only the first two keep the stored value.
+  const offer = o['offer_saved_signature_on_links'];
+  if (offer !== undefined && typeof offer !== 'boolean') {
+    throw bad(requestId, 'offer_saved_signature_on_links must be true or false', 'invalid_offer_saved_signature_on_links', 'offer_saved_signature_on_links');
+  }
+  return { date_format: df as SignDateFormat, default_field_size: fs as SignFieldSize, ...(offer !== undefined ? { offer_saved_signature_on_links: offer } : {}) };
 }
 
 export interface AppIssueInput {

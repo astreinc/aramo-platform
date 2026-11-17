@@ -57,6 +57,8 @@ import {
   declineSigning,
   DECLINE_REASON_MIN,
   DELEGATE_COPY,
+  SIGNING_REPORT_COPY,
+  reportFromSigning,
   DELEGATE_REASON_MAX,
   delegateRefusalCopy,
   delegateSigning,
@@ -89,6 +91,9 @@ import {
   type SigningField,
   type SigningState,
 } from './signingMachine';
+import { fieldHitSlop } from './fieldHitSlop';
+import { ReportSheet } from '../../screens/envelope/ReportSheet';
+import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
 import { ZoomablePages } from './ZoomablePages';
 
@@ -115,6 +120,11 @@ export interface SigningFlowProps {
   readonly signedIn: boolean;
   /** Emailed-link flow while signed in: add this envelope to the user's inbox (claim). */
   readonly onClaim?: () => Promise<string | null>;
+  /**
+   * UAT SIG-14 — offer "Report this envelope" (a recipient's emailed or inbox document;
+   * never the user's own Sign-now document or an in-person session on the host's device).
+   */
+  readonly canReport?: boolean;
   readonly onViewCertificate?: () => void;
   readonly onDone: () => void;
   /** Lets the screen put Finish in the navigation bar (handoff §4.4). */
@@ -157,6 +167,7 @@ export function SigningFlow(props: SigningFlowProps) {
     signerName,
     signedIn,
     onClaim,
+    canReport = false,
     onViewCertificate,
     onDone,
     onHeaderFinish,
@@ -198,6 +209,17 @@ export function SigningFlow(props: SigningFlowProps) {
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineError, setDeclineError] = useState<string | null>(null);
   const [delegateOpen, setDelegateOpen] = useState(false);
+  // UAT SIG-14 — "Report this envelope" (the same public report route and reasons as the web).
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  async function report(reason: ReportReasonKey): Promise<void> {
+    if (!session) return;
+    setReportBusy(true);
+    const outcome = await reportFromSigning(session, reason);
+    setReportBusy(false);
+    if (outcome !== 'failed' && outcome !== 'limited') setReportOpen(false);
+    toast.show(SIGNING_REPORT_COPY[outcome]);
+  }
   const [delegateError, setDelegateError] = useState<string | null>(null);
   const [delegateName, setDelegateName] = useState('');
   const [delegateEmail, setDelegateEmail] = useState('');
@@ -737,16 +759,18 @@ export function SigningFlow(props: SigningFlowProps) {
     const highlight = marks.length ? (
       <HighlightOverlay key="find" rects={marks} width={layout.width} height={layout.height} />
     ) : null;
-    return [highlight, ...state.fields
-      .filter((f) => f.document_id === documentId && f.page_number === index)
+    const onPage = state.fields.filter((f) => f.document_id === documentId && f.page_number === index);
+    // UAT SIG-03 — touch areas never overlap a neighbouring field's.
+    const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout)] as const));
+    const allBoxes = [...boxes.values()];
+    return [highlight, ...onPage
       .map((f) => {
-        const box = boxOnPage(f, layout);
+        const box = boxes.get(f.field_id) ?? boxOnPage(f, layout);
         const v = state.values[f.field_id];
         const shown = displayOf(f, v);
         const current = state.currentId === f.field_id;
         const filled = isFilled(state, f.field_id);
-        const slopV = Math.max(0, (t.size.minTouch - box.height) / 2);
-        const slopH = Math.max(0, (t.size.minTouch - box.width) / 2);
+        const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
         return (
           <Pressable
             key={f.field_id}
@@ -758,7 +782,7 @@ export function SigningFlow(props: SigningFlowProps) {
             accessibilityRole="button"
             accessibilityLabel={fieldAnnouncement(state, f, signerName)}
             accessibilityHint={filled ? 'Double tap to clear' : 'Double tap to fill'}
-            hitSlop={{ top: slopV, bottom: slopV, left: slopH, right: slopH }}
+            hitSlop={slop}
             style={[
               styles.field,
               { left: box.left, top: box.top, width: box.width, height: box.height },
@@ -969,6 +993,14 @@ export function SigningFlow(props: SigningFlowProps) {
             })}
           />
         ) : null}
+        {canReport && session ? (
+          <Button
+            testID="more-report"
+            title="Report this envelope"
+            variant="secondary"
+            onPress={openMore(() => setReportOpen(true))}
+          />
+        ) : null}
         <Button
           testID="more-help"
           title="Help"
@@ -977,6 +1009,7 @@ export function SigningFlow(props: SigningFlowProps) {
         />
         <Button title="Close" variant="text" onPress={() => setMoreOpen(false)} />
       </Sheet>
+      <ReportSheet visible={reportOpen} busy={reportBusy} onReport={(r) => void report(r)} onClose={() => setReportOpen(false)} />
       <Sheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} title="Document details">
         {subject ? <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600' }}>{subject}</Text> : null}
         <Text style={{ color: t.color.textSecondary, fontSize: 14 }}>{`From ${from}`}</Text>

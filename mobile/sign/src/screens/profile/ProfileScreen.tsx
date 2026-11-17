@@ -47,6 +47,14 @@ export function ProfileScreen() {
   );
 }
 
+/**
+ * UAT PRF-02 — a field that has reached its limit (maxLength drops anything longer, so
+ * a 201-character paste was cut to 200 with no message): a field-level note.
+ */
+export function atLimit(value: string, max: number): string | null {
+  return value.length >= max ? `Up to ${max} characters. Anything longer isn’t kept.` : null;
+}
+
 export function ProfileForm({ initial, email }: { readonly initial: ProfileDraft; readonly email: string | null }) {
   const t = useTheme();
   const navigation = useNavigation();
@@ -103,7 +111,8 @@ export function ProfileForm({ initial, email }: { readonly initial: ProfileDraft
           onChangeText={set('display_name')}
           maxLength={DISPLAY_NAME_MAX}
           autoCapitalize="words"
-          error={errors.display_name ?? null}
+          // UAT PRF-02 — the field stops at its limit; say so instead of dropping silently.
+          error={errors.display_name ?? atLimit(draft.display_name, DISPLAY_NAME_MAX)}
         />
         {PROFILE_ROWS.map((row) => (
           <TextField
@@ -117,7 +126,7 @@ export function ProfileForm({ initial, email }: { readonly initial: ProfileDraft
             maxLength={PROFILE_FIELD_MAX}
             autoCapitalize={row.key === 'country' ? 'characters' : 'words'}
             keyboardType={row.key === 'phone' ? 'phone-pad' : 'default'}
-            error={errors[row.key] ?? null}
+            error={errors[row.key] ?? atLimit(draft[row.key], PROFILE_FIELD_MAX)}
           />
         ))}
         {error ? (

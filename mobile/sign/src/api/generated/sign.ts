@@ -503,6 +503,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/signing/saved-mark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save the signer's default signature or initials from the signing page.
+         * @description Aramo-Sign-Mobile-Amendment-M-A15 §4.2. Token-authorized. Allowed only for a signed-in signing session (SELF, or INBOX per M-A15 A1) whose recipient is a SIGNER or WITNESS, after the same gates as the signer document view; writes to that user's own saved signature (validated as M-A3 §4). An emailed-link session is refused 403 INSUFFICIENT_PERMISSIONS details.reason saved_mark_not_allowed.
+         */
+        post: operations["saveSignerDefaultMark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/delegate": {
         parameters: {
             query?: never;
@@ -3328,6 +3348,46 @@ export interface paths {
          * @description Session (esign consumer) only. Unlike DELETE /v1/sign/inbox/{id}, the binding is kept, can be restored, and counts toward "every party deleted".
          */
         post: operations["deleteFromInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/remove-from-inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete a received envelope from this user's inbox (any state) to their Deleted folder.
+         * @description Aramo-Sign-Mobile-Amendment-M-A17. Session (esign consumer) only; keyed by the signed-in user. The id is a claimed item's id or a discovered item's handle. Nothing else changes (envelope, sender, other recipients, the emailed link); never part of Retention and Purge.
+         */
+        post: operations["removeFromMyInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/inbox/{id}/return-to-inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a received envelope this user deleted from their inbox (M-A17).
+         * @description Aramo-Sign-Mobile-Amendment-M-A17. Session (esign consumer) only; the id is a claimed item's id or a discovered item's handle.
+         */
+        post: operations["returnToMyInbox"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6511,6 +6571,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+        };
+    };
+    saveSignerDefaultMark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    /** @enum {string} */
+                    slot: "signature" | "initials";
+                    /** @enum {string} */
+                    kind: "TYPED" | "DRAWN";
+                    typed_name?: string;
+                    font_key?: string;
+                    image_data_url: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "TYPED" | "DRAWN";
+                        typed_name?: string | null;
+                        image_data_url: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Not a signed-in signing session (saved_mark_not_allowed), or a signer-view gate refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -11610,6 +11717,60 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    removeFromMyInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        removed: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    returnToMyInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        restored: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     restoreFromInbox: {

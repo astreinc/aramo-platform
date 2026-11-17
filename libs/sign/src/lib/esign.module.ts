@@ -12,6 +12,7 @@ import { SigningInvitationService } from './signing-invitation.service.js';
 import { AbuseReportService } from './abuse-report.service.js';
 import { SignIdempotencyRepository } from './sign-idempotency.repository.js';
 import { SignSavedSignatureRepository } from './sign-saved-signature.repository.js';
+import { GuestSavedMarksRepository } from './guest-saved-marks.repository.js';
 import { SignContactRepository } from './sign-contact.repository.js';
 import { SignUserProfileRepository } from './sign-user-profile.repository.js';
 import { SIGNER_ATTESTED_NAME_PORT } from './ports/signer-attested-name.port.js';
@@ -71,6 +72,8 @@ export class EsignModule {
         // Sign Mobile M-A3 §4/§5/§7 — request idempotency, saved signatures, contacts.
         SignIdempotencyRepository,
         SignSavedSignatureRepository,
+        // M-A15 §3 — whose saved signature a signing session may use.
+        GuestSavedMarksRepository,
         SignContactRepository,
         // M-A12 W1-E / W1-F — profile, settings, app-issue metadata, template favorites.
         SignUserProfileRepository,
@@ -93,7 +96,7 @@ export class EsignModule {
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignReportRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, SignUserProfileRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignReportRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, GuestSavedMarksRepository, SignContactRepository, SignUserProfileRepository, TrustedTimestampService, ...(opts?.extraExports ?? []), SignPaymentRepository, DocumentSealService, QesWorkflowService, EstampWorkflowService],
     };
   }
 }

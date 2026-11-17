@@ -75,3 +75,43 @@ export async function saveCompleted(
   }
   return { kind: 'saved', files: saved };
 }
+
+// UAT CMP-02 — "Download" a PDF already on screen (the certificate of completion, or one
+// executed document) — the same paths as Save a copy: Android writes it into the folder
+// the user picks (Storage Access Framework); iOS opens the share sheet (Save to Files).
+export interface SaveOneDeps {
+  readonly platform: 'ios' | 'android' | string;
+  readonly folder: SaveFolderPort;
+  readonly files: ShareDeps['files'];
+  readonly sheet: ShareDeps['sheet'];
+}
+
+export async function saveOnePdf(pdf: { readonly title: string; readonly base64: string }, deps: SaveOneDeps): Promise<SaveOutcome> {
+  const filename = pdfFilename(pdf.title);
+  if (deps.platform !== 'android') {
+    if (!(await deps.sheet.available())) return { kind: 'refused', message: SAVE_FAILED };
+    let uri: string | null = null;
+    try {
+      uri = await deps.files.writeTemp(filename, pdf.base64);
+      await deps.sheet.open(uri, { mimeType: 'application/pdf', dialogTitle: pdf.title });
+      return { kind: 'saved', files: 1 };
+    } catch {
+      return { kind: 'refused', message: SAVE_FAILED };
+    } finally {
+      if (uri) deps.files.remove(uri);
+    }
+  }
+  let folder: SaveFolder | null;
+  try {
+    folder = await deps.folder.pick();
+  } catch {
+    return { kind: 'refused', message: SAVE_FAILED };
+  }
+  if (!folder) return { kind: 'cancelled' };
+  try {
+    await folder.writePdf(filename, pdf.base64);
+    return { kind: 'saved', files: 1 };
+  } catch {
+    return { kind: 'refused', message: SAVE_FAILED };
+  }
+}
