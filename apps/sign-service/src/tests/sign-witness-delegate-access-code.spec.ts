@@ -66,18 +66,21 @@ const signer = (name: string, extra: Record<string, unknown> = {}) => ({ name, e
 
 // PO authorization (R-8) 2026-11-01: sign.access_code is AVAILABLE in production; witness and
 // delegate stay dark. DARK exercises all three off.
-const DARK = new SignFeatureGate({ ...FEATURE_AVAILABILITY, 'sign.access_code': 'NOT_AVAILABLE' });
+// All three dark, whatever the production registry says (delegate is AVAILABLE since PO 2026-11-17).
+const DARK = new SignFeatureGate({ ...FEATURE_AVAILABILITY, 'sign.witness_signing': 'NOT_AVAILABLE', 'sign.delegate_signing': 'NOT_AVAILABLE', 'sign.access_code': 'NOT_AVAILABLE' });
 
 describe('launch availability — dark until the PO flips it (R-8)', () => {
-  it('the production registry keeps sign.witness_signing and sign.delegate_signing NOT_AVAILABLE; sign.access_code is AVAILABLE (PO 2026-11-01)', () => {
+  it('the production registry keeps sign.witness_signing NOT_AVAILABLE; sign.access_code (PO 2026-11-01) and sign.delegate_signing (PO 2026-11-17) are AVAILABLE', () => {
     expect(FEATURE_AVAILABILITY['sign.witness_signing']).toBe('NOT_AVAILABLE');
-    expect(FEATURE_AVAILABILITY['sign.delegate_signing']).toBe('NOT_AVAILABLE');
+    expect(FEATURE_AVAILABILITY['sign.delegate_signing']).toBe('AVAILABLE');
     expect(FEATURE_AVAILABILITY['sign.access_code']).toBe('AVAILABLE');
   });
 
-  it('the sender context reports witness and delegate unavailable and the access code available (production registry)', async () => {
+  it('the sender context reports witness unavailable, delegate (BUSINESS) and the access code available (production registry)', async () => {
     const view = await contextService('BUSINESS').context(AUTH, 'r');
-    expect(view.features).toMatchObject({ witness_signing: false, delegate_signing: false, access_code: true });
+    expect(view.features).toMatchObject({ witness_signing: false, delegate_signing: true, access_code: true });
+    // Delegate signing stays Business only.
+    expect((await contextService('PERSONAL').context(AUTH, 'r')).features).toMatchObject({ delegate_signing: false });
     expect((await contextService('BUSINESS', DARK).context(AUTH, 'r')).features).toMatchObject({ access_code: false });
   });
 
@@ -219,7 +222,7 @@ describe('§1.9 access code authoring (available)', () => {
 describe('signer routes', () => {
   it('delegate is refused 403 while sign.delegate_signing is not available, before any session is resolved', async () => {
     const service = { resolveSession: vi.fn(), delegateSigner: vi.fn() };
-    const ctl = new EsignSignerController(service as never, {} as never, {} as never);
+    const ctl = new EsignSignerController(service as never, {} as never, {} as never, undefined, undefined, DARK);
     await expect(ctl.delegate({ token: 't', name: 'D', email: 'd@x.test' }, 'r')).rejects.toMatchObject({ code: 'ESIGN_FEATURE_NOT_AVAILABLE', statusCode: 403 });
     expect(service.resolveSession).not.toHaveBeenCalled();
   });
@@ -228,7 +231,7 @@ describe('signer routes', () => {
     const ctx = { session_id: 's', tenant_id: 't', envelope_id: 'e', signer_id: 'x' };
     const view = { documents: [], fields: [], message: null, can_delegate: true };
     const service = { resolveSession: vi.fn(async () => ctx), getSignerDocumentView: vi.fn(async () => view) };
-    const dark = new EsignSignerController(service as never, {} as never, {} as never);
+    const dark = new EsignSignerController(service as never, {} as never, {} as never, undefined, undefined, DARK);
     await expect(dark.document({ token: 't' }, 'r')).resolves.toMatchObject({ can_delegate: false });
     const on = new EsignSignerController(service as never, {} as never, {} as never, undefined, undefined, ALL_ON);
     await expect(on.document({ token: 't' }, 'r')).resolves.toMatchObject({ can_delegate: true });
