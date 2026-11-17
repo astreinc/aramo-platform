@@ -304,6 +304,8 @@ export function formatUsd(amount_minor: number): string {
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
 // Aramo-Sign-Multi-Signer-Amendment — at most this many signers per envelope.
 export const MAX_SIGNERS = 10;
+// Sign Mobile M-A3 §3 — the sender message limit (sign-service MESSAGE_MAX).
+export const ENVELOPE_MESSAGE_MAX = 1000;
 
 export interface EnvelopeDetail {
   id: string;
@@ -325,6 +327,8 @@ export interface EnvelopeDetail {
   // Feature-Parity §1.17 — signers may hand the envelope to someone else (set in DRAFT).
   allow_delegation?: boolean;
   next_signer_id?: string | null;
+  // Sign Mobile M-A3 §3 — the sender's plain-text message to recipients (DRAFT only; null = none).
+  message?: string | null;
   documents: EnvelopeDocument[];
   recipients: Recipient[];
   fields: EnvelopeField[];
@@ -776,6 +780,8 @@ export const senderApi = {
   detail: (id: string) => apiClient.get<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`),
   rename: (id: string, subject: string) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { subject }),
   setRouting: (id: string, routing_mode: RoutingMode) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { routing_mode }),
+  // Sign Mobile M-A3 §3 — the sender message (server sanitizes; > ENVELOPE_MESSAGE_MAX is refused; null clears).
+  setMessage: (id: string, message: string | null) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { message }),
   events: (id: string) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/envelopes/${enc(id)}/events`),
   upload: (id: string, file: { filename: string; title: string; content_base64: string }) =>
     apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, file),
