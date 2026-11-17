@@ -2193,6 +2193,7 @@
     ],
     "@aramo/resume-parse": [
       "RESUME_SOURCE_MAP_VERSION",
+      "RESUME_TEXT_EXTRACTOR_VERSION",
       "ResumeParseModule",
       "ResumeParserService",
       "buildResumeSourceMap",

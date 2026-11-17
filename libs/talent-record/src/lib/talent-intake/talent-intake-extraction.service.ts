@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
+import { RESUME_TEXT_EXTRACTOR_VERSION } from '@aramo/resume-parse';
 import { TalentExtractionService } from '@aramo/talent-extraction';
 import type { TalentIntakeDraftRow } from '@aramo/talent-evidence';
 
@@ -172,6 +173,8 @@ export class TalentIntakeExtractionService implements TalentIntakeProcessingPort
         structured_payload: result,
         source_map_version: result.source_map_version ?? null,
         resume_text_hash: result.resume_text_hash ?? null,
+        // RESUME-A1 v1.1 D-5 — which text-extractor produced this draft's corpus.
+        extractor_version: RESUME_TEXT_EXTRACTOR_VERSION,
       });
     }
 

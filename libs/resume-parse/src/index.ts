@@ -4,7 +4,10 @@ export { ResumeParserService } from './lib/resume-parser.service.js';
 // exported so the resume-text re-extract path + the governed draft orchestrator
 // can reuse it against the retained S3 file. Resume FACT extraction is
 // governed-LLM-only (TI-1F P0.2) — this lib no longer extracts facts.
-export { extractResumeText } from './lib/heuristics/text-extractor.js';
+export {
+  extractResumeText,
+  RESUME_TEXT_EXTRACTOR_VERSION,
+} from './lib/heuristics/text-extractor.js';
 export type {
   ParseResumeInput,
   ParseStatus,

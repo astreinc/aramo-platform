@@ -172,6 +172,29 @@ describe('TI-1D-C — POST :id/resume-editions', () => {
     expect(createEditionForDocument).not.toHaveBeenCalled();
   });
 
+  // RESUME-A1 v1.1 R4 #11(a) / D-6 — a parser improvement changes the extracted
+  // text (and so its text_hash) for the SAME file bytes. File identity is the
+  // byte SHA-256 alone: the same bytes are still a duplicate, never a new edition.
+  it('RESUME-A1 D-6 — same bytes with changed parser output are still rejected (409)', async () => {
+    const preA1 = 'TOOLSJira, Confluence';
+    const postA1 = 'TOOLS Jira, Confluence';
+    expect(buildResumeSourceMap(postA1).text_hash).not.toBe(buildResumeSourceMap(preA1).text_hash);
+    const { ctl, createResumeDocument, createEditionForDocument, findResumeEditionByArtifactSha256 } = make({
+      text: postA1,
+      sha: 'sha-identical',
+      duplicate: { id: 'ed-existing', talent_document_id: 'doc-existing' },
+    });
+    await expect(
+      ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-2' } as never, 'rq-1'),
+    ).rejects.toMatchObject({ code: 'RESUME_DUPLICATE_ARTIFACT', statusCode: 409 });
+    // The dedup key is the byte hash — never the parser-produced text hash.
+    expect(findResumeEditionByArtifactSha256).toHaveBeenCalledWith(
+      expect.not.objectContaining({ content_hash: expect.anything() }),
+    );
+    expect(createResumeDocument).not.toHaveBeenCalled();
+    expect(createEditionForDocument).not.toHaveBeenCalled();
+  });
+
   // §4 / §17 acceptance test 2 — the SAME filename with CHANGED bytes is a
   // legitimate new revision (dedup is on bytes, never filename).
   it('§4 — same filename, changed bytes → a new revision is minted', async () => {
