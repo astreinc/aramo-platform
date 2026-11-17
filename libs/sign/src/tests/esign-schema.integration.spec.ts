@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its fifty-eight tables', async () => {
+  it('creates the sign schema with its fifty-nine tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -91,6 +91,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignWebhookSubscription',
         // Sign Unified Product S-7 — the recipient inbox.
         'SignRecipientBinding',
+        // M-A17 — a recipient's "Delete from my inbox" (per user; never part of purge).
+        'RecipientInboxRemoval',
         // Personal Free v1.1 §6.4 — abuse reports.
         'AbuseReport',
         // Aramo Sign Mobile (M-A3 §4/§5/§7) — idempotency, saved signatures, contacts.
