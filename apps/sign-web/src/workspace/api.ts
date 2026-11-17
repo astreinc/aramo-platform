@@ -1176,3 +1176,29 @@ export function sendRefusalMessage(e: unknown, personal: boolean): string {
 export function isCopyRecipient(r: { recipient_kind?: RecipientKind }): boolean {
   return r.recipient_kind === 'RECEIVES_COPY';
 }
+
+// UAT SIG-05 — the signed-in user's default signature and initials (Sign Mobile M-A3 §4:
+// /v1/sign/me/signature and /v1/sign/me/initials, "web and mobile alike"). Keyed by the
+// session's (tenant, user); the same defaults the Aramo Sign app offers when signing.
+export interface SavedMark {
+  kind: 'TYPED' | 'DRAWN';
+  typed_name: string | null;
+  font_key: string | null;
+  image_data_url: string;
+  updated_at: string;
+}
+export interface SavedMarks {
+  signature: SavedMark | null;
+  initials: SavedMark | null;
+}
+export type SavedMarkTarget = 'signature' | 'initials';
+export type SavedMarkWrite =
+  | { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string }
+  | { kind: 'DRAWN'; image_data_url: string };
+// The font key the app sends with a typed mark (mobile adopt.ts SCRIPT_FONT_KEY).
+export const SAVED_MARK_FONT_KEY = 'system-script';
+export const savedMarksApi = {
+  get: () => apiClient.get<SavedMarks>('/v1/sign/me/signature'),
+  put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
+  remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
+};

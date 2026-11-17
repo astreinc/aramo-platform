@@ -12,6 +12,8 @@ import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
 import { PersonalPlanPanel } from './PersonalPlan';
 import { PrivacyRequestsSection } from './PrivacyRequests';
+// UAT SIG-05 — the default signature and initials (the app's Account section, on the web).
+import { SavedSignatureSection } from './SavedSignature';
 import { RetentionSection } from './Retention';
 // Apple Go-Live A1 L-7 — Sign-in methods (add / remove a provider while signed in).
 import { SignInMethodsSection } from './SignInMethods';
@@ -144,6 +146,7 @@ function PersonalSection() {
         </div>
       </section>
       <SignInMethodsSection />
+      <SavedSignatureSection />
       <section className="sg-card">
         <div className="sg-card__head">
           Sign notifications <span className="sg-tag sg-tag--blue">Sign only</span>

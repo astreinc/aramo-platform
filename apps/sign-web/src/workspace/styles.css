@@ -1,3 +1,10 @@
+/* UAT SIG-05 — the script face a typed default signature is drawn in (as on the signing page). */
+@font-face {
+  font-family: 'Aramo Signature';
+  src: url('/fonts/HomemadeApple-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
 /* Aramo Sign — sender console (esign.aramo.ai). Tokens + components follow the
  * frozen prototype `platform/sign/Aramo Sign Workspace.dc.html` (Hanken Grotesk +
  * IBM Plex Mono, accent #2447D8). Tokens are scoped to `.sg` so they never
