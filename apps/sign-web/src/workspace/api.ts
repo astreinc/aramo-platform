@@ -1192,6 +1192,8 @@ export interface SavedMarks {
   initials: SavedMark | null;
 }
 export type SavedMarkTarget = 'signature' | 'initials';
+// UAT SIG-12 — the sender's SIGN_DATE format, stamped on envelopes they send (M-A12 W1-E.2).
+export const SIGN_DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
 export type SavedMarkWrite =
   | { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string }
   | { kind: 'DRAWN'; image_data_url: string };
@@ -1207,6 +1209,12 @@ export const savedMarksApi = {
   get: () => apiClient.get<SavedMarks>('/v1/sign/me/signature'),
   settings: () => apiClient.get<SignMeSettings>('/v1/sign/me/settings'),
   putSettings: (s: SignMeSettings) => apiClient.put<SignMeSettings>('/v1/sign/me/settings', s),
+  // Change some settings: read the current values first so one card never writes back
+  // another card's stale value (the PUT needs date_format and default_field_size).
+  updateSettings: async (patch: Partial<SignMeSettings>): Promise<SignMeSettings> => {
+    const cur = await apiClient.get<SignMeSettings>('/v1/sign/me/settings');
+    return apiClient.put<SignMeSettings>('/v1/sign/me/settings', { ...cur, ...patch });
+  },
   put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
   remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
 };

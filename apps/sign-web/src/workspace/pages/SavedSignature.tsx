@@ -36,7 +36,7 @@ export function SavedSignatureSection() {
     const before = settings;
     setSettings({ ...settings, offer_saved_signature_on_links: on });
     try {
-      await savedMarksApi.putSettings({ date_format: before.date_format, default_field_size: before.default_field_size, offer_saved_signature_on_links: on });
+      await savedMarksApi.updateSettings({ offer_saved_signature_on_links: on });
     } catch (e) {
       setSettings(before);
       setError(errorMessage(e, 'Couldn’t save that setting. Try again.'));
