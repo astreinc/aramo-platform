@@ -43,6 +43,7 @@ import {
   copiesOf,
   copyTimingLine,
   createReminder,
+  isReminderStale,
   hostableSigners,
   headerLine,
   nextReminderAt,
@@ -222,6 +223,15 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
       void qc.invalidateQueries({ queryKey: signKeys.events(envelopeId) });
     } catch (e) {
       if (isApiError(e) && !e.isNetwork) reminder.current = null;
+      if (isApiError(e) && isReminderStale(e)) {
+        // UAT SND-23 — changed elsewhere (e.g. voided on the web): like a 412 on Void,
+        // say so and show the latest version; the Remind action follows the new state.
+        toast.show(reminderRefusalCopy(e));
+        void qc.invalidateQueries({ queryKey: signKeys.senderList });
+        void qc.invalidateQueries({ queryKey: signKeys.events(envelopeId) });
+        await q.refetch();
+        return;
+      }
       setRemindNote(
         isApiError(e)
           ? reminderRefusalCopy(e)

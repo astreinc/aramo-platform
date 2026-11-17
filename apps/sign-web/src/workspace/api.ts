@@ -1017,11 +1017,26 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
+    if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
+    if (isReminderStale(e)) return ENVELOPE_CHANGED;
     // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
     if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+/** UAT SND-23 — same copy as the mobile app (M-A3 §6 revision_mismatch). */
+export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
+
+/**
+ * UAT SND-23 — a reminder refused because the envelope changed elsewhere since it was
+ * read (voided, completed, declined or expired on another device, or every signer done):
+ * 409 ESIGN_REMINDER_NOT_ALLOWED with no reason. The 429 cooldown / daily limit and the
+ * self-sign refusal share the code but carry a details.reason, so they are not a change.
+ */
+export function isReminderStale(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === undefined;
 }
 
 /** Per-seat directive §3.5.2 — the member cap of a per-seat plan (409, details.reason = seat_limit_reached). */
