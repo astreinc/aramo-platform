@@ -199,6 +199,31 @@ export async function delegateSigning(
   });
 }
 
+// UAT SIG-14 (M-A7 §5.2) — "Report this envelope" from the signing screen, with the same
+// public route and reasons as the web report page. One report per recipient per envelope.
+export type SigningReportOutcome = 'sent' | 'already' | 'invalid' | 'limited' | 'failed';
+
+export const SIGNING_REPORT_COPY: Record<SigningReportOutcome, string> = {
+  sent: 'Thanks — we’ll look into it.',
+  already: 'You’ve already reported this.',
+  invalid: 'This link can’t be used to report this envelope any more.',
+  limited: 'Too many reports from this connection. Try again later.',
+  failed: 'Couldn’t send your report. Try again.',
+};
+
+export async function reportFromSigning(session: GuestSigningSession, reason: string): Promise<SigningReportOutcome> {
+  try {
+    await session.report({ reason });
+    return 'sent';
+  } catch (e) {
+    if (!isApiError(e)) return 'failed';
+    if (e.status === 409) return 'already';
+    if (e.status === 404 || e.status === 410 || e.status === 400) return 'invalid';
+    if (e.status === 429) return 'limited';
+    return 'failed';
+  }
+}
+
 export const DELEGATE_COPY = {
   invalid: 'Enter a name and a valid email.',
   onEnvelope: 'That person is already on this document.',
