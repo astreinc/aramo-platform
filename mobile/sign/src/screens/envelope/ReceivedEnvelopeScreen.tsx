@@ -157,10 +157,9 @@ export function ReceivedEnvelopeView({
       {!online ? (
         <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{OFFLINE_ACTION_REASON}</Text>
       ) : null}
-      {/* W2 — remove and report need a binding; a discovered item has none. */}
-      {hasBindingActions(item) ? (
-        <Button title="Remove from my inbox" variant="text" disabled={!online} onPress={onRemove} />
-      ) : null}
+      {/* M-A17 — "Delete from my inbox" for every received item, added or listed
+          automatically, any state (report still needs a binding). */}
+      <Button testID="received-delete" title="Delete from my inbox" variant="text" disabled={!online} onPress={onRemove} />
       {onReport && hasBindingActions(item) ? (
         <Button
           testID="received-report"
@@ -226,14 +225,20 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
     }
   }
 
+  // M-A17 — to the user's Deleted list; the sender and other recipients are unaffected and
+  // the emailed link keeps working (restore from Waiting for me on the web).
   async function remove(): Promise<void> {
     try {
-      await workspace.call('/v1/sign/inbox/{id}', 'delete', { path: { id: inboxItemId } });
+      await workspace.request<{ removed: boolean }>({
+        method: 'POST',
+        path: `/v1/sign/inbox/${encodeURIComponent(inboxItemId)}/remove-from-inbox`,
+        body: {},
+      });
       await qc.invalidateQueries({ queryKey: signKeys.inbox });
-      toast.show('Removed from your inbox');
+      toast.show('Deleted from your inbox. The sender’s envelope isn’t affected.');
       navigation.goBack();
     } catch {
-      toast.show('Couldn’t remove it. Try again.');
+      toast.show('Couldn’t delete it. Try again.');
     }
   }
 

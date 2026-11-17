@@ -62,7 +62,7 @@ const found = (over: Parameters<typeof entry>[0] = {}): Entry => entry({ id: FOU
 
 function inbox(opts: { bound?: Entry[]; discovered?: Entry[]; proof?: typeof PROOF | null; refuse?: InboxSigningRefusal; deleted?: string[] } = {}) {
   const repo = {
-    listForUser: vi.fn(async () => opts.bound ?? []),
+    removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async () => opts.bound ?? []),
     verifiedEmailProof: vi.fn(async () => (opts.proof === undefined ? PROOF : opts.proof)),
     listDiscoveredForUser: vi.fn(async () => opts.discovered ?? []),
     issueDiscoveredRecipientSession: vi.fn(async () => {

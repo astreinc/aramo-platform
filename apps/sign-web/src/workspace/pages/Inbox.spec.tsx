@@ -13,6 +13,9 @@ import type { InboxItem } from '../api';
 const list = vi.fn();
 const sign = vi.fn();
 const remove = vi.fn();
+const removeFromInbox = vi.fn();
+const returnToInbox = vi.fn();
+const deletedList = vi.fn();
 vi.mock('../api', async (orig) => {
   const mod = await orig<typeof import('../api')>();
   return {
@@ -22,6 +25,9 @@ vi.mock('../api', async (orig) => {
       list: (...a: unknown[]) => list(...a),
       sign: (...a: unknown[]) => sign(...a),
       remove: (...a: unknown[]) => remove(...a),
+      removeFromInbox: (...a: unknown[]) => removeFromInbox(...a),
+      returnToInbox: (...a: unknown[]) => returnToInbox(...a),
+      deleted: (...a: unknown[]) => deletedList(...a),
     },
   };
 });
@@ -79,9 +85,9 @@ describe('Waiting for me — W2 inbox discovery', () => {
     fireEvent.click(within(discovered).getByRole('button', { name: 'Sign' }));
     await waitFor(() => expect(sign).toHaveBeenCalledWith(HANDLE));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://sign.example/s/tok'));
-    // Remove deletes an added item only; a discovered item has nothing to remove.
-    expect(within(discovered).queryByRole('button', { name: /Remove/ })).toBeNull();
-    expect(within(within(toSign).getByTestId('inbox-row-b1')).getByRole('button', { name: /Remove/ })).toBeInTheDocument();
+    // M-A17 — Delete is offered on every item, added or discovered.
+    expect(within(discovered).getByRole('button', { name: /^Delete / })).toBeInTheDocument();
+    expect(within(within(toSign).getByTestId('inbox-row-b1')).getByRole('button', { name: /^Delete / })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 
@@ -173,5 +179,21 @@ describe('Waiting for me — W2 inbox discovery', () => {
     await waitFor(() => expect(toast).toHaveBeenCalled());
     expect(toast).not.toHaveBeenCalledWith('This item changed. Showing your latest inbox.');
     expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it('M-A17: Delete moves any item (a discovered one too) to Deleted; Restore brings it back', async () => {
+    list.mockResolvedValue(lists({ waiting: [item(HANDLE, { source: 'discovered', subject: 'Discovered offer' })] }));
+    removeFromInbox.mockResolvedValue({ removed: true });
+    returnToInbox.mockResolvedValue({ restored: true });
+    deletedList.mockResolvedValue(lists({ waiting: [item(HANDLE, { source: 'discovered', subject: 'Discovered offer' })] }));
+    show();
+    fireEvent.click(await screen.findByTestId(`inbox-delete-${HANDLE}`));
+    await waitFor(() => expect(removeFromInbox).toHaveBeenCalledWith(HANDLE));
+    expect(remove).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith('Moved to Deleted. The sender’s envelope isn’t affected.');
+    fireEvent.click(screen.getByTestId('inbox-show-deleted'));
+    fireEvent.click(await screen.findByTestId(`inbox-restore-${HANDLE}`));
+    await waitFor(() => expect(returnToInbox).toHaveBeenCalledWith(HANDLE));
+    expect(toast).toHaveBeenCalledWith('Restored to your inbox');
   });
 });

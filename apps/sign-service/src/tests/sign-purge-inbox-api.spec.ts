@@ -34,7 +34,7 @@ const row = (envelope_id: string, over: Record<string, unknown> = {}) => ({
 
 function inbox(opts: { enabled?: boolean; deleted?: string[]; one?: unknown; partyDelete?: string; partyRestore?: string } = {}) {
   const repo = {
-    listForUser: vi.fn(async () => [row('e1'), row('e2')]),
+    removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async () => [row('e1'), row('e2')]),
     getForUser: vi.fn(async () => (opts.one === undefined ? row('e1') : opts.one)),
     revoke: vi.fn(async () => true),
   };
@@ -86,7 +86,7 @@ describe('recipient inbox — DocuSign "Deleted" folder (R-10)', () => {
 
   it('a purged envelope is listed with its purge state and cannot be downloaded', async () => {
     const executed = new Date('2026-11-20T00:00:00.000Z');
-    const repo = { listForUser: vi.fn(async () => [row('e3', { purge_state: 'EXECUTED', purge_level: 'DOCUMENTS', purge_due_at: new Date(), purge_executed_at: executed })]) };
+    const repo = { removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async () => [row('e3', { purge_state: 'EXECUTED', purge_level: 'DOCUMENTS', purge_due_at: new Date(), purge_executed_at: executed })]) };
     const svc = new RecipientInboxService(repo as never, { findTenantNameById: vi.fn(async () => null) } as never, { deletedEnvelopeIds: vi.fn(async () => []) } as never, { enabled: true } as never);
     const out = await svc.list(auth);
     const item = [...out.waiting, ...out.completed, ...out.other][0];
@@ -94,7 +94,7 @@ describe('recipient inbox — DocuSign "Deleted" folder (R-10)', () => {
   });
 
   it('without the purge repository (older wiring) the inbox behaves exactly as before', async () => {
-    const repo = { listForUser: vi.fn(async () => [row('e1')]) };
+    const repo = { removedSignerIds: vi.fn(async () => new Set<string>()), listForUser: vi.fn(async () => [row('e1')]) };
     const svc = new RecipientInboxService(repo as never, { findTenantNameById: vi.fn(async () => null) } as never);
     const out = await svc.list(auth);
     expect(out.completed.map((i) => i.id)).toEqual([bid('e1')]);

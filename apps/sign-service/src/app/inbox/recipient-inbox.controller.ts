@@ -85,6 +85,21 @@ export class RecipientInboxController {
     return this.run(requestId, () => this.inbox.restoreForMe(auth, id, requestId));
   }
 
+  // M-A17 §4 — "Delete from my inbox" / Restore (per user; never part of purge).
+  @Post(':id/remove-from-inbox')
+  @HttpCode(HttpStatus.OK)
+  @RecipientInboxBoundary()
+  removeFromInbox(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.inbox.removeFromInbox(auth, id, requestId));
+  }
+
+  @Post(':id/return-to-inbox')
+  @HttpCode(HttpStatus.OK)
+  @RecipientInboxBoundary()
+  returnToInbox(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.inbox.returnToInbox(auth, id, requestId));
+  }
+
   @Delete(':id')
   @RecipientInboxBoundary()
   remove(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {

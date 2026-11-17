@@ -1106,6 +1106,10 @@ export const inboxApi = {
   sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/sign`),
   signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),
   remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}`),
+  // M-A17 — "Delete from my inbox" (any received item, any state) and Restore; the Deleted folder.
+  removeFromInbox: (id: string) => apiClient.post<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}/remove-from-inbox`, {}),
+  returnToInbox: (id: string) => apiClient.post<{ restored: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}/return-to-inbox`, {}),
+  deleted: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/sign/inbox?folder=deleted'),
 };
 
 // W2 (A3.4) — the inbox item named in the request is gone (an expired or changed

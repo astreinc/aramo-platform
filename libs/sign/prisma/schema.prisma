@@ -705,6 +705,20 @@ model SignWebhookDelivery {
 // ── Sign Unified Product S-7 — the recipient inbox (refinement B) ──
 
 /// A verified Aramo user bound to ONE envelope recipient (never tenant membership).
+// Aramo-Sign-Mobile-Amendment-M-A17 §3 — a recipient deleted this entry from their own
+// inbox (claimed or discovered, any state). Per user; restorable; never part of purge.
+model RecipientInboxRemoval {
+  user_id            String   @db.Uuid
+  signer_id          String   @db.Uuid
+  envelope_tenant_id String   @db.Uuid
+  envelope_id        String   @db.Uuid
+  removed_at         DateTime @default(now()) @db.Timestamptz
+
+  @@id([user_id, signer_id])
+  @@index([user_id])
+  @@schema("sign")
+}
+
 model SignRecipientBinding {
   id                 String    @id @db.Uuid
   envelope_tenant_id String    @db.Uuid
