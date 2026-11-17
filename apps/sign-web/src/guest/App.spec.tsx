@@ -324,6 +324,22 @@ describe('signer app — Name and Checkbox fields (M-A6 §2)', () => {
     expect(calls.some((c) => c.path === 'fields/f-name/fill')).toBe(false);
   });
 
+  it('UAT SIG-03: Start / Next field brings a box into view without checking it', async () => {
+    const calls = transport({ document: () => json(BOXES_VIEW) });
+    await toWorkspace();
+    expect(screen.getByText('0 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    // Nothing is filled by Start: the counter and the box stay as they were.
+    expect(fillsOf(calls)).toEqual([]);
+    expect(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' })).toBeInTheDocument();
+    expect(screen.getByText('0 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+    // The signer checks it themselves: one 'true', and the counter moves once.
+    fireEvent.click(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' }));
+    await screen.findByRole('button', { name: 'Uncheck: I agree to the terms, page 1' });
+    expect(fillsOf(calls)).toEqual([['f-agree', 'true']]);
+    expect(screen.getByText('1 of 2 required fields filled', { selector: '.sg-bar .sg-small' })).toBeInTheDocument();
+  });
+
   it('a server completion refusal shows its reason', async () => {
     transport({
       document: () => json({ ...BOXES_VIEW, fields: BOXES_VIEW.fields.filter((f) => f.field_id === 'f-name') }),

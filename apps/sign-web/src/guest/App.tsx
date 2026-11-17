@@ -1037,6 +1037,14 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     }
   };
 
+  // UAT SIG-03 — Start / Next field brings a check box into view without checking it
+  // (as in the app): the signer checks it themselves, so a tap on the box afterwards
+  // never silently unchecks a box Next had already checked.
+  const goTo = (f: SignField) => {
+    setActiveField(f.field_id);
+    if (f.document_id !== activeDoc) setActiveDoc(f.document_id);
+  };
+
   // Every field stays editable until Finish signing (the backend accepts a new
   // value while the session is live): a filled signature / initials reopens the
   // adopt dialog to change it, a filled text field reopens its editor.
@@ -1623,7 +1631,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 {problem}
               </span>
             ) : (
-              <Btn disabled={busy || nextField === null} onClick={() => nextField && act(nextField)}>
+              <Btn disabled={busy || nextField === null} onClick={() => nextField && (isBox(nextField) ? goTo(nextField) : act(nextField))}>
                 {doneRequired === 0 ? 'Start' : 'Next field'}
               </Btn>
             )}

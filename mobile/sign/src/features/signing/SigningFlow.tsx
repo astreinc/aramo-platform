@@ -89,6 +89,7 @@ import {
   type SigningField,
   type SigningState,
 } from './signingMachine';
+import { fieldHitSlop } from './fieldHitSlop';
 import { useReducedMotion } from './useReducedMotion';
 import { ZoomablePages } from './ZoomablePages';
 
@@ -737,16 +738,18 @@ export function SigningFlow(props: SigningFlowProps) {
     const highlight = marks.length ? (
       <HighlightOverlay key="find" rects={marks} width={layout.width} height={layout.height} />
     ) : null;
-    return [highlight, ...state.fields
-      .filter((f) => f.document_id === documentId && f.page_number === index)
+    const onPage = state.fields.filter((f) => f.document_id === documentId && f.page_number === index);
+    // UAT SIG-03 — touch areas never overlap a neighbouring field's.
+    const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout)] as const));
+    const allBoxes = [...boxes.values()];
+    return [highlight, ...onPage
       .map((f) => {
-        const box = boxOnPage(f, layout);
+        const box = boxes.get(f.field_id) ?? boxOnPage(f, layout);
         const v = state.values[f.field_id];
         const shown = displayOf(f, v);
         const current = state.currentId === f.field_id;
         const filled = isFilled(state, f.field_id);
-        const slopV = Math.max(0, (t.size.minTouch - box.height) / 2);
-        const slopH = Math.max(0, (t.size.minTouch - box.width) / 2);
+        const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
         return (
           <Pressable
             key={f.field_id}
@@ -758,7 +761,7 @@ export function SigningFlow(props: SigningFlowProps) {
             accessibilityRole="button"
             accessibilityLabel={fieldAnnouncement(state, f, signerName)}
             accessibilityHint={filled ? 'Double tap to clear' : 'Double tap to fill'}
-            hitSlop={{ top: slopV, bottom: slopV, left: slopH, right: slopH }}
+            hitSlop={slop}
             style={[
               styles.field,
               { left: box.left, top: box.top, width: box.width, height: box.height },

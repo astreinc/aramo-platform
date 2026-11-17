@@ -99,7 +99,11 @@ export function PdfDocument({
               .map((f) => {
                 const shown = display(f);
                 const box = fieldBox(f, page);
-                const cls = `sg-onpage${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
+                // UAT SIG-03 — a check box is drawn as the box itself: no "Check" badge, which
+                // is wider than a small box and spilled over its caption and, on a phone, over
+                // the neighbouring box (a tap meant for "Yes" toggled "No").
+                const box_ = f.field_type === 'CHECKBOX';
+                const cls = `sg-onpage${box_ ? ' sg-onpage--box' : ''}${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
                 return (
                   <div
                     key={f.field_id}
@@ -119,15 +123,17 @@ export function PdfDocument({
                     data-testid="sg-onpage-field"
                   >
                     {shown === null ? (
-                      <span className="sg-onpage__cta">{actionLabel(f)}</span>
+                      box_ ? null : <span className="sg-onpage__cta">{actionLabel(f)}</span>
                     ) : shown.kind === 'image' ? (
                       <img src={shown.value} alt="Your signature" className="sg-onpage__img" />
                     ) : (
                       <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
                     {f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0 ? (
-                      // M-A6 §2.3 — the box's caption, beside the box.
-                      <span className="sg-onpage__caption" aria-hidden="true">
+                      // M-A6 §2.3 — the box's caption, beside the box. Like a form label, tapping
+                      // it toggles this box (UAT SIG-03: a larger target that never overlaps
+                      // the box above or below).
+                      <span className="sg-onpage__caption" aria-hidden="true" data-testid="sg-onpage-caption">
                         {f.label}
                       </span>
                     ) : null}
