@@ -83,4 +83,11 @@ describe('Settings — My profile (UAT PRF-01)', () => {
     expect(screen.getByText('Use the two-letter country code, e.g. US.')).toBeInTheDocument();
     expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
+
+  it('UAT PRF-02: a City at the 200-character limit shows a field-level note', async () => {
+    stub([]);
+    show();
+    fireEvent.change(await screen.findByTestId('profile-city'), { target: { value: 'c'.repeat(200) } });
+    expect(screen.getByText('Up to 200 characters. Anything longer isn’t kept.')).toBeInTheDocument();
+  });
 });

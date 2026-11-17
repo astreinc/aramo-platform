@@ -29,6 +29,11 @@ const ROWS: readonly { key: Key; label: string; placeholder: string }[] = [
 
 type Draft = { display_name: string } & Record<Key, string>;
 
+// UAT PRF-02 — a field at its limit says so (the input stops there, as in the app).
+export function atLimit(value: string, max: number): string | undefined {
+  return value.length >= max ? `Up to ${max} characters. Anything longer isn’t kept.` : undefined;
+}
+
 function draftOf(p: SignProfile | null, fallbackName: string): Draft {
   const d = { display_name: p?.display_name ?? fallbackName } as Draft;
   for (const r of ROWS) d[r.key] = p?.[r.key] ?? '';
@@ -114,12 +119,12 @@ export function MyProfileSection() {
         ) : (
           <form className="sg-grid" style={{ gap: 12 }} onSubmit={(e) => void save(e)} noValidate>
             {ctx.user.email !== null && ctx.user.email !== undefined ? <div className="sg-muted">Email: {ctx.user.email}</div> : null}
-            <Field label="Name" htmlFor="profile-name" error={errors.display_name}>
+            <Field label="Name" htmlFor="profile-name" error={errors.display_name ?? atLimit(draft.display_name, DISPLAY_NAME_MAX)}>
               <TextIn id="profile-name" data-testid="profile-name" value={draft.display_name} maxLength={DISPLAY_NAME_MAX} onChange={(e) => set('display_name', e.target.value)} />
             </Field>
             <div className="sg-grid sg-grid--2">
               {ROWS.map((r) => (
-                <Field key={r.key} label={`${r.label} (optional)`} htmlFor={`profile-${r.key}`} error={errors[r.key]}>
+                <Field key={r.key} label={`${r.label} (optional)`} htmlFor={`profile-${r.key}`} error={errors[r.key] ?? atLimit(draft[r.key], FIELD_MAX)}>
                   <TextIn
                     id={`profile-${r.key}`}
                     data-testid={`profile-${r.key}`}
