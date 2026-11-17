@@ -32,11 +32,25 @@ interface FakeSub {
   productId: string;
   period: string;
   state: string;
-  loc: { id: string; name: string; description: string } | null;
+  loc: { id: string; name: string; description: string; state?: string } | null;
   prices: Record<string, string>; // territory → point id
   availability: { id: string; territories: string[]; newTerritories: boolean } | null;
   shot: { id: string; md5: string | null } | null;
 }
+
+// The live answer to a PATCH of an approved localization (prod, 2026-11-17; the id is illustrative).
+const UNMODIFIABLE_409 = {
+  errors: [
+    {
+      id: '8fa66072-0000-4000-8000-000000000000',
+      status: '409',
+      code: 'ENTITY_ERROR.ATTRIBUTE.INVALID.UNMODIFIABLE',
+      title: 'The provided entity contains a field that can not be modified in the current state',
+      detail: 'Cannot edit SubscriptionLocalization when it is in ACTIVE state',
+      source: { pointer: '/data/attributes/state' },
+    },
+  ],
+};
 
 /** An in-memory App Store Connect. `writes` records every non-GET call. */
 class FakeAsc {
@@ -110,7 +124,9 @@ class FakeAsc {
     }
     if ((m = /^\/v1\/subscriptions\/(\w+)\/subscriptionLocalizations$/.exec(path))) {
       const s = this.subs.get(m[1]!)!;
-      return json(200, { data: s.loc ? [{ type: 'subscriptionLocalizations', id: s.loc.id, attributes: { locale: 'en-US', name: s.loc.name, description: s.loc.description } }] : [] });
+      return json(200, {
+        data: s.loc ? [{ type: 'subscriptionLocalizations', id: s.loc.id, attributes: { locale: 'en-US', name: s.loc.name, description: s.loc.description, ...(s.loc.state !== undefined ? { state: s.loc.state } : {}) } }] : [],
+      });
     }
     if (path === '/v1/subscriptionLocalizations' && method === 'POST') {
       const s = this.subs.get(body!.data['relationships'].subscription.data.id)!;
@@ -119,6 +135,7 @@ class FakeAsc {
     }
     if ((m = /^\/v1\/subscriptionLocalizations\/(.+)$/.exec(path)) && method === 'PATCH') {
       const s = [...this.subs.values()].find((x) => x.loc?.id === decodeURIComponent(m![1]!))!;
+      if (s.loc!.state === 'APPROVED' || s.loc!.state === 'WAITING_FOR_REVIEW') return json(409, UNMODIFIABLE_409);
       s.loc = { ...s.loc!, ...body!.data['attributes'] };
       return json(200, { data: { type: 'subscriptionLocalizations', id: s.loc!.id } });
     }
@@ -361,5 +378,62 @@ describe('errors and credentials', () => {
     const pub = await importSPKI(ec.publicKey.export({ type: 'spki', format: 'pem' }).toString(), 'ES256');
     const { payload } = await jwtVerify(tok, pub, { audience: 'appstoreconnect-v1', issuer: config.issuer_id, currentDate: new Date(NOW) });
     expect((payload.exp ?? 0) - (payload.iat ?? 0)).toBe(900);
+  });
+});
+
+describe('an approved App Store listing (approved-listing directive, prod 2026-11-17)', () => {
+  const v5 = { display_name: 'Personal Standard', description: '50 sends a month' };
+  const approve = (state: string) => {
+    asc.seedExisting();
+    const s = asc.subs.get(SUB)!;
+    s.state = 'APPROVED';
+    s.loc = { id: 'f909786b-loc', name: 'Personal - Standard', description: '25 sends a month', state };
+  };
+
+  it('keeps the approved text without a PATCH, still sets the price, and is SYNCED with a note', async () => {
+    approve('APPROVED');
+    const out = await client.sync(target(v5));
+    expect(out).toMatchObject({ status: 'SYNCED', origin: 'ADOPTED', store_state: 'APPROVED' });
+    expect(out.detail).toBe(
+      'App Store text not changed: Apple\'s approved listing reads "Personal - Standard" / "25 sends a month", the catalog says "Personal Standard" / "50 sends a month". Change it in App Store Connect; it goes to Apple with the next app version.',
+    );
+    expect(asc.writes.some((w) => w.startsWith('PATCH /v1/subscriptionLocalizations'))).toBe(false);
+    const s = asc.subs.get(SUB)!;
+    expect(s.loc).toMatchObject({ name: 'Personal - Standard', description: '25 sends a month' });
+    expect(s.prices['USA']).toBe(point(SUB, 'USA', '10128'));
+  });
+
+  it('treats a 409 UNMODIFIABLE on PATCH (another locked state) the same way', async () => {
+    approve('WAITING_FOR_REVIEW');
+    const out = await client.sync(target(v5));
+    expect(out.status).toBe('SYNCED');
+    expect(out.detail).toMatch(/^App Store text not changed/);
+    expect(asc.writes).toContain('PATCH /v1/subscriptionLocalizations/f909786b-loc');
+    expect(asc.subs.get(SUB)!.prices['USA']).toBe(point(SUB, 'USA', '10128'));
+  });
+
+  it('adds no note when the approved text already matches the catalog', async () => {
+    approve('APPROVED');
+    const out = await client.sync(target({ display_name: 'Personal - Standard', description: '25 sends a month' }));
+    expect(out.detail).toBeNull();
+  });
+
+  it('still edits an editable listing, and a different 409 is still a person', async () => {
+    asc.seedExisting();
+    const out = await client.sync(target(v5));
+    expect(asc.subs.get(SUB)!.loc).toMatchObject({ name: 'Personal Standard', description: '50 sends a month' });
+    expect(out.detail).not.toMatch(/App Store text not changed/);
+
+    const other = new FakeAsc();
+    other.seedExisting();
+    const realFetch = other.fetch;
+    other.fetch = async (url, init) =>
+      (init?.method ?? 'GET').toUpperCase() === 'PATCH'
+        ? new Response(JSON.stringify({ errors: [{ status: '409', code: 'ENTITY_ERROR.ATTRIBUTE.INVALID', detail: 'x' }] }), { status: 409 })
+        : realFetch(url, init);
+    const c2 = new AppleAscClient(config, other.fetch, () => NOW);
+    const err = await c2.sync(target(v5)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BillingSyncError);
+    expect((err as BillingSyncError).code).toBe('PROVIDER_REJECTED');
   });
 });

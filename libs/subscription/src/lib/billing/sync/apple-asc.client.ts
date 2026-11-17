@@ -114,7 +114,7 @@ export class AppleAscClient implements BillingProductSyncPort {
     // A1-2 — never narrow the countries silently: refuse before any write when a live country has no price.
     const drops = unconfirmedDrops(await this.availableCountries(sub.id), t);
     if (drops.length > 0) throw dropRefusal('The App Store', drops);
-    await this.syncLocalization(sub.id, t);
+    const listingNote = await this.syncLocalization(sub.id, t);
     for (const p of territories) await this.syncPrice(sub.id, p);
     await this.syncAvailability(sub.id, territories.map((p) => p.territory));
     if (t.review_screenshot !== null) await this.syncScreenshot(sub.id, t.review_screenshot);
@@ -126,7 +126,7 @@ export class AppleAscClient implements BillingProductSyncPort {
       external_ref: sub.id,
       external_price_ref: null,
       store_state: state,
-      detail: state === 'APPROVED' ? null : `App Store state ${state ?? 'unknown'}: sending the subscription to Apple for review is a manual step in App Store Connect`,
+      detail: joinNotes(listingNote, state === 'APPROVED' ? null : `App Store state ${state ?? 'unknown'}: sending the subscription to Apple for review is a manual step in App Store Connect`),
     };
   }
 
@@ -194,7 +194,12 @@ export class AppleAscClient implements BillingProductSyncPort {
     return r;
   }
 
-  private async syncLocalization(subId: string, t: BillingSyncTarget): Promise<void> {
+  /**
+   * The en-US store text. Returns a note for a person when Apple keeps the live text: App Store Connect refuses to
+   * edit an approved listing (HTTP 409 UNMODIFIABLE, prod 2026-11-17), so the sync leaves it, says so, and carries on
+   * with prices, countries and the pin (approved-listing directive §3). The text is changed in App Store Connect.
+   */
+  private async syncLocalization(subId: string, t: BillingSyncTarget): Promise<string | null> {
     const list = many(await this.get(`/v1/subscriptions/${enc(subId)}/subscriptionLocalizations?limit=50`));
     const en = list.find((l) => l.attributes?.['locale'] === LOCALE);
     if (en === undefined) {
@@ -205,12 +210,23 @@ export class AppleAscClient implements BillingProductSyncPort {
           relationships: { subscription: { data: { type: 'subscriptions', id: subId } } },
         },
       });
-      return;
+      return null;
     }
-    if (en.attributes?.['name'] === t.display_name && en.attributes?.['description'] === t.description) return;
-    await this.send('PATCH', `/v1/subscriptionLocalizations/${enc(en.id)}`, {
-      data: { type: 'subscriptionLocalizations', id: en.id, attributes: { name: t.display_name, description: t.description } },
-    });
+    const liveName = str(en.attributes?.['name']) ?? '';
+    const liveDescription = str(en.attributes?.['description']) ?? '';
+    if (liveName === t.display_name && liveDescription === t.description) return null;
+    const kept = (): string =>
+      `App Store text not changed: Apple's approved listing reads "${liveName}" / "${liveDescription}", the catalog says "${t.display_name}" / "${t.description}". Change it in App Store Connect; it goes to Apple with the next app version.`;
+    if (str(en.attributes?.['state']) === 'APPROVED') return kept();
+    try {
+      await this.send('PATCH', `/v1/subscriptionLocalizations/${enc(en.id)}`, {
+        data: { type: 'subscriptionLocalizations', id: en.id, attributes: { name: t.display_name, description: t.description } },
+      });
+    } catch (e) {
+      if (e instanceof BillingSyncError && e.code === 'PROVIDER_REJECTED' && e.message.includes('UNMODIFIABLE')) return kept();
+      throw e;
+    }
+    return null;
   }
 
   private async syncPrice(subId: string, p: TerritoryPrice): Promise<void> {
@@ -438,4 +454,10 @@ function one(d: Doc): Resource | null {
 }
 function many(d: Doc): Resource[] {
   return Array.isArray(d.data) ? d.data : [];
+}
+
+/** The notes of one sync for a person, joined; null when there are none. */
+function joinNotes(...notes: (string | null)[]): string | null {
+  const present = notes.filter((n): n is string => n !== null);
+  return present.length === 0 ? null : present.join(' · ');
 }
