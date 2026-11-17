@@ -2,6 +2,7 @@ import { Inject, type OnApplicationBootstrap } from '@nestjs/common';
 import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { AramoError, type AramoLogger, RedisConnectionConfig } from '@aramo/common';
+import { RESUME_TEXT_EXTRACTOR_VERSION } from '@aramo/resume-parse';
 import { TalentExtractionService } from '@aramo/talent-extraction';
 
 import { ResumeExtractionOrchestrator } from '../resume-extraction/resume-extraction.orchestrator.js';
@@ -143,6 +144,8 @@ export class ResumeExtractionDraftProcessor
           structured_payload: result,
           source_map_version: result.source_map_version ?? null,
           resume_text_hash: result.resume_text_hash ?? null,
+          // RESUME-A1 v1.1 D-5 — which text-extractor produced this draft's corpus.
+          extractor_version: RESUME_TEXT_EXTRACTOR_VERSION,
         });
         ready_for_review += 1;
       } catch (err: unknown) {

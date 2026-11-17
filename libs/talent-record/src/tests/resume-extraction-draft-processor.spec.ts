@@ -73,7 +73,12 @@ describe('ResumeExtractionDraftProcessor.drainProcessingBatch (TI-1F-A)', () => 
       expect.objectContaining({ tenant_id: 't-1' }),
     );
     expect(markReady).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'dr-1', source_map_version: 'resume-source-map/v1' }),
+      expect.objectContaining({
+        id: 'dr-1',
+        source_map_version: 'resume-source-map/v1',
+        // RESUME-A1 v1.1 D-5 — the producing text-extractor is attributed.
+        extractor_version: 'resume-text-extractor/2',
+      }),
     );
     expect(markFailed).not.toHaveBeenCalled();
     expect(out).toEqual({ attempted: 1, ready_for_review: 1, failed: 0 });
