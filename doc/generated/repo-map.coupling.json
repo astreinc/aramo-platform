@@ -13230,6 +13230,31 @@
       "to": "libs/contact/prisma/schema.prisma"
     },
     {
+      "from": "doc/backlog/platform-console-forbidden-account-switch.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/app/auth/identity-principal-directory.adapter.ts"
+    },
+    {
+      "from": "doc/backlog/platform-console-forbidden-account-switch.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/backlog/platform-console-forbidden-account-switch.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/RouteGuard.tsx"
+    },
+    {
+      "from": "doc/backlog/platform-console-forbidden-account-switch.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/components/ForbiddenState.tsx"
+    },
+    {
+      "from": "doc/backlog/platform-console-forbidden-account-switch.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/components/SignedOut.tsx"
+    },
+    {
       "from": "doc/backlog/sign-personal-closed-account-data-erasure.md",
       "status": "unscoped",
       "to": "doc/legal/aramo/privacy-notice.md"
@@ -17545,6 +17570,11 @@
       "from": "doc/ccp/slices/CCP-C4-acceptance.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/backlog/platform-console-forbidden-account-switch.md"
     },
     {
       "from": "doc/ccp/slices/CCP-C4-pre-execution.md",

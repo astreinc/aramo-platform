@@ -24,6 +24,9 @@
 
 set -uo pipefail
 
+# Hooks can run with a minimal PATH (no Homebrew/nvm): make npx/node findable.
+export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.nvm/versions/node/current/bin:${PATH}"
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=vocab-lib.sh
 . "$DIR/vocab-lib.sh"
