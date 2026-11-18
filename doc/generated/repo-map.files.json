@@ -3227,6 +3227,7 @@
     "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
     "apps/sign-web/src/workspace/pages/PrivacyRequests.tsx",
     "apps/sign-web/src/workspace/pages/PrivacyRequestsApple.spec.tsx",
+    "apps/sign-web/src/workspace/pages/PrivacyRequestsRepeat.spec.tsx",
     "apps/sign-web/src/workspace/pages/RecipientChoices.spec.tsx",
     "apps/sign-web/src/workspace/pages/Reports.spec.tsx",
     "apps/sign-web/src/workspace/pages/Reports.tsx",
