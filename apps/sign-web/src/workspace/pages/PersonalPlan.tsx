@@ -8,7 +8,7 @@ import { checkoutReturn } from './Billing';
 import { CancelSubscription } from './CancelSubscription';
 import { ComingSoon } from './ComingSoon';
 import { TermChoice } from './TermChoice';
-import { AllowanceChip, BUSINESS_SIGNUP_URL } from './PersonalAllowance';
+import { BUSINESS_SIGNUP_URL, UsageRows } from './PersonalAllowance';
 
 // Aramo-Sign-Catalog-v2-Pricing-and-Features-Directive-v1_0-LOCKED §4.3 / §4.4 — the Personal
 // account's plan: Free ($0, 5 a month, up to 2 a day, 15 MB, no templates) and the in-place
@@ -153,10 +153,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
             </div>
           ) : null}
           {allowance !== null && allowance.limit !== null ? (
-            <div>
-              <AllowanceChip used={allowance.used} limit={allowance.limit} daily={allowance.daily ?? null} />
-              <span className="sg-muted"> · renews {fmtDate(allowance.period_end)}</span>
-            </div>
+            <UsageRows used={allowance.used} limit={allowance.limit} periodEnd={allowance.period_end} daily={allowance.daily ?? null} />
           ) : null}
           {!onFree && sub?.cancel_at_period_end === true && sub.current_period_end !== null ? (
             <div className="sg-note" data-testid="personal-plan-cancel">
