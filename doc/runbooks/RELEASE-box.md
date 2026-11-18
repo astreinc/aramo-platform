@@ -31,7 +31,10 @@ declaration.]*
   recreate it too.
 - **`deploy/build-images.sh` takes the full 40-hex SHA** (argument or `AUTHORIZED_SHA`): exit 2 = not a 40-hex
   SHA, 3 = `HEAD` ≠ SHA, 4 = dirty tree. It builds all 6 images `--no-cache`, stamps `GIT_REVISION`, and
-  bakes the public Turnstile site key from `.env` into the nginx image.
+  bakes the public Turnstile site key from `.env` into the nginx image. **Optional image names after the
+  SHA build only those** (e.g. `deploy/build-images.sh "$AUTHORIZED_SHA" sign-service platform-admin nginx`),
+  for a release that recreates only those services; exit 5 = unknown name. Build every image you will
+  recreate (`api` covers `talent-intake-worker`); the other `:local` images are left as they were.
 - **STEP 4 read-back fixed:** the postgres container has no `DATABASE_URL`; queries use
   `psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"` (the same defect the STEP 2 history records).
 - **STEP 7 adds** the per-service login check and the monitoring probe (`doc/runbooks/sign/monitoring-and-alerts.md`).
@@ -281,7 +284,7 @@ finish or run it backgrounded and poll, but DO confirm the actual exit status be
 # Builds 6 images, all --no-cache: api, auth-service, platform-admin, sign-service,
 # talent-intelligence-service, nginx (SERVICES only limits what STEP 6 recreates).
 AUTHORIZED_SHA="$(git rev-parse HEAD)"   # after STEP 1 proved HEAD = TARGET_SHA
-deploy/build-images.sh "$AUTHORIZED_SHA"
+deploy/build-images.sh "$AUTHORIZED_SHA"            # all 6 images; or append only the images this release recreates
 # last line on success: [build] OK — 6 images stamped <sha> from /opt/aramo
 ```
 **PIN THE ROLLBACK FLOOR FIRST (before a `--no-cache` build):** `build-images.sh` tags images
