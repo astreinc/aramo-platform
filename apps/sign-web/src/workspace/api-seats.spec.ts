@@ -35,3 +35,12 @@ describe('per-seat refusal messages', () => {
     expect(parseSeats('0', 0)).toBeNull();
   });
 });
+
+// UAT DOC-04 — an envelope the caller cannot see never shows the raw server text (it names the id).
+describe('envelope not found', () => {
+  it('reads the same for absent and not-yours, without the id', () => {
+    const msg = errorMessage(new ApiError(404, 'envelope f9f4d3a2-362e-42e4-80c2-1f3adbe5f411 not found', 'ENVELOPE_NOT_FOUND'));
+    expect(msg).toBe('This envelope isn’t available. It may have been deleted, or you don’t have access to it.');
+    expect(msg).not.toContain('f9f4d3a2');
+  });
+});

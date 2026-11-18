@@ -1015,6 +1015,9 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (close !== null) return close;
     // W2 (A3.4) — a discovered inbox item that changed or expired.
     if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
+    // UAT DOC-04 — never the raw server text (it names the envelope id). The same words for
+    // "does not exist" and "not yours", so nothing is revealed; the same copy as the app.
+    if (e.code === 'ENVELOPE_NOT_FOUND') return ENVELOPE_NOT_AVAILABLE;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
@@ -1025,6 +1028,9 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   }
   return fallback;
 }
+
+/** UAT DOC-04 — an envelope the caller cannot see (absent, deleted or someone else's). */
+export const ENVELOPE_NOT_AVAILABLE = 'This envelope isn’t available. It may have been deleted, or you don’t have access to it.';
 
 /** UAT SND-23 — same copy as the mobile app (M-A3 §6 revision_mismatch). */
 export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
