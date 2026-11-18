@@ -78,6 +78,9 @@ const COPY: Record<string, string> = {
   // M-A2 §2.2 — SEQUENTIAL routing: an earlier signer has not signed yet.
   not_your_turn: 'It’s not your turn to sign yet. You’ll get an email when it is.',
   ENVELOPE_ALREADY_EXECUTED: 'This envelope can’t be signed any more.',
+  // UAT DOC-06 — storage full (the plan's storage allocation refused an upload).
+  ESIGN_STORAGE_QUOTA_EXCEEDED:
+    'Your storage is full. Remove draft documents you no longer need, or see Account → Plans for more storage.',
   // UAT DOC-04 — absent, deleted or someone else's envelope: the same words (nothing revealed).
   ENVELOPE_NOT_FOUND:
     'This envelope isn’t available. It may have been deleted, or you don’t have access to it.',

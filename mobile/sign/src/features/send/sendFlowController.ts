@@ -154,6 +154,9 @@ export interface DocumentAsset {
 type Listener = (s: SendFlowState) => void;
 
 const OFFLINE_SAVED = 'You’re offline. Your changes are saved on this phone.';
+/** UAT DOC-06 — storage full (the web's words for a Personal account; the app's Plans screen). */
+export const STORAGE_FULL =
+  'Your storage is full. Remove draft documents you no longer need, or see Account → Plans for more storage.';
 export const WORD_NEEDS_CONNECTION = 'Connect to the internet to add a Word file.';
 
 function messageFor(e: unknown): string {
@@ -179,6 +182,8 @@ function messageFor(e: unknown): string {
       return `The message can be at most ${MESSAGE_MAX} characters.`;
     if (e.reason === 'session_expired') return 'Your session ended. Sign in again.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope was already sent.';
+    // UAT DOC-06 — the plan's storage allocation refused the upload (Personal Free: 15 MB).
+    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return STORAGE_FULL;
   }
   return 'Something went wrong. Try again.';
 }

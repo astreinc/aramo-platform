@@ -1016,7 +1016,11 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
-    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
+    // UAT DOC-06 — a Personal account has no organization or admin: its own words.
+    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED')
+      return inPersonalWorkspace()
+        ? PERSONAL_STORAGE_FULL
+        : 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
     const personal = personalRefusalMessage(e.details?.['reason']);
@@ -1038,6 +1042,15 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+/** UAT DOC-06 — the storage refusal for a Personal account (same words as the app). */
+export const PERSONAL_STORAGE_FULL =
+  'Your storage is full. Remove draft documents you no longer need, or upgrade your plan in Settings → Plan & billing for more storage.';
+
+/** The Personal workspace lives under /personal (the Business one under /sign). */
+export function inPersonalWorkspace(pathname: string = typeof window === 'undefined' ? '' : window.location.pathname): boolean {
+  return pathname === '/personal' || pathname.startsWith('/personal/');
 }
 
 /** UAT DOC-04 — an envelope the caller cannot see (absent, deleted or someone else's). */

@@ -44,3 +44,17 @@ describe('envelope not found', () => {
     expect(msg).not.toContain('f9f4d3a2');
   });
 });
+
+// UAT DOC-06 — a Personal account's storage refusal has no organization / admin wording.
+describe('storage full', () => {
+  it('Personal workspace: its own words; Business keeps the organization words', async () => {
+    const { inPersonalWorkspace, PERSONAL_STORAGE_FULL } = await import('./api');
+    expect(inPersonalWorkspace('/personal/envelopes/x/edit')).toBe(true);
+    expect(inPersonalWorkspace('/personalized')).toBe(false);
+    expect(inPersonalWorkspace('/sign/envelopes')).toBe(false);
+    window.history.pushState({}, '', '/personal/envelopes/new');
+    expect(errorMessage(new ApiError(409, 'Your organization’s storage is full', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toBe(PERSONAL_STORAGE_FULL);
+    window.history.pushState({}, '', '/sign/envelopes/new');
+    expect(errorMessage(new ApiError(409, 'x', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toMatch(/^Your organization’s storage is full/);
+  });
+});
