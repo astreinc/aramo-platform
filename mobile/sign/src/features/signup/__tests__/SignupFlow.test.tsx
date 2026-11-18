@@ -224,7 +224,7 @@ describe('details step', () => {
     expect(Number.isInteger(s.api.start.mock.calls[0]?.[0].elapsed_ms)).toBe(true);
     expect(
       await screen.findByText(
-        'We sent a 6-digit code to pat.lee@gmail.com. It works for 10 minutes.',
+        'If pat.lee@gmail.com can be used for a new account, we’ve sent it a 6-digit code that works for 10 minutes. If it already has an Aramo account, we’ve emailed it instead: no code will come, so sign in.',
       ),
     ).toBeTruthy();
   });
