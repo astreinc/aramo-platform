@@ -887,7 +887,13 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       ? `${ctx.app_home_url.replace(/\/+$/, '')}/org/document-templates`
       : null;
   const nav = useNavigate();
-  const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  // PO 2026-11-18 — the default subject is "Please sign: {first document}" (the app's too): an
+  // untouched subject (still the server's placeholder or the first document's name) takes it.
+  const [subject, setSubject] = useState(() => {
+    const first = env.documents[0]?.title;
+    if (first === undefined) return env.subject;
+    return env.subject === 'Untitled envelope' || env.subject === first ? `${SUBJECT_PREFIX}${first}`.slice(0, ENVELOPE_SUBJECT_MAX) : env.subject;
+  });
   // UAT SND-20 — the sender message (M-A3 §3), at most ENVELOPE_MESSAGE_MAX characters,
   // saved on blur and again before Send if it changed.
   const [message, setMessage] = useState(env.message ?? '');
@@ -1221,3 +1227,6 @@ export function signersFullText(everyoneFull: boolean): string {
     ? `An envelope can have up to ${MAX_SIGNERS} signers and ${MAX_COPY_RECIPIENTS} people who receive a copy.`
     : `An envelope can have up to ${MAX_SIGNERS} signers. Anyone else you add receives a copy.`;
 }
+
+/** PO 2026-11-18 — the default subject's prefix (same as the app's). */
+export const SUBJECT_PREFIX = 'Please sign: ';

@@ -95,6 +95,13 @@ describe('Review & send — message to recipients (UAT SND-20)', () => {
     expect(screen.getByTestId('envelope-subject-count')).toHaveTextContent(/^5 \/ 200$/);
   });
 
+  // PO 2026-11-18 — the untouched subject defaults to "Please sign: {first document}".
+  it('the subject defaults to "Please sign: Lease"', async () => {
+    stub([]);
+    show();
+    expect(((await screen.findByLabelText('Email subject')) as HTMLInputElement).value).toBe('Please sign: Lease');
+  });
+
   it('saves the message before sending', async () => {
     const calls: { method: string; url: string; body: unknown }[] = [];
     stub(calls);
