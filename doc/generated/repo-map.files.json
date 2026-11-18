@@ -7568,6 +7568,7 @@
     "mobile/sign/src/screens/selfSign/finish/ui.tsx",
     "mobile/sign/src/screens/selfSign/finish/useCopyActions.ts",
     "mobile/sign/src/screens/send/CancelSheet.tsx",
+    "mobile/sign/src/screens/send/DocumentPreview.tsx",
     "mobile/sign/src/screens/send/DocumentsStep.tsx",
     "mobile/sign/src/screens/send/FieldsStep.tsx",
     "mobile/sign/src/screens/send/RecipientOptions.tsx",
