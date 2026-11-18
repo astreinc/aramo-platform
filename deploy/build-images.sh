@@ -8,9 +8,16 @@
 # the repo root, validates an explicitly authorized SHA against a clean checkout,
 # and stamps every governed image.
 #
-# Usage:  deploy/build-images.sh <AUTHORIZED_SHA>      (or AUTHORIZED_SHA=<sha> deploy/build-images.sh)
+# Usage:  deploy/build-images.sh <AUTHORIZED_SHA> [IMAGE ...]   (or AUTHORIZED_SHA=<sha> deploy/build-images.sh)
 #
-# Exit codes: 2 = bad SHA arg; 3 = HEAD != AUTHORIZED_SHA; 4 = dirty tree.
+#   No IMAGE  → all 6 images (the default; unchanged behaviour).
+#   IMAGE ... → only those images, from: api auth-service platform-admin sign-service
+#               talent-intelligence-service nginx. Use it to build just the services a
+#               release recreates (the rest keep their current :local image). Note the
+#               talent-intake-worker container runs the api image, so `api` covers it.
+#               Every image built is stamped with AUTHORIZED_SHA exactly as before.
+#
+# Exit codes: 2 = bad SHA arg; 3 = HEAD != AUTHORIZED_SHA; 4 = dirty tree; 5 = unknown IMAGE.
 set -euo pipefail
 
 # Resolve the repository root from THIS script's location and operate only there,
@@ -22,9 +29,26 @@ cd "$ROOT_DIR"
 AUTHORIZED_SHA="${1:-${AUTHORIZED_SHA:-}}"
 if [[ ! "$AUTHORIZED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
   echo "[build] FATAL: AUTHORIZED_SHA must be a 40-hex commit SHA (got: '${AUTHORIZED_SHA}')." >&2
-  echo "[build] Usage: deploy/build-images.sh <AUTHORIZED_SHA>" >&2
+  echo "[build] Usage: deploy/build-images.sh <AUTHORIZED_SHA> [IMAGE ...]" >&2
   exit 2
 fi
+shift || true
+
+# The images this script knows, in build order. Optional IMAGE arguments select a subset;
+# every name is checked BEFORE anything is built (fail closed on a typo).
+APP_IMAGES=(api auth-service platform-admin sign-service talent-intelligence-service)
+ALL_IMAGES=("${APP_IMAGES[@]}" nginx)
+SELECTED=("$@")
+if [ "${#SELECTED[@]}" -eq 0 ]; then SELECTED=("${ALL_IMAGES[@]}"); fi
+for want in "${SELECTED[@]}"; do
+  known=0
+  for img in "${ALL_IMAGES[@]}"; do [ "$want" = "$img" ] && known=1; done
+  if [ "$known" -ne 1 ]; then
+    echo "[build] FATAL: unknown image '${want}'. Known: ${ALL_IMAGES[*]}" >&2
+    exit 5
+  fi
+done
+wanted() { local x; for x in "${SELECTED[@]}"; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
 HEAD="$(git rev-parse HEAD)"
 if [ "$HEAD" != "$AUTHORIZED_SHA" ]; then
@@ -37,7 +61,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 4
 fi
 
-echo "[build] repo=${ROOT_DIR} revision=${AUTHORIZED_SHA}"
+echo "[build] repo=${ROOT_DIR} revision=${AUTHORIZED_SHA} images=${SELECTED[*]}"
 # sign-service IS built here: the nginx image's baked sign.aramo.ai block renders
 # `proxy_pass http://sign-service:3003` and nginx resolves that upstream at
 # config-load — so recreating nginx with sign-service absent crash-loops the
@@ -46,11 +70,17 @@ echo "[build] repo=${ROOT_DIR} revision=${AUTHORIZED_SHA}"
 # nginx); nginx must never be recreated without sign-service built + running.
 # ATI-SEP-1 T0 (ADR-0036) adds talent-intelligence-service (:3004, container-
 # internal; NO nginx upstream, so nginx never depends on it) → 6 images.
-for S in api auth-service platform-admin sign-service talent-intelligence-service; do
+# (A subset build of nginx alone is fine: the rule is about RECREATING nginx, which still
+# needs the sign-service container running — see doc/runbooks/RELEASE-box.md.)
+BUILT=0
+for S in "${APP_IMAGES[@]}"; do
+  wanted "$S" || continue
   echo "[build] building aramo/${S}:local"
   docker build --no-cache -f "${ROOT_DIR}/apps/${S}/Dockerfile" \
     --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/${S}:local" "${ROOT_DIR}"
+  BUILT=$((BUILT + 1))
 done
+if wanted nginx; then
 # Sign Personal (Free) — the Cloudflare Turnstile SITE key is public and baked into
 # the Sign bundle at build time (deploy/nginx/Dockerfile ARG VITE_SIGN_TURNSTILE_SITE_KEY).
 # This script is the production build path, so it — not docker-compose's build args —
@@ -73,5 +103,7 @@ docker build --no-cache -f "${ROOT_DIR}/deploy/nginx/Dockerfile" \
   --build-arg GIT_REVISION="${AUTHORIZED_SHA}" \
   --build-arg VITE_SIGN_TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY}" \
   -t "aramo/nginx:local" "${ROOT_DIR}"
+BUILT=$((BUILT + 1))
+fi
 
-echo "[build] OK — 6 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"
+echo "[build] OK — ${BUILT} images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR} (${SELECTED[*]})"
