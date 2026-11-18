@@ -3234,6 +3234,7 @@
     "apps/sign-web/src/workspace/pages/Retention.tsx",
     "apps/sign-web/src/workspace/pages/SavedSignature.spec.tsx",
     "apps/sign-web/src/workspace/pages/SavedSignature.tsx",
+    "apps/sign-web/src/workspace/pages/SelfSignDocument.spec.tsx",
     "apps/sign-web/src/workspace/pages/Settings.tsx",
     "apps/sign-web/src/workspace/pages/SignInMethods.spec.tsx",
     "apps/sign-web/src/workspace/pages/SignInMethods.tsx",
