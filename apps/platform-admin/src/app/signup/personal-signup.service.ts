@@ -196,7 +196,6 @@ export function personalTenantName(row: Pick<PersonalSignupRow, 'id' | 'display_
   return `${row.display_name} (Personal ${row.id.replace(/-/g, '').slice(-8)})`;
 }
 
-@Injectable()
 /**
  * UAT SUP-07 (PO 2026-11-18, Personal Free §3.7 non-enumeration) — the sign-up that answers an
  * address which already has an account (or is over a limit) is a decoy: no row, no code. It
@@ -256,6 +255,7 @@ export class DecoyCodeAttempts {
   }
 }
 
+@Injectable()
 export class PersonalSignupService {
   private readonly log = new Logger(PersonalSignupService.name);
   // UAT SUP-07 — the decoy sign-ups' code attempts (see DecoyCodeAttempts).

@@ -573,7 +573,7 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
 // before anything of the document is shown. The code is sent once and never kept.
 /** UAT SEC-04 — a wrong code says how many tries are left (the server counts; the fifth locks). */
 export function accessCodeWrongText(left: number | null): string {
-  if (left === null) return 'That code isn't right. Check it and try again.';
+  if (left === null) return "That code isn't right. Check it and try again.";
   return `That code isn't right. ${left} ${left === 1 ? 'attempt' : 'attempts'} left before this document is locked.`;
 }
 

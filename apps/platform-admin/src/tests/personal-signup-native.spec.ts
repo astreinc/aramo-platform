@@ -342,7 +342,7 @@ describe('resend-email — the daily cap', () => {
   const at = (min: number) => new Date(NOW.getTime() + min * 60 * 1000);
 
   it('a real sign-up at five codes today answers limit; inside the gap it is ignored; otherwise sent', async () => {
-    const h = harness({ signup: row({ email_otp_last_sent_at: NOW } as never) });
+    const h = harness({ signup: row({ status: 'PENDING', email_otp_last_sent_at: NOW } as never) });
     expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'a', request_id: 'r', now: at(0.5) })).toBe('ignored');
     expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'b', request_id: 'r', now: at(2) })).toBe('sent');
     h.requests.emailSendsSince.mockResolvedValue(5);
