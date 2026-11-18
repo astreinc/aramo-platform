@@ -685,8 +685,10 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
                 onPress={() => void remind()}
               />
             ) : null}
-            {actions.remind && coolingUntil && !reminded ? (
+            {/* UAT SND-14 — also right after a reminder: when the next one can go. */}
+            {actions.remind && coolingUntil ? (
               <Text
+                testID="remind-cooling"
                 style={{ color: t.color.textSecondary, fontSize: 13 }}
               >{`You can send another reminder at ${dateTime(coolingUntil)}.`}</Text>
             ) : null}

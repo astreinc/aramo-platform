@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextReminderAt, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -91,6 +91,7 @@ export function EnvelopeDetail() {
   const canDelete = fromOtherApp === null && TERMINAL.has(env.status) && (canAct || admin);
   const canPurge = admin && PURGEABLE.has(env.status) && (purge === null || purge.state === 'DEQUEUED');
   const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
+  const nextReminder = live ? nextReminderAt(env.recipients) : null;
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
   const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
@@ -237,6 +238,12 @@ export function EnvelopeDetail() {
             <Btn onClick={() => void remind()} disabled={busy} data-testid="send-reminder">
               Send reminder
             </Btn>
+          ) : null}
+          {/* UAT SND-14 — while reminders are cooling down, say when the next can go (the app's words). */}
+          {live && canAct && nextReminder !== null ? (
+            <span className="sg-help" role="status" data-testid="remind-cooling" style={{ alignSelf: 'center' }}>
+              You can send another reminder at {nextSendTime(nextReminder)}.
+            </span>
           ) : null}
           {!TERMINAL.has(env.status) && canAct ? (
             <Btn variant="danger" onClick={() => setVoidOpen(true)} disabled={busy} data-testid="void-envelope">

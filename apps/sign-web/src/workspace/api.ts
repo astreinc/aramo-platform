@@ -190,6 +190,8 @@ export interface Recipient {
   decline_reason: string | null;
   // Multi-Signer — an unsigned signer who may sign now (any order, or their turn).
   can_remind?: boolean;
+  // UAT SND-14 — when this signer can be reminded again (ISO), while a reminder is cooling down.
+  reminder_available_at?: string | null;
   // Amendment M-A6 §3.5 — the template role this recipient was bound to; null otherwise.
   role_key?: string | null;
   // Feature-Parity §1.17 — the recipient a WITNESS attests for (null otherwise).
@@ -1036,6 +1038,11 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
+    // UAT SND-14 — the reminder limits (60 minutes per signer; 5 a day per envelope), with the time.
+    if (e.status === 429 && (e.details?.['reason'] === 'reminder_cooldown' || e.details?.['reason'] === 'reminder_daily_limit')) {
+      const at = nextSendTime(e.details?.['retry_at']);
+      return at !== null ? `You can send another reminder at ${at}.` : 'You can’t send another reminder yet.';
+    }
     if (isReminderStale(e)) return ENVELOPE_CHANGED;
     // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
     if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
@@ -1273,3 +1280,13 @@ export const savedMarksApi = {
   put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
   remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
 };
+
+/** UAT SND-14 — the soonest time a reminder can go again, when none can go now (else null). */
+export function nextReminderAt(recipients: readonly { can_remind?: boolean; reminder_available_at?: string | null }[], now: Date = new Date()): string | null {
+  if (recipients.some((r) => r.can_remind === true)) return null;
+  const times = recipients
+    .map((r) => r.reminder_available_at)
+    .filter((t): t is string => typeof t === 'string' && !Number.isNaN(new Date(t).getTime()) && new Date(t).getTime() > now.getTime())
+    .sort();
+  return times[0] ?? null;
+}

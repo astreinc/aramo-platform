@@ -58,3 +58,16 @@ describe('storage full', () => {
     expect(errorMessage(new ApiError(409, 'x', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toMatch(/^Your organization’s storage is full/);
   });
 });
+
+// UAT SND-14 — a second reminder says when the next one can go.
+describe('reminder cooldown', () => {
+  it('a refused reminder names the time; the page knows the soonest time from the recipients', async () => {
+    const { nextReminderAt } = await import('./api');
+    const msg = errorMessage(new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_cooldown', retry_at: '2026-11-19T15:30:00Z' }));
+    expect(msg).toMatch(/^You can send another reminder at .+\.$/);
+    const now = new Date('2026-11-19T14:40:00Z');
+    expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T15:30:00Z' }, { can_remind: false, reminder_available_at: '2026-11-19T15:10:00Z' }], now)).toBe('2026-11-19T15:10:00Z');
+    expect(nextReminderAt([{ can_remind: true, reminder_available_at: null }], now)).toBeNull();
+    expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T14:00:00Z' }], now)).toBeNull();
+  });
+});
