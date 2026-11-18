@@ -9,12 +9,12 @@
 // issue, and the Plan row (W1-G Plans screen). A store-billed plan is managed in the store.
 // Apple Go-Live: "Signed in with Apple" (R-2), Sign-in methods with Add / Remove (A1 L-7),
 // and Apple token revocation on deletion (R-8).
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
 import * as Notifications from 'expo-notifications';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -157,7 +157,16 @@ export function AccountScreen() {
   const sessions = useQuery({
     queryKey: accountKeys.sessions,
     queryFn: () => listSessions(workspace),
+    // UAT (devices) — always fresh when Account opens: a phone that just signed in shows
+    // without a pull to refresh.
+    staleTime: 0,
   });
+  const refetchSessions = sessions.refetch;
+  useFocusEffect(
+    useCallback(() => {
+      void refetchSessions();
+    }, [refetchSessions]),
+  );
   const legal = useQuery({
     queryKey: accountKeys.legal,
     queryFn: () => loadLegalStatus(workspace),
