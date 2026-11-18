@@ -11,6 +11,9 @@ import { useWorkspace } from '../workspace';
 // Download documents + certificate (COMPLETED). Signing links are never shown —
 // they exist only in each signer's email. A DRAFT routes back to the wizard.
 
+/** UAT DEL-09 — why an open envelope has no working Delete (same words in the list). */
+export const DELETE_WHEN_FINISHED = 'Finish or void this envelope before deleting it.';
+
 // W1 — plain text for the self-sign refusals (the server's reason codes).
 const SELF_SIGN_REFUSAL: Record<string, string> = {
   not_bound_to_you: 'This signer isn’t assigned to you. Use the link in the signing email.',
@@ -250,8 +253,20 @@ export function EnvelopeDetail() {
               <Icon name="trash" size={14} /> Delete
             </Btn>
           ) : null}
+          {/* UAT DEL-09 — an open envelope can't be deleted (Retention R-10: finished envelopes
+              only). Say why instead of hiding the action. */}
+          {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+            <Btn disabled title={DELETE_WHEN_FINISHED} aria-describedby="delete-when-finished" data-testid="delete-envelope-disabled">
+              <Icon name="trash" size={14} /> Delete
+            </Btn>
+          ) : null}
         </div>
       </div>
+      {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+        <p id="delete-when-finished" className="sg-help" style={{ marginTop: 0, textAlign: 'right' }} data-testid="delete-when-finished">
+          {DELETE_WHEN_FINISHED}
+        </p>
+      ) : null}
       {purge !== null && purge.state !== 'DEQUEUED' ? (
         <div className={purged ? 'sg-note' : 'sg-note sg-note--warn'} style={{ marginBottom: 14 }} data-testid="purge-banner" role="status">
           {purged ? (

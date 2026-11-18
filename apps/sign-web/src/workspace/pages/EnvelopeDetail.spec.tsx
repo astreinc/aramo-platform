@@ -223,3 +223,22 @@ describe('EnvelopeDetail — Sign now', () => {
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.'));
   });
 });
+
+// UAT DEL-09 — an open envelope can't be deleted; Delete is shown disabled with the reason.
+describe('EnvelopeDetail — delete an open envelope', () => {
+  it('shows Delete disabled with "Finish or void this envelope before deleting it."', async () => {
+    detail.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true })] }));
+    show();
+    const btn = await screen.findByTestId('delete-envelope-disabled');
+    expect(btn).toBeDisabled();
+    expect(screen.queryByTestId('delete-envelope')).toBeNull();
+    expect(screen.getByTestId('delete-when-finished')).toHaveTextContent('Finish or void this envelope before deleting it.');
+  });
+
+  it('a completed envelope keeps the working Delete and no note', async () => {
+    detail.mockResolvedValue(env({ status: 'COMPLETED', completed_at: '2026-10-21T00:00:00Z', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-21T00:00:00Z' })] }));
+    show();
+    expect(await screen.findByTestId('delete-envelope')).toBeEnabled();
+    expect(screen.queryByTestId('delete-when-finished')).toBeNull();
+  });
+});

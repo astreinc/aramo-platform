@@ -8,9 +8,15 @@
 /* Aramo Sign — sender console (esign.aramo.ai). Tokens + components follow the
  * frozen prototype `platform/sign/Aramo Sign Workspace.dc.html` (Hanken Grotesk +
  * IBM Plex Mono, accent #2447D8). Tokens are scoped to `.sg` so they never
- * re-map the shared fe-foundation tokens used by RouteGuard / Dialog. */
+ * re-map the shared fe-foundation tokens used by RouteGuard / Dialog.
+ *
+ * UAT DEL-09 — the fe-foundation Dialog renders in a portal under <body>, outside `.sg`, so a
+ * Sign button inside it had no tokens: `sg-btn--primary` (white text on var(--accent)) was
+ * invisible — the Restore dialog showed only Cancel. The dialog content gets the same Sign
+ * tokens (fe-foundation's own dialog styles use the separate --c-* tokens, so nothing clashes). */
 
-.sg {
+.sg,
+.tc-dialog__content {
   --bg: #f3f4f7;
   --surface: #ffffff;
   --ink: #14181f;
@@ -27,8 +33,13 @@
   --badbg: #fbe9e7;
   --paper: #ffffff;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.sg {
   min-height: 100vh;
   background: var(--bg);
+}
+.sg,
+.tc-dialog__content {
   color: var(--ink);
   font-family: 'Hanken Grotesk', system-ui, sans-serif;
   font-size: 14px;
