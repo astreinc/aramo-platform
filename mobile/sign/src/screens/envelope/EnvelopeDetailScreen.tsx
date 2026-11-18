@@ -73,6 +73,7 @@ import { sentShareTarget } from '../../features/share/shareCompleted';
 import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
 import { recipientColor, useTheme } from '../../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EnvelopeDetail'>;
 
@@ -126,6 +127,8 @@ export function eventTone(type: string): 'success' | 'destructive' | 'amber' | '
 }
 
 export function EnvelopeDetailScreen({ route, navigation }: Props) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const { envelopeId, initialTab } = route.params;
   const t = useTheme();
   const toast = useToast();
@@ -396,7 +399,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: t.color.screen }}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

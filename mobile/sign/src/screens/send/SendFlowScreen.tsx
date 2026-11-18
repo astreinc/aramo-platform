@@ -36,6 +36,7 @@ import { FieldsStep } from './FieldsStep';
 import { assignToMe, RecipientsStep } from './RecipientsStep';
 import { ReviewStep } from './ReviewStep';
 import { Stepper } from './Stepper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SendFlow'>;
 
@@ -46,6 +47,8 @@ const NEXT: Partial<Record<SendStep, SendStep>> = {
 };
 
 export function SendFlowScreen({ navigation, route }: Props) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const t = useTheme();
   const toast = useToast();
   const qc = useQueryClient();
@@ -277,7 +280,11 @@ export function SendFlowScreen({ navigation, route }: Props) {
       {state.step === 'fields' ? (
         <FieldsStep controller={controller} state={state} />
       ) : (
-        <ScrollView style={styles.fill} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={styles.fill}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}
+        >
           {body}
         </ScrollView>
       )}

@@ -27,6 +27,7 @@ import {
 } from '../../features/profile/signProfile';
 import { TextField } from '../../features/send/ui';
 import { useTheme } from '../../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function ProfileScreen() {
   const t = useTheme();
@@ -56,6 +57,8 @@ export function atLimit(value: string, max: number): string | null {
 }
 
 export function ProfileForm({ initial, email }: { readonly initial: ProfileDraft; readonly email: string | null }) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const t = useTheme();
   const navigation = useNavigation();
   const toast = useToast();
@@ -92,7 +95,7 @@ export function ProfileForm({ initial, email }: { readonly initial: ProfileDraft
       <ScrollView
         testID="profile-screen"
         style={{ flex: 1, backgroundColor: t.color.screen }}
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
       >
         {!online ? <OfflineBanner /> : null}
