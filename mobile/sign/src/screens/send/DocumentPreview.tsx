@@ -23,18 +23,26 @@ export function DocumentPreview({
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [base64, setBase64] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
   const key = doc?.key ?? null;
+  // The loaded result is kept with its document key, so a different document reads as
+  // loading without resetting state inside the effect.
+  const [loaded, setLoaded] = useState<{ key: string; base64: string | null; failed: boolean } | null>(null);
+  const base64 = loaded !== null && loaded.key === key ? loaded.base64 : null;
+  const failed = loaded !== null && loaded.key === key && loaded.failed;
+  const setFailed = () => {
+    if (key !== null) setLoaded({ key, base64: null, failed: true });
+  };
 
   useEffect(() => {
-    setBase64(null);
-    setFailed(false);
     if (key === null) return undefined;
     let live = true;
     load(key).then(
-      (a) => live && setBase64(a.base64),
-      () => live && setFailed(true),
+      (a) => {
+        if (live) setLoaded({ key, base64: a.base64, failed: false });
+      },
+      () => {
+        if (live) setLoaded({ key, base64: null, failed: true });
+      },
     );
     return () => {
       live = false;
@@ -58,7 +66,7 @@ export function DocumentPreview({
           <ActivityIndicator color={t.color.accent} accessibilityLabel="Loading the document" style={styles.note} />
         ) : (
           <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 + insets.bottom }}>
-            <PdfPages source={{ kind: 'base64', base64 }} width={Math.max(200, width - 24)} title={doc?.title ?? 'Document'} onError={() => setFailed(true)} />
+            <PdfPages source={{ kind: 'base64', base64 }} width={Math.max(200, width - 24)} title={doc?.title ?? 'Document'} onError={setFailed} />
           </ScrollView>
         )}
       </View>

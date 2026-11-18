@@ -1,7 +1,7 @@
 // M-A6 §2 — the draft model carries Name and Checkbox configuration both ways, and a
 // field type the editor does not author is preserved untouched (never dropped on load,
 // so the replace-all fields PUT does not delete it).
-import { parseEnvelope, payloadFromServer } from '../draftModel';
+import { defaultSubject, parseEnvelope, payloadFromServer } from '../draftModel';
 import { copyRecipients, isCopy, signingRecipients } from '../recipientRoles';
 import type { SenderApi } from '../senderApi';
 import { fieldsToWire, syncDraft } from '../syncDraft';
@@ -191,8 +191,7 @@ describe('copy recipients bound from a template CC role (M-A6 §3.5, M-A5)', () 
 // PO 2026-11-18 — the default subject is "Please sign: {first document}" (self-sign: the name).
 describe('default subject', () => {
   const doc = { title: 'Lease' } as never;
-  it('"Please sign: {document}" — no signer name; empty without a document', async () => {
-    const { defaultSubject } = await import('../draftModel');
+  it('"Please sign: {document}" — no signer name; empty without a document', () => {
     expect(defaultSubject({ documents: [doc], recipients: [{ name: 'Dana', kind: 'SIGNER' } as never] })).toBe('Please sign: Lease');
     expect(defaultSubject({ documents: [doc], recipients: [], selfSign: true })).toBe('Lease');
     expect(defaultSubject({ documents: [], recipients: [{ name: 'Dana', kind: 'SIGNER' } as never] })).toBe('');
