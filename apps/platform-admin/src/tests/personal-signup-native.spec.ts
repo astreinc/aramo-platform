@@ -290,6 +290,51 @@ describe('start — Gmail alias of an existing account', () => {
   });
 });
 
+// UAT SUP-07 (PO 2026-11-18, §3.7) — a decoy sign-up's code step behaves like a real one, so wrong
+// codes never tell an existing account apart: counted down, then locked out.
+describe('verify-email — a decoy sign-up counts down and locks out like a real one', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'pat.person@gmail.com', robot_token: 'turnstile-ok' };
+  const reasonAndLeft = async (p: Promise<unknown>) => {
+    const r = await refusalOf(p);
+    return [r.reason, r.details?.['attempts_remaining']];
+  };
+
+  it('existing account: 4, 3, 2, 1, 0 tries left, then too many attempts — as for a real sign-up', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    expect(h.requests.create).not.toHaveBeenCalled();
+    const seen = [];
+    for (let i = 0; i < 6; i += 1) seen.push(await reasonAndLeft(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: NOW })));
+    expect(seen).toEqual([
+      ['code_invalid', 4],
+      ['code_invalid', 3],
+      ['code_invalid', 2],
+      ['code_invalid', 1],
+      ['code_invalid', 0],
+      ['code_attempts_exceeded', undefined],
+    ]);
+  });
+
+  it('expires like a real code, and a resend renews it only when a real resend would', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    const later = new Date(NOW.getTime() + 11 * 60 * 1000);
+    expect((await refusalOf(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: later }))).reason).toBe('code_expired');
+    await h.svc.resendEmail({ signup_id, ip: 'unknown', request_id: 'r', now: later });
+    expect(await reasonAndLeft(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: later }))).toEqual(['code_invalid', 4]);
+  });
+
+  it('an id that was never issued answers a plain wrong code, as before', async () => {
+    const h = harness();
+    h.requests.findById.mockResolvedValue(null as never);
+    expect(await reasonAndLeft(h.svc.verifyEmail({ signup_id: 'never-issued', code: '000000', request_id: 'r', now: NOW }))).toEqual(['code_invalid', undefined]);
+  });
+});
+
 describe('terms text (§2.2)', () => {
   it('serves each currently effective Personal document with the registry sha256; the text bytes hash to it', () => {
     const { svc } = harness();

@@ -196,8 +196,64 @@ export function personalTenantName(row: Pick<PersonalSignupRow, 'id' | 'display_
 }
 
 @Injectable()
+/**
+ * UAT SUP-07 (PO 2026-11-18, Personal Free §3.7 non-enumeration) — the sign-up that answers an
+ * address which already has an account (or is over a limit) is a decoy: no row, no code. It
+ * must still behave like a real one at the code step, or a few wrong codes would tell an
+ * existing account apart (a real sign-up counts down "N tries left" and locks out after
+ * PERSONAL_OTP_MAX_ATTEMPTS; the decoy said "isn't right" forever). This keeps a short-lived,
+ * in-memory attempt count per decoy id with the real code's lifetime and the real order of
+ * checks (exhausted, then expired, then a counted mismatch). Bounded; lost on restart (the id
+ * then answers as an unknown one, as before).
+ */
+export class DecoyCodeAttempts {
+  private readonly byId = new Map<string, { attempts: number; expires_at: number; last_sent_at: number; sends: number }>();
+  constructor(private readonly maxEntries = 10_000) {}
+
+  issue(id: string, now: Date): void {
+    this.sweep(now);
+    if (this.byId.size >= this.maxEntries) {
+      const oldest = this.byId.keys().next().value;
+      if (oldest !== undefined) this.byId.delete(oldest);
+    }
+    this.byId.set(id, { attempts: 0, expires_at: now.getTime() + PERSONAL_OTP_TTL_MS, last_sent_at: now.getTime(), sends: 1 });
+  }
+
+  /** null when the id is not a live decoy; otherwise the real flow's outcome. */
+  check(id: unknown, now: Date): { outcome: 'mismatch' | 'expired' | 'exhausted'; attempts_before: number } | null {
+    if (typeof id !== 'string') return null;
+    const d = this.byId.get(id);
+    if (d === undefined) return null;
+    if (d.attempts >= PERSONAL_OTP_MAX_ATTEMPTS) return { outcome: 'exhausted', attempts_before: d.attempts };
+    if (d.expires_at <= now.getTime()) return { outcome: 'expired', attempts_before: d.attempts };
+    const before = d.attempts;
+    d.attempts += 1;
+    return { outcome: 'mismatch', attempts_before: before };
+  }
+
+  /** A resend renews a decoy exactly when a real resend would (the same gap and daily cap). */
+  renew(id: unknown, now: Date): void {
+    if (typeof id !== 'string') return;
+    const d = this.byId.get(id);
+    if (d === undefined) return;
+    if (!mayResendPersonalOtp({ last_sent_at: new Date(d.last_sent_at), sends_last_24h: d.sends, now })) return;
+    this.byId.set(id, { attempts: 0, expires_at: now.getTime() + PERSONAL_OTP_TTL_MS, last_sent_at: now.getTime(), sends: d.sends + 1 });
+  }
+
+  private sweep(now: Date): void {
+    // Kept a day past expiry so a late attempt still reads as expired / exhausted, not unknown.
+    const cutoff = now.getTime() - DAY_MS;
+    for (const [id, d] of this.byId) {
+      if (d.expires_at > cutoff) break;
+      this.byId.delete(id);
+    }
+  }
+}
+
 export class PersonalSignupService {
   private readonly log = new Logger(PersonalSignupService.name);
+  // UAT SUP-07 — the decoy sign-ups' code attempts (see DecoyCodeAttempts).
+  readonly decoys = new DecoyCodeAttempts();
   private readonly legal: readonly LegalDocumentVersion[];
 
   constructor(
@@ -372,6 +428,7 @@ export class PersonalSignupService {
 
     // Everything below that concerns the address answers the same 202.
     const decoy = { signup_id: randomUUID() };
+    this.decoys.issue(decoy.signup_id, now);
     if (!this.budget.allow(`personal:${input.ip}`, now.getTime())) return decoy;
     // Gmail dots / +tag are folded ONLY for duplicate detection. The account is
     // created for the address exactly as typed, and binding (auth-service
@@ -479,7 +536,11 @@ export class PersonalSignupService {
     const now = input.now ?? new Date();
     if (!this.budget.allow(`personal:${input.ip}`, now.getTime())) return;
     const row = await this.live(input.signup_id, now);
-    if (row === null || row.status !== 'PENDING') return;
+    if (row === null) {
+      this.decoys.renew(input.signup_id, now);
+      return;
+    }
+    if (row.status !== 'PENDING') return;
     const sends = await this.requests.emailSendsSince(row.canonical_email, new Date(now.getTime() - DAY_MS));
     if (!mayResendPersonalOtp({ last_sent_at: row.email_otp_last_sent_at, sends_last_24h: sends, now })) return;
     await this.sendEmailCode(row, now);
@@ -490,8 +551,14 @@ export class PersonalSignupService {
   async verifyEmail(input: { signup_id?: unknown; code?: unknown; request_id: string; now?: Date }): Promise<{ next: PersonalNextStep }> {
     const now = input.now ?? new Date();
     const row = await this.live(input.signup_id, now);
-    // An unknown id answers exactly like a wrong code (a decoy id from start is indistinguishable).
-    if (row === null || row.status !== 'PENDING') throw codeError(input.request_id, 'mismatch');
+    // An unknown id answers exactly like a wrong code. A decoy id from start answers like a real
+    // sign-up's wrong code: counted down, then locked out (UAT SUP-07).
+    if (row === null) {
+      const d = this.decoys.check(input.signup_id, now);
+      if (d !== null) throw codeError(input.request_id, d.outcome, d.outcome === 'mismatch' ? remaining(d.attempts_before) : undefined);
+      throw codeError(input.request_id, 'mismatch');
+    }
+    if (row.status !== 'PENDING') throw codeError(input.request_id, 'mismatch');
     const outcome = checkPersonalOtp(
       { hash: row.email_otp_hash, expires_at: row.email_otp_expires_at, attempts: row.email_otp_attempts },
       row.id,
