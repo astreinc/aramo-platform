@@ -262,4 +262,90 @@ describe('SigningFlow', () => {
       expect(screen.queryByTestId('consent-check')).toBeNull();
     });
   });
+
+  // UAT SEC-04 follow-up — SMS code and identity check recipients in the app.
+  describe('SMS code and identity check', () => {
+    const disclosure = {
+      status: 200,
+      body: { disclosure_version: '1.0', text: 'You agree.', text_sha256: 'a'.repeat(64) },
+    };
+    function flow(gate: { status: number; body: unknown }, routes: Record<string, () => { status: number; body: unknown }>) {
+      let cleared = false;
+      const net = recordingFetch((req) => {
+        const hit = Object.keys(routes).find((k) => req.url.endsWith(k));
+        if (hit) {
+          const r = routes[hit]!();
+          if ((r.body as { verified?: unknown; state?: unknown } | null)?.verified === true || (r.body as { state?: unknown } | null)?.state === 'VERIFIED')
+            cleared = true;
+          return r;
+        }
+        if (req.url.endsWith('/exchange')) return { status: 200, body: {} };
+        if (!cleared) return gate;
+        return req.url.endsWith('/disclosure-text') ? disclosure : { status: 200, body: {} };
+      });
+      const session = createGuestSigningClient({ baseUrl: BASE, fetch: net.fetch }).open(SIGNING_TOKEN);
+      render(wrap(<SigningFlow session={session} signerName="" signedIn={false} onDone={jest.fn()} />));
+      return net;
+    }
+
+    it('SMS: texts a code, a wrong code says so, the right code opens the document', async () => {
+      let verifies = 0;
+      flow(
+        { status: 403, body: { error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_required' } } } },
+        {
+          '/verification': () => ({ status: 200, body: { required: true, verified: false, locked: false, phone: '+1•••••••23' } }),
+          '/sms-otp/send': () => ({ status: 200, body: { sent: true, verified: false, phone: '+1•••••••23' } }),
+          '/sms-otp/verify': () =>
+            ++verifies === 1
+              ? { status: 400, body: { error: { code: 'VALIDATION_ERROR', details: { reason: 'otp_mismatch' } } } }
+              : { status: 200, body: { verified: true } },
+        },
+      );
+      await waitFor(() => expect(screen.getByTestId('signing-smscode')).toBeTruthy(), { timeout: 15_000 });
+      await waitFor(() => expect(screen.getByText(/\+1•••••••23/)).toBeTruthy());
+      fireEvent.press(screen.getByText('Text me a code'));
+      await waitFor(() => expect(screen.getByLabelText('Code')).toBeTruthy());
+      fireEvent.changeText(screen.getByLabelText('Code'), '000000');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByText('That code isn’t right. Check it and try again.')).toBeTruthy());
+      fireEvent.changeText(screen.getByLabelText('Code'), '123456');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), { timeout: 15_000 });
+    });
+
+    it('SMS: a locked recipient sees the lock message', async () => {
+      flow(
+        { status: 403, body: { error: { code: 'INSUFFICIENT_PERMISSIONS', details: { reason: 'recipient_verification_locked' } } } },
+        {},
+      );
+      await waitFor(() => expect(screen.getByText('Too many incorrect codes')).toBeTruthy(), { timeout: 15_000 });
+    });
+
+    it('identity: Continue reads the result and opens the document once verified', async () => {
+      let statusCalls = 0;
+      flow(
+        { status: 403, body: { error: { code: 'SIGNER_IDENTITY_VERIFICATION_REQUIRED', details: { reason: 'identity_verification_required' } } } },
+        {
+          '/identity-verification/status': () =>
+            ++statusCalls === 1
+              ? { status: 200, body: { method: 'ID_VERIFICATION', state: 'PENDING', attempts_remaining: 3, last_failure: null } }
+              : { status: 200, body: { method: 'ID_VERIFICATION', state: 'VERIFIED', attempts_remaining: 3, last_failure: null } },
+        },
+      );
+      await waitFor(() => expect(screen.getByTestId('signing-identity')).toBeTruthy(), { timeout: 15_000 });
+      expect(screen.getByText('Verify your identity to open this document')).toBeTruthy();
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByText(/Your check is not finished yet/)).toBeTruthy());
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), { timeout: 15_000 });
+    });
+
+    it('identity: a locked check shows the result', async () => {
+      flow(
+        { status: 423, body: { error: { code: 'SIGNER_IDENTITY_VERIFICATION_LOCKED', details: { reason: 'identity_verification_locked' } } } },
+        {},
+      );
+      await waitFor(() => expect(screen.getByText('We couldn’t verify your identity')).toBeTruthy(), { timeout: 15_000 });
+    });
+  });
 });

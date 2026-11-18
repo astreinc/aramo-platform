@@ -45,6 +45,12 @@ export type SigningFailure =
   | 'access_code'
   /** UAT SEC-04 — five wrong access codes locked this recipient out. */
   | 'access_code_locked'
+  /** UAT SEC-04 follow-up — the sender asked for a code texted to the recipient's phone. */
+  | 'sms_code'
+  | 'sms_locked'
+  /** UAT SEC-04 follow-up — the sender asked for an identity check (photo ID / KBA). */
+  | 'identity'
+  | 'identity_locked'
   | 'network'
   | 'error';
 
@@ -53,6 +59,10 @@ export function classifySigningError(e: unknown): SigningFailure {
   if (e.isNetwork) return 'network';
   if (e.code === 'SIGNER_ACCESS_CODE_LOCKED') return 'access_code_locked';
   if (e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'access_code';
+  if (e.code === 'SIGNER_IDENTITY_VERIFICATION_LOCKED') return 'identity_locked';
+  if (e.code === 'SIGNER_IDENTITY_VERIFICATION_REQUIRED') return 'identity';
+  if (e.reason === 'recipient_verification_locked' || e.reason === 'otp_locked') return 'sms_locked';
+  if (e.reason === 'recipient_verification_required') return 'sms_code';
   if (e.reason === 'signing_session_ended' || endsSigningSession(e)) return 'ended';
   if (e.is('SIGNER_NOT_YET_ELIGIBLE', 'not_your_turn')) return 'not_your_turn';
   if (e.is('ENVELOPE_ALREADY_EXECUTED', 'envelope_not_signable')) return 'executed';
@@ -113,6 +123,120 @@ export async function submitAccessCode(
     }
     throw e;
   }
+}
+
+// UAT SEC-04 follow-up — the SMS code (Feature-Parity §1.9), the same routes and copy as
+// the web signer page. The server sends, checks and counts the code; nothing is kept here.
+export const SMS_CODE_COPY = {
+  title: 'Enter the code we text you',
+  body: (phone: string | null) =>
+    `The sender asked us to confirm your phone before you open this document. We’ll text a code to ${phone ?? 'your phone'}.`,
+  lockedTitle: 'Too many incorrect codes',
+  lockedBody:
+    'For your security this document is locked. Contact the sender if you still need to sign.',
+} as const;
+
+const SMS_SEND_REFUSALS: Record<string, string> = {
+  otp_resend_cooldown: 'Wait a minute before asking for another code.',
+  otp_daily_limit:
+    'You have asked for too many codes today. Try again tomorrow, or contact the sender.',
+  otp_opted_out: 'This number has stopped text messages from Aramo Sign. Contact the sender.',
+};
+const SMS_VERIFY_REFUSALS: Record<string, string> = {
+  otp_mismatch: 'That code isn’t right. Check it and try again.',
+  otp_expired: 'This code has expired. Send a new one.',
+  otp_code_locked: 'Too many incorrect codes. Send a new code.',
+  otp_not_requested: 'Send a code first.',
+};
+
+/** The masked phone the code goes to (null when not known). */
+export async function smsCodePhone(session: GuestSigningSession): Promise<string | null> {
+  const r = await session.post('/v1/sign/signing/verification', {});
+  return typeof r.phone === 'string' ? r.phone : null;
+}
+
+export type SmsOutcome =
+  | { kind: 'verified' }
+  | { kind: 'sent'; phone: string | null }
+  | { kind: 'locked' }
+  | { kind: 'message'; text: string };
+
+export async function sendSmsCode(session: GuestSigningSession): Promise<SmsOutcome> {
+  try {
+    const r = await session.post('/v1/sign/signing/verification/sms-otp/send', {});
+    if (r.verified === true) return { kind: 'verified' };
+    return { kind: 'sent', phone: typeof r.phone === 'string' ? r.phone : null };
+  } catch (e) {
+    if (isApiError(e) && e.reason === 'otp_locked') return { kind: 'locked' };
+    if (isApiError(e) && e.isNetwork) return { kind: 'message', text: SIGNING_COPY.submitFailed };
+    const text = isApiError(e) ? SMS_SEND_REFUSALS[e.reason] : undefined;
+    return { kind: 'message', text: text ?? 'The code couldn’t be sent. Try again in a moment.' };
+  }
+}
+
+export async function verifySmsCode(session: GuestSigningSession, code: string): Promise<SmsOutcome> {
+  try {
+    await session.post('/v1/sign/signing/verification/sms-otp/verify', { code: code.trim() });
+    return { kind: 'verified' };
+  } catch (e) {
+    if (isApiError(e) && e.reason === 'otp_locked') return { kind: 'locked' };
+    if (isApiError(e) && e.isNetwork) return { kind: 'message', text: SIGNING_COPY.submitFailed };
+    const text = isApiError(e) ? SMS_VERIFY_REFUSALS[e.reason] : undefined;
+    return { kind: 'message', text: text ?? 'That didn’t go through. Try again.' };
+  }
+}
+
+// UAT SEC-04 follow-up — the identity check (Feature-Parity §1.9). The check itself runs on
+// the verification partner's page (opened in the browser); the app only starts it and
+// reads its state. Same copy as the web signer page.
+export const IDENTITY_COPY = {
+  eyebrow: 'Identity check',
+  title: 'Verify your identity to open this document',
+  body: 'The sender asked you to confirm who you are with a photo ID. Our verification partner checks the ID; Aramo Sign keeps only the result, never the ID itself.',
+  lockedTitle: 'We couldn’t verify your identity',
+  lockedBody: 'The sender has been told and may send you a new request.',
+  inBrowser: 'Finish the check in the browser, then come back and tap Continue.',
+  processing: 'Your check is being processed. Tap Continue in a moment.',
+  unavailable: 'Identity checks are not available right now. Try again later.',
+  pending:
+    'Your check is not finished yet. Complete it in the browser, or wait a moment and try again.',
+  start: 'Start the identity check to continue.',
+} as const;
+
+export type IdentityOutcome =
+  | { kind: 'verified' }
+  | { kind: 'locked' }
+  | { kind: 'open'; url: string }
+  | { kind: 'message'; text: string };
+
+export async function startIdentityCheck(session: GuestSigningSession): Promise<IdentityOutcome> {
+  try {
+    const r = await session.post('/v1/sign/signing/identity-verification/start', {});
+    if (r.state === 'VERIFIED') return { kind: 'verified' };
+    if (r.state === 'LOCKED') return { kind: 'locked' };
+    const url = (r as { verification_url?: unknown }).verification_url;
+    if (typeof url === 'string' && url.startsWith('https://')) return { kind: 'open', url };
+    return { kind: 'message', text: IDENTITY_COPY.processing };
+  } catch (e) {
+    if (isApiError(e) && e.code === 'ESIGN_IDENTITY_VERIFICATION_UNAVAILABLE')
+      return { kind: 'message', text: IDENTITY_COPY.unavailable };
+    throw e;
+  }
+}
+
+export async function identityCheckStatus(session: GuestSigningSession): Promise<IdentityOutcome> {
+  const r = await session.post('/v1/sign/signing/identity-verification/status', {});
+  if (r.state === 'VERIFIED' || r.state === 'NOT_REQUIRED') return { kind: 'verified' };
+  if (r.state === 'LOCKED') return { kind: 'locked' };
+  if (r.state === 'PENDING') return { kind: 'message', text: IDENTITY_COPY.pending };
+  const failure = typeof r.last_failure === 'string' ? r.last_failure : null;
+  return {
+    kind: 'message',
+    text:
+      failure !== null
+        ? `That check did not pass (${failure.replace(/_/g, ' ')}). ${r.attempts_remaining ?? 0} attempt(s) left.`
+        : IDENTITY_COPY.start,
+  };
 }
 
 /** Exchange the token (marks the signer VIEWED) and read the current disclosure. */
