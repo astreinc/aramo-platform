@@ -4145,6 +4145,12 @@
         "project": "auth-core",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-core/src/tests/web-devices.spec.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
       { "project": "auth-core", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -6942,6 +6948,12 @@
         "status": "excluded"
       },
       { "project": "auth", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-core/src/tests/web-devices.spec.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
       { "project": "auth-core", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -11421,6 +11433,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Dashboard.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/DevicesSection.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },

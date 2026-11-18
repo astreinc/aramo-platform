@@ -389,6 +389,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return !sameMsg(want, was);
   };
   const [contacts, setContacts] = useState<ContactRow[]>([]);
+  // UAT (contacts) — every contact is reachable, as in the app: a search and the full list
+  // (it scrolls inside the card), instead of the first eight only.
+  const [contactQuery, setContactQuery] = useState('');
+  const shownContacts = filterContactRows(contacts, contactQuery);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Multi-Signer §5 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL).
@@ -736,7 +740,21 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         <section className="sg-card">
           <div className="sg-card__head">From contacts</div>
           {contacts.length === 0 ? <div className="sg-empty">People you send envelopes to appear here.</div> : null}
-          {contacts.slice(0, 8).map((c) => (
+          {contacts.length > 0 ? (
+            <div style={{ padding: '8px 12px' }}>
+              <TextIn
+                type="search"
+                value={contactQuery}
+                onChange={(e) => setContactQuery(e.target.value)}
+                placeholder="Search name or email"
+                aria-label="Search contacts"
+                data-testid="contacts-search"
+              />
+            </div>
+          ) : null}
+          {contacts.length > 0 && shownContacts.length === 0 ? <div className="sg-empty">No contacts match.</div> : null}
+          <div style={{ maxHeight: 420, overflowY: 'auto' }} data-testid="contacts-list">
+          {shownContacts.map((c) => (
             <div key={c.email} className="sg-row">
               <Avatar name={c.name} small />
               <div className="sg-row__main">
@@ -748,6 +766,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               </LinkBtn>
             </div>
           ))}
+          </div>
         </section>
       </div>
       <div className="sg-wizfoot">
@@ -1085,3 +1104,9 @@ export function EnvelopeSent() {
   );
 }
 
+/** UAT (contacts) — the From contacts search: name or email, case-insensitive (the app's rule). */
+export function filterContactRows(rows: readonly ContactRow[], query: string): ContactRow[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return [...rows];
+  return rows.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+}
