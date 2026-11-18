@@ -312,6 +312,9 @@ export const SUBJECT_LIMIT_NOTE = `Subjects can be up to ${ENVELOPE_SUBJECT_MAX}
 
 export interface EnvelopeDetail {
   id: string;
+  // M-A12 W1-A / Web Self-Signing A2 — 'self': a document the sender signs alone (no email,
+  // no allowance used). Absent on an older server = standard.
+  mode?: 'standard' | 'self';
   // Sign Unified Product S-3 — envelopes from another application are read-only here.
   source_application?: string;
   subject: string;
@@ -779,7 +782,12 @@ export const senderApi = {
     const qs = p.toString();
     return apiClient.get<EnvelopeList>(`${BASE}/envelopes${qs === '' ? '' : `?${qs}`}`);
   },
-  create: (subject?: string) => apiClient.post<{ id: string; status: EnvelopeStatus; subject: string }>(`${BASE}/envelopes`, subject !== undefined ? { subject } : {}),
+  // Web Self-Signing A2 — `mode: 'self'` creates a SELF draft whose only signer is the caller.
+  create: (subject?: string, mode?: 'standard' | 'self') =>
+    apiClient.post<{ id: string; status: EnvelopeStatus; subject: string }>(`${BASE}/envelopes`, {
+      ...(subject !== undefined ? { subject } : {}),
+      ...(mode === 'self' ? { mode } : {}),
+    }),
   detail: (id: string) => apiClient.get<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`),
   rename: (id: string, subject: string) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { subject }),
   setRouting: (id: string, routing_mode: RoutingMode) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { routing_mode }),

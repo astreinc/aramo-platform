@@ -18,7 +18,7 @@ const SELF_SIGN_REFUSAL: Record<string, string> = {
   not_your_turn: 'It isn’t your turn to sign yet.',
   envelope_not_signable: 'This envelope can’t be signed any more.',
 };
-function selfSignRefusal(e: unknown): string {
+export function selfSignRefusal(e: unknown): string {
   const reason = (e as { details?: { reason?: unknown } } | null)?.details?.reason;
   return (typeof reason === 'string' ? SELF_SIGN_REFUSAL[reason] : undefined) ?? errorMessage(e);
 }

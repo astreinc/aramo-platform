@@ -28,6 +28,7 @@ import {
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { selfSignRefusal } from './EnvelopeDetail';
 import { PersonalUpgradeLink } from './PersonalAllowance';
 import { PrepareEditor } from './PrepareEditor';
 import { readinessOf } from './readiness';
@@ -39,7 +40,9 @@ import { readinessOf } from './readiness';
 const MAX_BYTES = 25 * 1024 * 1024;
 
 
-export function NewEnvelope() {
+// Web Self-Signing A2 — `mode="self"` is "Sign a document": a SELF draft (the caller is the
+// only signer; no email, no allowance used) that opens the same wizard.
+export function NewEnvelope({ mode = 'standard' }: { mode?: 'standard' | 'self' } = {}) {
   const { base, ctx } = useWorkspace();
   const nav = useNavigate();
   const [error, setError] = useState('');
@@ -48,12 +51,12 @@ export function NewEnvelope() {
     if (started.current || !ctx.can_send) return;
     started.current = true;
     senderApi
-      .create()
+      .create(undefined, mode)
       .then((e) => nav(`${base}/envelopes/${e.id}/edit?step=1`, { replace: true }))
       .catch((e: unknown) => setError(errorMessage(e)));
-  }, [base, nav, ctx.can_send]);
+  }, [base, nav, ctx.can_send, mode]);
   if (!ctx.can_send) return <Navigate to={`${base}/envelopes`} replace />;
-  return <div className="sg-page">{error !== '' ? <ErrorBox>{error}</ErrorBox> : <Loading label="Creating envelope…" />}</div>;
+  return <div className="sg-page">{error !== '' ? <ErrorBox>{error}</ErrorBox> : <Loading label={mode === 'self' ? 'Starting…' : 'Creating envelope…'} />}</div>;
 }
 
 export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
@@ -86,7 +89,12 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
   if (env.status !== 'DRAFT' || !ctx.can_send) return <Navigate to={`${base}/envelopes/${env.id}`} replace />;
 
   const stepHref = (n: number) => `${base}/envelopes/${env.id}/${n === 3 ? 'prepare' : `edit?step=${n}`}`;
-  const steps = ['Documents', 'Recipients', 'Prepare fields', 'Review & send'];
+  // Web Self-Signing A2 — a SELF envelope: Document → Place fields → Sign (no Recipients step;
+  // the caller is the only signer).
+  const self = env.mode === 'self';
+  if (self && step === 2) return <Navigate to={stepHref(3)} replace />;
+  const steps = self ? ['Document', 'Place fields', 'Sign'] : ['Documents', 'Recipients', 'Prepare fields', 'Review & send'];
+  const stepNumbers = self ? [1, 3, 4] : [1, 2, 3, 4];
 
   return (
     <div className={step === 3 ? 'sg-page sg-page--wide' : 'sg-page sg-page--wide'}>
@@ -101,21 +109,22 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
       </div>
       <nav className="sg-steps" aria-label="Create envelope steps">
         {steps.map((label, i) => {
-          const n = i + 1;
+          const n = stepNumbers[i] ?? i + 1;
           const cls = n === step ? 'sg-step sg-step--on' : n < step ? 'sg-step sg-step--done' : 'sg-step';
           return (
             <Link key={label} className={cls} to={stepHref(n)} aria-current={n === step ? 'step' : undefined}>
-              <span className="sg-step__n">{n}</span>
+              <span className="sg-step__n">{i + 1}</span>
               {label}
             </Link>
           );
         })}
       </nav>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
-      {step === 1 ? <DocumentsStep env={env} onChange={setEnv} next={stepHref(2)} /> : null}
-      {step === 2 ? <RecipientsStep env={env} onChange={setEnv} back={stepHref(1)} next={stepHref(3)} /> : null}
-      {step === 3 ? <PrepareEditor env={env} onChange={setEnv} back={stepHref(2)} next={stepHref(4)} /> : null}
-      {step === 4 ? <ReviewStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
+      {step === 1 ? <DocumentsStep env={env} onChange={setEnv} next={stepHref(self ? 3 : 2)} /> : null}
+      {step === 2 && !self ? <RecipientsStep env={env} onChange={setEnv} back={stepHref(1)} next={stepHref(3)} /> : null}
+      {step === 3 ? <PrepareEditor env={env} onChange={setEnv} back={stepHref(self ? 1 : 2)} next={stepHref(4)} /> : null}
+      {step === 4 && !self ? <ReviewStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
+      {step === 4 && self ? <SelfSignStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
     </div>
   );
 }
@@ -124,7 +133,8 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
 
 function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; next: string }) {
   const { base, ctx } = useWorkspace();
-  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true;
+  // Web Self-Signing A2 §6 — templates are not offered for a document the sender signs alone.
+  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true && env.mode !== 'self';
   const nav = useNavigate();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -1040,6 +1050,93 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
 }
 
 // ── Sent ─────────────────────────────────────────────────────────────────────
+
+// Web Self-Signing A2 §3.3 — the Sign step of "Sign a document": the subject (empty takes the
+// document name), the readiness checks, and Sign now: send (a SELF send emails nobody and uses
+// no envelope), then the SELF session (W1), then the signing page with the return hint (§3.4).
+export const SELF_SIGN_NOTE = 'Nobody is emailed and this doesn’t count toward your envelopes.';
+
+export function selfSignReturnPath(base: string, envelopeId: string): string {
+  return `${base}/envelopes/${envelopeId}`;
+}
+
+function SelfSignStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; onSent: () => void }) {
+  const { base } = useWorkspace();
+  const nav = useNavigate();
+  const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = readinessOf(env);
+
+  const signNow = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await senderApi.send(env.id, subject.trim() === '' ? undefined : subject.trim());
+      onSent();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+      return;
+    }
+    try {
+      const s = await senderApi.selfSignSession(env.id);
+      const ret = encodeURIComponent(selfSignReturnPath(base, env.id));
+      window.location.assign(`/s/${encodeURIComponent(s.token)}?ret=${ret}`);
+    } catch (e) {
+      // Signed nothing yet: the envelope page offers Sign now (W1) for it.
+      setError(selfSignRefusal(e));
+      setBusy(false);
+      nav(selfSignReturnPath(base, env.id));
+    }
+  };
+
+  return (
+    <>
+      <div className="sg-grid sg-grid--main">
+        <section className="sg-card">
+          <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
+            <Field label="Document name" htmlFor="self-subject">
+              <TextIn
+                id="self-subject"
+                value={subject}
+                maxLength={ENVELOPE_SUBJECT_MAX}
+                onChange={(e) => setSubject(e.target.value.slice(0, ENVELOPE_SUBJECT_MAX))}
+              />
+            </Field>
+            <p className="sg-help" data-testid="self-sign-note" style={{ margin: 0 }}>
+              You’re the only signer. {SELF_SIGN_NOTE}
+            </p>
+          </div>
+        </section>
+        <section className="sg-card">
+          <div className="sg-card__body">
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Before signing</div>
+            {ready.items.map((it) => (
+              <div key={it.t} className="sg-check">
+                <span className={it.ok ? 'sg-check__ok' : 'sg-check__no'} aria-hidden="true">
+                  {it.ok ? '✓' : '!'}
+                </span>
+                {it.t}
+              </div>
+            ))}
+            <div style={{ marginTop: 14 }}>
+              <Btn variant="primary" block disabled={!ready.ok || busy} onClick={() => void signNow()} data-testid="self-sign-now">
+                {busy ? 'Opening…' : ready.ok ? 'Sign now' : 'Resolve the items above to sign'}
+              </Btn>
+            </div>
+            {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+          </div>
+        </section>
+      </div>
+      <div className="sg-wizfoot">
+        <Btn onClick={() => nav(back)}>
+          <Icon name="back" size={14} /> Back
+        </Btn>
+      </div>
+    </>
+  );
+}
 
 export function EnvelopeSent() {
   const { id = '' } = useParams();

@@ -887,7 +887,19 @@ export function App(): JSX.Element {
   );
 }
 
+/**
+ * Web Self-Signing A2 §3.4 — the workspace's return hint for a document the sender signs
+ * themselves (`?ret=`). Display only (it grants nothing): accepted only as a same-origin
+ * workspace envelope path; anything else is null and the usual done screen shows.
+ */
+export function selfSignReturn(search: string): string | null {
+  const ret = new URLSearchParams(search).get('ret');
+  if (ret === null) return null;
+  return /^\/(sign|personal)\/envelopes\/[0-9a-f-]{36}$/i.test(ret) ? ret : null;
+}
+
 function SignerApp({ token }: { readonly token: string }): JSX.Element {
+  const selfReturn = useState(() => selfSignReturn(window.location.search))[0];
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   // M-A15 §4.1 — the signer's saved signature / initials offered on this page.
@@ -1412,6 +1424,17 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       <>
         <Header reportToken={token} />
         <EndState tone="muted" title="You declined to sign" body="Your decision and your reason have been recorded, and the sender can see them. You can close this page." />
+      </>
+    );
+  if (screen === 'done' && selfReturn !== null)
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="ok" title="You signed" body="Your signed PDF and certificate are ready.">
+          <a className="sg-btn sg-btn--primary" href={selfReturn} data-testid="self-sign-open-envelope">
+            Open the envelope
+          </a>
+        </EndState>
       </>
     );
   if (screen === 'done')
