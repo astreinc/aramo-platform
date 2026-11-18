@@ -5,7 +5,7 @@ import type { Request, Response } from 'express';
 
 import { AccountLinkService } from './account-link.service.js';
 import type { AccountLinkMethod } from './account-link-directory.port.js';
-import { NATIVE_CONSUMER, NativeAuthService } from './native-auth.service.js';
+import { NATIVE_CONSUMER, NativeAuthService, type NativeSessionItem } from './native-auth.service.js';
 
 // Apple Go-Live Amendment A1 (LOCKED) L-4 — the account-linking endpoints that are
 // not bound to one consumer's hosted-UI flow:
@@ -118,6 +118,66 @@ export class AccountLinkController {
       requestId,
       details: { reason: 'sign_in_method_not_found' },
     });
+  }
+
+  // Amendment M-A18 (LOCKED) — the signed-in browser lists the user's phones in this
+  // workspace and signs one out. Browser cookie of the `sign` consumer only (the app keeps
+  // GET/DELETE /auth/native/sign/sessions). DELETE also requires `X-Aramo-Consumer: sign`
+  // (a custom header forces a CORS preflight, so a cross-site form cannot send it).
+  @Get('me/devices')
+  async listDevices(
+    @Query('consumer') consumer: string | undefined,
+    @Req() req: RequestWithId,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ items: NativeSessionItem[] }> {
+    noStore(res);
+    const requestId = req.requestId ?? 'unknown';
+    const owner = await this.authenticateSignBrowser(req, consumer, requestId, false);
+    return this.native.listSessionsForBrowser(owner);
+  }
+
+  @Delete('me/devices/:device_session_id')
+  @HttpCode(204)
+  async revokeDevice(
+    @Param('device_session_id') deviceSessionId: string,
+    @Query('consumer') consumer: string | undefined,
+    @Req() req: RequestWithId,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    noStore(res);
+    const requestId = req.requestId ?? 'unknown';
+    const owner = await this.authenticateSignBrowser(req, consumer, requestId, true);
+    await this.native.revokeSessionFromBrowser(owner, deviceSessionId, requestId);
+  }
+
+  private async authenticateSignBrowser(
+    req: RequestWithId,
+    consumer: string | undefined,
+    requestId: string,
+    requireConsumerHeader: boolean,
+  ): Promise<{ sub: string; tenant_id: string }> {
+    const header = req.header('authorization');
+    if (header !== undefined && header.length > 0) {
+      throw new AramoError('INVALID_TOKEN', 'A browser session is required', 401, {
+        requestId,
+        details: { reason: 'browser_session_required' },
+      });
+    }
+    if (consumer !== NATIVE_CONSUMER) {
+      throw new AramoError('VALIDATION_ERROR', 'A consumer is required', 400, { requestId, details: { reason: 'invalid_consumer' } });
+    }
+    const declared = req.header(CONSUMER_HEADER);
+    if ((requireConsumerHeader && declared !== NATIVE_CONSUMER) || (declared !== undefined && declared !== NATIVE_CONSUMER)) {
+      throw consumerMismatch(requestId);
+    }
+    const own = req.cookies?.[accessCookieName(NATIVE_CONSUMER)];
+    const cookie = typeof own === 'string' && own.length > 0 ? own : req.cookies?.[LEGACY_ACCESS_COOKIE];
+    if (typeof cookie !== 'string' || cookie.length === 0) {
+      throw new AramoError('AUTH_REQUIRED', 'Sign in first', 401, { requestId, details: { reason: 'session_required' } });
+    }
+    const { context } = await this.jwt.verifyAccessToken(cookie, requestId);
+    if (context.consumer_type !== NATIVE_CONSUMER || context.client !== undefined) throw consumerMismatch(requestId);
+    return { sub: context.sub, tenant_id: context.tenant_id };
   }
 
   // A native Bearer token (live device session) or the browser access cookie of

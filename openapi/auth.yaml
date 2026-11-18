@@ -1064,6 +1064,108 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
+  /auth/me/devices:
+    get:
+      operationId: listMyDevicesFromBrowser
+      tags: [Auth]
+      summary: List the signed-in user's phones (Aramo Sign web)
+      description: |
+        Amendment M-A18 (LOCKED). The `sign` consumer's browser access cookie
+        only; a Bearer token is refused (`browser_session_required`; the app
+        uses GET /auth/native/sign/sessions). Returns the live native device
+        sessions of the cookie's user + tenant. `current` is always false (a
+        browser holds no device session).
+      security:
+        - CookieAccessAuth: []
+      parameters:
+        - name: consumer
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The user's live phone sessions in this workspace.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: 'no-store'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeSessionList'
+        '400':
+          description: '`VALIDATION_ERROR` (`invalid_consumer`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            `AUTH_REQUIRED` (`session_required`) or `INVALID_TOKEN`
+            (`browser_session_required`, `consumer_header_mismatch`, or an
+            invalid / expired cookie).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/me/devices/{device_session_id}:
+    delete:
+      operationId: revokeMyDeviceFromBrowser
+      tags: [Auth]
+      summary: Sign one of the user's phones out (Aramo Sign web)
+      description: |
+        Amendment M-A18 (LOCKED). As GET /auth/me/devices, and the request must
+        also carry `X-Aramo-Consumer: sign` (CSRF: a custom header forces a CORS
+        preflight). Revokes the device session and its refresh-token family; the
+        phone is signed out within 15 minutes (its access token's lifetime, D-1
+        option (a)). Any id that is not a live session of the cookie's user +
+        tenant is the same 404.
+      security:
+        - CookieAccessAuth: []
+      parameters:
+        - name: device_session_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: consumer
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [sign]
+        - name: X-Aramo-Consumer
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '204':
+          description: Signed out.
+        '400':
+          description: '`VALIDATION_ERROR` (`invalid_consumer`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: 'Same as GET /auth/me/devices.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: '`NOT_FOUND` (`device_session_not_found`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
   /.well-known/jwks.json:
     get:
       operationId: getJwks

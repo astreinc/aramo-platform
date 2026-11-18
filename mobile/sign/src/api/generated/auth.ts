@@ -498,6 +498,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's phones (Aramo Sign web)
+         * @description Amendment M-A18 (LOCKED). The `sign` consumer's browser access cookie
+         *     only; a Bearer token is refused (`browser_session_required`; the app
+         *     uses GET /auth/native/sign/sessions). Returns the live native device
+         *     sessions of the cookie's user + tenant. `current` is always false (a
+         *     browser holds no device session).
+         */
+        get: operations["listMyDevicesFromBrowser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me/devices/{device_session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign one of the user's phones out (Aramo Sign web)
+         * @description Amendment M-A18 (LOCKED). As GET /auth/me/devices, and the request must
+         *     also carry `X-Aramo-Consumer: sign` (CSRF: a custom header forces a CORS
+         *     preflight). Revokes the device session and its refresh-token family; the
+         *     phone is signed out within 15 minutes (its access token's lifetime, D-1
+         *     option (a)). Any id that is not a live session of the cookie's user +
+         *     tenant is the same 404.
+         */
+        delete: operations["revokeMyDeviceFromBrowser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/.well-known/jwks.json": {
         parameters: {
             query?: never;
@@ -1642,6 +1691,103 @@ export interface operations {
                 content?: never;
             };
             /** @description Same as GET /auth/native/sign/sessions. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `NOT_FOUND` (`device_session_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMyDevicesFromBrowser: {
+        parameters: {
+            query: {
+                consumer: "sign";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's live phone sessions in this workspace. */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeSessionList"];
+                };
+            };
+            /** @description `VALIDATION_ERROR` (`invalid_consumer`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /**
+             * @description `AUTH_REQUIRED` (`session_required`) or `INVALID_TOKEN`
+             *     (`browser_session_required`, `consumer_header_mismatch`, or an
+             *     invalid / expired cookie).
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revokeMyDeviceFromBrowser: {
+        parameters: {
+            query: {
+                consumer: "sign";
+            };
+            header: {
+                "X-Aramo-Consumer": "sign";
+            };
+            path: {
+                device_session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `VALIDATION_ERROR` (`invalid_consumer`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Same as GET /auth/me/devices. */
             401: {
                 headers: {
                     [name: string]: unknown;

@@ -643,5 +643,35 @@ describe('NativeAuthService (M-A1)', () => {
       await expectRefusal(svc.revokeSession(fromTablet, phone.device_session_id, 'r'), 'INVALID_TOKEN', 401, 'device_session_revoked');
       expect(store.sessions.get(phone.device_session_id)!.revoked_at).toBeNull();
     });
+
+    // Amendment M-A18 (LOCKED) — the same list / revoke from a signed-in browser.
+    it('browser list: only this user\'s phones in this tenant, never current', async () => {
+      const a1 = await svc.exchange(signIn(ALICE), 'r');
+      const a2 = await svc.exchange({ ...signIn(ALICE), device: { installation_id: 'ipad', platform: 'android', app_version: '2.0.0' } }, 'r');
+      const b = await svc.exchange(signIn(BOB), 'r');
+      const list = await svc.listSessionsForBrowser({ sub: USER_A, tenant_id: TENANT });
+      expect(list.items.map((i) => i.device_session_id).sort()).toEqual([a1.device_session_id, a2.device_session_id].sort());
+      expect(list.items.every((i) => i.current === false)).toBe(true);
+      expect(JSON.stringify(list)).not.toContain(b.device_session_id);
+      expect((await svc.listSessionsForBrowser({ sub: USER_A, tenant_id: '01900000-0000-7000-8000-0000000000ff' })).items).toEqual([]);
+    });
+
+    it('browser revoke: ends the phone\'s refresh family and audits web_device_revoked; anything not owned is the same 404', async () => {
+      const phone = await svc.exchange(signIn(ALICE), 'r');
+      const bob = await svc.exchange(signIn(BOB), 'r');
+      const owner = { sub: USER_A, tenant_id: TENANT };
+      await expectRefusal(svc.revokeSessionFromBrowser(owner, bob.device_session_id, 'r'), 'NOT_FOUND', 404, 'device_session_not_found');
+      expect(store.sessions.get(bob.device_session_id)!.revoked_at).toBeNull();
+      await expectRefusal(svc.revokeSessionFromBrowser(owner, 'not-a-uuid', 'r'), 'NOT_FOUND', 404, 'device_session_not_found');
+      await expectRefusal(svc.revokeSessionFromBrowser({ ...owner, tenant_id: '01900000-0000-7000-8000-0000000000ff' }, phone.device_session_id, 'r'), 'NOT_FOUND', 404, 'device_session_not_found');
+
+      await svc.revokeSessionFromBrowser(owner, phone.device_session_id, 'r');
+      expect(store.sessions.get(phone.device_session_id)!.revoke_reason).toBe('device_revoked_web');
+      await expectRefusal(svc.refresh(phone.refresh_token, 'r'), 'REFRESH_TOKEN_INVALID', 401, 'explicitly_revoked');
+      expect(audit.events.at(-1)).toMatchObject({ event_type: 'identity.session.revoked', actor_id: USER_A, payload: { reason: 'web_device_revoked', device_session_id: phone.device_session_id } });
+      expect(audit.events.at(-1)!.payload).not.toHaveProperty('actor_device_session_id');
+      // Already revoked: the same 404.
+      await expectRefusal(svc.revokeSessionFromBrowser(owner, phone.device_session_id, 'r'), 'NOT_FOUND', 404, 'device_session_not_found');
+    });
   });
 });
