@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import type { SenderContext } from '../api';
 import { selfSignReturn } from '../../guest/App';
+
 import { SELF_SIGN_NOTE } from './EnvelopeWizard';
 
 // Web Self-Signing Amendment A2 (LOCKED) — "Sign a document" on the web.

@@ -5,6 +5,7 @@ import { Dialog } from '@aramo/fe-foundation';
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
+
 import { DELETE_WHEN_FINISHED } from './EnvelopeDetail';
 
 // Retention and Purge (DocuSign parity) — Delete moves a completed, declined, voided or

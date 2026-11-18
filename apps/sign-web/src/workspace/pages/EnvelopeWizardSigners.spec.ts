@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MAX_SIGNERS } from '../api';
+
 import { signersFullText } from './EnvelopeWizard';
 
 // UAT SND-05 — the 10-signer limit is said, not applied silently.

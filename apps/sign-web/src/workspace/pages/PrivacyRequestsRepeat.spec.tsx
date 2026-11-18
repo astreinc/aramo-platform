@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PrivacyRequestView } from '../api';
+
 import { ALREADY_OPEN_COPY, PrivacyRequestsSection } from './PrivacyRequests';
 
 // UAT DEL-06 — one open request per type: a repeat answers the open one, and the page says so.

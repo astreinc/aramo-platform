@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ContactRow } from '../api';
+
 import { filterContactRows } from './EnvelopeWizard';
 
 // UAT (contacts) — every saved contact is reachable when adding recipients on the web.
