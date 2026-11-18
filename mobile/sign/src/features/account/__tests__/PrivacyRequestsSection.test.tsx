@@ -8,7 +8,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { AppServices } from '../../../app/services';
 import { ServicesProvider } from '../../../app/ServicesContext';
 import { PrivacyRequestsSection } from '../PrivacyRequestsSection';
-import { BUSINESS_MANAGED_COPY, isPersonalAccountOwner, type PrivacyRequest } from '../privacy';
+import { ALREADY_OPEN_COPY, BUSINESS_MANAGED_COPY, isPersonalAccountOwner, type PrivacyRequest } from '../privacy';
 
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(async () => undefined) }));
 
@@ -37,17 +37,21 @@ const created = (request_type: PrivacyRequest['request_type'], status: PrivacyRe
 let qc: QueryClient;
 afterEach(() => qc?.clear());
 
-function renderSection() {
+function renderSection(opts: { repeat?: boolean } = {}) {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
-  const call = jest.fn(async (path: string, method: string, init: { body?: { request_type: PrivacyRequest['request_type'] } }) => {
-    if (path === '/v1/sign/me/privacy-requests' && method === 'post') {
-      const t = init.body!.request_type;
-      return created(t, t === 'DELETION' ? 'REFERRED_TO_ORGANIZATION' : 'DATA_INVENTORY');
+  // UAT DEL-06 — the POST goes through workspace.request (its status says new 201 / already open 200).
+  // `call` records it in the old shape so the assertions read the same.
+  const call = jest.fn((_path: string, _method: string, _init: { body?: unknown }) => undefined);
+  const request = jest.fn(async (req: { method: string; path: string; body?: { request_type: PrivacyRequest['request_type'] } }) => {
+    if (req.path === '/v1/sign/me/privacy-requests' && req.method === 'POST') {
+      call(req.path, 'post', { body: req.body });
+      const t = req.body!.request_type;
+      return { status: opts.repeat ? 200 : 201, data: created(t, t === 'DELETION' ? 'REFERRED_TO_ORGANIZATION' : 'DATA_INVENTORY'), etag: null, headers: new Headers() };
     }
-    throw new Error(`unexpected ${path}`);
+    throw new Error(`unexpected ${req.path}`);
   });
   const signOut = jest.fn(async () => undefined);
-  const services = { workspace: { call }, signOut } as unknown as AppServices;
+  const services = { workspace: { call: jest.fn(), request }, signOut } as unknown as AppServices;
   render(
     <ServicesProvider services={services}>
       <QueryClientProvider client={qc}>
@@ -119,5 +123,33 @@ describe('isPersonalAccountOwner (M-A8 §2.1)', () => {
     expect(isPersonalAccountOwner({ tenant: { kind: 'BUSINESS' } })).toBe(false);
     expect(isPersonalAccountOwner(undefined, 'PERSONAL')).toBe(true);
     expect(isPersonalAccountOwner(undefined, null)).toBe(false);
+  });
+
+  // UAT DEL-06 — a second request of the same type while one is open: the server answers the
+  // open one (200), and the app says so instead of repeating the confirmation.
+  it('a repeat of an open request says it is already open and shows the existing request ID', async () => {
+    renderSection({ repeat: true });
+    await act(async () => {
+      fireEvent.press(await screen.findByTestId('privacy-requests', undefined, WAIT));
+    });
+    fireEvent.press(screen.getByTestId('privacy-request-ACCESS'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('privacy-request-send'));
+    });
+    expect(await screen.findByTestId('privacy-request-already-open', undefined, WAIT)).toHaveTextContent(ALREADY_OPEN_COPY);
+    expect(screen.getByTestId('privacy-request-reference')).toHaveTextContent('PR-AAAA-BBBB-CCCC');
+  });
+
+  it('a new request does not show the already-open message', async () => {
+    renderSection();
+    await act(async () => {
+      fireEvent.press(await screen.findByTestId('privacy-requests', undefined, WAIT));
+    });
+    fireEvent.press(screen.getByTestId('privacy-request-EXPORT'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('privacy-request-send'));
+    });
+    expect(await screen.findByTestId('privacy-request-reference', undefined, WAIT)).toBeTruthy();
+    expect(screen.queryByTestId('privacy-request-already-open')).toBeNull();
   });
 });

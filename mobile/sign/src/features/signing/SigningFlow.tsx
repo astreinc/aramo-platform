@@ -53,7 +53,17 @@ import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
 import { boxOnPage, PdfPages, pageSizesFromBase64, type PageLayout } from './PdfPages';
 import {
   acceptAndLoad,
+  ACCESS_CODE_COPY,
+  accessCodeWrongText,
   classifySigningError,
+  identityCheckStatus,
+  IDENTITY_COPY,
+  sendSmsCode,
+  SMS_CODE_COPY,
+  smsCodePhone,
+  startIdentityCheck,
+  submitAccessCode,
+  verifySmsCode,
   declineSigning,
   DECLINE_REASON_MIN,
   DELEGATE_COPY,
@@ -70,7 +80,9 @@ import {
   submitSigning,
   waitingForCopy,
   type Disclosure,
+  type IdentityOutcome,
   type SignerView,
+  type SmsOutcome,
 } from './signingApi';
 import {
   adopt,
@@ -105,7 +117,12 @@ type Phase =
   | { kind: 'declined' }
   /** B3 — handed to someone else; this link no longer works. */
   | { kind: 'delegated'; name: string }
-  | { kind: 'ended'; message: string }
+  /** UAT SEC-04 — the sender set an access code; asked before anything is shown. */
+  | { kind: 'accesscode' }
+  /** The sender asked for a code texted to this recipient, or an identity check. */
+  | { kind: 'smscode' }
+  | { kind: 'identity' }
+  | { kind: 'ended'; message: string; title?: string }
   | { kind: 'waiting'; message: string }
   | { kind: 'error'; message: string };
 
@@ -254,7 +271,16 @@ export function SigningFlow(props: SigningFlowProps) {
 
   const fail = useCallback((e: unknown) => {
     const kind = classifySigningError(e);
-    if (kind === 'ended') setPhase({ kind: 'ended', message: SIGNING_COPY.ended });
+    if (kind === 'access_code') setPhase({ kind: 'accesscode' });
+    else if (kind === 'access_code_locked')
+      setPhase({ kind: 'ended', title: ACCESS_CODE_COPY.lockedTitle, message: ACCESS_CODE_COPY.lockedBody });
+    else if (kind === 'sms_code') setPhase({ kind: 'smscode' });
+    else if (kind === 'sms_locked')
+      setPhase({ kind: 'ended', title: SMS_CODE_COPY.lockedTitle, message: SMS_CODE_COPY.lockedBody });
+    else if (kind === 'identity') setPhase({ kind: 'identity' });
+    else if (kind === 'identity_locked')
+      setPhase({ kind: 'ended', title: IDENTITY_COPY.lockedTitle, message: IDENTITY_COPY.lockedBody });
+    else if (kind === 'ended') setPhase({ kind: 'ended', message: SIGNING_COPY.ended });
     else if (kind === 'not_your_turn') setPhase({ kind: 'waiting', message: waitingForCopy(e) });
     else if (kind === 'executed') setPhase({ kind: 'ended', message: SIGNING_COPY.executed });
     else
@@ -493,6 +519,54 @@ export function SigningFlow(props: SigningFlowProps) {
 
   const from = senderName?.trim() ? senderName.trim() : 'The sender';
 
+  if (phase.kind === 'accesscode' && session) {
+    return (
+      <AccessCodeStep
+        onSubmit={async (code) => {
+          try {
+            const r = await submitAccessCode(session, code);
+            if (r.kind === 'ok') open();
+            return r.kind === 'incorrect' ? accessCodeWrongText(r.left) : null;
+          } catch (e) {
+            if (classifySigningError(e) === 'network') return SIGNING_COPY.submitFailed;
+            fail(e);
+            return null;
+          }
+        }}
+        online={online}
+      />
+    );
+  }
+
+  if (phase.kind === 'smscode' && session) {
+    return (
+      <SmsCodeStep
+        loadPhone={() => smsCodePhone(session)}
+        send={() => sendSmsCode(session)}
+        verify={(code) => verifySmsCode(session, code)}
+        onVerified={open}
+        onLocked={() =>
+          setPhase({ kind: 'ended', title: SMS_CODE_COPY.lockedTitle, message: SMS_CODE_COPY.lockedBody })
+        }
+        online={online}
+      />
+    );
+  }
+  if (phase.kind === 'identity' && session) {
+    return (
+      <IdentityStep
+        start={() => startIdentityCheck(session)}
+        status={() => identityCheckStatus(session)}
+        onVerified={open}
+        onLocked={() =>
+          setPhase({ kind: 'ended', title: IDENTITY_COPY.lockedTitle, message: IDENTITY_COPY.lockedBody })
+        }
+        onError={fail}
+        online={online}
+      />
+    );
+  }
+
   // ── End states ──
   if (phase.kind === 'loading') {
     return (
@@ -516,7 +590,7 @@ export function SigningFlow(props: SigningFlowProps) {
           : phase.kind === 'declined'
           ? 'You declined to sign'
           : phase.kind === 'ended'
-            ? 'This link can’t be used'
+            ? (phase.title ?? 'This link can’t be used')
             : 'Couldn’t open this envelope';
     const body =
       phase.kind === 'waiting'
@@ -1124,6 +1198,256 @@ export function SigningFlow(props: SigningFlowProps) {
         onClose={() => setDeclineOpen(false)}
       />
     </View>
+  );
+}
+
+/** UAT SEC-04 — the access-code step (the web signer page's copy and behaviour). */
+function AccessCodeStep({
+  onSubmit,
+  online,
+}: {
+  /** Resolves the message to show (wrong code, offline), or null when it went through. */
+  readonly onSubmit: (code: string) => Promise<string | null>;
+  readonly online: boolean;
+}) {
+  const t = useTheme();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.end, { backgroundColor: t.color.screen }]}
+      keyboardShouldPersistTaps="handled"
+      testID="signing-accesscode"
+    >
+      <Text
+        accessibilityRole="header"
+        style={[styles.endTitle, { color: t.color.text, fontFamily: t.font.family }]}
+      >
+        {ACCESS_CODE_COPY.title}
+      </Text>
+      <Text style={[styles.endBody, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
+        {ACCESS_CODE_COPY.body}
+      </Text>
+      <TextField
+        label="Access code"
+        value={code}
+        onChangeText={setCode}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        secureTextEntry={false}
+      />
+      {message ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={{ color: t.color.destructive, fontSize: 14 }}
+        >
+          {message}
+        </Text>
+      ) : null}
+      <Button
+        title="Continue"
+        busy={busy}
+        disabled={code.trim().length === 0 || busy || !online}
+        onPress={() => {
+          setBusy(true);
+          void onSubmit(code).then((m) => {
+            setMessage(m);
+            setBusy(false);
+          });
+        }}
+      />
+    </ScrollView>
+  );
+}
+
+function StepMessage({ text }: { readonly text: string | null }) {
+  const t = useTheme();
+  if (!text) return null;
+  return (
+    <Text
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      style={{ color: t.color.textSecondary, fontSize: 14, textAlign: 'center' }}
+    >
+      {text}
+    </Text>
+  );
+}
+
+/** UAT SEC-04 follow-up — the SMS code step (the web signer page's copy and behaviour). */
+function SmsCodeStep({
+  loadPhone,
+  send,
+  verify,
+  onVerified,
+  onLocked,
+  online,
+}: {
+  readonly loadPhone: () => Promise<string | null>;
+  readonly send: () => Promise<SmsOutcome>;
+  readonly verify: (code: string) => Promise<SmsOutcome>;
+  readonly onVerified: () => void;
+  readonly onLocked: () => void;
+  readonly online: boolean;
+}) {
+  const t = useTheme();
+  const [phone, setPhone] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadPhone().then(
+      (p) => {
+        if (live) setPhone(p);
+      },
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+    // Read once when the step opens (the caller passes a new function each render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const run = async (fn: () => Promise<SmsOutcome>) => {
+    setBusy(true);
+    setMessage(null);
+    const r = await fn();
+    setBusy(false);
+    if (r.kind === 'verified') onVerified();
+    else if (r.kind === 'locked') onLocked();
+    else if (r.kind === 'sent') {
+      setSent(true);
+      if (r.phone !== null) setPhone(r.phone);
+    } else setMessage(r.text);
+  };
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.end, { backgroundColor: t.color.screen }]}
+      keyboardShouldPersistTaps="handled"
+      testID="signing-smscode"
+    >
+      <Text
+        accessibilityRole="header"
+        style={[styles.endTitle, { color: t.color.text, fontFamily: t.font.family }]}
+      >
+        {SMS_CODE_COPY.title}
+      </Text>
+      <Text style={[styles.endBody, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
+        {SMS_CODE_COPY.body(phone)}
+      </Text>
+      {sent ? (
+        <TextField
+          label="Code"
+          value={code}
+          onChangeText={setCode}
+          keyboardType="number-pad"
+          autoComplete="sms-otp"
+          textContentType="oneTimeCode"
+        />
+      ) : null}
+      <StepMessage text={message} />
+      {sent ? (
+        <>
+          <Button
+            title="Continue"
+            busy={busy}
+            disabled={code.trim().length === 0 || busy || !online}
+            onPress={() => void run(() => verify(code))}
+          />
+          <Button
+            title="Send a new code"
+            variant="secondary"
+            disabled={busy || !online}
+            onPress={() => void run(send)}
+          />
+        </>
+      ) : (
+        <Button
+          title="Text me a code"
+          busy={busy}
+          disabled={busy || !online}
+          onPress={() => void run(send)}
+        />
+      )}
+    </ScrollView>
+  );
+}
+
+/**
+ * UAT SEC-04 follow-up — the identity check step. The partner's check opens in the browser;
+ * Continue reads the result (the web signer page's copy and behaviour).
+ */
+function IdentityStep({
+  start,
+  status,
+  onVerified,
+  onLocked,
+  onError,
+  online,
+}: {
+  readonly start: () => Promise<IdentityOutcome>;
+  readonly status: () => Promise<IdentityOutcome>;
+  readonly onVerified: () => void;
+  readonly onLocked: () => void;
+  readonly onError: (e: unknown) => void;
+  readonly online: boolean;
+}) {
+  const t = useTheme();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const run = async (fn: () => Promise<IdentityOutcome>) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const r = await fn();
+      if (r.kind === 'verified') onVerified();
+      else if (r.kind === 'locked') onLocked();
+      else if (r.kind === 'open') {
+        setMessage(IDENTITY_COPY.inBrowser);
+        await WebBrowser.openBrowserAsync(r.url).catch(() => undefined);
+      } else setMessage(r.text);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.end, { backgroundColor: t.color.screen }]}
+      testID="signing-identity"
+    >
+      <Text style={{ color: t.color.textSecondary, fontSize: 13, textAlign: 'center' }}>
+        {IDENTITY_COPY.eyebrow}
+      </Text>
+      <Text
+        accessibilityRole="header"
+        style={[styles.endTitle, { color: t.color.text, fontFamily: t.font.family }]}
+      >
+        {IDENTITY_COPY.title}
+      </Text>
+      <Text style={[styles.endBody, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
+        {IDENTITY_COPY.body}
+      </Text>
+      <StepMessage text={message} />
+      <Button
+        title="Verify my identity"
+        busy={busy}
+        disabled={busy || !online}
+        onPress={() => void run(start)}
+      />
+      <Button
+        title="Continue"
+        variant="secondary"
+        disabled={busy || !online}
+        onPress={() => void run(status)}
+      />
+    </ScrollView>
   );
 }
 

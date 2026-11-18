@@ -151,3 +151,19 @@ describe('ETag helpers (M-A3 §6)', () => {
     expect(parseEtag(null)).toBeNull();
   });
 });
+
+// UAT DOC-04 — the same words as the web for an envelope the caller cannot see.
+describe('envelope not found copy', () => {
+  it('never shows the raw server text', () => {
+    const e = errorFromBody(404, { error: { code: 'ENVELOPE_NOT_FOUND', message: 'envelope f9f4d3a2 not found' } });
+    expect(refusalMessage(e)).toBe('This envelope isn’t available. It may have been deleted, or you don’t have access to it.');
+  });
+});
+
+// UAT DOC-06 — the plan's storage allocation refused an upload.
+describe('storage full copy', () => {
+  it('says so in the app’s words', () => {
+    const e = errorFromBody(409, { error: { code: 'ESIGN_STORAGE_QUOTA_EXCEEDED', message: 'Your organization’s storage is full', details: { reason: 'CAPACITY_EXCEEDED' } } });
+    expect(refusalMessage(e)).toBe('Your storage is full. Remove draft documents you no longer need, or see Account → Plans for more storage.');
+  });
+});

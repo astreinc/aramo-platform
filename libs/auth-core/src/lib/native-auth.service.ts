@@ -653,6 +653,44 @@ export class NativeAuthService {
     });
   }
 
+  // Amendment M-A18 (LOCKED) — the same list and revoke from a signed-in BROWSER (the sign
+  // consumer's access cookie; the controller authenticates it). The owner and tenant come
+  // from that cookie only. A browser holds no device session, so `current` is always false
+  // and the audit names no actor device.
+  async listSessionsForBrowser(owner: { sub: string; tenant_id: string }): Promise<{ items: NativeSessionItem[] }> {
+    const rows = await this.deviceSessions.listActiveForUser({ user_id: owner.sub, tenant_id: owner.tenant_id });
+    return {
+      items: rows.map((s) => ({
+        device_session_id: s.id,
+        platform: s.platform,
+        app_version: s.app_version,
+        created_at: s.created_at,
+        last_seen_at: s.last_seen_at,
+        current: false,
+      })),
+    };
+  }
+
+  async revokeSessionFromBrowser(owner: { sub: string; tenant_id: string }, deviceSessionId: string, requestId: string): Promise<void> {
+    const notFound = (): AramoError =>
+      new AramoError('NOT_FOUND', 'Device session not found', 404, {
+        requestId,
+        details: { reason: 'device_session_not_found' },
+      });
+    if (!UUID_RE.test(deviceSessionId)) throw notFound();
+    const target = await this.deviceSessions.findOwnedActive({ id: deviceSessionId, user_id: owner.sub, tenant_id: owner.tenant_id });
+    if (target === null) throw notFound();
+    const revoked = await this.deviceSessions.revokeSession({ id: target.id, reason: 'device_revoked_web' });
+    if (!revoked) throw notFound();
+    await this.auditSink.record({
+      event_type: 'identity.session.revoked',
+      actor_id: owner.sub,
+      context_id: owner.tenant_id,
+      subject_id: owner.sub,
+      payload: { reason: 'web_device_revoked', ...this.nativeAuditContext(target) },
+    });
+  }
+
   private async revokeQuietly(session: NativeDeviceSessionDto, reason: string): Promise<void> {
     try {
       await this.deviceSessions.revokeSession({ id: session.id, reason });

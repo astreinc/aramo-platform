@@ -190,6 +190,8 @@ export interface Recipient {
   decline_reason: string | null;
   // Multi-Signer — an unsigned signer who may sign now (any order, or their turn).
   can_remind?: boolean;
+  // UAT SND-14 — when this signer can be reminded again (ISO), while a reminder is cooling down.
+  reminder_available_at?: string | null;
   // Amendment M-A6 §3.5 — the template role this recipient was bound to; null otherwise.
   role_key?: string | null;
   // Feature-Parity §1.17 — the recipient a WITNESS attests for (null otherwise).
@@ -306,9 +308,15 @@ export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
 export const MAX_SIGNERS = 10;
 // Sign Mobile M-A3 §3 — the sender message limit (sign-service MESSAGE_MAX).
 export const ENVELOPE_MESSAGE_MAX = 1000;
+// UAT DOC-07 — the envelope subject's limit (the server's and the app's SUBJECT_MAX).
+export const ENVELOPE_SUBJECT_MAX = 200;
+export const SUBJECT_LIMIT_NOTE = `Subjects can be up to ${ENVELOPE_SUBJECT_MAX} characters.`;
 
 export interface EnvelopeDetail {
   id: string;
+  // M-A12 W1-A / Web Self-Signing A2 — 'self': a document the sender signs alone (no email,
+  // no allowance used). Absent on an older server = standard.
+  mode?: 'standard' | 'self';
   // Sign Unified Product S-3 — envelopes from another application are read-only here.
   source_application?: string;
   subject: string;
@@ -385,6 +393,8 @@ export interface Evidence {
   envelope_id: string;
   status: string;
   event_chain_hash: string;
+  // UAT CMP-05 — the hash printed on the certificate (the chain at completion); null before it.
+  certificate_event_chain_hash?: string | null;
   signature: string;
   signature_algorithm: string;
   completed_at: string | null;
@@ -776,7 +786,12 @@ export const senderApi = {
     const qs = p.toString();
     return apiClient.get<EnvelopeList>(`${BASE}/envelopes${qs === '' ? '' : `?${qs}`}`);
   },
-  create: (subject?: string) => apiClient.post<{ id: string; status: EnvelopeStatus; subject: string }>(`${BASE}/envelopes`, subject !== undefined ? { subject } : {}),
+  // Web Self-Signing A2 — `mode: 'self'` creates a SELF draft whose only signer is the caller.
+  create: (subject?: string, mode?: 'standard' | 'self') =>
+    apiClient.post<{ id: string; status: EnvelopeStatus; subject: string }>(`${BASE}/envelopes`, {
+      ...(subject !== undefined ? { subject } : {}),
+      ...(mode === 'self' ? { mode } : {}),
+    }),
   detail: (id: string) => apiClient.get<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`),
   rename: (id: string, subject: string) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { subject }),
   setRouting: (id: string, routing_mode: RoutingMode) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { routing_mode }),
@@ -1005,7 +1020,11 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
-    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
+    // UAT DOC-06 — a Personal account has no organization or admin: its own words.
+    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED')
+      return inPersonalWorkspace()
+        ? PERSONAL_STORAGE_FULL
+        : 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
     const personal = personalRefusalMessage(e.details?.['reason']);
@@ -1015,9 +1034,17 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (close !== null) return close;
     // W2 (A3.4) — a discovered inbox item that changed or expired.
     if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
+    // UAT DOC-04 — never the raw server text (it names the envelope id). The same words for
+    // "does not exist" and "not yours", so nothing is revealed; the same copy as the app.
+    if (e.code === 'ENVELOPE_NOT_FOUND') return ENVELOPE_NOT_AVAILABLE;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
+    // UAT SND-14 — the reminder limits (60 minutes per signer; 5 a day per envelope), with the time.
+    if (e.status === 429 && (e.details?.['reason'] === 'reminder_cooldown' || e.details?.['reason'] === 'reminder_daily_limit')) {
+      const at = nextSendTime(e.details?.['retry_at']);
+      return at !== null ? `You can send another reminder at ${at}.` : 'You can’t send another reminder yet.';
+    }
     if (isReminderStale(e)) return ENVELOPE_CHANGED;
     // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
     if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
@@ -1025,6 +1052,18 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   }
   return fallback;
 }
+
+/** UAT DOC-06 — the storage refusal for a Personal account (same words as the app). */
+export const PERSONAL_STORAGE_FULL =
+  'Your storage is full. Remove draft documents you no longer need, or upgrade your plan in Settings → Plan & billing for more storage.';
+
+/** The Personal workspace lives under /personal (the Business one under /sign). */
+export function inPersonalWorkspace(pathname: string = typeof window === 'undefined' ? '' : window.location.pathname): boolean {
+  return pathname === '/personal' || pathname.startsWith('/personal/');
+}
+
+/** UAT DOC-04 — an envelope the caller cannot see (absent, deleted or someone else's). */
+export const ENVELOPE_NOT_AVAILABLE = 'This envelope isn’t available. It may have been deleted, or you don’t have access to it.';
 
 /** UAT SND-23 — same copy as the mobile app (M-A3 §6 revision_mismatch). */
 export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
@@ -1243,3 +1282,13 @@ export const savedMarksApi = {
   put: (target: SavedMarkTarget, body: SavedMarkWrite) => apiClient.put<SavedMark>(`/v1/sign/me/${target}`, body),
   remove: (target: SavedMarkTarget) => apiClient.delete<void>(`/v1/sign/me/${target}`),
 };
+
+/** UAT SND-14 — the soonest time a reminder can go again, when none can go now (else null). */
+export function nextReminderAt(recipients: readonly { can_remind?: boolean; reminder_available_at?: string | null }[], now: Date = new Date()): string | null {
+  if (recipients.some((r) => r.can_remind === true)) return null;
+  const times = recipients
+    .map((r) => r.reminder_available_at)
+    .filter((t): t is string => typeof t === 'string' && !Number.isNaN(new Date(t).getTime()) && new Date(t).getTime() > now.getTime())
+    .sort();
+  return times[0] ?? null;
+}

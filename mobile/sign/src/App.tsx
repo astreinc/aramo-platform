@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ServicesProvider } from './app/ServicesContext';
 import { createAppServices, type AppServices } from './app/services';
 import { ToastProvider } from './components/Toast';
+import { OnlineSync } from './features/send/OnlineSync';
 import { DeepLinkRouter } from './navigation/DeepLinkRouter';
 import { navigationRef } from './navigation/navigationRef';
 import { RootNavigator } from './navigation/RootNavigator';
@@ -47,6 +48,8 @@ export default function App() {
               dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
             }}
           >
+            {/* UAT AND-12 — offline drafts sync and contacts cache when online. */}
+            <OnlineSync />
             <ToastProvider>
               <NavigationContainer ref={navigationRef} theme={navTheme}>
                 <DeepLinkRouter />

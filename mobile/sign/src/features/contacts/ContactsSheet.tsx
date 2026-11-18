@@ -262,6 +262,10 @@ function ContactForm({
   const [error, setError] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: onSubmit,
+    // UAT AND-12 — onSubmit decides itself whether to call the server (offline it only
+    // adds the person to the envelope). The default 'online' mode paused it offline, so
+    // the button spun forever.
+    networkMode: 'always',
     onError: (e) =>
       setError(
         isApiError(e)

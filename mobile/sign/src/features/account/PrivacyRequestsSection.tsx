@@ -24,6 +24,7 @@ import {
   PRIVACY_REQUEST_OPTIONS,
   deleteConfirmed,
   requestPrivacy,
+  ALREADY_OPEN_COPY,
   type PrivacyRequest,
   type PrivacyRequestType,
 } from './privacy';
@@ -40,6 +41,7 @@ export function PrivacyRequestsSection({ online }: { online: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PrivacyRequest | null>(null);
+  const [alreadyOpen, setAlreadyOpen] = useState(false);
 
   function close(): void {
     setOpen(false);
@@ -47,6 +49,7 @@ export function PrivacyRequestsSection({ online }: { online: boolean }) {
     setTyped('');
     setError(null);
     setResult(null);
+    setAlreadyOpen(false);
   }
 
   async function submit(chosen: PrivacyRequestType): Promise<void> {
@@ -54,7 +57,8 @@ export function PrivacyRequestsSection({ online }: { online: boolean }) {
     setError(null);
     try {
       const r = await requestPrivacy(workspace, chosen);
-      setResult(r);
+      setResult(r.request);
+      setAlreadyOpen(!r.created);
       void qc.invalidateQueries({ queryKey: privacyKey });
     } catch (e) {
       setError(isApiError(e) ? refusalMessage(e) : 'Couldn’t send the request. Try again.');
@@ -71,9 +75,14 @@ export function PrivacyRequestsSection({ online }: { online: boolean }) {
         {BUSINESS_MANAGED_COPY}
       </Text>
       <Button testID="privacy-requests" title="Privacy requests" variant="secondary" disabled={!online} onPress={() => setOpen(true)} />
-      <Sheet visible={open} onClose={close} title={result ? 'Your privacy request' : option ? option.title : 'Privacy requests'}>
+      <Sheet visible={open} onClose={close} title={result ? (alreadyOpen ? 'Request already open' : 'Your privacy request') : option ? option.title : 'Privacy requests'}>
         {result ? (
           <View testID="privacy-request-result" style={{ gap: 6 }}>
+            {alreadyOpen ? (
+              <Text testID="privacy-request-already-open" accessibilityRole="alert" style={[text, { color: t.color.text }]}>
+                {ALREADY_OPEN_COPY}
+              </Text>
+            ) : null}
             <Text style={text}>Request ID</Text>
             <Text testID="privacy-request-reference" selectable style={{ color: t.color.text, fontSize: 17, fontWeight: '600' }}>
               {result.reference}

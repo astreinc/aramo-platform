@@ -5305,7 +5305,10 @@ export interface components {
             /** Format: uuid */
             envelope_id: string;
             status: string;
+            /** @description The event chain's current hash (it grows after completion as records are added). */
             event_chain_hash?: string | null;
+            /** @description UAT CMP-05 — the event-chain hash printed on the execution certificate (the chain at completion). Sender evidence route only; null before the certificate exists. */
+            certificate_event_chain_hash?: string | null;
             signature?: string | null;
             signature_algorithm?: string | null;
             /** Format: date-time */

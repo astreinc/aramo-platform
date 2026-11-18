@@ -102,8 +102,21 @@ export function isPersonalAccountOwner(ctx: { personal_account_owner?: boolean; 
   return ctx?.tenant?.kind === 'PERSONAL' || tenantKind === 'PERSONAL';
 }
 
-export async function requestPrivacy(workspace: WorkspaceClient, type: PrivacyRequestType): Promise<PrivacyRequest> {
-  return workspace.call('/v1/sign/me/privacy-requests', 'post', {
+/** UAT DEL-06 — the same words on web and app for a repeat of an open request. */
+export const ALREADY_OPEN_COPY = 'You already have an open request of this type, so no new request was made.';
+
+/**
+ * Send a privacy request. One open request per type (the server's rule): a repeat answers
+ * the open one with 200 instead of 201, and `created` says which (UAT DEL-06).
+ */
+export async function requestPrivacy(
+  workspace: WorkspaceClient,
+  type: PrivacyRequestType,
+): Promise<{ request: PrivacyRequest; created: boolean }> {
+  const r = await workspace.request<PrivacyRequest>({
+    method: 'POST',
+    path: '/v1/sign/me/privacy-requests',
     body: type === 'DELETION' ? { request_type: 'DELETION', confirm: 'DELETE' } : { request_type: type },
   });
+  return { request: r.data, created: r.status === 201 };
 }

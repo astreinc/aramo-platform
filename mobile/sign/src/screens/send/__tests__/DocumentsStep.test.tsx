@@ -29,6 +29,7 @@ const PDF = new Uint8Array(
   ),
 );
 
+jest.mock('react-native-pdf', () => 'Pdf');
 const mockPhotos = jest.fn();
 const mockScan = jest.fn();
 const mockPick = jest.fn();
@@ -169,5 +170,28 @@ describe('Step 1 with the sheet', () => {
     });
     expect(await screen.findByText('Only PDF files can be sent for signature.')).toBeTruthy();
     expect(c.snapshot.draft!.payload.documents).toHaveLength(0);
+  });
+});
+
+// PO 2026-11-18 (DocuSign comparison) — preview an added document before going on.
+describe('Preview a document', () => {
+  it('opens every page full screen and Close returns with the document unchanged', async () => {
+    const c = controller();
+    await c.open();
+    await c.addDocument({ title: 'Lease', filename: 'Lease.pdf', bytes: PDF });
+    renderStep(c);
+    await act(async () => {
+      fireEvent.press(await screen.findByTestId('doc-menu-0'));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('doc-preview'));
+    });
+    expect(await screen.findByTestId('document-preview')).toBeTruthy();
+    expect(screen.getAllByText('Lease').length).toBeGreaterThan(0);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('document-preview-close'));
+    });
+    await waitFor(() => expect(screen.queryByTestId('document-preview')).toBeNull());
+    expect(c.snapshot.draft!.payload.documents.map((d) => d.title)).toEqual(['Lease']);
   });
 });

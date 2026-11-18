@@ -51,6 +51,42 @@ function Meter({ used, limit, label }: { used: number; limit: number; label: str
 }
 
 /**
+ * UAT BIL-11 — the Plan & billing usage, the same two rows the app shows under
+ * Account → Plan and usage: "This month · {used} of {limit} used" (resets on the
+ * period end) and "Last 24 hours · {used} of {limit} used" (the daily window is
+ * any 24 hours, so it is not called "today"). Display only.
+ */
+export function UsageRows({
+  used,
+  limit,
+  periodEnd,
+  daily,
+}: {
+  used: number;
+  limit: number;
+  periodEnd: string | null | undefined;
+  daily: { used: number; limit: number; next_available_at?: string | null } | null;
+}) {
+  const nextAt = daily !== null && daily.used >= daily.limit ? nextSendTime(daily.next_available_at) : null;
+  return (
+    <div data-testid="personal-plan-usage" style={{ display: 'grid', gap: 10 }}>
+      <div data-testid="personal-plan-usage-month">
+        This month · {used} of {limit} used
+        <Meter used={used} limit={limit} label="Envelopes sent this month" />
+        {periodEnd ? <div className="sg-muted">Resets {fmtDate(periodEnd)}</div> : null}
+      </div>
+      {daily !== null ? (
+        <div data-testid="personal-plan-usage-day">
+          Last 24 hours · {daily.used} of {daily.limit} used
+          <Meter used={daily.used} limit={daily.limit} label="Envelopes sent in the last 24 hours" />
+          {nextAt !== null ? <div className="sg-muted">You can send again at {nextAt}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * The allowance chip (signup handoff §5, v1 design): "{n} of 5 left this month ·
  * {n} of 2 left today". Dot: green; amber at 0 left today; red (and the month
  * only) at 0 left this month. Display only.

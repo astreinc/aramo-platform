@@ -74,7 +74,9 @@ describe('PersonalPlanPanel', () => {
     vi.stubGlobal('fetch', fetch);
     render(<PersonalPlanPanel />);
     expect(await screen.findByTestId('personal-plan-free-terms')).toHaveTextContent('5 documents a month, up to 2 a day · 15 MB storage · templates aren’t included');
-    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('3 of 5 left this month · 1 of 2 left today');
+    // UAT BIL-11 — the same rows as the app's Account → Plan and usage.
+    expect(screen.getByTestId('personal-plan-usage-month')).toHaveTextContent('This month · 2 of 5 used');
+    expect(screen.getByTestId('personal-plan-usage-day')).toHaveTextContent('Last 24 hours · 1 of 2 used');
     const offer = screen.getByTestId('personal-plan-upgrade');
     expect(offer).toHaveTextContent('Upgrade to Standard');
     expect(offer).toHaveTextContent('$10/month');
@@ -137,8 +139,8 @@ describe('PersonalPlanPanel', () => {
     const current = await screen.findByTestId('personal-plan-current');
     expect(current).toHaveTextContent('Standard · $10/month');
     expect(screen.getByTestId('personal-plan-commitment')).toHaveTextContent('12-month commitment, billed monthly');
-    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('21 of 25 left this month');
-    expect(screen.getByTestId('personal-allowance-chip')).not.toHaveTextContent('today');
+    expect(screen.getByTestId('personal-plan-usage-month')).toHaveTextContent('This month · 4 of 25 used');
+    expect(screen.queryByTestId('personal-plan-usage-day')).toBeNull();
     expect(screen.queryByTestId('personal-plan-upgrade')).toBeNull();
     expect(screen.getByTestId('personal-plan-manage')).toHaveTextContent('Manage billing or cancel');
     fireEvent.click(screen.getByTestId('personal-plan-manage'));

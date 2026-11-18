@@ -6,6 +6,9 @@ import { ARAMO_SIGN_IDENTITY } from '../legal/identity';
 import { DELETE_ACCOUNT_PATH, PrivacyRequestResult } from '../privacy/PrivacyRequestResult';
 import { Btn, ErrorBox, Field, TextIn } from '../ui';
 
+/** UAT DEL-06 — the same words as the app for a repeat of an open request. */
+export const ALREADY_OPEN_COPY = 'You already have an open request of this type, so no new request was made.';
+
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.3 — Settings → privacy requests (the signed-in
 // equivalent of /delete-account), shows the request ID and status.
 // Aramo-Sign-Mobile-Amendment-M-A8 §2 — only the Personal account owner (the
@@ -195,6 +198,7 @@ function BusinessPrivacyRequests({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<PrivacyRequestView | null>(null);
+  const [alreadyOpen, setAlreadyOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -214,6 +218,8 @@ function BusinessPrivacyRequests({
     setError(null);
     try {
       const r = await requester(type);
+      // UAT DEL-06 — one open request per type: a repeat answers the open one (same ID).
+      setAlreadyOpen((items ?? []).some((x) => x.completed_at === null && x.reference === r.reference));
       setCreated(r);
       setTyped('');
       setItems((prev) => [r, ...(prev ?? []).filter((x) => x.reference !== r.reference)]);
@@ -235,6 +241,11 @@ function BusinessPrivacyRequests({
           You can still ask the Aramo privacy team to see, copy, correct or delete your eligible personal information. Aramo stays responsible for
           your request: if your organization doesn’t act, write to {ARAMO_SIGN_IDENTITY.privacyEmail}.
         </p>
+        {created !== null && alreadyOpen ? (
+          <p className="sg-note" role="status" style={{ margin: 0 }} data-testid="settings-privacy-already-open">
+            {ALREADY_OPEN_COPY}
+          </p>
+        ) : null}
         {created !== null ? <PrivacyRequestResult request={created} testId="settings-privacy-result" /> : null}
         <div role="radiogroup" aria-label="Privacy request" className="sg-grid" style={{ gap: 6 }}>
           {BUSINESS_PRIVACY_TYPES.map((t) => (

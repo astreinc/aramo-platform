@@ -44,6 +44,7 @@ import { buy, createStoreBillingApi, restore } from '../../features/plans/purcha
 import type { StoreProductInfo } from '../../features/plans/storePort';
 import type { PlansEntry, RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const plansKey = ['sign', 'billing', 'plans'] as const;
 
@@ -172,6 +173,8 @@ export function PlansView({
   readonly onRestore: () => void;
   readonly onManage: (productId?: string) => void;
 }) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const t = useTheme();
   const [planKey, setPlanKey] = useState<string | null>(() => initialPlanKey(plans, account));
   const plan = plans.find((p) => p.key === planKey) ?? plans[0] ?? null;
@@ -203,7 +206,7 @@ export function PlansView({
   }
 
   return (
-    <ScrollView testID="plans-screen" style={{ flex: 1, backgroundColor: t.color.screen }} contentContainerStyle={styles.body}>
+    <ScrollView testID="plans-screen" style={{ flex: 1, backgroundColor: t.color.screen }} contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}>
       {!online ? <OfflineBanner /> : null}
       <Text accessibilityRole="header" style={[text, { fontSize: 26, fontWeight: '700' }]}>
         Upgrade your plan

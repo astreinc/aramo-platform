@@ -149,11 +149,17 @@ export function emptyPayload(): SendDraftPayload {
   };
 }
 
-/** "{first document} — {first signer}" (handoff §4.6 Review). */
-export function defaultSubject(p: Pick<SendDraftPayload, 'documents' | 'recipients'>): string {
+/**
+ * The default email subject. PO 2026-11-18 (DocuSign comparison): "Please sign: {first document}"
+ * on web and app alike (was "{document} — {first signer}", which named one signer to all of
+ * them). A document you sign yourself keeps the document's name. The sender can edit it; the
+ * limit stays SUBJECT_MAX (200).
+ */
+export const SUBJECT_PREFIX = 'Please sign: ';
+export function defaultSubject(p: Pick<SendDraftPayload, 'documents' | 'recipients'> & { readonly selfSign?: boolean }): string {
   const doc = p.documents[0]?.title ?? '';
-  const who = (p.recipients.find((r) => r.kind !== 'RECEIVES_COPY') ?? p.recipients[0])?.name ?? '';
-  return (doc && who ? `${doc} — ${who}` : doc || who).slice(0, SUBJECT_MAX);
+  if (doc === '') return '';
+  return (p.selfSign === true ? doc : `${SUBJECT_PREFIX}${doc}`).slice(0, SUBJECT_MAX);
 }
 
 export function effectiveSubject(p: SendDraftPayload): string {

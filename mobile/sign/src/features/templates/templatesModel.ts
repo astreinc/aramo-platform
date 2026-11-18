@@ -16,6 +16,12 @@ export const FEATURE_UNAVAILABLE = 'Templates aren’t available for your organi
 export const NO_TEMPLATE_PERMISSION =
   'You don’t have access to templates. Ask an admin in your organization.';
 export const NO_TEMPLATES = 'Your organization has no templates yet.';
+/**
+ * UAT DOC-11 — the plan does not include templates (sender context template_plan, TEMPLATE-
+ * PRODUCT-1 §8.1): the same reading as the web. A Personal account gets the upgrade prompt;
+ * a Business account the web's "needs an active plan" words.
+ */
+export const NEEDS_PLAN = 'Templates need an active Aramo Sign plan.';
 
 // M-A12 W1-F — a Personal account has no organization: its own copy.
 export const PERSONAL_TEMPLATES_INTRO =
@@ -95,6 +101,8 @@ function rec(v: unknown): Record<string, unknown> {
 export function contextRefusal(context: unknown): string | null {
   const c = rec(context);
   if (rec(c['features'])['templates'] !== true) return FEATURE_UNAVAILABLE;
+  const plan = c['template_plan'];
+  if (typeof plan === 'string' && plan !== 'INCLUDED') return NEEDS_PLAN;
   if (rec(c['permissions'])['templates'] !== true) return NO_TEMPLATE_PERMISSION;
   return null;
 }
@@ -164,7 +172,7 @@ export function templatesView(input: {
   if (input.contextLoading && input.context === undefined) return { kind: 'loading' };
   if (input.context !== undefined) {
     const refused = contextRefusal(input.context);
-    if (refused === FEATURE_UNAVAILABLE && isPersonal(input.context))
+    if ((refused === FEATURE_UNAVAILABLE || refused === NEEDS_PLAN) && isPersonal(input.context))
       return { kind: 'upsell', message: PERSONAL_TEMPLATES_PROMPT };
     if (refused)
       return {
@@ -186,7 +194,13 @@ export function templatesView(input: {
       ? { kind: 'loading' }
       : { kind: 'error', message: 'Templates couldn’t be loaded. Try again.' };
   }
-  if (lib.kind === 'unavailable') return { kind: 'unavailable', message: libraryRefusal(lib) };
+  if (lib.kind === 'unavailable') {
+    // UAT DOC-11 — the Free plan refusal (Catalog v2 P-6) is the upgrade prompt, never the
+    // organization wording (it reaches here when the context could not be read).
+    if (lib.reason === 'templates_not_in_plan' || (isPersonal(input.context) && libraryRefusal(lib) === FEATURE_UNAVAILABLE))
+      return { kind: 'upsell', message: PERSONAL_TEMPLATES_PROMPT };
+    return { kind: 'unavailable', message: libraryRefusal(lib) };
+  }
   const note = unavailableNote(lib.unavailable);
   if (lib.items.length === 0)
     return { kind: 'empty', message: isPersonal(input.context) ? PERSONAL_NO_TEMPLATES : NO_TEMPLATES, note };

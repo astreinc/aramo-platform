@@ -46,6 +46,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
 import { ReportSheet } from './ReportSheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReceivedEnvelope'>;
 
@@ -190,6 +191,8 @@ export function ReceivedEnvelopeView({
 }
 
 export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const { inboxItemId } = route.params;
   const t = useTheme();
   const toast = useToast();
@@ -272,7 +275,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   return (
     <ScrollView
       style={{ backgroundColor: t.color.screen }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

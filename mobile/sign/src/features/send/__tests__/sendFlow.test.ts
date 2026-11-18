@@ -5,6 +5,7 @@ import { createDocumentBytesStore } from '../documentBytes';
 import type { SendDraftPayload } from '../draftModel';
 import { createSenderApi } from '../senderApi';
 import { CHANGED_ELSEWHERE, SendFlowController, WORD_NEEDS_CONNECTION } from '../sendFlowController';
+import { markDraftOpen, syncPendingDrafts } from '../pendingDraftSync';
 import { UPLOAD_ATTEMPTS } from '../syncDraft';
 import { fakeSenderServer } from './fakeSenderServer';
 
@@ -547,5 +548,69 @@ describe('Word upload (M-A13 R-4)', () => {
     expect(c.snapshot.draft!.payload.documents).toEqual([]);
     expect(c.snapshot.error).toBe(WORD_NEEDS_CONNECTION);
     expect(writes(t.server.calls)).toEqual([]);
+  });
+});
+
+describe('Send flow: a draft saved offline syncs when back online (UAT AND-12, directive §9)', () => {
+  const creates = (t: ReturnType<typeof setup>) =>
+    t.server.calls.filter((r) => r.method === 'POST' && r.url.endsWith('/v1/sign/sender/envelopes'));
+  const deps = (t: ReturnType<typeof setup>, online: () => boolean) => ({
+    drafts: createDraftStore(t.store),
+    bytes: createDocumentBytesStore(t.store),
+    api: createSenderApi(t.server.workspace),
+    isOnline: online,
+    sleep: async () => undefined,
+  });
+
+  it('Save draft offline marks it; on reconnect it reaches the server once, never sent', async () => {
+    const t = setup({ online: false });
+    const c = t.make();
+    await prepared(c);
+    expect(await c.saveDraft()).toBe('local');
+    const localId = c.snapshot.draft!.localId;
+    expect((await createDraftStore(t.store).load(localId))!.pendingSync).toBe(true);
+    expect(t.server.calls).toHaveLength(0);
+
+    // Still offline: nothing is attempted.
+    expect(await syncPendingDrafts(deps(t, () => false))).toBe(0);
+    expect(t.server.calls).toHaveLength(0);
+
+    t.setOnline(true);
+    expect(await syncPendingDrafts(deps(t, () => true))).toBe(1);
+    const env = t.server.envelope!;
+    expect(env.documents).toHaveLength(1);
+    expect(env.recipients.map((r) => r.email)).toEqual(['dana@example.com']);
+    expect(env.fields).toHaveLength(1);
+    const after = (await createDraftStore(t.store).load(localId))!;
+    expect(after.envelopeId).toBe(t.server.ENV_ID);
+    expect(after.pendingSync).toBe(false);
+    expect(t.server.calls.some((r) => r.url.endsWith('/send'))).toBe(false);
+
+    // A second reconnect does not create another envelope.
+    expect(await syncPendingDrafts(deps(t, () => true))).toBe(0);
+    expect(creates(t)).toHaveLength(1);
+  });
+
+  it('a draft the sender did not save, or one open in the Send flow, is left alone', async () => {
+    const t = setup({ online: false });
+    const c = t.make();
+    await prepared(c); // edited but never saved: no pendingSync
+    expect(await syncPendingDrafts(deps(t, () => true))).toBe(0);
+    expect(t.server.calls).toHaveLength(0);
+
+    expect(await c.saveDraft()).toBe('local');
+    const release = markDraftOpen(c.snapshot.draft!.localId);
+    expect(await syncPendingDrafts(deps(t, () => true))).toBe(0);
+    expect(t.server.calls).toHaveLength(0);
+    release();
+    expect(await syncPendingDrafts(deps(t, () => true))).toBe(1);
+  });
+
+  it('Save draft online clears the mark', async () => {
+    const t = setup();
+    const c = t.make();
+    await prepared(c);
+    expect(await c.saveDraft()).toBe('synced');
+    expect((await createDraftStore(t.store).load(c.snapshot.draft!.localId))!.pendingSync).toBe(false);
   });
 });

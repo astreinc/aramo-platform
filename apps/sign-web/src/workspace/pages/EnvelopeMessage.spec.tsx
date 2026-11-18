@@ -82,6 +82,26 @@ describe('Review & send — message to recipients (UAT SND-20)', () => {
     expect(screen.getByTestId('envelope-message-count')).toHaveTextContent('1000 / 1000');
   });
 
+  // UAT DOC-07 — the subject shows a counter and says why typing stops at 200.
+  it('the subject is limited to 200 characters with a counter and a limit note', async () => {
+    stub([]);
+    show();
+    const subject = (await screen.findByLabelText('Email subject')) as HTMLInputElement;
+    expect(subject.maxLength).toBe(200);
+    fireEvent.change(subject, { target: { value: 'y'.repeat(201) } });
+    expect(subject.value).toHaveLength(200);
+    expect(screen.getByTestId('envelope-subject-count')).toHaveTextContent('Subjects can be up to 200 characters. 200 / 200');
+    fireEvent.change(subject, { target: { value: 'Offer' } });
+    expect(screen.getByTestId('envelope-subject-count')).toHaveTextContent(/^5 \/ 200$/);
+  });
+
+  // PO 2026-11-18 — the untouched subject defaults to "Please sign: {first document}".
+  it('the subject defaults to "Please sign: Lease"', async () => {
+    stub([]);
+    show();
+    expect(((await screen.findByLabelText('Email subject')) as HTMLInputElement).value).toBe('Please sign: Lease');
+  });
+
   it('saves the message before sending', async () => {
     const calls: { method: string; url: string; body: unknown }[] = [];
     stub(calls);

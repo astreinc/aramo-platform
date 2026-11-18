@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextReminderAt, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -11,6 +11,9 @@ import { useWorkspace } from '../workspace';
 // Download documents + certificate (COMPLETED). Signing links are never shown —
 // they exist only in each signer's email. A DRAFT routes back to the wizard.
 
+/** UAT DEL-09 — why an open envelope has no working Delete (same words in the list). */
+export const DELETE_WHEN_FINISHED = 'Finish or void this envelope before deleting it.';
+
 // W1 — plain text for the self-sign refusals (the server's reason codes).
 const SELF_SIGN_REFUSAL: Record<string, string> = {
   not_bound_to_you: 'This signer isn’t assigned to you. Use the link in the signing email.',
@@ -18,7 +21,7 @@ const SELF_SIGN_REFUSAL: Record<string, string> = {
   not_your_turn: 'It isn’t your turn to sign yet.',
   envelope_not_signable: 'This envelope can’t be signed any more.',
 };
-function selfSignRefusal(e: unknown): string {
+export function selfSignRefusal(e: unknown): string {
   const reason = (e as { details?: { reason?: unknown } } | null)?.details?.reason;
   return (typeof reason === 'string' ? SELF_SIGN_REFUSAL[reason] : undefined) ?? errorMessage(e);
 }
@@ -88,6 +91,7 @@ export function EnvelopeDetail() {
   const canDelete = fromOtherApp === null && TERMINAL.has(env.status) && (canAct || admin);
   const canPurge = admin && PURGEABLE.has(env.status) && (purge === null || purge.state === 'DEQUEUED');
   const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
+  const nextReminder = live ? nextReminderAt(env.recipients) : null;
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
   const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
@@ -235,6 +239,12 @@ export function EnvelopeDetail() {
               Send reminder
             </Btn>
           ) : null}
+          {/* UAT SND-14 — while reminders are cooling down, say when the next can go (the app's words). */}
+          {live && canAct && nextReminder !== null ? (
+            <span className="sg-help" role="status" data-testid="remind-cooling" style={{ alignSelf: 'center' }}>
+              You can send another reminder at {nextSendTime(nextReminder)}.
+            </span>
+          ) : null}
           {!TERMINAL.has(env.status) && canAct ? (
             <Btn variant="danger" onClick={() => setVoidOpen(true)} disabled={busy} data-testid="void-envelope">
               Void envelope
@@ -250,8 +260,20 @@ export function EnvelopeDetail() {
               <Icon name="trash" size={14} /> Delete
             </Btn>
           ) : null}
+          {/* UAT DEL-09 — an open envelope can't be deleted (Retention R-10: finished envelopes
+              only). Say why instead of hiding the action. */}
+          {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+            <Btn disabled title={DELETE_WHEN_FINISHED} aria-describedby="delete-when-finished" data-testid="delete-envelope-disabled">
+              <Icon name="trash" size={14} /> Delete
+            </Btn>
+          ) : null}
         </div>
       </div>
+      {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+        <p id="delete-when-finished" className="sg-help" style={{ marginTop: 0, textAlign: 'right' }} data-testid="delete-when-finished">
+          {DELETE_WHEN_FINISHED}
+        </p>
+      ) : null}
       {purge !== null && purge.state !== 'DEQUEUED' ? (
         <div className={purged ? 'sg-note' : 'sg-note sg-note--warn'} style={{ marginBottom: 14 }} data-testid="purge-banner" role="status">
           {purged ? (
@@ -366,9 +388,25 @@ export function EnvelopeDetail() {
                   </div>
                 ))}
                 {evidence !== null ? (
-                  <div className="sg-help" style={{ marginTop: 10 }}>
-                    Event-chain hash <span className="sg-mono">{evidence.event_chain_hash.slice(0, 16)}…</span> · signed with {evidence.signature_algorithm}. The full certificate
-                    is in the downloadable PDF.
+                  <div className="sg-help" style={{ marginTop: 10 }} data-testid="evidence-chain">
+                    {/* UAT CMP-05 — the value printed on the certificate, in full (the chain keeps
+                        growing after completion, so its current hash differs). */}
+                    Event-chain hash{' '}
+                    <span className="sg-mono" style={{ wordBreak: 'break-all' }} data-testid="evidence-chain-hash">
+                      {evidence.certificate_event_chain_hash ?? evidence.event_chain_hash}
+                    </span>{' '}
+                    <LinkBtn
+                      onClick={() =>
+                        void navigator.clipboard
+                          ?.writeText(evidence.certificate_event_chain_hash ?? evidence.event_chain_hash)
+                          .then(() => toast('Copied'), () => undefined)
+                      }
+                      data-testid="evidence-chain-copy"
+                    >
+                      Copy
+                    </LinkBtn>
+                    {' · '}signed with {evidence.signature_algorithm}.{' '}
+                    {evidence.certificate_event_chain_hash ? 'This is the hash printed on the certificate. ' : null}The full certificate is in the downloadable PDF.
                   </div>
                 ) : null}
               </div>

@@ -21,6 +21,7 @@ import {
 } from '../../features/tasks/tasksModel';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function TasksScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -72,6 +73,8 @@ export function TasksView({
   readonly onSign: (c: TaskCard) => void;
   readonly onView: (c: TaskCard) => void;
 }) {
+  // UAT AND (bottom spacing) — keep the last actions above Android's navigation bar.
+  const insets = useSafeAreaInsets();
   const t = useTheme();
   const sortIndex = TASK_SORTS.findIndex((s) => s.key === sort);
   const nextSort = TASK_SORTS[(sortIndex + 1) % TASK_SORTS.length]!;
@@ -133,7 +136,7 @@ export function TasksView({
     <ScrollView
       testID="tasks-screen"
       style={{ flex: 1, backgroundColor: t.color.screen }}
-      contentContainerStyle={styles.body}
+      contentContainerStyle={[styles.body, { paddingBottom: 48 + insets.bottom }]}
       refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}
     >
       {!online ? <OfflineBanner /> : null}

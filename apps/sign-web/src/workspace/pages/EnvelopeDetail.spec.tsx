@@ -12,6 +12,7 @@ import type { EnvelopeDetail as Detail, Recipient } from '../api';
 const remind = vi.fn();
 const selfSign = vi.fn();
 const detail = vi.fn();
+const evidenceMock = vi.fn(async (): Promise<unknown> => null);
 const executed = vi.fn();
 const dequeue = vi.fn();
 const queuePurge = vi.fn();
@@ -24,7 +25,7 @@ vi.mock('../api', async (orig) => {
       ...mod.senderApi,
       detail: (...a: unknown[]) => detail(...a),
       events: async () => ({ items: [] }),
-      evidence: async () => null,
+      evidence: () => evidenceMock(),
       remind: (...a: unknown[]) => remind(...a),
       selfSignSession: (...a: unknown[]) => selfSign(...a),
       executed: (...a: unknown[]) => executed(...a),
@@ -221,5 +222,37 @@ describe('EnvelopeDetail — Sign now', () => {
     show();
     fireEvent.click(await screen.findByTestId('sign-now-s1'));
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.'));
+  });
+});
+
+// UAT DEL-09 — an open envelope can't be deleted; Delete is shown disabled with the reason.
+describe('EnvelopeDetail — delete an open envelope', () => {
+  it('shows Delete disabled with "Finish or void this envelope before deleting it."', async () => {
+    detail.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true })] }));
+    show();
+    const btn = await screen.findByTestId('delete-envelope-disabled');
+    expect(btn).toBeDisabled();
+    expect(screen.queryByTestId('delete-envelope')).toBeNull();
+    expect(screen.getByTestId('delete-when-finished')).toHaveTextContent('Finish or void this envelope before deleting it.');
+  });
+
+  it('a completed envelope keeps the working Delete and no note', async () => {
+    detail.mockResolvedValue(env({ status: 'COMPLETED', completed_at: '2026-10-21T00:00:00Z', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-21T00:00:00Z' })] }));
+    show();
+    expect(await screen.findByTestId('delete-envelope')).toBeEnabled();
+    expect(screen.queryByTestId('delete-when-finished')).toBeNull();
+  });
+});
+
+// UAT CMP-05 — the page shows the hash printed on the certificate, in full, with Copy.
+describe('EnvelopeDetail — event-chain hash', () => {
+  it('shows the certificate’s hash in full (not the chain’s current hash)', async () => {
+    const cert = 'OZRYPean_9zNAyTmkHjap1rQR2jCZXPq7Yys3psOofI';
+    evidenceMock.mockResolvedValueOnce({ envelope_id: 'env-00000001', status: 'COMPLETED', event_chain_hash: 'XtpcpRJTImvKz6hOcurrentHead', certificate_event_chain_hash: cert, signature: 's', signature_algorithm: 'KMS:RSASSA_PSS_SHA_256', completed_at: '2026-10-21T00:00:00Z' });
+    detail.mockResolvedValue(env({ status: 'COMPLETED', completed_at: '2026-10-21T00:00:00Z', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-21T00:00:00Z' })] }));
+    show();
+    expect(await screen.findByTestId('evidence-chain-hash')).toHaveTextContent(cert);
+    expect(screen.getByTestId('evidence-chain')).not.toHaveTextContent('XtpcpRJTImvKz6hO');
+    expect(screen.getByTestId('evidence-chain-copy')).toBeInTheDocument();
   });
 });

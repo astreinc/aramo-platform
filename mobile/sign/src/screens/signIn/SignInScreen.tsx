@@ -8,6 +8,7 @@
 // carries a pending-link handle opens the link panel (path 2 / path 3) in place of the
 // buttons; the handle stays in this screen's memory only.
 import { useNavigation } from '@react-navigation/native';
+import { onlineManager } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -58,7 +59,15 @@ export interface SignInViewProps {
   readonly onCreateAccount?: () => void;
   /** A1 L-4 proof (b) (email code); without it a pending link shows no panel. */
   readonly linkApi?: LinkPanelApi;
+  /**
+   * UAT SIN-08 — read before the browser opens: offline, the app says so instead of handing
+   * the user a browser error page. Default: the app's live connectivity (onlineManager, fed
+   * by the network listener and re-checked on every return to the foreground, M-A13 #4).
+   */
+  readonly isOnline?: () => boolean;
 }
+
+const deviceOnline = (): boolean => onlineManager.isOnline();
 
 /** Presentational sign-in (no services), so it renders in tests. */
 export function SignInView({
@@ -67,6 +76,7 @@ export function SignInView({
   sessionExpired,
   onCreateAccount,
   linkApi,
+  isOnline = deviceOnline,
 }: SignInViewProps) {
   const t = useTheme();
   const ios = t.platform === 'ios';
@@ -81,6 +91,10 @@ export function SignInView({
     setError(null);
     setNoAccount(false);
     try {
+      if (!isOnline()) {
+        setError(refusalMessage({ reason: 'network_unavailable', code: 'network_unavailable' }));
+        return;
+      }
       await onSignIn(provider);
     } catch (e) {
       const err = isApiError(e) ? (e as ApiError) : null;

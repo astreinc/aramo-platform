@@ -296,4 +296,15 @@ describe('pending link panels (Apple Go-Live A1 L-3, L-7)', () => {
     expect(screen.queryByTestId('link-panel-unmatched')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
   });
+
+  // UAT SIN-08 — offline, Continue with Google says so instead of opening a browser error page.
+  it('offline: shows "You’re offline. Check your connection and try again." and never starts sign-in', async () => {
+    const onSignIn = jest.fn();
+    render(<SignInView onSignIn={onSignIn} onOpenLink={jest.fn()} isOnline={() => false} />);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('sign-in-google'));
+    });
+    expect(onSignIn).not.toHaveBeenCalled();
+    expect(screen.getByText('You’re offline. Check your connection and try again.')).toBeTruthy();
+  });
 });

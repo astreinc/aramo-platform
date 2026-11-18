@@ -10843,6 +10843,12 @@ components:
           type: string
         event_chain_hash:
           type: [string, 'null']
+          description: The event chain's current hash (it grows after completion as records are added).
+        certificate_event_chain_hash:
+          type: [string, 'null']
+          description: >
+            UAT CMP-05 — the event-chain hash printed on the execution certificate (the chain at
+            completion). Sender evidence route only; null before the certificate exists.
         signature:
           type: [string, 'null']
         signature_algorithm:

@@ -108,9 +108,15 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
       </div>
       <div className="sg-side__new">
         {ctx.can_send ? (
-          <Link to={`${base}/envelopes/new`} className="sg-btn sg-btn--primary sg-btn--block" data-testid="new-envelope">
-            <Icon name="plus" /> New envelope
-          </Link>
+          <>
+            <Link to={`${base}/envelopes/new`} className="sg-btn sg-btn--primary sg-btn--block" data-testid="new-envelope">
+              <Icon name="plus" /> New envelope
+            </Link>
+            {/* Web Self-Signing A2 — sign a document yourself: nobody is emailed, no envelope used. */}
+            <Link to={`${base}/envelopes/sign-document`} className="sg-btn sg-btn--block" style={{ marginTop: 8 }} data-testid="sign-a-document">
+              <Icon name="doc" /> Sign a document
+            </Link>
+          </>
         ) : (
           <Btn variant="primary" block disabled title={personal ? 'Sending from a personal account isn’t enabled yet' : 'You don’t have permission to send envelopes'} data-testid="new-envelope-disabled">
             <Icon name="plus" /> New envelope

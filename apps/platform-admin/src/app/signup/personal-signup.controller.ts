@@ -53,7 +53,11 @@ export class PersonalSignupController {
   @HttpCode(HttpStatus.ACCEPTED)
   async resendEmail(@Req() req: Request, @RequestId() requestId: string, @Body() body: { signup_id?: unknown }): Promise<{ accepted: true }> {
     this.gate(requestId);
-    await this.signup.resendEmail({ signup_id: body?.signup_id, ip: req.ip ?? 'unknown', request_id: requestId });
+    const out = await this.signup.resendEmail({ signup_id: body?.signup_id, ip: req.ip ?? 'unknown', request_id: requestId });
+    // UAT SUP-09 — the daily code cap is answered, for real and decoy sign-ups alike.
+    if (out === 'limit') {
+      throw new AramoError('INVALID_REQUEST', 'Too many codes today. Try again tomorrow.', 429, { requestId, details: { reason: 'code_send_limit' } });
+    }
     return { accepted: true };
   }
 

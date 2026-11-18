@@ -7,6 +7,7 @@ import { useServices } from '../../app/ServicesContext';
 import { randomId } from '../../util/ids';
 import { fetchSourcePdf } from '../editor/sourcePdf';
 import { createDocumentBytesStore } from './documentBytes';
+import { markDraftOpen, pendingDraftSyncIdle } from './pendingDraftSync';
 import { createSenderApi } from './senderApi';
 import { SendFlowController, type OpenParams, type SendFlowState } from './sendFlowController';
 
@@ -56,9 +57,16 @@ export function useSendFlow(
     [params.localDraftId, params.envelopeId, params.step],
   );
   useEffect(() => {
-    void controller.open(params);
+    // UAT AND-12 — a draft being synced in the background is opened after that sync,
+    // so the screen starts from the server copy instead of creating a second envelope.
+    const release = params.localDraftId ? markDraftOpen(params.localDraftId) : null;
+    void pendingDraftSyncIdle().then(() => controller.open(params));
+    return () => release?.();
     // Open once per route target.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller, key]);
+  // The open draft is the Send flow's: the background sync leaves it alone.
+  const openLocalId = state.draft?.localId ?? null;
+  useEffect(() => (openLocalId ? markDraftOpen(openLocalId) : undefined), [openLocalId]);
   return { controller, state };
 }

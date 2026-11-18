@@ -6,6 +6,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
 import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError, SenderFieldPassthroughRefusedError } from './domain/errors.js';
 import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
+import { EXECUTION_CERTIFICATE_RECORDED } from './domain/executed-artifact-integrity.js';
 import { SIGN_REMINDER_LIMITS, reminderHistory, type ReminderHistoryEntry } from './reminder-limits.js';
 import { isCopyRecipient, isSigningRecipient, recipientKindOf, signingRecipients } from './domain/recipients.js';
 
@@ -246,6 +247,20 @@ export class EsignSenderRepository {
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
       select: { id: true, event_type: true, actor_type: true, actor_ref: true, signer_id: true, payload: true, occurred_at: true, event_hash: true },
     });
+  }
+
+  /**
+   * UAT CMP-05 (PO 2026-11-18) — the event-chain hash the execution certificate cites: the
+   * chain as it stood when the certificate was rendered, i.e. the link the
+   * EXECUTION_CERTIFICATE_RECORDED event points back to. null before completion.
+   */
+  async certificateChainHash(tenant_id: string, envelope_id: string): Promise<string | null> {
+    const e = await this.prisma.signatureEvent.findFirst({
+      where: { tenant_id, envelope_id, event_type: EXECUTION_CERTIFICATE_RECORDED },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+      select: { previous_event_hash: true },
+    });
+    return e?.previous_event_hash ?? null;
   }
 
   // Tenant-wide activity (newest first), with the envelope subject.

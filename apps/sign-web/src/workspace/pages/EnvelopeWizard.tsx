@@ -5,6 +5,9 @@ import { Input } from '@aramo/fe-foundation';
 import {
   E164_RE,
   ENVELOPE_MESSAGE_MAX,
+  ENVELOPE_SUBJECT_MAX,
+  fetchSourcePdf,
+  SUBJECT_LIMIT_NOTE,
   errorMessage,
   fileToBase64,
   isAllowanceLimit,
@@ -26,6 +29,7 @@ import {
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { selfSignRefusal } from './EnvelopeDetail';
 import { PersonalUpgradeLink } from './PersonalAllowance';
 import { PrepareEditor } from './PrepareEditor';
 import { readinessOf } from './readiness';
@@ -37,7 +41,9 @@ import { readinessOf } from './readiness';
 const MAX_BYTES = 25 * 1024 * 1024;
 
 
-export function NewEnvelope() {
+// Web Self-Signing A2 — `mode="self"` is "Sign a document": a SELF draft (the caller is the
+// only signer; no email, no allowance used) that opens the same wizard.
+export function NewEnvelope({ mode = 'standard' }: { mode?: 'standard' | 'self' } = {}) {
   const { base, ctx } = useWorkspace();
   const nav = useNavigate();
   const [error, setError] = useState('');
@@ -46,12 +52,12 @@ export function NewEnvelope() {
     if (started.current || !ctx.can_send) return;
     started.current = true;
     senderApi
-      .create()
+      .create(undefined, mode)
       .then((e) => nav(`${base}/envelopes/${e.id}/edit?step=1`, { replace: true }))
       .catch((e: unknown) => setError(errorMessage(e)));
-  }, [base, nav, ctx.can_send]);
+  }, [base, nav, ctx.can_send, mode]);
   if (!ctx.can_send) return <Navigate to={`${base}/envelopes`} replace />;
-  return <div className="sg-page">{error !== '' ? <ErrorBox>{error}</ErrorBox> : <Loading label="Creating envelope…" />}</div>;
+  return <div className="sg-page">{error !== '' ? <ErrorBox>{error}</ErrorBox> : <Loading label={mode === 'self' ? 'Starting…' : 'Creating envelope…'} />}</div>;
 }
 
 export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
@@ -84,7 +90,12 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
   if (env.status !== 'DRAFT' || !ctx.can_send) return <Navigate to={`${base}/envelopes/${env.id}`} replace />;
 
   const stepHref = (n: number) => `${base}/envelopes/${env.id}/${n === 3 ? 'prepare' : `edit?step=${n}`}`;
-  const steps = ['Documents', 'Recipients', 'Prepare fields', 'Review & send'];
+  // Web Self-Signing A2 — a SELF envelope: Document → Place fields → Sign (no Recipients step;
+  // the caller is the only signer).
+  const self = env.mode === 'self';
+  if (self && step === 2) return <Navigate to={stepHref(3)} replace />;
+  const steps = self ? ['Document', 'Place fields', 'Sign'] : ['Documents', 'Recipients', 'Prepare fields', 'Review & send'];
+  const stepNumbers = self ? [1, 3, 4] : [1, 2, 3, 4];
 
   return (
     <div className={step === 3 ? 'sg-page sg-page--wide' : 'sg-page sg-page--wide'}>
@@ -99,21 +110,22 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
       </div>
       <nav className="sg-steps" aria-label="Create envelope steps">
         {steps.map((label, i) => {
-          const n = i + 1;
+          const n = stepNumbers[i] ?? i + 1;
           const cls = n === step ? 'sg-step sg-step--on' : n < step ? 'sg-step sg-step--done' : 'sg-step';
           return (
             <Link key={label} className={cls} to={stepHref(n)} aria-current={n === step ? 'step' : undefined}>
-              <span className="sg-step__n">{n}</span>
+              <span className="sg-step__n">{i + 1}</span>
               {label}
             </Link>
           );
         })}
       </nav>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
-      {step === 1 ? <DocumentsStep env={env} onChange={setEnv} next={stepHref(2)} /> : null}
-      {step === 2 ? <RecipientsStep env={env} onChange={setEnv} back={stepHref(1)} next={stepHref(3)} /> : null}
-      {step === 3 ? <PrepareEditor env={env} onChange={setEnv} back={stepHref(2)} next={stepHref(4)} /> : null}
-      {step === 4 ? <ReviewStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
+      {step === 1 ? <DocumentsStep env={env} onChange={setEnv} next={stepHref(self ? 3 : 2)} /> : null}
+      {step === 2 && !self ? <RecipientsStep env={env} onChange={setEnv} back={stepHref(1)} next={stepHref(3)} /> : null}
+      {step === 3 ? <PrepareEditor env={env} onChange={setEnv} back={stepHref(self ? 1 : 2)} next={stepHref(4)} /> : null}
+      {step === 4 && !self ? <ReviewStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
+      {step === 4 && self ? <SelfSignStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
     </div>
   );
 }
@@ -122,7 +134,8 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
 
 function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; next: string }) {
   const { base, ctx } = useWorkspace();
-  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true;
+  // Web Self-Signing A2 §6 — templates are not offered for a document the sender signs alone.
+  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true && env.mode !== 'self';
   const nav = useNavigate();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -244,6 +257,11 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
               <span className="sg-muted" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
                 {fmtBytes(d.byte_size)}
               </span>
+              {/* PO 2026-11-18 (DocuSign comparison) — check the uploaded file before going on: it
+                  opens in a new tab (every page, the browser's viewer); the wizard is untouched. */}
+              <Btn size="sm" variant="ghost" aria-label={`Preview ${d.title}`} onClick={() => void previewDocument(env.id, d.id, setError)} data-testid={`preview-${d.id}`}>
+                Preview
+              </Btn>
               <Btn
                 size="sm"
                 aria-label={`Move ${d.title} up`}
@@ -387,6 +405,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return !sameMsg(want, was);
   };
   const [contacts, setContacts] = useState<ContactRow[]>([]);
+  // UAT (contacts) — every contact is reachable, as in the app: a search and the full list
+  // (it scrolls inside the card), instead of the first eight only.
+  const [contactQuery, setContactQuery] = useState('');
+  const shownContacts = filterContactRows(contacts, contactQuery);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   // Multi-Signer §5 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL).
@@ -710,6 +732,13 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               </div>
             </section>
           ))}
+          {/* UAT SND-05 — the signer limit, said out loud (the app's words): past it a new
+              person receives a copy, and the Signer role is unavailable. */}
+          {signerCount >= MAX_SIGNERS ? (
+            <p className="sg-note" role="status" data-testid="signers-full" style={{ margin: 0 }}>
+              {signersFullText(full)}
+            </p>
+          ) : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <Btn onClick={() => add()} disabled={full} data-testid="add-recipient">
               + Add recipient
@@ -734,7 +763,21 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
         <section className="sg-card">
           <div className="sg-card__head">From contacts</div>
           {contacts.length === 0 ? <div className="sg-empty">People you send envelopes to appear here.</div> : null}
-          {contacts.slice(0, 8).map((c) => (
+          {contacts.length > 0 ? (
+            <div style={{ padding: '8px 12px' }}>
+              <TextIn
+                type="search"
+                value={contactQuery}
+                onChange={(e) => setContactQuery(e.target.value)}
+                placeholder="Search name or email"
+                aria-label="Search contacts"
+                data-testid="contacts-search"
+              />
+            </div>
+          ) : null}
+          {contacts.length > 0 && shownContacts.length === 0 ? <div className="sg-empty">No contacts match.</div> : null}
+          <div style={{ maxHeight: 420, overflowY: 'auto' }} data-testid="contacts-list">
+          {shownContacts.map((c) => (
             <div key={c.email} className="sg-row">
               <Avatar name={c.name} small />
               <div className="sg-row__main">
@@ -746,6 +789,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               </LinkBtn>
             </div>
           ))}
+          </div>
         </section>
       </div>
       <div className="sg-wizfoot">
@@ -849,7 +893,13 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       ? `${ctx.app_home_url.replace(/\/+$/, '')}/org/document-templates`
       : null;
   const nav = useNavigate();
-  const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  // PO 2026-11-18 — the default subject is "Please sign: {first document}" (the app's too): an
+  // untouched subject (still the server's placeholder or the first document's name) takes it.
+  const [subject, setSubject] = useState(() => {
+    const first = env.documents[0]?.title;
+    if (first === undefined) return env.subject;
+    return env.subject === 'Untitled envelope' || env.subject === first ? `${SUBJECT_PREFIX}${first}`.slice(0, ENVELOPE_SUBJECT_MAX) : env.subject;
+  });
   // UAT SND-20 — the sender message (M-A3 §3), at most ENVELOPE_MESSAGE_MAX characters,
   // saved on blur and again before Send if it changed.
   const [message, setMessage] = useState(env.message ?? '');
@@ -898,7 +948,18 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
           <section className="sg-card">
             <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
               <Field label="Email subject" htmlFor="subject">
-                <TextIn id="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} />
+                <TextIn
+                  id="subject"
+                  value={subject}
+                  maxLength={ENVELOPE_SUBJECT_MAX}
+                  aria-describedby="subject-count"
+                  onChange={(e) => setSubject(e.target.value.slice(0, ENVELOPE_SUBJECT_MAX))}
+                />
+                {/* UAT DOC-07 — a counter, and why typing stops at the limit. */}
+                <div id="subject-count" className="sg-help" data-testid="envelope-subject-count" style={{ textAlign: 'right' }} aria-live="polite">
+                  {subject.length >= ENVELOPE_SUBJECT_MAX ? `${SUBJECT_LIMIT_NOTE} ` : ''}
+                  {subject.length} / {ENVELOPE_SUBJECT_MAX}
+                </div>
               </Field>
               <Field label="Message (optional)" htmlFor="message">
                 <Area
@@ -1009,6 +1070,93 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
 
 // ── Sent ─────────────────────────────────────────────────────────────────────
 
+// Web Self-Signing A2 §3.3 — the Sign step of "Sign a document": the subject (empty takes the
+// document name), the readiness checks, and Sign now: send (a SELF send emails nobody and uses
+// no envelope), then the SELF session (W1), then the signing page with the return hint (§3.4).
+export const SELF_SIGN_NOTE = 'Nobody is emailed and this doesn’t count toward your envelopes.';
+
+export function selfSignReturnPath(base: string, envelopeId: string): string {
+  return `${base}/envelopes/${envelopeId}`;
+}
+
+function SelfSignStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; onSent: () => void }) {
+  const { base } = useWorkspace();
+  const nav = useNavigate();
+  const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = readinessOf(env);
+
+  const signNow = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await senderApi.send(env.id, subject.trim() === '' ? undefined : subject.trim());
+      onSent();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+      return;
+    }
+    try {
+      const s = await senderApi.selfSignSession(env.id);
+      const ret = encodeURIComponent(selfSignReturnPath(base, env.id));
+      window.location.assign(`/s/${encodeURIComponent(s.token)}?ret=${ret}`);
+    } catch (e) {
+      // Signed nothing yet: the envelope page offers Sign now (W1) for it.
+      setError(selfSignRefusal(e));
+      setBusy(false);
+      nav(selfSignReturnPath(base, env.id));
+    }
+  };
+
+  return (
+    <>
+      <div className="sg-grid sg-grid--main">
+        <section className="sg-card">
+          <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
+            <Field label="Document name" htmlFor="self-subject">
+              <TextIn
+                id="self-subject"
+                value={subject}
+                maxLength={ENVELOPE_SUBJECT_MAX}
+                onChange={(e) => setSubject(e.target.value.slice(0, ENVELOPE_SUBJECT_MAX))}
+              />
+            </Field>
+            <p className="sg-help" data-testid="self-sign-note" style={{ margin: 0 }}>
+              You’re the only signer. {SELF_SIGN_NOTE}
+            </p>
+          </div>
+        </section>
+        <section className="sg-card">
+          <div className="sg-card__body">
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Before signing</div>
+            {ready.items.map((it) => (
+              <div key={it.t} className="sg-check">
+                <span className={it.ok ? 'sg-check__ok' : 'sg-check__no'} aria-hidden="true">
+                  {it.ok ? '✓' : '!'}
+                </span>
+                {it.t}
+              </div>
+            ))}
+            <div style={{ marginTop: 14 }}>
+              <Btn variant="primary" block disabled={!ready.ok || busy} onClick={() => void signNow()} data-testid="self-sign-now">
+                {busy ? 'Opening…' : ready.ok ? 'Sign now' : 'Resolve the items above to sign'}
+              </Btn>
+            </div>
+            {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+          </div>
+        </section>
+      </div>
+      <div className="sg-wizfoot">
+        <Btn onClick={() => nav(back)}>
+          <Icon name="back" size={14} /> Back
+        </Btn>
+      </div>
+    </>
+  );
+}
+
 export function EnvelopeSent() {
   const { id = '' } = useParams();
   const { base } = useWorkspace();
@@ -1072,3 +1220,35 @@ export function EnvelopeSent() {
   );
 }
 
+/** UAT (contacts) — the From contacts search: name or email, case-insensitive (the app's rule). */
+export function filterContactRows(rows: readonly ContactRow[], query: string): ContactRow[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return [...rows];
+  return rows.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+}
+
+/** UAT SND-05 — the signer-limit note (the app says "An envelope can have up to 10 signers."). */
+export function signersFullText(everyoneFull: boolean): string {
+  return everyoneFull
+    ? `An envelope can have up to ${MAX_SIGNERS} signers and ${MAX_COPY_RECIPIENTS} people who receive a copy.`
+    : `An envelope can have up to ${MAX_SIGNERS} signers. Anyone else you add receives a copy.`;
+}
+
+/** PO 2026-11-18 — the default subject's prefix (same as the app's). */
+export const SUBJECT_PREFIX = 'Please sign: ';
+
+/** PO 2026-11-18 — open a draft document's PDF in a new tab (the envelope page's Preview). */
+export async function previewDocument(envelopeId: string, documentId: string, onError: (m: string) => void): Promise<void> {
+  // Opened first (inside the click), so a pop-up blocker allows it; filled once the bytes arrive.
+  const tab = window.open('', '_blank');
+  try {
+    const bytes = await fetchSourcePdf(envelopeId, documentId);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    if (tab !== null) tab.location.href = url;
+    else window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    tab?.close();
+    onError(errorMessage(e, 'The document couldn’t be opened. Try again.'));
+  }
+}

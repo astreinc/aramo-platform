@@ -120,7 +120,8 @@ export function SignupFlow(deps: SignupDeps) {
           <CodeStep
             key={`email-${step.id}`}
             title="Check your email"
-            sub={`We sent a 6-digit code to ${email}. It works for 10 minutes.`}
+            // UAT SUP-06 — the same words with or without an existing account (§3.7), never promising a code.
+            sub={emailCodeSub(email)}
             submitLabel="Verify email"
             verify={(code) => deps.api.verifyEmail(step.id, code)}
             resend={() => deps.api.resendEmail(step.id).then(() => true)}
@@ -1170,3 +1171,8 @@ const styles = StyleSheet.create({
   start: { alignSelf: 'flex-start' },
   doc: { gap: 8, padding: 14 },
 });
+
+/** UAT SUP-06 — the email-code step's words; the same whether or not the address has an account. */
+export function emailCodeSub(email: string): string {
+  return `If ${email} can be used for a new account, we’ve sent it a 6-digit code that works for 10 minutes. If it already has an Aramo account, we’ve emailed it instead: no code will come, so sign in.`;
+}

@@ -99,6 +99,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
     findResumableLapsed: vi.fn(async () => null),
     countByIpSince: vi.fn(async () => 0),
     gmailAliasOfExisting: vi.fn(async () => false),
+    gmailAliasUserEmails: vi.fn(async (_canonical: string, _email: string): Promise<string[]> => []),
     phoneUsedByAnother: vi.fn(async () => false),
     attestKeyIdUsed: vi.fn(async (_key: string) => false),
     create: vi.fn(async (input: Record<string, unknown>) => {
@@ -106,6 +107,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
       return row({ id: '01900000-0000-7000-8000-0000000a1101', status: String(input['status']), decision: String(input['decision']) });
     }),
     setEmailOtp: vi.fn(async () => undefined),
+    emailSendsSince: vi.fn(async (_canonical: string, _since: Date) => 1),
     findById: vi.fn(async () => signup),
     claimForProvisioning: vi.fn(async () => true),
     claimForProvisioningWithinCap: vi.fn(async () => 'claimed'),
@@ -260,6 +262,101 @@ describe('start — client android (§2.1)', () => {
       expect(h.robot.verify).toHaveBeenCalledWith('ts', 'unknown');
       expect(h.integrity.calls).toHaveLength(0);
     }
+  });
+});
+
+// UAT SUP-13 (PO 2026-11-18; §3.7 + §3.8) — a Gmail dot / +tag variant of an existing account.
+describe('start — Gmail alias of an existing account', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'patperson@gmail.com', robot_token: 'turnstile-ok' };
+
+  it('is treated as that account: same answer, "already have an account" email, no code, no new signup', async () => {
+    const h = harness();
+    h.requests.gmailAliasUserEmails.mockResolvedValueOnce(['pat.person@gmail.com']);
+    const out = await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW });
+    expect(out).toHaveProperty('signup_id');
+    expect(h.requests.create).not.toHaveBeenCalled();
+    expect(h.requests.setEmailOtp).not.toHaveBeenCalled();
+    expect(h.mailer.send).toHaveBeenCalledTimes(1);
+    const mail = JSON.stringify(h.mailer.send.mock.calls[0]);
+    expect(mail).toContain('You already have an Aramo account');
+    expect(mail).toContain('patperson@gmail.com');
+  });
+
+  it('an alias whose own signup lapsed unbound does not block a new signup', async () => {
+    const h = harness();
+    h.requests.gmailAliasUserEmails.mockResolvedValueOnce(['pat.person@gmail.com']);
+    h.requests.findResumableLapsed.mockResolvedValueOnce({ tenant_id: 't', user_id: 'u', prior_signup_id: 'p' } as never);
+    await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW });
+    expect(h.requests.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// UAT SUP-07 (PO 2026-11-18, §3.7) — a decoy sign-up's code step behaves like a real one, so wrong
+// codes never tell an existing account apart: counted down, then locked out.
+describe('verify-email — a decoy sign-up counts down and locks out like a real one', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'pat.person@gmail.com', robot_token: 'turnstile-ok' };
+  const reasonAndLeft = async (p: Promise<unknown>) => {
+    const r = await refusalOf(p);
+    return [r.reason, r.details?.['attempts_remaining']];
+  };
+
+  it('existing account: 4, 3, 2, 1, 0 tries left, then too many attempts — as for a real sign-up', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    expect(h.requests.create).not.toHaveBeenCalled();
+    const seen = [];
+    for (let i = 0; i < 6; i += 1) seen.push(await reasonAndLeft(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: NOW })));
+    expect(seen).toEqual([
+      ['code_invalid', 4],
+      ['code_invalid', 3],
+      ['code_invalid', 2],
+      ['code_invalid', 1],
+      ['code_invalid', 0],
+      ['code_attempts_exceeded', undefined],
+    ]);
+  });
+
+  it('expires like a real code, and a resend renews it only when a real resend would', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    const later = new Date(NOW.getTime() + 11 * 60 * 1000);
+    expect((await refusalOf(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: later }))).reason).toBe('code_expired');
+    await h.svc.resendEmail({ signup_id, ip: 'unknown', request_id: 'r', now: later });
+    expect(await reasonAndLeft(h.svc.verifyEmail({ signup_id, code: '000000', request_id: 'r', now: later }))).toEqual(['code_invalid', 4]);
+  });
+
+  it('an id that was never issued answers a plain wrong code, as before', async () => {
+    const h = harness();
+    h.requests.findById.mockResolvedValue(null as never);
+    expect(await reasonAndLeft(h.svc.verifyEmail({ signup_id: 'never-issued', code: '000000', request_id: 'r', now: NOW }))).toEqual(['code_invalid', undefined]);
+  });
+});
+
+// UAT SUP-09 — the daily code cap is answered ('limit' → 429 code_send_limit), real and decoy alike.
+describe('resend-email — the daily cap', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'pat.person@gmail.com', robot_token: 'turnstile-ok' };
+  const at = (min: number) => new Date(NOW.getTime() + min * 60 * 1000);
+
+  it('a real sign-up at five codes today answers limit; inside the gap it is ignored; otherwise sent', async () => {
+    const h = harness({ signup: row({ status: 'PENDING', email_otp_last_sent_at: NOW } as never) });
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'a', request_id: 'r', now: at(0.5) })).toBe('ignored');
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'b', request_id: 'r', now: at(2) })).toBe('sent');
+    h.requests.emailSendsSince.mockResolvedValue(5);
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'c', request_id: 'r', now: at(4) })).toBe('limit');
+  });
+
+  it('a decoy sign-up reaches the same limit after the same number of codes', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    const outs = [];
+    for (let i = 1; i <= 5; i += 1) outs.push(await h.svc.resendEmail({ signup_id, ip: `ip${i}`, request_id: 'r', now: at(i * 2) }));
+    expect(outs).toEqual(['sent', 'sent', 'sent', 'sent', 'limit']);
   });
 });
 

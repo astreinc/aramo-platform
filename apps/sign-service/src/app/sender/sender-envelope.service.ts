@@ -798,7 +798,12 @@ export class SenderEnvelopeService {
 
   async evidence(auth: AuthContextType, envelope_id: string, requestId: string) {
     await this.describe(auth, envelope_id, requestId, false);
-    return this.provider.getEvidence(auth.tenant_id, envelope_id);
+    const evidence = await this.provider.getEvidence(auth.tenant_id, envelope_id);
+    // UAT CMP-05 (PO 2026-11-18) — event_chain_hash is the chain now (it grows after
+    // completion: certificate, custody, copies); the certificate cites the chain at completion.
+    // Both are returned, so the page shows the value printed on the certificate.
+    const certificate_event_chain_hash = await this.repo.certificateChainHash(auth.tenant_id, envelope_id);
+    return { ...evidence, certificate_event_chain_hash };
   }
 
   // ── DRAFT authoring ────────────────────────────────────────────────────────

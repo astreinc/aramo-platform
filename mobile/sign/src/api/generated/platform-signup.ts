@@ -123,7 +123,10 @@ export interface paths {
         put?: never;
         /**
          * Email a fresh code (after 60 seconds; at most 5 a day).
-         * @description Always 202; nothing is sent inside the 60-second gap, over the daily limit or for an unknown signup.
+         * @description 202; nothing is sent inside the 60-second gap or for an unknown signup. Over the daily
+         *     limit (5 codes) it answers 429 `code_send_limit` (UAT SUP-09) — the same for a decoy
+         *     signup from start (an address that already has an account), which counts its sends
+         *     too, so the answer never tells the two apart.
          */
         post: operations["resendPersonalSignupEmailCode"];
         delete?: never;
@@ -462,6 +465,15 @@ export interface operations {
                 };
             };
             404: components["responses"]["SignupNotFound"];
+            /** @description `INVALID_REQUEST` (`code_send_limit`): five codes were sent today. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     verifyPersonalSignupEmail: {

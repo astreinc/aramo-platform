@@ -306,6 +306,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     await prisma.user.create({ data: { id: uuidv7(), email: 'jane.doe+old@gmail.com', tenant_id: t } });
     expect(await signups.gmailAliasOfExisting('janedoe@gmail.com', 'janedoe@gmail.com')).toBe(true);
     expect(await signups.gmailAliasOfExisting('nobody@gmail.com', 'nobody@gmail.com')).toBe(false);
+    // UAT SUP-13 — the existing account's address, for the dot / +tag variant only.
+    expect(await signups.gmailAliasUserEmails('janedoe@gmail.com', 'janedoe@gmail.com')).toEqual(['jane.doe+old@gmail.com']);
+    expect(await signups.gmailAliasUserEmails('janedoe@gmail.com', 'jane.doe+old@gmail.com')).toEqual([]);
+    expect(await signups.gmailAliasUserEmails('jane@outlook.com', 'jane@outlook.com')).toEqual([]);
     await prisma.tenantRiskState.update({ where: { tenant_id: t }, data: { phone_e164: '+12025550999' } });
     expect(await signups.phoneUsedByAnother('+12025550999', 'x@gmail.com')).toBe(true);
     expect(await signups.phoneUsedByAnother('+12025550998', 'x@gmail.com')).toBe(false);

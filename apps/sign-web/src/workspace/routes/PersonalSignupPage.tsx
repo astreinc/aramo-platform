@@ -254,7 +254,10 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
             title="Check your email"
             sub={
               <>
-                We sent a 6-digit code to <strong>{email}</strong>. It works for 10 minutes.
+                {/* UAT SUP-06 — the same words whether or not the address already has an account
+                    (Personal Free §3.7 non-enumeration), so they never promise a code. */}
+                If <strong>{email}</strong> can be used for a new account, we’ve sent it a 6-digit code that works for 10 minutes. If it
+                already has an Aramo account, we’ve emailed it instead: no code will come, so sign in.
               </>
             }
             submitLabel="Verify email"

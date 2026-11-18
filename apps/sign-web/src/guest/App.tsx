@@ -571,10 +571,18 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
 
 // Feature-Parity §1.9 — the recipient enters the access code the sender gave them
 // before anything of the document is shown. The code is sent once and never kept.
-function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Promise<'ok' | 'incorrect'> }) {
+/** UAT SEC-04 — a wrong code says how many tries are left (the server counts; the fifth locks). */
+export function accessCodeWrongText(left: number | null): string {
+  if (left === null) return "That code isn't right. Check it and try again.";
+  return `That code isn't right. ${left} ${left === 1 ? 'attempt' : 'attempts'} left before this document is locked.`;
+}
+
+export type AccessCodeResult = { kind: 'ok' } | { kind: 'incorrect'; left: number | null };
+
+function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Promise<AccessCodeResult> }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [wrong, setWrong] = useState(false);
+  const [wrong, setWrong] = useState<{ left: number | null } | null>(null);
   return (
     <main className="sg-center">
       <div className="sg-card" data-testid="sg-access-code">
@@ -585,8 +593,8 @@ function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Pro
           <TextIn value={code} onChange={(e) => setCode(e.target.value)} aria-label="Access code" autoComplete="off" />
         </label>
         {wrong ? (
-          <p className="sg-error" role="alert">
-            That code isn&apos;t right. Check it and try again.
+          <p className="sg-error" role="alert" data-testid="sg-access-code-wrong">
+            {accessCodeWrongText(wrong.left)}
           </p>
         ) : null}
         <Btn
@@ -595,7 +603,7 @@ function AccessCodeCard({ onSubmit }: { readonly onSubmit: (code: string) => Pro
           onClick={() => {
             setBusy(true);
             void onSubmit(code).then((r) => {
-              setWrong(r === 'incorrect');
+              setWrong(r.kind === 'incorrect' ? { left: r.left } : null);
               setBusy(false);
             });
           }}
@@ -879,7 +887,19 @@ export function App(): JSX.Element {
   );
 }
 
+/**
+ * Web Self-Signing A2 §3.4 — the workspace's return hint for a document the sender signs
+ * themselves (`?ret=`). Display only (it grants nothing): accepted only as a same-origin
+ * workspace envelope path; anything else is null and the usual done screen shows.
+ */
+export function selfSignReturn(search: string): string | null {
+  const ret = new URLSearchParams(search).get('ret');
+  if (ret === null) return null;
+  return /^\/(sign|personal)\/envelopes\/[0-9a-f-]{36}$/i.test(ret) ? ret : null;
+}
+
 function SignerApp({ token }: { readonly token: string }): JSX.Element {
+  const selfReturn = useState(() => selfSignReturn(window.location.search))[0];
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   // M-A15 §4.1 — the signer's saved signature / initials offered on this page.
@@ -1262,15 +1282,15 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     }
   };
 
-  const submitAccessCode = async (code: string): Promise<'ok' | 'incorrect'> => {
+  const submitAccessCode = async (code: string): Promise<AccessCodeResult> => {
     try {
       await signApi.accessCode(token, code);
       open();
-      return 'ok';
+      return { kind: 'ok' };
     } catch (e) {
-      if (e instanceof SignApiError && e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'incorrect';
+      if (e instanceof SignApiError && e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return { kind: 'incorrect', left: e.attemptsRemaining ?? null };
       fail(e);
-      return 'ok';
+      return { kind: 'ok' };
     }
   };
 
@@ -1404,6 +1424,17 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       <>
         <Header reportToken={token} />
         <EndState tone="muted" title="You declined to sign" body="Your decision and your reason have been recorded, and the sender can see them. You can close this page." />
+      </>
+    );
+  if (screen === 'done' && selfReturn !== null)
+    return (
+      <>
+        <Header reportToken={token} />
+        <EndState tone="ok" title="You signed" body="Your signed PDF and certificate are ready.">
+          <a className="sg-btn sg-btn--primary" href={selfReturn} data-testid="self-sign-open-envelope">
+            Open the envelope
+          </a>
+        </EndState>
       </>
     );
   if (screen === 'done')

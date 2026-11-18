@@ -6,6 +6,8 @@ import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, ty
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { DELETE_WHEN_FINISHED } from './EnvelopeDetail';
+
 // Retention and Purge (DocuSign parity) — Delete moves a completed, declined, voided or
 // expired envelope to this organization's Deleted folder only (other parties keep theirs);
 // Restore brings it back until a purge has run. The backend decides; these mirror it.
@@ -274,6 +276,12 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                       ) : null}
                       {!deleted && DELETABLE.has(e.status) ? (
                         <LinkBtn bad aria-label={`Delete ${e.subject}`} title="Delete" onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
+                          <Icon name="trash" />
+                        </LinkBtn>
+                      ) : null}
+                      {!deleted && (e.status === 'SENT' || e.status === 'IN_PROGRESS') ? (
+                        // UAT DEL-09 — shown disabled with the reason, instead of hidden.
+                        <LinkBtn disabled aria-label={`Delete ${e.subject}: ${DELETE_WHEN_FINISHED}`} title={DELETE_WHEN_FINISHED} data-testid={`delete-disabled-${e.id}`} style={{ opacity: 0.4, cursor: 'not-allowed' }}>
                           <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
