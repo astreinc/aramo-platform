@@ -5,6 +5,8 @@ import { Input } from '@aramo/fe-foundation';
 import {
   E164_RE,
   ENVELOPE_MESSAGE_MAX,
+  ENVELOPE_SUBJECT_MAX,
+  SUBJECT_LIMIT_NOTE,
   errorMessage,
   fileToBase64,
   isAllowanceLimit,
@@ -898,7 +900,18 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
           <section className="sg-card">
             <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
               <Field label="Email subject" htmlFor="subject">
-                <TextIn id="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} />
+                <TextIn
+                  id="subject"
+                  value={subject}
+                  maxLength={ENVELOPE_SUBJECT_MAX}
+                  aria-describedby="subject-count"
+                  onChange={(e) => setSubject(e.target.value.slice(0, ENVELOPE_SUBJECT_MAX))}
+                />
+                {/* UAT DOC-07 — a counter, and why typing stops at the limit. */}
+                <div id="subject-count" className="sg-help" data-testid="envelope-subject-count" style={{ textAlign: 'right' }} aria-live="polite">
+                  {subject.length >= ENVELOPE_SUBJECT_MAX ? `${SUBJECT_LIMIT_NOTE} ` : ''}
+                  {subject.length} / {ENVELOPE_SUBJECT_MAX}
+                </div>
               </Field>
               <Field label="Message (optional)" htmlFor="message">
                 <Area

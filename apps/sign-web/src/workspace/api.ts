@@ -306,6 +306,9 @@ export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
 export const MAX_SIGNERS = 10;
 // Sign Mobile M-A3 §3 — the sender message limit (sign-service MESSAGE_MAX).
 export const ENVELOPE_MESSAGE_MAX = 1000;
+// UAT DOC-07 — the envelope subject's limit (the server's and the app's SUBJECT_MAX).
+export const ENVELOPE_SUBJECT_MAX = 200;
+export const SUBJECT_LIMIT_NOTE = `Subjects can be up to ${ENVELOPE_SUBJECT_MAX} characters.`;
 
 export interface EnvelopeDetail {
   id: string;

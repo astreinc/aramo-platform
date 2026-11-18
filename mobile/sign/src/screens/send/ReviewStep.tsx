@@ -12,7 +12,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { BANNER, useTheme } from '../../theme';
 import type { LimitBanner } from '../../features/inbox/allowance';
-import { MESSAGE_MAX, effectiveSubject } from '../../features/send/draftModel';
+import { MESSAGE_MAX, SUBJECT_MAX, effectiveSubject } from '../../features/send/draftModel';
 import {
   copyRecipients,
   copyTimingLabel,
@@ -68,9 +68,18 @@ export function ReviewStep({
         label="Subject"
         value={effectiveSubject(p)}
         onChangeText={(s) => controller.setSubject(s)}
-        maxLength={200}
+        maxLength={SUBJECT_MAX}
         placeholder="Subject"
+        accessibilityHint={`Up to ${SUBJECT_MAX} characters`}
       />
+      {/* UAT DOC-07 — a counter, and why typing stops at the limit (same words as the web). */}
+      <Text
+        style={[styles.counter, { color: t.color.textSecondary }]}
+        accessibilityLiveRegion="polite"
+        testID="subject-count"
+      >
+        {`${effectiveSubject(p).length >= SUBJECT_MAX ? `Subjects can be up to ${SUBJECT_MAX} characters. ` : ''}${effectiveSubject(p).length} / ${SUBJECT_MAX}`}
+      </Text>
       <TextField
         label="Message"
         hint="(optional)"
