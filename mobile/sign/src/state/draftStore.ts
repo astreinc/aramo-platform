@@ -16,6 +16,11 @@ export interface LocalDraft<TPayload = unknown> {
   readonly step: SendStep;
   readonly updatedAt: string;
   readonly payload: TPayload;
+  /**
+   * UAT AND-12 — the sender tapped Save draft and the server copy is not written yet
+   * (offline). The app syncs it on its own when back online (directive §9).
+   */
+  readonly pendingSync?: boolean;
 }
 
 const PREFIX = 'draft.';

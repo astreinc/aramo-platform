@@ -868,8 +868,18 @@ export class SendFlowController {
   async saveDraft(): Promise<'synced' | 'local'> {
     const d = this.state.draft;
     if (!d) return 'local';
-    await this.persist({ ...d, step: this.state.step, updatedAt: this.now() });
+    // UAT AND-12 — an explicit Save marks the draft for sync, so a draft saved offline
+    // is written to the server once the phone is back online (pendingDraftSync.ts).
+    const saved: SendDraft = { ...d, step: this.state.step, updatedAt: this.now(), pendingSync: true };
+    this.set({ draft: saved });
+    await this.persist(saved);
     const ok = await this.sync();
+    const after = this.state.draft;
+    if (ok && after) {
+      const done: SendDraft = { ...after, pendingSync: false };
+      this.set({ draft: done });
+      await this.persist(done);
+    }
     await this.flush();
     return ok ? 'synced' : 'local';
   }
