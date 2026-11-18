@@ -41,12 +41,18 @@ export type SigningFailure =
   /** The envelope reached an end state (completed, declined, voided, expired). */
   | 'executed'
   | 'incomplete'
+  /** UAT SEC-04 — the sender set an access code and this session has not entered it. */
+  | 'access_code'
+  /** UAT SEC-04 — five wrong access codes locked this recipient out. */
+  | 'access_code_locked'
   | 'network'
   | 'error';
 
 export function classifySigningError(e: unknown): SigningFailure {
   if (!isApiError(e)) return 'error';
   if (e.isNetwork) return 'network';
+  if (e.code === 'SIGNER_ACCESS_CODE_LOCKED') return 'access_code_locked';
+  if (e.code === 'SIGNER_ACCESS_CODE_REQUIRED') return 'access_code';
   if (e.reason === 'signing_session_ended' || endsSigningSession(e)) return 'ended';
   if (e.is('SIGNER_NOT_YET_ELIGIBLE', 'not_your_turn')) return 'not_your_turn';
   if (e.is('ENVELOPE_ALREADY_EXECUTED', 'envelope_not_signable')) return 'executed';
@@ -70,6 +76,43 @@ export function waitingForCopy(e: unknown): string {
       ? (e.details['waiting_for'] as string)
       : null;
   return name ? `Waiting for ${name}` : 'Waiting for an earlier signer';
+}
+
+// UAT SEC-04 — the access code (Feature-Parity §1.9), the same route and copy as the web
+// signer page. The server checks and counts it; the fifth wrong code locks the recipient.
+export const ACCESS_CODE_COPY = {
+  title: 'Enter the access code',
+  body: 'The sender protected this document with an access code. They will have given it to you separately.',
+  lockedTitle: 'Too many incorrect access codes',
+  lockedBody:
+    'For your security, this document is locked. Contact the sender if you still need to sign.',
+} as const;
+
+export function accessCodeWrongText(left: number | null): string {
+  if (left === null) return 'That code isn’t right. Check it and try again.';
+  return `That code isn’t right. ${left} ${left === 1 ? 'attempt' : 'attempts'} left before this document is locked.`;
+}
+
+export type AccessCodeOutcome = { kind: 'ok' } | { kind: 'incorrect'; left: number | null };
+
+/** Submit the code. A wrong code resolves `incorrect`; a lockout or other refusal throws. */
+export async function submitAccessCode(
+  session: GuestSigningSession,
+  code: string,
+): Promise<AccessCodeOutcome> {
+  try {
+    await session.post('/v1/sign/signing/access-code', { access_code: code });
+    return { kind: 'ok' };
+  } catch (e) {
+    if (isApiError(e) && e.code === 'SIGNER_ACCESS_CODE_REQUIRED') {
+      const left = e.details['attempts_remaining'];
+      return {
+        kind: 'incorrect',
+        left: typeof left === 'number' && Number.isInteger(left) && left >= 0 ? left : null,
+      };
+    }
+    throw e;
+  }
 }
 
 /** Exchange the token (marks the signer VIEWED) and read the current disclosure. */

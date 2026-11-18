@@ -193,6 +193,8 @@ describe('signer app', () => {
     fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'wrong' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByRole('alert')).toHaveTextContent("That code isn't right");
+    // UAT SEC-04 — the attempts left are shown.
+    expect(screen.getByRole('alert')).toHaveTextContent('4 attempts left before this document is locked.');
     fireEvent.change(screen.getByLabelText('Access code'), { target: { value: 'Blue-42' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByRole('button', { name: 'Review document' })).toBeInTheDocument();

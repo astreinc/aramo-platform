@@ -53,7 +53,10 @@ import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
 import { boxOnPage, PdfPages, pageSizesFromBase64, type PageLayout } from './PdfPages';
 import {
   acceptAndLoad,
+  ACCESS_CODE_COPY,
+  accessCodeWrongText,
   classifySigningError,
+  submitAccessCode,
   declineSigning,
   DECLINE_REASON_MIN,
   DELEGATE_COPY,
@@ -105,7 +108,9 @@ type Phase =
   | { kind: 'declined' }
   /** B3 — handed to someone else; this link no longer works. */
   | { kind: 'delegated'; name: string }
-  | { kind: 'ended'; message: string }
+  /** UAT SEC-04 — the sender set an access code; asked before anything is shown. */
+  | { kind: 'accesscode' }
+  | { kind: 'ended'; message: string; title?: string }
   | { kind: 'waiting'; message: string }
   | { kind: 'error'; message: string };
 
@@ -254,7 +259,10 @@ export function SigningFlow(props: SigningFlowProps) {
 
   const fail = useCallback((e: unknown) => {
     const kind = classifySigningError(e);
-    if (kind === 'ended') setPhase({ kind: 'ended', message: SIGNING_COPY.ended });
+    if (kind === 'access_code') setPhase({ kind: 'accesscode' });
+    else if (kind === 'access_code_locked')
+      setPhase({ kind: 'ended', title: ACCESS_CODE_COPY.lockedTitle, message: ACCESS_CODE_COPY.lockedBody });
+    else if (kind === 'ended') setPhase({ kind: 'ended', message: SIGNING_COPY.ended });
     else if (kind === 'not_your_turn') setPhase({ kind: 'waiting', message: waitingForCopy(e) });
     else if (kind === 'executed') setPhase({ kind: 'ended', message: SIGNING_COPY.executed });
     else
@@ -493,6 +501,25 @@ export function SigningFlow(props: SigningFlowProps) {
 
   const from = senderName?.trim() ? senderName.trim() : 'The sender';
 
+  if (phase.kind === 'accesscode' && session) {
+    return (
+      <AccessCodeStep
+        onSubmit={async (code) => {
+          try {
+            const r = await submitAccessCode(session, code);
+            if (r.kind === 'ok') open();
+            return r.kind === 'incorrect' ? accessCodeWrongText(r.left) : null;
+          } catch (e) {
+            if (classifySigningError(e) === 'network') return SIGNING_COPY.submitFailed;
+            fail(e);
+            return null;
+          }
+        }}
+        online={online}
+      />
+    );
+  }
+
   // ── End states ──
   if (phase.kind === 'loading') {
     return (
@@ -516,7 +543,7 @@ export function SigningFlow(props: SigningFlowProps) {
           : phase.kind === 'declined'
           ? 'You declined to sign'
           : phase.kind === 'ended'
-            ? 'This link can’t be used'
+            ? (phase.title ?? 'This link can’t be used')
             : 'Couldn’t open this envelope';
     const body =
       phase.kind === 'waiting'
@@ -1124,6 +1151,68 @@ export function SigningFlow(props: SigningFlowProps) {
         onClose={() => setDeclineOpen(false)}
       />
     </View>
+  );
+}
+
+/** UAT SEC-04 — the access-code step (the web signer page's copy and behaviour). */
+function AccessCodeStep({
+  onSubmit,
+  online,
+}: {
+  /** Resolves the message to show (wrong code, offline), or null when it went through. */
+  readonly onSubmit: (code: string) => Promise<string | null>;
+  readonly online: boolean;
+}) {
+  const t = useTheme();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.end, { backgroundColor: t.color.screen }]}
+      keyboardShouldPersistTaps="handled"
+      testID="signing-accesscode"
+    >
+      <Text
+        accessibilityRole="header"
+        style={[styles.endTitle, { color: t.color.text, fontFamily: t.font.family }]}
+      >
+        {ACCESS_CODE_COPY.title}
+      </Text>
+      <Text style={[styles.endBody, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
+        {ACCESS_CODE_COPY.body}
+      </Text>
+      <TextField
+        label="Access code"
+        value={code}
+        onChangeText={setCode}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        secureTextEntry={false}
+      />
+      {message ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={{ color: t.color.destructive, fontSize: 14 }}
+        >
+          {message}
+        </Text>
+      ) : null}
+      <Button
+        title="Continue"
+        busy={busy}
+        disabled={code.trim().length === 0 || busy || !online}
+        onPress={() => {
+          setBusy(true);
+          void onSubmit(code).then((m) => {
+            setMessage(m);
+            setBusy(false);
+          });
+        }}
+      />
+    </ScrollView>
   );
 }
 

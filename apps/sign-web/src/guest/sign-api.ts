@@ -122,6 +122,8 @@ export class SignApiError extends Error {
     readonly status: number,
     // The server's stable details.reason, when it gave one.
     readonly reason?: string,
+    // UAT SEC-04 — details.attempts_remaining (a wrong access code), when the server gave it.
+    readonly attemptsRemaining?: number,
   ) {
     super(code);
     this.name = 'SignApiError';
@@ -144,9 +146,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     throw new SignApiError('NETWORK', 0);
   }
   if (!res.ok) {
-    const detail = (await res.json().catch(() => ({}))) as { error?: { code?: string; details?: { reason?: unknown } } };
+    const detail = (await res.json().catch(() => ({}))) as { error?: { code?: string; details?: { reason?: unknown; attempts_remaining?: unknown } } };
     const reason = detail.error?.details?.reason;
-    throw new SignApiError(detail.error?.code ?? `HTTP_${res.status}`, res.status, typeof reason === 'string' ? reason : undefined);
+    const left = detail.error?.details?.attempts_remaining;
+    throw new SignApiError(
+      detail.error?.code ?? `HTTP_${res.status}`,
+      res.status,
+      typeof reason === 'string' ? reason : undefined,
+      typeof left === 'number' && Number.isInteger(left) && left >= 0 ? left : undefined,
+    );
   }
   return (await res.json()) as T;
 }

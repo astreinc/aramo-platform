@@ -200,4 +200,66 @@ describe('SigningFlow', () => {
     const accept = net.calls.find((c) => c.url.endsWith('/v1/sign/signing/disclosure'))!;
     expect(accept.body).not.toHaveProperty('attested_name');
   });
+
+  // UAT SEC-04 — an access-code recipient opening the link in the app.
+  describe('access code', () => {
+    const required = {
+      status: 403,
+      body: { error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_required' } } },
+    };
+    const disclosure = {
+      status: 200,
+      body: { disclosure_version: '1.0', text: 'You agree.', text_sha256: 'a'.repeat(64) },
+    };
+    function flow(onCode: (code: string) => { status: number; body: unknown }) {
+      let verified = false;
+      const net = recordingFetch((req) => {
+        if (req.url.endsWith('/access-code')) {
+          const code = String((req.body as { access_code?: unknown } | null)?.access_code);
+          const r = onCode(code);
+          if (r.status === 200) verified = true;
+          return r;
+        }
+        if (req.url.endsWith('/exchange')) return { status: 200, body: {} };
+        if (!verified) return required;
+        return req.url.endsWith('/disclosure-text') ? disclosure : { status: 200, body: {} };
+      });
+      const session = createGuestSigningClient({ baseUrl: BASE, fetch: net.fetch }).open(SIGNING_TOKEN);
+      render(wrap(<SigningFlow session={session} signerName="" signedIn={false} onDone={jest.fn()} />));
+      return net;
+    }
+
+    it('asks for the code, shows the attempts left, then opens with the right code', async () => {
+      flow((code) =>
+        code === 'Blue-42'
+          ? { status: 200, body: { verified: true } }
+          : {
+              status: 403,
+              body: { error: { code: 'SIGNER_ACCESS_CODE_REQUIRED', details: { reason: 'access_code_incorrect', attempts_remaining: 4 } } },
+            },
+      );
+      await waitFor(() => expect(screen.getByTestId('signing-accesscode')).toBeTruthy(), { timeout: 15_000 });
+      expect(screen.getByText('Enter the access code')).toBeTruthy();
+      fireEvent.changeText(screen.getByLabelText('Access code'), 'wrong');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() =>
+        expect(screen.getByText('That code isn’t right. 4 attempts left before this document is locked.')).toBeTruthy(),
+      );
+      fireEvent.changeText(screen.getByLabelText('Access code'), 'Blue-42');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), { timeout: 15_000 });
+    });
+
+    it('after the fifth wrong code the document is locked', async () => {
+      flow(() => ({
+        status: 423,
+        body: { error: { code: 'SIGNER_ACCESS_CODE_LOCKED', details: { reason: 'access_code_locked' } } },
+      }));
+      await waitFor(() => expect(screen.getByTestId('signing-accesscode')).toBeTruthy(), { timeout: 15_000 });
+      fireEvent.changeText(screen.getByLabelText('Access code'), 'wrong');
+      fireEvent.press(screen.getByText('Continue'));
+      await waitFor(() => expect(screen.getByText('Too many incorrect access codes')).toBeTruthy());
+      expect(screen.queryByTestId('consent-check')).toBeNull();
+    });
+  });
 });
