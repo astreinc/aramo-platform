@@ -6,6 +6,7 @@ import {
   E164_RE,
   ENVELOPE_MESSAGE_MAX,
   ENVELOPE_SUBJECT_MAX,
+  fetchSourcePdf,
   SUBJECT_LIMIT_NOTE,
   errorMessage,
   fileToBase64,
@@ -256,6 +257,11 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
               <span className="sg-muted" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
                 {fmtBytes(d.byte_size)}
               </span>
+              {/* PO 2026-11-18 (DocuSign comparison) — check the uploaded file before going on: it
+                  opens in a new tab (every page, the browser's viewer); the wizard is untouched. */}
+              <Btn size="sm" variant="ghost" aria-label={`Preview ${d.title}`} onClick={() => void previewDocument(env.id, d.id, setError)} data-testid={`preview-${d.id}`}>
+                Preview
+              </Btn>
               <Btn
                 size="sm"
                 aria-label={`Move ${d.title} up`}
@@ -1230,3 +1236,19 @@ export function signersFullText(everyoneFull: boolean): string {
 
 /** PO 2026-11-18 — the default subject's prefix (same as the app's). */
 export const SUBJECT_PREFIX = 'Please sign: ';
+
+/** PO 2026-11-18 — open a draft document's PDF in a new tab (the envelope page's Preview). */
+export async function previewDocument(envelopeId: string, documentId: string, onError: (m: string) => void): Promise<void> {
+  // Opened first (inside the click), so a pop-up blocker allows it; filled once the bytes arrive.
+  const tab = window.open('', '_blank');
+  try {
+    const bytes = await fetchSourcePdf(envelopeId, documentId);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    if (tab !== null) tab.location.href = url;
+    else window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    tab?.close();
+    onError(errorMessage(e, 'The document couldn’t be opened. Try again.'));
+  }
+}

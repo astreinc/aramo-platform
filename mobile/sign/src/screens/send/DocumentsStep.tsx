@@ -22,6 +22,7 @@ import type { SendFlowController, SendFlowState } from '../../features/send/send
 import { ErrorText, StepTitle } from '../../features/send/ui';
 import type { SendStep } from '../../state/draftStore';
 import { useTheme } from '../../theme';
+import { DocumentPreview } from './DocumentPreview';
 
 export function DocumentsStep({
   controller,
@@ -45,6 +46,7 @@ export function DocumentsStep({
   const busy = state.busy === 'adding';
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; title: string } | null>(null);
+  const [preview, setPreview] = useState<{ key: string; title: string } | null>(null);
   const mi = docs.findIndex((d) => d.key === menuFor);
   const md = docs[mi];
   const local = (i: number) => (docs[i]?.pendingUpload ?? null) !== null;
@@ -108,6 +110,18 @@ export function DocumentsStep({
       {!sheet ? <ErrorText>{state.error}</ErrorText> : null}
 
       <Sheet visible={md !== undefined && renaming === null} onClose={() => setMenuFor(null)} title={md?.title ?? 'Document'}>
+        {/* PO 2026-11-18 — check the document before going on (every page, nothing changed). */}
+        {md ? (
+          <Button
+            testID="doc-preview"
+            title="Preview"
+            variant="secondary"
+            onPress={() => {
+              setPreview({ key: md.key, title: md.title });
+              setMenuFor(null);
+            }}
+          />
+        ) : null}
         {md && local(mi) ? (
           <Button testID="doc-rename" title="Rename" variant="secondary" onPress={() => setRenaming({ key: md.key, title: md.title })} />
         ) : null}
@@ -147,6 +161,7 @@ export function DocumentsStep({
         ) : null}
         <Button title="Cancel" variant="text" onPress={() => setMenuFor(null)} />
       </Sheet>
+      <DocumentPreview doc={preview} load={(key) => controller.documentAsset(key)} onClose={() => setPreview(null)} />
       <Sheet visible={renaming !== null} onClose={() => setRenaming(null)} title="Rename">
         <TextInput
           testID="doc-rename-input"

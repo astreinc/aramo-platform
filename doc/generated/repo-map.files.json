@@ -3213,6 +3213,7 @@
     "apps/sign-web/src/workspace/pages/EnvelopeMessage.spec.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeWizardContacts.spec.ts",
+    "apps/sign-web/src/workspace/pages/EnvelopeWizardSigners.spec.ts",
     "apps/sign-web/src/workspace/pages/Inbox.spec.tsx",
     "apps/sign-web/src/workspace/pages/Inbox.tsx",
     "apps/sign-web/src/workspace/pages/MyProfile.spec.tsx",
