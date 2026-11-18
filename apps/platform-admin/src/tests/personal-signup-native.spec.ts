@@ -107,6 +107,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
       return row({ id: '01900000-0000-7000-8000-0000000a1101', status: String(input['status']), decision: String(input['decision']) });
     }),
     setEmailOtp: vi.fn(async () => undefined),
+    emailSendsSince: vi.fn(async (_canonical: string, _since: Date) => 1),
     findById: vi.fn(async () => signup),
     claimForProvisioning: vi.fn(async () => true),
     claimForProvisioningWithinCap: vi.fn(async () => 'claimed'),
@@ -332,6 +333,30 @@ describe('verify-email — a decoy sign-up counts down and locks out like a real
     const h = harness();
     h.requests.findById.mockResolvedValue(null as never);
     expect(await reasonAndLeft(h.svc.verifyEmail({ signup_id: 'never-issued', code: '000000', request_id: 'r', now: NOW }))).toEqual(['code_invalid', undefined]);
+  });
+});
+
+// UAT SUP-09 — the daily code cap is answered ('limit' → 429 code_send_limit), real and decoy alike.
+describe('resend-email — the daily cap', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'pat.person@gmail.com', robot_token: 'turnstile-ok' };
+  const at = (min: number) => new Date(NOW.getTime() + min * 60 * 1000);
+
+  it('a real sign-up at five codes today answers limit; inside the gap it is ignored; otherwise sent', async () => {
+    const h = harness({ signup: row({ email_otp_last_sent_at: NOW } as never) });
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'a', request_id: 'r', now: at(0.5) })).toBe('ignored');
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'b', request_id: 'r', now: at(2) })).toBe('sent');
+    h.requests.emailSendsSince.mockResolvedValue(5);
+    expect(await h.svc.resendEmail({ signup_id: '01900000-0000-7000-8000-0000000a1100', ip: 'c', request_id: 'r', now: at(4) })).toBe('limit');
+  });
+
+  it('a decoy sign-up reaches the same limit after the same number of codes', async () => {
+    const h = harness();
+    h.identity.findUserByEmail.mockResolvedValue({ id: 'existing-user' } as never);
+    h.requests.findById.mockResolvedValue(null as never);
+    const { signup_id } = (await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW })) as { signup_id: string };
+    const outs = [];
+    for (let i = 1; i <= 5; i += 1) outs.push(await h.svc.resendEmail({ signup_id, ip: `ip${i}`, request_id: 'r', now: at(i * 2) }));
+    expect(outs).toEqual(['sent', 'sent', 'sent', 'sent', 'limit']);
   });
 });
 

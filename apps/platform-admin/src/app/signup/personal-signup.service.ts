@@ -11,6 +11,7 @@ import {
   NATIVE_INTEGRITY_CHECK,
   PERSONAL_ALLOWED_COUNTRIES,
   PERSONAL_OTP_MAX_ATTEMPTS,
+  PERSONAL_OTP_MAX_SENDS_PER_DAY,
   PERSONAL_OTP_TTL_MS,
   PERSONAL_TENANT_CAPABILITIES,
   PersonalSignupRepository,
@@ -206,6 +207,9 @@ export function personalTenantName(row: Pick<PersonalSignupRow, 'id' | 'display_
  * checks (exhausted, then expired, then a counted mismatch). Bounded; lost on restart (the id
  * then answers as an unknown one, as before).
  */
+/** UAT SUP-09 — what a resend did: sent, ignored (inside the 60 s gap / unknown), or the daily cap. */
+export type ResendOutcome = 'sent' | 'ignored' | 'limit';
+
 export class DecoyCodeAttempts {
   private readonly byId = new Map<string, { attempts: number; expires_at: number; last_sent_at: number; sends: number }>();
   constructor(private readonly maxEntries = 10_000) {}
@@ -232,12 +236,14 @@ export class DecoyCodeAttempts {
   }
 
   /** A resend renews a decoy exactly when a real resend would (the same gap and daily cap). */
-  renew(id: unknown, now: Date): void {
-    if (typeof id !== 'string') return;
+  renew(id: unknown, now: Date): ResendOutcome {
+    if (typeof id !== 'string') return 'ignored';
     const d = this.byId.get(id);
-    if (d === undefined) return;
-    if (!mayResendPersonalOtp({ last_sent_at: new Date(d.last_sent_at), sends_last_24h: d.sends, now })) return;
+    if (d === undefined) return 'ignored';
+    if (d.sends >= PERSONAL_OTP_MAX_SENDS_PER_DAY) return 'limit';
+    if (!mayResendPersonalOtp({ last_sent_at: new Date(d.last_sent_at), sends_last_24h: d.sends, now })) return 'ignored';
     this.byId.set(id, { attempts: 0, expires_at: now.getTime() + PERSONAL_OTP_TTL_MS, last_sent_at: now.getTime(), sends: d.sends + 1 });
+    return 'sent';
   }
 
   private sweep(now: Date): void {
@@ -532,18 +538,19 @@ export class PersonalSignupService {
   }
 
   /** Resend the email code (60 s gap; 5 a day per address). Always the same answer. */
-  async resendEmail(input: { signup_id?: unknown; ip: string; request_id: string; now?: Date }): Promise<void> {
+  // UAT SUP-09 — the daily cap is now answered ('limit' → 429 code_send_limit), the same way
+  // for a real and a decoy sign-up (decoys count their sends), so it reveals nothing.
+  async resendEmail(input: { signup_id?: unknown; ip: string; request_id: string; now?: Date }): Promise<ResendOutcome> {
     const now = input.now ?? new Date();
-    if (!this.budget.allow(`personal:${input.ip}`, now.getTime())) return;
+    if (!this.budget.allow(`personal:${input.ip}`, now.getTime())) return 'ignored';
     const row = await this.live(input.signup_id, now);
-    if (row === null) {
-      this.decoys.renew(input.signup_id, now);
-      return;
-    }
-    if (row.status !== 'PENDING') return;
+    if (row === null) return this.decoys.renew(input.signup_id, now);
+    if (row.status !== 'PENDING') return 'ignored';
     const sends = await this.requests.emailSendsSince(row.canonical_email, new Date(now.getTime() - DAY_MS));
-    if (!mayResendPersonalOtp({ last_sent_at: row.email_otp_last_sent_at, sends_last_24h: sends, now })) return;
+    if (sends >= PERSONAL_OTP_MAX_SENDS_PER_DAY) return 'limit';
+    if (!mayResendPersonalOtp({ last_sent_at: row.email_otp_last_sent_at, sends_last_24h: sends, now })) return 'ignored';
     await this.sendEmailCode(row, now);
+    return 'sent';
   }
 
   // ── verify-email (§3.2) ────────────────────────────────────────────────────
