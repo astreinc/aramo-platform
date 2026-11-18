@@ -5,7 +5,9 @@ import { recordingFetch } from '../../../testing/fakes';
 import { loadTemplateLibrary, listTemplates, parseSigning, type SenderTemplate } from '../../send/templates';
 import {
   FEATURE_UNAVAILABLE,
+  NEEDS_PLAN,
   NO_TEMPLATE_PERMISSION,
+  PERSONAL_TEMPLATES_PROMPT,
   NO_TEMPLATES,
   contextRefusal,
   templateMeta,
@@ -170,6 +172,27 @@ describe('templates view', () => {
     expect(contextRefusal(OK_CONTEXT)).toBeNull();
     expect(contextRefusal({ features: { templates: false }, permissions: { templates: true } })).toBe(FEATURE_UNAVAILABLE);
     expect(contextRefusal({ features: { templates: true }, permissions: {} })).toBe(NO_TEMPLATE_PERMISSION);
+  });
+
+  // UAT DOC-11 — Personal Free: templates are on the account but not in its plan
+  // (template_plan FREE_PLAN). The upgrade prompt, never the organization wording.
+  it('a plan without templates is the Personal upgrade prompt (Business: needs a plan)', () => {
+    const base = { contextLoading: false, libraryLoading: false, error: null, library: undefined };
+    const freePersonal = { tenant: { kind: 'PERSONAL' }, features: { templates: true }, permissions: { templates: true }, template_plan: 'FREE_PLAN' };
+    expect(contextRefusal(freePersonal)).toBe(NEEDS_PLAN);
+    expect(templatesView({ ...base, context: freePersonal })).toEqual({ kind: 'upsell', message: PERSONAL_TEMPLATES_PROMPT });
+    expect(PERSONAL_TEMPLATES_PROMPT).toContain('Templates come with Standard');
+    const business = { ...freePersonal, tenant: { kind: 'BUSINESS' }, template_plan: 'NOT_SUBSCRIBED' };
+    expect(templatesView({ ...base, context: business })).toEqual({ kind: 'unavailable', message: NEEDS_PLAN });
+    expect(contextRefusal({ ...freePersonal, template_plan: 'INCLUDED' })).toBeNull();
+    // The context could not be read: the server's Free-plan refusal is still the prompt.
+    expect(
+      templatesView({
+        ...base,
+        context: undefined,
+        library: { kind: 'unavailable', reason: 'templates_not_in_plan', code: 'ESIGN_FEATURE_NOT_AVAILABLE' },
+      }),
+    ).toEqual({ kind: 'upsell', message: PERSONAL_TEMPLATES_PROMPT });
   });
 
   it('derives loading, unavailable, empty and list states', () => {

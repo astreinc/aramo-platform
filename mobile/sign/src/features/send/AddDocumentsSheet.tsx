@@ -420,6 +420,9 @@ export function AddDocumentsSheet({
             <TemplateRows rows={view.rows} onUse={(template) => setMode({ kind: 'template', template })} />
           ) : view.kind === 'empty' ? (
             <EmptyState title="No templates" body={view.message} />
+          ) : view.kind === 'upsell' ? (
+            // UAT DOC-11 — the Free plan: the upgrade prompt, not "aren't available".
+            <EmptyState title="Not included in the Free plan" body={`${view.message} See Account → Plans.`} />
           ) : (
             <EmptyState title="Templates aren’t available" body={view.message} />
           )}
