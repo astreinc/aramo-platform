@@ -3172,6 +3172,7 @@
     "apps/sign-web/src/workspace/api-seats.spec.ts",
     "apps/sign-web/src/workspace/api.ts",
     "apps/sign-web/src/workspace/billing-terms.spec.ts",
+    "apps/sign-web/src/workspace/boot-bfcache.spec.ts",
     "apps/sign-web/src/workspace/boot.tsx",
     "apps/sign-web/src/workspace/branding-api.ts",
     "apps/sign-web/src/workspace/catalog.ts",

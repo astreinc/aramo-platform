@@ -726,6 +726,13 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               </div>
             </section>
           ))}
+          {/* UAT SND-05 — the signer limit, said out loud (the app's words): past it a new
+              person receives a copy, and the Signer role is unavailable. */}
+          {signerCount >= MAX_SIGNERS ? (
+            <p className="sg-note" role="status" data-testid="signers-full" style={{ margin: 0 }}>
+              {signersFullText(full)}
+            </p>
+          ) : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <Btn onClick={() => add()} disabled={full} data-testid="add-recipient">
               + Add recipient
@@ -1206,4 +1213,11 @@ export function filterContactRows(rows: readonly ContactRow[], query: string): C
   const q = query.trim().toLowerCase();
   if (q === '') return [...rows];
   return rows.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+}
+
+/** UAT SND-05 — the signer-limit note (the app says "An envelope can have up to 10 signers."). */
+export function signersFullText(everyoneFull: boolean): string {
+  return everyoneFull
+    ? `An envelope can have up to ${MAX_SIGNERS} signers and ${MAX_COPY_RECIPIENTS} people who receive a copy.`
+    : `An envelope can have up to ${MAX_SIGNERS} signers. Anyone else you add receives a copy.`;
 }
