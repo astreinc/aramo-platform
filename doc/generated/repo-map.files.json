@@ -2668,6 +2668,7 @@
     "apps/platform-web/src/commercial/finance/RenewalsView.tsx",
     "apps/platform-web/src/commercial/finance/RevenueView.tsx",
     "apps/platform-web/src/commercial/finance/finance-api.ts",
+    "apps/platform-web/src/commercial/finance/finance-model.spec.ts",
     "apps/platform-web/src/commercial/finance/finance-model.ts",
     "apps/platform-web/src/commercial/finance/finance-shared.tsx",
     "apps/platform-web/src/commercial/finance/finance-v12.spec.tsx",
