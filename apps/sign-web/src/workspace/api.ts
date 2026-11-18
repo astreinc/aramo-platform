@@ -393,6 +393,8 @@ export interface Evidence {
   envelope_id: string;
   status: string;
   event_chain_hash: string;
+  // UAT CMP-05 — the hash printed on the certificate (the chain at completion); null before it.
+  certificate_event_chain_hash?: string | null;
   signature: string;
   signature_algorithm: string;
   completed_at: string | null;

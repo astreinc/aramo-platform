@@ -388,9 +388,25 @@ export function EnvelopeDetail() {
                   </div>
                 ))}
                 {evidence !== null ? (
-                  <div className="sg-help" style={{ marginTop: 10 }}>
-                    Event-chain hash <span className="sg-mono">{evidence.event_chain_hash.slice(0, 16)}…</span> · signed with {evidence.signature_algorithm}. The full certificate
-                    is in the downloadable PDF.
+                  <div className="sg-help" style={{ marginTop: 10 }} data-testid="evidence-chain">
+                    {/* UAT CMP-05 — the value printed on the certificate, in full (the chain keeps
+                        growing after completion, so its current hash differs). */}
+                    Event-chain hash{' '}
+                    <span className="sg-mono" style={{ wordBreak: 'break-all' }} data-testid="evidence-chain-hash">
+                      {evidence.certificate_event_chain_hash ?? evidence.event_chain_hash}
+                    </span>{' '}
+                    <LinkBtn
+                      onClick={() =>
+                        void navigator.clipboard
+                          ?.writeText(evidence.certificate_event_chain_hash ?? evidence.event_chain_hash)
+                          .then(() => toast('Copied'), () => undefined)
+                      }
+                      data-testid="evidence-chain-copy"
+                    >
+                      Copy
+                    </LinkBtn>
+                    {' · '}signed with {evidence.signature_algorithm}.{' '}
+                    {evidence.certificate_event_chain_hash ? 'This is the hash printed on the certificate. ' : null}The full certificate is in the downloadable PDF.
                   </div>
                 ) : null}
               </div>
