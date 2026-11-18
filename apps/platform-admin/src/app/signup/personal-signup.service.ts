@@ -389,7 +389,14 @@ export class PersonalSignupService {
     // unbound (never signed in): that one resumes through the normal flow.
     const existingUser = await this.identity.findUserByEmail(email);
     const resumable = existingUser === null ? null : await this.requests.findResumableLapsed(email);
-    if (existingUser !== null && resumable === null) {
+    // UAT SUP-13 (PO 2026-11-18; §3.7 + §3.8 "dots and +tag are removed to detect duplicate
+    // accounts") — a Gmail dot / +tag variant of an EXISTING account is that account: the
+    // same answer and email as an exact match, no code and no second account. An alias whose
+    // own signup lapsed unbound does not count (that address may sign up again). The §6.2
+    // +30 alias signal still scores an alias of another signup still in progress.
+    const aliasOfExisting =
+      existingUser === null ? await this.aliasOfLiveAccount(canonical, email) : false;
+    if ((existingUser !== null && resumable === null) || aliasOfExisting) {
       await this.send(email, 'You already have an Aramo account', [
         'Someone (hopefully you) tried to create a new Aramo Sign personal account with this email address.',
         'This address already belongs to an Aramo account, so no new account was created. Sign in instead.',
@@ -458,6 +465,13 @@ export class PersonalSignupService {
     if (rating.decision === 'refuse') throw neutralRefusal(rid);
     await this.sendEmailCode(row, now);
     return { signup_id: row.id };
+  }
+
+  private async aliasOfLiveAccount(canonical: string, email: string): Promise<boolean> {
+    for (const other of await this.requests.gmailAliasUserEmails(canonical, email)) {
+      if ((await this.requests.findResumableLapsed(other)) === null) return true;
+    }
+    return false;
   }
 
   /** Resend the email code (60 s gap; 5 a day per address). Always the same answer. */

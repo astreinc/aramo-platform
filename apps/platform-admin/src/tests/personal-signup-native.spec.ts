@@ -99,6 +99,7 @@ function harness(opts: { registry?: readonly LegalDocumentVersion[]; texts?: Leg
     findResumableLapsed: vi.fn(async () => null),
     countByIpSince: vi.fn(async () => 0),
     gmailAliasOfExisting: vi.fn(async () => false),
+    gmailAliasUserEmails: vi.fn(async (_canonical: string, _email: string): Promise<string[]> => []),
     phoneUsedByAnother: vi.fn(async () => false),
     attestKeyIdUsed: vi.fn(async (_key: string) => false),
     create: vi.fn(async (input: Record<string, unknown>) => {
@@ -260,6 +261,32 @@ describe('start — client android (§2.1)', () => {
       expect(h.robot.verify).toHaveBeenCalledWith('ts', 'unknown');
       expect(h.integrity.calls).toHaveLength(0);
     }
+  });
+});
+
+// UAT SUP-13 (PO 2026-11-18; §3.7 + §3.8) — a Gmail dot / +tag variant of an existing account.
+describe('start — Gmail alias of an existing account', () => {
+  const WEB = { ...ANDROID, client: undefined, email: 'patperson@gmail.com', robot_token: 'turnstile-ok' };
+
+  it('is treated as that account: same answer, "already have an account" email, no code, no new signup', async () => {
+    const h = harness();
+    h.requests.gmailAliasUserEmails.mockResolvedValueOnce(['pat.person@gmail.com']);
+    const out = await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW });
+    expect(out).toHaveProperty('signup_id');
+    expect(h.requests.create).not.toHaveBeenCalled();
+    expect(h.requests.setEmailOtp).not.toHaveBeenCalled();
+    expect(h.mailer.send).toHaveBeenCalledTimes(1);
+    const mail = JSON.stringify(h.mailer.send.mock.calls[0]);
+    expect(mail).toContain('You already have an Aramo account');
+    expect(mail).toContain('patperson@gmail.com');
+  });
+
+  it('an alias whose own signup lapsed unbound does not block a new signup', async () => {
+    const h = harness();
+    h.requests.gmailAliasUserEmails.mockResolvedValueOnce(['pat.person@gmail.com']);
+    h.requests.findResumableLapsed.mockResolvedValueOnce({ tenant_id: 't', user_id: 'u', prior_signup_id: 'p' } as never);
+    await h.svc.start({ ...WEB, ip: 'unknown', request_id: 'r', now: NOW });
+    expect(h.requests.create).toHaveBeenCalledTimes(1);
   });
 });
 

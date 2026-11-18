@@ -234,6 +234,21 @@ export class PersonalSignupRepository {
     return reqs > 0;
   }
 
+  /**
+   * UAT SUP-13 (PO 2026-11-18; directive §3.7 + §3.8) — the existing accounts whose Gmail
+   * address is the same mailbox as `email` written differently (dots / +tag), e.g.
+   * jane.doe@gmail.com for janedoe@gmail.com. Empty for non-Gmail or an exact match only.
+   */
+  async gmailAliasUserEmails(canonical_email: string, email: string): Promise<string[]> {
+    if (!canonical_email.endsWith('@gmail.com')) return [];
+    const rows = await this.prisma.$queryRaw<{ email: string }[]>`
+      SELECT lower("email") AS email FROM "identity"."User"
+       WHERE lower("email") <> ${email}
+         AND split_part(lower("email"), '@', 2) IN ('gmail.com', 'googlemail.com')
+         AND regexp_replace(split_part(split_part(lower("email"), '@', 1), '+', 1), '\\.', '', 'g') || '@gmail.com' = ${canonical_email}`;
+    return rows.map((r) => r.email);
+  }
+
   /** §6.2 "Phone already used by another account". */
   async phoneUsedByAnother(phone_e164: string, canonical_email: string, except_tenant_id: string | null = null): Promise<boolean> {
     const held = await this.prisma.tenantRiskState.count({
