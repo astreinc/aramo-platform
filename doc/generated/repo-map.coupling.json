@@ -12094,6 +12094,7 @@
       "to": "deploy/backup/aramo-deletion-replay.sh"
     },
     { "from": "deploy/backup/pg-restore.sh", "status": "unscoped", "to": "deploy/backup/lib.sh" },
+    { "from": "deploy/build-images.sh", "status": "unscoped", "to": "doc/runbooks/RELEASE-box.md" },
     { "from": "deploy/build-images.test.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     {
       "from": "deploy/migrate-prod.sh",
