@@ -34,9 +34,9 @@ const tx = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function config(): AppleStoreConfig {
+function config(environment: AppleStoreConfig['environment'] = 'Sandbox'): AppleStoreConfig {
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-  return { issuer_id: '57246542-96fe-1a63-e053-0824d011072a', key_id: 'TESTKEY123', private_key_pem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), bundle_id: 'ai.aramo.sign', environment: 'Sandbox' };
+  return { issuer_id: '57246542-96fe-1a63-e053-0824d011072a', key_id: 'TESTKEY123', private_key_pem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), bundle_id: 'ai.aramo.sign', environment };
 }
 
 describe('M-A12 — Apple Root CA G3 (embedded trust anchor)', () => {
@@ -195,5 +195,95 @@ describe('M-A12 — AppleAppStoreAdapter', () => {
     const a = new AppleAppStoreAdapter(null, verifier);
     expect(a.isConfigured()).toBe(false);
     await expect(a.retrieveSubscription('x')).rejects.toThrow(/not configured/);
+  });
+});
+
+// Amendment M-A12-A2 (LOCKED) — a PRODUCTION server also takes Apple SANDBOX purchases (App Review,
+// TestFlight): R-1 signed items from either environment; R-2 the re-fetch falls back to the Sandbox
+// Server API only on "unknown transaction", and an answer must say the environment of its API.
+describe('M-A12-A2 — Production server and Apple sandbox purchases', () => {
+  const chain = appleShapedChain();
+  const verifier = new AppleJwsVerifier({ roots: [chain.rootPem], now: () => NOW });
+  const failure = async (p: Promise<unknown>) => {
+    try {
+      await p;
+      return 'ACCEPTED';
+    } catch (e) {
+      return e instanceof StoreVerificationError ? e.reason : String(e);
+    }
+  };
+  const PROD_API = 'https://api.storekit.itunes.apple.com/inApps/v1/subscriptions/2000000100';
+  const SANDBOX_API = 'https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions/2000000100';
+  const answer = async (environment: string, txEnv = environment) => ({
+    bundleId: 'ai.aramo.sign',
+    environment,
+    data: [{ lastTransactions: [{ originalTransactionId: '2000000100', status: 1, signedTransactionInfo: await signedByChain(tx({ environment: txEnv }), chain), signedRenewalInfo: await signedByChain({ autoRenewStatus: 1, signedDate: SIGNED }, chain) }] }],
+  });
+
+  it('R-1: a Production server accepts a Sandbox or Production transaction; bundle still checked', async () => {
+    const a = new AppleAppStoreAdapter(config('Production'), verifier, async () => ({ ok: false, status: 500, json: async () => ({}) }), () => NOW.getTime());
+    expect((await a.verifyTransaction(await signedByChain(tx({ environment: 'Sandbox' }), chain))).environment).toBe('Sandbox');
+    expect((await a.verifyTransaction(await signedByChain(tx({ environment: 'Production' }), chain))).environment).toBe('Production');
+    expect(await failure(a.verifyTransaction(await signedByChain(tx({ environment: 'Xcode' }), chain)))).toBe('wrong_environment');
+    expect(await failure(a.verifyTransaction(await signedByChain(tx({ environment: 'Sandbox', bundleId: 'com.other.app' }), chain)))).toBe('wrong_bundle');
+    expect(await failure(a.verifyTransaction(await signedByChain(tx({ environment: 'Sandbox' }), appleShapedChain())))).toBe('jws_untrusted_root');
+  });
+
+  it('R-1: a Production server accepts a Sandbox notification; a Sandbox server still refuses Production', async () => {
+    const prod = new AppleAppStoreAdapter(config('Production'), verifier, async () => ({ ok: false, status: 500, json: async () => ({}) }), () => NOW.getTime());
+    const signedTransactionInfo = await signedByChain(tx({ environment: 'Sandbox' }), chain);
+    const n = { notificationType: 'SUBSCRIBED', notificationUUID: 'b5f0c0de-0000-4000-8000-000000000002', signedDate: SIGNED, data: { bundleId: 'ai.aramo.sign', environment: 'Sandbox', signedTransactionInfo } };
+    expect((await prod.verifyNotification(await signedByChain(n, chain))).subscription_ref).toBe('2000000100');
+    const sandbox = new AppleAppStoreAdapter(config('Sandbox'), verifier, async () => ({ ok: false, status: 500, json: async () => ({}) }), () => NOW.getTime());
+    expect(await failure(sandbox.verifyTransaction(await signedByChain(tx({ environment: 'Production' }), chain)))).toBe('wrong_environment');
+  });
+
+  it('R-2: Production API first; on 404 the Sandbox API once, and its Sandbox answer is applied', async () => {
+    const urls: string[] = [];
+    const a = new AppleAppStoreAdapter(
+      config('Production'),
+      verifier,
+      async (url) => {
+        urls.push(url);
+        if (url === PROD_API) return { ok: false, status: 404, json: async () => ({}) };
+        return { ok: true, status: 200, json: async () => answer('Sandbox') };
+      },
+      () => NOW.getTime(),
+    );
+    expect(await a.retrieveSubscription('2000000100')).toMatchObject({ provider_status: 'active', store: { environment: 'Sandbox' } });
+    expect(urls).toEqual([PROD_API, SANDBOX_API]);
+  });
+
+  it('R-2: a Production answer is used directly (no sandbox call)', async () => {
+    const urls: string[] = [];
+    const a = new AppleAppStoreAdapter(config('Production'), verifier, async (url) => (urls.push(url), { ok: true, status: 200, json: async () => answer('Production') }), () => NOW.getTime());
+    expect(await a.retrieveSubscription('2000000100')).toMatchObject({ store: { environment: 'Production' } });
+    expect(urls).toEqual([PROD_API]);
+  });
+
+  it('R-2: an answer must say the environment of the API that gave it', async () => {
+    const lying = new AppleAppStoreAdapter(
+      config('Production'),
+      verifier,
+      async (url) => (url === PROD_API ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 200, json: async () => answer('Production') }),
+      () => NOW.getTime(),
+    );
+    expect(await failure(lying.retrieveSubscription('2000000100'))).toBe('wrong_environment');
+    const mixed = new AppleAppStoreAdapter(config('Production'), verifier, async () => ({ ok: true, status: 200, json: async () => answer('Production', 'Sandbox') }), () => NOW.getTime());
+    expect(await failure(mixed.retrieveSubscription('2000000100'))).toBe('wrong_environment');
+  });
+
+  it('R-2: a Production outage does not fall back to Sandbox', async () => {
+    const urls: string[] = [];
+    const a = new AppleAppStoreAdapter(config('Production'), verifier, async (url) => (urls.push(url), { ok: false, status: 503, json: async () => ({}) }), () => NOW.getTime());
+    await expect(a.retrieveSubscription('2000000100')).rejects.toThrow(/http 503/);
+    expect(urls).toEqual([PROD_API]);
+  });
+
+  it('a Sandbox server never asks the Production API', async () => {
+    const urls: string[] = [];
+    const a = new AppleAppStoreAdapter(config('Sandbox'), verifier, async (url) => (urls.push(url), { ok: false, status: 404, json: async () => ({}) }), () => NOW.getTime());
+    expect(await failure(a.retrieveSubscription('2000000100'))).toBe('unknown_transaction');
+    expect(urls).toEqual([SANDBOX_API]);
   });
 });

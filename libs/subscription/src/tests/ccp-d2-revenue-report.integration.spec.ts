@@ -163,7 +163,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
 
   const CLASSIFY = `
     WITH open AS (
-      SELECT ts.id::text AS subscription_id, ts.product_key, ts.source, ts.status, ts.commitment_end,
+      SELECT ts.id::text AS subscription_id, ts.product_key, ts.source, ts.status, ts.commitment_end, ts.store_environment,
              CASE WHEN ts.billing_subscription_ref IS NOT NULL THEN ts.current_period_end END AS period_end,
              v.content->'plan' AS p,
              EXISTS (SELECT 1 FROM subscription."Contract" k WHERE k.tenant_subscription_id = ts.id) AS contracted
@@ -171,7 +171,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
        WHERE ts.ended_at IS NULL AND ts.composition_role = 'BASE' AND ts.source IN ('MANUAL', 'SELF_SERVICE')
     )
     SELECT subscription_id, product_key, commitment_end, period_end,
-           CASE WHEN status NOT IN ('ACTIVE', 'PAST_DUE') THEN 'STATUS_NOT_REVENUE_BEARING'
+           CASE WHEN store_environment = 'Sandbox' THEN 'STORE_TEST_PURCHASE'
+                WHEN status NOT IN ('ACTIVE', 'PAST_DUE') THEN 'STATUS_NOT_REVENUE_BEARING'
                 WHEN contracted OR (p->>'list_price_minor' IS NULL AND p->>'sales_model' = 'CONTACT_SALES') THEN 'CONTRACT_PRICED'
                 WHEN p->>'list_price_minor' IS NULL THEN 'NO_LIST_PRICE'
                 WHEN p->>'currency' IS DISTINCT FROM 'USD' THEN 'NON_USD_CURRENCY'
@@ -270,7 +271,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
       open_commercial_subscriptions: 10,
       included: 4,
       excluded: 6,
-      excluded_by_reason: { STATUS_NOT_REVENUE_BEARING: 1, PLAN_VERSION_INTEGRITY: 0, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 1, NON_MONTHLY_INTERVAL: 1 },
+      excluded_by_reason: { STORE_TEST_PURCHASE: 0, STATUS_NOT_REVENUE_BEARING: 1, PLAN_VERSION_INTEGRITY: 0, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 1, NON_MONTHLY_INTERVAL: 1 },
       not_commercial_by_source: { DEVELOPMENT: 1 },
     });
     // K's pinned version carries a USD list price (1500), yet a contract-linked row is never revenue at list price.

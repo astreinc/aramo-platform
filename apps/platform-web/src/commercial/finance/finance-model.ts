@@ -369,6 +369,7 @@ export function monthLabel(ym: string): string {
 }
 
 export const EXCLUSION_LABEL: Readonly<Record<string, string>> = {
+  STORE_TEST_PURCHASE: 'store test purchase',
   CONTRACT_PRICED: 'contract-priced',
   NON_USD_CURRENCY: 'non-USD',
   NO_LIST_PRICE: 'price missing',
@@ -378,16 +379,18 @@ export const EXCLUSION_LABEL: Readonly<Record<string, string>> = {
 
 /**
  * The Withheld tile (design `rv.whN`): open active or past-due subscriptions with no USD monthly
- * list price. A row excluded only for its status (suspended, trialing…) is not "withheld".
+ * list price. A row excluded only for its status (suspended, trialing…) is not "withheld", nor is an
+ * app-store test purchase (Amendment M-A12-A2 R-4: it is never revenue).
  */
+const NOT_WITHHELD: ReadonlySet<string> = new Set(['STATUS_NOT_REVENUE_BEARING', 'STORE_TEST_PURCHASE']);
 export function withheldCount(byReason: Readonly<Record<string, number>>): number {
-  return Object.entries(byReason).reduce((a, [k, n]) => (k === 'STATUS_NOT_REVENUE_BEARING' ? a : a + n), 0);
+  return Object.entries(byReason).reduce((a, [k, n]) => (NOT_WITHHELD.has(k) ? a : a + n), 0);
 }
 
 /** The Withheld tile's line: the exclusion reasons with their counts (no per-tenant row, D2). */
 export function withheldLine(byReason: Readonly<Record<string, number>>): string {
   const parts = Object.entries(byReason)
-    .filter(([k, n]) => n > 0 && k !== 'STATUS_NOT_REVENUE_BEARING')
+    .filter(([k, n]) => n > 0 && !NOT_WITHHELD.has(k))
     .map(([k, n]) => `${n} ${EXCLUSION_LABEL[k] ?? k.toLowerCase().replace(/_/g, ' ')}`);
   return parts.length > 0 ? parts.join(', ') : 'None';
 }
