@@ -2103,6 +2103,7 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
       included: integer(2),
       excluded: integer(1),
       excluded_by_reason: {
+        STORE_TEST_PURCHASE: integer(0),
         STATUS_NOT_REVENUE_BEARING: integer(0),
         PLAN_VERSION_INTEGRITY: integer(0),
         CONTRACT_PRICED: integer(0),

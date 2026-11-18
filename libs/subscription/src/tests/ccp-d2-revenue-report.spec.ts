@@ -83,13 +83,18 @@ describe('CCP-D2 revenue computation', () => {
       [row({ plan: { currency: null } }), 'NON_USD_CURRENCY'],
       [row({ plan: { billing_interval: null } }), 'NON_MONTHLY_INTERVAL'],
       [row({ plan: { billing_interval: 'YEAR' } }), 'NON_MONTHLY_INTERVAL'],
+      // Amendment M-A12-A2 R-4 — an app-store test purchase is first in precedence, whatever else applies.
+      [{ ...row(), store_environment: 'Sandbox' }, 'STORE_TEST_PURCHASE'],
+      [{ ...row({ status: 'TRIALING', plan: { currency: 'EUR' } }), store_environment: 'Sandbox' }, 'STORE_TEST_PURCHASE'],
     ];
     for (const [r, reason] of cases) expect(classifyRevenueRow(r), reason).toEqual({ reason });
+    // A real (Production) store purchase is revenue as before.
+    expect(classifyRevenueRow({ ...row({ plan: { list_price_minor: 2000 } }), store_environment: 'Production' })).toEqual({ monthly_minor: 2000 });
     const report = run([...cases.map(([r]) => r), row({ plan: { list_price_minor: 2000 } })]);
     expect(report.mrr_minor).toBe(2000);
     expect(report.counts.excluded).toBe(cases.length);
     expect(Object.keys(report.counts.excluded_by_reason)).toEqual([...REVENUE_EXCLUSION_REASONS]);
-    expect(report.counts.excluded_by_reason).toEqual({ STATUS_NOT_REVENUE_BEARING: 3, PLAN_VERSION_INTEGRITY: 1, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 2, NON_MONTHLY_INTERVAL: 2 });
+    expect(report.counts.excluded_by_reason).toEqual({ STORE_TEST_PURCHASE: 2, STATUS_NOT_REVENUE_BEARING: 3, PLAN_VERSION_INTEGRITY: 1, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 2, NON_MONTHLY_INTERVAL: 2 });
     expect(Object.values(report.counts.excluded_by_reason).reduce((a, b) => a + b, 0)).toBe(report.counts.excluded);
     expect(report.counts.open_commercial_subscriptions).toBe(report.counts.included + report.counts.excluded);
     // A non-USD amount is never converted into the figure, and never shown.

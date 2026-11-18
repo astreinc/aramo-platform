@@ -4,7 +4,7 @@ import { SignJWT, importPKCS8 } from 'jose';
 import { BillingProviderUnavailableError, type ProviderSubscriptionState, type VerifiedBillingEvent } from '../billing-provider.port.js';
 
 import { AppleJwsError, type AppleJwsVerifier, type AppleNotificationPayload, type AppleRenewalInfoPayload, type AppleTransactionPayload } from './apple-jws.verifier.js';
-import type { AppleStoreConfig } from './store-billing.config.js';
+import type { AppleEnvironment, AppleStoreConfig } from './store-billing.config.js';
 import { StoreVerificationError, type StoreFetch, type StoreSubscriptionPort } from './store-billing.port.js';
 import { appleSubscriptionState } from './store-state.js';
 
@@ -19,6 +19,12 @@ import { appleSubscriptionState } from './store-state.js';
 //                        a verified event envelope (id = notificationUUID, ref = originalTransactionId);
 //                        the payload's state is never applied (the inbox re-fetches)
 // Only reason codes and HTTP statuses are logged: never a JWS, a token or the key.
+//
+// Amendment M-A12-A2 (LOCKED): a PRODUCTION server also accepts Apple SANDBOX purchases (App Review,
+// TestFlight). R-1 a signed transaction / notification may say Production or Sandbox (every other check
+// unchanged); a Sandbox server still accepts Sandbox only. R-2 the re-fetch asks the Production Server
+// API first and, only on "unknown transaction" (404/400), the Sandbox Server API once; the answer must
+// say the environment of the API that gave it. R-5 acceptance of a Sandbox item logs a reason code only.
 
 export const APPLE_SERVER_API_BASE: Record<'Sandbox' | 'Production', string> = {
   Production: 'https://api.storekit.itunes.apple.com',
@@ -54,11 +60,21 @@ export class AppleAppStoreAdapter implements StoreSubscriptionPort {
     return this.config;
   }
 
-  /** Bundle and environment of a decoded payload must be ours (fail closed). */
-  private assertOurs(p: { bundleId?: string; environment?: string }): void {
+  /** The environments a signed item may come from (M-A12-A2 R-1): Production also takes Sandbox. */
+  private accepted(): readonly AppleEnvironment[] {
+    return this.cfg().environment === 'Production' ? ['Production', 'Sandbox'] : ['Sandbox'];
+  }
+
+  /**
+   * Bundle and environment of a decoded payload must be ours (fail closed). `only` pins the
+   * environment to one value (an answer must match the Server API that gave it, R-2).
+   */
+  private assertOurs(p: { bundleId?: string; environment?: string }, only?: AppleEnvironment): void {
     const c = this.cfg();
     if (p.bundleId !== c.bundle_id) throw new StoreVerificationError('wrong_bundle');
-    if (p.environment !== c.environment) throw new StoreVerificationError('wrong_environment');
+    const allowed = only !== undefined ? [only] : this.accepted();
+    if (!allowed.includes(p.environment as AppleEnvironment)) throw new StoreVerificationError('wrong_environment');
+    if (p.environment === 'Sandbox' && c.environment === 'Production') this.log.log('apple_sandbox_accepted');
   }
 
   private async verified<T>(jws: string): Promise<T> {
@@ -105,10 +121,24 @@ export class AppleAppStoreAdapter implements StoreSubscriptionPort {
     };
   }
 
-  /** Re-fetch the subscription from the App Store Server API (authoritative). */
+  /**
+   * Re-fetch the subscription from the App Store Server API (authoritative). A Production server asks
+   * the Sandbox Server API once when Production does not know the transaction (M-A12-A2 R-2).
+   */
   async retrieveSubscription(original_transaction_id: string): Promise<ProviderSubscriptionState> {
     const c = this.cfg();
-    const url = `${APPLE_SERVER_API_BASE[c.environment]}/inApps/v1/subscriptions/${encodeURIComponent(original_transaction_id)}`;
+    try {
+      return await this.retrieveIn(c.environment, original_transaction_id);
+    } catch (e) {
+      if (c.environment === 'Production' && e instanceof StoreVerificationError && e.reason === 'unknown_transaction') {
+        return this.retrieveIn('Sandbox', original_transaction_id);
+      }
+      throw e;
+    }
+  }
+
+  private async retrieveIn(env: AppleEnvironment, original_transaction_id: string): Promise<ProviderSubscriptionState> {
+    const url = `${APPLE_SERVER_API_BASE[env]}/inApps/v1/subscriptions/${encodeURIComponent(original_transaction_id)}`;
     let res: Awaited<ReturnType<StoreFetch>>;
     try {
       res = await this.fetchImpl(url, { method: 'GET', headers: { authorization: `Bearer ${await this.apiToken()}` }, signal: AbortSignal.timeout(this.timeoutMs) });
@@ -122,11 +152,11 @@ export class AppleAppStoreAdapter implements StoreSubscriptionPort {
       throw new BillingProviderUnavailableError(`app store server api http ${res.status}`, res.status === 429 || res.status >= 500);
     }
     const body = (await res.json()) as { bundleId?: string; environment?: string; data?: { lastTransactions?: { originalTransactionId?: string; status?: number; signedTransactionInfo?: string; signedRenewalInfo?: string }[] }[] };
-    this.assertOurs(body);
+    this.assertOurs(body, env);
     const last = (body.data ?? []).flatMap((g) => g.lastTransactions ?? []).find((t) => t.originalTransactionId === original_transaction_id);
     if (last === undefined || typeof last.signedTransactionInfo !== 'string' || typeof last.status !== 'number') throw new StoreVerificationError('unknown_transaction');
     const tx = await this.verified<AppleTransactionPayload>(last.signedTransactionInfo);
-    this.assertOurs(tx);
+    this.assertOurs(tx, env);
     if (tx.originalTransactionId !== original_transaction_id) throw new StoreVerificationError('malformed');
     const renewal = typeof last.signedRenewalInfo === 'string' ? await this.verified<AppleRenewalInfoPayload>(last.signedRenewalInfo) : null;
     return appleSubscriptionState(last.status, tx, renewal);

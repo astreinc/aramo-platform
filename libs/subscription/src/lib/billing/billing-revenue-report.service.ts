@@ -42,6 +42,9 @@ export const REVENUE_PIPELINE_MAX_MONTHS = 24;
 
 /** Closed set, in precedence order: a row carries the first reason that applies. */
 export const REVENUE_EXCLUSION_REASONS = [
+  // Amendment M-A12-A2 R-4 (LOCKED): an app-store test purchase (Apple sandbox — App Review,
+  // TestFlight — or a Google Play test purchase) is never revenue, whatever else applies.
+  'STORE_TEST_PURCHASE',
   'STATUS_NOT_REVENUE_BEARING',
   'PLAN_VERSION_INTEGRITY',
   'CONTRACT_PRICED',
@@ -70,6 +73,8 @@ export interface RevenueSourceRow {
   readonly billing_subscription_ref: string | null;
   /** Billing terms — the row's term (MONTHLY | ANNUAL_COMMIT); null/absent = legacy (the version's list price). */
   readonly term?: string | null;
+  /** The app-store environment of a store-billed row ('Sandbox' = a test purchase, M-A12-A2 R-4); null/absent otherwise. */
+  readonly store_environment?: string | null;
 }
 
 export interface RevenueLine {
@@ -180,6 +185,7 @@ function verifiedTerms(r: RevenueSourceRow): PlanVersionContent | null {
 
 /** The monthly USD list price of a row, or the one reason it is excluded. */
 export function classifyRevenueRow(r: RevenueSourceRow): { monthly_minor: number } | { reason: RevenueExclusionReason } {
+  if (r.store_environment === 'Sandbox') return { reason: 'STORE_TEST_PURCHASE' };
   if (!isRevenueBearing(r.status)) return { reason: 'STATUS_NOT_REVENUE_BEARING' };
   const terms = verifiedTerms(r);
   if (terms === null) return { reason: 'PLAN_VERSION_INTEGRITY' };
@@ -318,7 +324,7 @@ export class BillingRevenueReportService {
         `SELECT ts.id::text AS subscription_id, ts.tenant_id::text AS tenant_id, ts.product_key, ts.source, ts.status,
                 p.key AS plan_key, v.id::text AS plan_version_id, v.version_number, v.content, v.content_checksum,
                 (SELECT c.id::text FROM subscription."Contract" c WHERE c.tenant_subscription_id = ts.id) AS contract_id,
-                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref, ts.term
+                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref, ts.term, ts.store_environment
            FROM subscription."TenantSubscription" ts
            JOIN subscription."Plan" p ON p.id = ts.plan_id
            JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id

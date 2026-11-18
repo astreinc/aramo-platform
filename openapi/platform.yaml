@@ -9854,8 +9854,10 @@ components:
               type: object
               description: |
                 One reason per excluded subscription, first match in this order:
-                STATUS_NOT_REVENUE_BEARING, PLAN_VERSION_INTEGRITY, CONTRACT_PRICED, NO_LIST_PRICE,
-                NON_USD_CURRENCY, NON_MONTHLY_INTERVAL. Every reason is present (zero-filled).
+                STORE_TEST_PURCHASE (an app-store test purchase: Apple sandbox or a Google Play
+                test purchase; Amendment M-A12-A2), STATUS_NOT_REVENUE_BEARING, PLAN_VERSION_INTEGRITY,
+                CONTRACT_PRICED, NO_LIST_PRICE, NON_USD_CURRENCY, NON_MONTHLY_INTERVAL. Every reason is
+                present (zero-filled).
               additionalProperties:
                 type: integer
             not_commercial_by_source:
