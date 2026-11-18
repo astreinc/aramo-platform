@@ -67,7 +67,16 @@ export function ReportIssueSheet({
         maxLength={ISSUE_MAX}
         style={{ minHeight: 120, textAlignVertical: 'top' }}
         error={error}
+        accessibilityHint={`Up to ${ISSUE_MAX} characters`}
       />
+      {/* UAT (2,000-character limit) — a counter, and why typing stops (as the subject, DOC-07). */}
+      <Text
+        testID="issue-count"
+        accessibilityLiveRegion="polite"
+        style={{ color: t.color.textSecondary, fontSize: 13, textAlign: 'right', fontFamily: t.font.family }}
+      >
+        {`${message.length >= ISSUE_MAX ? `Descriptions can be up to ${ISSUE_MAX} characters. ` : ''}${message.length} / ${ISSUE_MAX}`}
+      </Text>
       <Button
         testID="issue-send"
         title="Send"
