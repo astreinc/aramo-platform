@@ -16,6 +16,14 @@ describe('reportInboxItem', () => {
     expect(call).toHaveBeenCalledWith('/v1/sign/inbox/{id}/report', 'post', { path: { id: 'item-1' }, body: { reason: 'phishing' } });
   });
 
+  it('sends the optional note; an empty reason and note send an empty body (as the web)', async () => {
+    const { ws, call } = client(async () => ({ received: true }));
+    await reportInboxItem(ws, 'item-1', 'spam', 'Never heard of them');
+    expect(call).toHaveBeenLastCalledWith('/v1/sign/inbox/{id}/report', 'post', { path: { id: 'item-1' }, body: { reason: 'spam', note: 'Never heard of them' } });
+    await reportInboxItem(ws, 'item-1', null);
+    expect(call).toHaveBeenLastCalledWith('/v1/sign/inbox/{id}/report', 'post', { path: { id: 'item-1' }, body: {} });
+  });
+
   it('maps 409 → already, 404 → gone, anything else → failed', async () => {
     const err = (status: number) => new ApiError({ status, code: 'X', reason: 'already_reported' } as never);
     await expect(reportInboxItem(client(async () => Promise.reject(err(409))).ws, 'i', 'spam')).resolves.toBe('already');

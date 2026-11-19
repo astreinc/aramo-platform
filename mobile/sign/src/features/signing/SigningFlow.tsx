@@ -104,7 +104,7 @@ import {
   type SigningState,
 } from './signingMachine';
 import { fieldHitSlop } from './fieldHitSlop';
-import { ReportSheet } from '../../screens/envelope/ReportSheet';
+import { ReportSheet, type ReportSendResult } from '../../screens/envelope/ReportSheet';
 import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
 import { ZoomablePages } from './ZoomablePages';
@@ -229,13 +229,13 @@ export function SigningFlow(props: SigningFlowProps) {
   // UAT SIG-14 — "Report this envelope" (the same public report route and reasons as the web).
   const [reportOpen, setReportOpen] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
-  async function report(reason: ReportReasonKey): Promise<void> {
-    if (!session) return;
+  async function report(reason: ReportReasonKey | null, note: string): Promise<ReportSendResult> {
+    if (!session) return { kind: 'error', message: SIGNING_REPORT_COPY.failed };
     setReportBusy(true);
-    const outcome = await reportFromSigning(session, reason);
+    const outcome = await reportFromSigning(session, reason, note);
     setReportBusy(false);
-    if (outcome !== 'failed' && outcome !== 'limited') setReportOpen(false);
-    toast.show(SIGNING_REPORT_COPY[outcome]);
+    if (outcome === 'sent' || outcome === 'already') return { kind: outcome };
+    return { kind: 'error', message: SIGNING_REPORT_COPY[outcome] };
   }
   const [delegateError, setDelegateError] = useState<string | null>(null);
   const [delegateName, setDelegateName] = useState('');
@@ -1083,7 +1083,7 @@ export function SigningFlow(props: SigningFlowProps) {
         />
         <Button title="Close" variant="text" onPress={() => setMoreOpen(false)} />
       </Sheet>
-      <ReportSheet visible={reportOpen} busy={reportBusy} onReport={(r) => void report(r)} onClose={() => setReportOpen(false)} />
+      <ReportSheet visible={reportOpen} busy={reportBusy} onSend={report} onClose={() => setReportOpen(false)} />
       <Sheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} title="Document details">
         {subject ? <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600' }}>{subject}</Text> : null}
         <Text style={{ color: t.color.textSecondary, fontSize: 14 }}>{`From ${from}`}</Text>

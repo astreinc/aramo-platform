@@ -86,10 +86,13 @@ export const env: AppEnv = resolveEnv(
  *                                   replaces the Personal Terms 1.0 for Personal accounts)
  *   privacy        /legal/privacy   the Privacy Notice in effect
  *   help           /help            help, report guidance and the identity block
+ *   acceptableUse  /legal/acceptable-use  the Acceptable Use Policy in effect
  */
 export const WEB_LINKS = {
   terms: `${PRODUCTION_API_BASE_URL}/legal/terms`,
   personalTerms: `${PRODUCTION_API_BASE_URL}/legal/terms-of-service`,
   privacy: `${PRODUCTION_API_BASE_URL}/legal/privacy`,
   help: `${PRODUCTION_API_BASE_URL}/help`,
+  // UAT SIG-14 — the report confirmation links the policy, as the web report page.
+  acceptableUse: `${PRODUCTION_API_BASE_URL}/legal/acceptable-use`,
 } as const;

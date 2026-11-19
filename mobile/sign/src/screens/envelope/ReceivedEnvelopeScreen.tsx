@@ -45,7 +45,7 @@ import { useSaveCopy, useShare } from '../../features/share/useShare';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
-import { ReportSheet } from './ReportSheet';
+import { ReportSheet, type ReportSendResult } from './ReportSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReceivedEnvelope'>;
@@ -220,12 +220,12 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
     else navigation.navigate('Main', { screen: 'Agreements' });
   }, [changed, navigation, toast]);
 
-  async function report(reason: ReportReasonKey): Promise<void> {
+  async function report(reason: ReportReasonKey | null, note: string): Promise<ReportSendResult> {
     setReporting(true);
     try {
-      const outcome = await reportInboxItem(workspace, inboxItemId, reason);
-      toast.show(REPORT_COPY[outcome]);
-      if (outcome !== 'failed') setReportOpen(false);
+      const outcome = await reportInboxItem(workspace, inboxItemId, reason, note);
+      if (outcome === 'sent' || outcome === 'already') return { kind: outcome };
+      return { kind: 'error', message: REPORT_COPY[outcome] };
     } finally {
       setReporting(false);
     }
@@ -305,7 +305,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
       <ReportSheet
         visible={reportOpen}
         busy={reporting}
-        onReport={(r) => void report(r)}
+        onSend={report}
         onClose={() => setReportOpen(false)}
       />
     </ScrollView>
