@@ -1254,6 +1254,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     maxHeight: '40%',
+    // UAT AP-241 retest — the canvas keeps at least 50% and the chips / page / zoom rows sit
+    // above it, so on a shorter screen the panel must shrink to what is left (its tools
+    // scroll inside). Without it the panel ran off the screen: "More fields" sat on the
+    // system bar and "Place at center" was cut off.
+    flexShrink: 1,
     gap: 10,
   },
   panelScroll: { flexGrow: 0, flexShrink: 1 },

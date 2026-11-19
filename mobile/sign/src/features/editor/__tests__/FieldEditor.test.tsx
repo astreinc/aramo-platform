@@ -78,6 +78,8 @@ describe('FieldEditor', () => {
     expect(panel.maxHeight).toBe('40%');
     // The bottom inset is cleared so "Place at center" is never under the system bar.
     expect(panel.paddingBottom).toBe(12 + 34);
+    // UAT AP-241 retest — it shrinks to the space left, never running off the screen.
+    expect(panel.flexShrink).toBe(1);
     await act(async () => {});
   });
 
