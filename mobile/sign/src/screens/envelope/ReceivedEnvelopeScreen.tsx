@@ -245,7 +245,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   }
 
   // M-A17 — to the user's Deleted list; the sender and other recipients are unaffected and
-  // the emailed link keeps working (restore from Waiting for me on the web).
+  // the emailed link keeps working. Restore: Agreements → Deleted (web: Waiting for me → Show deleted).
   async function remove(): Promise<void> {
     try {
       await workspace.request<{ removed: boolean }>({
@@ -254,7 +254,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         body: {},
       });
       await qc.invalidateQueries({ queryKey: signKeys.inbox });
-      toast.show('Deleted from your inbox. The sender’s envelope isn’t affected.');
+      toast.show('Moved to Deleted. The sender’s envelope isn’t affected.');
       navigation.goBack();
     } catch {
       toast.show('Couldn’t delete it. Try again.');

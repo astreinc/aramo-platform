@@ -331,6 +331,23 @@ export function AgreementsScreen() {
             tintColor={t.color.accent}
           />
         }
+        // M-A17 (UAT SIG-15) — the recipient's own Deleted folder, with Restore (the web:
+        // Waiting for me → "Show deleted").
+        ListFooterComponent={
+          loading ? null : (
+            <Pressable
+              testID="agreements-deleted"
+              onPress={() => navigation.navigate('DeletedInbox')}
+              accessibilityRole="button"
+              accessibilityHint="Envelopes you deleted from your inbox, which you can restore"
+              style={{ minHeight: t.size.minTouch, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}
+            >
+              <Text style={{ color: t.color.accent, fontSize: 15, fontWeight: '600', fontFamily: t.font.family }}>
+                Deleted
+              </Text>
+            </Pressable>
+          )
+        }
         contentContainerStyle={{ paddingBottom: barSpace }}
         keyboardShouldPersistTaps="handled"
       />

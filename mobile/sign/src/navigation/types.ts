@@ -48,6 +48,8 @@ export type RootStackParamList = {
   SelfSign: { start?: 'templates' } | undefined;
   /** M-A12 W1-D — Tasks: Needs me + Upcoming, with filter and sort (Home "Assigned tasks"). */
   Tasks: undefined;
+  /** M-A17 (UAT SIG-15) — the recipient's own Deleted folder with Restore (foot of Agreements). */
+  DeletedInbox: undefined;
   /** M-A12 W1-G — Plans and in-app purchase; `from` sets the reason line and the way back. */
   Plans: { from?: PlansEntry } | undefined;
   /** M-A12 W1-E — the user's own Sign profile. */
