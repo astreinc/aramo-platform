@@ -16,6 +16,8 @@ describe('M-A7 §5.1 — web links and identity', () => {
       personalTerms: 'https://sign.aramo.ai/legal/terms-of-service',
       privacy: 'https://sign.aramo.ai/legal/privacy',
       help: 'https://sign.aramo.ai/help',
+      // UAT SIG-14 — the report confirmation's Acceptable Use Policy link (web /legal/:slug).
+      acceptableUse: 'https://sign.aramo.ai/legal/acceptable-use',
     });
     // Each path is a public route of sign-web (App.tsx) and a published catalog slug.
     const app = readFileSync(resolve(REPO, 'apps/sign-web/src/workspace/App.tsx'), 'utf8');
