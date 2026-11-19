@@ -312,6 +312,22 @@ export class EsignService {
   // Validates hash match, not expired/revoked/consumed. Tenant resolved FROM
   // the session, never the client. ES-1: runs under the envelope row lock; a
   // terminal envelope is refused before any write. ──
+  /**
+   * UAT SND-11 (Web Self-Signing A2, amendment A3) — true for the caller's own "Sign a
+   * document" envelope (envelope_mode SELF) opened in its SELF session, so the signing page
+   * shows self-signing wording and no Decline or Report. A SELF session on an envelope with
+   * other signers (W1 "Sign now") is false: Decline still applies there.
+   */
+  async isSelfSigning(ctx: SessionContext): Promise<boolean> {
+    const env = await this.repo.getEnvelope(ctx.tenant_id, ctx.envelope_id);
+    if (env.envelope_mode !== 'SELF') return false;
+    const session = await this.prisma.signingSession.findFirst({
+      where: { id: ctx.session_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id },
+      select: { origin: true },
+    });
+    return session?.origin === 'SELF';
+  }
+
   async exchangeToken(rawToken: string): Promise<SessionContext> {
     const found = await this.findSessionByToken(rawToken);
     const outcome = await this.prisma.$transaction(async (tx) => {

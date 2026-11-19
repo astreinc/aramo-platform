@@ -484,7 +484,14 @@ export class EsignSignerController {
       // Feature-Parity §1.9 — a recipient with SMS_OTP verifies before the link is used.
       if (this.verification !== undefined) await this.verifiedSession(body.token, requestId);
       const ctx = await this.service.exchangeToken(body.token);
-      return { session_id: ctx.session_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id };
+      // UAT SND-11 (A2 amendment A3) — display only; a lookup failure never fails the exchange.
+      let self_signing = false;
+      try {
+        self_signing = await this.service.isSelfSigning(ctx);
+      } catch {
+        self_signing = false;
+      }
+      return { session_id: ctx.session_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id, self_signing };
     } catch (e) {
       throw toHttp(e, requestId);
     }

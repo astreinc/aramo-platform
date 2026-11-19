@@ -297,6 +297,12 @@ paths:
                   signer_id:
                     type: string
                     format: uuid
+                  self_signing:
+                    type: boolean
+                    description: >-
+                      UAT SND-11 (Web Self-Signing A2, amendment A3) — true only for the caller's own "Sign a document"
+                      envelope (envelope_mode SELF) in its SELF session: the signing page then shows self-signing wording
+                      and offers no Decline or Report. Display only; it grants nothing.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

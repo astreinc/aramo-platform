@@ -10,6 +10,8 @@ export interface SignerSession {
   session_id: string;
   envelope_id: string;
   signer_id: string;
+  // UAT SND-11 (A2-A3) — the caller's own "Sign a document" (absent: an older server).
+  self_signing?: boolean;
 }
 
 export type SignFieldType =

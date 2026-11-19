@@ -5882,6 +5882,8 @@ export interface operations {
                         envelope_id?: string;
                         /** Format: uuid */
                         signer_id?: string;
+                        /** @description UAT SND-11 (Web Self-Signing A2, amendment A3) — true only for the caller's own "Sign a document" envelope (envelope_mode SELF) in its SELF session: the signing page then shows self-signing wording and offers no Decline or Report. Display only; it grants nothing. */
+                        self_signing?: boolean;
                     };
                 };
             };

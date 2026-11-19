@@ -274,12 +274,15 @@ export function Header({
   progress,
   onDecline,
   reportToken,
+  selfSigning = false,
 }: {
   readonly title?: string;
   readonly progress?: string;
   readonly onDecline?: () => void;
   /** M-A7 §5.2 — the signing token, for the Report action in Help. */
   readonly reportToken?: string;
+  /** UAT SND-11 (A2-A3) — the caller's own "Sign a document": self-signing Help, no Report. */
+  readonly selfSigning?: boolean;
 }) {
   const [help, setHelp] = useState(false);
   const brand = useContext(SignerBrandingContext);
@@ -309,9 +312,18 @@ export function Header({
       ) : null}
       {help ? (
         <div className="sg-help" role="note">
-          Questions about this document? Reply to the email that brought you here, or contact the person who sent
-          it. Your signing link is personal — don&apos;t forward it.
-          {reportToken !== undefined && reportHrefForToken(reportToken) !== null ? (
+          {selfSigning ? (
+            <>
+              You&apos;re signing your own document. Nobody is emailed. When you finish, the signed PDF and the
+              certificate are on the envelope in your Aramo Sign workspace.
+            </>
+          ) : (
+            <>
+              Questions about this document? Reply to the email that brought you here, or contact the person who sent
+              it. Your signing link is personal — don&apos;t forward it.
+            </>
+          )}
+          {!selfSigning && reportToken !== undefined && reportHrefForToken(reportToken) !== null ? (
             <>
               {' '}
               Don&apos;t know the sender, or think it&apos;s a scam? <ReportLink token={reportToken} className="sg-help__link" />.
@@ -900,6 +912,10 @@ export function selfSignReturn(search: string): string | null {
 
 function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const selfReturn = useState(() => selfSignReturn(window.location.search))[0];
+  // UAT SND-11 (A2-A3) — the caller's own "Sign a document" (from the server's exchange): no
+  // outside-signer wording, no Decline and no Report (nobody asked, nobody to decline to).
+  const [selfSigning, setSelfSigning] = useState(false);
+  const headerProps = selfSigning ? { selfSigning: true } : { reportToken: token };
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   // M-A15 §4.1 — the signer's saved signature / initials offered on this page.
@@ -939,7 +955,11 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     const qesBack = window.location.pathname === QES_RETURN_PATH;
     signApi
       .exchange(token)
-      .then(() => signApi.disclosureText(token))
+      .then((x) => {
+        // UAT SND-11 (A2-A3) — the server says when this is the caller's own "Sign a document".
+        setSelfSigning(x.self_signing === true);
+        return signApi.disclosureText(token);
+      })
       .then(async (d) => {
         setDisclosure(d);
         // Sign 1.14 — back from Stripe: confirm the payment (the server reads it from
@@ -1322,28 +1342,28 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'invalid')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="error" title="This signing link isn't valid" body="The link may be incomplete or mistyped. Open it again from your email, or ask the sender to send a new one." />
       </>
     );
   if (screen === 'expired')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="muted" title="This link is no longer active" body="It has expired or has already been used to sign. If you still need to sign, ask the sender to send you a new link." />
       </>
     );
   if (screen === 'ended')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="muted" title="This document is no longer available to sign" body="Signing has ended for this document — it may have been completed, declined or withdrawn by the sender." />
       </>
     );
   if (screen === 'notyet')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState
           tone="muted"
           title="It's not your turn to sign yet"
@@ -1354,21 +1374,21 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'accesscode')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <AccessCodeCard onSubmit={submitAccessCode} />
       </>
     );
   if (screen === 'smscode')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <SmsCodeCard token={token} onVerified={open} onLocked={() => setScreen('smslocked')} />
       </>
     );
   if (screen === 'smslocked')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="error" title="Too many incorrect codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
       </>
     );
@@ -1386,21 +1406,21 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'locked')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="error" title="Too many incorrect access codes" body="For your security this document is locked. Contact the sender if you still need to sign." />
       </>
     );
   if (screen === 'idlocked')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="muted" title="We couldn't verify your identity" body="The sender has been told and may send you a new request. You can close this page." />
       </>
     );
   if (screen === 'identity')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <main className="sg-center">
           <div className="sg-card" data-testid="sg-identity">
             <div className="sg-eyebrow">Identity check</div>
@@ -1422,14 +1442,14 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'declined')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="muted" title="You declined to sign" body="Your decision and your reason have been recorded, and the sender can see them. You can close this page." />
       </>
     );
   if (screen === 'done' && selfReturn !== null)
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="ok" title="You signed" body="Your signed PDF and certificate are ready.">
           <a className="sg-btn sg-btn--primary" href={selfReturn} data-testid="self-sign-open-envelope">
             Open the envelope
@@ -1440,7 +1460,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'done')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState
           tone="ok"
           title={title ? `You've signed ${title}` : "You've signed"}
@@ -1453,7 +1473,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'network')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <main className="sg-center">
           <div className="sg-card sg-card--error">
             <h1>We couldn&apos;t reach Aramo Sign</h1>
@@ -1466,14 +1486,14 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'error')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <EndState tone="error" title="Something went wrong" body="We couldn't open this document. Try the link from your email again later, or contact the sender." />
       </>
     );
   if (screen === 'loading')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <main className="sg-center" aria-busy="true">
           <p className="sg-muted">Opening your document…</p>
         </main>
@@ -1483,22 +1503,34 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'landing')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <main className="sg-center">
-          <div className="sg-card" data-testid="sg-landing">
-            <div className="sg-eyebrow">Document to sign</div>
-            <h1>You&apos;ve been asked to review and sign a document</h1>
-            <p className="sg-muted">Signing with a secure link — no account needed.</p>
-            <Btn className="sg-btn--block" onClick={() => setScreen('disclosure')}>
-              Review document
-            </Btn>
-            <Btn variant="quiet" className="sg-btn--block" onClick={() => setDeclineOpen(true)}>
-              Decline to sign
-            </Btn>
-            <p className="sg-muted sg-small sg-report-line">
-              Don&apos;t know the sender? <ReportLink token={token} />
-            </p>
-          </div>
+          {selfSigning ? (
+            // UAT SND-11 (A2-A3) — as the app's own Sign a document: you're the only signer.
+            <div className="sg-card" data-testid="sg-landing-self">
+              <div className="sg-eyebrow">Sign a document</div>
+              <h1>Sign your document</h1>
+              <p className="sg-muted">You&apos;re the only signer. Nobody is emailed.</p>
+              <Btn className="sg-btn--block" onClick={() => setScreen('disclosure')}>
+                Review document
+              </Btn>
+            </div>
+          ) : (
+            <div className="sg-card" data-testid="sg-landing">
+              <div className="sg-eyebrow">Document to sign</div>
+              <h1>You&apos;ve been asked to review and sign a document</h1>
+              <p className="sg-muted">Signing with a secure link — no account needed.</p>
+              <Btn className="sg-btn--block" onClick={() => setScreen('disclosure')}>
+                Review document
+              </Btn>
+              <Btn variant="quiet" className="sg-btn--block" onClick={() => setDeclineOpen(true)}>
+                Decline to sign
+              </Btn>
+              <p className="sg-muted sg-small sg-report-line">
+                Don&apos;t know the sender? <ReportLink token={token} />
+              </p>
+            </div>
+          )}
         </main>
         {declineOpen ? <DeclineDialog onDecline={decline} onClose={() => setDeclineOpen(false)} /> : null}
       </>
@@ -1507,7 +1539,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   if (screen === 'disclosure')
     return (
       <>
-        <Header reportToken={token} />
+        <Header {...headerProps} />
         <main className="sg-center">
           <div className="sg-card sg-card--wide" data-testid="sg-disclosure">
             <h1>Before you sign electronically</h1>
@@ -1541,7 +1573,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
 
   return (
     <>
-      <Header title={title} progress={progress} onDecline={() => setDeclineOpen(true)} reportToken={token} />
+      <Header title={title} progress={progress} onDecline={selfSigning ? undefined : () => setDeclineOpen(true)} {...headerProps} />
       {screen === 'review' ? (
         <main className="sg-center">
           <div className="sg-card sg-card--wide" data-testid="sg-review">
