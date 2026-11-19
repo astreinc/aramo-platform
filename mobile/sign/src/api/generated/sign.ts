@@ -2703,7 +2703,7 @@ export interface paths {
         get: operations["getSignProfile"];
         /**
          * Save (replace) the signed-in user's Sign profile.
-         * @description Omitted optional fields are cleared. 400 details.reason invalid_body | unknown_field | invalid_display_name | invalid_profile_field | invalid_country | invalid_phone.
+         * @description Omitted optional fields are cleared. 400 details.reason invalid_body | unknown_field | invalid_display_name | invalid_profile_field | invalid_country | invalid_phone | invalid_place_name (city or region with no letter; UAT PRF-02 follow-up).
          */
         put: operations["putSignProfile"];
         post?: never;

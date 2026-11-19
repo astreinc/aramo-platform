@@ -336,6 +336,12 @@ describe('M-A12 W1-E — profile, settings, app issues', () => {
     expect(reason({ display_name: 'A', city: 'x'.repeat(201) })).toBe('invalid_profile_field');
     expect(reason({ display_name: 'A', country: 'USA' })).toBe('invalid_country');
     expect(reason({ display_name: 'A', phone: '0207946' })).toBe('invalid_phone');
+    // UAT PRF-02 follow-up (PO 2026-11-19) — city / region need at least one letter, any script.
+    expect(reason({ display_name: 'A', city: '@%^_%^&<<***' })).toBe('invalid_place_name');
+    expect(reason({ display_name: 'A', region: '12345' })).toBe('invalid_place_name');
+    for (const ok of ["Coeur d'Alene", 'Saint-Étienne', 'São Paulo', '東京', 'St. John’s (NL)']) {
+      expect(reason({ display_name: 'A', city: ok, region: ok })).toBeUndefined();
+    }
     expect(reason({ display_name: 'A', ssn: '1' })).toBe('unknown_field');
     expect(reason([])).toBe('invalid_body');
   });

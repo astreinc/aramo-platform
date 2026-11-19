@@ -40,6 +40,8 @@ function draftOf(p: SignProfile | null, fallbackName: string): Draft {
   return d;
 }
 
+export const PLACE_NAME_ERROR = 'Include at least one letter.';
+
 export function validateDraft(d: Draft): Partial<Record<keyof Draft, string>> {
   const e: Partial<Record<keyof Draft, string>> = {};
   const name = d.display_name.trim();
@@ -48,6 +50,12 @@ export function validateDraft(d: Draft): Partial<Record<keyof Draft, string>> {
   for (const r of ROWS) if (d[r.key].trim().length > FIELD_MAX) e[r.key] = `Use at most ${FIELD_MAX} characters.`;
   const phone = d.phone.trim().replace(/[\s().-]/g, '');
   if (phone && !E164.test(phone)) e.phone = 'Use the international format, e.g. +15551234567.';
+  // UAT PRF-02 follow-up (PO 2026-11-19) — a city or region needs at least one letter (any
+  // script), as the server (invalid_place_name) and the app.
+  for (const k of ['city', 'region'] as const) {
+    const v = d[k].trim();
+    if (v && e[k] === undefined && !/\p{L}/u.test(v)) e[k] = PLACE_NAME_ERROR;
+  }
   const country = d.country.trim();
   if (country && !ISO2.test(country)) e.country = 'Use the two-letter country code, e.g. US.';
   return e;

@@ -35,6 +35,9 @@ import {
 //   invalid_profile_field       an optional field that is not text of at most 200 (details.field)
 //   invalid_country             country is not an ISO 3166-1 alpha-2 code
 //   invalid_phone               phone is not E.164 (+ and up to 15 digits)
+//   invalid_place_name          city or region has no letter at all (details.field; UAT
+//                               PRF-02 follow-up, PO 2026-11-19: any script, any punctuation,
+//                               but not only symbols or digits)
 //   invalid_date_format / invalid_default_field_size
 //   invalid_app_issue           an app-issue field missing or too long (details.field)
 
@@ -49,6 +52,8 @@ export const APP_ISSUE_LIMIT_PER_HOUR = 5;
 const APP_ISSUE_WINDOW_MS = 60 * 60 * 1000;
 const COUNTRY_RE = /^[A-Z]{2}$/;
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
+/** UAT PRF-02 follow-up — a place name has at least one letter, in any script. */
+export const HAS_LETTER_RE = /\p{L}/u;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 function bad(requestId: string, message: string, reason: string, field?: string): AramoError {
@@ -75,6 +80,13 @@ export function validateProfile(body: unknown, requestId: string): SignUserProfi
     const t = v.trim();
     return t.length === 0 ? null : t;
   };
+  const place = (k: 'city' | 'region'): string | null => {
+    const v = opt(k);
+    if (v !== null && !HAS_LETTER_RE.test(v)) throw bad(requestId, `${k} must include at least one letter`, 'invalid_place_name', k);
+    return v;
+  };
+  const city = place('city');
+  const region = place('region');
   const country = opt('country')?.toUpperCase() ?? null;
   if (country !== null && !COUNTRY_RE.test(country)) throw bad(requestId, 'country must be a two-letter ISO 3166-1 code', 'invalid_country', 'country');
   const phoneRaw = opt('phone');
@@ -86,8 +98,8 @@ export function validateProfile(body: unknown, requestId: string): SignUserProfi
     company: opt('company'),
     address_line1: opt('address_line1'),
     address_line2: opt('address_line2'),
-    city: opt('city'),
-    region: opt('region'),
+    city,
+    region,
     postal_code: opt('postal_code'),
     country,
     phone,

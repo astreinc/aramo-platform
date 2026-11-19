@@ -90,4 +90,19 @@ describe('Settings — My profile (UAT PRF-01)', () => {
     fireEvent.change(await screen.findByTestId('profile-city'), { target: { value: 'c'.repeat(200) } });
     expect(screen.getByText('Up to 200 characters. Anything longer isn’t kept.')).toBeInTheDocument();
   });
+
+  it('UAT PRF-02 follow-up: a City or State with no letter is refused (any script is fine)', async () => {
+    const calls: Call[] = [];
+    stub(calls);
+    show();
+    fireEvent.change(await screen.findByTestId('profile-city'), { target: { value: '@%^_%^&<<***' } });
+    fireEvent.change(screen.getByTestId('profile-region'), { target: { value: '12345' } });
+    fireEvent.click(screen.getByTestId('profile-save'));
+    expect(await screen.findAllByText('Include at least one letter.')).toHaveLength(2);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    fireEvent.change(screen.getByTestId('profile-city'), { target: { value: 'São Paulo' } });
+    fireEvent.change(screen.getByTestId('profile-region'), { target: { value: '東京' } });
+    fireEvent.click(screen.getByTestId('profile-save'));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
+  });
 });
