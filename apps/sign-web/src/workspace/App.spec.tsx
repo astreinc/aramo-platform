@@ -464,6 +464,47 @@ describe('envelope wizard — recipient roles (M-A5)', () => {
   });
 });
 
+describe('UAT SEC-09 — "Assign to me" keeps the account email (web ≡ app)', () => {
+  const base = {
+    id: 'e9', subject: 'NDA', status: 'DRAFT', etag: '"e9.1"', revision: 1, editable: true,
+    routing_mode: 'PARALLEL', next_signer_id: null, documents: [], fields: [],
+  };
+  function stub(recipients: unknown[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/auth/sign/session')) return json(SESSION);
+        if (url.endsWith('/v1/sign/sender/context')) return json(ctx());
+        if (url.endsWith('/v1/sign/sender/envelopes/e9')) return json({ ...base, recipients });
+        return json({ items: [] });
+      }),
+    );
+  }
+
+  it('"+ Assign to me" adds the account with a read-only email that cannot be changed', async () => {
+    stub([{ id: 'r2', name: 'Casey', email: 'casey@x.test', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false }]);
+    renderAt('/sign/envelopes/e9/edit?step=2');
+    fireEvent.click(await screen.findByTestId('assign-to-me-add'));
+    const emails = screen.getAllByTestId('recipient-email') as HTMLInputElement[];
+    const mine = emails[emails.length - 1]!;
+    expect(mine).toHaveAttribute('readonly');
+    const before = mine.value;
+    fireEvent.change(mine, { target: { value: 'someone@else.test' } });
+    expect(mine.value).toBe(before);
+    expect(screen.getByTestId('assign-to-me')).toHaveTextContent('remove this recipient and add them');
+    // Other recipients stay editable.
+    expect(emails[0]).not.toHaveAttribute('readonly');
+  });
+
+  it('a recipient the server reports as assigned to me is read-only too', async () => {
+    stub([{ id: 'r1', name: 'Me', email: 'me-alias@x.test', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: true }]);
+    renderAt('/sign/envelopes/e9/edit?step=2');
+    const [mine] = (await screen.findAllByTestId('recipient-email')) as HTMLInputElement[];
+    expect(mine).toHaveAttribute('readonly');
+  });
+});
+
 describe('editor geometry (top-left editor ⇄ bottom-left PDF)', () => {
   it('round-trips a box and matches the stamper frame', () => {
     const tl = { x: 72, y: 100, width: 220, height: 48 };

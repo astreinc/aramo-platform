@@ -421,12 +421,12 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   }, []);
 
   const keyGen = useRef(0);
-  const add = (name = '', email = '') =>
+  const add = (name = '', email = '', assign = false) =>
     setList((l) => {
       // Past MAX_SIGNERS signers, a new person is added as a copy recipient.
       const signers = l.filter((r) => r.kind !== 'RECEIVES_COPY').length;
       const kind: RecipientKind = signers >= MAX_SIGNERS ? 'RECEIVES_COPY' : 'SIGNER';
-      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: false, witnessFor: null, accessCodeSet: false, idv: null }];
+      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }];
     });
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
@@ -628,7 +628,19 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     <TextIn id={`rn-${r.key}`} value={r.name} onChange={(e) => upd(r.key, { name: e.target.value })} />
                   </Field>
                   <Field label="Email" htmlFor={`re-${r.key}`}>
-                    <TextIn id={`re-${r.key}`} type="email" value={r.email} onChange={(e) => upd(r.key, { email: e.target.value })} />
+                    {/* UAT SEC-09 (web ≡ app) — an "Assign to me" row keeps the account's email: it
+                        cannot be edited to someone else's. Remove the row to send to another person. */}
+                    <TextIn
+                      id={`re-${r.key}`}
+                      type="email"
+                      value={r.email}
+                      readOnly={r.assign}
+                      aria-readonly={r.assign}
+                      onChange={(e) => {
+                        if (!r.assign) upd(r.key, { email: e.target.value });
+                      }}
+                      data-testid="recipient-email"
+                    />
                   </Field>
                   <Field label="Role" htmlFor={`rr-${r.key}`}>
                     <Sel id={`rr-${r.key}`} value={r.kind} onChange={(e) => setKind(r.key, e.target.value as RecipientKind)} data-testid="recipient-role">
@@ -672,9 +684,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     </Sel>
                   </Field>
                 ) : null}
-                {r.kind === 'SIGNER' && isMine(r.email) ? (
+                {r.kind === 'SIGNER' && (r.assign || isMine(r.email)) ? (
                   <div className="sg-row__s" data-testid="assign-to-me">
                     This is you. After sending, sign from the envelope page with Sign now, or use the emailed link.
+                    {r.assign ? ' Your email can’t be changed here. To send to someone else, remove this recipient and add them.' : ''}
                   </div>
                 ) : null}
                 <div className="sg-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }}>
@@ -744,8 +757,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               + Add recipient
             </Btn>
             {ctx.user.email !== null && !inList(ctx.user.email) ? (
-              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')} disabled={signerCount >= MAX_SIGNERS}>
-                + Add me as counter-signer
+              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '', true)} disabled={signerCount >= MAX_SIGNERS} data-testid="assign-to-me-add">
+                + Assign to me
               </Btn>
             ) : null}
             {full ? (
