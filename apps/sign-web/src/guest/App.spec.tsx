@@ -529,3 +529,47 @@ describe('signer app — Save to my Aramo inbox (M-A16)', () => {
     expect(screen.queryByTestId('sg-save-to-inbox')).toBeNull();
   });
 });
+
+// UAT SND-11 (Web Self-Signing A2, amendment A3) — the caller's own "Sign a document": the server's
+// exchange says self_signing, and the page drops the outside-signer wording, Decline and Report.
+// The e-sign consent stays (as in the app).
+describe('SND-11 — self-signing wording on the signing page', () => {
+  const self = () => json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1', self_signing: true });
+
+  it('shows "Sign your document" with no Decline and no Report', async () => {
+    // A token long enough for a Report link, so its absence is the flag's doing.
+    window.history.pushState({}, '', '/s/A1b2C3d4E5f6G7h8I9j0_-xyz');
+    transport({ exchange: self });
+    render(<App />);
+    await screen.findByTestId('sg-landing-self');
+    expect(screen.getByRole('heading', { name: 'Sign your document' })).toBeInTheDocument();
+    expect(screen.queryByText(/asked to review and sign/)).toBeNull();
+    expect(screen.queryByText(/no account needed/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decline to sign' })).toBeNull();
+    expect(screen.queryByTestId('sg-report')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Help' }));
+    expect(screen.getByText(/You’re signing your own document|You're signing your own document/)).toBeInTheDocument();
+    expect(screen.queryByTestId('sg-report')).toBeNull();
+  });
+
+  it('keeps the e-sign consent, and the signing header has no Decline', async () => {
+    transport({ exchange: self });
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review document' }));
+    expect(screen.getByText('I agree to use electronic records and signatures.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Agree & continue' }));
+    await screen.findByTestId('sg-workspace');
+    expect(screen.queryByRole('button', { name: 'Decline to sign' })).toBeNull();
+    expect(screen.queryByTestId('sg-report')).toBeNull();
+  });
+
+  it('an emailed link (no flag) keeps the outside-signer page, Decline and Report', async () => {
+    window.history.pushState({}, '', '/s/A1b2C3d4E5f6G7h8I9j0_-xyz');
+    transport();
+    render(<App />);
+    await screen.findByTestId('sg-landing');
+    expect(screen.getByRole('button', { name: 'Decline to sign' })).toBeInTheDocument();
+    expect(screen.getByTestId('sg-report')).toBeInTheDocument();
+  });
+});

@@ -22,6 +22,7 @@ import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { SelfSignScreen } from '../screens/selfSign/SelfSignScreen';
 import { SendFlowScreen } from '../screens/send/SendFlowScreen';
 import { TasksScreen } from '../screens/tasks/TasksScreen';
+import { DeletedInboxScreen } from '../screens/agreements/DeletedInboxScreen';
 import { SignInScreen } from '../screens/signIn/SignInScreen';
 import { GuestSigningScreen } from '../screens/signing/GuestSigningScreen';
 import { SigningScreen } from '../screens/signing/SigningScreen';
@@ -222,6 +223,7 @@ export function RootNavigator() {
               options={{ title: 'Sign Document', headerShown: false }}
             />
             <Stack.Screen name="Tasks" component={TasksScreen} options={{ title: 'Tasks', headerBackTitle: 'Home' }} />
+            <Stack.Screen name="DeletedInbox" component={DeletedInboxScreen} options={{ title: 'Deleted', headerBackTitle: 'Agreements' }} />
             <Stack.Screen name="Plans" component={PlansScreen} options={{ title: 'Plans', headerBackTitle: 'Back' }} />
             <Stack.Screen
               name="Profile"

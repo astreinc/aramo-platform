@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { PdfDocument, findOnPage } from './pdf-view';
+import type { TextLayer } from './find';
+import { PdfDocument } from './pdf-view';
 import type { SignField } from './sign-api';
 
 // UAT SIG-03 — an on-page check box is the box itself (no "Check" badge spilling over
@@ -33,7 +34,16 @@ const box = (id: string, label: string, y: number): SignField =>
   ({ field_id: id, document_id: 'd1', field_type: 'CHECKBOX', page_number: 0, x: 86, y, width: 14, height: 14, required: true, filled: false, value: null, label }) as SignField;
 const sig: SignField = { field_id: 's1', document_id: 'd1', field_type: 'SIGNATURE', page_number: 0, x: 86, y: 300, width: 160, height: 30, required: true, filled: false, value: null } as SignField;
 
-function show(onField: (f: SignField) => void, checked: readonly string[] = []) {
+// UAT SIG-16 retest — the server's word boxes (page fractions, top-left) for Find.
+const LAYER: TextLayer = {
+  document_id: 'd1',
+  pages: [
+    { page: 1, words: [{ t: 'Terms', x: 0.1, y: 0.1, w: 0.1, h: 0.02 }, { t: 'citizen-facing', x: 0.3, y: 0.1, w: 0.2, h: 0.02 }] },
+    { page: 2, words: [{ t: 'Signature', x: 0.12, y: 0.2, w: 0.15, h: 0.02 }, { t: 'schedule', x: 0.3, y: 0.2, w: 0.12, h: 0.02 }, { t: 'Signature', x: 0.12, y: 0.5, w: 0.15, h: 0.02 }] },
+  ],
+};
+
+function show(onField: (f: SignField) => void, checked: readonly string[] = [], loadTextLayer: (() => Promise<TextLayer>) | null = async () => LAYER) {
   render(
     <PdfDocument
       base64=""
@@ -44,6 +54,7 @@ function show(onField: (f: SignField) => void, checked: readonly string[] = []) 
       actionLabel={(f) => (f.field_type === 'CHECKBOX' ? 'Check' : 'Sign')}
       onField={onField}
       onError={() => undefined}
+      loadTextLayer={loadTextLayer ?? undefined}
     />,
   );
 }
@@ -79,32 +90,61 @@ describe('on-page check box (UAT SIG-03)', () => {
   });
 });
 
-describe('Find in the document (UAT SIG-16)', () => {
-  it('findOnPage boxes a matching run in page percentages, case-insensitively', () => {
-    const hits = findOnPage(1, [{ str: 'Signature schedule', transform: [12, 0, 0, 12, 72, 700], width: 100, height: 12 }, { str: 'other', transform: [1, 0, 0, 1, 0, 0], width: 5 }], viewport, '  SCHEDULE ');
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toMatchObject({ page: 1 });
-    expect(hits[0]!.left).toBeCloseTo((72 / 612) * 100);
-    expect(hits[0]!.top).toBeCloseTo(((792 - 712) / 792) * 100);
-    expect(findOnPage(0, [{ str: 'x', transform: [1, 0, 0, 1, 0, 0] }], viewport, '   ')).toEqual([]);
+describe('Find in the document (UAT SIG-16, retest web ≡ app)', () => {
+  const find = async (q: string) => {
+    fireEvent.click(await screen.findByTestId('sg-find-open'));
+    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: q } });
+    fireEvent.click(screen.getByTestId('sg-find-go'));
+  };
+
+  it('finds a word inside a hyphenated word ("citizen" in "citizen-facing"), as the app', async () => {
+    show(() => undefined);
+    await find('citizen');
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('1 of 1');
   });
 
-  it('finds the word on page 2, says "1 of 1" and highlights it there', async () => {
+  it('highlights only the matched word box, on its page', async () => {
     show(() => undefined);
-    fireEvent.click(await screen.findByTestId('sg-find-open'));
-    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: 'signature' } });
-    fireEvent.click(screen.getByTestId('sg-find-go'));
+    await find('schedule');
     expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('1 of 1');
     const pages = screen.getAllByLabelText(/^Page \d$/);
-    expect(pages[1]!.querySelector('.sg-find__hit--on')).not.toBeNull();
+    const on = pages[1]!.querySelector<HTMLElement>('.sg-find__hit--on');
+    expect(on).not.toBeNull();
+    expect(on!.style.left).toBe('30%');
+    expect(on!.style.width).toBe('12%');
     expect(pages[0]!.querySelector('.sg-find__hit')).toBeNull();
   });
 
-  it('a word that is not there says "No matches"', async () => {
+  it('Enter again and › step to the next match; ‹ goes back (wrapping)', async () => {
     show(() => undefined);
-    fireEvent.click(await screen.findByTestId('sg-find-open'));
-    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: 'zebra' } });
+    await find('signature');
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('1 of 2');
     fireEvent.click(screen.getByTestId('sg-find-go'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('2 of 2');
+    fireEvent.click(screen.getByTestId('sg-find-next'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('1 of 2');
+    fireEvent.click(screen.getByTestId('sg-find-prev'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('2 of 2');
+  });
+
+  it('says "No matches", and asks for 2 letters, as the app', async () => {
+    show(() => undefined);
+    await find('zebra');
     expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('No matches');
+    fireEvent.change(screen.getByTestId('sg-find-input'), { target: { value: 'z' } });
+    fireEvent.click(screen.getByTestId('sg-find-go'));
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('Type at least 2 letters');
+  });
+
+  it('a failed text layer says it could not search', async () => {
+    show(() => undefined, [], async () => Promise.reject(new Error('net')));
+    await find('terms');
+    expect(await screen.findByTestId('sg-find-count')).toHaveTextContent('Couldn’t search this document');
+  });
+
+  it('no Find without a text layer loader', async () => {
+    show(() => undefined, [], null);
+    await screen.findAllByLabelText(/^Page \d$/);
+    expect(screen.queryByTestId('sg-find-open')).toBeNull();
   });
 });

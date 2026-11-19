@@ -30,12 +30,14 @@ export const REPORT_COPY: Record<ReportOutcome, string> = {
 export async function reportInboxItem(
   workspace: WorkspaceClient,
   inboxItemId: string,
-  reason: ReportReasonKey,
+  reason: ReportReasonKey | null,
+  note = '',
 ): Promise<ReportOutcome> {
   try {
     await workspace.call('/v1/sign/inbox/{id}/report', 'post', {
       path: { id: inboxItemId },
-      body: { reason },
+      // Reason and note are optional, as on the web report page.
+      body: { ...(reason ? { reason } : {}), ...(note ? { note } : {}) },
     });
     return 'sent';
   } catch (e) {

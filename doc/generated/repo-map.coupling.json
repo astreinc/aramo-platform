@@ -10794,6 +10794,11 @@
       "to": "apps/sign-web/vite.config.ts"
     },
     {
+      "from": "apps/sign-web/src/guest/find.ts",
+      "status": "production",
+      "to": "mobile/sign/src/features/find/findModel.ts"
+    },
+    {
       "from": "apps/sign-web/src/workspace/legal/identity.ts",
       "status": "production",
       "to": "doc/legal/aramo/privacy-notice.md"
@@ -35880,6 +35885,11 @@
       "from": "mobile/sign/src/features/signup/signupModel.ts",
       "status": "unscoped",
       "to": "apps/sign-web/src/workspace/routes/personal-signup-api.ts"
+    },
+    {
+      "from": "mobile/sign/src/screens/envelope/ReportSheet.tsx",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/routes/ReportPage.tsx"
     },
     { "from": "openapi/ats.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "openapi/auth.yaml", "status": "unscoped", "to": "openapi/common.yaml" },

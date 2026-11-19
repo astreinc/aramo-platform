@@ -104,7 +104,8 @@ import {
   type SigningState,
 } from './signingMachine';
 import { fieldHitSlop } from './fieldHitSlop';
-import { ReportSheet } from '../../screens/envelope/ReportSheet';
+import { ReportSheet, type ReportSendResult } from '../../screens/envelope/ReportSheet';
+import { CheckboxField } from './CheckboxField';
 import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
 import { ZoomablePages } from './ZoomablePages';
@@ -229,13 +230,13 @@ export function SigningFlow(props: SigningFlowProps) {
   // UAT SIG-14 — "Report this envelope" (the same public report route and reasons as the web).
   const [reportOpen, setReportOpen] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
-  async function report(reason: ReportReasonKey): Promise<void> {
-    if (!session) return;
+  async function report(reason: ReportReasonKey | null, note: string): Promise<ReportSendResult> {
+    if (!session) return { kind: 'error', message: SIGNING_REPORT_COPY.failed };
     setReportBusy(true);
-    const outcome = await reportFromSigning(session, reason);
+    const outcome = await reportFromSigning(session, reason, note);
     setReportBusy(false);
-    if (outcome !== 'failed' && outcome !== 'limited') setReportOpen(false);
-    toast.show(SIGNING_REPORT_COPY[outcome]);
+    if (outcome === 'sent' || outcome === 'already') return { kind: outcome };
+    return { kind: 'error', message: SIGNING_REPORT_COPY[outcome] };
   }
   const [delegateError, setDelegateError] = useState<string | null>(null);
   const [delegateName, setDelegateName] = useState('');
@@ -838,14 +839,37 @@ export function SigningFlow(props: SigningFlowProps) {
     const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout)] as const));
     const allBoxes = [...boxes.values()];
     return [highlight, ...onPage
-      .map((f) => {
+      .flatMap((f) => {
         const box = boxes.get(f.field_id) ?? boxOnPage(f, layout);
         const v = state.values[f.field_id];
         const shown = displayOf(f, v);
         const current = state.currentId === f.field_id;
         const filled = isFilled(state, f.field_id);
         const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
-        return (
+        // UAT SIG-03 retest (web ≡ app) — a check box is the box itself: a plain square with
+        // ✓ when checked, never its caption squeezed inside (it showed "Ye"); the caption sits
+        // beside the box, as on the web, and tapping it toggles that box.
+        if (f.field_type === 'CHECKBOX') {
+          return [
+            <CheckboxField
+              key={f.field_id}
+              fieldId={f.field_id}
+              box={box}
+              pageWidth={layout.width}
+              label={f.label ?? null}
+              required={f.required}
+              checked={v?.value === 'true'}
+              current={current}
+              hitSlop={slop}
+              accessibilityLabel={fieldAnnouncement(state, f, signerName)}
+              onPress={() => onTap(f)}
+              setRef={(r) => {
+                fieldRefs.current[f.field_id] = r;
+              }}
+            />,
+          ];
+        }
+        return [
           <Pressable
             key={f.field_id}
             ref={(r) => {
@@ -907,8 +931,8 @@ export function SigningFlow(props: SigningFlowProps) {
                 {emptyCaption(f)}
               </Text>
             )}
-          </Pressable>
-        );
+          </Pressable>,
+        ];
       })];
   }
 
@@ -1083,7 +1107,7 @@ export function SigningFlow(props: SigningFlowProps) {
         />
         <Button title="Close" variant="text" onPress={() => setMoreOpen(false)} />
       </Sheet>
-      <ReportSheet visible={reportOpen} busy={reportBusy} onReport={(r) => void report(r)} onClose={() => setReportOpen(false)} />
+      <ReportSheet visible={reportOpen} busy={reportBusy} onSend={report} onClose={() => setReportOpen(false)} />
       <Sheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} title="Document details">
         {subject ? <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '600' }}>{subject}</Text> : null}
         <Text style={{ color: t.color.textSecondary, fontSize: 14 }}>{`From ${from}`}</Text>

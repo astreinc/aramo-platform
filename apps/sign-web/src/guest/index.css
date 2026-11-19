@@ -73,8 +73,10 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-check { width: 20px; height: 20px; accent-color: var(--sg-accent); }
 
 /* Workspace: document viewer + your fields, sticky progress bar */
-.sg-work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: 1fr auto; gap: 0; height: calc(100vh - 61px); }
-.sg-viewer { display: flex; flex-direction: column; min-width: 0; background: #e9edf2; }
+.sg-work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr) auto; gap: 0; height: calc(100vh - 61px); }
+/* UAT SIG-16 retest — min-height 0 keeps the document scrolling inside its pane (not the
+   window), so the Find bar (sticky in .sg-pages) stays in view. */
+.sg-viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #e9edf2; }
 .sg-doctabs { display: flex; gap: 4px; padding: 8px 12px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); overflow-x: auto; }
 .sg-tab--on { color: var(--sg-accent); box-shadow: inset 0 -2px 0 var(--sg-accent); border-radius: 0; }
 .sg-frame { flex: 1; width: 100%; border: 0; background: #fff; }
@@ -110,6 +112,8 @@ p { line-height: 1.5; margin: 0 0 12px; }
 
 @media (max-width: 900px) {
   .sg-work { grid-template-columns: 1fr; grid-template-rows: minmax(55vh, 1fr) auto auto; height: auto; }
+  /* The window scrolls on a narrow screen: let the Find bar stick to the window. */
+  .sg-pages { overflow: visible; }
   .sg-fields { border-left: 0; border-top: 1px solid var(--sg-line); }
   .sg-bar { position: sticky; bottom: 0; }
   .sg-scrim { align-items: end; padding: 0; }
@@ -118,7 +122,7 @@ p { line-height: 1.5; margin: 0 0 12px; }
 }
 
 /* PX-2 — the actual document, rendered page by page, with the signer's fields in place. */
-.sg-pages { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.sg-pages { flex: 1; min-height: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .sg-page { position: relative; background: #fff; box-shadow: 0 1px 3px rgba(20, 24, 31, 0.15), 0 8px 24px rgba(20, 24, 31, 0.08); flex: none; }
 .sg-page canvas { display: block; width: 100%; height: 100%; }
 .sg-onpage { position: absolute; display: flex; align-items: center; justify-content: center; border: 2px dashed #c58a00; background: rgba(255, 213, 79, 0.28); border-radius: 4px; cursor: pointer; overflow: visible; }

@@ -11,6 +11,8 @@ import {
   profileBody,
   profileValue,
   saveSettings,
+  hasLetter,
+  PLACE_NAME_ERROR,
   validateProfile,
 } from '../signProfile';
 
@@ -22,6 +24,15 @@ describe('profile', () => {
     const bad = { ...d, display_name: 'Priya', phone: '555-1234', country: 'USA', city: 'x'.repeat(201) };
     expect(Object.keys(validateProfile(bad)).sort()).toEqual(['city', 'country', 'phone']);
     expect(validateProfile({ ...d, display_name: 'Priya', phone: '+15551234567', country: 'us' })).toEqual({});
+  });
+
+  it('UAT PRF-02 follow-up: city and region need at least one letter, in any script', () => {
+    const d = { ...draftFromProfile(null), display_name: 'Priya' };
+    expect(validateProfile({ ...d, city: '@%^_%^&<<***', region: '12345' })).toEqual({ city: PLACE_NAME_ERROR, region: PLACE_NAME_ERROR });
+    for (const ok of ["Coeur d'Alene", 'Saint-Étienne', 'São Paulo', '東京', 'St. John’s (NL)']) {
+      expect(hasLetter(ok)).toBe(true);
+      expect(validateProfile({ ...d, city: ok, region: ok })).toEqual({});
+    }
   });
 
   it('sends trimmed values; an emptied optional field is cleared (null); country upper-case', () => {

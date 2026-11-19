@@ -378,9 +378,14 @@ export const SIGNING_REPORT_COPY: Record<SigningReportOutcome, string> = {
   failed: 'Couldn’t send your report. Try again.',
 };
 
-export async function reportFromSigning(session: GuestSigningSession, reason: string): Promise<SigningReportOutcome> {
+export async function reportFromSigning(
+  session: GuestSigningSession,
+  reason: string | null,
+  note = '',
+): Promise<SigningReportOutcome> {
   try {
-    await session.report({ reason });
+    // Reason and note are optional, as on the web report page.
+    await session.report({ ...(reason ? { reason } : {}), ...(note ? { note } : {}) });
     return 'sent';
   } catch (e) {
     if (!isApiError(e)) return 'failed';

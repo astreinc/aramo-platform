@@ -73,6 +73,24 @@ export type ProfileErrors = Partial<Record<keyof ProfileDraft, string>>;
 const E164 = /^\+[1-9]\d{6,14}$/;
 const ISO2 = /^[A-Za-z]{2}$/;
 
+/** UAT PRF-02 follow-up (PO 2026-11-19) — a city or region needs at least one letter. */
+export const PLACE_NAME_ERROR = 'Include at least one letter.';
+// The server's rule is /\p{L}/u. If the JS engine lacks Unicode property escapes, fall back to
+// "a cased letter, or a character in a major uncased script" (CJK, kana, Hangul, Arabic,
+// Hebrew, Indic, Thai) — the server checks again either way.
+const HAS_LETTER: (s: string) => boolean = (() => {
+  try {
+    const re = new RegExp('\\p{L}', 'u');
+    return (s: string) => re.test(s);
+  } catch {
+    const uncased = /[\u0590-\u05FF\u0600-\u06FF\u0900-\u0DFF\u0E00-\u0E7F\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
+    return (s: string) => [...s].some((c) => c.toLowerCase() !== c.toUpperCase()) || uncased.test(s);
+  }
+})();
+export function hasLetter(s: string): boolean {
+  return HAS_LETTER(s);
+}
+
 /** Client checks that mirror the server's (the server checks again). */
 export function validateProfile(d: ProfileDraft): ProfileErrors {
   const e: ProfileErrors = {};
@@ -85,6 +103,10 @@ export function validateProfile(d: ProfileDraft): ProfileErrors {
   }
   const phone = d.phone.trim();
   if (phone && !E164.test(phone)) e.phone = 'Use the international format, e.g. +15551234567.';
+  for (const k of ['city', 'region'] as const) {
+    const v = d[k].trim();
+    if (v && !e[k] && !hasLetter(v)) e[k] = PLACE_NAME_ERROR;
+  }
   const country = d.country.trim();
   if (country && !ISO2.test(country)) e.country = 'Use the two-letter country code, e.g. US.';
   return e;

@@ -13,10 +13,15 @@
  * UAT DEL-09 — the fe-foundation Dialog renders in a portal under <body>, outside `.sg`, so a
  * Sign button inside it had no tokens: `sg-btn--primary` (white text on var(--accent)) was
  * invisible — the Restore dialog showed only Cancel. The dialog content gets the same Sign
- * tokens (fe-foundation's own dialog styles use the separate --c-* tokens, so nothing clashes). */
+ * tokens (fe-foundation's own dialog styles use the separate --c-* tokens, so nothing clashes).
+ *
+ * UAT PRF-01 retest — the workspace toast is drawn beside the shell, outside `.sg`, so its
+ * background var(--ink) was unset: white text on a transparent box over a white page, and no
+ * toast was ever visible ("Profile saved", "Moved to Deleted", …). It gets the tokens too. */
 
 .sg,
-.tc-dialog__content {
+.tc-dialog__content,
+.sg-toast {
   --bg: #f3f4f7;
   --surface: #ffffff;
   --ink: #14181f;
@@ -39,7 +44,8 @@
   background: var(--bg);
 }
 .sg,
-.tc-dialog__content {
+.tc-dialog__content,
+.sg-toast {
   color: var(--ink);
   font-family: 'Hanken Grotesk', system-ui, sans-serif;
   font-size: 14px;

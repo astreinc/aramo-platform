@@ -232,6 +232,9 @@ export function ContactsSheet({
   );
 }
 
+export const MANAGE_CONTACTS_NOTE =
+  'Only contacts you saved are listed here. People you’ve sent envelopes to also appear when you add recipients; save one with New contact to edit it here.';
+
 const CONTACT_ERRORS: Record<string, string> = {
   invalid_contact_name: 'Enter a name of at most 200 characters.',
   invalid_contact_email: 'Enter a valid email address.',
@@ -316,7 +319,7 @@ function ContactForm({
   );
 }
 
-function ManageContacts({
+export function ManageContacts({
   contacts,
   online,
   onEdit,
@@ -342,6 +345,11 @@ function ManageContacts({
       {contacts.length === 0 ? (
         <Text style={{ color: t.color.textSecondary }}>You have no saved contacts yet.</Text>
       ) : null}
+      {/* UAT SND-24 — why the recipient list shows more people than this: recent recipients
+          come from envelopes and have no contact to edit (the web marks them "Recent"). */}
+      <Text testID="manage-contacts-note" style={{ color: t.color.textSecondary, fontSize: 13, lineHeight: 18 }}>
+        {MANAGE_CONTACTS_NOTE}
+      </Text>
       <View
         style={[styles.list, { backgroundColor: t.color.surface, borderRadius: t.size.cardRadius }]}
       >

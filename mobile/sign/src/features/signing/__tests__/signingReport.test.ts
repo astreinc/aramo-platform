@@ -23,6 +23,15 @@ describe('report from the signing screen', () => {
     expect(SIGNING_REPORT_COPY.sent).toBe('Thanks — we’ll look into it.');
   });
 
+  it('sends the optional note, and nothing for an empty reason or note (as the web)', async () => {
+    const withNote = sessionAnswering(202);
+    expect(await reportFromSigning(withNote.session, 'phishing', 'Asked for my bank login')).toBe('sent');
+    expect(withNote.net.calls[0]!.body).toEqual({ reason: 'phishing', note: 'Asked for my bank login', token: SIGNING_TOKEN });
+    const bare = sessionAnswering(202);
+    expect(await reportFromSigning(bare.session, null, '')).toBe('sent');
+    expect(bare.net.calls[0]!.body).toEqual({ token: SIGNING_TOKEN });
+  });
+
   it('maps the server answers as the web report page does', async () => {
     expect(await reportFromSigning(sessionAnswering(409).session, 'spam')).toBe('already');
     for (const s of [400, 404, 410]) expect(await reportFromSigning(sessionAnswering(s).session, 'spam')).toBe('invalid');
