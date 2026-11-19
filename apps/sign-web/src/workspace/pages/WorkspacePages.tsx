@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ApiError, Dialog } from '@aramo/fe-foundation';
 import { Link } from 'react-router-dom';
 
-import { errorMessage, senderApi, type ContactRow, type DocumentRow, type EnvelopeRow, type LedgerEvent, type Summary } from '../api';
-import { Avatar, ErrorBox, Loading, Sel, TextIn, fmtBytes, fmtDate } from '../ui';
+import { CONTACT_ERRORS, errorMessage, senderApi, type ContactRow, type DocumentRow, type EnvelopeRow, type LedgerEvent, type Summary } from '../api';
+import { Avatar, Btn, ErrorBox, Field, Loading, Sel, TextIn, fmtBytes, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { Bars } from './Dashboard';
@@ -121,18 +122,73 @@ export function DocumentsPage() {
 }
 
 // ── Contacts (the sender's saved Sign contacts plus recent recipients) ───────
+// UAT SND-24 (web ≡ app) — saved contacts can be edited and deleted (the app's Manage contacts);
+// recent recipients come from envelopes, so they are marked Recent and cannot be changed. "Send
+// to" starts a new envelope with that person already added as a signer.
+export function contactError(e: unknown): string {
+  if (e instanceof ApiError) {
+    const reason = e.details?.['reason'];
+    if (typeof reason === 'string' && CONTACT_ERRORS[reason] !== undefined) return CONTACT_ERRORS[reason];
+  }
+  return errorMessage(e);
+}
+
 export function ContactsPage() {
-  const { base, ctx } = useWorkspace();
+  const { base, ctx, toast } = useWorkspace();
   const [rows, setRows] = useState<ContactRow[] | null>(null);
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
-  useEffect(() => {
+  const [editing, setEditing] = useState<ContactRow | null>(null);
+  const [form, setForm] = useState({ name: '', email: '', organization: '' });
+  const [deleting, setDeleting] = useState<ContactRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const load = () =>
     senderApi
       .contacts()
       .then((r) => setRows(r.items))
       .catch((e: unknown) => setError(errorMessage(e)));
+  useEffect(() => {
+    void load();
   }, []);
   const shown = (rows ?? []).filter((c) => q.trim() === '' || `${c.name} ${c.email}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const saved = (c: ContactRow) => c.source === 'saved' && typeof c.id === 'string';
+  const startEdit = (c: ContactRow) => {
+    setForm({ name: c.name, email: c.email, organization: c.organization ?? '' });
+    setActionError('');
+    setEditing(c);
+  };
+  const saveEdit = async () => {
+    if (editing === null || typeof editing.id !== 'string') return;
+    setBusy(true);
+    setActionError('');
+    try {
+      await senderApi.updateContact(editing.id, { name: form.name.trim(), email: form.email.trim(), organization: form.organization.trim() || null });
+      setEditing(null);
+      toast('Contact saved');
+      await load();
+    } catch (e) {
+      setActionError(contactError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmDelete = async () => {
+    if (deleting === null || typeof deleting.id !== 'string') return;
+    setBusy(true);
+    setActionError('');
+    try {
+      await senderApi.deleteContact(deleting.id);
+      setDeleting(null);
+      toast('Contact deleted. Envelopes you sent keep their recipients.');
+      await load();
+    } catch (e) {
+      setActionError(contactError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sendTo = (c: ContactRow) => `${base}/envelopes/new?${new URLSearchParams({ to: c.email, name: c.name }).toString()}`;
   return (
     <div className="sg-page sg-page--wide">
       <div className="sg-pagehead">
@@ -140,7 +196,8 @@ export function ContactsPage() {
         <TextIn aria-label="Search contacts" placeholder="Search contacts" style={{ maxWidth: 220 }} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <p className="sg-muted" style={{ marginTop: -8 }}>
-        Your saved contacts and the people you’ve sent envelopes to. Pick from them when you add recipients.
+        Your saved contacts and the people you’ve sent envelopes to. Pick from them when you add recipients. Saved contacts can be
+        edited or deleted; recent recipients come from your envelopes. Send to starts a new envelope with that person as a signer.
       </p>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {rows === null && error === '' ? <Loading /> : null}
@@ -166,21 +223,36 @@ export function ContactsPage() {
                   </tr>
                 ) : null}
                 {shown.map((c) => (
-                  <tr key={c.email}>
+                  <tr key={c.email} data-testid={`contact-row-${c.email}`}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <Avatar name={c.name} small />
                         <strong>{c.name}</strong>
+                        <span className={`sg-tag ${saved(c) ? 'sg-tag--blue' : 'sg-tag--grey'}`}>{saved(c) ? 'Saved' : 'Recent'}</span>
                       </div>
                     </td>
                     <td className="sg-muted">{c.email}</td>
                     <td>
-                      <Link to={`${base}/envelopes?q=${encodeURIComponent(c.email)}`}>{c.envelope_count} recent</Link>
+                      {c.envelope_count > 0 ? (
+                        <Link to={`${base}/envelopes?q=${encodeURIComponent(c.email)}`}>{c.envelope_count} recent</Link>
+                      ) : (
+                        <span className="sg-muted">—</span>
+                      )}
                     </td>
                     <td className="sg-muted">{fmtDate(c.last_used_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {saved(c) ? (
+                        <>
+                          <Btn size="sm" variant="ghost" onClick={() => startEdit(c)} aria-label={`Edit ${c.name}`} data-testid={`contact-edit-${c.email}`}>
+                            Edit
+                          </Btn>{' '}
+                          <Btn size="sm" variant="ghost" onClick={() => { setActionError(''); setDeleting(c); }} aria-label={`Delete ${c.name}`} data-testid={`contact-delete-${c.email}`}>
+                            Delete
+                          </Btn>{' '}
+                        </>
+                      ) : null}
                       {ctx.can_send ? (
-                        <Link className="sg-btn sg-btn--sm" to={`${base}/envelopes/new`}>
+                        <Link className="sg-btn sg-btn--sm" to={sendTo(c)} aria-label={`Send an envelope to ${c.name}`} data-testid={`contact-send-${c.email}`}>
                           Send to
                         </Link>
                       ) : null}
@@ -192,6 +264,55 @@ export function ContactsPage() {
           </div>
         </section>
       ) : null}
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditing(null);
+        }}
+        title="Edit contact"
+        size="sm"
+        footer={
+          <>
+            <Btn onClick={() => setEditing(null)}>Cancel</Btn>
+            <Btn variant="primary" disabled={busy || form.name.trim() === '' || form.email.trim() === ''} onClick={() => void saveEdit()} data-testid="contact-save">
+              Save
+            </Btn>
+          </>
+        }
+      >
+        <div className="sg-grid" style={{ gap: 10 }}>
+          <Field label="Name" htmlFor="ct-name">
+            <TextIn id="ct-name" value={form.name} maxLength={200} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </Field>
+          <Field label="Email" htmlFor="ct-email">
+            <TextIn id="ct-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+          </Field>
+          <Field label="Organization (optional)" htmlFor="ct-org">
+            <TextIn id="ct-org" value={form.organization} maxLength={200} onChange={(e) => setForm((f) => ({ ...f, organization: e.target.value }))} />
+          </Field>
+          {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}
+        </div>
+      </Dialog>
+      <Dialog
+        open={deleting !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleting(null);
+        }}
+        title="Delete this contact?"
+        description="It’s removed from your saved contacts. Envelopes you already sent keep their recipients."
+        size="sm"
+        footer={
+          <>
+            <Btn onClick={() => setDeleting(null)}>Cancel</Btn>
+            <Btn variant="danger" disabled={busy} onClick={() => void confirmDelete()} data-testid="contact-delete-confirm">
+              Delete
+            </Btn>
+          </>
+        }
+      >
+        {deleting !== null ? <strong>{deleting.name}</strong> : null}
+        {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}
+      </Dialog>
     </div>
   );
 }

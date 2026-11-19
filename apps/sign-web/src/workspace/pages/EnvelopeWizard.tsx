@@ -43,6 +43,15 @@ const MAX_BYTES = 25 * 1024 * 1024;
 
 // Web Self-Signing A2 — `mode="self"` is "Sign a document": a SELF draft (the caller is the
 // only signer; no email, no allowance used) that opens the same wizard.
+/** UAT SND-24 — Contacts "Send to": the person to add as the first signer (`?to=&name=`). */
+export function sendToFrom(search: string): { name: string; email: string } | null {
+  const p = new URLSearchParams(search);
+  const email = (p.get('to') ?? '').trim();
+  if (email.length === 0 || email.length > 320 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) return null;
+  const name = (p.get('name') ?? '').trim().slice(0, 200) || email;
+  return { name, email };
+}
+
 export function NewEnvelope({ mode = 'standard' }: { mode?: 'standard' | 'self' } = {}) {
   const { base, ctx } = useWorkspace();
   const nav = useNavigate();
@@ -51,9 +60,14 @@ export function NewEnvelope({ mode = 'standard' }: { mode?: 'standard' | 'self' 
   useEffect(() => {
     if (started.current || !ctx.can_send) return;
     started.current = true;
+    const to = mode === 'standard' ? sendToFrom(window.location.search) : null;
     senderApi
       .create(undefined, mode)
-      .then((e) => nav(`${base}/envelopes/${e.id}/edit?step=1`, { replace: true }))
+      .then(async (e) => {
+        // Send to — the contact is the first signer (the draft still opens at Documents).
+        if (to !== null) await senderApi.recipients(e.id, [{ name: to.name, email: to.email, recipient_kind: 'SIGNER' }]);
+        nav(`${base}/envelopes/${e.id}/edit?step=1`, { replace: true });
+      })
       .catch((e: unknown) => setError(errorMessage(e)));
   }, [base, nav, ctx.can_send, mode]);
   if (!ctx.can_send) return <Navigate to={`${base}/envelopes`} replace />;

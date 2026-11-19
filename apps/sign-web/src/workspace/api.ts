@@ -377,11 +377,31 @@ export interface DocumentRow {
 }
 
 export interface ContactRow {
+  // UAT SND-24 — a saved contact has an id (editable); a recent recipient is derived from
+  // envelopes (id null, source 'recent') and cannot be edited or deleted.
+  id?: string | null;
+  source?: 'saved' | 'recent';
+  organization?: string | null;
   name: string;
   email: string;
   envelope_count: number;
   last_used_at: string;
 }
+
+export interface ContactInput {
+  name: string;
+  email: string;
+  organization: string | null;
+}
+
+/** UAT SND-24 — the contact refusals, in the app's words (ContactsSheet CONTACT_ERRORS). */
+export const CONTACT_ERRORS: Record<string, string> = {
+  invalid_contact_name: 'Enter a name of at most 200 characters.',
+  invalid_contact_email: 'Enter a valid email address.',
+  invalid_contact_organization: 'The organization can be at most 200 characters.',
+  contact_exists: 'You already have a contact with this email.',
+  empty_contact_update: 'Change something to save.',
+};
 
 export interface ExecutedBundle {
   envelope_id: string;
@@ -863,6 +883,11 @@ export const senderApi = {
     apiClient.post<EnvelopePayment>(`${BASE}/envelopes/${enc(id)}/payments/${enc(paymentId)}/refund`, body),
   documents: () => apiClient.get<{ items: DocumentRow[] }>(`${BASE}/documents`),
   contacts: () => apiClient.get<{ items: ContactRow[] }>(`${BASE}/contacts`),
+  // UAT SND-24 (web ≡ app) — edit and delete a saved contact.
+  updateContact: (id: string, input: ContactInput) => apiClient.patch<ContactRow>(`${BASE}/contacts/${enc(id)}`, input),
+  deleteContact: async (id: string): Promise<void> => {
+    await apiClient.delete<undefined>(`${BASE}/contacts/${enc(id)}`);
+  },
   activity: (limit = 200) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/activity?limit=${limit}`),
   // DOC-TEMPLATE-LIB-1 T-5 — templates (Documents-owned) and envelopes started from one.
   templates: () => apiClient.get<{ items: SenderTemplate[]; unavailable: { document_type_id: string; reason: string }[] }>(`${BASE}/templates`),
