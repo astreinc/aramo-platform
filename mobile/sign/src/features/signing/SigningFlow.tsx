@@ -105,6 +105,7 @@ import {
 } from './signingMachine';
 import { fieldHitSlop } from './fieldHitSlop';
 import { ReportSheet, type ReportSendResult } from '../../screens/envelope/ReportSheet';
+import { CheckboxField } from './CheckboxField';
 import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
 import { ZoomablePages } from './ZoomablePages';
@@ -838,14 +839,37 @@ export function SigningFlow(props: SigningFlowProps) {
     const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout)] as const));
     const allBoxes = [...boxes.values()];
     return [highlight, ...onPage
-      .map((f) => {
+      .flatMap((f) => {
         const box = boxes.get(f.field_id) ?? boxOnPage(f, layout);
         const v = state.values[f.field_id];
         const shown = displayOf(f, v);
         const current = state.currentId === f.field_id;
         const filled = isFilled(state, f.field_id);
         const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
-        return (
+        // UAT SIG-03 retest (web ≡ app) — a check box is the box itself: a plain square with
+        // ✓ when checked, never its caption squeezed inside (it showed "Ye"); the caption sits
+        // beside the box, as on the web, and tapping it toggles that box.
+        if (f.field_type === 'CHECKBOX') {
+          return [
+            <CheckboxField
+              key={f.field_id}
+              fieldId={f.field_id}
+              box={box}
+              pageWidth={layout.width}
+              label={f.label ?? null}
+              required={f.required}
+              checked={v?.value === 'true'}
+              current={current}
+              hitSlop={slop}
+              accessibilityLabel={fieldAnnouncement(state, f, signerName)}
+              onPress={() => onTap(f)}
+              setRef={(r) => {
+                fieldRefs.current[f.field_id] = r;
+              }}
+            />,
+          ];
+        }
+        return [
           <Pressable
             key={f.field_id}
             ref={(r) => {
@@ -907,8 +931,8 @@ export function SigningFlow(props: SigningFlowProps) {
                 {emptyCaption(f)}
               </Text>
             )}
-          </Pressable>
-        );
+          </Pressable>,
+        ];
       })];
   }
 
