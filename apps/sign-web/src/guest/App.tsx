@@ -1612,7 +1612,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
             ) : null}
             {doc && docB64[doc.document_id] !== undefined && !renderFailed ? (
               <PdfDocument
+                key={doc.document_id}
                 base64={docB64[doc.document_id] ?? ''}
+                loadTextLayer={() => signApi.textLayer(token, doc.document_id)}
                 fields={fields.filter((f) => f.document_id === doc.document_id)}
                 display={displayOf}
                 activeField={activeField}

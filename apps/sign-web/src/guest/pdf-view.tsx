@@ -3,6 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 import { Btn, TextIn } from './controls.js';
 import { fieldBox, type PageSize } from './field-geometry.js';
+import { FIND_COPY, findMatches, findStatus, hasText, MIN_QUERY, stepMatch, type FindMatch, type TextLayer } from './find.js';
 import type { SignField } from './sign-api';
 
 // PX-V1 §9 (PX-2) — the signer reviews the ACTUAL PDF with their fields in their
@@ -14,38 +15,6 @@ import type { SignField } from './sign-api';
 // stamper draws in). The overlay converts to CSS top-left percentages.
 
 type Pdf = Awaited<ReturnType<typeof import('pdfjs-dist').getDocument>['promise']>;
-
-// UAT SIG-16 — "Find" in the document (the app's More → Find, M-A12 W1-C.2), done in the
-// browser from the PDF already loaded here: no extra request, no token use. A hit is one
-// text run containing the query; its box is in page percentages (top-left origin).
-export interface FindHit {
-  readonly page: number;
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-type TextItemLike = { str?: string; transform?: number[]; width?: number; height?: number };
-type ViewportLike = { width: number; height: number; convertToViewportRectangle: (r: number[]) => number[] };
-
-/** The hits for `query` on one page (case-insensitive; whitespace-trimmed query). */
-export function findOnPage(page: number, items: readonly TextItemLike[], vp: ViewportLike, query: string): FindHit[] {
-  const q = query.trim().toLowerCase();
-  if (q === '') return [];
-  const out: FindHit[] = [];
-  for (const it of items) {
-    if (typeof it.str !== 'string' || !it.str.toLowerCase().includes(q) || it.transform === undefined) continue;
-    const x = it.transform[4] ?? 0;
-    const y = it.transform[5] ?? 0;
-    const h = it.height && it.height > 0 ? it.height : Math.abs(it.transform[3] ?? 10);
-    const [x1 = 0, y1 = 0, x2 = 0, y2 = 0] = vp.convertToViewportRectangle([x, y, x + (it.width ?? 0), y + h]);
-    const left = Math.min(x1, x2);
-    const top = Math.min(y1, y2);
-    out.push({ page, left: (left / vp.width) * 100, top: (top / vp.height) * 100, width: (Math.abs(x2 - x1) / vp.width) * 100, height: (Math.abs(y2 - y1) / vp.height) * 100 });
-  }
-  return out;
-}
 
 export interface FieldDisplay {
   // What the box shows once filled: typed text, a drawn-image data URL, or a mark.
@@ -62,6 +31,7 @@ export function PdfDocument({
   actionLabel,
   onField,
   onError,
+  loadTextLayer,
 }: {
   readonly base64: string;
   readonly fields: readonly SignField[];
@@ -71,6 +41,11 @@ export function PdfDocument({
   readonly actionLabel: (f: SignField) => string;
   readonly onField: (f: SignField) => void;
   readonly onError: () => void;
+  /**
+   * UAT SIG-16 retest (web ≡ app) — this document's words with boxes for Find, from the
+   * server's text layer for this signing session (the app's route). Absent: no Find.
+   */
+  readonly loadTextLayer?: () => Promise<TextLayer>;
 }): JSX.Element {
   const [pdf, setPdf] = useState<{ doc: Pdf; pages: PageSize[] } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -110,34 +85,53 @@ export function PdfDocument({
     return () => ro.disconnect();
   }, []);
 
-  // UAT SIG-16 — Find in the document.
+  // UAT SIG-16 — Find in the document; retest (web ≡ app): the app's matching rules on the
+  // server's word boxes (find.ts), Enter or › steps to the next match, and the bar stays in
+  // view while the document scrolls (index.css).
   const [findOpen, setFindOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [hits, setHits] = useState<FindHit[] | null>(null);
+  const [layer, setLayer] = useState<TextLayer | null>(null);
+  const [layerState, setLayerState] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const [matches, setMatches] = useState<FindMatch[] | null>(null);
   const [hitIdx, setHitIdx] = useState(0);
-  const [searching, setSearching] = useState(false);
   const runFind = async () => {
-    if (pdf === null || query.trim() === '') return;
-    setSearching(true);
-    const all: FindHit[] = [];
-    try {
-      for (let i = 0; i < pdf.pages.length; i += 1) {
-        const page = await pdf.doc.getPage(i + 1);
-        const tc = await page.getTextContent();
-        all.push(...findOnPage(i, tc.items as TextItemLike[], page.getViewport({ scale: 1 }) as unknown as ViewportLike, query));
-      }
-    } catch {
-      // A page without a text layer simply has no hits.
+    if (query.trim().length < MIN_QUERY || loadTextLayer === undefined) {
+      setMatches([]);
+      return;
     }
-    setHits(all);
+    // Enter again on the same results steps to the next match (as a browser's Find).
+    if (matches !== null && matches.length > 0) {
+      setHitIdx((i) => stepMatch(i, matches.length, 1));
+      return;
+    }
+    let l = layer;
+    if (l === null) {
+      setLayerState('loading');
+      try {
+        l = await loadTextLayer();
+        setLayer(l);
+        setLayerState('ready');
+      } catch {
+        setLayerState('failed');
+        return;
+      }
+    }
+    setMatches(findMatches(l, query));
     setHitIdx(0);
-    setSearching(false);
   };
-  const current = hits !== null && hits.length > 0 ? hits[Math.min(hitIdx, hits.length - 1)] : undefined;
+  const current = matches !== null && matches.length > 0 ? matches[Math.min(hitIdx, matches.length - 1)] : undefined;
   useEffect(() => {
     if (current === undefined) return;
     document.getElementById('sg-find-hit')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
   }, [current]);
+  const status =
+    layerState === 'loading'
+      ? FIND_COPY.loading
+      : layerState === 'failed'
+        ? FIND_COPY.failed
+        : matches === null
+          ? null
+          : findStatus({ query, matches, index: Math.min(hitIdx, Math.max(0, matches.length - 1)), searchable: layer === null || hasText(layer) });
 
   // Bring the active (next) field into view.
   useEffect(() => {
@@ -149,7 +143,7 @@ export function PdfDocument({
 
   return (
     <div className="sg-pages" ref={wrap} data-testid="sg-pages">
-      {pdf !== null ? (
+      {pdf !== null && loadTextLayer !== undefined ? (
         <div className="sg-find" data-testid="sg-find">
           {findOpen ? (
             <form
@@ -168,22 +162,25 @@ export function PdfDocument({
                 autoFocus
                 onChange={(e) => {
                   setQuery(e.target.value);
-                  setHits(null);
+                  setMatches(null);
+                  if (layerState === 'failed') setLayerState('idle');
                 }}
                 data-testid="sg-find-input"
               />
-              <Btn type="submit" variant="secondary" disabled={searching || query.trim() === ''} data-testid="sg-find-go">
+              <Btn type="submit" variant="secondary" disabled={layerState === 'loading' || query.trim() === ''} data-testid="sg-find-go">
                 Find
               </Btn>
-              {hits !== null ? (
+              {status !== null ? (
+                <span className="sg-small sg-muted" role="status" data-testid="sg-find-count">
+                  {status}
+                </span>
+              ) : null}
+              {matches !== null && matches.length > 0 ? (
                 <>
-                  <span className="sg-small sg-muted" role="status" data-testid="sg-find-count">
-                    {hits.length === 0 ? 'No matches' : `${Math.min(hitIdx, hits.length - 1) + 1} of ${hits.length}`}
-                  </span>
-                  <Btn variant="quiet" disabled={hits.length < 2} aria-label="Previous match" onClick={() => setHitIdx((i) => (i - 1 + hits.length) % hits.length)}>
+                  <Btn variant="quiet" disabled={matches.length < 2} aria-label="Previous match" onClick={() => setHitIdx((i) => stepMatch(i, matches.length, -1))} data-testid="sg-find-prev">
                     ‹
                   </Btn>
-                  <Btn variant="quiet" disabled={hits.length < 2} aria-label="Next match" onClick={() => setHitIdx((i) => (i + 1) % hits.length)} data-testid="sg-find-next">
+                  <Btn variant="quiet" disabled={matches.length < 2} aria-label="Next match" onClick={() => setHitIdx((i) => stepMatch(i, matches.length, 1))} data-testid="sg-find-next">
                     ›
                   </Btn>
                 </>
@@ -193,7 +190,7 @@ export function PdfDocument({
                 aria-label="Close find"
                 onClick={() => {
                   setFindOpen(false);
-                  setHits(null);
+                  setMatches(null);
                 }}
               >
                 ✕
@@ -213,18 +210,20 @@ export function PdfDocument({
       ) : (
         pdf.pages.map((page, i) => (
           <Page key={i} doc={pdf.doc} index={i} size={page} cssWidth={Math.max(280, width)}>
-            {hits !== null
-              ? hits
-                  .filter((h) => h.page === i)
-                  .map((h, n) => (
-                    <span
-                      key={`hit-${n}`}
-                      id={h === current ? 'sg-find-hit' : undefined}
-                      className={`sg-find__hit${h === current ? ' sg-find__hit--on' : ''}`}
-                      style={{ left: `${h.left}%`, top: `${h.top}%`, width: `${h.width}%`, height: `${h.height}%` }}
-                      aria-hidden="true"
-                    />
-                  ))
+            {matches !== null
+              ? matches
+                  .filter((m) => m.page === i)
+                  .flatMap((m, n) =>
+                    m.rects.map((r, k) => (
+                      <span
+                        key={`hit-${n}-${k}`}
+                        id={m === current && k === 0 ? 'sg-find-hit' : undefined}
+                        className={`sg-find__hit${m === current ? ' sg-find__hit--on' : ''}`}
+                        style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}
+                        aria-hidden="true"
+                      />
+                    )),
+                  )
               : null}
             {fields
               .filter((f) => f.page_number === i)

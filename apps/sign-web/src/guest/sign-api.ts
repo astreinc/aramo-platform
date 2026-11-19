@@ -4,6 +4,8 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
+import type { TextLayer } from './find.js';
+
 export interface SignerSession {
   session_id: string;
   envelope_id: string;
@@ -238,6 +240,10 @@ export const signApi = {
     mark: { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string } | { kind: 'DRAWN'; image_data_url: string },
   ): Promise<GuestSavedMark> {
     return post<GuestSavedMark>('saved-mark', { token, slot, ...mark });
+  },
+  // UAT SIG-16 retest — the document's words with boxes for Find (the app's route, M-A12 W1-C.2).
+  textLayer(token: string, document_id: string): Promise<TextLayer> {
+    return post<TextLayer>(`documents/${encodeURIComponent(document_id)}/text-layer`, { token });
   },
   source(token: string, document_id: string): Promise<{ source_base64: string; content_type: string }> {
     return post<{ source_base64: string; content_type: string }>('source', { token, document_id });
