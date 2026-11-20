@@ -7249,6 +7249,7 @@
     "mobile/sign/jest.setup.js",
     "mobile/sign/package-lock.json",
     "mobile/sign/package.json",
+    "mobile/sign/plugins/withOptionalHardwareFeatures.js",
     "mobile/sign/plugins/withReleaseSigning.js",
     "mobile/sign/project.json",
     "mobile/sign/scripts/draw-app-icon.swift",

@@ -64,8 +64,8 @@ const config: ExpoConfig = {
   android: {
     package: 'ai.aramo.sign',
     // Play requires a higher versionCode for every upload (1 = internal test 2026-11-02;
-    // 6 was a local-only build 2026-11-08; 7 = first production build; 8 = UAT batch #1119).
-    versionCode: 8,
+    // 6 was a local-only build 2026-11-08; 7 = first production build; 8 = UAT batch #1119; 9 = UAT batch 2 #1123; 10 = optional screen.portrait/wifi features).
+    versionCode: 10,
     // Android App Links, verified against assetlinks.json on the Sign host (P-3 / P-6).
     intentFilters: [
       {
@@ -154,6 +154,7 @@ const config: ExpoConfig = {
     '@config-plugins/react-native-blob-util',
     // Release signs with the upload key from outside Git, or fails (M-A7 §4 R-6).
     './plugins/withReleaseSigning.js',
+    './plugins/withOptionalHardwareFeatures.js',
   ],
   extra: {
     // Non-secret, build-time public configuration (see src/config/env.ts). The native
