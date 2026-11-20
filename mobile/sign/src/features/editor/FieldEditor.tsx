@@ -12,9 +12,11 @@
 //            text layer, searched and highlighted on the device), the profile field
 //            types, and the user's default field size. W1-A: self-sign shows each
 //            placed field's value (fillFor) and its value editor (renderSelectionExtra).
-//   M-A13 #2: the panel is capped at 40% of the editor and scrolls; the canvas keeps at
-//            least 50%; more than 8 tools collapse behind "More fields"; "Place at
-//            center" stays pinned above the bottom inset. #3: placeRequest places and
+//   M-A13 #2: the panel is capped at 40% of the editor; the canvas keeps at least 50%;
+//            "Place at center" stays pinned above the bottom inset.
+//   M-A19:   the Send flow uses the Sign Document tool row (one horizontally scrolling row
+//            of icon tools, every type; the grid and "More fields" are gone) and a selected
+//            field's red ✕ on the page (the panel's Delete button is gone). #3: placeRequest places and
 //            selects a field at the centre of the page in view.
 //   M-A14:   `selfSign` switches to the Sign Document look (a08–a10, b01, b02) — the
 //            suggestion banner or a Find-only toolbar, full-width pages, the Find in
@@ -55,7 +57,6 @@ import {
   MAX_LABEL,
   selfSignTools,
   toolFieldTypes,
-  visibleTools,
   zoomLabel,
   type AuthoringFieldType,
 } from './fieldTypes';
@@ -166,7 +167,6 @@ export function FieldEditor({
   );
   const dispatch = useCallback((a: EditorAction) => rawDispatch(a), []);
   const [zoomIndex, setZoomIndex] = useState(0);
-  const [moreTools, setMoreTools] = useState(false);
   const [assets, setAssets] = useState<Record<string, LoadedAsset | 'failed'>>({});
   const [gesture, setGesture] = useState(false);
   const pageTops = useRef(new Map<string, PageRef>());
@@ -333,9 +333,8 @@ export function FieldEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armId]);
 
-  const allTools = toolFieldTypes();
-  const tools = visibleTools(allTools, moreTools, state.tool);
-  const collapsible = tools.length < allTools.length || moreTools;
+  // M-A19 — every tool in one horizontally scrolling row (the Sign Document row).
+  const rowTools = selfSignTools(toolFieldTypes());
 
   const hint = state.tool
     ? `Tap the page to place ${FIELD_TYPE_SPECS[state.tool].noun} for ${firstName(active?.name ?? '')}`
@@ -619,29 +618,16 @@ export function FieldEditor({
               <Text style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
                 {hint}
               </Text>
-              <View style={styles.tools}>
-                {tools.map((type) => (
-                  <ToolButton
-                    key={type}
-                    type={type}
-                    active={state.tool === type}
-                    disabled={recipients.length === 0}
-                    onPress={() => {
-                      if (state.tool !== type && onPickTool && !onPickTool(type)) return;
-                      dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
-                    }}
-                  />
-                ))}
-              </View>
-              {collapsible ? (
-                <Button
-                  testID="editor-more-fields"
-                  title={moreTools ? 'Fewer fields' : 'More fields'}
-                  variant="text"
-                  accessibilityHint={moreTools ? 'Shows only the common fields' : 'Shows every field type'}
-                  onPress={() => setMoreTools((m) => !m)}
-                />
-              ) : null}
+              <ToolRow
+                tools={rowTools}
+                tool={state.tool}
+                disabled={recipients.length === 0}
+                testID="send-tools"
+                onPick={(type) => {
+                  if (state.tool !== type && onPickTool && !onPickTool(type)) return;
+                  dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
+                }}
+              />
             </>
           )}
         </ScrollView>
@@ -767,40 +753,7 @@ function SelfSignLayout({
             {extra}
           </View>
         ) : null}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.selfTools}
-          testID="self-tools"
-        >
-          {tools.map((x) => {
-            const on = tool === x.type;
-            return (
-              <Pressable
-                key={x.type}
-                testID={`self-tool-${x.type}`}
-                onPress={() => onPickTool(x.type)}
-                accessibilityRole="button"
-                accessibilityLabel={`${x.label} field`}
-                accessibilityState={{ selected: on }}
-                style={styles.selfTool}
-              >
-                <View
-                  style={[
-                    styles.selfToolCircle,
-                    { backgroundColor: on ? SELF_INK : SELF_TOOL_CIRCLE },
-                    on ? styles.selfToolRing : null,
-                  ]}
-                >
-                  <SelfGlyph d={x.icon} color={on ? '#FFFFFF' : SELF_INK} />
-                </View>
-                <Text numberOfLines={1} style={[styles.selfToolLabel, font]}>
-                  {x.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <ToolRow tools={tools} tool={tool} testID="self-tools" testPrefix="self-tool" onPick={onPickTool} />
         {armed ? (
           <View style={styles.selfHintRow}>
             <Text testID="self-hint" accessibilityLiveRegion="polite" style={[styles.selfHint, font]}>
@@ -858,46 +811,64 @@ function SelfSignLayout({
   );
 }
 
-function ToolButton({
-  type,
-  active,
-  disabled,
-  onPress,
+/**
+ * M-A14 R-6 / M-A19 — the tool row: one horizontally scrolling row of round icon tools with
+ * a label under each (Sign Document and, since M-A19, the Send flow).
+ */
+function ToolRow({
+  tools,
+  tool,
+  disabled = false,
+  testID,
+  testPrefix = 'tool',
+  onPick,
 }: {
-  readonly type: AuthoringFieldType;
-  readonly active: boolean;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
+  readonly tools: ReturnType<typeof selfSignTools>;
+  readonly tool: AuthoringFieldType | null;
+  readonly disabled?: boolean;
+  readonly testID: string;
+  readonly testPrefix?: string;
+  readonly onPick: (type: AuthoringFieldType) => void;
 }) {
   const t = useTheme();
+  const font = { fontFamily: t.font.family };
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={`${FIELD_TYPE_SPECS[type].label} field`}
-      accessibilityState={{ selected: active, disabled }}
-      style={[
-        styles.tool,
-        {
-          minHeight: t.size.minTouch,
-          borderColor: active ? t.color.accent : t.color.separator,
-          borderWidth: active ? 1.5 : 1,
-          backgroundColor: active ? t.color.tint : t.color.surface,
-          opacity: disabled ? 0.42 : 1,
-        },
-      ]}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.selfTools}
+      testID={testID}
     >
-      <Text
-        style={{
-          color: active ? t.color.onTint : t.color.text,
-          fontFamily: t.font.family,
-          fontSize: 15,
-        }}
-      >
-        {FIELD_TYPE_SPECS[type].label}
-      </Text>
-    </Pressable>
+      {tools.map((x) => {
+        const on = tool === x.type;
+        return (
+          <Pressable
+            key={x.type}
+            testID={`${testPrefix}-${x.type}`}
+            onPress={() => onPick(x.type)}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={`${x.label} field`}
+            accessibilityState={{ selected: on, disabled }}
+            style={[styles.selfTool, { opacity: disabled ? 0.42 : 1 }]}
+          >
+            <View
+              style={[
+                styles.selfToolCircle,
+                { backgroundColor: on ? SELF_INK : SELF_TOOL_CIRCLE },
+                on ? styles.selfToolRing : null,
+              ]}
+            >
+              <SelfGlyph d={x.icon} color={on ? '#FFFFFF' : SELF_INK} />
+            </View>
+            <Text numberOfLines={1} style={[styles.selfToolLabel, font]}>
+              {x.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -1023,11 +994,6 @@ function SelectionPanel({
         <Button style={styles.grow} variant="text" title="Shorter" onPress={() => grow(0, -n)} />
         <Button style={styles.grow} variant="text" title="Taller" onPress={() => grow(0, n)} />
       </View>
-      <Button
-        title="Delete"
-        variant="destructive"
-        onPress={() => dispatch({ type: 'delete', key: field.key })}
-      />
     </View>
   );
 }

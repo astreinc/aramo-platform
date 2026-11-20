@@ -1,10 +1,11 @@
-// M-A13 #2 (panel cap, "More fields", pinned "Place at center"), #3 (place request) and
-// #11 (R-5 "Fit" zoom label) on the shared field editor.
+// M-A13 #2 (panel cap, pinned "Place at center"), #3 (place request), #11 (R-5 "Fit" zoom
+// label) and M-A19 (Send-flow tool row, ✕ on the page, no grid / "More fields" / Delete
+// button) on the shared field editor.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { FieldEditor } from '../FieldEditor';
-import { COMMON_FIELD_TYPES, visibleTools, zoomLabel, type AuthoringFieldType } from '../fieldTypes';
+import { selfSignTools, toolFieldTypes, zoomLabel } from '../fieldTypes';
 
 jest.mock('../PdfPageView', () => ({
   PdfPageView: ({ children }: { children: React.ReactNode }) => {
@@ -43,30 +44,6 @@ describe('zoomLabel (R-5)', () => {
   });
 });
 
-describe('visibleTools (#2)', () => {
-  const all: AuthoringFieldType[] = [
-    'SIGNATURE',
-    'INITIALS',
-    'SIGN_DATE',
-    'TEXT',
-    'SIGNER_NAME',
-    'CHECKBOX',
-    'FIRST_NAME',
-    'LAST_NAME',
-    'EMAIL',
-  ];
-  it('more than 8 tools: the common ones until expanded', () => {
-    expect(visibleTools(all, false)).toEqual(COMMON_FIELD_TYPES);
-    expect(visibleTools(all, true)).toEqual(all);
-  });
-  it('a picked other tool stays visible while collapsed', () => {
-    expect(visibleTools(all, false, 'EMAIL')).toEqual([...COMMON_FIELD_TYPES, 'EMAIL']);
-  });
-  it('8 or fewer: everything, no collapsing', () => {
-    expect(visibleTools(all.slice(0, 8), false)).toEqual(all.slice(0, 8));
-  });
-});
-
 describe('FieldEditor', () => {
   it('shows "Fit", caps the panel at 40% and keeps the canvas at least 50%', async () => {
     renderEditor({ bottomInset: 34 });
@@ -83,15 +60,15 @@ describe('FieldEditor', () => {
     await act(async () => {});
   });
 
-  it('"More fields" expands the less common tools', async () => {
+  it('M-A19 — every field type in one horizontal tool row; no grid and no "More fields"', async () => {
     renderEditor();
     await act(async () => {});
-    expect(screen.getByLabelText('Signature field')).toBeTruthy();
-    expect(screen.getByLabelText('Checkbox field')).toBeTruthy();
-    expect(screen.queryByLabelText('Email field')).toBeNull();
-    fireEvent.press(screen.getByTestId('editor-more-fields'));
+    const row = screen.getByTestId('send-tools');
+    expect(row.props.horizontal).toBe(true);
+    for (const x of selfSignTools(toolFieldTypes())) expect(screen.getByLabelText(`${x.label} field`)).toBeTruthy();
     expect(screen.getByLabelText('Email field')).toBeTruthy();
-    expect(screen.getByText('Fewer fields')).toBeTruthy();
+    expect(screen.queryByTestId('editor-more-fields')).toBeNull();
+    expect(screen.queryByText('More fields')).toBeNull();
   });
 
   it('a place request places the field at the centre and selects it (#3)', async () => {
@@ -118,5 +95,12 @@ describe('FieldEditor', () => {
     expect(Math.abs(cx - PAGE.width / 2)).toBeLessThanOrEqual(1);
     // Selected: the selection panel is open on it.
     expect(screen.getByText('Signature · Jo Signer')).toBeTruthy();
+    // M-A19 — no Delete button in the panel; the ✕ on the page deletes the field.
+    expect(screen.queryByText('Delete')).toBeNull();
+    fireEvent.press(screen.getByTestId('field-remove'));
+    await waitFor(() => expect(onFieldsChange.mock.calls.at(-1)![0]).toHaveLength(0));
+    // Undo restores it.
+    fireEvent.press(screen.getByText('Undo'));
+    await waitFor(() => expect(onFieldsChange.mock.calls.at(-1)![0]).toHaveLength(1));
   });
 });

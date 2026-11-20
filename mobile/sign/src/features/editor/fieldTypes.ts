@@ -47,27 +47,6 @@ export function toolFieldTypes(
   ];
 }
 
-/** M-A13 #2 — the tools shown before "More fields" (when there are more than 8). */
-export const COMMON_FIELD_TYPES: readonly AuthoringFieldType[] = [
-  'SIGNATURE',
-  'INITIALS',
-  'SIGN_DATE',
-  'TEXT',
-  'SIGNER_NAME',
-  'CHECKBOX',
-];
-export const MAX_TOOLS_SHOWN = 8;
-
-/** The tools on the panel: all of them, or the common ones (plus a picked other one). */
-export function visibleTools(
-  all: readonly AuthoringFieldType[],
-  expanded: boolean,
-  picked: AuthoringFieldType | null = null,
-): readonly AuthoringFieldType[] {
-  if (expanded || all.length <= MAX_TOOLS_SHOWN) return all;
-  return all.filter((type) => COMMON_FIELD_TYPES.includes(type) || type === picked);
-}
-
 /** M-A13 #11 (R-5) — the base zoom is "Fit" (fit to width); larger levels keep their %. */
 export function zoomLabel(zoom: number): { text: string; accessibility: string } {
   if (zoom <= 1) return { text: 'Fit', accessibility: 'Zoom fit to width' };
