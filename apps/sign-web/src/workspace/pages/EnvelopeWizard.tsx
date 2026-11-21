@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
+import {
+  PDF_PICKER_TYPES,
+  SIGNERS_FULL_MESSAGE,
+  checkPickedFile,
+  danglingWitness,
+  isWitnessable,
+  isValidEmail,
+  roleLabel as sharedRoleLabel,
+  sendFeaturesOf,
+  templateAccess,
+  titleFromFilename,
+} from '@aramo/sign-client';
 
 import {
   E164_RE,
@@ -15,7 +27,6 @@ import {
   MAX_COPY_RECIPIENTS,
   MAX_SIGNERS,
   senderApi,
-  sendRefusalMessage,
   type ContactRow,
   type CopyDelivery,
   type DeliveryChannel,
@@ -38,7 +49,12 @@ import { readinessOf } from './readiness';
 // fields · 4 Review & send. DRAFT only: a sent or terminal envelope never opens
 // the wizard or the editor (falls through to the read-only detail).
 
-const MAX_BYTES = 25 * 1024 * 1024;
+// Client Rule Consolidation C3 (audit row 25) — the file check is @aramo/sign-client's
+// checkPickedFile (leading bytes, 25 MB). Word upload stays an Aramo Sign app feature
+// (C4 parity record), so the web never allows Word here.
+async function headOf(f: Blob): Promise<Uint8Array> {
+  return new Uint8Array(await f.slice(0, 1024).arrayBuffer());
+}
 
 
 // Web Self-Signing A2 — `mode="self"` is "Sign a document": a SELF draft (the caller is the
@@ -47,7 +63,8 @@ const MAX_BYTES = 25 * 1024 * 1024;
 export function sendToFrom(search: string): { name: string; email: string } | null {
   const p = new URLSearchParams(search);
   const email = (p.get('to') ?? '').trim();
-  if (email.length === 0 || email.length > 320 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) return null;
+  // C3 (audit row 22) — the server's email rule (@aramo/sign-client).
+  if (!isValidEmail(email)) return null;
   const name = (p.get('name') ?? '').trim().slice(0, 200) || email;
   return { name, email };
 }
@@ -149,7 +166,8 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
 function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; next: string }) {
   const { base, ctx } = useWorkspace();
   // Web Self-Signing A2 §6 — templates are not offered for a document the sender signs alone.
-  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true && env.mode !== 'self';
+  // C3 (audit row 14) — the one templates-access rule (@aramo/sign-client).
+  const templatesUsable = templateAccess(ctx, 'use') === 'ok' && env.mode !== 'self';
   const nav = useNavigate();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -159,18 +177,15 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
   const upload = async (files: FileList | File[]) => {
     setError('');
     for (const f of Array.from(files)) {
-      if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) {
-        setError(`${f.name} isn’t a PDF. Upload PDF files only.`);
-        continue;
-      }
-      if (f.size > MAX_BYTES) {
-        setError(`${f.name} is larger than 25 MB.`);
+      const check = checkPickedFile({ name: f.name, mimeType: f.type, size: f.size, head: await headOf(f), wordAllowed: false });
+      if (!check.ok) {
+        setError(`${f.name}: ${check.message}`);
         continue;
       }
       setBusy(`Uploading ${f.name}…`);
       try {
         const content_base64 = await fileToBase64(f);
-        await senderApi.upload(env.id, { filename: f.name, title: f.name.replace(/\.pdf$/i, ''), content_base64 });
+        await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -215,7 +230,7 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <Input
               unstyled
               type="file"
-              accept="application/pdf,.pdf"
+              accept={[...PDF_PICKER_TYPES, '.pdf'].join(',')}
               multiple
               style={{ display: 'none' }}
               aria-label="Upload PDF documents"
@@ -357,7 +372,8 @@ const msgOf = (m: RecipientMessaging | undefined): Msg => (m === undefined ? NO_
 
 // B2 — who can carry each per-recipient choice (mirrors the server's checks).
 const signsByLink = (k: RecipientKind) => k === 'SIGNER' || k === 'WITNESS';
-const isSigning = (k: RecipientKind) => k === 'SIGNER' || k === 'IN_PERSON_SIGNER';
+// A recipient who signs (and so may be witnessed): @aramo/sign-client's one rule.
+const isSigning = (k: RecipientKind) => isWitnessable(k);
 const IDV_LABEL: Record<IdentityVerificationMethod, string> = { ID_VERIFICATION: 'Photo ID check', KBA: 'Identity questions (US)' };
 const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 
@@ -369,11 +385,9 @@ const COPY_TIMING_LABEL: Record<CopyDelivery, string> = {
   BOTH: 'When sent and when completed',
 };
 
+// C3 (audit row 30) — the one set of role labels (@aramo/sign-client).
 function roleLabel(kind: RecipientKind | undefined): string {
-  if (kind === 'RECEIVES_COPY') return 'Receives a copy';
-  if (kind === 'IN_PERSON_SIGNER') return 'Signs in person';
-  if (kind === 'WITNESS') return 'Witness';
-  return 'Needs to sign';
+  return sharedRoleLabel(kind);
 }
 
 // "client_signer" → "Client signer" (the role key the server bound; display only).
@@ -400,8 +414,9 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   });
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   // Consolidated Directive B2 — each control shows only while the sender context reports it available.
-  const f = ctx.features ?? {};
-  const messagingOn = f.sms_delivery === true || f.whatsapp_delivery === true || f.sms_otp === true;
+  // C3 (audit row 15) — the per-recipient options from the sender context (@aramo/sign-client).
+  const options = sendFeaturesOf(ctx);
+  const messagingOn = options.sms || options.whatsapp || options.smsCode;
   const [allowDelegation, setAllowDelegation] = useState(env.allow_delegation === true);
   // The text-message choices saved on the server, by recipient id (read only when available).
   const [msgSaved, setMsgSaved] = useState<Record<string, Msg>>({});
@@ -435,13 +450,17 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   }, []);
 
   const keyGen = useRef(0);
-  const add = (name = '', email = '', assign = false) =>
-    setList((l) => {
-      // Past MAX_SIGNERS signers, a new person is added as a copy recipient.
-      const signers = l.filter((r) => r.kind !== 'RECEIVES_COPY').length;
-      const kind: RecipientKind = signers >= MAX_SIGNERS ? 'RECEIVES_COPY' : 'SIGNER';
-      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }];
-    });
+  // C3 (audit row 20, Appendix A) — the 11th signer is refused, never turned into a copy
+  // recipient; a copy recipient is added on purpose (Add someone who receives a copy).
+  const add = (name = '', email = '', assign = false, kind: RecipientKind = 'SIGNER') => {
+    const signers = list.filter((r) => r.kind !== 'RECEIVES_COPY').length;
+    if (kind !== 'RECEIVES_COPY' && signers >= MAX_SIGNERS) {
+      setError(SIGNERS_FULL_MESSAGE);
+      return;
+    }
+    setError('');
+    setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER', witnessFor: null, accessCodeSet: false, idv: null }]);
+  };
   const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
   const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
   const upd = (key: string, patch: Partial<DraftRecipient>) => setList((l) => l.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -508,7 +527,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const choiceProblem = (): string | null => {
     for (const [i, r] of list.entries()) {
       const who = r.name.trim() || r.email.trim() || `Recipient ${i + 1}`;
-      if (r.kind === 'WITNESS' && (r.witnessFor === null || !list.some((x) => x.key === r.witnessFor && isSigning(x.kind)))) return `Choose the signer ${who} witnesses.`;
+      // C3 (audit row 31) — the one witness rule (@aramo/sign-client).
+      if (danglingWitness([r, ...list.filter((x) => x.key !== r.key)])?.key === r.key) return `Choose the signer ${who} witnesses.`;
       if (typeof r.accessCode === 'string' && !validAccessCode(r.accessCode)) return `The access code for ${who} must be 4 to 32 characters (letters, numbers or symbols).`;
       const m = msgFor(r);
       if (r.kind === 'SIGNER' && (m.channel !== null || m.otp) && !E164_RE.test(m.phone.trim()))
@@ -614,7 +634,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   : 'Everyone gets the document now and can sign at any time.'}
               </p>
               {/* B2 / Feature-Parity §1.17 — delegate signing (Business; shown only while available). */}
-              {f.delegate_signing === true || env.allow_delegation === true ? (
+              {options.delegation || env.allow_delegation === true ? (
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
                   <Input
                     unstyled
@@ -659,15 +679,15 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                   <Field label="Role" htmlFor={`rr-${r.key}`}>
                     <Sel id={`rr-${r.key}`} value={r.kind} onChange={(e) => setKind(r.key, e.target.value as RecipientKind)} data-testid="recipient-role">
                       <option value="SIGNER" disabled={r.kind !== 'SIGNER' && signerCount >= MAX_SIGNERS}>
-                        Needs to sign
+                        {roleLabel('SIGNER')}
                       </option>
                       <option value="RECEIVES_COPY" disabled={r.kind !== 'RECEIVES_COPY' && copyCount >= MAX_COPY_RECIPIENTS}>
-                        Receives a copy
+                        {roleLabel('RECEIVES_COPY')}
                       </option>
-                      {r.kind === 'IN_PERSON_SIGNER' ? <option value="IN_PERSON_SIGNER">Signs in person (Aramo Sign app)</option> : null}
-                      {f.witness_signing === true || r.kind === 'WITNESS' ? (
+                      {r.kind === 'IN_PERSON_SIGNER' ? <option value="IN_PERSON_SIGNER">{roleLabel('IN_PERSON_SIGNER')} (Aramo Sign app)</option> : null}
+                      {options.witness || r.kind === 'WITNESS' ? (
                         <option value="WITNESS" disabled={r.kind !== 'WITNESS' && (signerCount >= MAX_SIGNERS || !list.some((x) => x.key !== r.key && isSigning(x.kind)))}>
-                          Witnesses a signer
+                          {roleLabel('WITNESS')}
                         </option>
                       ) : null}
                     </Sel>
@@ -710,20 +730,20 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     <Sel
                       id={`rv-${r.key}`}
                       value={signsByLink(r.kind) ? (r.idv ?? '') : ''}
-                      disabled={!signsByLink(r.kind) || (f.id_verification !== true && f.kba !== true && r.idv === null)}
+                      disabled={!signsByLink(r.kind) || (!options.idCheck && !options.kba && r.idv === null)}
                       onChange={(e) => upd(r.key, { idv: e.target.value === '' ? null : (e.target.value as IdentityVerificationMethod) })}
                       data-testid="identity-check"
                     >
                       <option value="">Secure link</option>
-                      {f.id_verification === true || r.idv === 'ID_VERIFICATION' ? <option value="ID_VERIFICATION">Secure link + {lowerFirst(IDV_LABEL.ID_VERIFICATION)}</option> : null}
-                      {f.kba === true || r.idv === 'KBA' ? <option value="KBA">Secure link + {lowerFirst(IDV_LABEL.KBA)}</option> : null}
+                      {options.idCheck || r.idv === 'ID_VERIFICATION' ? <option value="ID_VERIFICATION">Secure link + {lowerFirst(IDV_LABEL.ID_VERIFICATION)}</option> : null}
+                      {options.kba || r.idv === 'KBA' ? <option value="KBA">Secure link + {lowerFirst(IDV_LABEL.KBA)}</option> : null}
                     </Sel>
                   </Field>
                   <Field label="Private message (proposed)" htmlFor={`rm-${r.key}`}>
                     <Area id={`rm-${r.key}`} rows={1} disabled placeholder="Per-recipient messages are a proposed capability" />
                   </Field>
                 </div>
-                {f.access_code === true && signsByLink(r.kind) ? <AccessCodeControl r={r} onChange={(accessCode) => upd(r.key, { accessCode })} /> : null}
+                {options.accessCode && signsByLink(r.kind) ? <AccessCodeControl r={r} onChange={(accessCode) => upd(r.key, { accessCode })} /> : null}
                 {messagingOn && r.kind === 'SIGNER' ? <TextMessageControl r={r} msg={msgFor(r)} onChange={(m) => upd(r.key, { msg: m })} /> : null}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -767,9 +787,14 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
             </p>
           ) : null}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Btn onClick={() => add()} disabled={full} data-testid="add-recipient">
+            <Btn onClick={() => add()} disabled={signerCount >= MAX_SIGNERS} data-testid="add-recipient">
               + Add recipient
             </Btn>
+            {signerCount >= MAX_SIGNERS ? (
+              <Btn onClick={() => add('', '', false, 'RECEIVES_COPY')} disabled={copyCount >= MAX_COPY_RECIPIENTS} data-testid="add-copy-recipient">
+                + Add someone who receives a copy
+              </Btn>
+            ) : null}
             {ctx.user.email !== null && !inList(ctx.user.email) ? (
               <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '', true)} disabled={signerCount >= MAX_SIGNERS} data-testid="assign-to-me-add">
                 + Assign to me
@@ -811,7 +836,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 <div className="sg-row__t">{c.name}</div>
                 <div className="sg-row__s sg-ellipsis">{c.email}</div>
               </div>
-              <LinkBtn disabled={inList(c.email) || full} onClick={() => add(c.name, c.email)}>
+              <LinkBtn disabled={inList(c.email) || signerCount >= MAX_SIGNERS} onClick={() => add(c.name, c.email)}>
                 {inList(c.email) ? 'Added' : 'Add'}
               </LinkBtn>
             </div>
@@ -875,22 +900,22 @@ function AccessCodeControl({ r, onChange }: { r: DraftRecipient; onChange: (code
 // before signing. Each option shows only while available; the number is checked as E.164.
 function TextMessageControl({ r, msg, onChange }: { r: DraftRecipient; msg: Msg; onChange: (m: Msg) => void }) {
   const { ctx } = useWorkspace();
-  const f = ctx.features ?? {};
+  const options = sendFeaturesOf(ctx);
   const needsPhone = msg.channel !== null || msg.otp;
   const phoneBad = needsPhone && msg.phone.trim() !== '' && !E164_RE.test(msg.phone.trim());
   return (
     <div className="sg-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}>
       <div className="sg-grid" style={{ gap: 8 }}>
-        {f.sms_delivery === true || f.whatsapp_delivery === true || msg.channel !== null ? (
+        {options.sms || options.whatsapp || msg.channel !== null ? (
           <Field label="Send the link by" htmlFor={`rd-${r.key}`}>
             <Sel id={`rd-${r.key}`} value={msg.channel ?? ''} onChange={(e) => onChange({ ...msg, channel: e.target.value === '' ? null : (e.target.value as DeliveryChannel) })} data-testid="delivery-channel">
               <option value="">Email</option>
-              {f.sms_delivery === true || msg.channel === 'SMS' ? <option value="SMS">Email and text message (SMS)</option> : null}
-              {f.whatsapp_delivery === true || msg.channel === 'WHATSAPP' ? <option value="WHATSAPP">Email and WhatsApp</option> : null}
+              {options.sms || msg.channel === 'SMS' ? <option value="SMS">Email and text message (SMS)</option> : null}
+              {options.whatsapp || msg.channel === 'WHATSAPP' ? <option value="WHATSAPP">Email and WhatsApp</option> : null}
             </Sel>
           </Field>
         ) : null}
-        {f.sms_otp === true || msg.otp ? (
+        {options.smsCode || msg.otp ? (
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
             <Input unstyled type="checkbox" checked={msg.otp} onChange={(e) => onChange({ ...msg, otp: e.target.checked })} data-testid="sms-code" />
             Ask for a code sent by SMS before signing
@@ -916,7 +941,7 @@ function TextMessageControl({ r, msg, onChange }: { r: DraftRecipient; msg: Msg;
 function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; onSent: () => void }) {
   const { base, ctx } = useWorkspace();
   const templatesManageUrl =
-    ctx.features?.templates === true && ctx.permissions.templates === true && ctx.app_home_url !== null
+    templateAccess(ctx, 'use') === 'ok' && ctx.app_home_url !== null
       ? `${ctx.app_home_url.replace(/\/+$/, '')}/org/document-templates`
       : null;
   const nav = useNavigate();
@@ -959,7 +984,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       onSent();
       nav(`${base}/envelopes/${env.id}/sent`);
     } catch (e) {
-      setError(sendRefusalMessage(e, ctx.workspace === 'personal'));
+      setError(errorMessage(e));
       setUpgrade(ctx.workspace === 'personal' && isAllowanceLimit(e));
       const det = (e as { details?: { problems?: unknown } }).details;
       if (Array.isArray(det?.problems)) setProblems(det.problems.filter((p): p is string => typeof p === 'string'));
@@ -1254,11 +1279,11 @@ export function filterContactRows(rows: readonly ContactRow[], query: string): C
   return rows.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
 }
 
-/** UAT SND-05 — the signer-limit note (the app says "An envelope can have up to 10 signers."). */
+/** UAT SND-05 / C3 row 20 — the signer-limit note (the app's words: @aramo/sign-client). */
 export function signersFullText(everyoneFull: boolean): string {
   return everyoneFull
-    ? `An envelope can have up to ${MAX_SIGNERS} signers and ${MAX_COPY_RECIPIENTS} people who receive a copy.`
-    : `An envelope can have up to ${MAX_SIGNERS} signers. Anyone else you add receives a copy.`;
+    ? `${SIGNERS_FULL_MESSAGE} It can also have at most ${MAX_COPY_RECIPIENTS} people who receive a copy.`
+    : `${SIGNERS_FULL_MESSAGE} Add anyone else as someone who receives a copy.`;
 }
 
 /** PO 2026-11-18 — the default subject's prefix (same as the app's). */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
+import { SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client';
 
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
@@ -8,10 +9,11 @@ import { useWorkspace } from '../workspace';
 
 import { DELETE_WHEN_FINISHED } from './EnvelopeDetail';
 
-// Retention and Purge (DocuSign parity) — Delete moves a completed, declined, voided or
-// expired envelope to this organization's Deleted folder only (other parties keep theirs);
-// Restore brings it back until a purge has run. The backend decides; these mirror it.
-const DELETABLE: ReadonlySet<EnvelopeStatus> = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
+// Retention and Purge (DocuSign parity) — Delete moves a finished envelope to this
+// organization's Deleted folder only (other parties keep theirs); Restore brings it back until
+// a purge has run. Client Rule Consolidation C3 — every row action (Sign, Delete, Restore,
+// Delete draft, open in the editor) shows only when the server's row `actions` allows it.
+const OPEN: ReadonlySet<string> = new Set(SIGNABLE_ENVELOPE_STATUSES);
 // A draft (never sent) is deleted outright with its documents, as on mobile; there is no
 // Deleted folder copy to restore.
 type PendingAction = 'delete' | 'restore' | 'delete-draft';
@@ -25,12 +27,13 @@ type PendingAction = 'delete' | 'restore' | 'delete-draft';
 // "Waiting for you" (not "Waiting for others") and offers Sign. Sign opens the server's
 // `my_inbox_item_id` through inbox signing; without one, the W1 "Sign now" for a
 // recipient assigned to the sender, otherwise the "Waiting for me" inbox. The page
-// derives no policy.
+// derives no policy: Sign shows when the server's `actions.sign` is true.
 
 const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] = [
   { key: 'all', label: 'All', statuses: null },
   { key: 'drafts', label: 'Drafts', statuses: ['DRAFT'] },
-  { key: 'waiting', label: 'Waiting for others', statuses: ['SENT', 'IN_PROGRESS'] },
+  // C3 (audit row 1) — the open set from @aramo/sign-client's envelope lifecycle.
+  { key: 'waiting', label: 'Waiting for others', statuses: [...SIGNABLE_ENVELOPE_STATUSES] as EnvelopeStatus[] },
   { key: 'completed', label: 'Completed', statuses: ['COMPLETED'] },
   { key: 'declined', label: 'Declined', statuses: ['DECLINED'] },
   { key: 'voided', label: 'Voided', statuses: ['VOIDED'] },
@@ -110,14 +113,11 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
           window.location.assign((await inboxApi.sign(row.my_inbox_item_id)).signing_url);
           return;
         }
-        const d = await senderApi.detail(row.id);
-        const mine = d.recipients.find((r) => r.assigned_to_me === true && r.can_remind === true);
-        if (mine !== undefined) {
-          const s = await senderApi.selfSignSession(row.id, mine.id);
-          window.location.assign(`/s/${encodeURIComponent(s.token)}`);
-          return;
-        }
-        navigate(`${base}/inbox`);
+        // No inbox item: the server's `actions.sign` came from "Sign now" (can_self_sign_now) —
+        // a self-sign session; the server picks the recipient bound to the caller.
+        const s = await senderApi.selfSignSession(row.id);
+        window.location.assign(`/s/${encodeURIComponent(s.token)}`);
+        return;
       } catch (e) {
         toast(errorMessage(e));
         // A changed or expired item: the inbox lists the latest ones.
@@ -229,14 +229,16 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                     </td>
                   </tr>
                 ) : null}
-                {rows.map((e) => (
+                {rows.map((e) => {
+                  const actions = senderActionsOf(e);
+                  return (
                   <tr key={e.id} data-testid={`envelope-row-${e.id}`}>
                     <td>
                       <Check aria-label={`Select ${e.subject}`} checked={sel[e.id] === true} onChange={(ev) => setSel((s) => ({ ...s, [e.id]: ev.target.checked }))} />
                     </td>
                     <td>
                       <Link
-                        to={`${base}/envelopes/${e.id}${e.status === 'DRAFT' && ctx.can_send && sourceLabel(e.source_application) === null ? '/edit?step=1' : ''}`}
+                        to={`${base}/envelopes/${e.id}${e.status === 'DRAFT' && actions.edit ? '/edit?step=1' : ''}`}
                         style={{ color: 'var(--ink)', fontWeight: 600 }}
                       >
                         {e.subject}
@@ -264,35 +266,36 @@ export function EnvelopeList({ folder }: { folder?: 'deleted' } = {}) {
                     <td className="sg-muted">{rel(e.last_activity_at)}</td>
                     <td className="sg-muted">{e.sent_at === null ? '—' : fmtDate(e.sent_at)}</td>
                     <td style={{ textAlign: 'right' }}>
-                      {e.awaiting_you === true && !deleted ? (
+                      {actions.sign && !deleted ? (
                         <Btn variant="primary" size="sm" disabled={busy} onClick={() => void signFromList(e)} data-testid={`sign-${e.id}`}>
                           Sign
                         </Btn>
                       ) : null}
-                      {deleted && e.purge?.state !== 'EXECUTED' ? (
+                      {deleted && actions.restore ? (
                         <LinkBtn onClick={() => setPending({ row: e, action: 'restore' })} data-testid={`restore-${e.id}`}>
                           Restore
                         </LinkBtn>
                       ) : null}
-                      {!deleted && DELETABLE.has(e.status) ? (
+                      {!deleted && actions.delete ? (
                         <LinkBtn bad aria-label={`Delete ${e.subject}`} title="Delete" onClick={() => setPending({ row: e, action: 'delete' })} data-testid={`delete-${e.id}`}>
                           <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
-                      {!deleted && (e.status === 'SENT' || e.status === 'IN_PROGRESS') ? (
+                      {!deleted && OPEN.has(e.status) && actions.void ? (
                         // UAT DEL-09 — shown disabled with the reason, instead of hidden.
                         <LinkBtn disabled aria-label={`Delete ${e.subject}: ${DELETE_WHEN_FINISHED}`} title={DELETE_WHEN_FINISHED} data-testid={`delete-disabled-${e.id}`} style={{ opacity: 0.4, cursor: 'not-allowed' }}>
                           <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
-                      {!deleted && e.status === 'DRAFT' && ctx.can_send && sourceLabel(e.source_application) === null ? (
+                      {!deleted && actions.delete_draft ? (
                         <LinkBtn bad aria-label={`Delete draft ${e.subject}`} title="Delete draft" onClick={() => setPending({ row: e, action: 'delete-draft' })} data-testid={`delete-draft-${e.id}`}>
                           <Icon name="trash" />
                         </LinkBtn>
                       ) : null}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -3,6 +3,7 @@
 // into what the screen shows. Only returned metadata is shown (name, category, role and
 // document counts, description); nothing is derived on the device, and an unavailable state
 // always carries the server's reason.
+import { templateAccess } from '@aramo/sign-client';
 import { isApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import type { SenderTemplate, TemplateLibrary } from '../send/templates';
@@ -99,12 +100,17 @@ function rec(v: unknown): Record<string, unknown> {
  * The plan capability comes first (as the server checks it), then the permission.
  */
 export function contextRefusal(context: unknown): string | null {
-  const c = rec(context);
-  if (rec(c['features'])['templates'] !== true) return FEATURE_UNAVAILABLE;
-  const plan = c['template_plan'];
-  if (typeof plan === 'string' && plan !== 'INCLUDED') return NEEDS_PLAN;
-  if (rec(c['permissions'])['templates'] !== true) return NO_TEMPLATE_PERMISSION;
-  return null;
+  // C3 (audit row 14) — the one templates-access rule (@aramo/sign-client).
+  switch (templateAccess(context, 'use')) {
+    case 'unavailable':
+      return FEATURE_UNAVAILABLE;
+    case 'upgrade':
+      return NEEDS_PLAN;
+    case 'no-permission':
+      return NO_TEMPLATE_PERMISSION;
+    case 'ok':
+      return null;
+  }
 }
 
 /** Copy for a refusal of the template routes, keyed by the server's reason / code. */

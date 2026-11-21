@@ -496,7 +496,7 @@ function DetailsStep({
   return (
     <View style={styles.gap}>
       <Title>Tell us about you</Title>
-      <Body>For your free personal account. 5 documents a month.</Body>
+      <Body>For your free personal account.</Body>
       {deps.appleIdentity !== undefined && apple === null ? (
         <ProviderButton
           testID="signup-continue-apple-top"
@@ -1074,9 +1074,10 @@ function TermsStep({
       {docs.docs.map((d) => (
         <DocumentText key={`${d.key}@${d.version}`} doc={d} />
       ))}
+      {/* C3 (audit row 16) — no plan numbers before the account exists (the allowance is the
+          server's, shown from /v1/sign/billing/account once signed in). */}
       <Body testID="signup-plan">
-        Free plan · 5 documents a month · up to 2 a day. The free plan may change. We’ll tell you
-        before it does.
+        Free plan. The free plan may change. We’ll tell you before it does.
       </Body>
       <CheckRow
         checked={agreed}

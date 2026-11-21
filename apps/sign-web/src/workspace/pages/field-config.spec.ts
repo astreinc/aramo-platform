@@ -19,7 +19,11 @@ describe('sender field tools (M-A6 §2.1)', () => {
     expect([...V1_TYPES].sort()).toEqual(['CHECKBOX', 'COMPANY', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE']);
     expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(false);
     expect(TYPES.SIGNER_NAME.label).toBe('Name');
-    expect(TYPES.CHECKBOX).toMatchObject({ w: 14, h: 14 });
+    // C3 (audit rows 36–37) — the one size table (the app's): a checkbox is 18 × 18 and optional.
+    expect(TYPES.CHECKBOX).toMatchObject({ w: 18, h: 18, required: false });
+    expect(TYPES.SIGNATURE).toMatchObject({ w: 230, h: 50, required: true });
+    expect(TYPES.TEXT).toMatchObject({ required: false });
+    expect(V1_TYPES.has('PAYMENT')).toBe(false);
     expect(TYPES.FIRST_NAME.label).toBe('First name');
   });
 });

@@ -25,6 +25,7 @@ import {
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 
+import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, authorRefusal, personalSendingNotEnabled as personalSendingRefusal, refusalError } from './envelope-actions.js';
 import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan } from './template-authority.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
@@ -43,9 +44,8 @@ import { templateAuthority, templateGrantsOf, templatePlanOf, type TemplatePlan 
 // the send itself then passes the Personal sending gate (PersonalSendGate). With
 // the mode off (the shipped default) the refusal is exactly the one above.
 
-export const ESIGN_READ_SCOPE = 'sign:envelope:read';
-export const ESIGN_CREATE_SCOPE = 'sign:envelope:create';
-export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
+// Client Rule Consolidation C1 — the scope names live with the envelope action rules.
+export { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE } from './envelope-actions.js';
 // DOC-TEMPLATE-LIB-1 T-5 — the Documents-owned template "use" permission Sign checks.
 export const DOCUMENT_TEMPLATE_READ_SCOPE = 'document_template:read';
 
@@ -217,6 +217,14 @@ export class SenderContextService {
     return (await this.tenantOf(tenant_id, requestId)).kind;
   }
 
+  /**
+   * Client Rule Consolidation C1 — whether the tenant may author and change envelopes (BUSINESS,
+   * or PERSONAL while Personal sending is open): the `author` check of the envelope actions.
+   */
+  authoringOpen(tenant: Pick<TenantDto, 'kind' | 'status'>): boolean {
+    return tenant.kind === 'BUSINESS' || this.personalAuthoringOpen(tenant);
+  }
+
   /** Personal Free v1.1 — a bound PERSONAL tenant while Personal sending is switched on. */
   personalAuthoringOpen(tenant: Pick<TenantDto, 'kind' | 'status'>): boolean {
     return this.personal !== undefined && this.personal.authoringOpen(tenant);
@@ -232,7 +240,9 @@ export class SenderContextService {
   async assertCanAuthorTenant(auth: AuthContextType, requestId: string): Promise<TenantDto> {
     const tenant = await this.tenantOf(auth.tenant_id, requestId);
     if (tenant.kind === 'BUSINESS') return tenant;
-    if (!this.personalAuthoringOpen(tenant)) throw personalSendingNotEnabled(requestId);
+    // Client Rule Consolidation C1 — the same `author` check the envelope `actions` use.
+    const refused = authorRefusal(this.authoringOpen(tenant));
+    if (refused !== null && refused !== 'noop') throw refusalError(refused, requestId);
     // Personal Free v1.1 §4 — the FREE subscription is in place before any upload / send.
     await this.personal?.ensureFreeSubscription(tenant);
     return tenant;
@@ -321,10 +331,7 @@ export class SenderContextService {
 }
 
 function personalSendingNotEnabled(requestId: string): AramoError {
-  return new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, {
-    requestId,
-    details: { reason: 'personal_sending_not_enabled' },
-  });
+  return refusalError(personalSendingRefusal(), requestId);
 }
 
 // The tenant host base URL. `SIGN_TENANT_HOST_URL_TEMPLATE` (e.g.

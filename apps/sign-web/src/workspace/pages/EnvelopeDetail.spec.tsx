@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ApiError } from '@aramo/fe-foundation';
+import { NO_SENDER_ACTIONS, type SenderActions } from '@aramo/sign-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EnvelopeDetail as Detail, Recipient } from '../api';
@@ -50,11 +51,32 @@ import { EnvelopeDetail } from './EnvelopeDetail';
 function rcp(n: number, over: Partial<Recipient> = {}): Recipient {
   return { id: `s${n}`, name: `Signer ${n}`, email: `s${n}@example.com`, status: 'PENDING', signing_order: n, viewed_at: null, signed_at: null, declined_at: null, decline_reason: null, can_remind: false, ...over };
 }
-function env(over: Partial<Detail>): Detail {
+// Client Rule Consolidation C3 — the page renders the server's `actions`. These fixtures send
+// what sign-service's C1 rules would for the caller u-1 (the sender; manage_all when manageAll):
+// the page itself never computes them.
+function serverActions(d: Detail): SenderActions {
+  const may = d.sender.id === 'u-1' || manageAll;
+  const open = d.status === 'SENT' || d.status === 'IN_PROGRESS';
+  const purged = d.purge?.state === 'EXECUTED';
+  const executed = d.status === 'COMPLETED' && !purged;
   return {
+    ...NO_SENDER_ACTIONS,
+    void: may && open,
+    remind: may && open && d.recipients.some((r) => r.can_remind === true),
+    delete: may && ['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED'].includes(d.status),
+    download: executed,
+    certificate: executed,
+    sign: open && d.recipients.some((r) => r.assigned_to_me === true && r.can_remind === true),
+    purge: manageAll && ['COMPLETED', 'DECLINED', 'VOIDED'].includes(d.status) && !purged,
+    dequeue_purge: manageAll && d.purge?.state === 'QUEUED',
+  };
+}
+function env(over: Partial<Detail>): Detail {
+  const d: Detail = {
     id: 'env-00000001', subject: 'Agreement', status: 'IN_PROGRESS', created_at: '2026-10-20T00:00:00Z', sent_at: '2026-10-20T00:00:00Z', completed_at: null, declined_at: null, voided_at: null,
     expires_at: null, signing_window_days: 30, sender: { id: 'u-1', name: 'Sender' }, editable: false, documents: [], fields: [], recipients: [], ...over,
   };
+  return over.actions !== undefined ? d : { ...d, actions: serverActions(d) };
 }
 function show() {
   render(
@@ -160,7 +182,8 @@ describe('EnvelopeDetail — retention and purge', () => {
     dequeue.mockResolvedValue(env({ ...done, purge: { state: 'DEQUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
     show();
     expect(await screen.findByTestId('purge-banner')).toHaveTextContent('Purge scheduled');
-    expect(screen.queryByTestId('purge-envelope')).toBeNull();
+    // C3 — the server's purge action stays true while a purge is queued (it may be raised to a higher level).
+    expect(screen.getByTestId('purge-envelope')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('cancel-purge'));
     await waitFor(() => expect(dequeue).toHaveBeenCalledWith('env-00000001'));
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Purge cancelled'));
@@ -230,6 +253,13 @@ describe('EnvelopeDetail — Sign now', () => {
     expect(selfSign).toHaveBeenCalledWith('env-00000001', 's1');
   });
 
+  it('C3 — without the server’s actions.sign, no Sign now even on an assigned recipient', async () => {
+    detail.mockResolvedValue(env({ recipients: [rcp(1, { assigned_to_me: true, can_remind: true })], actions: { ...NO_SENDER_ACTIONS, remind: true, void: true } }));
+    show();
+    expect(await screen.findByTestId('remind-s1')).toBeInTheDocument();
+    expect(screen.queryByTestId('sign-now-s1')).toBeNull();
+  });
+
   it('is hidden before the recipient’s turn', async () => {
     detail.mockResolvedValue(env({ routing_mode: 'SEQUENTIAL', next_signer_id: 's2', recipients: [rcp(1, { assigned_to_me: true, can_remind: false }), rcp(2, { can_remind: true })] }));
     show();
@@ -269,6 +299,30 @@ describe('EnvelopeDetail — delete an open envelope', () => {
     show();
     expect(await screen.findByTestId('delete-envelope')).toBeEnabled();
     expect(screen.queryByTestId('delete-when-finished')).toBeNull();
+  });
+});
+
+// C3 (audit rows 4, 5, 10) — every button follows the server's actions, never status or ownership.
+describe('EnvelopeDetail — server-sent actions (C3)', () => {
+  it('a read-only member: an open envelope shows no Remind, Void or Delete note', async () => {
+    detail.mockResolvedValue(env({ sender: { id: 'u-2', name: 'Other' }, recipients: [rcp(1, { can_remind: true })] }));
+    show();
+    await screen.findByText('0 of 1 signed');
+    for (const id of ['send-reminder', 'void-envelope', 'remind-s1', 'delete-envelope-disabled', 'delete-envelope']) expect(screen.queryByTestId(id)).toBeNull();
+  });
+
+  it('an older server without actions: nothing is offered, even on a completed envelope', async () => {
+    detail.mockResolvedValue({ ...env({ status: 'COMPLETED', completed_at: '2026-10-21T00:00:00Z', recipients: [rcp(1, { status: 'SIGNED' })] }), actions: undefined });
+    show();
+    await screen.findByText('1 of 1 signed');
+    for (const id of ['download-executed', 'delete-envelope', 'purge-envelope']) expect(screen.queryByTestId(id)).toBeNull();
+  });
+
+  it('a draft the caller may not edit stays on the read-only page (no redirect to the editor)', async () => {
+    detail.mockResolvedValue(env({ status: 'DRAFT', sent_at: null, editable: true, actions: { ...NO_SENDER_ACTIONS } }));
+    show();
+    expect(await screen.findByTestId('envelope-meta')).toBeInTheDocument();
+    expect(screen.queryByTestId('void-envelope')).toBeNull();
   });
 });
 

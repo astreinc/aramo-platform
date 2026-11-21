@@ -11,7 +11,8 @@
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/documents-contracts": ["../../dist/libs/documents-contracts/src/index.d.ts"],
-      "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"]
+      "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"],
+      "@aramo/sign-client": ["../../dist/libs/sign-client/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

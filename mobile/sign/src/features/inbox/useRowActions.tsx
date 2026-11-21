@@ -23,7 +23,7 @@ import { forgetLocalDrafts } from '../send/localDrafts';
 import { createSenderApi } from '../send/senderApi';
 import { startSelfSign } from '../send/selfSign';
 import { inboxItemToSign, selfSignNow, type AgreementRow } from './agreementsModel';
-import { deleteDraftById, VOID_REASON_MIN } from './envelopeActions';
+import { deleteDraftById } from './envelopeActions';
 import { checkEditable, remindFromList, voidFromList } from './listActions';
 import { OFFLINE_ACTION_REASON, putDetail, signKeys, useOnline, useSenderContext } from './queries';
 import { confirmDeleteDraft, type SwipeHandle } from './SwipeActions';
@@ -96,7 +96,7 @@ export function useRowActions(): {
   }
 
   async function remind(row: Extract<AgreementRow, { kind: 'sent' }>): Promise<void> {
-    const r = await remindFromList(services.workspace, row.envelopeId, ctx.data);
+    const r = await remindFromList(services.workspace, row.envelopeId);
     if (r.kind === 'sent') {
       putDetail(qc, r.value);
       toast.show('Reminder sent');
@@ -112,7 +112,7 @@ export function useRowActions(): {
   }
 
   async function edit(row: Extract<AgreementRow, { kind: 'sent' }>): Promise<void> {
-    const r = await checkEditable(services.workspace, row.envelopeId, ctx.data);
+    const r = await checkEditable(services.workspace, row.envelopeId);
     if (r.kind === 'editable') navigation.navigate('SendFlow', { envelopeId: row.envelopeId });
     else toast.show(r.message);
   }
@@ -122,7 +122,7 @@ export function useRowActions(): {
     if (!row) return;
     setVoidBusy(true);
     setVoidError(null);
-    const r = await voidFromList(services.workspace, row.envelopeId, ctx.data, reason);
+    const r = await voidFromList(services.workspace, row.envelopeId, reason);
     setVoidBusy(false);
     if (r.kind === 'voided') {
       putDetail(qc, r.value);
@@ -195,7 +195,6 @@ export function useRowActions(): {
       body="Recipients can no longer open or sign it. They’re told it was voided. This can’t be undone."
       confirmLabel="Void envelope"
       placeholder="Reason (required)"
-      minLength={VOID_REASON_MIN}
       busy={voidBusy}
       error={voidError}
       disabledReason={online ? null : OFFLINE_ACTION_REASON}

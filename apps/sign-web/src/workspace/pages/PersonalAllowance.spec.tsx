@@ -4,7 +4,7 @@ import { ApiError, configureAuthConsumer } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
-import { errorMessage, nextSendTime, sendRefusalMessage, type BillingAccount, type SenderContext } from '../api';
+import { errorMessage, nextSendTime, type BillingAccount, type SenderContext } from '../api';
 
 import { AllowanceChip, PersonalAllowance } from './PersonalAllowance';
 
@@ -95,18 +95,21 @@ describe('Personal allowance in the workspace', () => {
 
   it('upgrade: null (Standard offer off) keeps only the Business organization link', async () => {
     render(<PersonalAllowance loader={() => Promise.resolve({ ...account(2, 2), upgrade: null })} />);
-    expect(await screen.findByText('You’ve reached the limit for 24 hours. You can send again later.')).toBeInTheDocument();
+    // C3 (audit row 17) — the one limit-reached copy ("documents").
+    expect(await screen.findByText('You’ve sent 2 documents in the last 24 hours, the most your plan allows.')).toBeInTheDocument();
     expect(screen.queryByTestId('personal-upgrade-standard')).toBeNull();
     expect(screen.getByRole('link', { name: 'Create a Business organization' })).toHaveAttribute('href', '/signup');
   });
 
   it('at the daily or monthly limit it says so and offers a Business organization', async () => {
     const { unmount } = render(<PersonalAllowance loader={() => Promise.resolve(account(2, 2))} />);
-    expect(await screen.findByText('You’ve reached the limit for 24 hours. You can send again later.')).toBeInTheDocument();
+    expect(await screen.findByText('You’ve sent 2 documents in the last 24 hours, the most your plan allows.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create a Business organization' })).toHaveAttribute('href', '/signup');
     // Catalog v2 §4.3 — the primary way to send more is the in-place upgrade to Standard.
     expect(screen.getByTestId('personal-upgrade-standard')).toHaveAttribute('href', '/personal/settings/billing');
-    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade to Standard ($10/month, 25 documents a month, no daily limit)');
+    // C3 (audit row 16) — no plan fact from code: without a server offer there is no price.
+    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan. For a team');
+    expect(screen.getByTestId('personal-upgrade')).not.toHaveTextContent('$');
     unmount();
     // The backend's next_available_at is shown as the exact time of the next send.
     const at = '2026-10-22T09:14:00Z';
@@ -114,10 +117,13 @@ describe('Personal allowance in the workspace', () => {
     const allowance = withNext.allowance as { daily: { limit: number; used: number; next_available_at?: string } };
     allowance.daily.next_available_at = at;
     const second = render(<PersonalAllowance loader={() => Promise.resolve(withNext)} />);
-    expect(await screen.findByText(`You’ve reached the limit for 24 hours. Your next send is available at ${nextSendTime(at)}.`)).toBeInTheDocument();
+    expect(await screen.findByText(`You’ve sent 2 documents in the last 24 hours, the most your plan allows. You can send again at ${nextSendTime(at)}.`)).toBeInTheDocument();
     second.unmount();
-    render(<PersonalAllowance loader={() => Promise.resolve(account(5, 0))} />);
-    expect(await screen.findByText('You’ve used all your envelopes for this month.')).toBeInTheDocument();
+    // The server's offer price, when it sends one.
+    const offered = { ...account(5, 0), upgrade: { available: true, plan_key: 'aramo-sign-standard-personal-v1', price_minor: 1200, commitment_months: null, currency: 'USD' } };
+    render(<PersonalAllowance loader={() => Promise.resolve(offered)} />);
+    expect(await screen.findByText(/You’ve used all 5 documents this month\. Your allowance resets on/)).toBeInTheDocument();
+    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan ($12/month). For a team');
   });
 
   it('the chip reads "{n} of 5 left this month · {n} of 2 left today": green, amber at 0 today, red at 0 this month', () => {
@@ -142,30 +148,29 @@ describe('Personal allowance in the workspace', () => {
   });
 
   it.each([
-    ['phone_verification_required', 'verified mobile phone number'],
-    ['personal_review_pending', 'We’re reviewing your account'],
+    // C3 (audit row 29) — the app's wording where the two maps differed.
+    ['phone_verification_required', 'Verify your phone number to send.'],
+    ['personal_review_pending', 'Sending is paused while we review your account.'],
     ['personal_restricted', 'Sending is paused on your account'],
     ['personal_location_not_supported', 'currently available in the United States and India'],
   ])('send refusal %s has a clear message', (reason, text) => {
     expect(errorMessage(apiErr(403, 'INSUFFICIENT_PERMISSIONS', { reason }))).toContain(text);
   });
 
-  it('daily and monthly limit refusals are worded for a Personal account', () => {
-    expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', limit: 2 }), true)).toBe(
-      'You’ve sent 2 envelopes in the last 24 hours. You can send again later.',
+  it('C3 (audit row 17) — daily and monthly limit refusals say "documents", for Personal and Business alike', () => {
+    expect(errorMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', limit: 2 }))).toBe(
+      'You’ve sent 2 documents in the last 24 hours, the most your plan allows.',
     );
     const at = '2026-10-22T09:14:00Z';
-    expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', window: 'DAY', limit: 2, next_available_at: at }), true)).toBe(
-      `You’ve sent 2 envelopes in the last 24 hours. Your next send is available at ${nextSendTime(at)}.`,
+    expect(errorMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', window: 'DAY', limit: 2, next_available_at: at }))).toBe(
+      `You’ve sent 2 documents in the last 24 hours, the most your plan allows. You can send again at ${nextSendTime(at)}.`,
     );
     expect(nextSendTime(at)).not.toBeNull();
     expect(nextSendTime('not a time')).toBeNull();
     expect(nextSendTime(null)).toBeNull();
-    expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'LIMIT_REACHED', limit: 5, period_end: '2026-11-01T00:00:00Z' }), true)).toContain(
-      'You’ve used all 5 envelopes this month on your Free personal account',
+    expect(errorMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'LIMIT_REACHED', limit: 5, period_end: '2026-11-01T00:00:00Z' }))).toMatch(
+      /^You’ve used all 5 documents this month\. Your allowance resets on .+\.$/,
     );
-    // An organization keeps its existing wording.
-    expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'LIMIT_REACHED', limit: 5 }), false)).toContain('billing period');
   });
 });
 
@@ -210,7 +215,7 @@ describe('Personal send refusal in the wizard', () => {
       </MemoryRouter>,
     );
     fireEvent.click(await screen.findByTestId('send-envelope'));
-    expect(await screen.findByText('You’ve sent 2 envelopes in the last 24 hours. You can send again later.')).toBeInTheDocument();
+    expect(await screen.findByText('You’ve sent 2 documents in the last 24 hours, the most your plan allows.')).toBeInTheDocument();
     expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Create a Business organization');
   });
 });

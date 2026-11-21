@@ -1,4 +1,30 @@
 import { ApiError, apiClient, getAuthConsumer } from '@aramo/fe-foundation';
+import {
+  E164_PATTERN,
+  ENVELOPE_SUBJECT_MAX,
+  SEAT_LIMIT_REASON,
+  isValidAccessCode,
+  placeableFieldTypes,
+  refusalMessage,
+  isReminderStale as sharedReminderStale,
+  type InboxActions,
+  type SenderActions,
+} from '@aramo/sign-client';
+
+// Client Rule Consolidation C3 — the limits, patterns, status sets and refusal copy live once
+// in @aramo/sign-client (the server and the Aramo Sign app use the same copy).
+export {
+  ENVELOPE_CHANGED,
+  ENVELOPE_MESSAGE_MAX,
+  ENVELOPE_NOT_AVAILABLE,
+  ENVELOPE_SUBJECT_MAX,
+  INBOX_ITEM_CHANGED,
+  MAX_COPY_RECIPIENTS,
+  MAX_SIGNERS,
+  SEAT_LIMIT_REASON,
+  SIGN_DATE_FORMATS,
+  seatLimitMessage,
+} from '@aramo/sign-client';
 
 // PX-1 — typed client for the authenticated sender surface (/v1/sign/sender/*).
 // Every call carries the `sign` session cookie (credentials: include) and the
@@ -137,6 +163,9 @@ export interface EnvelopeRow {
   // W2 — the signed-in sender's own inbox item for that step (a binding id or a discovered
   // item handle) when awaiting_you; null when there is none.
   my_inbox_item_id?: string | null;
+  // Client Rule Consolidation C1 — what the caller may do (the server decides; read it with
+  // senderActionsOf, which treats an absent object as nothing allowed).
+  actions?: SenderActions;
 }
 
 // A short label for an envelope sent by another Aramo application, or null for Sign's own.
@@ -170,8 +199,6 @@ export type IdentityVerificationMethod = 'ID_VERIFICATION' | 'KBA';
 export type DeliveryChannel = 'SMS' | 'WHATSAPP';
 export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
 // M-A5 §1.4 — at most this many copy recipients per envelope (besides MAX_SIGNERS signers).
-export const MAX_COPY_RECIPIENTS = 10;
-
 export interface Recipient {
   id: string;
   name: string;
@@ -192,6 +219,8 @@ export interface Recipient {
   can_remind?: boolean;
   // UAT SND-14 — when this signer can be reminded again (ISO), while a reminder is cooling down.
   reminder_available_at?: string | null;
+  // Client Rule Consolidation C3 — the caller may host this in-person signer now (detail only).
+  hostable?: boolean;
   // Amendment M-A6 §3.5 — the template role this recipient was bound to; null otherwise.
   role_key?: string | null;
   // Feature-Parity §1.17 — the recipient a WITNESS attests for (null otherwise).
@@ -231,17 +260,13 @@ export interface RecipientWrite {
   identity_verification_method?: IdentityVerificationMethod | null;
 }
 
-// E.164 as sign-service checks it (libs/sign messaging-rules isE164).
-export const E164_RE = /^\+[1-9]\d{7,14}$/;
-// The access code rule (libs/sign access-code normalizeAccessCode): 4 to 32 printable characters.
-export function validAccessCode(code: string): boolean {
-  const c = code.trim();
-  return c.length >= 4 && c.length <= 32 && /^[\x20-\x7E]+$/.test(c);
-}
+// E.164 and the access code rule (@aramo/sign-client — the server's own copy).
+export const E164_RE = E164_PATTERN;
+export const validAccessCode = isValidAccessCode;
 
 // M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
 // Sign 1.14 — PAYMENT is authored too (the server refuses it while payments are not available).
-export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'PAYMENT', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE']);
+export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set<string>(placeableFieldTypes({ payments_available: true }));
 
 export interface EnvelopeField {
   id?: string;
@@ -304,12 +329,6 @@ export function formatUsd(amount_minor: number): string {
 }
 
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
-// Aramo-Sign-Multi-Signer-Amendment — at most this many signers per envelope.
-export const MAX_SIGNERS = 10;
-// Sign Mobile M-A3 §3 — the sender message limit (sign-service MESSAGE_MAX).
-export const ENVELOPE_MESSAGE_MAX = 1000;
-// UAT DOC-07 — the envelope subject's limit (the server's and the app's SUBJECT_MAX).
-export const ENVELOPE_SUBJECT_MAX = 200;
 export const SUBJECT_LIMIT_NOTE = `Subjects can be up to ${ENVELOPE_SUBJECT_MAX} characters.`;
 
 export interface EnvelopeDetail {
@@ -347,6 +366,8 @@ export interface EnvelopeDetail {
   fields: EnvelopeField[];
   // Retention and Purge — absent from an older server (read as no purge).
   purge?: PurgeInfo | null;
+  // Client Rule Consolidation C1 — what the caller may do (read it with senderActionsOf).
+  actions?: SenderActions;
 }
 
 export interface LedgerEvent {
@@ -1011,137 +1032,41 @@ export function fileToBase64(file: Blob): Promise<string> {
   });
 }
 
+/** "Nov 30, 2026" in the viewer's locale, or null for a missing/invalid date. */
+function localDate(iso: string): string | null {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString();
+}
+
+/**
+ * Client Rule Consolidation C3 (audit row 29) — the user copy for a refusal, from the ONE map
+ * in @aramo/sign-client (the Aramo Sign app shows the same words). The server's own message
+ * text is never shown: an unmapped refusal gets `fallback`.
+ */
 export function errorMessage(e: unknown, fallback = 'Something went wrong. Try again.'): string {
-  if (e instanceof ApiError) {
-    // Plan / allowance refusals (Aramo Sign subscription gate) — never shown as a
-    // permission problem.
-    if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
-    if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && isDailyLimit(e)) {
-      const limit = e.details?.['limit'];
-      const sent = `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} in the last 24 hours.`;
-      // Personal Free — the window is any 24 hours; the backend says when the next send is possible.
-      const next = nextSendTime(e.details?.['next_available_at']);
-      return next !== null ? `${sent} Your next send is available at ${next}.` : `${sent} You can send again later.`;
-    }
-    if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
-      const limit = e.details?.['limit'];
-      const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
-      return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can manage the plan in Settings → Plan & billing.`;
-    }
-    // Catalog v2 (fc755040…) §4.3 — checkout / portal refusals with a stable reason.
-    const billing = billingRefusalMessage(e.details?.['reason'], e.details);
-    if (billing !== null) return billing;
-    if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing or cancel to change it.';
-    // CCP-A6 (Conversion Rule C-1) — a governed (Aramo-managed) subscription is changed only by Aramo.
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'governed_subscription_open') return 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
-    // Sign Signup A1 §2.6 — checkout needs a complete US organization profile.
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_country_not_supported') return 'Aramo Sign is currently available to organizations registered in the United States.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_profile_incomplete') return 'Add your organization’s legal name, US address and billing email in Settings before subscribing.';
-    // Domain-Enforcement P3 §4 — the organization must own its verified email domain.
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required') return 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'NO_BILLING_ACCOUNT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.';
-    // Feature-Parity 1.1 — the plan refusal (Catalog v2 P-6: the Free plan never has templates).
-    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['reason'] === 'templates_not_in_plan') return 'Templates aren’t included in the Free plan. They come with every paid Aramo Sign plan.';
-    // Feature-Parity §1.13 — the reports capability (or a Personal plan) refuses with its own key.
-    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE' && e.details?.['feature_key'] === 'sign.reports') return 'Reports aren’t available on your Aramo Sign plan yet.';
-    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
-    if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
-    if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
-    // UAT DOC-06 — a Personal account has no organization or admin: its own words.
-    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED')
-      return inPersonalWorkspace()
-        ? PERSONAL_STORAGE_FULL
-        : 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
-    if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
-    // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
-    const personal = personalRefusalMessage(e.details?.['reason']);
-    if (personal !== null) return personal;
-    // Personal (Free) — Settings → Close account refusals.
-    const close = closeRefusalMessage(e.details?.['reason']);
-    if (close !== null) return close;
-    // W2 (A3.4) — a discovered inbox item that changed or expired.
-    if (isInboxItemNotFound(e)) return INBOX_ITEM_CHANGED;
-    // UAT DOC-04 — never the raw server text (it names the envelope id). The same words for
-    // "does not exist" and "not yours", so nothing is revealed; the same copy as the app.
-    if (e.code === 'ENVELOPE_NOT_FOUND') return ENVELOPE_NOT_AVAILABLE;
-    if (e.status === 403) return 'You don’t have permission to do that.';
-    if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
-    if (e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === 'self_sign_no_reminders') return 'A document you sign yourself has no one to remind.';
-    // UAT SND-14 — the reminder limits (60 minutes per signer; 5 a day per envelope), with the time.
-    if (e.status === 429 && (e.details?.['reason'] === 'reminder_cooldown' || e.details?.['reason'] === 'reminder_daily_limit')) {
-      const at = nextSendTime(e.details?.['retry_at']);
-      return at !== null ? `You can send another reminder at ${at}.` : 'You can’t send another reminder yet.';
-    }
-    if (isReminderStale(e)) return ENVELOPE_CHANGED;
-    // Retention and Purge — a purged envelope's documents are gone for good (HTTP 410).
-    if (e.code === 'ENVELOPE_PURGED') return 'This envelope’s documents were purged and can’t be downloaded.';
-    return e.message.length > 0 ? e.message : fallback;
-  }
-  return fallback;
+  if (!(e instanceof ApiError)) return fallback;
+  const reason = e.details?.['reason'];
+  return refusalMessage(
+    { code: e.code ?? '', reason: typeof reason === 'string' ? reason : null, status: e.status, details: e.details ?? null },
+    { time: nextSendTime, date: localDate },
+    fallback,
+  );
 }
-
-/** UAT DOC-06 — the storage refusal for a Personal account (same words as the app). */
-export const PERSONAL_STORAGE_FULL =
-  'Your storage is full. Remove draft documents you no longer need, or upgrade your plan in Settings → Plan & billing for more storage.';
-
-/** The Personal workspace lives under /personal (the Business one under /sign). */
-export function inPersonalWorkspace(pathname: string = typeof window === 'undefined' ? '' : window.location.pathname): boolean {
-  return pathname === '/personal' || pathname.startsWith('/personal/');
-}
-
-/** UAT DOC-04 — an envelope the caller cannot see (absent, deleted or someone else's). */
-export const ENVELOPE_NOT_AVAILABLE = 'This envelope isn’t available. It may have been deleted, or you don’t have access to it.';
-
-/** UAT SND-23 — same copy as the mobile app (M-A3 §6 revision_mismatch). */
-export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
 
 /**
  * UAT SND-23 — a reminder refused because the envelope changed elsewhere since it was
  * read (voided, completed, declined or expired on another device, or every signer done):
- * 409 ESIGN_REMINDER_NOT_ALLOWED with no reason. The 429 cooldown / daily limit and the
- * self-sign refusal share the code but carry a details.reason, so they are not a change.
+ * 409 ESIGN_REMINDER_NOT_ALLOWED with no reason.
  */
 export function isReminderStale(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 409 && e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.details?.['reason'] === undefined;
+  if (!(e instanceof ApiError)) return false;
+  const reason = e.details?.['reason'];
+  return sharedReminderStale({ code: e.code ?? '', status: e.status, reason: typeof reason === 'string' ? reason : null });
 }
 
 /** Per-seat directive §3.5.2 — the member cap of a per-seat plan (409, details.reason = seat_limit_reached). */
-export const SEAT_LIMIT_REASON = 'seat_limit_reached';
 export function isSeatLimitReached(e: unknown): e is ApiError {
   return e instanceof ApiError && e.details?.['reason'] === SEAT_LIMIT_REASON;
-}
-export function seatLimitMessage(purchased: unknown): string {
-  return `All ${typeof purchased === 'number' ? `${purchased} ` : ''}seats are in use. Add a seat to invite more people.`;
-}
-
-function billingRefusalMessage(reason: unknown, details?: Record<string, unknown>): string | null {
-  // Per-seat directive §3.3 / §3.5 — seat refusals.
-  if (reason === SEAT_LIMIT_REASON) return seatLimitMessage(details?.['purchased']);
-  if (reason === 'seats_below_usage') {
-    const used = details?.['used'];
-    return typeof used === 'number'
-      ? `${used} people are using seats, so you need at least ${used} seats. Remove someone’s Aramo Sign access first to go lower.`
-      : 'You can’t have fewer seats than the people using them. Remove someone’s Aramo Sign access first to go lower.';
-  }
-  if (reason === 'seats_not_applicable') return 'Seats can’t be changed for this subscription.';
-  if (reason === 'seats_unchanged') return 'That’s already your number of seats.';
-  if (reason === 'term_not_available') return 'That billing option isn’t available for this plan. Choose another option and try again.';
-  if (reason === 'TERMS_NOT_ACCEPTED') return 'Check “I agree” to accept the terms before you continue.';
-  if (reason === 'PORTAL_NOT_CONFIGURED') return 'Billing management will be available soon; contact support@aramo.ai.';
-  if (reason === 'personal_paid_checkout_not_enabled') return 'Upgrading to Standard isn’t available yet.';
-  if (reason === 'personal_paid_us_only') return 'Standard isn’t available in your country yet.';
-  return null;
-}
-
-function closeRefusalMessage(reason: unknown): string | null {
-  if (reason === 'not_account_owner') return 'Only the account owner can close this account.';
-  if (reason === 'business_account_close_via_organization') return 'An organization account is closed by its organization administrator.';
-  if (reason === 'account_close_confirmation_required') return 'Type CLOSE to confirm closing your account.';
-  if (reason === 'personal_account_not_closable') return 'This account can’t be closed here. Contact Aramo support.';
-  return null;
 }
 
 // Sign Unified Product S-7 — the recipient inbox (/v1/sign/inbox). A recipient
@@ -1167,6 +1092,8 @@ export interface InboxItem {
   signed_at: string | null;
   can_sign: boolean;
   can_download: boolean;
+  // Client Rule Consolidation C1 — what the user may do with this item (read it with inboxActionsOf).
+  actions?: InboxActions;
 }
 
 export const inboxApi = {
@@ -1182,8 +1109,7 @@ export const inboxApi = {
 };
 
 // W2 (A3.4) — the inbox item named in the request is gone (an expired or changed
-// discovered item): the page reloads the inbox once and says so.
-export const INBOX_ITEM_CHANGED = 'This item changed. Showing your latest inbox.';
+// discovered item): the page reloads the inbox once and says so (INBOX_ITEM_CHANGED).
 export function isInboxItemNotFound(e: unknown): boolean {
   return e instanceof ApiError && e.status === 404 && e.details?.['reason'] === 'inbox_item_not_found';
 }
@@ -1200,21 +1126,6 @@ export function tokenFromSigningLink(input: string): string | null {
   return /^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null;
 }
 
-// Aramo Sign Personal (Free) §6.3–§6.6 — the Personal sending gate's refusal reasons.
-const PERSONAL_REFUSALS: Record<string, string> = {
-  phone_verification_required:
-    'Sending from this account needs a verified mobile phone number. Phone verification isn’t available for your account yet — contact Aramo support.',
-  personal_review_pending: 'We’re reviewing your account. You can send envelopes once the review is complete.',
-  personal_restricted:
-    'Sending is paused on your account while we review it. Envelopes you already sent aren’t affected. Contact Aramo support if you think this is a mistake.',
-  personal_location_not_supported: 'Aramo Sign Personal is currently available in the United States and India.',
-  legal_acceptance_required: 'Review and accept the updated terms to send. Reload the page to see them.',
-};
-
-export function personalRefusalMessage(reason: unknown): string | null {
-  return typeof reason === 'string' ? (PERSONAL_REFUSALS[reason] ?? null) : null;
-}
-
 /** "Oct 22, 9:14 AM" in the viewer's locale and time zone, or null for a missing/invalid time. */
 export function nextSendTime(iso: unknown): string | null {
   if (typeof iso !== 'string') return null;
@@ -1223,26 +1134,9 @@ export function nextSendTime(iso: unknown): string | null {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-/** A send refused by the daily window (Personal Free: 2 a day) rather than the monthly allowance. */
-export function isDailyLimit(e: ApiError): boolean {
-  const d = e.details ?? {};
-  const tag = [d['reason'], d['window'], d['period']].filter((v): v is string => typeof v === 'string').join(' ').toUpperCase();
-  return /DAY|DAILY/.test(tag);
-}
-
 /** An allowance refusal (daily or monthly) — a Personal account is offered the Business route. */
 export function isAllowanceLimit(e: unknown): boolean {
   return e instanceof ApiError && e.code === 'ESIGN_ALLOWANCE_EXHAUSTED';
-}
-
-/** The send-refusal text, worded for a Personal account where it differs from an organization's. */
-export function sendRefusalMessage(e: unknown, personal: boolean): string {
-  if (personal && e instanceof ApiError && e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && !isDailyLimit(e)) {
-    const limit = e.details?.['limit'];
-    const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
-    return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes this month on your Free personal account${end ? `; it renews on ${end}` : ''}.`;
-  }
-  return errorMessage(e);
 }
 
 // M-A5 §1 — a copy recipient never signs (no fields, no turn, never blocks sending).
@@ -1266,7 +1160,6 @@ export interface SavedMarks {
 }
 export type SavedMarkTarget = 'signature' | 'initials';
 // UAT SIG-12 — the sender's SIGN_DATE format, stamped on envelopes they send (M-A12 W1-E.2).
-export const SIGN_DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
 export type SavedMarkWrite =
   | { kind: 'TYPED'; typed_name: string; font_key: string; image_data_url: string }
   | { kind: 'DRAWN'; image_data_url: string };

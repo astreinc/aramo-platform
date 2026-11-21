@@ -519,7 +519,7 @@ describe('editor geometry (top-left editor ⇄ bottom-left PDF)', () => {
 
 // Sign Unified Product S-7 — "Waiting for me".
 describe('recipient inbox', () => {
-  const ITEM = { id: 'b1', subject: 'Offer letter', from: 'Northwind Staffing', envelope_status: 'SENT', my_status: 'PENDING', sent_at: '2026-10-01T00:00:00Z', expires_at: '2026-10-31T00:00:00Z', completed_at: null, signed_at: null, can_sign: true, can_download: false };
+  const ITEM = { id: 'b1', subject: 'Offer letter', from: 'Northwind Staffing', envelope_status: 'SENT', my_status: 'PENDING', sent_at: '2026-10-01T00:00:00Z', expires_at: '2026-10-31T00:00:00Z', completed_at: null, signed_at: null, can_sign: true, can_download: false, actions: { sign: true, download: false, delete: true, restore: false, report: true } };
 
   it('extracts the token from a pasted signing link; refuses anything else', () => {
     expect(tokenFromSigningLink('https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123')).toBe('abcdefghijklmnopqrstuvwxyz0123');

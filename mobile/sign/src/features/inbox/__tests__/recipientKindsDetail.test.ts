@@ -7,8 +7,8 @@ import {
   orderedRecipients,
   progressOf,
 } from '../envelopeActions';
-import type { DetailRecipient, SenderContext, SenderEnvelopeDetail } from '../types';
-import { CTX_OWNER, detail } from './fixtures';
+import type { DetailRecipient, SenderEnvelopeDetail } from '../types';
+import { detail } from './fixtures';
 
 const base = detail().recipients[0]!;
 const rec = (id: string, over: Partial<DetailRecipient>): DetailRecipient => ({
@@ -19,12 +19,6 @@ const rec = (id: string, over: Partial<DetailRecipient>): DetailRecipient => ({
   can_remind: false,
   ...over,
 });
-
-const ctxWith = (inPerson: boolean | undefined) =>
-  ({
-    ...CTX_OWNER,
-    features: inPerson === undefined ? {} : { in_person_signing: inPerson },
-  }) as unknown as SenderContext;
 
 function env(over: Partial<SenderEnvelopeDetail> = {}): SenderEnvelopeDetail {
   return detail({
@@ -62,54 +56,24 @@ describe('copy recipients in the sender detail (M-A5 §2)', () => {
   });
 });
 
+// C3 (audit row 13) — who can be hosted is the server's per-recipient `hostable`
+// (actions.host_in_person and the hosted-session rule); the app derives nothing.
 describe('Start in-person signing availability (M-A5 §3.1)', () => {
-  it('an unsigned in-person signer of an open envelope, with the capability and the flag', () => {
-    expect(hostableSigners(env(), ctxWith(true), true).map((r) => r.id)).toEqual(['walk']);
+  const hostEnv = (hostable: Record<string, boolean>) =>
+    env({ recipients: env().recipients.map((r) => ({ ...r, ...(r.id in hostable ? { hostable: hostable[r.id] } : {}) })) });
+
+  it('exactly the recipients the server marks hostable, while the build ships hosting', () => {
+    expect(hostableSigners(hostEnv({ walk: true }), true).map((r) => r.id)).toEqual(['walk']);
+    expect(hostableSigners(hostEnv({ walk: true, a: true }), true).map((r) => r.id)).toEqual(['a', 'walk']);
   });
 
-  it('nothing without the flag, the server capability, or on an envelope that is not open', () => {
-    expect(hostableSigners(env(), ctxWith(true), false)).toEqual([]);
-    expect(hostableSigners(env(), ctxWith(false), true)).toEqual([]);
-    expect(hostableSigners(env(), ctxWith(undefined), true)).toEqual([]);
-    expect(hostableSigners(env({ status: 'COMPLETED' }), ctxWith(true), true)).toEqual([]);
-    expect(hostableSigners(env({ status: 'DRAFT' }), ctxWith(true), true)).toEqual([]);
+  it('nothing without the build flag, or when the server marks no one (or sends no flag)', () => {
+    expect(hostableSigners(hostEnv({ walk: true }), false)).toEqual([]);
+    expect(hostableSigners(hostEnv({ walk: false }), true)).toEqual([]);
+    expect(hostableSigners(env(), true)).toEqual([]);
   });
 
-  it('only the user’s own envelope (or manage_all), only from Aramo Sign', () => {
-    expect(
-      hostableSigners(env({ sender: { id: 'other', name: 'X' } }), ctxWith(true), true),
-    ).toEqual([]);
-    expect(hostableSigners(env({ source_application: 'aramo-ats' }), ctxWith(true), true)).toEqual(
-      [],
-    );
-  });
-
-  it('signing in order: only when it is their turn', () => {
-    expect(
-      hostableSigners(
-        env({ routing_mode: 'SEQUENTIAL', next_signer_id: 'walk' }),
-        ctxWith(true),
-        true,
-      ).map((r) => r.id),
-    ).toEqual(['walk']);
-    expect(
-      hostableSigners(
-        env({ routing_mode: 'SEQUENTIAL', next_signer_id: 'a' }),
-        ctxWith(true),
-        true,
-      ),
-    ).toEqual([]);
-  });
-
-  it('never a signer who signed or declined, an emailed signer, or a copy recipient', () => {
-    const d = env({
-      recipients: [
-        rec('s', { recipient_kind: 'IN_PERSON_SIGNER', status: 'SIGNED' }),
-        rec('d', { recipient_kind: 'IN_PERSON_SIGNER', status: 'DECLINED' }),
-        rec('e', { recipient_kind: 'SIGNER' }),
-        rec('c', { recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' }),
-      ],
-    });
-    expect(hostableSigners(d, ctxWith(true), true)).toEqual([]);
+  it('an in-person signer of an open envelope is not hostable unless the server says so', () => {
+    expect(hostableSigners(env({ routing_mode: 'SEQUENTIAL', next_signer_id: 'walk' }), true)).toEqual([]);
   });
 });

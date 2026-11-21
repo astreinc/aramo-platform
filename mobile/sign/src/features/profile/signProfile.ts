@@ -6,6 +6,7 @@
 // The profile pre-fills the profile field types (W1-C.4) for the signed-in user only, and
 // the settings set the date format of SIGN_DATE and the starting size of placed fields.
 // Routes are not in the generated types yet: typed by api/m-a12-contract-types.ts.
+import { DEFAULT_SIGN_DATE_FORMAT, E164_PATTERN, SIGN_DATE_FORMATS, signDatePreview } from '@aramo/sign-client';
 import { useQuery } from '@tanstack/react-query';
 
 import { isApiError } from '../../api/errors';
@@ -17,7 +18,6 @@ import type {
 } from '../../api/m-a12-contract-types';
 import type { WorkspaceClient } from '../../api/workspaceClient';
 import { useServices } from '../../app/ServicesContext';
-import { signDatePreview } from '../signing/signDate';
 
 export const profileKeys = {
   profile: ['sign', 'me', 'profile'] as const,
@@ -27,9 +27,11 @@ export const profileKeys = {
 export const DISPLAY_NAME_MAX = 120;
 export const PROFILE_FIELD_MAX = 200;
 
-export const DEFAULT_SETTINGS: SignSettings = { date_format: 'MM/DD/YYYY', default_field_size: 'M' };
+// Client Rule Consolidation C3 (audit row 33) — the date formats and default come from
+// @aramo/sign-client (the server and the web use the same list).
+export const DEFAULT_SETTINGS: SignSettings = { date_format: DEFAULT_SIGN_DATE_FORMAT, default_field_size: 'M' };
 
-export const DATE_FORMATS: readonly DateFormat[] = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'];
+export const DATE_FORMATS: readonly DateFormat[] = SIGN_DATE_FORMATS;
 export const FIELD_SIZES: readonly { key: FieldSize; label: string; hint: string }[] = [
   { key: 'S', label: 'Small', hint: 'Fits tight forms and tables' },
   { key: 'M', label: 'Medium', hint: 'Recommended for most documents' },
@@ -71,7 +73,8 @@ export function draftFromProfile(p: SignProfile | null | undefined, fallbackName
 
 export type ProfileErrors = Partial<Record<keyof ProfileDraft, string>>;
 
-const E164 = /^\+[1-9]\d{6,14}$/;
+// Client Rule Consolidation §5 / audit row 24 — the ONE E.164 pattern (the server's profile uses it too).
+const E164 = E164_PATTERN;
 const ISO2 = /^[A-Za-z]{2}$/;
 
 /** UAT PRF-02 follow-up (PO 2026-11-19) — a city or region needs at least one letter. */

@@ -1,7 +1,7 @@
-// Agreements list actions that need facts the sender LIST lacks (M-A4 §3.5): each reads
-// the envelope detail first (its ETag, `editable`, sender, `can_remind`) and acts only
-// when envelopeActions.actionsFor — the detail screen's rule — allows it. Nothing here
-// decides policy; a refusal carries the server's reason.
+// Agreements list actions that need the envelope detail (M-A4 §3.5): each reads the detail
+// first (its ETag and per-signer `can_remind` / `reminder_available_at`) and acts only when
+// the detail's server `actions` (envelopeActions.actionsFor) still allow it — the row was
+// listed earlier. Nothing here decides policy; a refusal carries the server's reason.
 import { isApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import type { WorkspaceClient } from '../../api/workspaceClient';
@@ -17,7 +17,7 @@ import {
 } from './envelopeActions';
 import { dateTime } from './agreementsModel';
 import { fetchDetail, type DetailWithEtag } from './queries';
-import { OPEN_STATUSES, type SenderContext } from './types';
+import { OPEN_STATUSES } from './types';
 
 export const NOT_MANAGEABLE = 'Only the sender or a Sign admin can change this envelope.';
 export const NOT_EDITABLE = 'Only a draft you created in Aramo Sign can be edited here.';
@@ -42,7 +42,6 @@ export type RemindOutcome =
 export async function remindFromList(
   workspace: WorkspaceClient,
   envelopeId: string,
-  ctx: SenderContext | null | undefined,
   now: number = Date.now(),
 ): Promise<RemindOutcome> {
   let current: DetailWithEtag;
@@ -53,7 +52,10 @@ export async function remindFromList(
   }
   // The row was open when listed; the fresh detail says it closed since (voided, completed…).
   if (!OPEN_STATUSES.has(current.detail.status)) return { kind: 'stale', message: ENVELOPE_CHANGED };
-  if (!actionsFor(current.detail, ctx).remind) return { kind: 'refused', message: NOT_MANAGEABLE };
+  const actions = actionsFor(current.detail);
+  // The server offers no remind: nobody may be reminded now (when the user may still change
+  // the envelope, i.e. void it), or the user may not change it at all.
+  if (!actions.remind) return { kind: 'refused', message: actions.void ? NOTHING_TO_REMIND : NOT_MANAGEABLE };
   const remindable = remindableSigners(current.detail, now);
   if (remindable.length === 0) {
     const at = nextReminderAt(current.detail);
@@ -79,7 +81,6 @@ export async function remindFromList(
 export async function voidFromList(
   workspace: WorkspaceClient,
   envelopeId: string,
-  ctx: SenderContext | null | undefined,
   reason: string,
 ): Promise<VoidOutcome> {
   let current: DetailWithEtag;
@@ -88,7 +89,7 @@ export async function voidFromList(
   } catch (e) {
     return { kind: 'refused', message: unknownRefusal(e) };
   }
-  if (!actionsFor(current.detail, ctx).void) return { kind: 'refused', message: NOT_MANAGEABLE };
+  if (!actionsFor(current.detail).void) return { kind: 'refused', message: NOT_MANAGEABLE };
   return voidEnvelope(workspace, current, reason);
 }
 
@@ -100,11 +101,10 @@ export type EditCheck =
 export async function checkEditable(
   workspace: WorkspaceClient,
   envelopeId: string,
-  ctx: SenderContext | null | undefined,
 ): Promise<EditCheck> {
   try {
     const current = await fetchDetail(workspace, envelopeId);
-    return actionsFor(current.detail, ctx).continueEditing
+    return actionsFor(current.detail).continueEditing
       ? { kind: 'editable' }
       : { kind: 'refused', message: NOT_EDITABLE };
   } catch (e) {

@@ -28,6 +28,7 @@ function free(over: Partial<BillingAccount> = {}): BillingAccount {
     self_service_eligible: false,
     can_manage_billing: true,
     upgrade: { available: true, plan_key: STANDARD_KEY, price_minor: 1000, commitment_months: 12 },
+    storage: { capacity_key: 'sign.storage_bytes', limit: 15 * 1024 * 1024, unlimited: false, used: 0 },
     ...over,
   };
 }
@@ -66,14 +67,26 @@ describe('PersonalPlanPanel', () => {
   });
 
   const TERMS = { version: '1.0', url: 'https://legal.aramo.test/sign-personal-terms-1.0' };
-  const plans = (url: string) => (url.endsWith('/v1/sign/billing/plans') ? json({ plans: [], terms: TERMS, sales_contact_url: null }) : undefined);
+  // C3 (audit row 16) — the plans' facts come from the catalog (GET /v1/sign/billing/plans) only.
+  const CATALOG = [
+    { key: FREE_KEY, name: 'Free', allowances: [{ allowance_key: 'sign.envelopes', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: true }], capacities: [], features: [] },
+    {
+      key: STANDARD_KEY,
+      name: 'Standard',
+      allowances: [{ allowance_key: 'sign.envelopes', included_quantity: 25, unlimited: false, period: 'MONTHLY', available: true }],
+      capacities: [{ capacity_key: 'sign.storage_bytes', limit: 1024 ** 3, unlimited: false, available: true }],
+      features: [],
+    },
+  ];
+  const plans = (url: string) => (url.endsWith('/v1/sign/billing/plans') ? json({ plans: CATALOG, terms: TERMS, sales_contact_url: null }) : undefined);
   const refusal = (status: number, code: string, reason: string) => json({ error: { code, message: 'refused', details: { reason } } }, status);
 
   it('Free: shows the free terms (no templates), the Standard offer and disclosure, and Coming soon; Upgrade needs "I agree" and sends accept_terms', async () => {
     const fetch = stub([free()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_p' }, 201) : plans(url)));
     vi.stubGlobal('fetch', fetch);
     render(<PersonalPlanPanel />);
-    expect(await screen.findByTestId('personal-plan-free-terms')).toHaveTextContent('5 documents a month, up to 2 a day · 15 MB storage · templates aren’t included');
+    await waitFor(() => expect(screen.getByTestId('personal-plan-free-terms')).toHaveTextContent('5 documents a month, up to 2 a day · 15 MB storage · templates aren’t included'));
+    expect(await screen.findByTestId('personal-plan-upgrade')).toHaveTextContent('25 documents a month');
     // UAT BIL-11 — the same rows as the app's Account → Plan and usage.
     expect(screen.getByTestId('personal-plan-usage-month')).toHaveTextContent('This month · 2 of 5 used');
     expect(screen.getByTestId('personal-plan-usage-day')).toHaveTextContent('Last 24 hours · 1 of 2 used');
@@ -81,7 +94,8 @@ describe('PersonalPlanPanel', () => {
     expect(offer).toHaveTextContent('Upgrade to Standard');
     expect(offer).toHaveTextContent('$10/month');
     expect(offer).toHaveTextContent('25 documents a month');
-    expect(offer).toHaveTextContent('No daily limit');
+    // C3 — "No daily limit" is not a catalog fact, so it is no longer printed.
+    expect(offer).not.toHaveTextContent('No daily limit');
     expect(offer).toHaveTextContent('1 GB storage');
     const disclosure = screen.getByTestId('personal-plan-upgrade-terms');
     expect(disclosure).toHaveTextContent('$10/month, 12-month commitment billed monthly');
@@ -101,6 +115,17 @@ describe('PersonalPlanPanel', () => {
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/cs_p'));
     const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
     expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ plan_key: STANDARD_KEY, accept_terms: true });
+  });
+
+  it('C3 (audit row 16) — without catalog data the page prints no plan number from code', async () => {
+    const bare = (url: string) => (url.endsWith('/v1/sign/billing/plans') ? json({ plans: [], terms: TERMS, sales_contact_url: null }) : undefined);
+    vi.stubGlobal('fetch', stub([free({ upgrade: { available: true, plan_key: STANDARD_KEY, price_minor: null, commitment_months: null }, storage: null })], bare));
+    render(<PersonalPlanPanel />);
+    const offer = await screen.findByTestId('personal-plan-upgrade');
+    await screen.findByTestId('personal-plan-terms-link');
+    expect(offer).not.toHaveTextContent(/\$|documents a month|storage/);
+    // The account's own allowance is server data and still shows.
+    expect(screen.getByTestId('personal-plan-free-terms')).toHaveTextContent('5 documents a month, up to 2 a day');
   });
 
   it('upgrade: null (feature off) hides the upgrade card entirely', async () => {

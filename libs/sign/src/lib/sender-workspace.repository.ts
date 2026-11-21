@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { isDraftEditable } from '@aramo/sign-client';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
@@ -448,7 +449,8 @@ export class EsignSenderRepository {
       FOR UPDATE OF e`;
     const row = rows[0];
     if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
-    if (row.status !== 'DRAFT') throw new EnvelopeIllegalTransitionError(row.status, 'edit(DRAFT-only)');
+    // C3 (D-1) — the one edit rule (@aramo/sign-client), shared with the C1 actions.edit.
+    if (!isDraftEditable(row.status)) throw new EnvelopeIllegalTransitionError(row.status, 'edit(DRAFT-only)');
     if (expected_revision !== undefined && row.revision !== expected_revision) {
       throw new EnvelopeRevisionMismatchError(envelope_id, row.revision, expected_revision);
     }

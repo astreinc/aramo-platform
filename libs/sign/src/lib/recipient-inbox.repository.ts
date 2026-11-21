@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { envelopeOpenForSigning, signerMayStillSign } from '@aramo/sign-client';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { generateSigningToken } from './signing-token.js';
 import { EsignRepository } from './esign.repository.js';
 import { LIVE_SESSION_STATUSES } from './domain/envelope-lifecycle.js';
 import { InboxSigningRefusedError } from './domain/envelope-contract-errors.js';
-import { currentTurnSignerId, isLinkSigner, isWitness, mayActNow } from './domain/recipients.js';
+import { isLinkSigner, mayActNow } from './domain/recipients.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — persistence
@@ -372,7 +373,7 @@ export class RecipientInboxRepository {
         signer === null ||
         !isLinkSigner(signer) ||
         signer.email === null ||
-        (signer.status !== 'PENDING' && signer.status !== 'VIEWED') ||
+        !signerMayStillSign(signer.status) ||
         signer.email.trim().toLowerCase() !== binding.email.trim().toLowerCase()
       ) {
         throw new InboxSigningRefusedError('signer_ineligible');
@@ -414,7 +415,7 @@ export class RecipientInboxRepository {
         signer === null ||
         !isLinkSigner(signer) ||
         signer.email === null ||
-        (signer.status !== 'PENDING' && signer.status !== 'VIEWED') ||
+        !signerMayStillSign(signer.status) ||
         signer.email.trim().toLowerCase() !== proof.email
       ) {
         throw new InboxSigningRefusedError('signer_ineligible');
@@ -433,12 +434,15 @@ export class RecipientInboxRepository {
   ): Promise<{ routing_mode: string; expires_at: Date | null; sent_at: Date | null }> {
     const status = await this.esign.lockEnvelope(tx, tenant_id, envelope_id);
     const env = await tx.signatureEnvelope.findFirst({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true, expires_at: true, sent_at: true, deleted_at: true } });
-    if ((status !== 'SENT' && status !== 'IN_PROGRESS') || env === null || env.deleted_at !== null || (env.expires_at !== null && env.expires_at.getTime() <= now.getTime())) {
+    // C3 (D-1) — the one "open for signing" rule (@aramo/sign-client), shared with the C1 inbox actions.sign.
+    if (env === null || !envelopeOpenForSigning({ status, expires_at: env.expires_at, deleted_at: env.deleted_at }, now)) {
       throw new InboxSigningRefusedError('envelope_not_signable');
     }
     return env;
   }
 
+  // C3 (D-1) — the turn and witness-readiness rule is @aramo/sign-client's mayActNow, over the
+  // rows read under the lock (the C1 inbox actions.sign reads the same function's verdict).
   private async assertTurn(
     tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
     tenant_id: string,
@@ -446,18 +450,11 @@ export class RecipientInboxRepository {
     routing_mode: string,
     signer: { id: string; recipient_kind: string; witness_for_signer_id: string | null },
   ): Promise<void> {
-    if (routing_mode === 'SEQUENTIAL') {
-      // M-A5 §1.3 — the shared current-turn rule (copy recipients never take a turn).
-      const next = await currentTurnSignerId(tx as never, tenant_id, envelope_id);
-      if (next !== signer.id) throw new InboxSigningRefusedError('not_your_turn');
-    }
-    // Feature-Parity §1.17 — a witness signs only after the signer it witnesses.
-    if (isWitness(signer)) {
-      const principal = signer.witness_for_signer_id === null
-        ? null
-        : await tx.signer.findFirst({ where: { id: signer.witness_for_signer_id, tenant_id, envelope_id }, select: { status: true } });
-      if (principal?.status !== 'SIGNED') throw new InboxSigningRefusedError('not_your_turn');
-    }
+    const rows = await tx.signer.findMany({
+      where: { tenant_id, envelope_id },
+      select: { id: true, status: true, signing_order: true, recipient_kind: true, witness_for_signer_id: true },
+    });
+    if (!mayActNow(routing_mode, rows, signer.id)) throw new InboxSigningRefusedError('not_your_turn');
   }
 
   private async mint(

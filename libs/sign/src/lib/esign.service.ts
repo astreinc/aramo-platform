@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerMayStillSign } from '@aramo/sign-client';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository, type LockingTx } from './esign.repository.js';
@@ -570,8 +571,9 @@ export class EsignService {
   async delegateSigner(ctx: SessionContext, input: { name: string; email: string; reason?: string | null }): Promise<{ signer_id: string }> {
     const name = input.name.trim().replace(/\s+/g, ' ');
     const email = input.email.trim();
-    if (name.length === 0 || name.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new DelegationRefusedError('delegate_invalid');
-    const reason = typeof input.reason === 'string' && input.reason.trim().length > 0 ? input.reason.trim().slice(0, 500) : null;
+    // Client Rule Consolidation C3 (audit row 28) — the delegate rule shared with both Sign clients.
+    if (name.length === 0 || name.length > DELEGATE_NAME_MAX || !isValidEmail(email)) throw new DelegationRefusedError('delegate_invalid');
+    const reason = typeof input.reason === 'string' && input.reason.trim().length > 0 ? input.reason.trim().slice(0, DELEGATE_REASON_MAX) : null;
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
@@ -1067,8 +1069,9 @@ export class EsignService {
   // The raw token is returned ONLY to the host's authenticated client. ──
   async issueHostedSession(tenant_id: string, envelope_id: string, signer_id: string, host_user_id: string, now: Date = new Date()): Promise<IssuedHostedSession> {
     return this.prisma.$transaction(async (tx) => {
-      const { signer, expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, signer_id, now, HOSTED_SESSION_TTL_MS);
-      if (recipientKindOf(signer) !== 'IN_PERSON_SIGNER') throw new SessionIssueRefusedError('not_in_person_signer');
+      // C3 (D-1) — the hosted rule is @aramo/sign-client's hostedSessionRefusal (the C1
+      // host_in_person action and the per-recipient hostable use the same function).
+      const { expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, signer_id, now, HOSTED_SESSION_TTL_MS, hostedSessionRefusal);
       await tx.signingSession.updateMany({
         where: { tenant_id, envelope_id, signer_id, status: { in: [...LIVE_SESSION_STATUSES] } },
         data: { status: 'REVOKED', revoked_at: now },
@@ -1104,13 +1107,14 @@ export class EsignService {
   ): Promise<IssuedHostedSession> {
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
-      const bound = await tx.signer.findMany({
-        where: { tenant_id, envelope_id, bound_user_id: user_id, ...SIGNING_RECIPIENT_WHERE, ...(signer_id !== undefined ? { id: signer_id } : {}) },
-        orderBy: { signing_order: 'asc' },
-        select: { id: true },
+      // C3 (D-1) — the bound recipient is @aramo/sign-client's selfSignTarget (the C1
+      // can_self_sign_now / actions.sign read the same function).
+      const rows = await tx.signer.findMany({
+        where: { tenant_id, envelope_id },
+        select: { id: true, status: true, signing_order: true, recipient_kind: true, witness_for_signer_id: true, bound_user_id: true },
       });
-      const target = bound[0];
-      if (target === undefined) throw new SessionIssueRefusedError('not_bound_to_you');
+      const target = selfSignTarget(rows, user_id, signer_id);
+      if (target === null) throw new SessionIssueRefusedError('not_bound_to_you');
       const { signer, expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, target.id, now, SELF_SIGN_SESSION_TTL_MS);
       const mine = verified_email?.trim().toLowerCase() ?? '';
       if (mine === '' || signer.email === null || signer.email.trim().toLowerCase() !== mine) throw new SessionIssueRefusedError('email_not_verified');
@@ -1131,19 +1135,29 @@ export class EsignService {
   // The checks a hosted or self-sign session shares, under the envelope row lock:
   // a signable, unexpired envelope; a signing recipient of it who has not finished;
   // and (SEQUENTIAL) their turn. Returns the signer and the bounded session expiry.
-  private async lockForSessionIssue(tx: LockingTx, tenant_id: string, envelope_id: string, signer_id: string, now: Date, ttlMs: number) {
+  //
+  // Client Rule Consolidation C3 (D-1) — the rule is @aramo/sign-client's sessionIssueRefusal
+  // (hosted: hostedSessionRefusal), called with the rows read under the lock; the C1 actions
+  // call the same function with the rows they loaded.
+  private async lockForSessionIssue(
+    tx: LockingTx,
+    tenant_id: string,
+    envelope_id: string,
+    signer_id: string,
+    now: Date,
+    ttlMs: number,
+    rule: typeof sessionIssueRefusal = sessionIssueRefusal,
+  ) {
     const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
     const env = await tx.signatureEnvelope.findFirst({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true, expires_at: true } });
     if (env === null) throw new SessionIssueRefusedError('signer_not_found');
-    const signer = await tx.signer.findFirst({ where: { id: signer_id, tenant_id, envelope_id }, select: { id: true, email: true, status: true, recipient_kind: true } });
-    if (signer === null) throw new SessionIssueRefusedError('signer_not_found');
-    if ((status !== 'SENT' && status !== 'IN_PROGRESS') || (env.expires_at !== null && env.expires_at.getTime() <= now.getTime())) {
-      throw new SessionIssueRefusedError('envelope_not_signable');
-    }
-    if (recipientKindOf(signer) === 'RECEIVES_COPY' || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) throw new SessionIssueRefusedError('signer_ineligible');
-    if (env.routing_mode === 'SEQUENTIAL' && (await this.currentSequentialSigner(tx, tenant_id, envelope_id)) !== signer_id) {
-      throw new SessionIssueRefusedError('not_your_turn');
-    }
+    const rows = await tx.signer.findMany({
+      where: { tenant_id, envelope_id },
+      select: { id: true, email: true, status: true, recipient_kind: true, signing_order: true, witness_for_signer_id: true },
+    });
+    const refusal = rule({ status, routing_mode: env.routing_mode, expires_at: env.expires_at }, rows, signer_id, now);
+    if (refusal !== null) throw new SessionIssueRefusedError(refusal);
+    const signer = rows.find((r) => r.id === signer_id) as (typeof rows)[number];
     const expiresAt = new Date(Math.min(now.getTime() + ttlMs, env.expires_at?.getTime() ?? Number.POSITIVE_INFINITY));
     return { signer, expiresAt };
   }
@@ -1297,21 +1311,20 @@ export class EsignService {
       if (status !== 'SENT' && status !== 'IN_PROGRESS') {
         throw new ReminderNotAllowedError(`envelope status ${status} is not remindable`);
       }
-      // M-A5 §1.2 — copy recipients are never reminded; an in-person signer holds no
-      // emailed link (the host starts their session), so only SIGNERs are reminded.
-      const incomplete = await tx.signer.findMany({
-        where: { tenant_id, envelope_id, status: { in: ['PENDING', 'VIEWED'] }, ...SIGNING_RECIPIENT_WHERE },
-        orderBy: { signing_order: 'asc' },
+      // Client Rule Consolidation C3 (D-1) — who may be reminded is @aramo/sign-client's
+      // remindableSigners, read here from the rows under the lock (the C1 actions.remind and
+      // can_remind use the same function): copy recipients and in-person signers are never
+      // reminded; SEQUENTIAL — only the first unsigned signer; a witness once its signer signed.
+      const everyone = await tx.signer.findMany({
+        where: { tenant_id, envelope_id },
+        select: { id: true, status: true, signing_order: true, recipient_kind: true, witness_for_signer_id: true },
       });
+      const incomplete = sharedSigningRecipients(everyone).filter((s) => signerMayStillSign(s.status));
       if (incomplete.length === 0) {
         throw new ReminderNotAllowedError('no incomplete signer to remind');
       }
-      // Multi-Signer §4 — in a SEQUENTIAL envelope only the signer whose turn it is
-      // holds a link, so only they can be reminded.
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
-      // Feature-Parity §1.17 — a witness holds a link only once its signer has signed.
-      const everyone = await tx.signer.findMany({ where: { tenant_id, envelope_id }, select: { id: true, status: true } });
-      const eligible = (env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete).filter((s) => isLinkSigner(s) && witnessReady(everyone, s));
+      const eligible = remindableSigners({ status, routing_mode: env.routing_mode }, everyone);
       let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
       if (targets.length === 0) {
         throw new ReminderNotAllowedError(

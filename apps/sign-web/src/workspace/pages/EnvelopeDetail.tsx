@@ -1,38 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
+import { SIGNABLE_ENVELOPE_STATUSES, VOID_REASON_COPY, VOID_REASON_MAX, senderActionsOf, voidReasonProblem } from '@aramo/sign-client';
 
 import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextReminderAt, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
-// Envelope detail (read-only). Actions by state + permission: Send reminder
-// (SENT / IN_PROGRESS), Void envelope (reason + confirmation; non-terminal),
-// Download documents + certificate (COMPLETED). Signing links are never shown —
-// they exist only in each signer's email. A DRAFT routes back to the wizard.
+// Envelope detail (read-only). Client Rule Consolidation C3 — every action button shows only
+// when the server's `actions` allows it (Send reminder, Void, Download documents and
+// certificate, Delete, Purge, Cancel purge, Sign now); the per-signer Remind also needs the
+// signer's own `can_remind`. Signing links are never shown — they exist only in each signer's
+// email. A DRAFT the caller may edit routes back to the wizard.
 
 /** UAT DEL-09 — why an open envelope has no working Delete (same words in the list). */
 export const DELETE_WHEN_FINISHED = 'Finish or void this envelope before deleting it.';
 
-// W1 — plain text for the self-sign refusals (the server's reason codes).
-const SELF_SIGN_REFUSAL: Record<string, string> = {
-  not_bound_to_you: 'This signer isn’t assigned to you. Use the link in the signing email.',
-  email_not_verified: 'Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.',
-  not_your_turn: 'It isn’t your turn to sign yet.',
-  envelope_not_signable: 'This envelope can’t be signed any more.',
-};
+// W1 — the self-sign refusals: the shared refusal copy (@aramo/sign-client) keys them by reason.
 export function selfSignRefusal(e: unknown): string {
-  const reason = (e as { details?: { reason?: unknown } } | null)?.details?.reason;
-  return (typeof reason === 'string' ? SELF_SIGN_REFUSAL[reason] : undefined) ?? errorMessage(e);
+  return errorMessage(e);
 }
 
-const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
-// Retention and Purge (DocuSign parity) — only completed, declined or voided envelopes are purged.
-const PURGEABLE = new Set(['COMPLETED', 'DECLINED', 'VOIDED']);
+const OPEN: ReadonlySet<string> = new Set(SIGNABLE_ENVELOPE_STATUSES);
 
 export function EnvelopeDetail() {
   const { id = '' } = useParams();
-  const { base, ctx, refreshCounts, toast } = useWorkspace();
+  const { base, refreshCounts, toast } = useWorkspace();
   const [env, setEnv] = useState<Detail | null>(null);
   const [events, setEvents] = useState<LedgerEvent[]>([]);
   const [evidence, setEvidence] = useState<Evidence | null>(null);
@@ -75,22 +68,18 @@ export function EnvelopeDetail() {
       </div>
     );
   if (env === null) return <Loading />;
-  // Sign Unified Product S-1 — lifecycle actions belong to the envelope's sender
-  // or a Sign Admin / Owner (the backend enforces this; the UI only mirrors it).
-  // S-3 — an envelope another application sent (e.g. an ATS RTR) is managed there.
+  // S-3 — an envelope another application sent (e.g. an ATS RTR) is managed there (the tag).
   const fromOtherApp = sourceLabel(env.source_application);
-  const canAct = fromOtherApp === null && ctx.can_send && (env.sender.id === ctx.user.id || ctx.permissions.manage_all === true);
-  if (env.status === 'DRAFT' && canAct) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
+  // C1 / C3 — what the caller may do: the server's decision, never re-derived here.
+  const actions = senderActionsOf(env);
+  if (env.status === 'DRAFT' && actions.edit) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
 
   const signed = env.recipients.filter((r) => r.status === 'SIGNED').length;
   // Retention and Purge — the backend enforces who may delete, purge or cancel a purge.
   const purge = env.purge ?? null;
   const purged = purge?.state === 'EXECUTED';
-  const queued = purge?.state === 'QUEUED';
-  const admin = ctx.permissions.manage_all === true;
-  const canDelete = fromOtherApp === null && TERMINAL.has(env.status) && (canAct || admin);
-  const canPurge = admin && PURGEABLE.has(env.status) && (purge === null || purge.state === 'DEQUEUED');
-  const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
+  const canDelete = actions.delete;
+  const live = OPEN.has(env.status);
   const nextReminder = live ? nextReminderAt(env.recipients) : null;
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
@@ -125,8 +114,9 @@ export function EnvelopeDetail() {
   };
   const doVoid = async () => {
     setVoidError('');
-    if (reason.trim() === '') {
-      setVoidError('Enter a reason. Recipients see that the envelope was voided.');
+    const problem = voidReasonProblem(reason);
+    if (problem !== null) {
+      setVoidError(VOID_REASON_COPY[problem]);
       return;
     }
     setBusy(true);
@@ -224,33 +214,33 @@ export function EnvelopeDetail() {
         </h1>
         <StatusPill status={env.status} />
         <div className="sg-pagehead__end">
-          {env.status === 'COMPLETED' && !purged ? (
-            <>
-              <Btn variant="primary" onClick={() => void download()} disabled={busy} data-testid="download-executed">
-                Download documents
-              </Btn>
-              <Btn onClick={() => void certificate()} disabled={busy}>
-                Download certificate
-              </Btn>
-            </>
+          {actions.download ? (
+            <Btn variant="primary" onClick={() => void download()} disabled={busy} data-testid="download-executed">
+              Download documents
+            </Btn>
           ) : null}
-          {live && canAct ? (
+          {actions.certificate ? (
+            <Btn onClick={() => void certificate()} disabled={busy}>
+              Download certificate
+            </Btn>
+          ) : null}
+          {actions.remind ? (
             <Btn onClick={() => void remind()} disabled={busy} data-testid="send-reminder">
               Send reminder
             </Btn>
           ) : null}
           {/* UAT SND-14 — while reminders are cooling down, say when the next can go (the app's words). */}
-          {live && canAct && nextReminder !== null ? (
+          {live && actions.void && nextReminder !== null ? (
             <span className="sg-help" role="status" data-testid="remind-cooling" style={{ alignSelf: 'center' }}>
               You can send another reminder at {nextSendTime(nextReminder)}.
             </span>
           ) : null}
-          {!TERMINAL.has(env.status) && canAct ? (
+          {actions.void ? (
             <Btn variant="danger" onClick={() => setVoidOpen(true)} disabled={busy} data-testid="void-envelope">
               Void envelope
             </Btn>
           ) : null}
-          {canPurge ? (
+          {actions.purge ? (
             <Btn variant="danger" onClick={() => setPurgeOpen(true)} disabled={busy} data-testid="purge-envelope">
               Purge…
             </Btn>
@@ -262,14 +252,14 @@ export function EnvelopeDetail() {
           ) : null}
           {/* UAT DEL-09 — an open envelope can't be deleted (Retention R-10: finished envelopes
               only). Say why instead of hiding the action. */}
-          {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+          {!canDelete && live && actions.void ? (
             <Btn disabled title={DELETE_WHEN_FINISHED} aria-describedby="delete-when-finished" data-testid="delete-envelope-disabled">
               <Icon name="trash" size={14} /> Delete
             </Btn>
           ) : null}
         </div>
       </div>
-      {!canDelete && live && fromOtherApp === null && (canAct || admin) ? (
+      {!canDelete && live && actions.void ? (
         <p id="delete-when-finished" className="sg-help" style={{ marginTop: 0, textAlign: 'right' }} data-testid="delete-when-finished">
           {DELETE_WHEN_FINISHED}
         </p>
@@ -286,7 +276,7 @@ export function EnvelopeDetail() {
               Purge scheduled: {purgeLevelLabel(purge.level).toLowerCase()} will be deleted permanently on {fmtDate(purge.due_at, true)}.
             </span>
           )}
-          {queued && admin ? (
+          {actions.dequeue_purge ? (
             <LinkBtn disabled={busy} onClick={() => void cancelPurge()} data-testid="cancel-purge" style={{ marginLeft: 'auto' }}>
               Cancel purge
             </LinkBtn>
@@ -332,12 +322,12 @@ export function EnvelopeDetail() {
                   </div>
                   {r.decline_reason !== null ? <div className="sg-row__s">“{r.decline_reason}”</div> : null}
                 </div>
-                {canAct && live && r.assigned_to_me === true && r.can_remind === true ? (
+                {actions.sign && r.assigned_to_me === true && r.can_remind === true ? (
                   <Btn variant="primary" size="sm" disabled={busy} onClick={() => void signNow(r)} data-testid={`sign-now-${r.id}`}>
                     Sign now
                   </Btn>
                 ) : null}
-                {canAct && live && r.can_remind === true ? (
+                {actions.remind && r.can_remind === true ? (
                   <LinkBtn disabled={busy} onClick={() => void remind(r)} data-testid={`remind-${r.id}`}>
                     Remind
                   </LinkBtn>
@@ -473,7 +463,7 @@ export function EnvelopeDetail() {
         }
       >
         <Field label="Reason (required)" htmlFor="void-reason">
-          <Area id="void-reason" rows={3} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
+          <Area id="void-reason" rows={3} value={reason} maxLength={VOID_REASON_MAX} onChange={(e) => setReason(e.target.value)} />
         </Field>
         {voidError !== '' ? <ErrorBox>{voidError}</ErrorBox> : null}
       </Dialog>
