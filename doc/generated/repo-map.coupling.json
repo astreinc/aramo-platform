@@ -35897,11 +35897,6 @@
       "to": "openapi/sign.yaml"
     },
     {
-      "from": "mobile/sign/src/features/send/fileValidation.ts",
-      "status": "unscoped",
-      "to": "openapi/sign.yaml"
-    },
-    {
       "from": "mobile/sign/src/features/signing/signingApi.ts",
       "status": "unscoped",
       "to": "openapi/sign.yaml"

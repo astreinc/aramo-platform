@@ -2554,40 +2554,123 @@
       "witnessReady"
     ],
     "@aramo/sign-client": [
+      "ACCESS_CODE_MAX_LENGTH",
+      "ACCESS_CODE_MIN_LENGTH",
+      "ALL_FIELD_TYPES",
       "AttestedNameRequiredError",
+      "CHECKBOX_GROUP_KEY_MAX",
       "CHECKBOX_GROUP_RULES",
+      "CHECKBOX_LABEL_MAX",
       "CHECK_FIELD_TYPES",
       "COPY_DELIVERIES",
       "DEFAULT_SIGN_DATE_FORMAT",
+      "DELEGATE_NAME_MAX",
+      "DELEGATE_REASON_MAX",
+      "E164_PATTERN",
+      "EMAIL_MAX",
+      "EMAIL_PATTERN",
+      "ENVELOPE_ALLOWANCE_KEY",
+      "ENVELOPE_CHANGED",
+      "ENVELOPE_MESSAGE_MAX",
+      "ENVELOPE_NOT_AVAILABLE",
+      "ENVELOPE_SUBJECT_MAX",
       "ENVELOPE_TRANSITIONS",
       "EnvelopeRevisionMismatchError",
+      "FALLBACK_MESSAGE",
+      "FIELD_DEFAULTS",
+      "FIELD_SIZE_SCALE",
+      "INBOX_ACTION_KEYS",
+      "INBOX_ITEM_CHANGED",
       "IdempotencyKeyReuseError",
       "IdempotencyRequestInProgressError",
       "InboxSigningRefusedError",
       "MAX_COPY_RECIPIENTS",
+      "MAX_PDF_BYTES",
+      "MAX_SIGNERS",
+      "MAX_WORD_BYTES",
+      "NOT_PDF_REFUSAL",
+      "NO_INBOX_ACTIONS",
+      "NO_PERMISSION",
+      "NO_SENDER_ACTIONS",
+      "NO_SEND_FEATURES",
       "PAYMENT_FIELD_TYPE",
+      "PDF_PICKER_TYPES",
+      "PHONE_HINT",
+      "PICKER_TYPES",
       "PROFILE_TEXT_FIELD_TYPES",
       "PROFILE_TEXT_MAX",
+      "RECIPIENT_COPY",
       "RECIPIENT_KINDS",
+      "REFUSAL_COPY",
+      "ROLE_LABELS",
       "ReminderLimitError",
+      "SEAT_LIMIT_REASON",
+      "SELF_SIGN_NO_REMINDERS",
+      "SENDER_ACTION_KEYS",
+      "SENDER_FIELD_TYPES",
       "SIGNABLE_ENVELOPE_STATUSES",
+      "SIGNERS_FULL_MESSAGE",
       "SIGNER_NAME_MODES",
       "SIGNING_RECIPIENT_KINDS",
       "SIGN_DATE_FALLBACK_TIME_ZONE",
       "SIGN_DATE_FORMATS",
+      "SIGN_DATE_PREVIEW_NOTE",
+      "STORAGE_CAPACITY_KEY",
+      "STORAGE_FULL",
       "SessionIssueRefusedError",
+      "TEMPLATES_CAPACITY_KEY",
       "TERMINAL_ENVELOPE_STATUSES",
+      "TOO_LARGE_REFUSAL",
+      "VOID_REASON_COPY",
+      "VOID_REASON_MAX",
+      "WORD_COPY",
+      "allowanceTermsLine",
+      "checkPickedFile",
+      "checkboxGroupOf",
+      "convertibleWordName",
+      "danglingWitness",
+      "duplicateWitness",
       "evaluateSignerFieldRules",
       "formatSignDate",
+      "inboxActionsOf",
+      "isDailyAllowance",
+      "isE164",
       "isPaymentField",
       "isProfileTextField",
+      "isReminderStale",
+      "isSenderFieldType",
       "isServerFilledName",
       "isTerminalEnvelopeStatus",
+      "isValidAccessCode",
+      "isValidDeclineReason",
+      "isValidDelegate",
+      "isValidEmail",
+      "isWitnessable",
+      "limitReachedCopy",
       "localTimeZone",
+      "looksLikePdf",
+      "messagingOffered",
+      "normalizeAccessCode",
+      "placeableFieldTypes",
+      "planFacts",
       "predecessorsOf",
       "profileTextValueRefusal",
+      "refusalMessage",
+      "reminderLimitMessage",
       "resolveSignerTimeZone",
-      "signDatePreview"
+      "roleLabel",
+      "seatLimitMessage",
+      "sendFeaturesOf",
+      "senderActionsOf",
+      "signDatePreview",
+      "signerFieldUnits",
+      "sizeScale",
+      "storageLabel",
+      "templateAccess",
+      "titleFromFilename",
+      "voidReasonProblem",
+      "witnessTargets",
+      "wordUploadEnabled"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -14408,10 +14491,117 @@
         "project": "aramo-sign-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeList.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
       { "project": "aramo-sign-web", "status": "production" },
       { "project": "sign", "status": "production" },
       {
+        "from": "mobile/sign/src/api/refusalMessages.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/contacts/contactsApi.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/editor/fieldTypes.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/editor/pdfPageSizes.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/envelopeActions.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/fixtures.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/rowActions.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/w2Discovery.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/allowance.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/envelopeActions.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/rowActionRules.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/types.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/ui.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/plans/plansModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/profile/signProfile.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/draftModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/fileValidation.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/recipientRoles.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/sendFeatures.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/templates.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },
@@ -14421,10 +14611,26 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/signing/signingApi.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/signing/signingMachine.ts",
         "project": "sign-mobile",
         "status": "unscoped"
-      }
+      },
+      {
+        "from": "mobile/sign/src/features/templates/templatesModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/envelope/EnvelopeDetailScreen.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      { "project": "sign-service", "status": "production" }
     ],
     "@aramo/sign-service": [
       {
