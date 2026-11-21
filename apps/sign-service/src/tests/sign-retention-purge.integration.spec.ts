@@ -234,4 +234,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign retention an
     expect(await purge.partyRestore(TENANT, envelope_id, { kind: 'RECIPIENT', key: RECIPIENT_USER }, RECIPIENT_USER)).toBe('restored');
     expect((await purge.allPartiesDeletedDue(500)).map((r) => r.envelope_id)).not.toContain(envelope_id);
   });
+
+  it('§3.5: restoring after the all-parties purge was queued dequeues it, so it never executes', async () => {
+    const { envelope_id } = await completed();
+    expect(await purge.partyDelete(TENANT, envelope_id, { kind: 'SENDER', key: TENANT }, ACTOR)).toBe('deleted');
+    expect((await purge.allPartiesDeletedDue(500)).map((r) => r.envelope_id)).toContain(envelope_id); // external signer is not a party (LD-5)
+    expect(await purge.queue(TENANT, envelope_id, { level: 'DOCUMENTS', reason: 'all_parties_deleted' })).toBe('queued');
+    expect(await purge.partyRestore(TENANT, envelope_id, { kind: 'SENDER', key: TENANT }, ACTOR)).toBe('restored');
+    const row = await db.query(`SELECT purge_state FROM "sign"."SignatureEnvelope" WHERE id = $1`, [envelope_id]);
+    expect(row.rows[0].purge_state).toBe('DEQUEUED');
+    expect((await purge.dueForExecution(new Date(Date.now() + 30 * DAY), 500)).map((r) => r.envelope_id)).not.toContain(envelope_id);
+    const events = await db.query(`SELECT event_type FROM "sign"."SignatureEvent" WHERE envelope_id = $1 ORDER BY occurred_at, id`, [envelope_id]);
+    expect(events.rows.map((r) => r.event_type)).toContain('ENVELOPE_PURGE_DEQUEUED');
+  });
+
+  it('§3.5: restoring does not cancel a retention purge (it does not depend on the Deleted folder)', async () => {
+    const { envelope_id } = await completed();
+    expect(await purge.partyDelete(TENANT, envelope_id, { kind: 'SENDER', key: TENANT }, ACTOR)).toBe('deleted');
+    expect(await purge.queue(TENANT, envelope_id, { level: 'DOCUMENTS', reason: 'retention' })).toBe('queued');
+    expect(await purge.partyRestore(TENANT, envelope_id, { kind: 'SENDER', key: TENANT }, ACTOR)).toBe('restored');
+    const row = await db.query(`SELECT purge_state FROM "sign"."SignatureEnvelope" WHERE id = $1`, [envelope_id]);
+    expect(row.rows[0].purge_state).toBe('QUEUED');
+  });
 });

@@ -486,6 +486,13 @@ export class SignPurgeRepository {
       if (existing === null || existing.restored_at !== null) return 'not_deleted';
       await tx.signEnvelopePartyDeletion.update({ where: { id: existing.id }, data: { restored_at: new Date() } });
       await this.repo.appendEvent(tx as never, { tenant_id, envelope_id, event_type: PARTY_RESTORED_EVENT, actor_type: 'SERVICE', actor_ref: actor_user_id, payload: { party_kind: party.kind } });
+      // §3.5 — restore is allowed until a purge executes. A purge queued because every party
+      // deleted (R-10) no longer holds once one party restores, so it is dequeued here. A
+      // retention or targeted purge does not depend on the Deleted folder and stays queued.
+      if (e?.purge_state === 'QUEUED' && e.purge_reason === 'all_parties_deleted') {
+        await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { purge_state: 'DEQUEUED', purge_waiting_until: null } });
+        await this.recordTransition(tx, tenant_id, envelope_id, PURGE_DEQUEUED_EVENT, 'DEQUEUED', e.purge_level as PurgeLevel, 'all_parties_deleted', null, actor_user_id);
+      }
       return 'restored';
     });
   }
