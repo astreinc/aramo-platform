@@ -59,6 +59,8 @@ import {
   SignUserProfileRepository,
 } from '@aramo/sign';
 import {
+  selfSignTarget,
+  sessionIssueRefusal,
   CHECKBOX_GROUP_KEY_MAX,
   CHECKBOX_LABEL_MAX,
   EMAIL_MAX,
@@ -188,21 +190,20 @@ export function canSelfSignNow(
     routing_mode: string;
     created_by: string;
     source_application: string;
+    expires_at?: Date | null;
     signers: ReadonlyArray<{ id: string; status: string; signing_order: number; bound_user_id: string | null; recipient_kind?: string | null; witness_for_signer_id?: string | null }>;
   },
+  now: Date = new Date(),
 ): boolean {
-  if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') return false;
   if (!auth.scopes.includes(ESIGN_SEND_SCOPE) || env.source_application !== SIGN_APPLICATION) return false;
   if (env.created_by !== auth.sub && !auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return false;
-  const turn = env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
-  return signingRecipients(env.signers).some(
-    (s) =>
-      s.bound_user_id === auth.sub &&
-      recipientKindOf(s) !== 'IN_PERSON_SIGNER' &&
-      (s.status === 'PENDING' || s.status === 'VIEWED') &&
-      (env.routing_mode !== 'SEQUENTIAL' || s.id === turn) &&
-      witnessReady(env.signers, s),
-  );
+  // Client Rule Consolidation C3 (D-1) — the recipient and the session checks are the ONE
+  // functions EsignService.issueSelfSignSession runs under the lock (selfSignTarget,
+  // sessionIssueRefusal). An in-person signer is hosted, not self-signed, and a witness waits
+  // for its signer (both re-checked by the engine when the signer acts).
+  const target = selfSignTarget(env.signers, auth.sub);
+  if (target === null || recipientKindOf(target) === 'IN_PERSON_SIGNER' || !witnessReady(env.signers, target)) return false;
+  return sessionIssueRefusal({ status: env.status, routing_mode: env.routing_mode, expires_at: env.expires_at ?? null }, env.signers, target.id, now) === null;
 }
 
 function iso(d: Date | null | undefined): string | null {

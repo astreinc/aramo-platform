@@ -1,7 +1,18 @@
 import { AramoError, type ErrorCode } from '@aramo/common';
 import { ESIGN_SCOPE } from '@aramo/identity';
-import { PURGE_ELIGIBLE_STATUSES, currentTurnOf, isLinkSigner, recipientKindOf, witnessReady } from '@aramo/sign';
-import { SENDER_ACTION_KEYS, TERMINAL_ENVELOPE_STATUSES, type SenderActionKey } from '@aramo/sign-client';
+import {
+  PARTY_DELETABLE_STATUSES,
+  SENDER_ACTION_KEYS,
+  TERMINAL_ENVELOPE_STATUSES,
+  hostedSessionRefusal,
+  isDraftEditable,
+  isPartyDeletable,
+  isPurgeEligible,
+  isPurgeExecuted,
+  isPurgeQueued,
+  remindableSigners,
+  type SenderActionKey,
+} from '@aramo/sign-client';
 
 // Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED (480ecdbb) §3 C1 — the
 // server decides what a user may do with an envelope (G-2). This module is the ONE home of
@@ -16,6 +27,8 @@ import { SENDER_ACTION_KEYS, TERMINAL_ENVELOPE_STATUSES, type SenderActionKey } 
 //   service  — the route/service calls this check function and throws its refusal.
 //   locked   — the repository or signing engine re-checks it under the envelope row lock
 //              (race-safe); the check here mirrors that rule exactly.
+// C3 (PO 2026-11-21, D-1) — every `locked` check calls the ONE @aramo/sign-client function the
+// repository / engine calls under the lock (locked-rules.ts); nothing here mirrors it.
 // A check may also answer 'noop': the route accepts the request but it changes nothing
 // (e.g. deleting an envelope already in the Deleted folder). The action is not offered.
 
@@ -31,10 +44,9 @@ export const ESIGN_CREATE_SCOPE = 'sign:envelope:create';
 export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
 
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(TERMINAL_ENVELOPE_STATUSES);
-const OPEN_STATUSES: ReadonlySet<string> = new Set(['SENT', 'IN_PROGRESS']);
-const PENDING_SIGNER: ReadonlySet<string> = new Set(['PENDING', 'VIEWED']);
-// Retention and Purge W5 — the statuses the Deleted folder accepts (SignPurgeRepository.partyDelete).
-export const DELETABLE_STATUSES: ReadonlySet<string> = new Set([...PURGE_ELIGIBLE_STATUSES, 'EXPIRED']);
+// Retention and Purge W5 — the statuses the Deleted folder accepts (SignPurgeRepository.partyDelete
+// calls the same isPartyDeletable, C3 D-1).
+export const DELETABLE_STATUSES: ReadonlySet<string> = new Set(PARTY_DELETABLE_STATUSES);
 
 export interface ActionActor {
   sub: string;
@@ -165,15 +177,14 @@ export function sendStateRefusal(env: Pick<ActionEnvelope, 'status'>): CheckResu
 }
 
 /**
- * Void: a SENT or IN_PROGRESS envelope. Client Rule Consolidation C3 (typed divergence
- * DV-void-draft, needs PO ratification) — a DRAFT is deleted, never voided: no Sign client
- * voids a draft and no other caller of this route does, so the route and `actions.void` now
- * refuse it together (the sender route only; the lifecycle table still allows DRAFT → VOIDED
- * for the integration paths).
+ * Void: a SENT or IN_PROGRESS envelope. Client Rule Consolidation C3 (DV-void-draft, PO-ruled
+ * 2026-11-21) — drafts are deleted, never voided: the route and `actions.void` refuse a DRAFT
+ * together (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason draft_use_delete). No Sign client,
+ * ATS integration or connector voids a draft through this route.
  */
 export function voidStateRefusal(env: Pick<ActionEnvelope, 'status'>): CheckResult {
   if (env.status === 'DRAFT') {
-    return { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'A draft is deleted, not voided', status: 409, details: { reason: 'envelope_is_draft' } };
+    return { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'A draft is deleted, not voided', status: 409, details: { reason: 'draft_use_delete' } };
   }
   return TERMINAL_STATUSES.has(env.status) ? illegalStatus(env.status) : null;
 }
@@ -185,9 +196,9 @@ export function deleteDraftStateRefusal(env: Pick<ActionEnvelope, 'status'>): Ch
     : { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'Only a draft can be deleted. Void a sent envelope instead.', status: 409, details: { reason: 'envelope_not_draft' } };
 }
 
-/** Edit (every DRAFT authoring write): the repository asserts DRAFT under the row lock (409). */
+/** Edit (every DRAFT authoring write): the repository asserts isDraftEditable under the row lock (409). */
 export function editStateRefusal(env: Pick<ActionEnvelope, 'status'>): CheckResult {
-  return env.status === 'DRAFT' ? null : illegalStatus(env.status);
+  return isDraftEditable(env.status) ? null : illegalStatus(env.status);
 }
 
 /** Remind: a self-sign envelope invites no one, so no one is reminded (SenderEnvelopeService.remind). */
@@ -203,24 +214,22 @@ export function remindModeRefusal(env: Pick<ActionEnvelope, 'envelope_mode'>): C
  * their turn. The detail's per-recipient `can_remind` is this rule; the engine re-checks it.
  */
 export function canRemindRecipient(env: Pick<ActionEnvelope, 'status' | 'envelope_mode' | 'routing_mode' | 'recipients'>, r: ActionRecipient): boolean {
-  if (!OPEN_STATUSES.has(env.status) || env.envelope_mode === 'SELF') return false;
-  const next = env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.recipients)?.id ?? null) : null;
-  return isLinkSigner(r) && witnessReady(env.recipients, r) && PENDING_SIGNER.has(r.status) && (env.routing_mode !== 'SEQUENTIAL' || r.id === next);
+  if (env.envelope_mode === 'SELF') return false;
+  // C3 (D-1) — the engine's remindSigner calls the same remindableSigners under the lock.
+  return remindableSigners(env, env.recipients).some((x) => x.id === r.id);
 }
 
 /** Download / certificate: a COMPLETED envelope whose executed documents were not purged. */
 export function downloadStateRefusal(env: Pick<ActionEnvelope, 'status' | 'purge_state'>, envelope_id = ''): CheckResult {
   if (env.status !== 'COMPLETED') return { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'Executed documents exist only for a completed envelope', status: 409 };
-  if (env.purge_state === 'EXECUTED') return { code: 'ENVELOPE_PURGED', message: `envelope ${envelope_id} documents were purged`, status: 410 };
+  if (isPurgeExecuted(env.purge_state)) return { code: 'ENVELOPE_PURGED', message: `envelope ${envelope_id} documents were purged`, status: 410 };
   return null;
 }
 
 /** M-A5 §3 — an in-person signer the host may start a session for now (EsignService.issueHostedSession). */
 export function hostableRecipient(env: Pick<ActionEnvelope, 'status' | 'routing_mode' | 'expires_at' | 'recipients'>, r: ActionRecipient, now: Date = new Date()): boolean {
-  if (!OPEN_STATUSES.has(env.status)) return false;
-  if (env.expires_at !== null && env.expires_at !== undefined && env.expires_at.getTime() <= now.getTime()) return false;
-  if (recipientKindOf(r) !== 'IN_PERSON_SIGNER' || !PENDING_SIGNER.has(r.status)) return false;
-  return env.routing_mode !== 'SEQUENTIAL' || currentTurnOf(env.recipients)?.id === r.id;
+  // C3 (D-1) — EsignService.issueHostedSession enforces the same hostedSessionRefusal under the lock.
+  return hostedSessionRefusal(env, env.recipients, r.id, now) === null;
 }
 
 const notTerminalForDelete: Refusal = {
@@ -267,7 +276,7 @@ export const SENDER_ACTION_RULES: Record<SenderActionKey, readonly ActionCheck[]
     { id: 'purge_enabled', enforced_by: 'service', test: (_a, _e, f) => (f.purge_enabled ? null : purgeNotEnabled()) },
     scopeCheck(ESIGN_READ_SCOPE),
     changeCheck,
-    { id: 'state:deletable', enforced_by: 'locked', test: (_a, e) => (DELETABLE_STATUSES.has(e.status) ? null : notTerminalForDelete) },
+    { id: 'state:deletable', enforced_by: 'locked', test: (_a, e) => (isPartyDeletable(e.status) ? null : notTerminalForDelete) },
     { id: 'folder:not_deleted', enforced_by: 'locked', test: (_a, _e, f) => (f.deleted ? 'noop' : null) },
   ],
   // POST envelopes/:id/restore (sign:envelope:read + ownership, #1131).
@@ -275,7 +284,7 @@ export const SENDER_ACTION_RULES: Record<SenderActionKey, readonly ActionCheck[]
     { id: 'purge_enabled', enforced_by: 'service', test: (_a, _e, f) => (f.purge_enabled ? null : purgeNotEnabled()) },
     scopeCheck(ESIGN_READ_SCOPE),
     changeCheck,
-    { id: 'purge:not_executed', enforced_by: 'locked', test: (_a, e) => (e.purge_state === 'EXECUTED' ? purged() : null) },
+    { id: 'purge:not_executed', enforced_by: 'locked', test: (_a, e) => (isPurgeExecuted(e.purge_state) ? purged() : null) },
     { id: 'folder:deleted', enforced_by: 'locked', test: (_a, _e, f) => (f.deleted ? null : 'noop') },
   ],
   // GET envelopes/:id/executed (sign:envelope:read) — the executed documents.
@@ -312,8 +321,8 @@ export const SENDER_ACTION_RULES: Record<SenderActionKey, readonly ActionCheck[]
   purge: [
     { id: 'purge_enabled', enforced_by: 'service', test: (_a, _e, f) => (f.purge_enabled ? null : purgeNotEnabled()) },
     scopeCheck(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL),
-    { id: 'state:purgeable', enforced_by: 'locked', test: (_a, e) => (PURGE_ELIGIBLE_STATUSES.includes(e.status) ? null : notPurgeable) },
-    { id: 'purge:not_executed', enforced_by: 'locked', test: (_a, e) => (e.purge_state === 'EXECUTED' ? purged() : null) },
+    { id: 'state:purgeable', enforced_by: 'locked', test: (_a, e) => (isPurgeEligible(e.status) ? null : notPurgeable) },
+    { id: 'purge:not_executed', enforced_by: 'locked', test: (_a, e) => (isPurgeExecuted(e.purge_state) ? purged() : null) },
   ],
   // POST envelopes/:id/purge/dequeue (sign:envelope:manage:all).
   dequeue_purge: [
@@ -323,7 +332,7 @@ export const SENDER_ACTION_RULES: Record<SenderActionKey, readonly ActionCheck[]
       id: 'purge:queued',
       enforced_by: 'locked',
       test: (_a, e) =>
-        e.purge_state === 'QUEUED' ? null : { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'This envelope has no queued purge', status: 409, details: { reason: 'purge_not_queued' } },
+        isPurgeQueued(e.purge_state) ? null : { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'This envelope has no queued purge', status: 409, details: { reason: 'purge_not_queued' } },
     },
   ],
 };

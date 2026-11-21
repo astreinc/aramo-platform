@@ -1,5 +1,5 @@
 import type { ErrorCode } from '@aramo/common';
-import { INBOX_ACTION_KEYS, SIGNABLE_ENVELOPE_STATUSES, type InboxActionKey } from '@aramo/sign-client';
+import { INBOX_ACTION_KEYS, envelopeOpenForSigning, isPurgeExecuted, signerMayStillSign, type InboxActionKey } from '@aramo/sign-client';
 
 // Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED (480ecdbb) §3 C1 — the ONE home
 // of the recipient inbox item action rules. `inboxActions()` computes the `actions` object of
@@ -12,8 +12,6 @@ import { INBOX_ACTION_KEYS, SIGNABLE_ENVELOPE_STATUSES, type InboxActionKey } fr
 export { INBOX_ACTION_KEYS, type InboxActionKey };
 export type InboxActions = Record<InboxActionKey, boolean>;
 
-const SIGNABLE: ReadonlySet<string> = new Set(SIGNABLE_ENVELOPE_STATUSES);
-const PENDING_SIGNER = new Set(['PENDING', 'VIEWED']);
 
 export interface InboxActionEntry {
   /** bound (a recipient binding; uuid id) or discovered (an opaque handle). */
@@ -43,9 +41,14 @@ export interface InboxRefusal {
 }
 export type InboxCheckResult = InboxRefusal | 'noop' | null;
 
-/** The envelope is signable for this recipient (open, the recipient unsigned, not expired). */
+/**
+ * The envelope is signable for this recipient (open, the recipient unsigned, not expired). C3
+ * (D-1) — RecipientInboxRepository runs the same envelopeOpenForSigning / signerMayStillSign
+ * under the lock; the turn is the shared mayActNow (entry.turn); the live emailed link is a
+ * session-table read the repository re-does (entry.link_live).
+ */
 export function inboxSignable(e: InboxActionEntry, now: Date = new Date()): boolean {
-  return SIGNABLE.has(e.envelope_status) && PENDING_SIGNER.has(e.signer_status) && (e.envelope_expires_at === null || e.envelope_expires_at.getTime() > now.getTime());
+  return envelopeOpenForSigning({ status: e.envelope_status, expires_at: e.envelope_expires_at }, now) && signerMayStillSign(e.signer_status);
 }
 
 /**
@@ -68,7 +71,7 @@ export function inboxSignDecision(e: InboxActionEntry, now: Date = new Date()): 
  */
 export function inboxDownloadDecision(e: Pick<InboxActionEntry, 'source' | 'envelope_status' | 'signer_status' | 'purge_state'>): InboxCheckResult {
   if (e.source !== 'bound') return { code: 'NOT_FOUND', message: 'Not in your inbox', status: 404, details: { reason: 'inbox_item_not_found' } };
-  if (!(e.envelope_status === 'COMPLETED' && e.signer_status === 'SIGNED' && e.purge_state !== 'EXECUTED')) {
+  if (!(e.envelope_status === 'COMPLETED' && e.signer_status === 'SIGNED' && !isPurgeExecuted(e.purge_state))) {
     return { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'A signed copy is available once everyone has signed', status: 409 };
   }
   return null;

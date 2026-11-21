@@ -8,7 +8,6 @@ import {
   isUuid,
   mintInboxHandle,
   openInboxHandle,
-  PURGE_ELIGIBLE_STATUSES,
   RecipientInboxRepository,
   type RecipientInboxEntry,
   type RecipientInboxRow,
@@ -16,6 +15,7 @@ import {
   signBaseUrl,
 } from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
+import { isPartyDeletable } from '@aramo/sign-client';
 
 import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
 import { purgeNotEnabled, refusalError } from '../sender/envelope-actions.js';
@@ -326,7 +326,8 @@ export class RecipientInboxService {
     }
     const r = isUuid(id) ? await this.repo.getForUser(auth.sub, id) : null;
     if (r === null) throw notFound(requestId);
-    if (!PURGE_ELIGIBLE_STATUSES.includes(r.envelope.status) && r.envelope.status !== 'EXPIRED') {
+    // C3 (D-1) — the Deleted-folder rule SignPurgeRepository.partyDelete runs under the lock.
+    if (!isPartyDeletable(r.envelope.status)) {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });
     }
     return { purges: this.purges, r };
