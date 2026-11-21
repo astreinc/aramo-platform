@@ -117,8 +117,10 @@ describe('recipient-only access', () => {
     const out = await svc.list(auth);
     expect(repo.listForUser).toHaveBeenCalledWith(USER);
     expect(Object.keys(out.waiting[0]!).sort()).toEqual(
-      ['can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'i_am_sender', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'source', 'subject'].sort(),
+      ['actions', 'can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'i_am_sender', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'source', 'subject'].sort(),
     );
+    // Client Rule Consolidation C1 — the actions are booleans only (no sender-tenant data).
+    expect(out.waiting[0]!.actions).toEqual({ sign: true, download: false, delete: true, restore: false, report: true });
     expect(JSON.stringify(out)).not.toContain(SENDER_TENANT);
     expect(JSON.stringify(out)).not.toContain('"e1"');
     expect(out.waiting[0]).toMatchObject({ from: 'Northwind Staffing', can_sign: true, source: 'bound', id: BINDING });

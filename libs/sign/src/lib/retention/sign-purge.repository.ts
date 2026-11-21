@@ -497,6 +497,15 @@ export class SignPurgeRepository {
     });
   }
 
+  /** Whether this party has this envelope in its Deleted folder (an active row). */
+  async isDeletedBy(envelope_id: string, party: { kind: 'SENDER' | 'RECIPIENT'; key: string }): Promise<boolean> {
+    const row = await this.prisma.signEnvelopePartyDeletion.findUnique({
+      where: { envelope_id_party_kind_party_key: { envelope_id, party_kind: party.kind, party_key: party.key } },
+      select: { restored_at: true },
+    });
+    return row !== null && row.restored_at === null;
+  }
+
   /** Envelope ids this party has deleted (active rows): list filters hide or show them. */
   async deletedEnvelopeIds(party: { kind: 'SENDER' | 'RECIPIENT'; key: string }): Promise<string[]> {
     const rows = await this.prisma.signEnvelopePartyDeletion.findMany({ where: { party_kind: party.kind, party_key: party.key, restored_at: null }, select: { envelope_id: true } });

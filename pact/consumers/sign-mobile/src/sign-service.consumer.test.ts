@@ -5,6 +5,26 @@ import { describe, expect, it } from 'vitest';
 
 const { like, uuid, integer, boolean, eachLike, regex, fromProviderState } = MatchersV3;
 
+// Client Rule Consolidation C1 (480ecdbb) — the server-sent `actions` object: every key is a
+// boolean the server decides; the consumer pins the shape, not the values (they follow the
+// caller, the envelope state and the deployment's feature switches).
+const SENDER_ACTIONS = {
+  edit: boolean(false),
+  send: boolean(false),
+  delete_draft: boolean(false),
+  void: boolean(false),
+  remind: boolean(false),
+  delete: boolean(false),
+  restore: boolean(false),
+  download: boolean(false),
+  certificate: boolean(false),
+  sign: boolean(false),
+  host_in_person: boolean(false),
+  purge: boolean(false),
+  dequeue_purge: boolean(false),
+};
+const INBOX_ACTIONS = { sign: boolean(true), download: boolean(false), delete: boolean(true), restore: boolean(false), report: boolean(true) };
+
 // Aramo Sign Mobile — Pact consumer for the Sign routes the native app calls
 // (directive §4 B-12; M-A3 §1–§9; M-A2 §2.2).
 //
@@ -295,6 +315,7 @@ describe('sign-mobile → envelope detail, If-Match writes and delete (M-A3 §6,
           id: DETAIL_ENVELOPE_ID,
           status: 'DRAFT',
           editable: true,
+          actions: SENDER_ACTIONS,
           revision: integer(5),
           message: null,
           signing_link_valid_days: 7,
@@ -422,6 +443,7 @@ describe('sign-mobile → GET /v1/sign/inbox (Sign Unified Product S-7)', () => 
             signing_link_valid_days: 7,
             can_sign: true,
             can_download: false,
+            actions: INBOX_ACTIONS,
           }),
           completed: [],
           other: [],
