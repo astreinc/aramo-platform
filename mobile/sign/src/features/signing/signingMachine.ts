@@ -17,7 +17,9 @@
 //     signer fills; when the signer is signed in, their own Sign profile pre-fills the
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 
-import { SIGN_DATE_PREVIEW_NOTE, signDatePreview } from './signDate';
+import { signDatePreview } from '@aramo/sign-client';
+
+import { SIGN_DATE_PREVIEW_NOTE } from './signDate';
 
 export const FIELD_TYPES = [
   'SIGNATURE',

@@ -14,16 +14,12 @@
 //                     (witness_for_signer_id), and only after that signer has signed.
 //                     Blocks completion like any signing recipient.
 
-export const RECIPIENT_KINDS = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'] as const;
-export type RecipientKind = (typeof RECIPIENT_KINDS)[number];
+// Client Rule Consolidation C2-4 — the recipient kinds and limits live in
+// @aramo/sign-client (one copy for the server and both Sign clients).
+import { SIGNING_RECIPIENT_KINDS, type RecipientKind } from '@aramo/sign-client';
 
-export const SIGNING_RECIPIENT_KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'WITNESS'];
-
-export const COPY_DELIVERIES = ['ON_SEND', 'ON_COMPLETION', 'BOTH'] as const;
-export type CopyDelivery = (typeof COPY_DELIVERIES)[number];
-
-// M-A5 §1.4 — at most 10 signing recipients (MAX_SIGNERS, unchanged) and 10 copies.
-export const MAX_COPY_RECIPIENTS = 10;
+export { RECIPIENT_KINDS, SIGNING_RECIPIENT_KINDS, COPY_DELIVERIES, MAX_COPY_RECIPIENTS } from '@aramo/sign-client';
+export type { RecipientKind, CopyDelivery } from '@aramo/sign-client';
 
 // M-A5 §3.2 / §4.2 — hosted and self-sign sessions last 30 minutes.
 export const HOSTED_SESSION_TTL_MS = 30 * 60 * 1000;

@@ -107,7 +107,17 @@ const SCOPE_DEP_CONSTRAINTS = [
   // (common/auth/auth-storage are all scope:shared). The adapters + composition root
   // stay in the untagged apps/auth-service, unconstrained by design.
   { sourceTag: 'scope:auth', onlyDependOnLibsWithTags: ['scope:auth', 'scope:boundary', 'scope:shared'] },
-  { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared'] },
+  // Client Rule Consolidation C2-4 — libs/sign (scope:boundary) imports the pure Sign client
+  // rules from libs/sign-client (type:client-shared), so the server uses the same copy.
+  { sourceTag: 'scope:boundary', onlyDependOnLibsWithTags: ['scope:boundary', 'scope:shared', 'type:client-shared'] },
+  // Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED §1 G-3 / §4 C2-1 —
+  // type:client-shared (libs/sign-client) is pure TypeScript that runs on the device
+  // (mobile/sign, Hermes) and in the browser (apps/sign-web). It may import only other
+  // type:client-shared libs and NO npm package at all (no React, React Native, Prisma,
+  // Nest, ...): the one allowed external import is vitest/config for its vitest.config.ts.
+  // node:* built-ins, Buffer and DOM globals are banned by the file-scoped rule for
+  // libs/sign-client below.
+  { sourceTag: 'type:client-shared', onlyDependOnLibsWithTags: ['type:client-shared'], allowedExternalImports: ['vitest/config'] },
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
 ];
@@ -175,6 +185,27 @@ export default [
           allow: [],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
+      ],
+    },
+  },
+  // Client Rule Consolidation G-3 — libs/sign-client is pure: no Node built-ins, no Buffer,
+  // no DOM or Node globals (it runs on Hermes, in the browser and on the server alike).
+  {
+    files: ['libs/sign-client/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ group: ['node:*', 'fs', 'path', 'crypto', 'buffer', 'util'], message: 'libs/sign-client is pure TypeScript: no Node built-ins (G-3).' }] },
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: 'Buffer', message: 'libs/sign-client runs on device: no Buffer (G-3).' },
+        { name: 'process', message: 'libs/sign-client is pure: no process (G-3).' },
+        { name: 'require', message: 'libs/sign-client is ESM (G-3).' },
+        { name: 'window', message: 'libs/sign-client is pure: no DOM (G-3).' },
+        { name: 'document', message: 'libs/sign-client is pure: no DOM (G-3).' },
+        { name: 'localStorage', message: 'libs/sign-client is pure: no DOM (G-3).' },
+        { name: 'fetch', message: 'libs/sign-client is pure: no network (G-3).' },
       ],
     },
   },

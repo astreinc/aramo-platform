@@ -13,7 +13,8 @@
     "paths": {
       "@aramo/fe-foundation": ["../../dist/libs/fe-foundation/src/index.d.ts"],
       "@aramo/document-templates-web/pdf": ["../../dist/libs/document-templates-web/src/pdf/index.d.ts"],
-      "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"]
+      "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"],
+      "@aramo/sign-client": ["../../dist/libs/sign-client/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

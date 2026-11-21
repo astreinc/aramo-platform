@@ -6,6 +6,7 @@
 // The profile pre-fills the profile field types (W1-C.4) for the signed-in user only, and
 // the settings set the date format of SIGN_DATE and the starting size of placed fields.
 // Routes are not in the generated types yet: typed by api/m-a12-contract-types.ts.
+import { signDatePreview } from '@aramo/sign-client';
 import { useQuery } from '@tanstack/react-query';
 
 import { isApiError } from '../../api/errors';
@@ -17,7 +18,6 @@ import type {
 } from '../../api/m-a12-contract-types';
 import type { WorkspaceClient } from '../../api/workspaceClient';
 import { useServices } from '../../app/ServicesContext';
-import { signDatePreview } from '../signing/signDate';
 
 export const profileKeys = {
   profile: ['sign', 'me', 'profile'] as const,

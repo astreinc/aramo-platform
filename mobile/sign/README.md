@@ -15,7 +15,12 @@ disagree, LOCKED wins (directive §7).
 
 This package sits **outside** the root npm workspaces (`apps/*`, `libs/*`). It has its own
 `package.json` and `package-lock.json`, because the web monorepo pins React 18 and
-React Native needs React 19. It never imports web libraries.
+React Native needs React 19. It never imports web libraries, except `libs/sign-client`
+(`@aramo/sign-client`, Client Rule Consolidation G-3): the pure TypeScript Sign rules shared
+with `apps/sign-web` and the server. Metro reaches it through `metro.config.js` (watch folder
+plus a resolver that maps the package and its `.js`-suffixed imports to the `.ts` source),
+TypeScript through `tsconfig.json` `paths`, and Jest through `moduleNameMapper`, `roots` and
+`jest.resolver.js`, so the library's specs run in `npm test` too.
 
 ## Commands
 

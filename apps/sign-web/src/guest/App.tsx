@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { signDatePreview } from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
 import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
@@ -142,19 +143,6 @@ function tokenFromLocation(): string {
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
-}
-
-// M-A12 W1-E.2 — the date in the sender's format (stamped on the envelope at send).
-// Client Rule Consolidation C0-2 — this is a PREVIEW only: the server stamps the stored
-// SIGN_DATE at signing (the signer's date in their time zone, the envelope's format). An
-// envelope without a format previews the server's default, MM/DD/YYYY.
-export function today(format?: string | null, now: Date = new Date()): string {
-  const yyyy = String(now.getFullYear());
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  if (format === 'DD/MM/YYYY') return `${dd}/${mm}/${yyyy}`;
-  if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
-  return `${mm}/${dd}/${yyyy}`;
 }
 
 function initialsOf(name: string): string {
@@ -1169,7 +1157,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       if (a && !done) void fill(f, a.value, a.method);
       else setAdoptFor(f);
     } else if (t === 'SIGN_DATE') {
-      if (!done) void fill(f, today(view?.date_format));
+      // M-A12 W1-E.2 / C0-2 — a PREVIEW in the envelope's stamped format; the server stamps
+      // the stored SIGN_DATE at signing (Client Rule Consolidation C2: the shared formatter).
+      if (!done) void fill(f, signDatePreview(view?.date_format));
     } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
       void toggle(f);
     } else setTextFor(f);
