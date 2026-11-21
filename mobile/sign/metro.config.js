@@ -21,6 +21,9 @@ const signClientEntry = path.join(signClientRoot, 'src', 'index.ts');
 const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [...(config.watchFolders ?? []), signClientRoot];
+// Modules the library's compiled code needs (Babel runtime helpers) resolve from this
+// package's node_modules: CI installs only mobile/sign, not the repo root.
+config.resolver.nodeModulesPaths = [path.join(projectRoot, 'node_modules'), ...(config.resolver.nodeModulesPaths ?? [])];
 
 const upstreamResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {

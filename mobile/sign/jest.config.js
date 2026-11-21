@@ -10,6 +10,10 @@ module.exports = {
   moduleNameMapper: {
     '^@aramo/sign-client$': `${signClientSrc}/index.ts`,
   },
+  // The library lives outside this package, so Babel helpers it is compiled with (e.g.
+  // @babel/runtime) must resolve from THIS package's node_modules: CI installs only
+  // mobile/sign, never the repo root, so walking up from libs/sign-client finds nothing.
+  modulePaths: ['<rootDir>/node_modules'],
   // The library's relative imports carry the nodenext `.js` suffix (see jest.resolver.js).
   resolver: '<rootDir>/jest.resolver.js',
   setupFiles: ['<rootDir>/jest.setup.js'],
