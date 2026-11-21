@@ -529,14 +529,20 @@ export class EsignSignerController {
   @HttpCode(HttpStatus.OK)
   async fill(
     @Param('fieldId') fieldId: string,
-    @Body() body: { token: string; value: string; signature_method?: string },
+    @Body() body: { token: string; value: string; signature_method?: string; time_zone?: unknown },
     @RequestId() requestId: string,
   ) {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     validate(typeof body?.value === 'string', 'value is required', requestId);
     try {
       const ctx = await this.verifiedSession(body.token, requestId);
-      await this.service.fillField(ctx, fieldId, { value: body.value, signature_method: body.signature_method });
+      // Client Rule Consolidation C0-2 — optional IANA time zone (the server stamps SIGN_DATE;
+      // an invalid or missing zone is UTC, never a refusal).
+      await this.service.fillField(ctx, fieldId, {
+        value: body.value,
+        signature_method: body.signature_method,
+        ...(typeof body.time_zone === 'string' ? { time_zone: body.time_zone } : {}),
+      });
       return { filled: true };
     } catch (e) {
       throw toHttp(e, requestId);
@@ -545,11 +551,12 @@ export class EsignSignerController {
 
   @Post('complete')
   @HttpCode(HttpStatus.OK)
-  async complete(@Body() body: { token: string }, @RequestId() requestId: string) {
+  async complete(@Body() body: { token: string; time_zone?: unknown }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     try {
       const ctx = await this.verifiedSession(body.token, requestId);
-      const result = await this.service.completeSigner(ctx);
+      // Client Rule Consolidation C0-2 — the server stamps SIGN_DATE in this time zone.
+      const result = await this.service.completeSigner(ctx, typeof body.time_zone === 'string' ? { time_zone: body.time_zone } : {});
       if (result.envelope_status !== 'COMPLETED') {
         // Multi-Signer §4 / M-3b — after commit: deliver the next sequential signer's
         // invitation (durable; the worker retries a failure) and tell the sender. Never

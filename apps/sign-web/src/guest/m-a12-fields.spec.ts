@@ -7,12 +7,13 @@ import { DEFAULT_SIZE, fieldBox } from './field-geometry';
 // profile text fields like text fields, and dates in the sender's stamped format.
 
 describe('M-A12 — signer rendering', () => {
-  it('SIGN_DATE uses the stamped format; an envelope without one keeps YYYY-MM-DD', () => {
+  it('SIGN_DATE previews the stamped format; an envelope without one previews MM/DD/YYYY', () => {
     const d = new Date(2026, 10, 4, 12, 0, 0);
     expect(today('MM/DD/YYYY', d)).toBe('11/04/2026');
     expect(today('DD/MM/YYYY', d)).toBe('04/11/2026');
     expect(today('YYYY-MM-DD', d)).toBe('2026-11-04');
-    expect(today(null, d)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // C0-2 — no stamped format previews the server's default (MM/DD/YYYY).
+    expect(today(null, d)).toBe('11/04/2026');
   });
 
   it('the profile text fields have a default box and lay out on the page', () => {

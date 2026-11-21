@@ -326,8 +326,13 @@ export interface EnvelopeDetail {
   completed_at: string | null;
   declined_at: string | null;
   voided_at: string | null;
+  // Deprecated server field: the signing-link lifetime (sent_at + the link window), NOT
+  // the envelope's expiry. Shown only as "Signing link valid until".
   expires_at: string | null;
   signing_window_days: number;
+  // Client Rule Consolidation C0-1 — the envelope's own expiry (absent from an older server).
+  envelope_expires_at?: string | null;
+  signing_link_valid_days?: number;
   sender: { id: string; name: string | null };
   editable: boolean;
   // Multi-Signer §4 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL), and who may sign now.

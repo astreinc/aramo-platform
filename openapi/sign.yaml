@@ -879,6 +879,9 @@ paths:
         unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid.
         A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value
         sent for it is refused with 400 reason signer_profile_name_server_filled.
+        Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the
+        signer's calendar date in time_zone, in the envelope's date_format); the value sent
+        for it is ignored, and completeSigner stamps it again at signing.
       parameters:
         - name: fieldId
           in: path
@@ -899,6 +902,12 @@ paths:
                 signature_method:
                   type: string
                   enum: [TYPED, DRAWN]
+                time_zone:
+                  type: string
+                  maxLength: 64
+                  description: >-
+                    Optional IANA time zone of the signer (for example America/New_York), used
+                    for a SIGN_DATE field. Not recognised or absent: UTC (never refused).
       responses:
         '200':
           description: The field was filled.
@@ -940,7 +949,11 @@ paths:
         (default 1). The failing rule is details.reason: required_field_unfilled,
         checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected
         (with details.group_key for a group). The server fills every SIGNER_PROFILE name field
-        of the signer when they complete. When this was the last
+        of the signer when they complete. Client Rule Consolidation C0-2 — the server also
+        stamps every SIGN_DATE field of the signer when they complete: the signer's calendar
+        date in time_zone (UTC when absent or not recognised), in the date_format stamped on
+        the envelope at send (MM/DD/YYYY when none); any value a client sent is overwritten.
+        A signer who has already signed is never re-stamped. When this was the last
         signer the envelope is executed and envelope_status is COMPLETED; otherwise it
         is IN_PROGRESS and, when signing in order, the next signer is invited.
       requestBody:
@@ -952,6 +965,12 @@ paths:
               required: [token]
               properties:
                 token: { type: string }
+                time_zone:
+                  type: string
+                  maxLength: 64
+                  description: >-
+                    Optional IANA time zone of the signer (for example America/New_York). The
+                    server stamps SIGN_DATE in it; not recognised or absent: UTC (never refused).
       responses:
         '200':
           description: The signer completed.

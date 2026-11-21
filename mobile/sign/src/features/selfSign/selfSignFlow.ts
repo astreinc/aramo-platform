@@ -42,6 +42,7 @@ import {
   type SelfEdits,
 } from './selfSignModel';
 import { fillPath } from '../../api/types';
+import { timeZoneBody } from '../signing/signDate';
 
 export interface SelfSignDeps {
   readonly api: Pick<SenderApi, 'detail' | 'upload' | 'removeDocument' | 'putFields' | 'send' | 'selfSignSession'>;
@@ -257,10 +258,12 @@ export async function acceptFillComplete(
     await session.postRaw(fillPath(FILL_PATH, { fieldId: server.field_id }) as `/v1/sign/signing/${string}`, {
       value: v.value,
       ...(v.method ? { signature_method: v.method } : {}),
+      // C0-2 — the server stamps SIGN_DATE in the device's time zone.
+      ...timeZoneBody(),
     });
     onStored(server.field_id);
   }
-  const r = await session.post('/v1/sign/signing/complete', {});
+  const r = await session.post('/v1/sign/signing/complete', timeZoneBody());
   return { envelopeStatus: r?.envelope_status ?? 'IN_PROGRESS', view };
 }
 

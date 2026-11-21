@@ -2,7 +2,7 @@
 // fields, Finish blocking, Next field, local-only clear, values retained on failure.
 import { createGuestSigningClient } from '../../../api/guestSigningClient';
 import { recordingFetch, SIGNING_TOKEN } from '../../../testing/fakes';
-import { classifySigningError, submitSigning, waitingForCopy } from '../signingApi';
+import { acceptAndLoad, classifySigningError, submitSigning, waitingForCopy } from '../signingApi';
 import { errorFromBody, clientError } from '../../../api/errors';
 import {
   adopt,
@@ -10,6 +10,7 @@ import {
   attemptFinish,
   canFinish,
   displayOf,
+  emptyCaption,
   fieldAnnouncement,
   fillsToSubmit,
   initialState,
@@ -87,7 +88,8 @@ describe('signing state machine', () => {
       text: PNG,
     });
     s = tapField(s, 'f3', ctx).state;
-    expect(s.values['f3']?.value).toBe('2026-10-24');
+    // C0-2 — no stamped format previews the server default (MM/DD/YYYY).
+    expect(s.values['f3']?.value).toBe('10/24/2026');
     // M-A6 §2.2 — a signer-typed name opens the text sheet, never prefilled from the
     // signed-in account's name.
     r = tapField(s, 'f4', ctx);
@@ -310,11 +312,15 @@ describe('Finish submit: fill then complete, on the guest transport', () => {
       '/v1/sign/signing/fields/f2/fill',
       '/v1/sign/signing/complete',
     ]);
+    // C0-2 — every fill and the completion carry the device's IANA time zone.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     expect(net.calls[0]!.body).toEqual({
       value: PNG,
       signature_method: 'DRAWN',
       token: SIGNING_TOKEN,
+      time_zone: tz,
     });
+    expect(net.calls[2]!.body).toEqual({ token: SIGNING_TOKEN, time_zone: tz });
     for (const c of net.calls)
       expect(Object.keys(c.headers).map((h) => h.toLowerCase())).not.toContain('authorization');
   });
@@ -373,5 +379,40 @@ describe('Finish submit: fill then complete, on the guest transport', () => {
       error: { code: 'SIGNER_NOT_YET_ELIGIBLE', details: { waiting_for: 'Alex Morgan' } },
     });
     expect(waitingForCopy(named)).toBe('Waiting for Alex Morgan');
+  });
+});
+
+// Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED §2 C0-2 — the SIGN_DATE shown
+// is a preview in the envelope's stamped format (the server stamps the stored value).
+describe('C0-2 — SIGN_DATE preview keeps the envelope date_format', () => {
+  const today = new Date(2026, 10, 4, 12, 0, 0);
+  it.each([
+    ['MM/DD/YYYY', '11/04/2026'],
+    ['DD/MM/YYYY', '04/11/2026'],
+    ['YYYY-MM-DD', '2026-11-04'],
+    [null, '11/04/2026'],
+  ])('format %s previews %s', (format, expected) => {
+    const s = tapField(initialState([field('d', 'SIGN_DATE')], [], format), 'd', {
+      signerName: 'Jo',
+      today,
+    }).state;
+    expect(s.values['d']?.value).toBe(expected);
+    expect(displayOf(s.fields[0]!, s.values['d'])).toEqual({ kind: 'text', text: expected });
+  });
+
+  it('the empty date says it is filled in at signing', () => {
+    expect(emptyCaption(field('d', 'SIGN_DATE'))).toBe('Date signed · filled in at signing');
+  });
+
+  it('acceptAndLoad keeps the envelope date_format (it was dropped before)', async () => {
+    const net = recordingFetch((req) => ({
+      status: 200,
+      body: req.url.endsWith('/document')
+        ? { documents: [], fields: [], message: null, can_delegate: false, date_format: 'DD/MM/YYYY' }
+        : { accepted: true },
+    }));
+    const session = createGuestSigningClient({ baseUrl: BASE, fetch: net.fetch }).open(SIGNING_TOKEN);
+    const v = await acceptAndLoad(session, { disclosure_version: 'v1', text: 't', text_sha256: 'h', message: null });
+    expect(v.dateFormat).toBe('DD/MM/YYYY');
   });
 });

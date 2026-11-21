@@ -434,7 +434,7 @@ export interface paths {
         put?: never;
         /**
          * Fill one of the signer's own fields.
-         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled.
+         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled. Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the signer's calendar date in time_zone, in the envelope's date_format); the value sent for it is ignored, and completeSigner stamps it again at signing.
          */
         post: operations["fillSignerField"];
         delete?: never;
@@ -454,7 +454,7 @@ export interface paths {
         put?: never;
         /**
          * Finish signing for this signer.
-         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group). The server fills every SIGNER_PROFILE name field of the signer when they complete. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
+         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group). The server fills every SIGNER_PROFILE name field of the signer when they complete. Client Rule Consolidation C0-2 — the server also stamps every SIGN_DATE field of the signer when they complete: the signer's calendar date in time_zone (UTC when absent or not recognised), in the date_format stamped on the envelope at send (MM/DD/YYYY when none); any value a client sent is overwritten. A signer who has already signed is never re-stamped. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
          */
         post: operations["completeSigner"];
         delete?: never;
@@ -6401,6 +6401,8 @@ export interface operations {
                     value: string;
                     /** @enum {string} */
                     signature_method?: "TYPED" | "DRAWN";
+                    /** @description Optional IANA time zone of the signer (for example America/New_York), used for a SIGN_DATE field. Not recognised or absent: UTC (never refused). */
+                    time_zone?: string;
                 };
             };
         };
@@ -6450,6 +6452,8 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
+                    /** @description Optional IANA time zone of the signer (for example America/New_York). The server stamps SIGN_DATE in it; not recognised or absent: UTC (never refused). */
+                    time_zone?: string;
                 };
             };
         };

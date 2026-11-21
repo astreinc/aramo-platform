@@ -69,6 +69,10 @@ import { assertQesSatisfied } from './regulated/qes-guard.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
 import { assertIdentityVerificationCleared } from './identity-verification/identity-gate.js';
+import { formatSignDate, resolveSignerTimeZone } from './domain/sign-date.js';
+
+// Client Rule Consolidation C0-2 — the field type the server stamps at signing.
+const SIGN_DATE_FIELD = 'SIGN_DATE';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -633,7 +637,7 @@ export class EsignService {
   // ── Fill a signature field (requires disclosure accepted). ES-1: under the
   // envelope row lock, with a live session — a signer who has completed, or a
   // signer on a terminal envelope, can no longer alter a field value. ──
-  async fillField(ctx: SessionContext, fieldId: string, input: { value: string; signature_method?: string }): Promise<void> {
+  async fillField(ctx: SessionContext, fieldId: string, input: { value: string; signature_method?: string; time_zone?: string }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
@@ -656,11 +660,28 @@ export class EsignService {
       // 200 characters); an EMAIL field holds an email address.
       const profileRefusal = profileTextValueRefusal(field.field_type, input.value);
       if (profileRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, profileRefusal);
+      // Client Rule Consolidation C0-2 — SIGN_DATE is the server's to stamp: the client's
+      // value is ignored (its tap only marks the field as filled for the signer), and
+      // completeSigner stamps it again at signing.
+      const now = new Date();
+      if (field.field_type === SIGN_DATE_FIELD) {
+        const value = await this.signDateFor(tx, ctx, now, input.time_zone);
+        await tx.signatureField.update({ where: { id: fieldId }, data: { value, signature_method: null, filled_at: now } });
+        return;
+      }
       await tx.signatureField.update({
         where: { id: fieldId },
-        data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
+        data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: now },
       });
     });
+  }
+
+  // Client Rule Consolidation C0-2 — the SIGN_DATE value: the signer's calendar date at
+  // `now` in their time zone (invalid or missing ⇒ UTC), in the format stamped on the
+  // envelope at send (M-A12 W1-E.2; null ⇒ DEFAULT_SIGN_DATE_FORMAT).
+  private async signDateFor(client: Pick<LockingTx, 'signatureEnvelope'>, ctx: SessionContext, now: Date, timeZone: unknown): Promise<string> {
+    const env = await client.signatureEnvelope.findFirst({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { signer_date_format: true } });
+    return formatSignDate(now, env?.signer_date_format ?? null, resolveSignerTimeZone(timeZone));
   }
 
   // The gates every signer view (and M-A15 §4.2 save-as-default) passes first: eligible,
@@ -781,7 +802,7 @@ export class EsignService {
   // exactly one of them performs the COMPLETED transition — and only that one
   // produces executed artifacts, after commit. Parallel signing is unchanged:
   // signers complete in any order; signing_order is not enforced. ──
-  async completeSigner(ctx: SessionContext): Promise<{ envelope_status: string; next_signer_id?: string }> {
+  async completeSigner(ctx: SessionContext, opts: { time_zone?: string } = {}): Promise<{ envelope_status: string; next_signer_id?: string }> {
     let nextSignerId: string | undefined;
     const completed = await this.prisma.$transaction(async (tx) => {
       const envelopeStatus = await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
@@ -793,7 +814,20 @@ export class EsignService {
       await assertIdentityVerificationCleared(tx, ctx);
       // M-A6 §2.3 — required fields filled, required check boxes checked, and the
       // check-box group rules (SELECT_ONE, min_selected) hold.
-      const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+      let mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+      // Client Rule Consolidation C0-2 — the server stamps every SIGN_DATE of this signer
+      // now, in this completing transaction (whatever a client sent is overwritten). A
+      // signer who already signed never reaches here, so a signed document is never
+      // re-stamped.
+      const signedAt = new Date();
+      const dateFields = mine.filter((f) => f.field_type === SIGN_DATE_FIELD);
+      if (dateFields.length > 0) {
+        const value = await this.signDateFor(tx, ctx, signedAt, opts.time_zone);
+        for (const f of dateFields) {
+          await tx.signatureField.update({ where: { id: f.id }, data: { value, signature_method: null, filled_at: signedAt } });
+        }
+        mine = mine.map((f) => (f.field_type === SIGN_DATE_FIELD ? { ...f, value, signature_method: null, filled_at: signedAt } : f));
+      }
       const violation = evaluateSignerFieldRules(mine);
       if (violation !== null) throw new SignatureFieldIncompleteError(ctx.signer_id, violation.reason, violation.group_key);
       // Feature-Parity §1.16 (Amendment A1) — a signer who must sign with QES completes
@@ -811,7 +845,7 @@ export class EsignService {
         }
       }
 
-      await tx.signer.update({ where: { id: ctx.signer_id }, data: { status: 'SIGNED', signed_at: new Date() } });
+      await tx.signer.update({ where: { id: ctx.signer_id }, data: { status: 'SIGNED', signed_at: signedAt } });
       await tx.signingSession.update({ where: { id: ctx.session_id }, data: { status: 'COMPLETED', completed_at: new Date() } });
       await this.repo.appendEvent(tx, {
         tenant_id: ctx.tenant_id,
