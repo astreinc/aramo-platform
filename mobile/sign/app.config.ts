@@ -64,8 +64,8 @@ const config: ExpoConfig = {
   android: {
     package: 'ai.aramo.sign',
     // Play requires a higher versionCode for every upload (1 = internal test 2026-11-02;
-    // 6 was a local-only build 2026-11-08; 7 = first production build; 8 = UAT batch #1119; 9 = UAT batch 2 #1123; 10 = optional screen.portrait/wifi features; 11 = UAT batch 3 #1125).
-    versionCode: 11,
+    // 6 was a local-only build 2026-11-08; 7 = first production build; 8 = UAT batch #1119; 9 = UAT batch 2 #1123; 10 = optional screen.portrait/wifi features; 11 = UAT batch 3 #1125; 12 = M-A19 field tool row; 13 = M-A19-A1 DocuSign order).
+    versionCode: 13,
     // Android App Links, verified against assetlinks.json on the Sign host (P-3 / P-6).
     intentFilters: [
       {

@@ -191,6 +191,10 @@ export function FieldBox({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
       accessibilityHint={selected ? undefined : 'Selects the field'}
+      accessibilityActions={[{ name: 'delete', label: 'Remove field' }]}
+      onAccessibilityAction={(e) => {
+        if (e.nativeEvent.actionName === 'delete') dispatch({ type: 'delete', key: field.key });
+      }}
       onAccessibilityTap={() => dispatch({ type: 'select', key: field.key })}
       style={[
         styles.box,
@@ -236,13 +240,28 @@ export function FieldBox({
         </Text>
       )}
       {selected ? (
-        <View
-          {...gestures.resize.panHandlers}
-          accessible={false}
-          importantForAccessibility="no"
-          hitSlop={13}
-          style={[styles.handle, { backgroundColor: color, borderColor: t.color.white }]}
-        />
+        <>
+          <View
+            {...gestures.resize.panHandlers}
+            accessible={false}
+            importantForAccessibility="no"
+            hitSlop={13}
+            style={[styles.handle, { backgroundColor: color, borderColor: t.color.white }]}
+          />
+          {/* M-A19 — delete on the page (as Sign a document and DocuSign); Undo restores it. */}
+          <Pressable
+            testID="field-remove"
+            onPress={() => dispatch({ type: 'delete', key: field.key })}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${spec.label} field`}
+            hitSlop={10}
+            style={styles.remove}
+          >
+            <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round">
+              <Path d="M18 6 6 18M6 6l12 12" />
+            </Svg>
+          </Pressable>
+        </>
       ) : null}
     </View>
   );

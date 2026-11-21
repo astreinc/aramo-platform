@@ -4,7 +4,7 @@
 //   - R-3: suggestions placed with the green banner; Undo removes them, ✕ keeps them;
 //     the switch (stored on this device, default on) turns them off;
 //   - Finish without a signature: the toast and the Signature tool armed;
-//   - R-6: one tool row in the prototype order, then Last Name and Email;
+//   - M-A19-A1: one tool row in the DocuSign order (was R-6's prototype order);
 //   - R-1: Finishing… during the real calls, You've Signed never before COMPLETED, Try
 //     again on failure, IN_PROGRESS keeps "ready shortly", Done → Agreements + Sign Next;
 //   - R-7: no Email / cloud tiles and no AI controls.
@@ -325,7 +325,7 @@ describe('Sign Document: Sign screen (a08–a10, b01, b02)', () => {
     expect(screen.getByLabelText('Remove field')).toBeTruthy();
   });
 
-  it('R-6: one tool row in the prototype order, then Last Name and Email; no "More fields"', async () => {
+  it('M-A19-A1: one tool row in the DocuSign order; no "More fields"', async () => {
     renderScreen();
     await toPlace();
     const row = screen.queryAllByTestId(/^self-tool-/).map((n) => n.props.accessibilityLabel);
@@ -333,14 +333,14 @@ describe('Sign Document: Sign screen (a08–a10, b01, b02)', () => {
       'Signature field',
       'Initials field',
       'Date field',
-      'Textbox field',
       'Name field',
       'First Name field',
-      'Company field',
-      'Title field',
-      'Checkbox field',
       'Last Name field',
       'Email field',
+      'Company field',
+      'Title field',
+      'Textbox field',
+      'Checkbox field',
     ]);
     expect(screen.queryByTestId('editor-more-fields')).toBeNull();
     expect(screen.queryByText('Place at center')).toBeNull();
