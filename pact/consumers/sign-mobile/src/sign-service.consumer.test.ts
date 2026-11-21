@@ -335,6 +335,8 @@ describe('sign-mobile → envelope detail, If-Match writes and delete (M-A3 §6,
             signing_order: integer(1),
             can_remind: boolean(false),
             reminder_available_at: null,
+            // Client Rule Consolidation C3 (audit row 13) — the server decides who can be hosted.
+            hostable: boolean(false),
           }),
           fields: eachLike({
             id: uuid('e6000000-0000-7000-8000-0000000000a4'),
