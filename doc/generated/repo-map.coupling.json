@@ -10860,6 +10860,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/sign-client/src/index.ts"
+    },
+    {
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/index.ts"
@@ -10873,6 +10878,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-client/src/index.ts"
     },
     {
       "from": "apps/talent-intelligence-service/project.json",
@@ -34337,6 +34347,21 @@
       "status": "unscoped",
       "to": "libs/settings/tsconfig.lib.json"
     },
+    {
+      "from": "libs/sign-client/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-client/src/index.ts"
+    },
+    {
+      "from": "libs/sign-client/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-client/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/sign-client/src/index.ts",
+      "status": "production",
+      "to": "mobile/sign/metro.config.js"
+    },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/tsconfig.lib.json" },
     {
@@ -35752,6 +35777,11 @@
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-sign-mobile.md"
     },
+    {
+      "from": "mobile/sign/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-client/project.json"
+    },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },
@@ -35890,6 +35920,11 @@
       "from": "mobile/sign/src/screens/envelope/ReportSheet.tsx",
       "status": "unscoped",
       "to": "apps/sign-web/src/workspace/routes/ReportPage.tsx"
+    },
+    {
+      "from": "mobile/sign/tsconfig.json",
+      "status": "unscoped",
+      "to": "libs/sign-client/src/index.ts"
     },
     { "from": "openapi/ats.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "openapi/auth.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
@@ -38746,6 +38781,7 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/saved-list/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/settings/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "tsconfig.base.json",
@@ -38960,6 +38996,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/saved-list/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "vitest.shared.ts",

@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 86 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 87 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -70,6 +70,7 @@
     "@aramo/selection": "./libs/selection/src/index.ts",
     "@aramo/settings": "./libs/settings/src/index.ts",
     "@aramo/sign": "./libs/sign/src/index.ts",
+    "@aramo/sign-client": "./libs/sign-client/src/index.ts",
     "@aramo/sign-service": "./apps/sign-service/src/app/app.module.ts",
     "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
     "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
@@ -2551,6 +2552,42 @@
       "verifyTimeStampResponse",
       "weighReport",
       "witnessReady"
+    ],
+    "@aramo/sign-client": [
+      "AttestedNameRequiredError",
+      "CHECKBOX_GROUP_RULES",
+      "CHECK_FIELD_TYPES",
+      "COPY_DELIVERIES",
+      "DEFAULT_SIGN_DATE_FORMAT",
+      "ENVELOPE_TRANSITIONS",
+      "EnvelopeRevisionMismatchError",
+      "IdempotencyKeyReuseError",
+      "IdempotencyRequestInProgressError",
+      "InboxSigningRefusedError",
+      "MAX_COPY_RECIPIENTS",
+      "PAYMENT_FIELD_TYPE",
+      "PROFILE_TEXT_FIELD_TYPES",
+      "PROFILE_TEXT_MAX",
+      "RECIPIENT_KINDS",
+      "ReminderLimitError",
+      "SIGNABLE_ENVELOPE_STATUSES",
+      "SIGNER_NAME_MODES",
+      "SIGNING_RECIPIENT_KINDS",
+      "SIGN_DATE_FALLBACK_TIME_ZONE",
+      "SIGN_DATE_FORMATS",
+      "SessionIssueRefusedError",
+      "TERMINAL_ENVELOPE_STATUSES",
+      "evaluateSignerFieldRules",
+      "formatSignDate",
+      "isPaymentField",
+      "isProfileTextField",
+      "isServerFilledName",
+      "isTerminalEnvelopeStatus",
+      "localTimeZone",
+      "predecessorsOf",
+      "profileTextValueRefusal",
+      "resolveSignerTimeZone",
+      "signDatePreview"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -14346,6 +14383,31 @@
       },
       { "project": "sign-service", "status": "production" }
     ],
+    "@aramo/sign-client": [
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/guest/m-a12-fields.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-sign-web", "status": "production" },
+      { "project": "sign", "status": "production" },
+      {
+        "from": "mobile/sign/src/features/profile/signProfile.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/signDate.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/signingMachine.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      }
+    ],
     "@aramo/sign-service": [
       {
         "from": "pact/provider/src/verify-sign.ts",
@@ -16014,6 +16076,13 @@
       "root": "libs/sign",
       "sourceRoot": "libs/sign/src",
       "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-client",
+      "root": "libs/sign-client",
+      "sourceRoot": "libs/sign-client/src",
+      "tags": ["scope:sign", "type:client-shared"],
       "targets": ["build", "lint", "test"]
     },
     {
