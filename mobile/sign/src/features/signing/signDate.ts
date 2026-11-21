@@ -7,7 +7,8 @@
 // request-body shape below are this app's.
 import { localTimeZone } from '@aramo/sign-client';
 
-export const SIGN_DATE_PREVIEW_NOTE = 'filled in at signing';
+// C3 (audit row 33) — the one note, shared with the web signer page.
+export { SIGN_DATE_PREVIEW_NOTE } from '@aramo/sign-client';
 
 /** `{ time_zone }` for a signing request body, or nothing when the zone is unknown. */
 export function timeZoneBody(): { time_zone?: string } {

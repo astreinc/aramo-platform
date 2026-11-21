@@ -3,6 +3,8 @@
 // sender row waiting only for the user reads "Waiting for you" and signs with the server's
 // my_inbox_item_id, R-8 from the server's i_am_sender, binding-only actions hidden for
 // discovered items, and the 404 inbox_item_not_found reload.
+import { NO_SENDER_ACTIONS } from '@aramo/sign-client';
+
 import { createGuestSigningClient } from '../../../api/guestSigningClient';
 import { refusalMessage } from '../../../api/refusalMessages';
 import { recordingFetch } from '../../../testing/fakes';
@@ -148,7 +150,8 @@ describe('W2 — self-send dual visibility and "Waiting for you" (rows 1, 2, 5)'
   });
 
   it('after I sign with others pending: sender row "Waiting for others"; received row off Needs me (row 5)', () => {
-    const after = { ...mine, awaiting_you: false, status: 'IN_PROGRESS' as const };
+    // C3 — the server's row actions change with it: no Sign once the user's step is done.
+    const after = { ...mine, awaiting_you: false, status: 'IN_PROGRESS' as const, actions: { ...NO_SENDER_ACTIONS, remind: true, void: true } };
     const meDone = {
       ...mineReceived,
       my_status: 'SIGNED',

@@ -17,7 +17,7 @@
 //     signer fills; when the signer is signed in, their own Sign profile pre-fills the
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 
-import { signDatePreview } from '@aramo/sign-client';
+import { CHECK_FIELD_TYPES, checkboxGroupOf, signDatePreview, signerFieldUnits, type SignerFieldLike, type SignerFieldUnit } from '@aramo/sign-client';
 
 import { SIGN_DATE_PREVIEW_NOTE } from './signDate';
 
@@ -170,7 +170,7 @@ export function initialState(
   return { dateFormat, fields: ordered, values, currentId: null, adopted: {} };
 }
 
-const CHECK_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
+const CHECK_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
 
 /** M-A6 §2.2 — a name the server fills (shown read-only, never sent). */
 export function isServerFilled(f: SigningField): boolean {
@@ -181,9 +181,7 @@ export function isServerFilled(f: SigningField): boolean {
 
 /** A check box that belongs to a group. */
 function groupOf(f: SigningField): string | null {
-  return f.field_type === 'CHECKBOX' && typeof f.group_key === 'string' && f.group_key
-    ? f.group_key
-    : null;
+  return checkboxGroupOf(f);
 }
 
 /** True when a check box holds 'true'. */
@@ -200,40 +198,15 @@ export function isFilled(s: SigningState, id: string): boolean {
 }
 
 /**
- * The units Finish needs, mirroring the server's completion rules (M-A6 §2.3): each
- * required ungrouped field the signer fills, and each required check-box group (a group
- * is required when any of its boxes is). A server-filled name is never a unit.
+ * The units Finish needs. Client Rule Consolidation C3 (audit row 38) — the rule is
+ * @aramo/sign-client's signerFieldUnits, the same function the server's completion check uses
+ * (a group counts once; a server-filled name is never a unit; a PAYMENT is always one).
  */
-interface RequiredUnit {
-  readonly fields: readonly SigningField[];
-  readonly done: boolean;
-}
-
-function requiredUnits(s: SigningState): RequiredUnit[] {
-  const units: RequiredUnit[] = [];
-  const groups = new Map<string, SigningField[]>();
-  for (const f of s.fields) {
-    if (isServerFilled(f)) continue;
-    const g = groupOf(f);
-    if (g !== null) {
-      groups.set(g, [...(groups.get(g) ?? []), f]);
-      continue;
-    }
-    if (f.required) units.push({ fields: [f], done: isFilled(s, f.field_id) });
-  }
-  for (const boxes of groups.values()) {
-    const checked = boxes.filter((b) => isChecked(s, b.field_id)).length;
-    const one = boxes[0]?.group_rule === 'SELECT_ONE';
-    // SELECT_ONE never allows more than one checked box, required or not.
-    if (one && checked > 1) {
-      units.push({ fields: boxes, done: false });
-      continue;
-    }
-    if (!boxes.some((b) => b.required)) continue;
-    const min = one ? 1 : Math.max(1, ...boxes.map((b) => b.min_selected ?? 1));
-    units.push({ fields: boxes, done: checked >= min });
-  }
-  return units;
+function requiredUnits(s: SigningState): readonly SignerFieldUnit<SigningField>[] {
+  return signerFieldUnits(s.fields as readonly (SigningField & SignerFieldLike)[], {
+    filled: (f) => isFilled(s, f.field_id),
+    checked: (f) => isChecked(s, f.field_id),
+  });
 }
 
 /** One representative field per required unit (a group counts once). */

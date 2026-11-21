@@ -65,7 +65,6 @@ import {
   submitAccessCode,
   verifySmsCode,
   declineSigning,
-  DECLINE_REASON_MIN,
   DELEGATE_COPY,
   SIGNING_REPORT_COPY,
   reportFromSigning,
@@ -783,7 +782,6 @@ export function SigningFlow(props: SigningFlowProps) {
           body={`${from} is told you declined, and the envelope stops for everyone.`}
           confirmLabel="Decline"
           placeholder="Reason (required)"
-          minLength={DECLINE_REASON_MIN}
           busy={busy}
           error={declineError}
           onConfirm={(r) => void decline(r)}
@@ -1215,7 +1213,6 @@ export function SigningFlow(props: SigningFlowProps) {
         body={`${from} is told you declined, and the envelope stops for everyone.`}
         confirmLabel="Decline"
         placeholder="Reason (required)"
-        minLength={DECLINE_REASON_MIN}
         busy={busy}
         error={declineError}
         onConfirm={(r) => void decline(r)}

@@ -9,6 +9,7 @@
 // HostedSigning screen), when FEATURES.hostedSigning and the server's
 // features.in_person_signing allow it.
 import { useFocusEffect } from '@react-navigation/native';
+import { senderActionsOf } from '@aramo/sign-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,7 +54,6 @@ import {
   remindableSigners,
   remindLabel,
   reminderRefusalCopy,
-  VOID_REASON_MIN,
   deleteDraftEnvelope,
   voidEnvelope,
 } from '../../features/inbox/envelopeActions';
@@ -194,14 +194,16 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const actions = actionsFor(detail, ctx.data);
+  // C3 — the server's `actions` decide every button below (envelopeActions.actionsFor).
+  const actions = actionsFor(detail);
+  const serverActions = senderActionsOf(detail);
   const shareTarget = sentShareTarget(detail.id, detail.subject, detail.status);
   const progress = progressOf(detail);
   const remindable = remindableSigners(detail);
   const coolingUntil = remindable.length === 0 ? nextReminderAt(detail) : null;
   const signers = orderedRecipients(detail);
   const copies = copiesOf(detail);
-  const hostable = hostableSigners(detail, ctx.data, FEATURES.hostedSigning);
+  const hostable = hostableSigners(detail, FEATURES.hostedSigning);
   const isOpen = OPEN_STATUSES.has(detail.status);
   const offlineReason = online ? null : OFFLINE_ACTION_REASON;
 
@@ -468,7 +470,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
           </Card>
         ) : null}
 
-        {isOpen && (detail as { can_self_sign_now?: boolean }).can_self_sign_now === true ? (
+        {serverActions.sign && (detail as { can_self_sign_now?: boolean }).can_self_sign_now === true ? (
           <Button
             testID="action-sign-now"
             title="Sign now"
@@ -722,7 +724,6 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
         body="Recipients can no longer open or sign it. They’re told it was voided. This can’t be undone."
         confirmLabel="Void envelope"
         placeholder="Reason (required)"
-        minLength={VOID_REASON_MIN}
         busy={voidBusy}
         error={voidError}
         disabledReason={offlineReason}

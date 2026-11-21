@@ -1,28 +1,20 @@
-// Agreements row actions by state (handoff §2A "Swipe left"; M-A4 §3.5–§3.7). Pure.
+// Agreements row actions (handoff §2A "Swipe left"; M-A4 §3.5–§3.7). Pure.
 //
-//   Needs me                       -> Sign      (inbox `can_sign` only)
-//   Sent, waiting for you (W2)     -> Sign      (server `awaiting_you`; signs with the
-//                                                 server's `my_inbox_item_id`), then
-//                                                 Remind, Void as below
-//   Sent, can_self_sign_now (M-A12) -> Sign     (a SELF session on the envelope)
-//   Waiting, own sent              -> Remind, Void
-//   Draft                          -> Edit, Delete
-//   Completed with an artifact     -> Share     (COMPLETED only; never declined/voided/expired)
+//   Received                -> Sign (actions.sign) or Share (actions.download)
+//   Sent                    -> Sign (actions.sign: the server's my_inbox_item_id, else a SELF
+//                              session), Edit + Delete (actions.edit / delete_draft), Remind
+//                              (actions.remind), Void (actions.void), Share (actions.download)
+//   On-device draft         -> Edit, Delete (never on the server yet)
 //
-// Visibility follows what the server returned, exactly as envelopeActions.actionsFor
-// does on the detail screen; the device derives no policy. The sender LIST carries fewer
-// facts than the detail (no `editable`, no sender id, no `can_remind`), so:
-//   - ownership: the list is owner-scoped unless the caller holds read_all
-//     (sign-service SenderEnvelopeService.ownerFilter), so a listed envelope is the
-//     caller's own when `read_all` is not granted, and manageable by anyone holding
-//     `manage_all`. A read_all-only caller gets no Remind/Void swipe (the detail screen,
-//     which knows the sender, still offers them);
-//   - `editable` and `can_remind`: the action reads the envelope detail first and acts
-//     only when the detail allows it (see listActions.ts).
+// Client Rule Consolidation C3 (audit rows 3, 5, 9, 10, 12) — visibility follows the server's
+// `actions` on each row (sender list rows and inbox items carry them, C1): the device derives
+// nothing from status, ownership or permissions. An absent `actions` allows nothing.
 // Every swipe action is also an accessibility custom action (SwipeActions.tsx) and exists
 // on the detail screen, so no action is swipe-only (M-A4 §3.6).
-import { awaitingYou, selfSignNow, type AgreementRow } from './agreementsModel';
-import { OPEN_STATUSES, SIGN_APPLICATION, type SenderContext } from './types';
+import { inboxActionsOf, senderActionsOf } from '@aramo/sign-client';
+
+import type { AgreementRow } from './agreementsModel';
+import type { SenderContext } from './types';
 
 export type SwipeActionKind = 'sign' | 'remind' | 'void' | 'edit' | 'delete' | 'share';
 
@@ -47,37 +39,24 @@ export interface SwipeContext {
   readonly online: boolean;
 }
 
-/**
- * Whether the caller may change a sender-list envelope, from list-level facts only:
- * own (the list is owner-scoped without read_all) or manage_all, and send not refused.
- */
-export function mayManageListed(sender: SenderContext | null | undefined): boolean {
-  if (!sender) return false;
-  const p = sender.permissions ?? {};
-  if (p.send === false) return false;
-  return p.manage_all === true || p.read_all !== true;
-}
-
 export function swipeActionsFor(row: AgreementRow, ctx: SwipeContext): SwipeAction[] {
   if (row.kind === 'local-draft') return [SWIPE_ACTION.edit, SWIPE_ACTION.delete];
   if (!ctx.online) return [];
   if (row.kind === 'received') {
-    const i = row.item;
-    if (i.can_sign) return [SWIPE_ACTION.sign];
-    if (i.envelope_status === 'COMPLETED' && i.can_download) return [SWIPE_ACTION.share];
+    const a = inboxActionsOf(row.item);
+    if (a.sign) return [SWIPE_ACTION.sign];
+    if (a.download) return [SWIPE_ACTION.share];
     return [];
   }
-  const e = row.item;
-  const fromSign = (e.source_application ?? SIGN_APPLICATION) === SIGN_APPLICATION;
-  if (e.status === 'DRAFT')
-    return fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.edit, SWIPE_ACTION.delete] : [];
-  if (OPEN_STATUSES.has(e.status)) {
-    const manage =
-      fromSign && mayManageListed(ctx.sender) ? [SWIPE_ACTION.remind, SWIPE_ACTION.void] : [];
-    return awaitingYou(row) || selfSignNow(row) ? [SWIPE_ACTION.sign, ...manage] : manage;
-  }
-  if (e.status === 'COMPLETED') return [SWIPE_ACTION.share];
-  return [];
+  const a = senderActionsOf(row.item);
+  const out: SwipeAction[] = [];
+  if (a.sign) out.push(SWIPE_ACTION.sign);
+  if (a.edit) out.push(SWIPE_ACTION.edit);
+  if (a.delete_draft) out.push(SWIPE_ACTION.delete);
+  if (a.remind) out.push(SWIPE_ACTION.remind);
+  if (a.void) out.push(SWIPE_ACTION.void);
+  if (a.download) out.push(SWIPE_ACTION.share);
+  return out;
 }
 
 /** Screen-reader name of an action on a row ("Void Offer letter"). */

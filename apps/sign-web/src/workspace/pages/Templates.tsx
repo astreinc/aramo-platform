@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { templateAccess, type TemplateAccess } from '@aramo/sign-client';
+import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, templateAccess, type TemplateAccess } from '@aramo/sign-client';
 
 import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
 import { Area, Btn, Empty, ErrorBox, Field, Loading, Sel, TextIn, fmtDate } from '../ui';
@@ -392,7 +392,7 @@ function UseTemplate() {
               </Field>
             ))}
             <Field label="Email subject (optional)" htmlFor="tpl-subject">
-              <TextIn id="tpl-subject" value={subject} maxLength={200} placeholder={template.signing?.default_subject ?? template.name} onChange={(e) => setSubject(e.target.value)} />
+              <TextIn id="tpl-subject" value={subject} maxLength={ENVELOPE_SUBJECT_MAX} placeholder={template.signing?.default_subject ?? template.name} onChange={(e) => setSubject(e.target.value)} />
             </Field>
             {hasRoles ? null : (
               <>
@@ -451,7 +451,7 @@ function UseTemplate() {
                 </Field>
               ) : null}
               <Field label="Message to recipients (optional)" htmlFor="tpl-message">
-                <Area id="tpl-message" data-testid="template-message" rows={3} maxLength={1000} value={messageValue} onChange={(e) => setMessage(e.target.value)} />
+                <Area id="tpl-message" data-testid="template-message" rows={3} maxLength={ENVELOPE_MESSAGE_MAX} value={messageValue} onChange={(e) => setMessage(e.target.value)} />
               </Field>
               <div className="sg-help">Each person signs in their own signature block. You can review the fields in the next steps.</div>
             </div>

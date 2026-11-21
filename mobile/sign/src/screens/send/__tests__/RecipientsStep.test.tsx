@@ -139,7 +139,7 @@ describe('Assign to me (M-A4 §6.1)', () => {
   });
 });
 
-describe('Role chips Signs · In person · Copy (M-A5 §1, §2; prototype step 2)', () => {
+describe('Role chips Signs · Signs in person · Receives a copy (M-A5 §1, §2; prototype step 2)', () => {
   it('renders the three chips per recipient; In person only while hosting is available', async () => {
     const c = controller();
     await c.open();
@@ -163,9 +163,11 @@ describe('Role chips Signs · In person · Copy (M-A5 §1, §2; prototype step 2
     c.addRecipient({ name: 'Sam Roy', email: 'sam@example.com' });
     const sam = c.snapshot.draft!.payload.recipients[1]!.key;
     render(<Harness c={c} roles inPerson />);
-    expect(screen.queryByText('Receives a copy')).toBeNull();
+    // C3 (audit row 30) — the chip reads "Receives a copy" too: one per recipient, plus the
+    // group heading once someone receives a copy.
+    expect(screen.queryAllByText('Receives a copy')).toHaveLength(2);
     fireEvent.press(screen.getByTestId(`role-${sam}-RECEIVES_COPY`));
-    expect(screen.getByText('Receives a copy')).toBeTruthy();
+    expect(screen.queryAllByText('Receives a copy')).toHaveLength(2);
     expect(screen.getByText('When sent')).toBeTruthy();
     expect(screen.getByText('Both')).toBeTruthy();
     fireEvent.press(screen.getByTestId(`timing-${sam}-ON_SEND`));
@@ -199,7 +201,7 @@ describe('Role chips Signs · In person · Copy (M-A5 §1, §2; prototype step 2
     const key = c.snapshot.draft!.payload.recipients[0]!.key;
     render(<Harness c={c} roles inPerson />);
     fireEvent.press(screen.getByTestId(`role-${key}-RECEIVES_COPY`));
-    expect(screen.getByText('Add an email address for this person, or choose In person.')).toBeTruthy();
+    expect(screen.getByText('Add an email address for this person, or choose Signs in person.')).toBeTruthy();
   });
 });
 
@@ -228,7 +230,7 @@ describe('From a template with a CC role (M-A6 §3.5 bound through M-A5 recipien
     render(<Harness c={c} roles inPerson />);
 
     // The copy group holds the CC; the signer list does not.
-    expect(screen.getByText('Receives a copy')).toBeTruthy();
+    expect(screen.queryAllByText('Receives a copy')).toHaveLength(2);
     expect(screen.getByTestId('recipient-1')).toHaveTextContent(/Hana Ito/);
     expect(screen.getByTestId('recipient-0')).toHaveTextContent(/Dana Lee/);
     expect(screen.getByTestId('recipient-0')).not.toHaveTextContent(/Hana Ito/);
