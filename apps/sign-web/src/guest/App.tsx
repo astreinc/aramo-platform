@@ -144,16 +144,17 @@ function tokenFromLocation(): string {
   return new URLSearchParams(window.location.search).get('token') ?? '';
 }
 
-// M-A12 W1-E.2 — the date in the sender's format (stamped on the envelope at send); an
-// envelope without one keeps the earlier YYYY-MM-DD.
+// M-A12 W1-E.2 — the date in the sender's format (stamped on the envelope at send).
+// Client Rule Consolidation C0-2 — this is a PREVIEW only: the server stamps the stored
+// SIGN_DATE at signing (the signer's date in their time zone, the envelope's format). An
+// envelope without a format previews the server's default, MM/DD/YYYY.
 export function today(format?: string | null, now: Date = new Date()): string {
   const yyyy = String(now.getFullYear());
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
-  if (format === 'MM/DD/YYYY') return `${mm}/${dd}/${yyyy}`;
   if (format === 'DD/MM/YYYY') return `${dd}/${mm}/${yyyy}`;
   if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
-  return now.toISOString().slice(0, 10);
+  return `${mm}/${dd}/${yyyy}`;
 }
 
 function initialsOf(name: string): string {
@@ -1722,6 +1723,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
+                        {f.field_type === 'SIGN_DATE' ? ' · filled in at signing' : ''}
                       </span>
                     </span>
                     {done ? (

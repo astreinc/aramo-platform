@@ -294,10 +294,13 @@ export function EnvelopeDetail() {
         </div>
       ) : null}
       {actionError !== '' && !deleteOpen && !purgeOpen ? <ErrorBox>{actionError}</ErrorBox> : null}
-      <p className="sg-muted" style={{ marginTop: 0, marginBottom: 18 }}>
+      <p className="sg-muted" style={{ marginTop: 0, marginBottom: 18 }} data-testid="envelope-meta">
         <span className="sg-mono">{env.id.slice(0, 8)}</span> · sent by {env.sender.name ?? 'a sender'} · created {fmtDate(env.created_at)}
         {env.sent_at !== null ? ` · sent ${fmtDate(env.sent_at, true)}` : ''}
-        {env.expires_at !== null && live ? ` · expires ${fmtDate(env.expires_at)}` : ''}
+        {/* Client Rule Consolidation C0-1 — the envelope's own expiry is envelope_expires_at;
+            expires_at is only the signing-link lifetime (sent_at + the link window). */}
+        {env.envelope_expires_at != null && live ? ` · expires ${fmtDate(env.envelope_expires_at)}` : ''}
+        {env.expires_at !== null && live ? ` · Signing link valid until ${fmtDate(env.expires_at)}` : ''}
         {env.completed_at !== null ? ` · completed ${fmtDate(env.completed_at, true)}` : ''}
       </p>
       <div className="sg-grid sg-grid--main">

@@ -397,6 +397,8 @@ export {
   SIGN_FIELD_SIZES,
   DEFAULT_SIGN_FIELD_SIZE,
   formatSignDate,
+  resolveSignerTimeZone,
+  SIGN_DATE_FALLBACK_TIME_ZONE,
   type SignDateFormat,
   type SignFieldSize,
   type SignUserProfileValue,

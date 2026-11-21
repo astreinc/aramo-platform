@@ -17,6 +17,8 @@
 //     signer fills; when the signer is signed in, their own Sign profile pre-fills the
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 
+import { SIGN_DATE_PREVIEW_NOTE, signDatePreview } from './signDate';
+
 export const FIELD_TYPES = [
   'SIGNATURE',
   'INITIALS',
@@ -99,6 +101,11 @@ export function markValue(mark: AdoptedMark): FieldValue {
 }
 
 export interface SigningState {
+  /**
+   * C0-2 — the envelope's stamped SIGN_DATE format (signer view date_format; null = the
+   * server default). Only the on-screen preview uses it: the server stamps the stored value.
+   */
+  readonly dateFormat?: string | null;
   readonly fields: readonly SigningField[];
   readonly values: Readonly<Record<string, FieldValue>>;
   readonly currentId: string | null;
@@ -150,6 +157,7 @@ export function orderFields(
 export function initialState(
   fields: readonly SigningField[],
   documents: readonly SigningDocument[] = [],
+  dateFormat: string | null = null,
 ): SigningState {
   const ordered = orderFields(fields, documents);
   const values: Record<string, FieldValue> = {};
@@ -157,7 +165,7 @@ export function initialState(
     if (f.filled && typeof f.value === 'string' && f.value.length > 0)
       values[f.field_id] = { value: f.value, fromServer: true };
   }
-  return { fields: ordered, values, currentId: null, adopted: {} };
+  return { dateFormat, fields: ordered, values, currentId: null, adopted: {} };
 }
 
 const CHECK_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
@@ -269,20 +277,8 @@ export function primaryAction(s: SigningState): 'start' | 'next' | 'finish' {
   return s.currentId === null ? 'start' : 'next';
 }
 
-export function localIsoDate(now: Date = new Date()): string {
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${m}-${d}`;
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "Oct 24, 2026" for a YYYY-MM-DD value (the server time is authoritative at completion). */
-export function displayDate(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  return `${MONTHS[Number(m[2]) - 1] ?? ''} ${Number(m[3])}, ${m[1]}`;
-}
+// C0-2 — the SIGN_DATE preview is today in the envelope's format (signDatePreview); the
+// server stamps the stored value at completion. The value is shown exactly as formatted.
 
 /** What a filled field shows on the page. */
 export function displayOf(
@@ -302,7 +298,7 @@ export function displayOf(
     case 'ACKNOWLEDGEMENT':
       return v.value === 'true' ? { kind: 'mark', text: ACK_TEXT } : null;
     case 'SIGN_DATE':
-      return { kind: 'text', text: displayDate(v.value) };
+      return { kind: 'text', text: v.value };
     default:
       return { kind: 'text', text: v.value };
   }
@@ -327,6 +323,9 @@ export function fieldAnnouncement(s: SigningState, f: SigningField, signerName: 
 /** The empty-field caption (handoff §4.4 "The user's fields"). */
 export function emptyCaption(f: SigningField): string {
   if (f.field_type === 'ACKNOWLEDGEMENT') return 'Tap to acknowledge';
+  // C0-2 — the date is the server's, filled in at signing.
+  if (f.field_type === 'SIGN_DATE')
+    return `${fieldLabel(f.field_type)} · ${f.required ? '' : 'optional · '}${SIGN_DATE_PREVIEW_NOTE}`;
   if (f.field_type === 'CHECKBOX' && f.label) return f.required ? f.label : `${f.label} · optional`;
   return f.required ? fieldLabel(f.field_type) : `${fieldLabel(f.field_type)} · optional`;
 }
@@ -400,7 +399,7 @@ export function tapField(
     }
     case 'SIGN_DATE':
       return {
-        state: withValue(s, fieldId, { value: localIsoDate(ctx.today) }),
+        state: withValue(s, fieldId, { value: signDatePreview(s.dateFormat, ctx.today) }),
         effect: { kind: 'none' },
       };
     default:

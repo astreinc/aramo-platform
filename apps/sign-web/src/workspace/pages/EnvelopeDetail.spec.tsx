@@ -93,6 +93,34 @@ describe('EnvelopeDetail — reminder on an envelope changed elsewhere (UAT SND-
   });
 });
 
+// Client Rule Consolidation C0-1 — the envelope's expiry is envelope_expires_at; the
+// deprecated expires_at (the signing-link lifetime) is never called the envelope's expiry.
+describe('EnvelopeDetail — expiry (C0-1)', () => {
+  it('shows envelope_expires_at as the expiry and labels the link lifetime', async () => {
+    detail.mockResolvedValue(env({ expires_at: '2026-10-27T12:00:00Z', envelope_expires_at: '2026-11-19T12:00:00Z', signing_link_valid_days: 7, recipients: [rcp(1)] }));
+    show();
+    const meta = await screen.findByTestId('envelope-meta');
+    expect(meta).toHaveTextContent('expires Nov 19');
+    expect(meta).toHaveTextContent('Signing link valid until Oct 27');
+    expect(meta).not.toHaveTextContent('expires Oct 27');
+  });
+
+  it('an older server without envelope_expires_at shows no envelope expiry', async () => {
+    detail.mockResolvedValue(env({ expires_at: '2026-10-27T12:00:00Z', recipients: [rcp(1)] }));
+    show();
+    const meta = await screen.findByTestId('envelope-meta');
+    expect(meta).not.toHaveTextContent(/· expires/);
+    expect(meta).toHaveTextContent('Signing link valid until Oct 27');
+  });
+
+  it('a completed envelope shows neither', async () => {
+    detail.mockResolvedValue(env({ status: 'COMPLETED', completed_at: '2026-10-21T00:00:00Z', expires_at: '2026-10-27T12:00:00Z', envelope_expires_at: '2026-11-19T12:00:00Z', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-21T00:00:00Z' })] }));
+    show();
+    const meta = await screen.findByTestId('envelope-meta');
+    expect(meta).not.toHaveTextContent(/expires|Signing link/);
+  });
+});
+
 describe('EnvelopeDetail — multiple signers', () => {
   it('in order: names the signer whose turn it is and offers Remind only to them', async () => {
     const d = env({ routing_mode: 'SEQUENTIAL', next_signer_id: 's2', recipients: [rcp(1, { status: 'SIGNED', signed_at: '2026-10-20T01:00:00Z' }), rcp(2, { can_remind: true }), rcp(3)] });
