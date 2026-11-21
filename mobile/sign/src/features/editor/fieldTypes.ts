@@ -114,6 +114,9 @@ export function sizeScale(size: string | null | undefined): number {
  * fields" in self-sign only; the Send flow editor is unchanged. Types this build does not
  * author (FEATURES) are left out.
  */
+// M-A19-A1 (PO 2026-11-21) — DocuSign order: signing marks, then who-you-are fields, then
+// free input: Signature, Initials, Date, Name, First Name, Last Name, Email, Company, Title,
+// Textbox, Checkbox. Replaces M-A14 R-6's prototype order.
 export const SELF_SIGN_TOOLS: readonly {
   readonly type: AuthoringFieldType;
   readonly label: string;
@@ -123,21 +126,21 @@ export const SELF_SIGN_TOOLS: readonly {
   { type: 'SIGNATURE', label: 'Signature', icon: 'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4M3 22h18' },
   { type: 'INITIALS', label: 'Initials', icon: 'M3 17 7 6l4 11M4.5 13h5M14 6h7l-7 11h7M3 21h18' },
   { type: 'SIGN_DATE', label: 'Date', icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h2M12 14h2M16 14h0' },
-  { type: 'TEXT', label: 'Textbox', icon: 'M5 5h14M12 5v15' },
   { type: 'SIGNER_NAME', label: 'Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0' },
   { type: 'FIRST_NAME', label: 'First Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M17 4h4' },
+  { type: 'LAST_NAME', label: 'Last Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M3 4h4' },
+  { type: 'EMAIL', label: 'Email', icon: 'M3 6h18v12H3zM3 7l9 6 9-6' },
   {
     type: 'COMPANY',
     label: 'Company',
     icon: 'M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M14 10h5a1 1 0 0 1 1 1v10M2 21h20M8 9h2M8 13h2',
   },
   { type: 'TITLE', label: 'Title', icon: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16' },
+  { type: 'TEXT', label: 'Textbox', icon: 'M5 5h14M12 5v15' },
   { type: 'CHECKBOX', label: 'Checkbox', icon: 'M5 5h14v14H5zM8.5 12l2.5 2.5 4.5-5' },
-  { type: 'LAST_NAME', label: 'Last Name', icon: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M3 4h4' },
-  { type: 'EMAIL', label: 'Email', icon: 'M3 6h18v12H3zM3 7l9 6 9-6' },
 ];
 
-/** The self-sign tool row for this build (R-6 order). */
+/** The tool row for this build — M-A19-A1 DocuSign order (Sign a document and the Send flow). */
 export function selfSignTools(
   available: readonly AuthoringFieldType[] = toolFieldTypes(),
 ): typeof SELF_SIGN_TOOLS {

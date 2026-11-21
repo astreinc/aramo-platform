@@ -47,20 +47,20 @@ function renderSelf(chrome: Partial<SelfSignChrome> = {}, extra: Partial<React.C
   return { onFinish, onFieldsChange, props, view };
 }
 
-describe('R-6 tool row', () => {
-  it('prototype order, then Last Name and Email', () => {
+describe('M-A19-A1 tool row', () => {
+  it('DocuSign order: signing marks, who-you-are fields, then free input', () => {
     expect(SELF_SIGN_TOOLS.map((x) => x.label)).toEqual([
       'Signature',
       'Initials',
       'Date',
-      'Textbox',
       'Name',
       'First Name',
-      'Company',
-      'Title',
-      'Checkbox',
       'Last Name',
       'Email',
+      'Company',
+      'Title',
+      'Textbox',
+      'Checkbox',
     ]);
     expect(selfSignTools(['SIGNATURE', 'SIGN_DATE', 'TEXT']).map((x) => x.type)).toEqual(['SIGNATURE', 'SIGN_DATE', 'TEXT']);
   });
