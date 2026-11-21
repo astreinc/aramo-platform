@@ -130,6 +130,17 @@ describe('signer app', () => {
     const fills = calls.filter((c) => c.path.startsWith('fields/'));
     expect(fills.map((c) => c.path)).toEqual(['fields/f-init/fill', 'fields/f-sig/fill', 'fields/f-date/fill']);
     expect(fills[1]?.body['signature_method']).toBe('TYPED');
+    // Client Rule Consolidation C0-2 — the date fill and the completion carry the signer's
+    // IANA time zone (the server stamps the stored SIGN_DATE in it).
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(fills[2]?.body['time_zone']).toBe(tz);
+    expect(calls.find((c) => c.path === 'complete')?.body['time_zone']).toBe(tz);
+  });
+
+  it('C0-2 — the date field says it is filled in at signing', async () => {
+    transport();
+    await toWorkspace();
+    expect(screen.getAllByText(/filled in at signing/).length).toBeGreaterThan(0);
   });
 
   it('others still signing: the completion says so', async () => {

@@ -157,9 +157,12 @@ describe('self-sign sequence', () => {
     // Fill values: the adopted mark, the ISO date, the edited profile value; the
     // server-filled name is never sent. Signing calls carry the token, never a Bearer.
     const fill = (id: string) => net.calls.find((c) => c.url.endsWith(`/fields/${id}/fill`));
-    expect(fill('f-sig')?.body).toEqual({ value: MARK.dataUrl, signature_method: 'DRAWN', token: SIGNING_TOKEN });
-    expect(fill('f-date')?.body).toEqual({ value: '2026-11-05', token: SIGNING_TOKEN });
-    expect(fill('f-co')?.body).toEqual({ value: 'Acme', token: SIGNING_TOKEN });
+    // C0-2 — every fill and the completion carry the device's IANA time zone.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(fill('f-sig')?.body).toEqual({ value: MARK.dataUrl, signature_method: 'DRAWN', token: SIGNING_TOKEN, time_zone: tz });
+    expect(fill('f-date')?.body).toEqual({ value: '2026-11-05', token: SIGNING_TOKEN, time_zone: tz });
+    expect(fill('f-co')?.body).toEqual({ value: 'Acme', token: SIGNING_TOKEN, time_zone: tz });
+    expect(net.calls.find((c) => c.url.endsWith('/v1/sign/signing/complete'))?.body).toEqual({ token: SIGNING_TOKEN, time_zone: tz });
     expect(fill('f-name')).toBeUndefined();
     for (const c of net.calls.filter((x) => x.url.includes('/v1/sign/signing/')))
       expect(c.headers['Authorization']).toBeUndefined();

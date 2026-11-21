@@ -6,6 +6,7 @@
 import { isApiError } from '../../api/errors';
 import { endsSigningSession, type GuestSigningSession } from '../../api/guestSigningClient';
 import { refusalMessage } from '../../api/refusalMessages';
+import { timeZoneBody } from './signDate';
 import { fillPath, type Operation, type RequestJson, type SuccessJson } from '../../api/types';
 import {
   fillsToSubmit,
@@ -31,6 +32,8 @@ export interface SignerView {
    * still hand the envelope to someone else (the server re-checks on the delegate call).
    */
   readonly canDelegate: boolean;
+  /** C0-2 — the envelope's stamped SIGN_DATE format (null = the server default). */
+  readonly dateFormat: string | null;
 }
 
 export type SigningFailure =
@@ -277,6 +280,8 @@ export async function acceptAndLoad(
     fields: (v.fields ?? []) as SigningField[],
     message: v.message ?? null,
     canDelegate: v.can_delegate === true,
+    // C0-2 — kept (it was dropped before): the SIGN_DATE preview uses the envelope's format.
+    dateFormat: typeof v.date_format === 'string' ? v.date_format : null,
   };
 }
 
@@ -305,9 +310,11 @@ export async function submitSigning(
 ): Promise<{ envelopeStatus: string }> {
   let s = state;
   for (const f of fillsToSubmit(s)) {
+    // C0-2 — every fill and the completion carry the device's IANA time zone: the server
+    // stamps the stored SIGN_DATE in it (the value sent for a date is only the preview).
     const body: Omit<FillBody, 'token'> = f.method
-      ? { value: f.value, signature_method: f.method }
-      : { value: f.value };
+      ? { value: f.value, signature_method: f.method, ...timeZoneBody() }
+      : { value: f.value, ...timeZoneBody() };
     await session.postRaw<FillResult>(
       fillPath(FILL_PATH, { fieldId: f.fieldId }) as `/v1/sign/signing/${string}`,
       body,
@@ -315,7 +322,7 @@ export async function submitSigning(
     s = markStored(s, f.fieldId);
     onProgress(s);
   }
-  const r = await session.post('/v1/sign/signing/complete', {});
+  const r = await session.post('/v1/sign/signing/complete', timeZoneBody());
   return { envelopeStatus: r?.envelope_status ?? 'IN_PROGRESS' };
 }
 

@@ -17,6 +17,7 @@ import type {
 } from '../../api/m-a12-contract-types';
 import type { WorkspaceClient } from '../../api/workspaceClient';
 import { useServices } from '../../app/ServicesContext';
+import { signDatePreview } from '../signing/signDate';
 
 export const profileKeys = {
   profile: ['sign', 'me', 'profile'] as const,
@@ -159,14 +160,9 @@ export function profileValue(
   }
 }
 
-/** A date in the user's format (W1-E.2). */
+/** A date in the user's format (W1-E.2) — the same formatter as the SIGN_DATE preview (C0-2). */
 export function formatDate(d: Date, format: DateFormat): string {
-  const y = String(d.getFullYear());
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  if (format === 'DD/MM/YYYY') return `${day}/${m}/${y}`;
-  if (format === 'YYYY-MM-DD') return `${y}-${m}-${day}`;
-  return `${m}/${day}/${y}`;
+  return signDatePreview(format, d);
 }
 
 export function asSettings(v: unknown): SignSettings {

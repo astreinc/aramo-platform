@@ -327,7 +327,7 @@ export function SigningFlow(props: SigningFlowProps) {
     try {
       const v = await acceptAndLoad(session, d, attestName ? attested : undefined);
       setView(v);
-      commit(initialState(v.fields, v.documents));
+      commit(initialState(v.fields, v.documents, v.dateFormat));
       setPhase({ kind: 'fields' });
       for (const doc of v.documents) {
         loadSource(session, doc.document_id).then(

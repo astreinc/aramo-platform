@@ -206,6 +206,16 @@ export interface IdentityVerificationStatus {
   verification_url?: string | null;
 }
 
+/** The browser's IANA time zone (null when the runtime does not report one). */
+export function signerTimeZone(): string | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === 'string' && tz !== '' ? tz : null;
+  } catch {
+    return null;
+  }
+}
+
 export const signApi = {
   branding(token: string): Promise<SignerBranding | null> {
     return post<{ branding: SignerBranding | null }>('branding', { token }).then((r) => r.branding ?? null);
@@ -250,15 +260,20 @@ export const signApi = {
   source(token: string, document_id: string): Promise<{ source_base64: string; content_type: string }> {
     return post<{ source_base64: string; content_type: string }>('source', { token, document_id });
   },
+  // Client Rule Consolidation C0-2 — every fill and the completion carry the signer's IANA
+  // time zone: the server stamps SIGN_DATE in it (the value this page shows is a preview).
   fillField(token: string, fieldId: string, value: string, signature_method?: string): Promise<void> {
+    const time_zone = signerTimeZone();
     return post<void>(`fields/${encodeURIComponent(fieldId)}/fill`, {
       token,
       value,
       ...(signature_method !== undefined ? { signature_method } : {}),
+      ...(time_zone !== null ? { time_zone } : {}),
     });
   },
   complete(token: string): Promise<{ envelope_status: string }> {
-    return post<{ envelope_status: string }>('complete', { token });
+    const time_zone = signerTimeZone();
+    return post<{ envelope_status: string }>('complete', { token, ...(time_zone !== null ? { time_zone } : {}) });
   },
   decline(token: string, reason: string): Promise<void> {
     return post<void>('decline', { token, reason });

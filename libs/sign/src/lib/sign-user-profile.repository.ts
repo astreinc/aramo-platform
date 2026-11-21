@@ -62,15 +62,8 @@ export interface SignUserDataCounts {
   template_favorites: number;
 }
 
-/** Formats a calendar date in one of the supported Sign date formats (UTC). */
-export function formatSignDate(d: Date, format: string | null | undefined): string {
-  const yyyy = String(d.getUTCFullYear());
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  if (format === 'DD/MM/YYYY') return `${dd}/${mm}/${yyyy}`;
-  if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
-  return `${mm}/${dd}/${yyyy}`;
-}
+// C0-2 — formatSignDate / resolveSignerTimeZone live in the pure domain module (re-exported).
+export { formatSignDate, resolveSignerTimeZone, SIGN_DATE_FALLBACK_TIME_ZONE } from './domain/sign-date.js';
 
 @Injectable()
 export class SignUserProfileRepository {
