@@ -5,6 +5,7 @@ import { ESIGN_SCOPE, EsignSenderBoundary } from '@aramo/identity';
 import { RETENTION_DAYS_MAX, RETENTION_DAYS_MIN, SignPurgeRepository, isPurgeLevel, type PurgeLevel } from '@aramo/sign';
 
 import { ESIGN_READ_SCOPE } from '../sender/sender-context.service.js';
+import { purgeNotEnabled, refusalError } from '../sender/envelope-actions.js';
 import { SenderEnvelopeService } from '../sender/sender-envelope.service.js';
 
 import { purgeViewOf } from './purge-view.js';
@@ -121,7 +122,9 @@ export class SignRetentionController {
   }
 
   private assertEnabled(requestId: string): void {
-    if (!this.engine.enabled) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention and purge are not enabled', 403, { requestId, details: { reason: 'purge_not_enabled' } });
+    // Client Rule Consolidation C1 — the `purge_enabled` check of the delete / restore / purge /
+    // dequeue_purge actions (envelope-actions.ts).
+    if (!this.engine.enabled) throw refusalError(purgeNotEnabled(), requestId);
   }
 
   private async statusOf(tenant_id: string, envelope_id: string) {

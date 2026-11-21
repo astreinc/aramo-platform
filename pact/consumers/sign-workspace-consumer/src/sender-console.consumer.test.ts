@@ -6,6 +6,25 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const { like, uuid, integer, eachLike, regex, boolean, fromProviderState } = MatchersV3;
 
+// Client Rule Consolidation C1 (480ecdbb) — the server-sent `actions` object: every key is a
+// boolean the server decides; the consumer pins the shape, not the values (they follow the
+// caller, the envelope state and the deployment's feature switches).
+const SENDER_ACTIONS = {
+  edit: boolean(false),
+  send: boolean(false),
+  delete_draft: boolean(false),
+  void: boolean(false),
+  remind: boolean(false),
+  delete: boolean(false),
+  restore: boolean(false),
+  download: boolean(false),
+  certificate: boolean(false),
+  sign: boolean(false),
+  host_in_person: boolean(false),
+  purge: boolean(false),
+  dequeue_purge: boolean(false),
+};
+
 // PX-1 (PX-V1 §12) — the authenticated SENDER-console transport contract.
 //
 // Consumer:  esign-web       (apps/esign-web/src/api.ts `senderApi` — the Aramo
@@ -243,6 +262,7 @@ describe('esign-web → GET /v1/sign/sender/envelopes', () => {
             created_at: iso('2026-10-18T10:00:00.000Z'),
             last_activity_at: iso('2026-10-18T10:00:00.000Z'),
             document_count: integer(1),
+            actions: SENDER_ACTIONS,
           }),
           counts: like({ DRAFT: 1 }),
         });
@@ -646,6 +666,7 @@ describe('Sign Mobile → GET /v1/sign/sender/envelopes/{id} (ETag)', () => {
         b.headers({ ETag: regex(`^"${ETAG_ENVELOPE_ID}\\.\\d+"$`, `"${ETAG_ENVELOPE_ID}.5"`) });
         b.jsonBody({
           ...detailBody(ETAG_ENVELOPE_ID, 'DRAFT', { documents: true, recipients: true, fields: true }),
+          actions: SENDER_ACTIONS,
           revision: integer(5),
           message: null,
           signing_link_valid_days: 7,

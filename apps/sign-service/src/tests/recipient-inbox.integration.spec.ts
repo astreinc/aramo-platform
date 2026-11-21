@@ -131,6 +131,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Recipient inbox â
     expect(list.status).toBe(200);
     expect(list.body.waiting).toHaveLength(1);
     expect(list.body.waiting[0]).toMatchObject({ subject: 'Offer letter', from: 'Northwind Staffing', can_sign: true });
+    // Client Rule Consolidation C1 â€” the server-sent actions (sign = can_sign; a bound item can be reported).
+    expect(list.body.waiting[0].actions).toEqual({ sign: true, download: false, delete: true, restore: false, report: true });
     const text = JSON.stringify(list.body);
     for (const internal of [TENANT_A, ENVELOPE, SIGNER, SENDER]) expect(text).not.toContain(internal);
     const row = (await db.query(`SELECT envelope_tenant_id, user_tenant_id FROM "sign"."SignRecipientBinding" WHERE id = $1`, [bindingId])).rows[0];
@@ -163,7 +165,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Recipient inbox â
     await db.query(`UPDATE "sign"."SignatureEnvelope" SET status = 'VOIDED', voided_at = now() WHERE id = $1`, [ENVELOPE]);
     const bob = await jwt(BOB, TENANT_B);
     expect((await http().post(`/v1/sign/inbox/${bindingId}/sign`).set('Authorization', `Bearer ${bob}`)).status).toBe(409);
-    expect((await http().get('/v1/sign/inbox').set('Authorization', `Bearer ${bob}`)).body.other).toHaveLength(1);
+    const other = (await http().get('/v1/sign/inbox').set('Authorization', `Bearer ${bob}`)).body.other;
+    expect(other).toHaveLength(1);
+    expect(other[0].actions.sign).toBe(false);
   });
 
   it('Bob removes it from his inbox', async () => {
