@@ -62,7 +62,11 @@ export class SignRetentionController {
   @EsignSenderBoundary(ESIGN_READ_SCOPE)
   async deleteForTenant(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     this.assertEnabled(requestId);
-    await this.envelopes.assertVisible(auth, id, requestId);
+    // Ownership (Sign Unified Product S-1/S-3): only the envelope's sender or a Sign Admin may
+    // move it to the organization's Deleted folder, never an envelope another application
+    // owns. Read access alone is not enough: the sender's delete can complete R-10's
+    // every-party condition and queue the envelope's documents for purge.
+    await this.envelopes.assertMayChangeEnvelope(auth, id, requestId);
     const out = await this.purge.partyDelete(auth.tenant_id, id, { kind: 'SENDER', key: auth.tenant_id }, auth.sub);
     if (out === 'not_eligible') throw conflict(requestId, 'Only a completed, declined, voided or expired envelope can be deleted', 'envelope_not_terminal');
     return { deleted: true };
@@ -73,7 +77,7 @@ export class SignRetentionController {
   @EsignSenderBoundary(ESIGN_READ_SCOPE)
   async restoreForTenant(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     this.assertEnabled(requestId);
-    await this.envelopes.assertVisible(auth, id, requestId);
+    await this.envelopes.assertMayChangeEnvelope(auth, id, requestId);
     const out = await this.purge.partyRestore(auth.tenant_id, id, { kind: 'SENDER', key: auth.tenant_id }, auth.sub);
     if (out === 'purged') throw new AramoError('ENVELOPE_PURGED', `envelope ${id} was purged`, 410, { requestId });
     return { restored: out === 'restored' };

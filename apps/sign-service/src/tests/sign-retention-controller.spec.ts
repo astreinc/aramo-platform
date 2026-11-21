@@ -22,7 +22,7 @@ function make(enabled = true) {
     status: vi.fn(async () => ({ state: 'QUEUED', level: 'DOCUMENTS', reason: 'manual', queued_at: new Date(), due_at: new Date('2026-11-15T00:00:00Z'), waiting_until: null, executed_at: null })),
   };
   const engine = { enabled, queueTargeted: vi.fn(async () => 3) };
-  const envelopes = { assertVisible: vi.fn(async () => undefined) };
+  const envelopes = { assertVisible: vi.fn(async () => undefined), assertMayChangeEnvelope: vi.fn(async () => undefined) };
   const c = new SignRetentionController(repo as never, engine as never, envelopes as never);
   return { c, repo, engine, envelopes };
 }
@@ -54,7 +54,7 @@ describe('SignRetentionController — dark (SIGN_PURGE_ENABLED unset)', () => {
       expect(e.statusCode).toBe(403);
       expect(e.context.details).toEqual({ reason: 'purge_not_enabled' });
     }
-    for (const fn of [repo.setPolicy, repo.partyDelete, repo.partyRestore, repo.queue, repo.dequeue, engine.queueTargeted, envelopes.assertVisible]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [repo.setPolicy, repo.partyDelete, repo.partyRestore, repo.queue, repo.dequeue, engine.queueTargeted, envelopes.assertVisible, envelopes.assertMayChangeEnvelope]) expect(fn).not.toHaveBeenCalled();
   });
 
   it('GET reports can_edit false when disabled, even for an admin', async () => {
@@ -99,28 +99,41 @@ describe('SignRetentionController — enabled', () => {
     expect(e.context.details).toEqual({ reason: 'invalid_purge_level' });
   });
 
-  it('delete: visibility first, the SENDER party is the tenant, non-terminal is 409 envelope_not_terminal', async () => {
+  it('delete: owner-or-admin first, the SENDER party is the tenant, non-terminal is 409 envelope_not_terminal', async () => {
     const { c, repo, envelopes } = make(true);
-    expect(await c.deleteForTenant(READER as never, RID, 'e1')).toEqual({ deleted: true });
-    expect(envelopes.assertVisible).toHaveBeenCalledWith(READER, 'e1', RID);
-    expect(repo.partyDelete).toHaveBeenCalledWith(T, 'e1', { kind: 'SENDER', key: T }, 'u-read');
-    expect(envelopes.assertVisible.mock.invocationCallOrder[0]!).toBeLessThan(repo.partyDelete.mock.invocationCallOrder[0]!);
+    expect(await c.deleteForTenant(ADMIN as never, RID, 'e1')).toEqual({ deleted: true });
+    expect(envelopes.assertMayChangeEnvelope).toHaveBeenCalledWith(ADMIN, 'e1', RID);
+    expect(repo.partyDelete).toHaveBeenCalledWith(T, 'e1', { kind: 'SENDER', key: T }, 'u-admin');
+    expect(envelopes.assertMayChangeEnvelope.mock.invocationCallOrder[0]!).toBeLessThan(repo.partyDelete.mock.invocationCallOrder[0]!);
     repo.partyDelete.mockResolvedValueOnce('not_eligible');
-    const e = await refusal(c.deleteForTenant(READER as never, RID, 'e1'));
+    const e = await refusal(c.deleteForTenant(ADMIN as never, RID, 'e1'));
     expect(e.statusCode).toBe(409);
     expect(e.context.details).toEqual({ reason: 'envelope_not_terminal' });
   });
 
   it('restore: of a purged envelope is 410 ENVELOPE_PURGED', async () => {
     const { c, repo, envelopes } = make(true);
-    expect(await c.restoreForTenant(READER as never, RID, 'e1')).toEqual({ restored: true });
+    expect(await c.restoreForTenant(ADMIN as never, RID, 'e1')).toEqual({ restored: true });
     repo.partyRestore.mockResolvedValueOnce('not_deleted');
-    expect(await c.restoreForTenant(READER as never, RID, 'e1')).toEqual({ restored: false });
+    expect(await c.restoreForTenant(ADMIN as never, RID, 'e1')).toEqual({ restored: false });
     repo.partyRestore.mockResolvedValueOnce('purged');
-    const e = await refusal(c.restoreForTenant(READER as never, RID, 'e1'));
+    const e = await refusal(c.restoreForTenant(ADMIN as never, RID, 'e1'));
     expect(e.code).toBe('ENVELOPE_PURGED');
     expect(e.statusCode).toBe(410);
-    expect(envelopes.assertVisible).toHaveBeenCalledTimes(3);
+    expect(envelopes.assertMayChangeEnvelope).toHaveBeenCalledTimes(3);
+  });
+
+  it('delete and restore: a member who can only read is refused 403 before any change', async () => {
+    const { c, repo, envelopes } = make(true);
+    envelopes.assertMayChangeEnvelope.mockRejectedValue(
+      new AramoError('INSUFFICIENT_PERMISSIONS', 'Only the sender of this envelope, or a Sign Admin, can change it', 403, { requestId: RID, details: { reason: 'envelope_not_owned' } }),
+    );
+    for (const call of [() => c.deleteForTenant(READER as never, RID, 'e1'), () => c.restoreForTenant(READER as never, RID, 'e1')]) {
+      const e = await refusal(call());
+      expect(e.statusCode).toBe(403);
+      expect(e.context.details).toMatchObject({ reason: 'envelope_not_owned' });
+    }
+    for (const fn of [repo.partyDelete, repo.partyRestore]) expect(fn).not.toHaveBeenCalled();
   });
 
   it('purge: queues manual at the requested level and returns the purge view', async () => {
@@ -156,6 +169,7 @@ describe('SignRetentionController — enabled', () => {
   it('an invisible envelope is refused before any purge-state change', async () => {
     const { c, repo, envelopes } = make(true);
     envelopes.assertVisible.mockRejectedValue(new AramoError('ENVELOPE_NOT_FOUND', 'not found', 404, { requestId: RID }));
+    envelopes.assertMayChangeEnvelope.mockRejectedValue(new AramoError('ENVELOPE_NOT_FOUND', 'not found', 404, { requestId: RID }));
     for (const call of [
       () => c.deleteForTenant(READER as never, RID, 'e9'),
       () => c.restoreForTenant(READER as never, RID, 'e9'),
