@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { templateAccess, type TemplateAccess } from '@aramo/sign-client';
 
 import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
 import { Area, Btn, Empty, ErrorBox, Field, Loading, Sel, TextIn, fmtDate } from '../ui';
@@ -75,15 +76,20 @@ function Unavailable({ title, tag = 'Not available', children }: { title: string
   );
 }
 
-// The plan / permission state every template screen shares.
-function useTemplateAccess(): 'unavailable' | 'no-permission' | 'ok' {
+// The plan / permission state every template screen shares. Client Rule Consolidation C3
+// (audit row 14) — the one templates-access rule (@aramo/sign-client), plan check included.
+function useTemplateAccess(): TemplateAccess {
   const { ctx } = useWorkspace();
-  if (ctx.features?.templates !== true) return 'unavailable';
-  if (ctx.permissions.templates !== true) return 'no-permission';
-  return 'ok';
+  return templateAccess(ctx, 'use');
 }
 
-function AccessGate({ access }: { access: 'unavailable' | 'no-permission' }) {
+function AccessGate({ access }: { access: Exclude<TemplateAccess, 'ok'> }) {
+  if (access === 'upgrade')
+    return (
+      <Unavailable title="Templates aren’t included in your plan">
+        Templates come with every paid Aramo Sign plan. An admin can change the plan in your plan settings.
+      </Unavailable>
+    );
   return access === 'unavailable' ? (
     <Unavailable title="Templates are coming soon" tag="Coming soon">
       Starting envelopes from your organization’s templates is coming soon. It isn’t part of any plan yet. Until then, create each envelope from your PDF.

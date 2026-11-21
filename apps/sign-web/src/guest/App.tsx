@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { signDatePreview } from '@aramo/sign-client';
+import { DELEGATE_REASON_MAX, SIGN_DATE_PREVIEW_NOTE, isValidDeclineReason, isValidDelegate, signDatePreview } from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
 import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
@@ -557,7 +557,7 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
         </Btn>
         <Btn
           variant="danger"
-          disabled={reason.trim().length === 0 || busy}
+          disabled={!isValidDeclineReason(reason) || busy}
           onClick={() => {
             setBusy(true);
             void onDecline(reason.trim()).finally(() => setBusy(false));
@@ -729,7 +729,8 @@ function DelegateDialog({ onDelegate, onClose }: { readonly onDelegate: (input: 
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ok = name.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // C3 (audit row 28) — the delegate rule shared with the server and the app (email ≤254, reason ≤500).
+  const ok = isValidDelegate({ name, email, reason });
   return (
     <Dialog title="Ask someone else to sign" onClose={onClose}>
       <p className="sg-muted">
@@ -745,7 +746,7 @@ function DelegateDialog({ onDelegate, onClose }: { readonly onDelegate: (input: 
       </label>
       <label className="sg-label">
         Reason (optional)
-        <TextBox value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} rows={2} aria-label="Reason (optional)" />
+        <TextBox value={reason} onChange={(e) => setReason(e.target.value.slice(0, DELEGATE_REASON_MAX))} rows={2} aria-label="Reason (optional)" />
       </label>
       {error !== null ? (
         <p className="sg-error" role="alert">
@@ -1713,7 +1714,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
-                        {f.field_type === 'SIGN_DATE' ? ' · filled in at signing' : ''}
+                        {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
                     </span>
                     {done ? (

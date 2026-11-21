@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clampBox, loadPdf, toPdf, toTopLeft, type LoadedPdf, type PdfPageInfo } from '@aramo/document-templates-web/pdf';
+import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_DEFAULTS, placeableFieldTypes } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
 import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel, TextIn } from '../ui';
@@ -22,28 +23,34 @@ import { readinessOf } from './readiness';
 // Editor frame: TOP-LEFT origin in PDF points, page index 0-based. Converted to
 // the wire's bottom-left frame by toPdf on save.
 
-export const TYPES: Record<FieldType, { label: string; glyph: string; w: number; h: number }> = {
-  SIGNATURE: { label: 'Signature', glyph: '✍', w: 220, h: 48 },
-  INITIALS: { label: 'Initials', glyph: 'AB', w: 60, h: 30 },
-  SIGN_DATE: { label: 'Sign date', glyph: '📅', w: 150, h: 22 },
-  SIGNER_NAME: { label: 'Name', glyph: 'Aa', w: 200, h: 22 },
-  TEXT: { label: 'Text', glyph: 'T', w: 220, h: 22 },
-  CHECKBOX: { label: 'Checkbox', glyph: '☑', w: 14, h: 14 },
-  ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓', w: 400, h: 26 },
+// Client Rule Consolidation C3 (audit rows 35–37) — the label and glyph are this screen's; the
+// default size and whether a new field starts required come from @aramo/sign-client's ONE table.
+const LOOK: Record<FieldType, { label: string; glyph: string }> = {
+  SIGNATURE: { label: 'Signature', glyph: '✍' },
+  INITIALS: { label: 'Initials', glyph: 'AB' },
+  SIGN_DATE: { label: 'Sign date', glyph: '📅' },
+  SIGNER_NAME: { label: 'Name', glyph: 'Aa' },
+  TEXT: { label: 'Text', glyph: 'T' },
+  CHECKBOX: { label: 'Checkbox', glyph: '☑' },
+  ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓' },
   // Sign 1.14 — a payment (placed through the API for now): shown locked here and sent back
   // with its amount on save.
-  PAYMENT: { label: 'Payment', glyph: '$', w: 160, h: 26 },
+  PAYMENT: { label: 'Payment', glyph: '$' },
   // M-A12 W1-C.4 — profile text fields (the signer fills them; the app prefills from their profile).
-  FIRST_NAME: { label: 'First name', glyph: 'Fn', w: 150, h: 22 },
-  LAST_NAME: { label: 'Last name', glyph: 'Ln', w: 150, h: 22 },
-  EMAIL: { label: 'Email', glyph: '@', w: 220, h: 22 },
-  COMPANY: { label: 'Company', glyph: 'Co', w: 220, h: 22 },
-  TITLE: { label: 'Title', glyph: 'Ti', w: 180, h: 22 },
+  FIRST_NAME: { label: 'First name', glyph: 'Fn' },
+  LAST_NAME: { label: 'Last name', glyph: 'Ln' },
+  EMAIL: { label: 'Email', glyph: '@' },
+  COMPANY: { label: 'Company', glyph: 'Co' },
+  TITLE: { label: 'Title', glyph: 'Ti' },
 };
+export const TYPES: Record<FieldType, { label: string; glyph: string; w: number; h: number; required: boolean }> = Object.fromEntries(
+  (Object.keys(LOOK) as FieldType[]).map((t) => [t, { ...LOOK[t], w: FIELD_DEFAULTS[t].width, h: FIELD_DEFAULTS[t].height, required: FIELD_DEFAULTS[t].required }]),
+) as Record<FieldType, { label: string; glyph: string; w: number; h: number; required: boolean }>;
 const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
-// PX-V1 §15 — the sender authoring types; the rest are shown but not placeable.
-// M-A6 §2.1 — Name and Checkbox are authorable; Acknowledgement stays engine-only.
-export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE']);
+// Row 35 — the placeable types (the server's authoring list). PAYMENT is offered only when the
+// server reports payments available AND the editor can author a payment's amount; this editor
+// cannot yet, so a PAYMENT (placed through the API) stays shown but locked here.
+export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(placeableFieldTypes({ payments_available: false }));
 
 interface EdField extends FieldConfig {
   key: string;
@@ -198,7 +205,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     if (info === undefined || signer === undefined) return;
     const t = TYPES[tool];
     const box = clampBox({ x: cx - t.w / 2, y: cy - t.h / 2, width: t.w, height: t.h }, info);
-    const f: EdField = { key: newKey(), docId, page, signerId: signer, type: tool, x: box.x, y: box.y, w: box.width, h: box.height, required: true, ...DEFAULT_CONFIG };
+    const f: EdField = { key: newKey(), docId, page, signerId: signer, type: tool, x: box.x, y: box.y, w: box.width, h: box.height, required: t.required, ...DEFAULT_CONFIG };
     commit([...fields, f]);
     setSel(f.key);
     setTool(null);
@@ -460,11 +467,11 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
                   <>
                     <label className="sg-field">
                       <span className="sg-label">Label</span>
-                      <TextIn value={selected.label} maxLength={200} onChange={(e) => configure(selected.key, { label: e.target.value })} data-testid="checkbox-label" />
+                      <TextIn value={selected.label} maxLength={CHECKBOX_LABEL_MAX} onChange={(e) => configure(selected.key, { label: e.target.value })} data-testid="checkbox-label" />
                     </label>
                     <label className="sg-field">
                       <span className="sg-label">Group</span>
-                      <TextIn value={selected.groupKey} maxLength={64} placeholder="No group" onChange={(e) => configure(selected.key, { groupKey: e.target.value })} data-testid="checkbox-group" />
+                      <TextIn value={selected.groupKey} maxLength={CHECKBOX_GROUP_KEY_MAX} placeholder="No group" onChange={(e) => configure(selected.key, { groupKey: e.target.value })} data-testid="checkbox-group" />
                     </label>
                     {selected.groupKey.trim().length > 0 ? (
                       <>

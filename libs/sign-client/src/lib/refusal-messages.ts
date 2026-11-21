@@ -132,8 +132,8 @@ export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   term_not_available: 'That billing option isn’t available for this plan. Choose another option and try again.',
   TERMS_NOT_ACCEPTED: 'Check “I agree” to accept the terms before you continue.',
   PORTAL_NOT_CONFIGURED: 'Billing management will be available soon; contact support@aramo.ai.',
-  personal_paid_checkout_not_enabled: 'Upgrading to a paid plan isn’t available yet.',
-  personal_paid_us_only: 'This plan isn’t available in your country yet.',
+  personal_paid_checkout_not_enabled: 'Upgrading to Standard isn’t available yet.',
+  personal_paid_us_only: 'Standard isn’t available in your country yet.',
   // Account close (Personal Free).
   not_account_owner: 'Only the account owner can close this account.',
   business_account_close_via_organization: 'An organization account is closed by its organization administrator.',

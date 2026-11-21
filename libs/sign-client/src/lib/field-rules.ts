@@ -108,11 +108,13 @@ export function signerFieldUnits<T extends SignerFieldLike>(
   const units: SignerFieldUnit<T>[] = [];
   const groups = new Map<string, T[]>();
   for (const f of fields) {
-    if (f.server_filled === true || isServerFilledName(f)) continue;
+    // Sign 1.14 — a PAYMENT is always a unit (the signer pays; the server then fills it), even
+    // though the signer view marks it server_filled.
     if (isPaymentField(f)) {
       units.push({ fields: [f], done: state.filled(f), reason: 'payment_required' });
       continue;
     }
+    if (f.server_filled === true || isServerFilledName(f)) continue;
     const g = checkboxGroupOf(f);
     if (g !== null) {
       groups.set(g, [...(groups.get(g) ?? []), f]);

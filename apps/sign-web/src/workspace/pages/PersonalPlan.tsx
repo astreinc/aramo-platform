@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import { allowanceTermsLine, planFacts, storageLabel } from '@aramo/sign-client';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog } from '../api';
-import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, checkoutPageText, formatMinor, initialTerm, termDisclosureText, termLabel, type TermCode } from '../catalog';
+import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_PLAN_KEY, checkoutPageText, formatMinor, initialTerm, termDisclosureText, termLabel, type TermCode } from '../catalog';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 import { checkoutReturn } from './Billing';
@@ -11,9 +12,11 @@ import { TermChoice } from './TermChoice';
 import { BUSINESS_SIGNUP_URL, UsageRows } from './PersonalAllowance';
 
 // Aramo-Sign-Catalog-v2-Pricing-and-Features-Directive-v1_0-LOCKED §4.3 / §4.4 — the Personal
-// account's plan: Free ($0, 5 a month, up to 2 a day, 15 MB, no templates) and the in-place
-// upgrade to Standard ($10/month, 25 a month, no daily limit, 1 GB, 12-month commitment) through
-// the Stripe checkout (POST /v1/sign/billing/checkout). The backend is the authority: a return
+// account's plan (Free) and the in-place upgrade (Standard) through the Stripe checkout
+// Client Rule Consolidation C3 (audit row 16): every price, document count and storage figure
+// on this page comes from the server (/account and GET /v1/sign/billing/plans); a figure the
+// server did not send is left out, never filled in from code.
+// (the checkout (POST /v1/sign/billing/checkout). The backend is the authority: a return
 // from checkout never asserts the upgrade; the page waits for /account to report the new plan.
 // Checkout needs the Personal terms accepted ({ plan_key, accept_terms: true }); `upgrade: null`
 // on /account (feature off, or nothing to offer) hides the offer entirely.
@@ -71,6 +74,8 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const [agreed, setAgreed] = useState(false);
   // The Personal terms a checkout must accept (GET /plans is tenant-kind aware); undefined = loading.
   const [terms, setTerms] = useState<BillingCatalog['terms'] | undefined>(undefined);
+  // C3 — the catalog plans (the Free and upgrade plans' facts); null = not read / unavailable.
+  const [plans, setPlans] = useState<BillingCatalog['plans'] | null>(null);
   // Billing terms — the option chosen on a Standard offer that sells Monthly and Annual (null: the default).
   const [termChoice, setTermChoice] = useState<TermCode | null>(null);
 
@@ -91,25 +96,43 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const showUpgrade = account !== null && onFree && offer !== null;
   const upgradeOpen = offer === undefined || offer?.available === true;
   useEffect(() => {
-    if (!showUpgrade || !upgradeOpen || terms !== undefined) return;
+    if (account === null || terms !== undefined) return;
     billingApi
       .plans()
-      .then((c) => setTerms(c.terms))
-      .catch(() => setTerms(null));
-  }, [showUpgrade, upgradeOpen, terms]);
+      .then((c) => {
+        setTerms(c.terms);
+        setPlans(c.plans);
+      })
+      .catch(() => {
+        setTerms(null);
+        setPlans(null);
+      });
+  }, [account, terms]);
 
   if (error !== null) return <ErrorBox>{error}</ErrorBox>;
   if (account === null) return <Loading label="Loading your plan…" />;
 
   const sub = account.subscription;
   const allowance = account.allowance.subscribed ? account.allowance : null;
-  const price = offer?.price_minor ?? STANDARD_PERSONAL_OFFER.price_minor;
+  const price = offer?.price_minor ?? null;
   const currency = offer?.currency ?? 'USD';
   const gateway = offer?.billing_gateway ?? 'STRIPE';
   const managedByRazorpay = account.managed_by === 'RAZORPAY';
   const currentPrice = account.display_price ?? sub?.list_price ?? null;
-  const commitment = offer != null ? offer.commitment_months : STANDARD_PERSONAL_OFFER.commitment_months;
-  const upgradeKey = offer?.plan_key ?? STANDARD_PERSONAL_OFFER.plan_key;
+  const commitment = offer?.commitment_months ?? null;
+  const upgradeKey = offer?.plan_key ?? STANDARD_PERSONAL_PLAN_KEY;
+  // C3 — the plans' facts from the catalog (absent = not shown).
+  const upgradePlan = plans?.find((p) => p.key === upgradeKey) ?? null;
+  const upgradeName = upgradePlan?.name ?? 'Standard';
+  const upgradeFacts = planFacts(upgradePlan);
+  const currentFacts = planFacts(plans?.find((p) => p.key === (planKey ?? FREE_PERSONAL_PLAN_KEY)) ?? null);
+  const freeTerms = allowanceTermsLine({
+    monthly: allowance?.limit ?? null,
+    daily: allowance?.daily?.limit ?? null,
+    storageBytes: account.storage != null && !account.storage.unlimited ? account.storage.limit : null,
+    templates: currentFacts.templates,
+  });
+  const priceText = (minor: number | null, cur: string): string => (minor === null ? '' : `${formatMinor(minor, cur)}/month`);
   // Billing terms — a Standard offer selling two terms shows the Monthly / Annual choice (Monthly first).
   const offerTerms = (offer?.billing_terms ?? []).map((t) => ({ term: t.term, amount_minor: t.price.amount_minor, currency: t.price.currency, commitment_months: t.commitment_months, purchasable: t.purchasable, default: t.default }));
   const twoTerms = offerTerms.length > 1;
@@ -138,9 +161,9 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
             <strong>{onFree ? 'Free' : (sub?.plan_name ?? 'Standard')}</strong>
             <span className="sg-muted">{onFree ? ' · $0' : currentPrice != null ? ` · ${formatMinor(currentPrice.amount_minor, currentPrice.currency)}/month` : ''}</span>
           </div>
-          {onFree ? (
+          {onFree && freeTerms !== '' ? (
             <div className="sg-muted" data-testid="personal-plan-free-terms">
-              5 documents a month, up to 2 a day · 15 MB storage · templates aren’t included
+              {freeTerms}
             </div>
           ) : null}
           {!onFree && sub?.commitment_end != null ? (
@@ -183,16 +206,16 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
       {showUpgrade ? (
         <section className="sg-card" data-testid="personal-plan-upgrade">
           <div className="sg-card__head">
-            Upgrade to {STANDARD_PERSONAL_OFFER.name}
+            Upgrade to {upgradeName}
             <span className="sg-card__end">
-              <strong>{chosen !== undefined ? formatMinor(chosen.amount_minor, chosen.currency) : formatMinor(price, currency)}/month</strong>
+              <strong>{chosen !== undefined ? priceText(chosen.amount_minor, chosen.currency) : priceText(price, currency)}</strong>
             </span>
           </div>
           <div className="sg-card__body sg-grid" style={{ gap: 10 }}>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
-              <li>{STANDARD_PERSONAL_OFFER.monthly_documents} documents a month</li>
-              <li>No daily limit</li>
-              <li>{STANDARD_PERSONAL_OFFER.storage} storage</li>
+              {typeof upgradeFacts.monthlyDocuments === 'number' ? <li>{upgradeFacts.monthlyDocuments} documents a month</li> : null}
+              {upgradeFacts.monthlyDocuments === 'unlimited' ? <li>Unlimited documents</li> : null}
+              {typeof upgradeFacts.storageBytes === 'number' ? <li>{storageLabel(upgradeFacts.storageBytes)} storage</li> : null}
               <li>For individuals and sole proprietors</li>
             </ul>
             {twoTerms ? <TermChoice name="personal-term" terms={offerTerms} value={chosenCode} onChange={setTermChoice} testId="personal-plan-terms-choice" /> : null}
@@ -200,8 +223,8 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
               {chosen !== undefined
                 ? `${termDisclosureText(chosen, offerTerms.find((t) => t.term === 'MONTHLY'))} No partial refunds. You then return to Free.`
                 : commitment !== null
-                ? `${formatMinor(price, currency)}/month, ${commitment}-month commitment billed monthly. Renews month to month after the commitment. Cancel online in Settings, effective at the end of the commitment; no partial refunds. You then return to Free.`
-                : `${formatMinor(price, currency)}/month, billed monthly. Cancel online in Settings; you then return to Free.`}{' '}
+                ? `${price !== null ? `${priceText(price, currency)}, ` : ''}${commitment}-month commitment billed monthly. Renews month to month after the commitment. Cancel online in Settings, effective at the end of the commitment; no partial refunds. You then return to Free.`
+                : `${price !== null ? `${priceText(price, currency)}, billed` : 'Billed'} monthly. Cancel online in Settings; you then return to Free.`}{' '}
               Plus applicable tax. Your documents stay in this account.
             </div>
             {!upgradeOpen ? (
@@ -229,7 +252,7 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
                   onClick={() => act(() => (chosen !== undefined ? billingApi.checkout(upgradeKey, true, undefined, chosen.term) : billingApi.checkout(upgradeKey, true)))}
                   data-testid="personal-plan-upgrade-btn"
                 >
-                  {busy ? 'Opening checkout…' : `Upgrade to ${STANDARD_PERSONAL_OFFER.name}${chosen !== undefined ? ` (${termLabel(chosen.term)})` : ''}`}
+                  {busy ? 'Opening checkout…' : `Upgrade to ${upgradeName}${chosen !== undefined ? ` (${termLabel(chosen.term)})` : ''}`}
                 </Btn>
                 <p className={gateway === 'RAZORPAY' ? 'sg-note' : 'sg-help'} data-testid="personal-plan-checkout-page">
                   {checkoutPageText(gateway)}

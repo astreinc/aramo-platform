@@ -110,6 +110,7 @@ describe('signerFieldUnits (row 38: one rule for web, mobile and the server)', (
     ['required box checked', [{ id: 'a', field_type: 'CHECKBOX', required: true, v: 'true' }], [['a', true, 'checkbox_required_unchecked']]],
     ['required box false', [{ id: 'a', field_type: 'CHECKBOX', required: true, v: 'false' }], [['a', false, 'checkbox_required_unchecked']]],
     ['payment, even optional', [{ id: 'a', field_type: 'PAYMENT', required: false }], [['a', false, 'payment_required']]],
+    ['payment marked server_filled is still the signer’s to pay', [{ id: 'a', field_type: 'PAYMENT', required: true, server_filled: true }], [['a', false, 'payment_required']]],
     [
       'a group counts once',
       [

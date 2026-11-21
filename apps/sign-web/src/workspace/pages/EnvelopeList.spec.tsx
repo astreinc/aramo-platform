@@ -1,4 +1,5 @@
 import { ApiError } from '@aramo/fe-foundation';
+import { NO_SENDER_ACTIONS, type SenderActionKey } from '@aramo/sign-client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -44,6 +45,9 @@ vi.mock('../workspace', () => ({
 
 import { EnvelopeList } from './EnvelopeList';
 
+// C3 — the row's server-sent actions (anything not named is false).
+const acts = (...keys: SenderActionKey[]) => ({ ...NO_SENDER_ACTIONS, ...Object.fromEntries(keys.map((k) => [k, true])) });
+
 function row(id: string, over: Partial<EnvelopeRow> = {}): EnvelopeRow {
   return {
     id, subject: `Agreement ${id}`, status: 'COMPLETED', created_at: '2026-10-01T00:00:00Z', sent_at: '2026-10-01T00:00:00Z', completed_at: '2026-10-02T00:00:00Z',
@@ -61,12 +65,14 @@ function show(folder?: 'deleted') {
 afterEach(() => vi.clearAllMocks());
 
 describe('Envelope list — Deleted folder', () => {
-  it('offers Delete only on terminal envelopes and confirms before moving one to Deleted', async () => {
-    list.mockResolvedValue({ items: [row('a'), row('b', { status: 'IN_PROGRESS', completed_at: null })], counts: { COMPLETED: 1, IN_PROGRESS: 1 } });
+  it('offers Delete only where the server allows it and confirms before moving one to Deleted', async () => {
+    list.mockResolvedValue({ items: [row('a', { actions: acts('delete', 'download') }), row('b', { status: 'IN_PROGRESS', completed_at: null, actions: acts('void') })], counts: { COMPLETED: 1, IN_PROGRESS: 1 } });
     del.mockResolvedValue({ deleted: true });
     show();
     expect(await screen.findByTestId('delete-a')).toBeInTheDocument();
     expect(screen.queryByTestId('delete-b')).toBeNull();
+    // An open envelope the caller may change shows Delete disabled with the reason (UAT DEL-09).
+    expect(screen.getByTestId('delete-disabled-b')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('delete-a'));
     expect(await screen.findByText(/hidden for your organization only/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('confirm-envelope-action'));
@@ -78,8 +84,8 @@ describe('Envelope list — Deleted folder', () => {
   it('a draft gets the trash icon: confirm, then it is deleted outright (not moved to Deleted)', async () => {
     list.mockResolvedValue({
       items: [
-        row('f', { status: 'DRAFT', sent_at: null, completed_at: null }),
-        row('g', { status: 'DRAFT', sent_at: null, completed_at: null, source_application: 'aramo-ats' }),
+        row('f', { status: 'DRAFT', sent_at: null, completed_at: null, actions: acts('edit', 'send', 'delete_draft') }),
+        row('g', { status: 'DRAFT', sent_at: null, completed_at: null, source_application: 'aramo-ats', actions: acts() }),
       ],
       counts: { DRAFT: 2 },
     });
@@ -101,7 +107,7 @@ describe('Envelope list — Deleted folder', () => {
 
   it('lists the Deleted folder with Restore, and never offers Restore after a purge ran', async () => {
     list.mockResolvedValue({
-      items: [row('c'), row('d', { purge: { state: 'EXECUTED', level: 'DOCUMENTS', due_at: null, executed_at: '2026-10-30T00:00:00Z' } })],
+      items: [row('c', { actions: acts('restore', 'download') }), row('d', { purge: { state: 'EXECUTED', level: 'DOCUMENTS', due_at: null, executed_at: '2026-10-30T00:00:00Z' } })],
       counts: { COMPLETED: 2 },
     });
     restore.mockResolvedValue({ restored: true });
@@ -117,6 +123,15 @@ describe('Envelope list — Deleted folder', () => {
     await waitFor(() => expect(restore).toHaveBeenCalledWith('c'));
   });
 
+  it('C3 — a row without server actions (older server) offers no action at all', async () => {
+    list.mockResolvedValue({ items: [row('h'), row('i', { status: 'DRAFT', sent_at: null, completed_at: null })], counts: { COMPLETED: 1, DRAFT: 1 } });
+    show();
+    expect(await screen.findByTestId('envelope-row-h')).toBeInTheDocument();
+    for (const id of ['delete-h', 'delete-draft-i', 'delete-disabled-h', 'sign-h', 'restore-h']) expect(screen.queryByTestId(id)).toBeNull();
+    // The draft opens the read-only detail, not the editor.
+    expect(screen.getByRole('link', { name: 'Agreement i' })).toHaveAttribute('href', '/sign/envelopes/i');
+  });
+
   it('tags an envelope whose purge is scheduled', async () => {
     list.mockResolvedValue({ items: [row('e', { purge: { state: 'QUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } })], counts: { COMPLETED: 1 } });
     show();
@@ -129,7 +144,7 @@ describe('Envelope list — Waiting for you', () => {
   const open = (id: string, over: Partial<EnvelopeRow> = {}) => row(id, { status: 'SENT', completed_at: null, ...over });
 
   it('labels an awaiting_you envelope "Waiting for you" with Sign; others keep their status (rows 1, 5)', async () => {
-    list.mockResolvedValue({ items: [open('me', { awaiting_you: true }), open('them', { awaiting_you: false }), open('old')], counts: { SENT: 3 } });
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, actions: acts('sign') }), open('them', { awaiting_you: false }), open('old')], counts: { SENT: 3 } });
     show();
     expect(await screen.findByTestId('awaiting-you-me')).toHaveTextContent('Waiting for you');
     expect(screen.getByTestId('sign-me')).toBeInTheDocument();
@@ -141,7 +156,7 @@ describe('Envelope list — Waiting for you', () => {
   });
 
   it('Sign opens the server’s my_inbox_item_id through inbox signing (rows 1, 2)', async () => {
-    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: 'opaque-handle-1' })], counts: { SENT: 1 } });
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: 'opaque-handle-1', actions: acts('sign') })], counts: { SENT: 1 } });
     inboxSign.mockResolvedValue({ signing_url: 'https://sign.example/s/tok-i', expires_at: '2026-11-03T01:00:00Z' });
     const assign = vi.fn();
     vi.stubGlobal('location', { ...window.location, assign });
@@ -155,7 +170,7 @@ describe('Envelope list — Waiting for you', () => {
   });
 
   it('a changed inbox item says so and opens the inbox', async () => {
-    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: 'stale' })], counts: { SENT: 1 } });
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: 'stale', actions: acts('sign') })], counts: { SENT: 1 } });
     inboxSign.mockRejectedValue(new ApiError(404, 'Not in your inbox', 'NOT_FOUND', { reason: 'inbox_item_not_found' }));
     show();
     fireEvent.click(await screen.findByTestId('sign-me'));
@@ -163,26 +178,25 @@ describe('Envelope list — Waiting for you', () => {
     expect(navigate).toHaveBeenCalledWith('/sign/inbox');
   });
 
-  it('without my_inbox_item_id, Sign uses Sign now for a recipient assigned to the sender (row 2)', async () => {
-    list.mockResolvedValue({ items: [open('me', { awaiting_you: true })], counts: { SENT: 1 } });
-    detail.mockResolvedValue({ recipients: [{ id: 'r-other', assigned_to_me: false, can_remind: false }, { id: 'r-me', assigned_to_me: true, can_remind: true }] });
+  it('without my_inbox_item_id, Sign opens a self-sign session; the server picks the recipient bound to the sender (row 2)', async () => {
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, actions: acts('sign') })], counts: { SENT: 1 } });
     selfSign.mockResolvedValue({ session_origin: 'SELF', signer_id: 'r-me', token: 'tok-1', expires_at: '2026-11-03T01:00:00Z' });
     const assign = vi.fn();
     vi.stubGlobal('location', { ...window.location, assign });
     show();
     fireEvent.click(await screen.findByTestId('sign-me'));
-    await waitFor(() => expect(selfSign).toHaveBeenCalledWith('me', 'r-me'));
+    await waitFor(() => expect(selfSign).toHaveBeenCalledWith('me'));
+    expect(detail).not.toHaveBeenCalled();
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/s/tok-1'));
     expect(navigate).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
-  it('without my_inbox_item_id or an assigned recipient, Sign opens the "Waiting for me" inbox (row 1)', async () => {
+  it('C3 — awaiting_you without the server’s actions.sign shows the label but no Sign (row 1)', async () => {
     list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: null })], counts: { SENT: 1 } });
-    detail.mockResolvedValue({ recipients: [{ id: 'r-typed', assigned_to_me: false, can_remind: true }] });
     show();
-    fireEvent.click(await screen.findByTestId('sign-me'));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/sign/inbox'));
+    expect(await screen.findByTestId('awaiting-you-me')).toHaveTextContent('Waiting for you');
+    expect(screen.queryByTestId('sign-me')).toBeNull();
     expect(selfSign).not.toHaveBeenCalled();
   });
 });

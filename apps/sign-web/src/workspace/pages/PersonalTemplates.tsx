@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { templateAccess, type TemplateAccess } from '@aramo/sign-client';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   TemplateStudio,
@@ -76,13 +77,10 @@ export function personalStudioDataSource(input: { listHref: string; canEdit: boo
   };
 }
 
-type Access = 'unavailable' | 'upgrade' | 'no-permission' | 'ok';
-
-export function personalTemplateAccess(ctx: ReturnType<typeof useWorkspace>['ctx']): Access {
-  if (ctx.features?.templates !== true) return 'unavailable';
-  if (ctx.template_plan != null && ctx.template_plan !== 'INCLUDED') return 'upgrade';
-  if (ctx.permissions.templates !== true || ctx.template_studio !== true) return 'no-permission';
-  return 'ok';
+// Client Rule Consolidation C3 (audit row 14) — the one templates-access rule
+// (@aramo/sign-client); the Personal Studio needs the author grant (template_studio) too.
+export function personalTemplateAccess(ctx: ReturnType<typeof useWorkspace>['ctx']): TemplateAccess {
+  return templateAccess(ctx, 'studio');
 }
 
 function Page({ children, tag }: { children: ReactNode; tag?: ReactNode }) {
@@ -97,7 +95,7 @@ function Page({ children, tag }: { children: ReactNode; tag?: ReactNode }) {
   );
 }
 
-function AccessState({ access }: { access: Exclude<Access, 'ok'> }) {
+function AccessState({ access }: { access: Exclude<TemplateAccess, 'ok'> }) {
   const { base, ctx } = useWorkspace();
   const state = (title: string, body: ReactNode, tag: string, testId: string) => (
     <Page tag={<span className="sg-tag sg-tag--grey">{tag}</span>}>
