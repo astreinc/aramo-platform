@@ -18,7 +18,7 @@ export const PERSONAL_PLAN_HREF = '/personal/settings/billing';
 // Client Rule Consolidation C3 (audit row 16) — the price is the server's offer
 // (/account `upgrade`); with no offer data the link carries no number.
 export function PersonalUpgradeLink({ standard = true, offer = null }: { standard?: boolean; offer?: BillingAccount['upgrade'] } = {}) {
-  const price = offer?.price_minor != null ? `${formatMinor(offer.price_minor, offer.currency ?? 'USD')}/month, ` : '';
+  const price = offer?.price_minor != null ? `${formatMinor(offer.price_minor, offer.currency ?? 'USD')}/month` : '';
   if (!standard) {
     return (
       <p className="sg-help" data-testid="personal-upgrade">
@@ -31,8 +31,8 @@ export function PersonalUpgradeLink({ standard = true, offer = null }: { standar
       Need to send more?{' '}
       <a href={PERSONAL_PLAN_HREF} data-testid="personal-upgrade-standard">
         Upgrade your plan
-      </a>{' '}
-      ({price}no daily limit). For a team,{' '}
+      </a>
+      {price !== '' ? ` (${price})` : ''}. For a team,{' '}
       <a href={BUSINESS_SIGNUP_URL}>Create a Business organization</a>.
     </p>
   );

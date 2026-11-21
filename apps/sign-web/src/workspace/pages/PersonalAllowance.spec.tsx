@@ -108,7 +108,7 @@ describe('Personal allowance in the workspace', () => {
     // Catalog v2 §4.3 — the primary way to send more is the in-place upgrade to Standard.
     expect(screen.getByTestId('personal-upgrade-standard')).toHaveAttribute('href', '/personal/settings/billing');
     // C3 (audit row 16) — no plan fact from code: without a server offer there is no price.
-    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan (no daily limit)');
+    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan. For a team');
     expect(screen.getByTestId('personal-upgrade')).not.toHaveTextContent('$');
     unmount();
     // The backend's next_available_at is shown as the exact time of the next send.
@@ -123,7 +123,7 @@ describe('Personal allowance in the workspace', () => {
     const offered = { ...account(5, 0), upgrade: { available: true, plan_key: 'aramo-sign-standard-personal-v1', price_minor: 1200, commitment_months: null, currency: 'USD' } };
     render(<PersonalAllowance loader={() => Promise.resolve(offered)} />);
     expect(await screen.findByText(/You’ve used all 5 documents this month\. Your allowance resets on/)).toBeInTheDocument();
-    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan ($12/month, no daily limit)');
+    expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Upgrade your plan ($12/month). For a team');
   });
 
   it('the chip reads "{n} of 5 left this month · {n} of 2 left today": green, amber at 0 today, red at 0 this month', () => {

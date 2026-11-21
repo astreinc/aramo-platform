@@ -32,7 +32,8 @@ type PendingAction = 'delete' | 'restore' | 'delete-draft';
 const TABS: { key: string; label: string; statuses: EnvelopeStatus[] | null }[] = [
   { key: 'all', label: 'All', statuses: null },
   { key: 'drafts', label: 'Drafts', statuses: ['DRAFT'] },
-  { key: 'waiting', label: 'Waiting for others', statuses: ['SENT', 'IN_PROGRESS'] },
+  // C3 (audit row 1) — the open set from @aramo/sign-client's envelope lifecycle.
+  { key: 'waiting', label: 'Waiting for others', statuses: [...SIGNABLE_ENVELOPE_STATUSES] as EnvelopeStatus[] },
   { key: 'completed', label: 'Completed', statuses: ['COMPLETED'] },
   { key: 'declined', label: 'Declined', statuses: ['DECLINED'] },
   { key: 'voided', label: 'Voided', statuses: ['VOIDED'] },
