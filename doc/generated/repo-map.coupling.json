@@ -34362,6 +34362,11 @@
       "status": "production",
       "to": "mobile/sign/metro.config.js"
     },
+    {
+      "from": "libs/sign-client/src/lib/turn-rules.ts",
+      "status": "production",
+      "to": "libs/sign/src/lib/domain/recipients.ts"
+    },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/tsconfig.lib.json" },
     {
