@@ -969,8 +969,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Void a non-terminal envelope.
-         * @description A reason is required. Requires sign:envelope:send. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * Void a sent envelope.
+         * @description A reason is required. Requires sign:envelope:send. Only a SENT or IN_PROGRESS envelope is voided; a DRAFT is deleted instead (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason envelope_is_draft; Client Rule Consolidation C3). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         post: operations["voidSenderEnvelope"];
         delete?: never;
@@ -4757,6 +4757,8 @@ export interface components {
              * @description Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
              */
             reminder_available_at: string | null;
+            /** @description Client Rule Consolidation C3 - the caller may start an in-person (hosted) session for this recipient now (actions.host_in_person and an in-person signer who has not signed or declined, whose turn it is). Present on the envelope detail only. */
+            hostable?: boolean;
             /**
              * Format: uuid
              * @description Feature-Parity §1.17 — for a WITNESS, the recipient it attests for; null otherwise.
@@ -4887,7 +4889,7 @@ export interface components {
             send: boolean;
             /** @description DELETE /v1/sign/sender/envelopes/{id} - a DRAFT the caller may change, sign:envelope:create. */
             delete_draft: boolean;
-            /** @description POST .../void - any envelope not yet completed, declined, voided or expired (a DRAFT included) that the caller may change, sign:envelope:send. */
+            /** @description POST .../void - a SENT or IN_PROGRESS envelope the caller may change, sign:envelope:send (a DRAFT is deleted, never voided). */
             void: boolean;
             /** @description POST .../remind - signing open, not a document signed by the sender alone, and a signer who may be reminded now. */
             remind: boolean;

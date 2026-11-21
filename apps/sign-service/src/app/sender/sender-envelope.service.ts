@@ -58,6 +58,16 @@ import {
   PROFILE_TEXT_FIELD_TYPES,
   SignUserProfileRepository,
 } from '@aramo/sign';
+import {
+  CHECKBOX_GROUP_KEY_MAX,
+  CHECKBOX_LABEL_MAX,
+  EMAIL_MAX,
+  EMAIL_PATTERN,
+  ENVELOPE_SUBJECT_MAX,
+  MAX_SIGNERS,
+  SENDER_FIELD_TYPES,
+  VOID_REASON_MAX,
+} from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
@@ -87,6 +97,7 @@ import {
   deleteDraftStateRefusal,
   downloadStateRefusal,
   enforce,
+  hostableRecipient,
   remindModeRefusal,
   sendStateRefusal,
   senderActions,
@@ -115,20 +126,22 @@ import {
 // ACKNOWLEDGEMENT stays engine-only (the S2S and Sign API keep all seven).
 // Aramo Sign Mobile M-A12 W1-C.4 — + the profile auto-fill text types (FIRST_NAME,
 // LAST_NAME, EMAIL, COMPANY, TITLE): placed by the sender, filled by the signer.
-export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', ...PROFILE_TEXT_FIELD_TYPES] as const;
+export const FIELD_TYPES = SENDER_FIELD_TYPES;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
 const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
 const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
-const MAX_LABEL = 200;
-const MAX_GROUP_KEY = 64;
+const MAX_LABEL = CHECKBOX_LABEL_MAX;
+const MAX_GROUP_KEY = CHECKBOX_GROUP_KEY_MAX;
 const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
 // The seven engine field types (the S2S and Sign API paths accept all of them).
 const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT', ...PROFILE_TEXT_FIELD_TYPES]);
-export const MAX_SIGNERS = 10;
+// Client Rule Consolidation C3 — the limits and patterns below come from @aramo/sign-client
+// (one copy for the server and both Sign clients).
+export { MAX_SIGNERS };
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
 const MAX_FIELDS = 500;
-const MAX_TITLE = 200;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_TITLE = ENVELOPE_SUBJECT_MAX;
+const EMAIL_RE = EMAIL_PATTERN;
 
 // The Sign application's own key (SignatureEnvelope.source_application).
 export { SIGN_APPLICATION } from './envelope-actions.js';
@@ -450,7 +463,16 @@ export class SenderEnvelopeService {
   async detail(auth: AuthContextType, envelope_id: string, requestId: string) {
     const { view, env } = await this.describeWith(auth, envelope_id, requestId, true);
     const actions: SenderActions = await this.actionsOf(auth, env, requestId);
-    return { ...view, actions };
+    // Client Rule Consolidation C3 (audit row 13) — which in-person signer the caller may host
+    // now: the host_in_person action AND the per-recipient rule the hosted-session route
+    // enforces (envelope-actions.ts hostableRecipient). Clients never re-derive it.
+    const actionEnv = actionEnvelopeOf(env);
+    const now = new Date();
+    const recipients = view.recipients.map((r) => {
+      const row = actionEnv.recipients.find((x) => x.id === r.id);
+      return { ...r, hostable: actions.host_in_person && row !== undefined && hostableRecipient(actionEnv, row, now) };
+    });
+    return { ...view, recipients, actions };
   }
 
   // C1 — the detail's `actions`: the request facts, this tenant's Deleted-folder membership
@@ -752,7 +774,7 @@ export class SenderEnvelopeService {
     }
     if (o['email'] !== undefined || !partial) {
       const email = typeof o['email'] === 'string' ? o['email'].trim() : '';
-      if (!EMAIL_RE.test(email) || email.length > 254) throw bad(requestId, 'A contact needs a valid email', { field: 'email', reason: 'invalid_contact_email' });
+      if (!EMAIL_RE.test(email) || email.length > EMAIL_MAX) throw bad(requestId, 'A contact needs a valid email', { field: 'email', reason: 'invalid_contact_email' });
       out.email = email;
     }
     if (o['organization'] !== undefined) {
@@ -1153,7 +1175,7 @@ export class SenderEnvelopeService {
       // M-A5 §3.5 — email is optional for an in-person signer only.
       const email = emailRaw.length === 0 && kind === 'IN_PERSON_SIGNER' ? null : emailRaw;
       if (name.length === 0 || name.length > MAX_TITLE) throw bad(requestId, `recipient ${i + 1} needs a name`, { index: i, field: 'name' });
-      if (email !== null && (!EMAIL_RE.test(email) || email.length > 254)) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
+      if (email !== null && (!EMAIL_RE.test(email) || email.length > EMAIL_MAX)) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
       // M-A5 §1.4 / §3.5 — emails are distinct across all kinds; a missing email is never a duplicate.
       if (email !== null) {
         const k = email.toLowerCase();
@@ -1363,7 +1385,7 @@ export class SenderEnvelopeService {
   // ≥1 signing recipient, every signing recipient has at least one SIGNATURE field,
   // and (M-A5 §1.5) a recipient who receives a copy has no fields.
   readiness(
-    d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'> & { routing_mode?: string },
+    d: Pick<Awaited<ReturnType<SenderEnvelopeService['describe']>>, 'documents' | 'recipients' | 'fields'> & { routing_mode?: string },
   ): { ok: boolean; problems: string[] } {
     const problems: string[] = [];
     // Feature-Parity §1.17 — when signing in order, a witness comes after the signer it witnesses.
@@ -1491,7 +1513,7 @@ export class SenderEnvelopeService {
     await this.assertMayChange(auth, envelope_id, requestId);
     const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
     if (reason.length === 0) throw bad(requestId, 'A reason is required to void an envelope');
-    if (reason.length > 500) throw bad(requestId, 'reason must be at most 500 characters');
+    if (reason.length > VOID_REASON_MAX) throw bad(requestId, `reason must be at most ${VOID_REASON_MAX} characters`);
     const d = await this.describe(auth, envelope_id, requestId, false);
     // C1 — the void rule (envelope-actions.ts).
     enforce(voidStateRefusal(d), requestId);

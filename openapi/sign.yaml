@@ -2261,9 +2261,10 @@ paths:
   /v1/sign/sender/envelopes/{id}/void:
     post:
       operationId: voidSenderEnvelope
-      summary: Void a non-terminal envelope.
+      summary: Void a sent envelope.
       description: >
-        A reason is required. Requires sign:envelope:send.
+        A reason is required. Requires sign:envelope:send. Only a SENT or IN_PROGRESS envelope is voided; a DRAFT is
+        deleted instead (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason envelope_is_draft; Client Rule Consolidation C3).
         Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
@@ -9879,6 +9880,12 @@ components:
           type: [string, 'null']
           format: date-time
           description: Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
+        hostable:
+          type: boolean
+          description: >-
+            Client Rule Consolidation C3 - the caller may start an in-person (hosted) session for this recipient now
+            (actions.host_in_person and an in-person signer who has not signed or declined, whose turn it is). Present on
+            the envelope detail only.
         witness_for_signer_id:
           type: [string, 'null']
           format: uuid
@@ -10098,7 +10105,7 @@ components:
           description: DELETE /v1/sign/sender/envelopes/{id} - a DRAFT the caller may change, sign:envelope:create.
         void:
           type: boolean
-          description: POST .../void - any envelope not yet completed, declined, voided or expired (a DRAFT included) that the caller may change, sign:envelope:send.
+          description: POST .../void - a SENT or IN_PROGRESS envelope the caller may change, sign:envelope:send (a DRAFT is deleted, never voided).
         remind:
           type: boolean
           description: POST .../remind - signing open, not a document signed by the sender alone, and a signer who may be reminded now.

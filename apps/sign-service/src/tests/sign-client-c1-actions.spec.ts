@@ -306,9 +306,10 @@ describe('C1 predicates — the actions matrix', () => {
     expect(SENDER_ACTION_KEYS).toHaveLength(13);
   });
 
-  it('owner of a DRAFT: edit, send, delete the draft and void; nothing that needs a sent or finished envelope', () => {
+  // C3 DV-void-draft — a DRAFT is deleted, never voided (route and predicate together).
+  it('owner of a DRAFT: edit, send and delete the draft; never void; nothing that needs a sent or finished envelope', () => {
     expect(act('owner_sender', { status: 'DRAFT' })).toEqual({
-      edit: true, send: true, delete_draft: true, void: true, remind: false, delete: false, restore: false,
+      edit: true, send: true, delete_draft: true, void: false, remind: false, delete: false, restore: false,
       download: false, certificate: false, sign: false, host_in_person: false, purge: false, dequeue_purge: false,
     });
   });
@@ -322,9 +323,11 @@ describe('C1 predicates — the actions matrix', () => {
   });
 
   it("S-1 — another member's envelope: a Sender can change nothing; a Sign Admin may", () => {
-    const changes: SenderActionKey[] = ['edit', 'send', 'delete_draft', 'void'];
+    const changes: SenderActionKey[] = ['edit', 'send', 'delete_draft'];
     for (const k of changes) expect(act('other_sender', { status: 'DRAFT' })[k]).toBe(false);
     for (const k of changes) expect(act('admin', { status: 'DRAFT' })[k]).toBe(true);
+    expect(act('other_sender', { status: 'SENT' }).void).toBe(false);
+    expect(act('admin', { status: 'SENT' }).void).toBe(true);
     expect(act('other_sender', { status: 'COMPLETED' })).toMatchObject({ delete: false, download: true });
     expect(act('admin', { status: 'COMPLETED' })).toMatchObject({ delete: true, purge: true });
   });
@@ -344,13 +347,13 @@ describe('C1 predicates — the actions matrix', () => {
     expect(act('admin', { status: 'COMPLETED', source_application: 'aramo-ats' }).download).toBe(true);
   });
 
-  it('every status: edit / send / delete_draft only for DRAFT; void for anything not finished; remind while signing is open', () => {
+  it('every status: edit / send / delete_draft only for DRAFT; void only while signing is open; remind while signing is open', () => {
     for (const status of STATUSES) {
       const out = act('owner_sender', { status });
       expect(out.edit).toBe(status === 'DRAFT');
       expect(out.send).toBe(status === 'DRAFT');
       expect(out.delete_draft).toBe(status === 'DRAFT');
-      expect(out.void).toBe(['DRAFT', 'SENT', 'IN_PROGRESS'].includes(status));
+      expect(out.void).toBe(['SENT', 'IN_PROGRESS'].includes(status));
       expect(out.remind).toBe(['SENT', 'IN_PROGRESS'].includes(status));
       expect(out.delete).toBe(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED'].includes(status));
       expect(out.download).toBe(status === 'COMPLETED');
@@ -509,6 +512,25 @@ describe('C1-1 — list rows and the detail carry actions from the same predicat
     const sent = await harness(BASE).svc.detail(ACTORS.owner_sender, ENV_ID, RID);
     expect(sent.recipients[0]!.can_remind).toBe(true);
     expect(sent.actions.remind).toBe(true);
+  });
+});
+
+// C3 (audit row 13) — the detail names which in-person signer the caller may host now, from
+// host_in_person and the per-recipient rule the hosted-session route enforces.
+describe('C3 — per-recipient hostable on the detail', () => {
+  it.each<[string, Partial<Fixture>, ActorKey, boolean]>([
+    ['owner, open envelope, in-person signer', { in_person_signer: true }, 'owner_sender', true],
+    ['an emailed signer is never hosted', { in_person_signer: false }, 'owner_sender', false],
+    ['in-person signing unavailable', { in_person_signer: true, in_person: false }, 'owner_sender', false],
+    ['a completed envelope', { in_person_signer: true, status: 'COMPLETED' }, 'owner_sender', false],
+    ['a draft', { in_person_signer: true, status: 'DRAFT' }, 'owner_sender', false],
+    ["another application's envelope", { in_person_signer: true, source_application: 'aramo-ats' }, 'admin', false],
+    ['a Sign Admin', { in_person_signer: true }, 'admin', true],
+  ])('%s → %s', async (_n, over, actorKey, hostable) => {
+    const f = { ...BASE, ...over };
+    const d = await harness(f).svc.detail(ACTORS[actorKey], ENV_ID, RID);
+    expect(d.recipients[0]!.hostable).toBe(hostable);
+    expect(d.recipients[0]!.hostable).toBe(d.actions.host_in_person);
   });
 });
 

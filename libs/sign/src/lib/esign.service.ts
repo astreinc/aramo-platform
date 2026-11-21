@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, isValidEmail } from '@aramo/sign-client';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository, type LockingTx } from './esign.repository.js';
@@ -570,8 +571,9 @@ export class EsignService {
   async delegateSigner(ctx: SessionContext, input: { name: string; email: string; reason?: string | null }): Promise<{ signer_id: string }> {
     const name = input.name.trim().replace(/\s+/g, ' ');
     const email = input.email.trim();
-    if (name.length === 0 || name.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new DelegationRefusedError('delegate_invalid');
-    const reason = typeof input.reason === 'string' && input.reason.trim().length > 0 ? input.reason.trim().slice(0, 500) : null;
+    // Client Rule Consolidation C3 (audit row 28) — the delegate rule shared with both Sign clients.
+    if (name.length === 0 || name.length > DELEGATE_NAME_MAX || !isValidEmail(email)) throw new DelegationRefusedError('delegate_invalid');
+    const reason = typeof input.reason === 'string' && input.reason.trim().length > 0 ? input.reason.trim().slice(0, DELEGATE_REASON_MAX) : null;
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);

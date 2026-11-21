@@ -6,6 +6,7 @@ import type { AuthContextType } from '@aramo/auth';
 import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
+import { EMAIL_PATTERN, ENVELOPE_SUBJECT_MAX } from '@aramo/sign-client';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -39,9 +40,9 @@ import { MAX_SIGNERS, ROUTING_MODES, SenderEnvelopeService, selfSignSingleRecipi
 // does not send. The launch gate itself (sign.templates NOT_AVAILABLE) is unchanged.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = EMAIL_PATTERN;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
-const MAX_TITLE = 200;
+const MAX_TITLE = ENVELOPE_SUBJECT_MAX;
 // M-A5 §1.4 — at most 10 copy recipients.
 const MAX_COPY_RECIPIENTS = 10;
 // The engine field types a template placement may carry (the internal path is not

@@ -1,4 +1,5 @@
 import type { ErrorCode } from '@aramo/common';
+import { INBOX_ACTION_KEYS, SIGNABLE_ENVELOPE_STATUSES, type InboxActionKey } from '@aramo/sign-client';
 
 // Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED (480ecdbb) §3 C1 — the ONE home
 // of the recipient inbox item action rules. `inboxActions()` computes the `actions` object of
@@ -7,11 +8,11 @@ import type { ErrorCode } from '@aramo/common';
 // rule under the envelope row lock (inbox signing: RecipientInboxRepository revalidation), the
 // rule here mirrors it; see enforced_by on each rule.
 
-export const INBOX_ACTION_KEYS = ['sign', 'download', 'delete', 'restore', 'report'] as const;
-export type InboxActionKey = (typeof INBOX_ACTION_KEYS)[number];
+// Client Rule Consolidation C3 — the key list lives once in @aramo/sign-client.
+export { INBOX_ACTION_KEYS, type InboxActionKey };
 export type InboxActions = Record<InboxActionKey, boolean>;
 
-const SIGNABLE = new Set(['SENT', 'IN_PROGRESS']);
+const SIGNABLE: ReadonlySet<string> = new Set(SIGNABLE_ENVELOPE_STATUSES);
 const PENDING_SIGNER = new Set(['PENDING', 'VIEWED']);
 
 export interface InboxActionEntry {

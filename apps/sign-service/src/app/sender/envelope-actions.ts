@@ -1,6 +1,7 @@
 import { AramoError, type ErrorCode } from '@aramo/common';
 import { ESIGN_SCOPE } from '@aramo/identity';
 import { PURGE_ELIGIBLE_STATUSES, currentTurnOf, isLinkSigner, recipientKindOf, witnessReady } from '@aramo/sign';
+import { SENDER_ACTION_KEYS, TERMINAL_ENVELOPE_STATUSES, type SenderActionKey } from '@aramo/sign-client';
 
 // Aramo-Sign-Client-Rule-Consolidation-Directive-v1_0-LOCKED (480ecdbb) §3 C1 — the
 // server decides what a user may do with an envelope (G-2). This module is the ONE home of
@@ -18,22 +19,9 @@ import { PURGE_ELIGIBLE_STATUSES, currentTurnOf, isLinkSigner, recipientKindOf, 
 // A check may also answer 'noop': the route accepts the request but it changes nothing
 // (e.g. deleting an envelope already in the Deleted folder). The action is not offered.
 
-export const SENDER_ACTION_KEYS = [
-  'edit',
-  'send',
-  'delete_draft',
-  'void',
-  'remind',
-  'delete',
-  'restore',
-  'download',
-  'certificate',
-  'sign',
-  'host_in_person',
-  'purge',
-  'dequeue_purge',
-] as const;
-export type SenderActionKey = (typeof SENDER_ACTION_KEYS)[number];
+// Client Rule Consolidation C3 — the key list lives once in @aramo/sign-client (clients read
+// `actions` with the same list).
+export { SENDER_ACTION_KEYS, type SenderActionKey } from '@aramo/sign-client';
 export type SenderActions = Record<SenderActionKey, boolean>;
 
 // The Sign application's own key (SignatureEnvelope.source_application).
@@ -42,7 +30,7 @@ export const ESIGN_READ_SCOPE = 'sign:envelope:read';
 export const ESIGN_CREATE_SCOPE = 'sign:envelope:create';
 export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
 
-export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
+export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(TERMINAL_ENVELOPE_STATUSES);
 const OPEN_STATUSES: ReadonlySet<string> = new Set(['SENT', 'IN_PROGRESS']);
 const PENDING_SIGNER: ReadonlySet<string> = new Set(['PENDING', 'VIEWED']);
 // Retention and Purge W5 — the statuses the Deleted folder accepts (SignPurgeRepository.partyDelete).
@@ -176,8 +164,17 @@ export function sendStateRefusal(env: Pick<ActionEnvelope, 'status'>): CheckResu
   return env.status === 'DRAFT' ? null : illegalStatus(env.status);
 }
 
-/** Void: anything not terminal — a DRAFT may be voided (the lifecycle allows DRAFT → VOIDED). */
+/**
+ * Void: a SENT or IN_PROGRESS envelope. Client Rule Consolidation C3 (typed divergence
+ * DV-void-draft, needs PO ratification) — a DRAFT is deleted, never voided: no Sign client
+ * voids a draft and no other caller of this route does, so the route and `actions.void` now
+ * refuse it together (the sender route only; the lifecycle table still allows DRAFT → VOIDED
+ * for the integration paths).
+ */
 export function voidStateRefusal(env: Pick<ActionEnvelope, 'status'>): CheckResult {
+  if (env.status === 'DRAFT') {
+    return { code: 'ENVELOPE_ILLEGAL_TRANSITION', message: 'A draft is deleted, not voided', status: 409, details: { reason: 'envelope_is_draft' } };
+  }
   return TERMINAL_STATUSES.has(env.status) ? illegalStatus(env.status) : null;
 }
 
@@ -251,7 +248,7 @@ export const SENDER_ACTION_RULES: Record<SenderActionKey, readonly ActionCheck[]
   // DELETE envelopes/:id (sign:envelope:create).
   delete_draft: [scopeCheck(ESIGN_CREATE_SCOPE), authorCheck, changeCheck, { id: 'state:draft', enforced_by: 'service', test: (_a, e) => deleteDraftStateRefusal(e) }],
   // POST envelopes/:id/void (sign:envelope:send).
-  void: [scopeCheck(ESIGN_SEND_SCOPE), authorCheck, changeCheck, { id: 'state:not_terminal', enforced_by: 'service', test: (_a, e) => voidStateRefusal(e) }],
+  void: [scopeCheck(ESIGN_SEND_SCOPE), authorCheck, changeCheck, { id: 'state:open', enforced_by: 'service', test: (_a, e) => voidStateRefusal(e) }],
   // POST envelopes/:id/remind (sign:envelope:send). The cooldown and the 24-hour limit are
   // time-based and reported per recipient as reminder_available_at (429 with retry_at).
   remind: [

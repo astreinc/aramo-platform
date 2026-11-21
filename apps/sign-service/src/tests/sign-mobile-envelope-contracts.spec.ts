@@ -158,7 +158,9 @@ describe('SenderEnvelopeService — preconditions, message and detail fields', (
   });
 
   it('native void and send need If-Match; send chains the revision through every step', async () => {
-    const { svc, provider, repo } = harness();
+    // C3 DV-void-draft — only a sent envelope is voided (a DRAFT is refused: envelope_is_draft).
+    const { svc, provider, repo } = harness({ env: { status: 'SENT' } });
+    await expect(harness().svc.void(NATIVE, ENV, { reason: 'Wrong' }, 'r', envelopeEtag(ENV, 4))).rejects.toMatchObject({ statusCode: 409, context: { details: { reason: 'envelope_is_draft' } } });
     await expect(svc.void(NATIVE, ENV, { reason: 'Wrong' }, 'r')).rejects.toMatchObject({ statusCode: 428 });
     await expect(svc.send(NATIVE, ENV, {}, 'r')).rejects.toMatchObject({ statusCode: 428 });
     expect(provider.voidEnvelope).not.toHaveBeenCalled();

@@ -1,5 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
+import { normalizeAccessCode } from '@aramo/sign-client';
+
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED (2bd74ca5) §1.9 — the
 // per-recipient ACCESS CODE a sender sets and the recipient must enter before viewing.
 //
@@ -11,8 +13,9 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 //   - Each result is a ledger event (verified / failed / locked) and the verification
 //     is printed on the certificate of completion.
 
-export const ACCESS_CODE_MIN_LENGTH = 4;
-export const ACCESS_CODE_MAX_LENGTH = 32;
+// Client Rule Consolidation C3 (audit row 23) — the length and character rule live once in
+// @aramo/sign-client (both Sign clients check the same rule before saving).
+export { ACCESS_CODE_MIN_LENGTH, ACCESS_CODE_MAX_LENGTH, normalizeAccessCode } from '@aramo/sign-client';
 export const MAX_ACCESS_CODE_ATTEMPTS = 5;
 
 export const ACCESS_CODE_VERIFIED_EVENT = 'ACCESS_CODE_VERIFIED';
@@ -24,16 +27,6 @@ const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 const KEY_LEN = 32;
 const PREFIX = 'scrypt';
-
-/** The normalized code (trimmed), or null when it is not a valid access code. */
-export function normalizeAccessCode(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const code = raw.trim();
-  if (code.length < ACCESS_CODE_MIN_LENGTH || code.length > ACCESS_CODE_MAX_LENGTH) return null;
-  // Printable characters only (no control characters, no line breaks).
-  if (!/^[\x20-\x7E]+$/.test(code)) return null;
-  return code;
-}
 
 export function hashAccessCode(code: string, salt: Buffer = randomBytes(16)): string {
   const key = scryptSync(code, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { IdentityRepository } from '@aramo/identity';
+import { E164_PATTERN } from '@aramo/sign-client';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import {
   SIGN_DATE_FORMATS,
@@ -34,7 +35,7 @@ import {
 //   invalid_display_name        display_name missing, or not 1..120 characters
 //   invalid_profile_field       an optional field that is not text of at most 200 (details.field)
 //   invalid_country             country is not an ISO 3166-1 alpha-2 code
-//   invalid_phone               phone is not E.164 (+ and up to 15 digits)
+//   invalid_phone               phone is not E.164 (+ and 8 to 15 digits)
 //   invalid_place_name          city or region has no letter at all (details.field; UAT
 //                               PRF-02 follow-up, PO 2026-11-19: any script, any punctuation,
 //                               but not only symbols or digits)
@@ -51,7 +52,8 @@ export const APP_ISSUE_MESSAGE_MAX = 2000;
 export const APP_ISSUE_LIMIT_PER_HOUR = 5;
 const APP_ISSUE_WINDOW_MS = 60 * 60 * 1000;
 const COUNTRY_RE = /^[A-Z]{2}$/;
-const E164_RE = /^\+[1-9][0-9]{1,14}$/;
+// Client Rule Consolidation §5 / audit row 24 — the ONE E.164 pattern ({7,14}, was {1,14} here).
+const E164_RE = E164_PATTERN;
 /** UAT PRF-02 follow-up — a place name has at least one letter, in any script. */
 export const HAS_LETTER_RE = /\p{L}/u;
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
