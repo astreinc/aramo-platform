@@ -68,7 +68,75 @@ export function isServerFilledName(f: Pick<FieldRuleRow, 'field_type' | 'name_mo
 
 const isChecked = (f: FieldRuleRow): boolean => f.filled_at !== null && f.value === 'true';
 
-// The first rule a signer's fields break at completion, or null.
+// Client Rule Consolidation C3 (audit row 38) — the required-before-Finish rule as units, ONE
+// copy for the server's completion check and both signer screens (progress, "next required",
+// Finish). A unit is one thing the signer must do: pay, check a required box, fill a required
+// field, or satisfy a check-box group (a group counts once and is required when any of its
+// boxes is; SELECT_ONE never allows more than one checked box, required or not).
+export interface SignerFieldLike {
+  readonly field_type: string;
+  readonly required: boolean;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
+  /** The signer view's flag for a value the server fills (never the signer's to fill). */
+  readonly server_filled?: boolean | null;
+}
+
+export interface SignerFieldUnit<T> {
+  readonly fields: readonly T[];
+  readonly done: boolean;
+  /** The completion refusal this unit raises while it is not done. */
+  readonly reason: FieldRuleViolation['reason'];
+  readonly group_key?: string;
+}
+
+/** A check box that belongs to a group (a non-empty group_key). */
+export function checkboxGroupOf(f: Pick<SignerFieldLike, 'field_type' | 'group_key'>): string | null {
+  return f.field_type === 'CHECKBOX' && typeof f.group_key === 'string' && f.group_key.length > 0 ? f.group_key : null;
+}
+
+/**
+ * Every unit, in field order then group order. `filled(f)`: the field has a value;
+ * `checked(f)`: a check box holds 'true'.
+ */
+export function signerFieldUnits<T extends SignerFieldLike>(
+  fields: readonly T[],
+  state: { readonly filled: (f: T) => boolean; readonly checked: (f: T) => boolean },
+): SignerFieldUnit<T>[] {
+  const units: SignerFieldUnit<T>[] = [];
+  const groups = new Map<string, T[]>();
+  for (const f of fields) {
+    if (f.server_filled === true || isServerFilledName(f)) continue;
+    if (isPaymentField(f)) {
+      units.push({ fields: [f], done: state.filled(f), reason: 'payment_required' });
+      continue;
+    }
+    const g = checkboxGroupOf(f);
+    if (g !== null) {
+      groups.set(g, [...(groups.get(g) ?? []), f]);
+      continue;
+    }
+    if (!f.required) continue;
+    if (CHECK_FIELD_TYPES.has(f.field_type)) units.push({ fields: [f], done: state.checked(f), reason: 'checkbox_required_unchecked' });
+    else units.push({ fields: [f], done: state.filled(f), reason: 'required_field_unfilled' });
+  }
+  for (const [group_key, boxes] of groups) {
+    const checked = boxes.filter((b) => state.checked(b)).length;
+    const one = (boxes[0]?.group_rule ?? 'SELECT_ANY') === 'SELECT_ONE';
+    if (one && checked > 1) {
+      units.push({ fields: boxes, done: false, reason: 'checkbox_group_select_one', group_key });
+      continue;
+    }
+    if (!boxes.some((b) => b.required)) continue;
+    const min = one ? 1 : boxes.reduce((m, b) => Math.max(m, b.min_selected ?? 1), 1);
+    units.push({ fields: boxes, done: checked >= min, reason: one ? 'checkbox_group_select_one' : 'checkbox_group_min_selected', group_key });
+  }
+  return units;
+}
+
+// The first rule a signer's fields break at completion, or null (the server's check).
 //   - a server-filled name is never the signer's to fill (skipped here);
 //   - Sign 1.14: a PAYMENT field is always required and is filled only by a
 //     succeeded payment (payment required before the signer can complete);
@@ -78,33 +146,8 @@ const isChecked = (f: FieldRuleRow): boolean => f.filled_at !== null && f.value 
 //   - a required group needs at least min_selected boxes checked (default 1).
 // A group is required when any of its boxes is required.
 export function evaluateSignerFieldRules(fields: readonly FieldRuleRow[]): FieldRuleViolation | null {
-  const groups = new Map<string, FieldRuleRow[]>();
-  for (const f of fields) {
-    if (isServerFilledName(f)) continue;
-    if (isPaymentField(f)) {
-      if (f.filled_at === null) return { reason: 'payment_required', field_id: f.id };
-      continue;
-    }
-    if (f.field_type === 'CHECKBOX' && f.group_key !== undefined && f.group_key !== null) {
-      const g = groups.get(f.group_key) ?? [];
-      g.push(f);
-      groups.set(f.group_key, g);
-      continue;
-    }
-    if (!f.required) continue;
-    if (CHECK_FIELD_TYPES.has(f.field_type)) {
-      if (!isChecked(f)) return { reason: 'checkbox_required_unchecked', field_id: f.id };
-    } else if (f.filled_at === null) {
-      return { reason: 'required_field_unfilled', field_id: f.id };
-    }
-  }
-  for (const [group_key, boxes] of groups) {
-    const checked = boxes.filter(isChecked).length;
-    const rule = boxes[0]?.group_rule ?? 'SELECT_ANY';
-    const required = boxes.some((b) => b.required);
-    if (rule === 'SELECT_ONE' && checked > 1) return { reason: 'checkbox_group_select_one', group_key };
-    const min = rule === 'SELECT_ONE' ? 1 : boxes.reduce((m, b) => Math.max(m, b.min_selected ?? 1), 1);
-    if (required && checked < min) return { reason: rule === 'SELECT_ONE' ? 'checkbox_group_select_one' : 'checkbox_group_min_selected', group_key };
-  }
-  return null;
+  const open = signerFieldUnits(fields, { filled: (f) => f.filled_at !== null, checked: isChecked }).find((u) => !u.done);
+  if (open === undefined) return null;
+  if (open.group_key !== undefined) return { reason: open.reason, group_key: open.group_key };
+  return { reason: open.reason, field_id: (open.fields[0] as FieldRuleRow).id };
 }

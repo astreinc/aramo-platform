@@ -8,6 +8,9 @@ export const SIGN_DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as c
 export type SignDateFormat = (typeof SIGN_DATE_FORMATS)[number];
 export const DEFAULT_SIGN_DATE_FORMAT: SignDateFormat = 'MM/DD/YYYY';
 
+/** C0-2 / audit row 33 — the one note shown beside a SIGN_DATE preview (the server stamps the value). */
+export const SIGN_DATE_PREVIEW_NOTE = 'filled in at signing';
+
 export const SIGN_DATE_FALLBACK_TIME_ZONE = 'UTC';
 const TIME_ZONE_SHAPE = /^[A-Za-z0-9_+\-/]{1,64}$/;
 let supportedZones: ReadonlySet<string> | null = null;

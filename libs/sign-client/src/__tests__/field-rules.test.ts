@@ -8,6 +8,7 @@ import {
   isProfileTextField,
   isServerFilledName,
   profileTextValueRefusal,
+  signerFieldUnits,
   type FieldRuleRow,
   type FieldRuleViolation,
 } from '../index.js';
@@ -83,5 +84,50 @@ describe('profileTextValueRefusal (M-A12 W1-C.4)', () => {
     ['TEXT', 'x'.repeat(500), null],
   ])('%s %p → %s', (field_type, value, expected) => {
     expect(profileTextValueRefusal(field_type, value)).toBe(expected);
+  });
+});
+
+// C3 (row 38) — the units both signer screens count (progress, Finish) and the server's check uses.
+describe('signerFieldUnits (row 38: one rule for web, mobile and the server)', () => {
+  interface V {
+    id: string;
+    field_type: string;
+    required: boolean;
+    group_key?: string | null;
+    group_rule?: string | null;
+    min_selected?: number | null;
+    name_mode?: string | null;
+    server_filled?: boolean;
+    v?: string;
+  }
+  const state = { filled: (x: V) => x.v !== undefined, checked: (x: V) => x.v === 'true' };
+  const u = (fields: V[]) => signerFieldUnits(fields, state).map((x) => [x.fields.map((y) => y.id).join('+'), x.done, x.reason]);
+  it.each<[string, V[], unknown[]]>([
+    ['required text', [{ id: 'a', field_type: 'TEXT', required: true }], [['a', false, 'required_field_unfilled']]],
+    ['optional text is not a unit', [{ id: 'a', field_type: 'TEXT', required: false }], []],
+    ['server-filled flag', [{ id: 'a', field_type: 'TEXT', required: true, server_filled: true }], []],
+    ['profile name', [{ id: 'a', field_type: 'SIGNER_NAME', required: true, name_mode: 'SIGNER_PROFILE' }], []],
+    ['required box checked', [{ id: 'a', field_type: 'CHECKBOX', required: true, v: 'true' }], [['a', true, 'checkbox_required_unchecked']]],
+    ['required box false', [{ id: 'a', field_type: 'CHECKBOX', required: true, v: 'false' }], [['a', false, 'checkbox_required_unchecked']]],
+    ['payment, even optional', [{ id: 'a', field_type: 'PAYMENT', required: false }], [['a', false, 'payment_required']]],
+    [
+      'a group counts once',
+      [
+        { id: 'a', field_type: 'CHECKBOX', required: true, group_key: 'g', group_rule: 'SELECT_ANY', min_selected: 2, v: 'true' },
+        { id: 'b', field_type: 'CHECKBOX', required: false, group_key: 'g', group_rule: 'SELECT_ANY' },
+      ],
+      [['a+b', false, 'checkbox_group_min_selected']],
+    ],
+    [
+      'an optional select-one with two checked',
+      [
+        { id: 'a', field_type: 'CHECKBOX', required: false, group_key: 'g', group_rule: 'SELECT_ONE', v: 'true' },
+        { id: 'b', field_type: 'CHECKBOX', required: false, group_key: 'g', group_rule: 'SELECT_ONE', v: 'true' },
+      ],
+      [['a+b', false, 'checkbox_group_select_one']],
+    ],
+    ['an empty group key is no group', [{ id: 'a', field_type: 'CHECKBOX', required: true, group_key: '', v: 'true' }], [['a', true, 'checkbox_required_unchecked']]],
+  ])('%s', (_n, fields, units) => {
+    expect(u(fields)).toEqual(units);
   });
 });

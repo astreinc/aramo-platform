@@ -1,7 +1,7 @@
 // Client Rule Consolidation C2-5 — one table-driven spec per rule. This file runs under
 // vitest (nx run sign-client:test) AND under mobile/sign Jest (jest.config.js roots): it
 // uses the shared globals only (describe / it / expect), never a runner import.
-import { DEFAULT_SIGN_DATE_FORMAT, SIGN_DATE_FORMATS, formatSignDate, localTimeZone, resolveSignerTimeZone, signDatePreview } from '../index.js';
+import { DEFAULT_SIGN_DATE_FORMAT, SIGN_DATE_FORMATS, SIGN_DATE_PREVIEW_NOTE, formatSignDate, localTimeZone, resolveSignerTimeZone, signDatePreview } from '../index.js';
 
 describe('SIGN_DATE formats (audit row 33)', () => {
   it('lists the three formats; MM/DD/YYYY is the default', () => {
@@ -64,5 +64,11 @@ describe('signDatePreview (the client preview of the server stamp)', () => {
   it('equals the server stamp for the same instant and zone', () => {
     const now = new Date('2026-11-21T02:00:00Z');
     expect(signDatePreview('YYYY-MM-DD', now)).toBe(formatSignDate(now, 'YYYY-MM-DD', zone ?? 'UTC'));
+  });
+});
+
+describe('the one preview note (C3, row 33)', () => {
+  it('is the same words on web and mobile', () => {
+    expect(SIGN_DATE_PREVIEW_NOTE).toBe('filled in at signing');
   });
 });
