@@ -62,9 +62,9 @@ function prismaWith(tx: Record<string, unknown>) {
 
 describe('isDraftEditable — SenderWorkspaceRepository.assertDraft (in lock) and actions.edit', () => {
   it.each([['DRAFT', true], ['SENT', false], ['COMPLETED', false]] as const)('%s → %s', async (status, ok) => {
-    const repo = new EsignSenderRepository(prismaWith({ $queryRaw: async () => [{ status, revision: 1 }], signatureEnvelope: { update: async () => ({ revision: 2 }) } }), {} as never);
+    const repo = new EsignSenderRepository(prismaWith({ $queryRaw: async () => [{ status, revision: 1 }], signatureEnvelope: { update: async () => ({ revision: 2 }) } }), { revisionIn: async () => 2 } as never);
     const write = repo.updateDraft({ tenant_id: 't', envelope_id: 'e', subject: 'x' });
-    if (ok) await write.catch(() => undefined);
+    if (ok) await expect(write).resolves.toBeDefined();
     else await expect(write).rejects.toMatchObject({ name: expect.stringMatching(/IllegalTransition/) });
     expect(calledWith('isDraftEditable', (a) => a[0] === status)).toBe(true);
     vi.clearAllMocks();
@@ -143,7 +143,7 @@ describe('remindableSigners — EsignService.remindSigner (in lock) and actions.
       signingSession: { updateMany: async () => ({}), create: async () => ({}) },
     };
     const run = engine(tx, 'SENT').remindSigner('t', 'e', 'u', target);
-    if (ok) await run.catch(() => undefined);
+    if (ok) await expect(run).resolves.toBeDefined();
     else await expect(run).rejects.toMatchObject({ name: expect.stringMatching(/Reminder/) });
     expect(calledWith('remindableSigners', (a) => (a[0] as { routing_mode: string }).routing_mode === routing_mode)).toBe(true);
     vi.clearAllMocks();
@@ -165,7 +165,7 @@ describe('hostedSessionRefusal / sessionIssueRefusal — EsignService.issueHoste
       signingSession: { updateMany: async () => ({}), create: async () => ({}) },
     };
     const run = engine(tx, status).issueHostedSession('t', 'e', id, 'u');
-    if (refusal === null) await run.catch(() => undefined);
+    if (refusal === null) await expect(run).resolves.toBeDefined();
     else await expect(run).rejects.toMatchObject({ reason: refusal });
     expect(calledWith('hostedSessionRefusal', (a) => a[2] === id)).toBe(true);
     vi.clearAllMocks();
@@ -185,7 +185,7 @@ describe('selfSignTarget + sessionIssueRefusal — EsignService.issueSelfSignSes
       signingSession: { create: async () => ({}) },
     };
     const run = engine(tx, 'SENT').issueSelfSignSession('t', 'e', 'u-owner', 'me@x.test');
-    if (refusal === null) await run.catch(() => undefined);
+    if (refusal === null) await expect(run).resolves.toBeDefined();
     else await expect(run).rejects.toMatchObject({ reason: refusal });
     expect(calledWith('selfSignTarget', (a) => a[1] === 'u-owner')).toBe(true);
     if (bound !== null) expect(calledWith('sessionIssueRefusal', (a) => a[2] === 's1')).toBe(true);

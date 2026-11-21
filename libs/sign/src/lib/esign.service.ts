@@ -1071,7 +1071,7 @@ export class EsignService {
     return this.prisma.$transaction(async (tx) => {
       // C3 (D-1) — the hosted rule is @aramo/sign-client's hostedSessionRefusal (the C1
       // host_in_person action and the per-recipient hostable use the same function).
-      await this.lockForSessionIssue(tx, tenant_id, envelope_id, signer_id, now, HOSTED_SESSION_TTL_MS, hostedSessionRefusal);
+      const { expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, signer_id, now, HOSTED_SESSION_TTL_MS, hostedSessionRefusal);
       await tx.signingSession.updateMany({
         where: { tenant_id, envelope_id, signer_id, status: { in: [...LIVE_SESSION_STATUSES] } },
         data: { status: 'REVOKED', revoked_at: now },
