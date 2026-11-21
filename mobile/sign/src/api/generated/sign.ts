@@ -970,7 +970,7 @@ export interface paths {
         put?: never;
         /**
          * Void a sent envelope.
-         * @description A reason is required. Requires sign:envelope:send. Only a SENT or IN_PROGRESS envelope is voided; a DRAFT is deleted instead (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason envelope_is_draft; Client Rule Consolidation C3). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description A reason is required. Requires sign:envelope:send. Only a SENT or IN_PROGRESS envelope is voided; a DRAFT is deleted instead (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason draft_use_delete; Client Rule Consolidation C3). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         post: operations["voidSenderEnvelope"];
         delete?: never;
