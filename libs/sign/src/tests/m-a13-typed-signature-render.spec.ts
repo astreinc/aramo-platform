@@ -69,7 +69,13 @@ describe('M-A13 #1 — typed signature placement', () => {
   });
 
   it('a TEXT field never turns into an image (only SIGNATURE / INITIALS do)', () => {
-    expect(valuePlacement(field({ field_type: 'TEXT', value: PNG, signature_method: null }), stampFor)).toEqual({ field_key: 'f1', page_number: 0, x: 72, y: 120, value: PNG });
+    // FIELD-PARITY-1 P0-2 — the box size travels with the text (drawn inside the box).
+    expect(valuePlacement(field({ field_type: 'TEXT', value: PNG, signature_method: null }), stampFor)).toEqual({ field_key: 'f1', page_number: 0, x: 72, y: 120, width: 180, height: 40, value: PNG });
+  });
+
+  it('FIELD-PARITY-1 P0-2: a legacy text field with no box size has no width / height (drawn as before)', () => {
+    expect(valuePlacement(field({ field_type: 'TEXT', value: 'Acme', signature_method: null, width: null, height: null }), stampFor)).toEqual({ field_key: 'f1', page_number: 0, x: 72, y: 120, value: 'Acme' });
+    expect(valuePlacement(field({ field_type: 'COMPANY', value: 'Acme', signature_method: null, width: 180, height: null }), stampFor)).toEqual({ field_key: 'f1', page_number: 0, x: 72, y: 120, value: 'Acme' });
   });
 });
 

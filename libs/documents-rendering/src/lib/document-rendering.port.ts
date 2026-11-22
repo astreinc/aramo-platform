@@ -116,7 +116,9 @@ export interface PreparedField {
   kind?: 'TEXT' | 'IMAGE' | 'MARK'; // default TEXT
   // MARK placement — required when kind === 'MARK'
   checked?: boolean;
-  // TEXT placement
+  // TEXT placement. FIELD-PARITY-1 P0-2: with width + height the value is drawn
+  // inside that box (wrap, shrink 11pt→7pt, clip); without them (legacy rows) it is
+  // one unbounded run at (x, y), as before.
   value?: string;
   size?: number;
   // IMAGE placement (DOC-4) — required when kind === 'IMAGE'
@@ -152,6 +154,10 @@ export interface RenderedOutput {
   provenance: RenderProvenance;
   // B2 — present iff the model carried a signature_block (or, M-A6, signature_blocks).
   signature_fields?: SignatureFieldPlacement[];
+  // FIELD-PARITY-1 P0-2 — prepareFromSource only: the field_key of every boxed text
+  // placement whose value did not fit its box even at the smallest size, so only the
+  // lines that fit were drawn. Absent when nothing was clipped.
+  truncated_field_keys?: string[];
 }
 
 export interface PrepareFromSourceOptions {

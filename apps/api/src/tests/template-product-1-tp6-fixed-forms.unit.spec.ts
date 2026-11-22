@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { FIXED_FORM_SCHEMA_V1, type PublishedFixedForm, type TemplateAuditPort } from '@aramo/documents';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { stampTextInBox } from '@aramo/documents-rendering';
+import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlatformFixedFormsController } from '../document-templates-platform/platform-fixed-forms.controller.js';
@@ -95,6 +96,28 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.1 — the official PDF gate', () => {
     const stamped = await stampFixedFormValues(bytes, [{ page_number: 0, x: 72, y: 600, width: 200, height: 18, text: 'Nimbus Leasing — 東京' }]);
     expect(stamped.byteLength).toBeGreaterThan(bytes.byteLength);
     expect((await PDFDocument.load(stamped)).getPageCount()).toBe(1);
+  });
+
+  // FIELD-PARITY-1 P0-2 — the prefill is drawn by the ONE shared text-in-box stamper (the
+  // executed PDF uses the same one): a long value wraps / shrinks / clips inside its box.
+  it('prefill uses the shared text-in-box stamper (same bytes as stamping directly)', async () => {
+    const bytes = await pdfBytes(1);
+    const box = { x: 72, y: 500, width: 140, height: 30 };
+    const text = 'Corporate Meeting Minutes of the Board of Directors — 東京 office, held in person and by video';
+    const stamped = await stampFixedFormValues(bytes, [{ page_number: 0, ...box, text }]);
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const layout = stampTextInBox(doc.getPage(0), font, box, text);
+    const direct = await doc.save({ useObjectStreams: false });
+    expect(Buffer.from(stamped).equals(Buffer.from(direct))).toBe(true);
+    // The value did not fit one line: it is wrapped (and shrunk) inside the box.
+    expect(layout.lines.length).toBeGreaterThan(1);
+    expect(layout.size).toBeLessThanOrEqual(11);
+    for (const l of layout.lines) {
+      expect(l.x + font.widthOfTextAtSize(l.text, layout.size)).toBeLessThanOrEqual(box.x + box.width);
+      expect(l.y).toBeGreaterThan(box.y);
+      expect(l.y).toBeLessThan(box.y + box.height);
+    }
   });
 });
 
