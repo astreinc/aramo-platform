@@ -143,7 +143,8 @@ export function settingsToWire(type: string, s: PlacementSettings, opts: Setting
   const rule: GroupRule = type === 'RADIO' ? 'SELECT_ONE' : s.groupRule;
   // A RADIO's rule is always SELECT_ONE (the server's default): a new one does not send it.
   put('group_rule', rule, grouped && (type !== 'RADIO' || all));
-  put('min_selected', s.minSelected, grouped && type !== 'RADIO' && rule === 'SELECT_ANY' && s.minSelected !== null);
+  // A select-one group's minimum is 1 or none (the server's rule); a stored 1 is kept.
+  put('min_selected', s.minSelected, grouped && type !== 'RADIO' && s.minSelected !== null && (rule === 'SELECT_ANY' || s.minSelected === 1));
   put('tooltip', text(s.tooltip), text(s.tooltip).length > 0);
   put('placeholder', text(s.placeholder), text(s.placeholder).length > 0);
   put('read_only', true, s.senderFilled && s.readOnly);
