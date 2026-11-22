@@ -95,6 +95,12 @@ export interface FixedFormField {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — per-field settings (NULL / absent = unset; SIGNER_NAME NULL = SIGNER_PROFILE).
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
 }
 
 export interface FixedFormVariable {

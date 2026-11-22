@@ -5,7 +5,7 @@
 // new field has exactly the shape the Studio sent before P1-5.
 
 import { DEFAULT_SETTINGS, DEFAULT_PLACEMENT_COPY, type PlacedField, type PlacementCopy } from '@aramo/field-placement-web';
-import { type FieldTypeKey } from '@aramo/sign-fields';
+import { DEFAULT_CHECKBOX_GROUP_RULE, DEFAULT_SIGNER_NAME_MODE, type FieldTypeKey } from '@aramo/sign-fields';
 
 import { FIXED_FORM_FIELD_TYPES, type FixedFormField } from './fixed-form-model';
 
@@ -46,16 +46,53 @@ export function fixedFormFieldsToPlaced(fields: readonly FixedFormField[]): Plac
       required: f.required,
       assignee: f.signer_role,
       binding: f.binding_key,
-      settings: DEFAULT_SETTINGS,
+      settings: settingsFromWire(f),
       ...(placed ? {} : { hidden: true }),
     };
   });
 }
 
+/** P1-3 — the stored settings → the editor's settings (unset → the editor defaults). */
+function settingsFromWire(f: FixedFormField): PlacedField['settings'] {
+  return {
+    ...DEFAULT_SETTINGS,
+    nameMode: (f.name_mode ?? DEFAULT_SIGNER_NAME_MODE) as PlacedField['settings']['nameMode'],
+    label: f.label ?? '',
+    groupKey: f.group_key ?? '',
+    groupRule: (f.group_rule ?? DEFAULT_CHECKBOX_GROUP_RULE) as PlacedField['settings']['groupRule'],
+    minSelected: f.min_selected ?? null,
+  };
+}
+
 /**
- * Editor → wire, in editor order, `ordinal` = position (as before P1-5). Settings are not sent:
- * the template API stores none until P1-3 (the Studio passes capabilities.settings = []).
+ * P1-3 — the editor's settings → wire members, only for the types that take them (the server's
+ * rule, @aramo/sign-fields parseTemplateFieldSettings). An unset setting is sent as null so a
+ * cleared value clears; SIGNER_NAME's default (SIGNER_PROFILE) is stored as NULL.
  */
+function settingsToWire(p: PlacedField): Partial<FixedFormField> {
+  if (p.type === 'CHECKBOX') {
+    const grouped = p.settings.groupKey.trim() !== '';
+    return {
+      label: p.settings.label.trim() === '' ? null : p.settings.label.trim(),
+      group_key: grouped ? p.settings.groupKey.trim() : null,
+      group_rule: grouped ? p.settings.groupRule : null,
+      min_selected: grouped ? p.settings.minSelected : null,
+    };
+  }
+  if (p.type === 'SIGNER_NAME') {
+    return { name_mode: p.settings.nameMode === DEFAULT_SIGNER_NAME_MODE ? null : p.settings.nameMode };
+  }
+  return {};
+}
+
+/** Has the editor changed any setting from what was stored? Unchanged fields round-trip byte-equal. */
+function settingsChanged(p: PlacedField, orig: FixedFormField): boolean {
+  const before = settingsFromWire(orig);
+  const s = p.settings;
+  return s.nameMode !== before.nameMode || s.label !== before.label || s.groupKey !== before.groupKey || s.groupRule !== before.groupRule || s.minSelected !== before.minSelected;
+}
+
+/** Editor → wire, in editor order, `ordinal` = position (as before P1-5), with P1-3 settings. */
 export function fixedFormFieldsToWire(placed: readonly PlacedField[], stored: ReadonlyMap<string, FixedFormField>): FixedFormField[] {
   return placed.map((p, i) => {
     const orig = stored.get(p.id);
@@ -73,6 +110,7 @@ export function fixedFormFieldsToWire(placed: readonly PlacedField[], stored: Re
       height: p.height,
       ordinal: i,
     };
-    return { ...base, field_type: p.type, binding_key: p.binding, signer_role: p.assignee, required: p.required, page_number: p.page, x: p.x, y: p.y, width: p.width, height: p.height, ordinal: i };
+    const settings = orig === undefined || settingsChanged(p, orig) ? settingsToWire(p) : {};
+    return { ...base, field_type: p.type, binding_key: p.binding, signer_role: p.assignee, required: p.required, page_number: p.page, x: p.x, y: p.y, width: p.width, height: p.height, ordinal: i, ...settings };
   });
 }
