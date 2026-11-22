@@ -2,7 +2,17 @@ import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
 import { FIXED_FORM_MAX_BYTES, type FixedFormPage } from '@aramo/documents';
-import { SafePdfPipeline, UnsafePdfError, stampTextInBox } from '@aramo/documents-rendering';
+import {
+  PdfFormImportError,
+  SafePdfPipeline,
+  UnsafePdfError,
+  coverPdfBoxes,
+  extractTextLayer,
+  importPdfForm,
+  readPageFrames,
+  stampTextInBox,
+} from '@aramo/documents-rendering';
+import { planPdfFormFields, planTextTags, type FieldImportWarning, type ImportedField } from '@aramo/sign-fields';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, StandardFonts, type PDFObject } from 'pdf-lib';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.1 — the gate an official PDF
@@ -39,7 +49,7 @@ export interface AcceptedFixedFormPdf {
   readonly pages: readonly FixedFormPage[];
 }
 
-function refuse(reason: 'pdf_too_large' | 'pdf_unsafe' | 'pdf_invalid', message: string, requestId: string): AramoError {
+function refuse(reason: 'pdf_too_large' | 'pdf_unsafe' | 'pdf_invalid' | 'xfa_only_form', message: string, requestId: string): AramoError {
   return new AramoError('VALIDATION_ERROR', message, 422, { requestId, details: { reason } });
 }
 
@@ -103,6 +113,79 @@ export async function acceptFixedFormPdf(bytes: Uint8Array, requestId: string): 
     page_count: pages.length,
     pages,
   };
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — the upload's opt-in field import (both default false). */
+export interface FixedFormImportOptions {
+  readonly import_fields: boolean;
+  readonly apply_text_tags: boolean;
+}
+
+export interface PreparedFixedFormPdf {
+  /** The bytes to store: the upload itself, or the stripped / flattened / tag-covered PDF. */
+  readonly bytes: Uint8Array;
+  readonly accepted: AcceptedFixedFormPdf;
+  readonly fields: ImportedField[];
+  readonly warnings: FieldImportWarning[];
+  /** The active-content keys the import removed. */
+  readonly stripped: string[];
+}
+
+/**
+ * FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §5 —
+ * the §7.1 gate with the opt-in import around it:
+ *   import_fields    P2-5: the PDF's form fields are read, the form's active content is
+ *                    stripped and the form flattened (@aramo/documents-rendering importPdfForm)
+ *                    BEFORE the gate decides; the fields map to the `template_fixed_form`
+ *                    catalog types (@aramo/sign-fields planPdfFormFields). An XFA-only form
+ *                    is refused (422 details.reason xfa_only_form).
+ *   apply_text_tags  P2-6: {{type:role…}} tags on the gated PDF become fields and are covered
+ *                    with white (ruling R-5); the covered PDF passes the gate again.
+ * With both false this is acceptFixedFormPdf on the upload, unchanged.
+ */
+export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImportOptions, groupKeysTaken: Set<string>, requestId: string): Promise<PreparedFixedFormPdf> {
+  if (!opts.import_fields && !opts.apply_text_tags) {
+    return { bytes, accepted: await acceptFixedFormPdf(bytes, requestId), fields: [], warnings: [], stripped: [] };
+  }
+  // The size limit first: nothing larger than a fixed form is parsed.
+  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId);
+  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId);
+  let work = bytes;
+  const fields: ImportedField[] = [];
+  const warnings: FieldImportWarning[] = [];
+  let stripped: string[] = [];
+  if (opts.import_fields) {
+    try {
+      const form = await importPdfForm(work);
+      work = form.bytes;
+      stripped = form.stripped;
+      const plan = planPdfFormFields(form.widgets, form.pages, 'template_fixed_form', groupKeysTaken);
+      fields.push(...plan.fields);
+      warnings.push(...plan.warnings);
+    } catch (e) {
+      if (e instanceof PdfFormImportError) throw refuse('xfa_only_form', e.message, requestId);
+      throw e;
+    }
+  }
+  let accepted = await acceptFixedFormPdf(work, requestId);
+  if (opts.apply_text_tags) {
+    let pages: Awaited<ReturnType<typeof extractTextLayer>> | null = null;
+    try {
+      pages = await extractTextLayer(work);
+    } catch {
+      warnings.push({ code: 'text_tags_unreadable', message: 'The text of this PDF could not be read, so no tags were found.' });
+    }
+    if (pages !== null) {
+      const plan = planTextTags(pages, await readPageFrames(work), 'template_fixed_form');
+      fields.push(...plan.fields);
+      warnings.push(...plan.warnings);
+      if (plan.covers.length > 0) {
+        work = await coverPdfBoxes(work, plan.covers);
+        accepted = await acceptFixedFormPdf(work, requestId);
+      }
+    }
+  }
+  return { bytes: work, accepted, fields, warnings, stripped };
 }
 
 export interface FixedFormStamp {

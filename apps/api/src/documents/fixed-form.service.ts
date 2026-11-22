@@ -1,9 +1,16 @@
 import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
-import { TEMPLATE_FIELD_SETTINGS, parseTemplateFieldSettings } from '@aramo/sign-fields';
+import {
+  TEMPLATE_FIELD_SETTINGS,
+  importFieldKey,
+  matchTagRole,
+  parseTemplateFieldSettings,
+  type FieldImportWarning,
+} from '@aramo/sign-fields';
 import {
   FIXED_FORM_MAX_BYTES,
+  FIXED_FORM_MAX_FIELDS,
   FIXED_FORM_SCHEMA_V1,
   PLATFORM_TEMPLATE_ASSET_PREFIX,
   FixedFormsRepository,
@@ -24,7 +31,7 @@ import {
 
 import { parseSigningConfig } from '../rtr/rtr-html-content.js';
 
-import { acceptFixedFormPdf } from './fixed-form-pdf.js';
+import { prepareFixedFormPdf, type FixedFormImportOptions } from './fixed-form-pdf.js';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7 — the fixed-form rules shared
 // by the platform authoring routes (§7.1, §7.2), the tenant read-only routes (§7.3) and the
@@ -65,6 +72,13 @@ export interface FixedFormFieldView {
   readonly group_rule: string | null;
   readonly min_selected: number | null;
   readonly name_mode: string | null;
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload imported (absent without a flag). */
+export interface FixedFormFieldImport {
+  readonly fields: Array<FixedFormFieldView & { readonly source: 'pdf_form' | 'text_tag'; readonly source_name: string }>;
+  readonly warnings: FieldImportWarning[];
+  readonly stripped: string[];
 }
 
 const ROUTING = new Set(['PARALLEL', 'SEQUENTIAL']);
@@ -270,15 +284,26 @@ export class FixedFormService {
     return this.forms.createPlatformDraft({ template_id, created_by: actor, initial: emptyFixedFormContent(template.name) });
   }
 
-  /** §7.1 — validate, store under the platform prefix, record the asset, point the draft at it. */
-  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string }) {
+  /**
+   * §7.1 — validate, store under the platform prefix, record the asset, point the draft at it.
+   * FIELD-PARITY-1 P2-5 / P2-6 — with `import_fields` / `apply_text_tags` (default false) the
+   * stored PDF is the stripped / flattened / tag-covered one and the found fields are added
+   * to the draft's fields (prepareFixedFormPdf). A form field has no signer role (the author
+   * assigns it in the Studio); a tag's role is matched case-insensitively to a role key or
+   * label, and left unassigned (warning) when none matches.
+   */
+  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string; import?: FixedFormImportOptions }): Promise<{ field_import: FixedFormFieldImport | null }> {
     const { version, template } = await this.platformVersion(input.version_id, input.requestId);
     if (version.status !== 'DRAFT') {
       throw new AramoError('TEMPLATE_IMMUTABLE', `TemplateVersion ${version.id} is not a DRAFT`, 409, { requestId: input.requestId });
     }
-    const accepted = await acceptFixedFormPdf(input.bytes, input.requestId);
+    const opts: FixedFormImportOptions = input.import ?? { import_fields: false, apply_text_tags: false };
+    const importing = opts.import_fields || opts.apply_text_tags;
+    const existing = importing ? (await this.forms.listFields(version.id)).map(toFieldView) : [];
+    const prepared = await prepareFixedFormPdf(input.bytes, opts, new Set(existing.flatMap((f) => (f.group_key === null ? [] : [f.group_key]))), input.requestId);
+    const accepted = prepared.accepted;
     const storage_key = `${PLATFORM_TEMPLATE_ASSET_PREFIX}/${version.id}/${accepted.sha256}.pdf`;
-    await this.storage.putArtifact({ storage_key, body: Buffer.from(input.bytes), content_type: 'application/pdf', requestId: input.requestId });
+    await this.storage.putArtifact({ storage_key, body: Buffer.from(prepared.bytes), content_type: 'application/pdf', requestId: input.requestId });
     const asset = await this.forms.createPlatformAsset({
       template_version_id: version.id,
       storage_key,
@@ -289,7 +314,50 @@ export class FixedFormService {
     });
     const { content } = fixedFormContentOf(version.field_schema, template.name);
     const pdf: FixedFormPdfRef = { asset_id: asset.id, sha256: asset.sha256, byte_size: asset.byte_size, page_count: asset.page_count, pages: accepted.pages };
-    return this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf } });
+    if (!importing) {
+      await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf } });
+      return { field_import: null };
+    }
+    const warnings: FieldImportWarning[] = [...prepared.warnings];
+    const room = Math.max(0, FIXED_FORM_MAX_FIELDS - existing.length);
+    if (prepared.fields.length > room) {
+      warnings.push({ code: 'too_many_fields', message: `A form holds at most ${FIXED_FORM_MAX_FIELDS} fields; ${prepared.fields.length - room} found fields were not added.` });
+    }
+    const roles = content.signing.roles.filter((r) => r.kind === 'SIGNER').map((r) => ({ id: r.role_key, names: [r.role_key, r.label] }));
+    const keys = new Set(existing.map((f) => f.field_key));
+    const created = prepared.fields.slice(0, room).map((f, i) => {
+      const signer_role = f.role === null ? null : matchTagRole(f.role, roles);
+      if (f.role !== null && signer_role === null) {
+        warnings.push({ code: 'text_tag_role_unknown', message: `{{${f.name}}}: no signer role is "${f.role}"; the field has no role yet.`, name: f.name, page_number: f.page_number });
+      }
+      const view: FixedFormFieldView = {
+        field_key: importFieldKey(f.name, keys),
+        field_type: f.field_type,
+        binding_key: null,
+        signer_role,
+        required: f.required,
+        page_number: f.page_number,
+        x: f.x,
+        y: f.y,
+        width: f.width,
+        height: f.height,
+        ordinal: existing.length + i,
+        label: f.label,
+        group_key: f.group_key,
+        group_rule: f.group_rule,
+        min_selected: null,
+        name_mode: null,
+      };
+      return { view, source: f.source, source_name: f.name };
+    });
+    await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf }, fields: [...existing, ...created.map((c) => c.view)] });
+    return {
+      field_import: {
+        fields: created.map((c) => ({ ...c.view, source: c.source, source_name: c.source_name })),
+        warnings,
+        stripped: prepared.stripped,
+      },
+    };
   }
 
   /** §7.2 — replace the signer roles (+ title) and every placed field of a DRAFT in one write. */

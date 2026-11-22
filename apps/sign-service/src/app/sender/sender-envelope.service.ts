@@ -70,7 +70,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { fieldSettingsOf, fieldTypesFor } from '@aramo/sign-fields';
+import { fieldSettingsOf, fieldTypesFor, type FieldImportWarning } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -92,6 +92,7 @@ import { WORD_CONVERSION_PORT, WordConversionError, disabledWordConversion, isWo
 
 import { ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
+import { bindImportedFields, fieldRowOf, importUploadFields, uploadImportOptions, type BoundImportedField } from './upload-field-import.js';
 import {
   SIGN_APPLICATION,
   canRemindRecipient,
@@ -221,6 +222,9 @@ export interface UploadDocumentBody {
   title?: unknown;
   filename?: unknown;
   content_base64?: unknown;
+  // FIELD-PARITY-1 P2-5 / P2-6 — opt-in, default false (upload-field-import.ts).
+  import_fields?: unknown;
+  apply_text_tags?: unknown;
 }
 
 @Injectable()
@@ -1000,6 +1004,7 @@ export class SenderEnvelopeService {
 
   private async uploadOnce(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string, expected: number | undefined) {
     if (typeof body?.content_base64 !== 'string' || body.content_base64.length === 0) throw bad(requestId, 'content_base64 is required');
+    const importOpts = uploadImportOptions(body, requestId);
     // M-A3 §8 — PDF only; a Word document is refused with a stable reason.
     // M-A13 R-4 — unless Word conversion is on: a .docx / .doc is converted to PDF and the
     // PDF becomes the source (the Word file is never stored); the title keeps the file name.
@@ -1014,12 +1019,32 @@ export class SenderEnvelopeService {
     let bytes: Uint8Array = new Uint8Array(Buffer.from(body.content_base64, 'base64'));
     if (word) bytes = await this.convertWord(words, bytes, given, requestId);
     else if (isWordDocument(bytes)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
+    const gate = async (b: Uint8Array): Promise<Uint8Array> => {
+      try {
+        return await this.safePdf.accept(b);
+      } catch (e) {
+        if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf' });
+        throw e;
+      }
+    };
+    // FIELD-PARITY-1 P2-5 / P2-6 — the opt-in field import (both flags OFF: the gate alone,
+    // exactly as before).
+    const importing = importOpts.import_fields || importOpts.apply_text_tags;
     let accepted: Uint8Array;
-    try {
-      accepted = await this.safePdf.accept(bytes);
-    } catch (e) {
-      if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf' });
-      throw e;
+    let imported: { rows: BoundImportedField[]; warnings: FieldImportWarning[]; stripped: string[] } | null = null;
+    if (!importing) {
+      accepted = await gate(bytes);
+    } else {
+      const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
+      const existing = env.documents.flatMap((d) => d.fields);
+      const found = await importUploadFields(bytes, importOpts, new Set(existing.flatMap((f) => (f.group_key === null ? [] : [f.group_key]))), gate, requestId);
+      accepted = found.bytes;
+      const recipients = signingRecipients(env.signers).map((r) => ({ id: r.id, name: r.name, email: r.email, signer_role: r.signer_role }));
+      const room = Math.max(0, MAX_FIELDS - existing.length);
+      const bound = bindImportedFields(found.fields.slice(0, room), recipients, requestId);
+      const warnings = [...found.warnings, ...bound.warnings];
+      if (found.fields.length > room) warnings.push({ code: 'too_many_fields', message: `An envelope holds at most ${MAX_FIELDS} fields; ${found.fields.length - room} found fields were not added.` });
+      imported = { rows: bound.rows, warnings, stripped: found.stripped };
     }
     const pages = await measurePages(accepted);
     // A1 — the plan's storage allocation: reserve the bytes before writing the
@@ -1047,6 +1072,7 @@ export class SenderEnvelopeService {
         byte_size: stored.byte_size,
         source_sha256: stored.source_sha256,
         pages,
+        ...(imported !== null && imported.rows.length > 0 ? { fields: imported.rows.map(fieldRowOf) } : {}),
         ...(expected !== undefined ? { expected_revision: expected } : {}),
       });
     } catch (e) {
@@ -1055,7 +1081,37 @@ export class SenderEnvelopeService {
     }
     // Sign Mobile D-W6-1 — the envelope revision after this upload (the controller
     // sets ETag "{envelope_id}.{revision}"), so the next write chains its If-Match.
-    return { id: row.id, envelope_id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages, revision: row.revision };
+    const out = { id: row.id, envelope_id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages, revision: row.revision };
+    if (imported === null) return out;
+    // FIELD-PARITY-1 P2-5 / P2-6 — only when a flag was set: the fields created and why
+    // anything found was not (or was differently) imported.
+    const ids = row.field_ids ?? [];
+    return {
+      ...out,
+      field_import: {
+        fields: imported.rows.map((f, i) => ({
+          id: ids[i] ?? null,
+          source: f.source,
+          source_name: f.name,
+          envelope_document_id: row.id,
+          signer_id: f.signer_id,
+          field_type: f.field_type,
+          page_number: f.page_number,
+          x: f.x,
+          y: f.y,
+          width: f.width,
+          height: f.height,
+          required: f.required,
+          label: f.label,
+          group_key: f.group_key,
+          group_rule: f.group_rule,
+          min_selected: f.min_selected,
+          name_mode: f.name_mode,
+        })),
+        warnings: imported.warnings,
+        stripped: imported.stripped,
+      },
+    };
   }
 
   // M-A13 R-4 — the Word refusals carry details.reason (too large 413; password-protected

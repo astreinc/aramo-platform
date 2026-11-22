@@ -16,7 +16,9 @@ import { FixedFormService, toFieldView } from '../documents/fixed-form.service.j
 //                                                                         current version's PDF + fields)
 //   GET  /platform/document-templates/versions/:versionId/fixed-form      the Studio view (content,
 //                                                                         fields, variables, issues)
-//   PUT  /platform/document-templates/versions/:versionId/fixed-form/pdf  upload the PDF (base64 JSON)
+//   PUT  /platform/document-templates/versions/:versionId/fixed-form/pdf  upload the PDF (base64 JSON;
+//                                                                         FIELD-PARITY-1 P2-5 / P2-6: opt-in
+//                                                                         import_fields / apply_text_tags)
 //   GET  /platform/document-templates/versions/:versionId/fixed-form/pdf  the PDF (base64 JSON)
 //   PUT  /platform/document-templates/versions/:versionId/fixed-form/layout  roles + title + every field
 //   POST /platform/document-templates/versions/:versionId/fields         add ONE field (mirrors the
@@ -68,9 +70,25 @@ export class PlatformFixedFormsController {
     if (typeof raw !== 'string' || raw.length === 0 || !BASE64_RE.test(raw)) {
       throw new AramoError('VALIDATION_ERROR', 'content_base64 (the PDF, base64) is required', 400, { requestId, details: { reason: 'content_required' } });
     }
+    // FIELD-PARITY-1 P2-5 / P2-6 — opt-in field import (default false: the upload is unchanged).
+    const flag = (k: 'import_fields' | 'apply_text_tags'): boolean => {
+      const v = body?.[k];
+      if (v === undefined || v === null) return false;
+      if (typeof v !== 'boolean') throw new AramoError('VALIDATION_ERROR', `${k} must be true or false`, 400, { requestId, details: { reason: 'import_flag_invalid', field: k } });
+      return v;
+    };
+    const importOpts = { import_fields: flag('import_fields'), apply_text_tags: flag('apply_text_tags') };
+    const importing = importOpts.import_fields || importOpts.apply_text_tags;
     return this.run(requestId, async () => {
-      await this.forms.uploadPdf({ version_id: versionId, bytes: new Uint8Array(Buffer.from(raw, 'base64')), actor: auth.sub, requestId });
-      return this.forms.platformView(versionId, requestId);
+      const out = await this.forms.uploadPdf({
+        version_id: versionId,
+        bytes: new Uint8Array(Buffer.from(raw, 'base64')),
+        actor: auth.sub,
+        requestId,
+        ...(importing ? { import: importOpts } : {}),
+      });
+      const view = await this.forms.platformView(versionId, requestId);
+      return importing ? { ...view, field_import: out.field_import } : view;
     });
   }
 
