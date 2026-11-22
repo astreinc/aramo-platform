@@ -32,11 +32,8 @@ import {
   signingRecipients,
   type CopyDelivery,
   type RecipientKind,
-  CHECKBOX_GROUP_RULES,
-  SIGNER_NAME_MODES,
   type CheckboxGroupRule,
   type SenderFieldInput,
-  type SignerNameMode,
   SenderFieldPassthroughRefusedError,
   SignPurgeRepository,
   hashAccessCode,
@@ -60,8 +57,6 @@ import {
 import {
   selfSignTarget,
   sessionIssueRefusal,
-  CHECKBOX_GROUP_KEY_MAX,
-  CHECKBOX_LABEL_MAX,
   EMAIL_MAX,
   EMAIL_PATTERN,
   ENVELOPE_SUBJECT_MAX,
@@ -70,7 +65,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { fieldSettingsOf, fieldTypesFor, type FieldImportWarning } from '@aramo/sign-fields';
+import { fieldTypesFor, fieldValueRefusal, parseFieldSettings, senderFilledFieldsEnabled, type FieldImportWarning } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -133,13 +128,10 @@ import {
 // LAST_NAME, EMAIL, COMPANY, TITLE): placed by the sender, filled by the signer.
 export const FIELD_TYPES = SENDER_FIELD_TYPES;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
-const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
-const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
-const MAX_LABEL = CHECKBOX_LABEL_MAX;
-const MAX_GROUP_KEY = CHECKBOX_GROUP_KEY_MAX;
-// FIELD-PARITY-1 P1-2 — the check-box settings are the catalog's (label, group_key,
-// group_rule, min_selected).
-const CHECKBOX_CONFIG = fieldSettingsOf('CHECKBOX');
+// FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT was engine-only before P3 (R-2 made it authorable): a
+// stored engine row of it (S2S / Sign API: no recipient or no size) sent back with its id still
+// passes through unchanged, exactly as before.
+const LEGACY_ENGINE_ONLY_TYPES: ReadonlySet<string> = new Set(['ACKNOWLEDGEMENT']);
 // The engine field types a sender may send back unchanged with their id
 // (SenderFieldPassthrough): the catalog's `engine_passthrough` surface (FIELD-PARITY-1 P1-2;
 // today FIELD_TYPES + ACKNOWLEDGEMENT, 12). PAYMENT is not among them; the DB CHECK
@@ -651,8 +643,23 @@ export class SenderEnvelopeService {
           // Sign 1.14 — PAYMENT only (null for every other type).
           payment_amount_minor: f.payment_amount_minor ?? null,
           payment_currency: f.payment_currency ?? null,
+          // FIELD-PARITY-1 P3 §6.2 — the field settings (null / false where not set).
+          tooltip: f.tooltip ?? null,
+          placeholder: f.placeholder ?? null,
+          read_only: f.read_only === true,
+          sender_filled: f.sender_filled === true,
+          validation: f.validation ?? null,
+          font_size: f.font_size ?? null,
+          data_name: f.data_name ?? null,
+          options: f.options ?? null,
+          // S-5 — the sender's own value of a sender-filled field (null for every other field:
+          // a signer's value is never returned here).
+          value: f.sender_filled === true ? (f.value ?? null) : null,
         })),
       ),
+      // FIELD-PARITY-1 P3 S-5 (ruling R-3) — whether sender-filled fields are switched on
+      // (SIGN_SENDER_FILLED_FIELDS_ENABLED); false: the editors do not offer them.
+      sender_filled_fields_enabled: senderFilledFieldsEnabled(process.env),
     };
     return { view, env };
   }
@@ -1381,6 +1388,15 @@ export class SenderEnvelopeService {
         return v;
       };
       const field_type = o['field_type'];
+      if (
+        typeof field_type === 'string' &&
+        LEGACY_ENGINE_ONLY_TYPES.has(field_type) &&
+        typeof o['id'] === 'string' &&
+        o['id'].length > 0 &&
+        (o['signer_id'] === null || o['signer_id'] === undefined || o['width'] === null || o['width'] === undefined || o['height'] === null || o['height'] === undefined)
+      ) {
+        return passthroughField(o, field_type, i, requestId);
+      }
       if (typeof field_type !== 'string' || (!FIELD_TYPE_SET.has(field_type) && field_type !== PAYMENT_FIELD_TYPE)) {
         // M-A6 §2 (coordinator ruling) — an engine-only type passes through only
         // unchanged: it names an existing field (id) and the repository keeps it
@@ -1416,6 +1432,7 @@ export class SenderEnvelopeService {
     });
     checkboxGroups(fields, requestId);
     onePaymentPerSigner(fields, requestId);
+    // (FIELD-PARITY-1 P3 S-5 — sender values were checked per field by fieldConfig.)
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.
     const docIds = [...new Set(fields.map((f) => f.envelope_document_id))];
@@ -1433,7 +1450,7 @@ export class SenderEnvelopeService {
       }
     }
     try {
-      await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields, ...(expected !== undefined ? { expected_revision: expected } : {}) });
+      await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields, actor_ref: auth.sub, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     } catch (e) {
       if (e instanceof SenderFieldPassthroughRefusedError) {
         throw bad(requestId, e.message, { index: e.index, reason: 'v1_field_type', allowed: FIELD_TYPES });
@@ -1468,6 +1485,18 @@ export class SenderEnvelopeService {
       }
       if (!d.fields.some((f) => f.signer_id === r.id && f.field_type === 'SIGNATURE')) problems.push(`${r.name} needs a signature field`);
     }
+    // FIELD-PARITY-1 P3 S-5 — a required field the sender fills needs the sender's value (a
+    // radio group: one chosen option) before the envelope can be sent.
+    const senderFields = (d.fields as ReadonlyArray<{ field_type: string; required: boolean; sender_filled?: boolean; value?: string | null; label?: string | null; group_key?: string | null }>).filter(
+      (f) => f.sender_filled === true && f.required,
+    );
+    const radioDone = new Set(senderFields.filter((f) => f.field_type === 'RADIO' && f.value === 'true').map((f) => f.group_key));
+    const missing = new Set<string>();
+    for (const f of senderFields) {
+      const filled = f.field_type === 'RADIO' ? radioDone.has(f.group_key) : f.field_type === 'CHECKBOX' ? f.value === 'true' : typeof f.value === 'string' && f.value.trim().length > 0;
+      if (!filled) missing.add(f.field_type === 'RADIO' ? `radio group ${f.group_key ?? ''}` : (f.label ?? f.field_type.toLowerCase()));
+    }
+    for (const m of missing) problems.push(`Fill in ${m} before sending`);
     return { ok: problems.length === 0, problems };
   }
 
@@ -1703,53 +1732,47 @@ function eventDetail(payload: unknown): Record<string, string> | null {
 // M-A3 §8 — a Word document (OOXML zip or legacy OLE compound file) is refused with
 // a stable reason before the PDF pipeline.
 // Sign Mobile D-W6-2 — each page's size in points. pdf-lib's getWidth/getHeight
-// M-A6 §2 — the Name and Checkbox configuration of one authored field. The sender
-// never supplies a value (§2.2). SIGNER_NAME takes name_mode (default
-// SIGNER_PROFILE); CHECKBOX takes label and the group settings; no other type
-// takes any of them. Every refusal carries a stable details.reason.
-type FieldConfig = Pick<SenderFieldInput, 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode'>;
+// M-A6 §2 — the Name and Checkbox configuration of one authored field; FIELD-PARITY-1 P3 §6.2
+// — every setting, through the ONE settings rule the template APIs use (@aramo/sign-fields
+// parseFieldSettings). SIGNER_NAME takes name_mode (default SIGNER_PROFILE); a setting the type
+// does not take is refused. The sender never supplies a value (§2.2, sender_value_refused) —
+// except, S-5 (ruling R-3, dark), for a sender_filled field while the server flag
+// SIGN_SENDER_FILLED_FIELDS_ENABLED is on: that value is checked with the signer's value rule
+// (fieldValueRefusal) and recorded as the sender's. Every refusal carries a stable details.reason.
+type FieldConfig = Pick<
+  SenderFieldInput,
+  'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'sender_value'
+>;
 function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, requestId: string): FieldConfig {
   const refuse = (field: string, reason: string, message: string): AramoError => bad(requestId, `field ${i + 1}: ${message}`, { index: i, field, reason });
   const present = (k: string): boolean => o[k] !== undefined && o[k] !== null;
-  if (present('value')) throw refuse('value', 'sender_value_refused', 'a sender cannot fill a field value');
-  if (field_type !== 'SIGNER_NAME' && present('name_mode')) throw refuse('name_mode', 'field_config_not_applicable', 'name_mode applies to name fields only');
-  if (field_type !== 'CHECKBOX') {
-    for (const k of CHECKBOX_CONFIG) if (present(k)) throw refuse(k, 'field_config_not_applicable', `${k} applies to check boxes only`);
+  const parsed = parseFieldSettings(o, field_type, { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+  if (!parsed.ok) throw refuse(parsed.refusal.setting, parsed.refusal.reason, parsed.refusal.message);
+  const st = parsed.settings;
+  let sender_value: string | null = null;
+  if (present('value')) {
+    if (!st.sender_filled) throw refuse('value', 'sender_value_refused', 'a sender cannot fill a field value');
+    const v = o['value'];
+    if (typeof v !== 'string') throw refuse('value', 'sender_value_invalid', 'value must be text');
+    const valueRefusal = fieldValueRefusal({ field_type, validation: st.validation, options: st.options }, v);
+    if (valueRefusal !== null) throw refuse('value', valueRefusal, 'the value does not fit this field');
+    sender_value = v;
   }
-  if (field_type === 'SIGNER_NAME') {
-    const mode = o['name_mode'] ?? 'SIGNER_PROFILE';
-    if (typeof mode !== 'string' || !NAME_MODES.has(mode)) throw refuse('name_mode', 'name_mode_invalid', 'name_mode must be SIGNER_PROFILE or SIGNER_ENTERED');
-    return { name_mode: mode as SignerNameMode };
-  }
-  if (field_type !== 'CHECKBOX') return {};
-  let label: string | null = null;
-  if (present('label')) {
-    if (typeof o['label'] !== 'string') throw refuse('label', 'checkbox_label_invalid', 'label must be text');
-    const t = o['label'].trim();
-    if (t.length > MAX_LABEL) throw refuse('label', 'checkbox_label_invalid', `label must be at most ${MAX_LABEL} characters`);
-    label = t.length > 0 ? t : null;
-  }
-  let group_key: string | null = null;
-  if (present('group_key')) {
-    if (typeof o['group_key'] !== 'string') throw refuse('group_key', 'checkbox_group_invalid', 'group_key must be text');
-    const t = o['group_key'].trim();
-    if (t.length > MAX_GROUP_KEY) throw refuse('group_key', 'checkbox_group_invalid', `group_key must be at most ${MAX_GROUP_KEY} characters`);
-    group_key = t.length > 0 ? t : null;
-  }
-  if (group_key === null) {
-    if (present('group_rule') || present('min_selected')) throw refuse(present('group_rule') ? 'group_rule' : 'min_selected', 'checkbox_group_required', 'group_rule and min_selected need a group_key');
-    return { label, group_key: null, group_rule: null, min_selected: null };
-  }
-  const rule = o['group_rule'] ?? 'SELECT_ANY';
-  if (typeof rule !== 'string' || !GROUP_RULES.has(rule)) throw refuse('group_rule', 'checkbox_group_invalid', 'group_rule must be SELECT_ONE or SELECT_ANY');
-  let min_selected: number | null = null;
-  if (present('min_selected')) {
-    const m = o['min_selected'];
-    if (typeof m !== 'number' || !Number.isInteger(m) || m < 1) throw refuse('min_selected', 'checkbox_group_invalid', 'min_selected must be a whole number of at least 1');
-    if (rule === 'SELECT_ONE' && m !== 1) throw refuse('min_selected', 'checkbox_group_invalid', 'a select-one group has min_selected 1');
-    min_selected = m;
-  }
-  return { label, group_key, group_rule: rule as CheckboxGroupRule, min_selected };
+  const settings = {
+    label: st.label,
+    tooltip: st.tooltip,
+    placeholder: st.placeholder,
+    read_only: st.read_only,
+    sender_filled: st.sender_filled,
+    validation: st.validation,
+    font_size: st.font_size,
+    data_name: st.data_name,
+    options: st.options as SenderFieldInput['options'],
+    ...(st.sender_filled ? { sender_value } : {}),
+  };
+  if (field_type === 'SIGNER_NAME') return { ...settings, name_mode: st.name_mode ?? 'SIGNER_PROFILE' };
+  if (field_type !== 'CHECKBOX' && field_type !== 'RADIO') return settings;
+  return { ...settings, group_key: st.group_key, group_rule: st.group_rule as CheckboxGroupRule | null, min_selected: st.min_selected };
 }
 
 // Sign 1.14 — the PAYMENT configuration: the amount in cents (50 = the Stripe minimum, to
@@ -1841,9 +1864,24 @@ function checkboxGroups(fields: ReadonlyArray<SenderFieldInput>, requestId: stri
   for (const [group_key, boxes] of groups) {
     const [first] = boxes;
     if (first === undefined) continue;
-    const consistent = boxes.every((b) => b.signer_id === first.signer_id && b.group_rule === first.group_rule && (b.min_selected ?? null) === (first.min_selected ?? null) && b.required === first.required);
+    // FIELD-PARITY-1 P3 — and one type (check boxes or radio buttons) and one read-only /
+    // sender-filled setting.
+    const consistent = boxes.every(
+      (b) =>
+        b.signer_id === first.signer_id &&
+        b.group_rule === first.group_rule &&
+        (b.min_selected ?? null) === (first.min_selected ?? null) &&
+        b.required === first.required &&
+        b.field_type === first.field_type &&
+        (b.read_only ?? false) === (first.read_only ?? false) &&
+        (b.sender_filled ?? false) === (first.sender_filled ?? false),
+    );
     if (!consistent) {
-      throw bad(requestId, `check-box group ${group_key}: every box needs the same recipient, rule, minimum and required setting`, { group_key, reason: 'checkbox_group_inconsistent' });
+      throw bad(requestId, `check-box group ${group_key}: every box needs the same recipient, type, rule, minimum, required, read-only and sender-filled setting`, { group_key, reason: 'checkbox_group_inconsistent' });
+    }
+    // P3 T-5 / S-5 — a sender-filled radio group holds at most one choice.
+    if (first.field_type === 'RADIO' && boxes.filter((b) => b.sender_value === 'true').length > 1) {
+      throw bad(requestId, `radio group ${group_key}: choose one option`, { group_key, reason: 'radio_group_select_one' });
     }
     if ((first.min_selected ?? 1) > boxes.length) {
       throw bad(requestId, `check-box group ${group_key}: min_selected is more than the boxes in the group`, { group_key, reason: 'checkbox_group_min_exceeds_size' });

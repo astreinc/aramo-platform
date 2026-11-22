@@ -94,17 +94,32 @@ export class SenderFieldPassthroughRefusedError extends Error {
 // HTTP boundary). Stable reasons: signer_profile_name_server_filled (a
 // SIGNER_PROFILE name is filled by the server, never by a client) and
 // checkbox_value_invalid (check boxes take 'true' or 'false' only).
+// The message of each signer value refusal (details.reason is the stable key). FIELD-PARITY-1
+// P3 adds the new types' value rules (@aramo/sign-fields fieldValueRefusal) and the read-only
+// rule (field_read_only).
+const FIELD_VALUE_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
+  signer_profile_name_server_filled: 'This name is filled from the signer profile and cannot be entered',
+  payment_field_server_filled: 'A payment field is completed by paying, not by entering a value',
+  profile_field_value_invalid: 'Enter at most 200 characters',
+  email_field_value_invalid: 'Enter a valid email address',
+  checkbox_value_invalid: 'A check box value must be true or false',
+  field_read_only: 'This field was filled in by the sender and cannot be changed',
+  date_value_invalid: 'Enter a valid date',
+  number_value_invalid: 'Enter a number',
+  number_decimals_exceeded: 'Enter fewer decimal places',
+  dropdown_value_invalid: 'Choose one of the options',
+  multiline_text_too_long: 'Enter at most 4000 characters',
+  validation_email_failed: 'Enter a valid email address',
+  validation_phone_failed: 'Enter a valid phone number',
+  validation_us_zip_failed: 'Enter a valid US ZIP code',
+  validation_max_length_failed: 'Enter fewer characters',
+  validation_number_range_failed: 'Enter a number in the allowed range',
+  validation_date_range_failed: 'Enter a date in the allowed range',
+};
+
 export class SignatureFieldValueRefusedError extends Error {
   constructor(public readonly fieldId: string, public readonly reason: string) {
-    super(reason === 'signer_profile_name_server_filled'
-      ? 'This name is filled from the signer profile and cannot be entered'
-      : reason === 'payment_field_server_filled'
-        ? 'A payment field is completed by paying, not by entering a value'
-        : reason === 'profile_field_value_invalid'
-          ? 'Enter at most 200 characters'
-          : reason === 'email_field_value_invalid'
-            ? 'Enter a valid email address'
-            : 'A check box value must be true or false');
+    super(FIELD_VALUE_REFUSAL_MESSAGES[reason] ?? 'A check box value must be true or false');
     this.name = 'SignatureFieldValueRefusedError';
   }
 }
