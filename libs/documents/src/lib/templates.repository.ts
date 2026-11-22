@@ -45,6 +45,41 @@ export interface FingerprintField {
   format_rule: string | null;
   signer_role: string | null;
   ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the field settings are content too. A setting joins the hash only
+  // when it is set, so every existing fingerprint (all settings NULL) is unchanged.
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
+}
+// FIELD-PARITY-1 P1-3 — the five setting columns, in one place for every field write and copy.
+export const TEMPLATE_FIELD_SETTING_COLUMNS = ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode'] as const;
+type SettingColumn = (typeof TEMPLATE_FIELD_SETTING_COLUMNS)[number];
+export interface TemplateFieldSettingColumns {
+  label: string | null;
+  group_key: string | null;
+  group_rule: string | null;
+  min_selected: number | null;
+  name_mode: string | null;
+}
+/** The setting columns of a field (absent → NULL), for a create or a copy. */
+export function templateFieldSettingColumns(f: Partial<Pick<FingerprintField, SettingColumn>>): TemplateFieldSettingColumns {
+  return {
+    label: f.label ?? null,
+    group_key: f.group_key ?? null,
+    group_rule: f.group_rule ?? null,
+    min_selected: f.min_selected ?? null,
+    name_mode: f.name_mode ?? null,
+  };
+}
+function setSettings(f: FingerprintField): Partial<Record<SettingColumn, string | number>> {
+  const out: Partial<Record<SettingColumn, string | number>> = {};
+  for (const k of TEMPLATE_FIELD_SETTING_COLUMNS) {
+    const v = f[k];
+    if (v !== undefined && v !== null) out[k] = v;
+  }
+  return out;
 }
 // TEMPLATE-PRODUCT-1 TP-6 — exported (unchanged) so the fixed-form repository re-arms the same gate.
 export function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
@@ -64,6 +99,7 @@ export function templateContentFingerprint(field_schema: unknown, fields: readon
       format_rule: f.format_rule,
       signer_role: f.signer_role,
       ordinal: f.ordinal,
+      ...setSettings(f),
     }));
   return createHash('sha256').update(stableStringify({ field_schema: field_schema ?? null, field_definitions })).digest('hex');
 }
@@ -176,6 +212,13 @@ export interface AddFieldInput {
   format_rule?: string;
   signer_role?: string;
   ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the field settings (validated by the caller with
+  // @aramo/sign-fields parseTemplateFieldSettings; the type-scoped CHECKs are the backstop).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }
 
 @Injectable()
@@ -495,6 +538,8 @@ export class TemplatesRepository {
             format_rule: f.format_rule,
             signer_role: f.signer_role,
             ordinal: f.ordinal,
+            // FIELD-PARITY-1 P1-3 — the settings are copied with the field.
+            ...templateFieldSettingColumns(f),
           },
         });
       }
@@ -1294,6 +1339,7 @@ export class TemplatesRepository {
         format_rule: input.format_rule ?? null,
         signer_role: input.signer_role ?? null,
         ordinal: input.ordinal,
+        ...templateFieldSettingColumns(input),
       },
     });
     // M-A6 §3.4 — a field is content: it joins the fingerprint and re-arms the preview gate.

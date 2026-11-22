@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
+import { TEMPLATE_FIELD_SETTINGS, parseTemplateFieldSettings } from '@aramo/sign-fields';
 import {
   FIXED_FORM_MAX_BYTES,
   FIXED_FORM_SCHEMA_V1,
@@ -58,6 +59,12 @@ export interface FixedFormFieldView {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (NULL = not set).
+  readonly label: string | null;
+  readonly group_key: string | null;
+  readonly group_rule: string | null;
+  readonly min_selected: number | null;
+  readonly name_mode: string | null;
 }
 
 const ROUTING = new Set(['PARALLEL', 'SEQUENTIAL']);
@@ -79,6 +86,11 @@ export function toFieldView(f: {
   width: number | null;
   height: number | null;
   ordinal: number;
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }): FixedFormFieldView {
   return {
     field_key: f.field_key,
@@ -92,6 +104,11 @@ export function toFieldView(f: {
     width: f.width,
     height: f.height,
     ordinal: f.ordinal,
+    label: f.label ?? null,
+    group_key: f.group_key ?? null,
+    group_rule: f.group_rule ?? null,
+    min_selected: f.min_selected ?? null,
+    name_mode: f.name_mode ?? null,
   };
 }
 
@@ -122,12 +139,28 @@ export function fixedFormContentOf(field_schema: unknown, fallbackTitle: string)
 }
 
 // One placed field from a request body (shape only — the publish rules are fixedFormIssues).
+const FIELD_MEMBERS: readonly string[] = [
+  'field_key',
+  'field_type',
+  'binding_key',
+  'signer_role',
+  'required',
+  'page_number',
+  'x',
+  'y',
+  'width',
+  'height',
+  'ordinal',
+  // FIELD-PARITY-1 P1-3 — the Sign field settings.
+  ...TEMPLATE_FIELD_SETTINGS,
+];
+
 export function parseFieldInput(raw: unknown, index: number, requestId: string): Omit<FixedFormField, 'ordinal'> & { ordinal: number } {
   const o = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null) as Record<string, unknown> | null;
   const at = (field: string, reason: string, message: string): AramoError => invalid(`field ${index + 1}: ${message}`, requestId, { reason, index, field });
   if (o === null) throw at('field', 'field_invalid', 'must be an object');
   for (const k of Object.keys(o)) {
-    if (!['field_key', 'field_type', 'binding_key', 'signer_role', 'required', 'page_number', 'x', 'y', 'width', 'height', 'ordinal'].includes(k)) {
+    if (!FIELD_MEMBERS.includes(k)) {
       throw at(k, 'field_unknown_member', `${k} is not a field property`);
     }
   }
@@ -150,6 +183,10 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
   if (typeof required !== 'boolean') throw at('required', 'field_required_invalid', 'required must be true or false');
   const ordinal = o['ordinal'] === undefined ? index : o['ordinal'];
   if (typeof ordinal !== 'number' || !Number.isInteger(ordinal) || ordinal < 0) throw at('ordinal', 'field_ordinal_invalid', 'ordinal must be a non-negative integer');
+  // FIELD-PARITY-1 P1-3 — the settings the type takes (the catalog), by Sign's rules; one the
+  // type does not take is refused (field_config_not_applicable), never dropped.
+  const parsed = parseTemplateFieldSettings(o, o['field_type']);
+  if (!parsed.ok) throw at(parsed.refusal.setting, parsed.refusal.reason, parsed.refusal.message);
   return {
     field_key,
     field_type: o['field_type'],
@@ -162,6 +199,7 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
     width: num('width'),
     height: num('height'),
     ordinal,
+    ...parsed.settings,
   };
 }
 

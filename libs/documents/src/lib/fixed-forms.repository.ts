@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { FIXED_FORM_SCHEMA_V1, type FixedFormField } from './fixed-forms.js';
-import { templateContentFingerprint } from './templates.repository.js';
+import { templateContentFingerprint, templateFieldSettingColumns } from './templates.repository.js';
 import {
   DocumentNotFoundError,
   TemplateDraftAlreadyExistsError,
@@ -186,6 +186,8 @@ export class FixedFormsRepository {
               format_rule: f.format_rule,
               signer_role: f.signer_role,
               ordinal: f.ordinal,
+              // FIELD-PARITY-1 P1-3 — the settings are copied with the field.
+              ...templateFieldSettingColumns(f),
             },
           });
         }
@@ -207,7 +209,7 @@ export class FixedFormsRepository {
       if (input.fields !== undefined) {
         await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: version.id } });
         for (const f of input.fields) {
-          await tx.templateFieldDefinition.create({ data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...f } });
+          await tx.templateFieldDefinition.create({ data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...f, ...templateFieldSettingColumns(f) } });
         }
       }
       const field_schema = input.field_schema !== undefined ? input.field_schema : version.field_schema;
@@ -233,7 +235,7 @@ export class FixedFormsRepository {
     const { version } = await this.getPlatformVersion(input.version_id);
     if (version.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
     const created = await this.prisma.templateFieldDefinition.create({
-      data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...input.field },
+      data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...input.field, ...templateFieldSettingColumns(input.field) },
     });
     const fields = await this.listFields(version.id);
     await this.prisma.templateVersion.update({

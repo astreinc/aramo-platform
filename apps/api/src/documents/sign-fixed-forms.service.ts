@@ -320,6 +320,12 @@ export class SignFixedFormsService {
           y: x.y,
           width: x.width,
           height: x.height,
+          // FIELD-PARITY-1 P1-4 — the settings travel with the field (no silent drop).
+          label: x.label,
+          group_key: x.group_key,
+          group_rule: x.group_rule,
+          min_selected: x.min_selected,
+          name_mode: x.name_mode,
         }),
       ),
       signing: s === null ? null : { roles: s.roles.map((r) => ({ ...r })), routing_mode: s.routing_mode },

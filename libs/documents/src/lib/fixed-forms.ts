@@ -8,7 +8,7 @@
 // never edited by a tenant (§7.3). Field geometry is PDF-native, exactly what Sign places:
 // page_number 0-based, points, origin bottom-left, (x, y) the box's lower-left corner.
 
-import { fieldTypesFor, isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-fields';
+import { checkboxGroupIssues, fieldTypesFor, isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-fields';
 
 /** field_schema.render_schema_version of a fixed-form version. */
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
@@ -87,6 +87,13 @@ export interface FixedFormField {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (M-A6 §2; @aramo/sign-fields
+  // parseTemplateFieldSettings decides which type takes which). Absent / NULL = not set.
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
 }
 
 /** The content a new fixed-form version starts from: no PDF yet, one signer role. */
@@ -129,7 +136,9 @@ export interface FixedFormIssue {
  *   - a TEXT field with a variable prefills it (no signer role, the variable must be one the
  *     type allows); every other field belongs to a SIGNER role;
  *   - each box lies on an existing page, inside it, at least 8 points each way;
- *   - every SIGNER role has at least one SIGNATURE field.
+ *   - every SIGNER role has at least one SIGNATURE field;
+ *   - FIELD-PARITY-1 P1-3 — the boxes of a check-box group share one signer role, rule,
+ *     minimum and required setting, and the minimum is not more than the boxes (Sign's rule).
  */
 export function fixedFormIssues(input: {
   pdf: FixedFormPdfRef | null;
@@ -184,6 +193,18 @@ export function fixedFormIssues(input: {
     if (!input.fields.some((f) => f.signer_role === role_key && f.field_type === 'SIGNATURE')) {
       out.push({ code: 'role_without_signature', message: `Signer role ${role_key} has no signature field.`, role_key });
     }
+  }
+  const grouped = input.fields.map((f) => ({
+    field_key: f.field_key,
+    signer_role: f.signer_role,
+    required: f.required,
+    group_key: f.group_key ?? null,
+    group_rule: f.group_rule ?? null,
+    min_selected: f.min_selected ?? null,
+  }));
+  for (const g of checkboxGroupIssues(grouped)) {
+    const first = grouped.find((f) => f.group_key === g.group_key);
+    out.push({ code: g.reason, message: g.message, ...(first !== undefined ? { field_key: first.field_key } : {}) });
   }
   return out;
 }

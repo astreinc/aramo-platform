@@ -154,6 +154,14 @@ export interface SignTemplateFieldDefinition {
   readonly y: number | null;
   readonly width: number | null;
   readonly height: number | null;
+  // FIELD-PARITY-1 P1-3 / P1-4 — the field's Sign settings (M-A6 §2), carried onto the
+  // envelope field unchanged. ADD, optional: a provider that predates them omits them, and
+  // absent = NULL = not set (name_mode NULL = SIGNER_PROFILE).
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
 }
 
 export interface SignTemplateRenderResponse {

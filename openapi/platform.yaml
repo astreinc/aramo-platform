@@ -7297,6 +7297,28 @@ components:
         width: { type: [number, 'null'] }
         height: { type: [number, 'null'] }
         ordinal: { type: integer }
+        # FIELD-PARITY-1 P1-3 — the Aramo Sign field settings (M-A6 §2). A setting the field type does not
+        # take is refused 422 (details.reason field_config_not_applicable); NULL = not set.
+        label:
+          type: [string, 'null']
+          maxLength: 200
+          description: CHECKBOX only — the box's caption.
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+          description: CHECKBOX only — boxes of one signer role sharing a key form a group.
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, SELECT_ANY, null]
+          description: CHECKBOX only, needs group_key (default SELECT_ANY).
+        min_selected:
+          type: [integer, 'null']
+          minimum: 1
+          description: CHECKBOX only, needs group_key; 1 for SELECT_ONE (NULL = 1).
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+          description: SIGNER_NAME only — NULL = SIGNER_PROFILE (Sign fills the signer's name).
     FixedFormFieldList:
       type: object
       additionalProperties: false

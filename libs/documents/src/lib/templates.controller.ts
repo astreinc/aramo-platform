@@ -18,7 +18,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
-import { fieldTypesFor } from '@aramo/sign-fields';
+import { fieldTypesFor, parseTemplateFieldSettings } from '@aramo/sign-fields';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -174,6 +174,12 @@ interface AddFieldBody {
   format_rule?: string;
   signer_role?: string;
   ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (which type takes which: the catalog).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }
 
 @Controller('v1/document-templates')
@@ -691,8 +697,17 @@ export class DocumentTemplatesController {
     validate(typeof body?.field_key === 'string' && body.field_key.length > 0, 'field_key is required', requestId);
     validate(FIELD_TYPES.has(body.field_type), 'invalid field_type', requestId);
     validate(typeof body?.ordinal === 'number', 'ordinal is required', requestId);
+    // FIELD-PARITY-1 P1-3 — a setting the type does not take is refused with a named reason
+    // (the same reasons as Sign's sender API), never stored or dropped.
+    const parsed = parseTemplateFieldSettings(body as unknown as Record<string, unknown>, body.field_type);
+    if (!parsed.ok) {
+      throw new AramoError('VALIDATION_ERROR', parsed.refusal.message, 400, {
+        requestId,
+        details: { field: parsed.refusal.setting, reason: parsed.refusal.reason },
+      });
+    }
     try {
-      return await this.repo.addField({ tenant_id: auth.tenant_id, template_version_id: versionId, ...body });
+      return await this.repo.addField({ tenant_id: auth.tenant_id, template_version_id: versionId, ...body, ...parsed.settings });
     } catch (e) {
       throw toHttp(e, requestId);
     }
