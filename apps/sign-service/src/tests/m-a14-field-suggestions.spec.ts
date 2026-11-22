@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 
-import { PDFDocument, StandardFonts, degrees } from 'pdf-lib';
+import { PDFDocument, PDFHexString, PDFName, StandardFonts, beginText, degrees, endText, moveText, rgb, setFontAndSize, showText, type PDFPage, type PDFRef } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DocumentTextLayerService, type TextLayerPage, type TextLayerWord } from '../app/text-layer/document-text-layer.service.js';
-import { type PageFrame, SUGGESTED_SIZE, SUGGESTION_LIMIT, suggestFields } from '../app/text-layer/field-suggestions.js';
+import { DETECT_LIMIT, type PageFrame, SUGGESTED_SIZE, SUGGESTION_LIMIT, detectFields, suggestFields } from '../app/text-layer/field-suggestions.js';
 import { FieldSuggestionsService } from '../app/text-layer/field-suggestions.service.js';
 
 // Aramo Sign Mobile M-A14 R-3 / §2 — "Auto suggest fields" (Option A, deterministic). Fixture
@@ -166,5 +166,142 @@ describe('M-A14 R-3 — FieldSuggestionsService', () => {
     })).toEqual({ suggestions: [] });
     // Not a PDF → an empty text layer → [].
     expect(await new FieldSuggestionsService(new DocumentTextLayerService()).suggest('doc-5', 'v1', async () => new TextEncoder().encode('not a pdf'))).toEqual({ suggestions: [] });
+  });
+});
+
+// FIELD-PARITY-1 §5 P2-4 — `detect: 'all'`: the shared detector (@aramo/sign-fields detectFields)
+// over the real text layer AND the drawn rectangles of pdf-lib-generated PDFs: underscore lines,
+// empty boxes, a ruled table, label patterns and ☐ glyphs, several pages, a rotated page skipped,
+// overlaps removed, the limit. The default (no mode) answer stays the M-A14 one.
+describe('FIELD-PARITY-1 P2-4 — FieldSuggestionsService detect=all on real PDFs', () => {
+  // Helvetica with one code remapped to the glyph name uni2610, so the text layer reads "☐".
+  function boxGlyphFont(doc: PDFDocument): PDFRef {
+    const enc = doc.context.obj({ Type: 'Encoding', BaseEncoding: 'WinAnsiEncoding', Differences: [128, PDFName.of('uni2610')] });
+    return doc.context.register(doc.context.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica', Encoding: enc }));
+  }
+  function drawGlyph(page: PDFPage, x: number, y: number): void {
+    page.pushOperators(beginText(), setFontAndSize('FBox', 12), moveText(x, y), showText(PDFHexString.of('80')), endText());
+  }
+
+  async function formPdf(): Promise<Uint8Array> {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const glyphs = boxGlyphFont(pdf);
+    const black = rgb(0, 0, 0);
+    // Page 1 — labels, an underscore line, a drawn box, a small square, ☐ glyphs.
+    const p1 = pdf.addPage([612, 792]);
+    p1.node.setFontDictionary(PDFName.of('FBox'), glyphs);
+    p1.drawText('Name: ____________________', { x: 72, y: 720, size: 12, font });
+    p1.drawText('Title:', { x: 72, y: 690, size: 12, font });
+    p1.drawText('Email:', { x: 72, y: 660, size: 12, font });
+    p1.drawText('Reference ______________________', { x: 72, y: 620, size: 12, font });
+    p1.drawText('Notes', { x: 72, y: 585, size: 12, font });
+    p1.drawRectangle({ x: 72, y: 480, width: 400, height: 90, borderColor: black, borderWidth: 1 });
+    p1.drawRectangle({ x: 72, y: 440, width: 12, height: 12, borderColor: black, borderWidth: 1 });
+    p1.drawText('I agree', { x: 90, y: 442, size: 12, font });
+    drawGlyph(p1, 72, 410);
+    p1.drawText('Yes', { x: 90, y: 410, size: 12, font });
+    // Page 2 — a ruled attendee table (thin filled rules, as Word exports) and a signature block.
+    const p2 = pdf.addPage([612, 792]);
+    for (const y of [700, 670, 640, 610]) p2.drawRectangle({ x: 72, y, width: 400, height: 0.75, color: black });
+    for (const x of [72, 222, 472]) p2.drawRectangle({ x, y: 610, width: 0.75, height: 90.75, color: black });
+    p2.drawText('Company', { x: 80, y: 680, size: 12, font });
+    p2.drawText('Signature: ______________________', { x: 72, y: 200, size: 12, font });
+    p2.drawText('Date: ____________', { x: 360, y: 200, size: 12, font });
+    // Page 3 — rotated: skipped with a reason.
+    const p3 = pdf.addPage([612, 792]);
+    p3.drawText('Signature: ______________________', { x: 72, y: 200, size: 12, font });
+    p3.setRotation(degrees(90));
+    return pdf.save();
+  }
+
+  it('finds labels, lines, boxes, cells and glyphs with a type, a size and a reason', async () => {
+    const svc = new FieldSuggestionsService(new DocumentTextLayerService());
+    const bytes = await formPdf();
+    const out = await svc.suggest('doc-all', 'v1', async () => bytes, 'all');
+    const at = (page: number, reason: string) => out.suggestions.filter((s) => s.page === page && s.reason === reason);
+    // Labels.
+    expect(at(1, 'label:Name')).toEqual([expect.objectContaining({ type: 'SIGNER_NAME', page_number: 0 })]);
+    expect(at(1, 'label:Title')).toEqual([expect.objectContaining({ type: 'TITLE' })]);
+    expect(at(1, 'label:Email')).toEqual([expect.objectContaining({ type: 'EMAIL' })]);
+    // The Name label's field sits on its underline (baseline 720), right of the label.
+    const name = at(1, 'label:Name')[0];
+    expect(Math.abs((name?.y ?? 0) - 720)).toBeLessThan(3);
+    expect(name?.x ?? 0).toBeGreaterThan(100);
+    // A bare underscore line (after "Reference", not a label) → TEXT sized to the run.
+    const line = at(1, 'underscore_line');
+    expect(line).toHaveLength(1);
+    expect(line[0]).toMatchObject({ type: 'TEXT' });
+    expect(line[0]?.width ?? 0).toBeGreaterThan(100);
+    // The empty drawn box → TEXT filling it; the 12pt square → CHECKBOX; the ☐ glyph → CHECKBOX.
+    const boxes = at(1, 'empty_box');
+    expect(boxes.map((b) => b.type).sort()).toEqual(['CHECKBOX', 'TEXT']);
+    // (The drawn boxes are read at 0..1 of the page to 4 places, so within 0.1pt.)
+    const near = (b: { x: number; y: number; width: number; height: number } | undefined, e: [number, number, number, number]) =>
+      [b?.x ?? 0, b?.y ?? 0, b?.width ?? 0, b?.height ?? 0].forEach((v, i) => expect(Math.abs(v - e[i]!)).toBeLessThan(0.1));
+    near(boxes.find((b) => b.type === 'TEXT'), [74, 482, 396, 86]);
+    near(boxes.find((b) => b.type === 'CHECKBOX'), [72, 440, 12, 12]);
+    expect(at(1, 'checkbox_glyph')).toEqual([expect.objectContaining({ type: 'CHECKBOX' })]);
+    // Page 2 — the "Company" cell fills the empty cell to its right; the other cells are empty.
+    expect(at(2, 'label:Company')).toEqual([expect.objectContaining({ type: 'COMPANY' })]);
+    expect(at(2, 'label:Company')[0]?.x ?? 0).toBeGreaterThan(222);
+    expect(at(2, 'empty_cell')).toHaveLength(4);
+    expect(at(2, 'label:Signature')).toEqual([expect.objectContaining({ type: 'SIGNATURE' })]);
+    // "Date:" next to a signature is the signing date.
+    expect(at(2, 'label:Date')).toEqual([expect.objectContaining({ type: 'SIGN_DATE' })]);
+    // Page 3 is rotated: nothing, and it is reported.
+    expect(out.suggestions.some((s) => s.page === 3)).toBe(false);
+    expect(out.skipped_pages).toEqual([{ page: 3, reason: 'rotated' }]);
+    // No two suggestions on a page overlap; every box is inside its page; confidence is set.
+    for (const a of out.suggestions) {
+      expect(a.x + a.width).toBeLessThanOrEqual(612);
+      expect(a.y + a.height).toBeLessThanOrEqual(792);
+      expect(a.confidence).toBeGreaterThan(0);
+      for (const b of out.suggestions) {
+        if (a === b || a.page !== b.page) continue;
+        const ix = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const iy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+        expect(ix > 0 && iy > 0 && ix * iy > Math.min(a.width * a.height, b.width * b.height) * 0.3).toBe(false);
+      }
+    }
+  });
+
+  it('the default answer of the same PDF is still the M-A14 one (SIGNATURE / SIGN_DATE only)', async () => {
+    const svc = new FieldSuggestionsService(new DocumentTextLayerService());
+    const bytes = await formPdf();
+    const out = await svc.suggest('doc-default', 'v1', async () => bytes);
+    expect(Object.keys(out)).toEqual(['suggestions']);
+    expect(out.suggestions.map((s) => s.type)).toEqual(['SIGNATURE', 'SIGN_DATE']);
+    expect(out.suggestions.every((s) => !('reason' in s))).toBe(true);
+  });
+
+  it(`raises the limit to ${DETECT_LIMIT} per document, across every page`, async () => {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    for (let p = 0; p < 4; p += 1) {
+      const page = pdf.addPage([612, 792]);
+      for (let i = 0; i < 20; i += 1) page.drawText('__________', { x: 72, y: 760 - i * 36, size: 12, font });
+    }
+    const bytes = await pdf.save();
+    const svc = new FieldSuggestionsService(new DocumentTextLayerService());
+    const out = await svc.suggest('doc-many', 'v1', async () => bytes, 'all');
+    expect(out.suggestions).toHaveLength(80);
+    expect(new Set(out.suggestions.map((s) => s.page))).toEqual(new Set([1, 2, 3, 4]));
+    expect(detectFields([], [], { limit: 3 }).suggestions).toEqual([]);
+  });
+
+  it('a drawing that cannot be read leaves the text rules; any other failure is an empty answer', async () => {
+    const svc = new FieldSuggestionsService(new DocumentTextLayerService());
+    svc.readGraphics = async () => {
+      throw new Error('broken drawing');
+    };
+    const bytes = await formPdf();
+    const out = await svc.suggest('doc-nodraw', 'v1', async () => bytes, 'all');
+    expect(out.suggestions.some((s) => s.reason === 'label:Name')).toBe(true);
+    expect(out.suggestions.some((s) => s.reason === 'empty_box')).toBe(false);
+    const failing = new FieldSuggestionsService(new DocumentTextLayerService());
+    expect(await failing.suggest('doc-x', 'v1', async () => {
+      throw new Error('storage down');
+    }, 'all')).toEqual({ suggestions: [], skipped_pages: [] });
   });
 });

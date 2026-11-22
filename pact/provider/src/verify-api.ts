@@ -618,6 +618,9 @@ const DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION = resolve(
 // the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
 // FixedFormVersionView.field_import), present only when the request opts in with import_fields /
 // apply_text_tags; without the flags the response is unchanged, so no interaction here changes.
+// FIELD-PARITY-1 P2-4 (auto-detect suggestions) — NO migration and no changed shape: one NEW read
+// route, GET …/fixed-form/field-suggestions (openapi/platform.yaml FixedFormFieldSuggestions), which
+// no consumer pact records yet; every existing interaction's response is unchanged.
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(

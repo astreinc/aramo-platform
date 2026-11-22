@@ -1,11 +1,15 @@
 import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
+import { extractPageGraphics, extractTextLayer, readPageFrames } from '@aramo/documents-rendering';
 import {
   TEMPLATE_FIELD_SETTINGS,
+  detectFields,
+  fieldTypesFor,
   importFieldKey,
   matchTagRole,
   parseTemplateFieldSettings,
+  type DetectResult,
   type FieldImportWarning,
 } from '@aramo/sign-fields';
 import {
@@ -358,6 +362,28 @@ export class FixedFormService {
         stripped: prepared.stripped,
       },
     };
+  }
+
+  /**
+   * FIELD-PARITY-1 §5 P2-4 — the Studio's "Suggest fields": the shared deterministic detector
+   * (@aramo/sign-fields detectFields, the same one Sign's envelope route runs) over the stored
+   * PDF's text layer, page frames and drawn rectangles, limited to the fixed-form palette (a
+   * "Title:" label becomes TEXT here). No model, no network, no text logged. The version must be
+   * a fixed form (404 / 409 as the other routes); after that, a version without a PDF, or any
+   * failure reading it, is an empty answer (the feature is a convenience).
+   */
+  async fieldSuggestions(version_id: string, requestId: string): Promise<DetectResult> {
+    const { version, template } = await this.platformVersion(version_id, requestId);
+    const { content } = fixedFormContentOf(version.field_schema, template.name);
+    const none: DetectResult = { suggestions: [], skipped_pages: [] };
+    if (content.pdf === null) return none;
+    try {
+      const bytes = new Uint8Array(await this.readPdf(content.pdf, requestId));
+      const [pages, frames, graphics] = await Promise.all([extractTextLayer(bytes), readPageFrames(bytes), extractPageGraphics(bytes).catch(() => [])]);
+      return detectFields(pages, frames, { graphics, types: fieldTypesFor('template_fixed_form') });
+    } catch {
+      return none;
+    }
   }
 
   /** §7.2 — replace the signer roles (+ title) and every placed field of a DRAFT in one write. */
