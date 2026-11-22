@@ -30836,12 +30836,22 @@
     {
       "from": "doc/sign/field-placement-parity-checklist.md",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/FieldSettingsPanel.tsx"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
       "to": "libs/field-placement-web/src/lib/keymap.ts"
     },
     {
       "from": "doc/sign/field-placement-parity-checklist.md",
       "status": "unscoped",
       "to": "libs/sign-fields/src/lib/field-detect.ts"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/features/editor/FieldSettingsSheet.tsx"
     },
     {
       "from": "doc/sign/text-tags.md",
