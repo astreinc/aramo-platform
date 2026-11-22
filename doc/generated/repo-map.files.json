@@ -6295,6 +6295,7 @@
     "libs/sign-client/vitest.config.ts",
     "libs/sign-fields/project.json",
     "libs/sign-fields/src/__tests__/catalog.test.ts",
+    "libs/sign-fields/src/__tests__/field-settings.test.ts",
     "libs/sign-fields/src/index.ts",
     "libs/sign-fields/src/lib/catalog.ts",
     "libs/sign-fields/src/lib/field-settings.ts",
