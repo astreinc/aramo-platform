@@ -388,7 +388,7 @@ model TemplateFieldDefinition {
   format_rule         String?
   signer_role         String?
   ordinal             Int
-  // FIELD-PARITY-1 P1-3 — the sign."SignatureField" settings (M-A6 §2), with the same
+  // FIELD-PARITY-1 P1-3 — the Sign's SignatureField settings (M-A6 §2), with the same
   // type-scoped CHECKs (migration 20261122100000_field_parity_1_template_field_settings).
   label               String? // CHECKBOX only; 1..200
   group_key           String? // CHECKBOX only; 1..64

@@ -1,5 +1,5 @@
 // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-3 —
-// the field settings a TEMPLATE field carries: the sign."SignatureField" settings of M-A6 §2
+// the field settings a TEMPLATE field carries: the Sign's SignatureField settings of M-A6 §2
 // (label, group_key, group_rule, min_selected, name_mode). One rule for every template API
 // (the console fixed-form routes and the documents template field route) and for the
 // template → envelope mapping in sign-service, so a template field becomes an envelope field
