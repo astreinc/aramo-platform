@@ -202,7 +202,7 @@ model SignatureField {
   tenant_id            String    @db.Uuid
   envelope_document_id String    @db.Uuid
   signer_id            String?   @db.Uuid
-  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT|FIRST_NAME|LAST_NAME|EMAIL|COMPANY|TITLE (M-A12)
+  field_type           String // CHECK: SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|TEXT|CHECKBOX|ACKNOWLEDGEMENT|PAYMENT|FIRST_NAME|LAST_NAME|EMAIL|COMPANY|TITLE (M-A12)|DATE|DROPDOWN|RADIO|NUMBER|MULTILINE_TEXT (FIELD-PARITY-1 P3)
   signature_method     String? // CHECK (nullable): TYPED|DRAWN|UPLOADED|DIGITAL_CERTIFICATE
   page_number          Int
   x                    Float
@@ -214,14 +214,24 @@ model SignatureField {
   filled_at            DateTime? @db.Timestamptz
   // M-A6 §2 — Name and Checkbox configuration (type-scoped CHECKs; NULL for every
   // other type and for engine fields created through the S2S / Sign API paths).
-  label                String? // CHECKBOX only
-  group_key            String? // CHECKBOX only
+  label                String? // any type (FIELD-PARITY-1 P3 S-1; was CHECKBOX only); 1..200
+  group_key            String? // CHECKBOX or RADIO (a RADIO always has one, rule SELECT_ONE)
   group_rule           String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
   min_selected         Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
   name_mode            String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only
   // Sign 1.14 — PAYMENT only (CHECK): the amount in cents (50..99999999) and the currency (USD).
   payment_amount_minor Int?
   payment_currency     String?
+  // FIELD-PARITY-1 P3 §6.2 (migration 20261122200000_field_parity_1_p3_field_types_settings) —
+  // the field settings; validated by @aramo/sign-fields parseFieldSettings, type-scoped CHECKs.
+  tooltip              String? // S-1: 1..500
+  placeholder          String? // S-2: 1..200
+  read_only            Boolean   @default(false) // S-4: only with sender_filled
+  sender_filled        Boolean   @default(false) // S-5: the sender's value (dark: SIGN_SENDER_FILLED_FIELDS_ENABLED)
+  validation           String? // S-6: email|phone|us_zip|max_length (TEXT), max_length (MULTILINE_TEXT), number_range (NUMBER), date_range (DATE)
+  font_size            Int? // S-7: 6..36 points; NULL = auto
+  data_name            String? // S-9: lower_snake key
+  options              Json? // per-type options (DROPDOWN choices, NUMBER format, validation parameters); a JSON object
 
   envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
   signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)

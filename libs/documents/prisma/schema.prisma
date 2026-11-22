@@ -377,7 +377,7 @@ model TemplateFieldDefinition {
   id                  String  @id @db.Uuid
   template_version_id String  @db.Uuid
   field_key           String
-  field_type          String // CHECK: TEXT|MULTILINE_TEXT|DATE|NUMBER|CURRENCY|CHECKBOX|IMAGE|SIGNATURE|INITIALS|SIGN_DATE|SIGNER_NAME|SIGNER_EMAIL (migration)
+  field_type          String // CHECK: the catalog's template_documents_store (FIELD-PARITY-1 P3 migration 20261122200000; @aramo/sign-fields)
   binding_key         String?
   required            Boolean @default(false)
   page_number         Int?
@@ -390,11 +390,21 @@ model TemplateFieldDefinition {
   ordinal             Int
   // FIELD-PARITY-1 P1-3 — the Sign's SignatureField settings (M-A6 §2), with the same
   // type-scoped CHECKs (migration 20261122100000_field_parity_1_template_field_settings).
-  label               String? // CHECKBOX only; 1..200
-  group_key           String? // CHECKBOX only; 1..64
+  label               String? // any type (P3 S-1); 1..200
+  group_key           String? // CHECKBOX or RADIO; 1..64 (a RADIO always has one, rule SELECT_ONE)
   group_rule          String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
   min_selected        Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
   name_mode           String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only (NULL = SIGNER_PROFILE)
+  // FIELD-PARITY-1 P3 §6.2 — the same settings as the Sign field table (migration
+  // 20261122200000_field_parity_1_p3_template_field_types_settings), same CHECKs.
+  tooltip             String? // S-1: 1..500
+  placeholder         String? // S-2: 1..200
+  read_only           Boolean @default(false) // S-4: only with sender_filled
+  sender_filled       Boolean @default(false) // S-5 (dark)
+  validation          String? // S-6 preset (type-scoped)
+  font_size           Int? // S-7: 6..36; NULL = auto
+  data_name           String? // S-9: lower_snake
+  options             Json? // per-type options (a JSON object)
 
   template_version    TemplateVersion @relation(fields: [template_version_id], references: [id], onDelete: Cascade)
 
