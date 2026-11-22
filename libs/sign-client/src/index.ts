@@ -158,6 +158,14 @@ export {
   type FieldFiller,
   type FieldSetting,
   type SurfaceGate,
+  // FIELD-PARITY-1 P2-4 — the editors' pending-suggestion rule and reason words (web and app).
+  DETECT_LIMIT,
+  pendingSuggestions,
+  suggestionReasonText,
+  isSuggestedFieldType,
+  type SuggestedFieldType,
+  type PendingSuggestionLike,
+  type PlacedBoxLike,
 } from '@aramo/sign-fields';
 export {
   ROLE_LABELS,

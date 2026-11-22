@@ -35,7 +35,11 @@ const TODAY: Record<FieldSurface, { readonly off: readonly string[]; readonly on
     on: ['TEXT', 'MULTILINE_TEXT', 'DATE', 'NUMBER', 'CURRENCY', 'CHECKBOX', 'IMAGE', 'SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'SIGNER_EMAIL'],
   },
   signature_block: { off: ['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE'], on: ['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE'] },
-  suggestion: { off: ['SIGNATURE', 'SIGN_DATE'], on: ['SIGNATURE', 'SIGN_DATE'] },
+  // FIELD-PARITY-1 P2-4 — deliberately widened: the detector proposes labels, lines, boxes and glyphs.
+  suggestion: {
+    off: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'EMAIL', 'COMPANY', 'TITLE'],
+    on: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'EMAIL', 'COMPANY', 'TITLE'],
+  },
 };
 
 describe('field catalog (P1-1)', () => {
