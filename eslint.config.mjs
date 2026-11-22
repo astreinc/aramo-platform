@@ -118,6 +118,9 @@ const SCOPE_DEP_CONSTRAINTS = [
   // node:* built-ins, Buffer and DOM globals are banned by the file-scoped rule for
   // libs/sign-client below.
   { sourceTag: 'type:client-shared', onlyDependOnLibsWithTags: ['type:client-shared'], allowedExternalImports: ['vitest/config'] },
+  // FIELD-PARITY-1 P1-1 (ruling R-4) — libs/sign-fields is tagged BOTH scope:shared (so the
+  // console, Sign, the documents libraries and the shared web UI may import it) and
+  // type:client-shared (so libs/sign-client may import and re-export it). It imports nothing.
   { sourceTag: 'scope:shared', onlyDependOnLibsWithTags: ['scope:shared'] },
   { sourceTag: '*', onlyDependOnLibsWithTags: ['*'] },
 ];
@@ -190,8 +193,10 @@ export default [
   },
   // Client Rule Consolidation G-3 — libs/sign-client is pure: no Node built-ins, no Buffer,
   // no DOM or Node globals (it runs on Hermes, in the browser and on the server alike).
+  // FIELD-PARITY-1 P1-1 — libs/sign-fields (the one field catalog, which libs/sign-client
+  // re-exports) runs in the same places and is held to the same rule.
   {
-    files: ['libs/sign-client/src/**/*.ts'],
+    files: ['libs/sign-client/src/**/*.ts', 'libs/sign-fields/src/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',

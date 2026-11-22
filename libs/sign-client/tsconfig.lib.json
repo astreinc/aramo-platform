@@ -9,7 +9,9 @@
     "tsBuildInfoFile": "../../dist/libs/sign-client/.tsbuildinfo",
     "lib": ["es2022"],
     "types": [],
-    "paths": {}
+    "paths": {
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]

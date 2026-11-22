@@ -2,6 +2,7 @@
 // completion (EsignService.completeSigner) and covered directly by unit tests.
 // Client Rule Consolidation C2-4 — the one copy: libs/sign (server) and both Sign
 // clients import it from @aramo/sign-client.
+import { FIELD_CATALOG, PROFILE_TEXT_FIELD_TYPES, fieldTypesFor, type ProfileTextFieldType } from '@aramo/sign-fields';
 
 export const SIGNER_NAME_MODES = ['SIGNER_PROFILE', 'SIGNER_ENTERED'] as const;
 export type SignerNameMode = (typeof SIGNER_NAME_MODES)[number];
@@ -9,7 +10,8 @@ export const CHECKBOX_GROUP_RULES = ['SELECT_ONE', 'SELECT_ANY'] as const;
 export type CheckboxGroupRule = (typeof CHECKBOX_GROUP_RULES)[number];
 
 // Check-box field types: a value is 'true' (checked) or 'false' (unchecked).
-export const CHECK_FIELD_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
+// FIELD-PARITY-1 P1-2 — the Sign types whose catalog value kind is boolean.
+export const CHECK_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('sign_store').filter((t) => FIELD_CATALOG[t].value_kind === 'boolean'));
 
 export interface FieldRuleRow {
   id: string;
@@ -30,8 +32,8 @@ export const PAYMENT_FIELD_TYPE = 'PAYMENT';
 // Aramo Sign Mobile M-A12 W1-C.4 — profile auto-fill field types. Text-valued: the
 // sender places them, the signer fills them (the app prefills from the signer's own
 // Sign profile and the signer may edit). The executed PDF prints the value as text.
-export const PROFILE_TEXT_FIELD_TYPES = ['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] as const;
-export type ProfileTextFieldType = (typeof PROFILE_TEXT_FIELD_TYPES)[number];
+// FIELD-PARITY-1 P1-2 — the catalog's signer_profile prefill types (@aramo/sign-fields).
+export { PROFILE_TEXT_FIELD_TYPES, type ProfileTextFieldType };
 const PROFILE_TEXT_SET: ReadonlySet<string> = new Set(PROFILE_TEXT_FIELD_TYPES);
 
 export function isProfileTextField(f: Pick<FieldRuleRow, 'field_type'>): boolean {
