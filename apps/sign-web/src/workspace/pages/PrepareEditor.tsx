@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadPdf, type LoadedPdf } from '@aramo/document-templates-web/pdf';
-import { PlacementEditor, suggestionsFromWire, useAutosave, type PlacedField, type PlacementDocument, type PlacementSuggestion } from '@aramo/field-placement-web';
+import { PlacementEditor, suggestionsFromWire, useAutosave, type PlacedField, type PlacementCapabilities, type PlacementDocument, type PlacementSuggestion } from '@aramo/field-placement-web';
 import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
@@ -31,14 +31,44 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
 // Row 35 — the placeable types (the server's authoring list). PAYMENT is offered only when the
 // server reports payments available AND the editor can author a payment's amount; this editor
 // cannot yet, so a PAYMENT (placed through the API) stays shown but locked here.
-// FIELD-PARITY-1 P3 — the server accepts ACKNOWLEDGEMENT and the new types from a sender; until
-// Prepare's settings panel edits them (the web authoring slice empties this list), a stored one
-// is kept locked and sent back exactly as stored (every setting kept).
-export const P3_PENDING_WEB_TYPES: ReadonlySet<string> = new Set(['ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT']);
+// FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT (ruling R-2) and the new types (DATE, DROPDOWN, RADIO,
+// NUMBER, MULTILINE_TEXT) are authored here now, with every setting: nothing is pending.
+export const P3_PENDING_WEB_TYPES: ReadonlySet<string> = new Set<string>();
 export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(placeableFieldTypes({ payments_available: false }).filter((t) => !P3_PENDING_WEB_TYPES.has(t)));
 
-// The Prepare palette order (unchanged from before P1-5).
-const ORDER: readonly FieldType[] = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'];
+// The Prepare palette order (unchanged from before P1-5), then ACKNOWLEDGEMENT and the Phase 3 types.
+const ORDER: readonly FieldType[] = [
+  'SIGNATURE',
+  'INITIALS',
+  'SIGN_DATE',
+  'SIGNER_NAME',
+  'TEXT',
+  'CHECKBOX',
+  'FIRST_NAME',
+  'LAST_NAME',
+  'EMAIL',
+  'COMPANY',
+  'TITLE',
+  'DATE',
+  'DROPDOWN',
+  'RADIO',
+  'NUMBER',
+  'MULTILINE_TEXT',
+  'ACKNOWLEDGEMENT',
+];
+
+/** FIELD-PARITY-1 P3 §6.2 — the settings Prepare edits (the Sign sender API stores every one). */
+export const PREPARE_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'validation', 'font_size', 'data_name', 'options'] as const;
+
+/** The editor capabilities: sender-filled (and read-only) only while the server says they are on (S-5, dark). */
+export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled'>): PlacementCapabilities {
+  const senderFilled = env.sender_filled_fields_enabled === true;
+  return {
+    settings: senderFilled ? [...PREPARE_SETTINGS, 'read_only', 'sender_filled'] : PREPARE_SETTINGS,
+    limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX },
+    senderValues: senderFilled,
+  };
+}
 
 interface DocPdf {
   docId: string;
@@ -49,7 +79,11 @@ interface DocPdf {
 let seq = 0;
 const newKey = () => `f${Date.now().toString(36)}${(seq += 1)}`;
 
-/** Stored field → editor. A type the sender cannot author (M-A6 §2) is kept locked with the stored field. */
+/**
+ * Stored field → editor. A type the sender cannot author (M-A6 §2) is kept locked with the stored
+ * field; so is an engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT), which
+ * the server passes through only unchanged, with its id.
+ */
 export function toPlaced(f: EnvelopeField): PlacedField {
   return {
     id: f.id ?? newKey(),
@@ -64,7 +98,7 @@ export function toPlaced(f: EnvelopeField): PlacedField {
     assignee: f.signer_id,
     binding: null,
     settings: configFromWire(f),
-    ...(V1_TYPES.has(f.field_type) ? {} : { locked: true }),
+    ...(V1_TYPES.has(f.field_type) && f.signer_id && f.width != null && f.height != null ? {} : { locked: true }),
   };
 }
 
@@ -150,6 +184,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     formatError: (e) => errorMessage(e),
   });
   const readiness = useMemo(() => readinessOf(env), [env]);
+  const capabilities = useMemo(() => prepareCapabilities(env), [env.sender_filled_fields_enabled]);
   // FIELD-PARITY-1 P2-4 — "Find fields": the Sign route's full detector (detect=all) for every
   // document, as ghosts in the editor. A document whose suggestions fail adds none.
   const docIds = env.documents.map((d) => d.id).join(',');
@@ -201,7 +236,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
             setRevision((r) => r + 1);
           }}
           assignees={assignees}
-          capabilities={{ settings: ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode'], limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX } }}
+          capabilities={capabilities}
           newFieldId={() => newKey()}
           paletteMode="arm"
           precision="integer"

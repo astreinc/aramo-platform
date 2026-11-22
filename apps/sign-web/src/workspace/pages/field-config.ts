@@ -1,4 +1,15 @@
-import { DEFAULT_SETTINGS, applySettings, groupSize, type ConfigurableField, type GroupRule, type NameMode, type PlacementSettings, type SettingsPatch } from '@aramo/field-placement-web';
+import {
+  DEFAULT_SETTINGS,
+  applySettings,
+  groupSize,
+  settingsFromWire,
+  settingsToWire,
+  type ConfigurableField,
+  type GroupRule,
+  type NameMode,
+  type PlacementSettings,
+  type SettingsPatch,
+} from '@aramo/field-placement-web';
 
 import type { EnvelopeField, FieldType } from '../api';
 
@@ -6,6 +17,9 @@ import type { EnvelopeField, FieldType } from '../api';
 // (stored field ↔ editor settings, and the PUT payload's configuration). FIELD-PARITY-1 P1-5 —
 // the editor settings and the check-box group rules (applyConfig / groupSize) moved into the
 // shared placement editor (@aramo/field-placement-web), re-exported here under their old names.
+// FIELD-PARITY-1 P3 §6.2 — every setting the type takes (the catalog's fieldSettingsOf) now
+// travels: label, tooltip, placeholder, read-only, sender-filled with the sender's value,
+// validation, font size, data name and options, through the editor's shared wire mapping.
 
 export type { NameMode, GroupRule, ConfigurableField };
 export type FieldConfig = PlacementSettings;
@@ -14,28 +28,19 @@ export const DEFAULT_CONFIG: FieldConfig = DEFAULT_SETTINGS;
 export const applyConfig = applySettings;
 export { groupSize };
 
+/** The configuration members of a PUT field (and `value`, a sender-filled field's own value). */
+export type FieldConfigWire = Partial<
+  Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'value'>
+>;
+
 // Stored field → editor config.
 export function configFromWire(f: EnvelopeField): FieldConfig {
-  return {
-    nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE',
-    label: f.label ?? '',
-    groupKey: f.group_key ?? '',
-    groupRule: f.group_rule === 'SELECT_ONE' ? 'SELECT_ONE' : 'SELECT_ANY',
-    minSelected: f.min_selected ?? null,
-  };
+  return settingsFromWire(f);
 }
 
-// Editor config → the PUT payload's configuration for this type. Only the
-// properties the type takes are sent; a value is never sent (§2.2).
-export function configToWire(type: FieldType, c: FieldConfig): Partial<Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected'>> {
-  if (type === 'SIGNER_NAME') return { name_mode: c.nameMode };
-  if (type !== 'CHECKBOX') return {};
-  const label = c.label.trim();
-  const group = c.groupKey.trim();
-  return {
-    ...(label.length > 0 ? { label } : {}),
-    ...(group.length > 0
-      ? { group_key: group, group_rule: c.groupRule, ...(c.groupRule === 'SELECT_ANY' && c.minSelected !== null ? { min_selected: c.minSelected } : {}) }
-      : {}),
-  };
+// Editor config → the PUT payload's configuration for this type. Only the settings the type
+// takes and that are set are sent (name_mode always for SIGNER_NAME); a value only for a
+// sender-filled field (S-5, ruling R-3 — every other value is refused: sender_value_refused).
+export function configToWire(type: FieldType, c: FieldConfig): FieldConfigWire {
+  return settingsToWire(type, c, { senderValues: true }) as FieldConfigWire;
 }

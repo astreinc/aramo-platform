@@ -20,10 +20,12 @@ const box = (id: string, over: Partial<Box['settings']> & { assignee?: string; r
 afterEach(() => vi.restoreAllMocks());
 
 describe('sender field tools (M-A6 §2.1)', () => {
-  it('Name and Checkbox are authorable; Acknowledgement is not', () => {
-    // M-A12 W1-C.4 — + the profile text fields.
-    expect([...V1_TYPES].sort()).toEqual(['CHECKBOX', 'COMPANY', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE']);
-    expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(false);
+  it('Name and Checkbox are authorable; FIELD-PARITY-1 P3 — so are Acknowledgement and the new types', () => {
+    // M-A12 W1-C.4 — + the profile text fields; FIELD-PARITY-1 P3 (R-2, T-3..T-7) — + ACKNOWLEDGEMENT and the new types.
+    expect([...V1_TYPES].sort()).toEqual([
+      'ACKNOWLEDGEMENT', 'CHECKBOX', 'COMPANY', 'DATE', 'DROPDOWN', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'MULTILINE_TEXT', 'NUMBER', 'RADIO', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE',
+    ]);
+    expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(true);
     expect(TYPES.SIGNER_NAME.label).toBe('Name');
     // C3 (audit rows 36–37) — the one size table (the app's): a checkbox is 18 × 18 and optional.
     expect(TYPES.CHECKBOX).toMatchObject({ w: 18, h: 18, required: false });
@@ -37,7 +39,8 @@ describe('sender field tools (M-A6 §2.1)', () => {
 describe('configToWire / configFromWire', () => {
   it('a name carries only name_mode (default SIGNER_PROFILE)', () => {
     expect(configToWire('SIGNER_NAME', DEFAULT_CONFIG)).toEqual({ name_mode: 'SIGNER_PROFILE' });
-    expect(configToWire('SIGNER_NAME', { ...DEFAULT_CONFIG, nameMode: 'SIGNER_ENTERED', label: 'x' })).toEqual({ name_mode: 'SIGNER_ENTERED' });
+    // FIELD-PARITY-1 P3 S-1 — a name takes a label now (the catalog); never a group.
+    expect(configToWire('SIGNER_NAME', { ...DEFAULT_CONFIG, nameMode: 'SIGNER_ENTERED', label: 'x', groupKey: 'g' })).toEqual({ name_mode: 'SIGNER_ENTERED', label: 'x' });
   });
 
   it('a checkbox carries label and group settings; min only for SELECT_ANY groups', () => {
@@ -47,13 +50,20 @@ describe('configToWire / configFromWire', () => {
     expect(configToWire('CHECKBOX', { ...DEFAULT_CONFIG, groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: 2 })).toEqual({ group_key: 'g', group_rule: 'SELECT_ONE' });
   });
 
-  it('other types carry no configuration', () => {
-    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, label: 'x', groupKey: 'g' })).toEqual({});
+  it('other types carry only the settings they take (a signature: label, tooltip, data name)', () => {
+    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, groupKey: 'g', placeholder: 'p', fontSize: 9 })).toEqual({});
+    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, label: 'x', tooltip: 't', dataName: 'buyer_sig' })).toEqual({ label: 'x', tooltip: 't', data_name: 'buyer_sig' });
+  });
+
+  it('FIELD-PARITY-1 P3 — a value goes out only for a sender-filled field', () => {
+    expect(configToWire('TEXT', { ...DEFAULT_CONFIG, senderValue: 'x' })).toEqual({});
+    expect(configToWire('TEXT', { ...DEFAULT_CONFIG, senderFilled: true, senderValue: 'x' })).toEqual({ sender_filled: true, value: 'x' });
+    expect(configToWire('DROPDOWN', { ...DEFAULT_CONFIG, options: { choices: [{ value: ' a ', label: '' }] } })).toEqual({ options: { choices: [{ value: 'a', label: 'a' }] } });
   });
 
   it('reads stored configuration back', () => {
     expect(configFromWire({ envelope_document_id: 'd', signer_id: 's', field_type: 'CHECKBOX', page_number: 0, x: 0, y: 0, width: 14, height: 14, required: true, label: 'A', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: null })).toEqual({
-      nameMode: 'SIGNER_PROFILE', label: 'A', groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: null,
+      ...DEFAULT_CONFIG, nameMode: 'SIGNER_PROFILE', label: 'A', groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: null,
     });
   });
 });
