@@ -92,12 +92,14 @@ import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './en
 // with the origin at the page's BOTTOM-LEFT corner and (x, y) the field box's
 // lower-left corner. The sender UI converts from its top-left canvas frame.
 
-// PX-V1 §1 — field types limited to signature, date, initials and text; the other
-// engine field types (SIGNER_NAME, CHECKBOX, ACKNOWLEDGEMENT) stay out of scope.
+// PX-V1 §1 — originally signature, date, initials and text; the amendments below
+// widened the sender authoring types to the 11 in FIELD_TYPES (+ PAYMENT, accepted
+// only while payments are available: 12 in the SenderFieldInput enum).
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED — up to MAX_SIGNERS signers per
 // envelope, signing in parallel or in order (ROUTING_MODES).
 // M-A6 §2.1 — SIGNER_NAME and CHECKBOX are added to the sender authoring types;
-// ACKNOWLEDGEMENT stays engine-only (the S2S and Sign API keep all seven).
+// ACKNOWLEDGEMENT stays engine-only (the S2S / Sign API allow-list keeps its 7 types,
+// envelope-field-mapper.ts).
 // Aramo Sign Mobile M-A12 W1-C.4 — + the profile auto-fill text types (FIRST_NAME,
 // LAST_NAME, EMAIL, COMPANY, TITLE): placed by the sender, filled by the signer.
 export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', ...PROFILE_TEXT_FIELD_TYPES] as const;
@@ -107,7 +109,10 @@ const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
 const MAX_LABEL = 200;
 const MAX_GROUP_KEY = 64;
 const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
-// The seven engine field types (the S2S and Sign API paths accept all of them).
+// The 12 engine field types a sender may send back unchanged with their id
+// (SenderFieldPassthrough): FIELD_TYPES + ACKNOWLEDGEMENT. PAYMENT is not among them.
+// The DB CHECK allows 13 (these + PAYMENT). FIELD-PARITY-1 P1-1 — every one of these
+// lists becomes a projection of the one field catalog.
 const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT', ...PROFILE_TEXT_FIELD_TYPES]);
 export const MAX_SIGNERS = 10;
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;

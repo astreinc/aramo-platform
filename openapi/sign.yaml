@@ -2014,7 +2014,9 @@ paths:
       summary: Replace the positioned fields of a DRAFT envelope.
       description: >
         Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create.
-        M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise),
+        Field types are the SenderFieldInput.field_type enum (12): SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and
+        CHECKBOX (M-A6 §2), FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE (M-A12), and PAYMENT only while payments are
+        available to the organization (Sign 1.14; 403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); any other type is 400 v1_field_type,
         except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough).
         A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label,
         group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons:
@@ -10297,8 +10299,8 @@ components:
     SenderEnvelopeField:
       type: object
       description: >-
-        A stored field of the envelope, as the sender detail returns it. Any of the seven engine
-        types (fields from the service-to-service, Sign API and template paths keep theirs).
+        A stored field of the envelope, as the sender detail returns it. Any of the 13 stored field
+        types in the enum (fields from the service-to-service, Sign API and template paths keep theirs).
         PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration
         is null where it does not apply. Other recipients' values are never returned.
       required: [id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, filled]
