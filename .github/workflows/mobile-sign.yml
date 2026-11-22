@@ -9,7 +9,7 @@
 #                         openapi/*.yaml (mobile/sign/scripts/generate-api.mjs) → git diff
 #
 # Scope rules:
-#   • Runs only when mobile/**, openapi/**, libs/sign-client/** or this file change: on pull_request through
+#   • Runs only when mobile/**, openapi/**, libs/sign-client/**, libs/sign-fields/** or this file change: on pull_request through
 #     the `paths` filter; in the merge queue (which has no `paths` support) through the
 #     `detect` job's diff against the queue base. workflow_dispatch always runs.
 #   • Every job is a no-op until mobile/sign/package.json exists.
@@ -34,6 +34,8 @@ on:
       - 'openapi/**'
       # Client Rule Consolidation C2-3 — the app bundles libs/sign-client and runs its specs.
       - 'libs/sign-client/**'
+      # FIELD-PARITY-1 P1-1 — and libs/sign-fields, the field catalog libs/sign-client imports.
+      - 'libs/sign-fields/**'
       - '.github/workflows/mobile-sign.yml'
   merge_group:
   workflow_dispatch:
@@ -69,10 +71,10 @@ jobs:
           if [ ! -f "$MOBILE_DIR/package.json" ]; then
             echo "::notice::$MOBILE_DIR/package.json not present — mobile jobs no-op."
           elif [ "$EVENT" = "merge_group" ]; then
-            if git diff --name-only "$MERGE_BASE" HEAD -- mobile openapi libs/sign-client .github/workflows/mobile-sign.yml | grep -q .; then
+            if git diff --name-only "$MERGE_BASE" HEAD -- mobile openapi libs/sign-client libs/sign-fields .github/workflows/mobile-sign.yml | grep -q .; then
               run=true
             else
-              echo "::notice::merge group touches no mobile/, openapi/, libs/sign-client/ or workflow path — mobile jobs no-op."
+              echo "::notice::merge group touches no mobile/, openapi/, libs/sign-client/, libs/sign-fields/ or workflow path — mobile jobs no-op."
             fi
           else
             run=true # pull_request (already path-filtered) or workflow_dispatch

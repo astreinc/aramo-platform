@@ -48,7 +48,8 @@ const ALLOWED = new Set(['organization.name']);
 
 describe('TEMPLATE-PRODUCT-1 TP-6 — fixed-form rules (§7.2)', () => {
   it('the field types are exactly the six Aramo Sign executes', () => {
-    expect([...FIXED_FORM_FIELD_TYPES]).toEqual(['TEXT', 'SIGN_DATE', 'CHECKBOX', 'SIGNER_NAME', 'SIGNATURE', 'INITIALS']);
+    // FIELD-PARITY-1 P1-2 — a catalog projection (catalog order); the same six types.
+    expect([...FIXED_FORM_FIELD_TYPES].sort()).toEqual(['TEXT', 'SIGN_DATE', 'CHECKBOX', 'SIGNER_NAME', 'SIGNATURE', 'INITIALS'].sort());
   });
 
   it('a complete form has no issue', () => {

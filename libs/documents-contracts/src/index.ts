@@ -39,6 +39,8 @@ export {
   type SignTemplateRenderRequest,
   type SignTemplateRenderResponse,
   type SignTemplateSignatureField,
+  type SignTemplateSignatureFieldType,
+  SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES,
   type SignTemplateFieldDefinition,
   type SignTemplateRole,
   type SignTemplateRoleKind,

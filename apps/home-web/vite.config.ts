@@ -27,6 +27,9 @@ export default defineConfig({
       '@aramo/org-admin-web': resolve(root, '../../libs/org-admin-web/src/index.ts'),
       // DOC-TEMPLATE-LIB-1 T-4 — the shared document-template UI.
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
+      // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
+      // @aramo/sign-client and @aramo/document-templates-web.
+      '@aramo/sign-fields': resolve(root, '../../libs/sign-fields/src/index.ts'),
     },
   },
   server: {

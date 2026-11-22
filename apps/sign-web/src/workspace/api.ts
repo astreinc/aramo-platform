@@ -7,6 +7,8 @@ import {
   placeableFieldTypes,
   refusalMessage,
   isReminderStale as sharedReminderStale,
+  type AnyFieldType,
+  type FieldTypeOn,
   type InboxActions,
   type SenderActions,
 } from '@aramo/sign-client';
@@ -42,7 +44,8 @@ export type EnvelopeStatus = 'DRAFT' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'D
 export type RecipientStatus = 'PENDING' | 'VIEWED' | 'SIGNED' | 'DECLINED';
 // Sign 1.14 — PAYMENT: paid by the signer on Stripe's hosted page (only while features.payments).
 // M-A12 W1-C.4 — + the profile text fields FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE.
-export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT' | 'PAYMENT' | 'FIRST_NAME' | 'LAST_NAME' | 'EMAIL' | 'COMPANY' | 'TITLE';
+// FIELD-PARITY-1 P1-2 — every type an envelope stores: the catalog's `sign_store` projection.
+export type FieldType = AnyFieldType;
 
 export interface SenderContext {
   user: { id: string; email: string | null; display_name: string | null };
@@ -520,7 +523,8 @@ export interface TemplatePreview {
 export interface FromTemplateResult {
   envelope: EnvelopeDetail;
   template: { template_id: string; version_id: string; version_number: number };
-  suggested_fields: { field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE'; page_number: number; x: number; y: number; width: number; height: number; role_key?: string }[];
+  // FIELD-PARITY-1 P1-2 — the renderer's signature block: the catalog's `signature_block` projection.
+  suggested_fields: { field_type: FieldTypeOn<'signature_block'>; page_number: number; x: number; y: number; width: number; height: number; role_key?: string }[];
   signing?: TemplateSigning | null;
 }
 

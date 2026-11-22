@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 87 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 88 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -71,6 +71,7 @@
     "@aramo/settings": "./libs/settings/src/index.ts",
     "@aramo/sign": "./libs/sign/src/index.ts",
     "@aramo/sign-client": "./libs/sign-client/src/index.ts",
+    "@aramo/sign-fields": "./libs/sign-fields/src/index.ts",
     "@aramo/sign-service": "./apps/sign-service/src/app/app.module.ts",
     "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
     "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
@@ -902,6 +903,7 @@
       "SIGNATURE_PROVIDER_PORT",
       "SIGN_TEMPLATE_BODY_DIGEST_PARAM",
       "SIGN_TEMPLATE_LIBRARY_PATH",
+      "SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES",
       "canonicalEsignS2sRequest",
       "computeEsignS2sSignature",
       "normalizeEsignS2sQuery",
@@ -2583,8 +2585,11 @@
       "ENVELOPE_TRANSITIONS",
       "EnvelopeRevisionMismatchError",
       "FALLBACK_MESSAGE",
+      "FIELD_CATALOG",
       "FIELD_DEFAULTS",
       "FIELD_SIZE_SCALE",
+      "FIELD_SURFACES",
+      "FIELD_TYPE_KEYS",
       "INBOX_ACTION_KEYS",
       "INBOX_ITEM_CHANGED",
       "IdempotencyKeyReuseError",
@@ -2632,6 +2637,7 @@
       "TOO_LARGE_REFUSAL",
       "VOID_REASON_COPY",
       "VOID_REASON_MAX",
+      "WHEN_PAYMENTS_AVAILABLE",
       "WORD_COPY",
       "allSigningRecipientsSigned",
       "allowanceTermsLine",
@@ -2644,6 +2650,8 @@
       "duplicateWitness",
       "envelopeOpenForSigning",
       "evaluateSignerFieldRules",
+      "fieldSettingsOf",
+      "fieldTypesFor",
       "formatSignDate",
       "hostedSessionRefusal",
       "inboxActionsOf",
@@ -2651,9 +2659,12 @@
       "isDailyAllowance",
       "isDraftEditable",
       "isE164",
+      "isFieldTypeKey",
+      "isFieldTypeOn",
       "isLinkSigner",
       "isPartyDeletable",
       "isPaymentField",
+      "isPaymentsGatedOn",
       "isProfileTextField",
       "isPurgeEligible",
       "isPurgeExecuted",
@@ -2702,6 +2713,19 @@
       "witnessReady",
       "witnessTargets",
       "wordUploadEnabled"
+    ],
+    "@aramo/sign-fields": [
+      "FIELD_CATALOG",
+      "FIELD_DEFAULTS",
+      "FIELD_SURFACES",
+      "FIELD_TYPE_KEYS",
+      "PROFILE_TEXT_FIELD_TYPES",
+      "WHEN_PAYMENTS_AVAILABLE",
+      "fieldSettingsOf",
+      "fieldTypesFor",
+      "isFieldTypeKey",
+      "isFieldTypeOn",
+      "isPaymentsGatedOn"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -10119,6 +10143,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -14559,6 +14589,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/editor/__tests__/editorReducer.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/editor/fieldTypes.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -14624,6 +14659,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/selfSign/fieldSuggestions.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/send/draftModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -14679,6 +14719,24 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      { "project": "sign-service", "status": "production" }
+    ],
+    "@aramo/sign-fields": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/fixed-form/fixed-form.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      { "project": "document-templates-web", "status": "production" },
+      { "project": "documents", "status": "production" },
+      { "project": "sign-client", "status": "production" },
       { "project": "sign-service", "status": "production" }
     ],
     "@aramo/sign-service": [
@@ -16364,6 +16422,13 @@
       "sourceRoot": "pact/consumers/sign-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "sign-fields",
+      "root": "libs/sign-fields",
+      "sourceRoot": "libs/sign-fields/src",
+      "tags": ["scope:shared", "type:client-shared"],
+      "targets": ["build", "lint", "test"]
     },
     {
       "name": "sign-mobile",

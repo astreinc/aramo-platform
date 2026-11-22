@@ -3,7 +3,8 @@
 //
 // Pure TypeScript ESM: no React, no React Native, no DOM, no `node:*`, no Buffer, no
 // Prisma, no Nest, and no npm dependency (nx module boundary: type:client-shared). One
-// copy, imported by apps/sign-web, mobile/sign and libs/sign (the server).
+// copy, imported by apps/sign-web, mobile/sign and libs/sign (the server). Its one repo
+// import is @aramo/sign-fields, the field catalog (FIELD-PARITY-1 P1-1).
 //
 // Relative imports carry the `.js` suffix (the repo's nodenext rule). Metro resolves them
 // to the `.ts` source through mobile/sign/metro.config.js; Jest through moduleNameMapper.
@@ -135,6 +136,29 @@ export {
   type FieldDefaults,
   type FieldSizeKey,
 } from './lib/field-types.js';
+// FIELD-PARITY-1 P1-1 (ruling R-4) — the one field catalog lives in @aramo/sign-fields
+// (scope:shared); re-exported here so the Sign clients keep importing one library. The
+// Sign-scoped FIELD_DEFAULTS above is the catalog's table for the types an envelope stores.
+export {
+  FIELD_CATALOG,
+  FIELD_SURFACES,
+  FIELD_TYPE_KEYS,
+  WHEN_PAYMENTS_AVAILABLE,
+  fieldTypesFor,
+  isFieldTypeOn,
+  isFieldTypeKey,
+  isPaymentsGatedOn,
+  fieldSettingsOf,
+  type FieldSurface,
+  type FieldCatalogEntry,
+  type FieldTypeKey,
+  type FieldTypeOn,
+  type FieldTypeOnWhenAvailable,
+  type FieldValueKind,
+  type FieldFiller,
+  type FieldSetting,
+  type SurfaceGate,
+} from '@aramo/sign-fields';
 export {
   ROLE_LABELS,
   roleLabel,

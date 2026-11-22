@@ -4472,6 +4472,36 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/project.json"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/documents/fixed-form.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/documents.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
@@ -10197,6 +10227,11 @@
       "to": "libs/org-admin-web/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -10279,6 +10314,11 @@
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/platform-admin/Dockerfile",
@@ -10684,6 +10724,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
       "from": "apps/portal-web/project.json",
       "status": "unscoped",
       "to": "apps/portal-web/vite.config.ts"
@@ -10865,6 +10910,11 @@
       "to": "libs/sign-client/src/index.ts"
     },
     {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/index.ts"
@@ -10883,6 +10933,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/talent-intelligence-service/project.json",
@@ -32335,6 +32390,11 @@
       "to": "libs/documents-contracts/tsconfig.lib.json"
     },
     {
+      "from": "libs/documents-contracts/src/lib/sign-template-library.contract.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
       "from": "libs/documents-rendering/project.json",
       "status": "unscoped",
       "to": "libs/documents-rendering/src/index.ts"
@@ -32373,6 +32433,11 @@
       "from": "libs/documents/project.json",
       "status": "unscoped",
       "to": "libs/documents/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/documents/src/lib/templates.controller.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -34367,6 +34432,21 @@
       "status": "production",
       "to": "libs/sign/src/lib/domain/recipients.ts"
     },
+    {
+      "from": "libs/sign-fields/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "libs/sign-fields/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/catalog.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/tsconfig.lib.json" },
     {
@@ -35787,6 +35867,11 @@
       "status": "unscoped",
       "to": "libs/sign-client/project.json"
     },
+    {
+      "from": "mobile/sign/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/project.json"
+    },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },
@@ -35925,6 +36010,11 @@
       "from": "mobile/sign/tsconfig.json",
       "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
+    },
+    {
+      "from": "mobile/sign/tsconfig.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     { "from": "openapi/ats.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "openapi/auth.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
@@ -38782,6 +38872,7 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "tsconfig.base.json",
@@ -38997,6 +39088,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "vitest.shared.ts",

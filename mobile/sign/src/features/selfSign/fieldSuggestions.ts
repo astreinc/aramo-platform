@@ -7,6 +7,8 @@
 // bottom-left. Not yet in the generated types, so the response is parsed defensively and
 // any failure is "no suggestions". The on/off choice is stored on this device only (G-7),
 // default on.
+import { isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-client';
+
 import type { SecureKeyValue } from '../../auth/secureKeyValue';
 import { fillPath } from '../../api/types';
 import type { WorkspaceClient } from '../../api/workspaceClient';
@@ -17,7 +19,8 @@ import { SELF_KEY, type SelfDoc } from './selfSignModel';
 
 const PATH = '/v1/sign/sender/envelopes/{envelope_id}/documents/{document_id}/field-suggestions';
 
-export type SuggestedType = 'SIGNATURE' | 'SIGN_DATE';
+// FIELD-PARITY-1 P1-2 — the catalog's `suggestion` surface (today SIGNATURE and SIGN_DATE).
+export type SuggestedType = FieldTypeOn<'suggestion'>;
 
 export interface FieldSuggestion {
   readonly type: SuggestedType;
@@ -47,7 +50,7 @@ export function parseSuggestions(raw: unknown): FieldSuggestion[] {
     const y = num(so['y']);
     const width = num(so['width']);
     const height = num(so['height']);
-    if (type !== 'SIGNATURE' && type !== 'SIGN_DATE') continue;
+    if (!isFieldTypeOn('suggestion', type)) continue;
     if (page === null || !Number.isInteger(page) || page < 1) continue;
     if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) continue;
     out.push({ type, page, x, y, width, height });

@@ -1,3 +1,5 @@
+import { fieldTypesFor } from '@aramo/sign-client';
+
 import { FEATURES } from '../../../config/features';
 import {
   UNDO_DEPTH,
@@ -46,6 +48,12 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
     for (const other of ['ACKNOWLEDGEMENT', 'NAME', 'STAMP']) {
       expect(isAuthoringFieldType(other)).toBe(false);
     }
+  });
+
+  it('FIELD-PARITY-1 P1-2 — the tool tiers together are the catalog send_mobile surface (PAYMENT gated, never a tool)', () => {
+    expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([...fieldTypesFor('send_mobile')].sort());
+    expect([...toolFieldTypes(true, true)].sort()).toEqual([...fieldTypesFor('send_mobile')].sort());
+    expect(AUTHORING_FIELD_TYPES).not.toContain('PAYMENT');
   });
 
   it('shows Name and Checkbox only behind FEATURES.extraFieldTypes (on in this build)', () => {

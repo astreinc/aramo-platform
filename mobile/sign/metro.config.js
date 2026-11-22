@@ -10,6 +10,9 @@
 //                   to their `.ts` source. Anything else resolves exactly as before.
 // The library imports no npm package (nx boundary type:client-shared), so it can never
 // pull the web monorepo's React 18 into the app bundle.
+// FIELD-PARITY-1 P1-1 — libs/sign-client imports one other repo library, libs/sign-fields
+// (`@aramo/sign-fields`, the one field catalog; also type:client-shared, no imports). It is
+// watched and resolved exactly the same way.
 const path = require('path');
 
 const { getDefaultConfig } = require('expo/metro-config');
@@ -17,10 +20,13 @@ const { getDefaultConfig } = require('expo/metro-config');
 const projectRoot = __dirname;
 const signClientRoot = path.resolve(projectRoot, '../../libs/sign-client');
 const signClientEntry = path.join(signClientRoot, 'src', 'index.ts');
+const signFieldsRoot = path.resolve(projectRoot, '../../libs/sign-fields');
+const signFieldsEntry = path.join(signFieldsRoot, 'src', 'index.ts');
+const libRoots = [signClientRoot, signFieldsRoot];
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [...(config.watchFolders ?? []), signClientRoot];
+config.watchFolders = [...(config.watchFolders ?? []), ...libRoots];
 // Modules the library's compiled code needs (Babel runtime helpers) resolve from this
 // package's node_modules: CI installs only mobile/sign, not the repo root.
 config.resolver.nodeModulesPaths = [path.join(projectRoot, 'node_modules'), ...(config.resolver.nodeModulesPaths ?? [])];
@@ -31,8 +37,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === '@aramo/sign-client') {
     return { type: 'sourceFile', filePath: signClientEntry };
   }
+  if (moduleName === '@aramo/sign-fields') {
+    return { type: 'sourceFile', filePath: signFieldsEntry };
+  }
   if (
-    context.originModulePath.startsWith(signClientRoot + path.sep) &&
+    libRoots.some((root) => context.originModulePath.startsWith(root + path.sep)) &&
     moduleName.startsWith('.') &&
     moduleName.endsWith('.js')
   ) {

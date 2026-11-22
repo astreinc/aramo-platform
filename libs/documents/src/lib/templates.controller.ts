@@ -18,6 +18,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
+import { fieldTypesFor } from '@aramo/sign-fields';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -53,20 +54,9 @@ const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 // DOC-TEMPLATE-LIB-1 T-6 [TD] — a withdrawal notice stays listed this long after its
 // effective date, so the Org Home banner can still explain the change.
 const WITHDRAWAL_NOTICE_GRACE_DAYS = 30;
-const FIELD_TYPES = new Set([
-  'TEXT',
-  'MULTILINE_TEXT',
-  'DATE',
-  'NUMBER',
-  'CURRENCY',
-  'CHECKBOX',
-  'IMAGE',
-  'SIGNATURE',
-  'INITIALS',
-  'SIGN_DATE',
-  'SIGNER_NAME',
-  'SIGNER_EMAIL',
-]);
+// FIELD-PARITY-1 P1-2 — the catalog's `template_documents_store` surface (the
+// TemplateFieldDefinition CHECK; held equal by apps/api/src/tests/field-catalog-parity.spec.ts).
+const FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_documents_store'));
 const RESOURCE_TYPES = new Set([
   'TALENT',
   'REQUISITION',

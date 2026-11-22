@@ -1,3 +1,5 @@
+import type { FieldTypeOn } from '@aramo/sign-fields';
+
 import type { TextLayerPage, TextLayerWord } from './document-text-layer.service.js';
 
 // Aramo Sign Mobile M-A14 R-3 / §2 — "Auto suggest fields", Option A: deterministic detection
@@ -25,7 +27,8 @@ import type { TextLayerPage, TextLayerWord } from './document-text-layer.service
 // converted with the page's crop box and clamped inside its media box (what replaceFields
 // validates against). A rotated page gets no suggestions (its view is not the field frame).
 
-export type SuggestedFieldType = 'SIGNATURE' | 'SIGN_DATE';
+// FIELD-PARITY-1 P1-2 — the catalog's `suggestion` surface (today SIGNATURE and SIGN_DATE).
+export type SuggestedFieldType = FieldTypeOn<'suggestion'>;
 
 export interface FieldSuggestion {
   type: SuggestedFieldType;

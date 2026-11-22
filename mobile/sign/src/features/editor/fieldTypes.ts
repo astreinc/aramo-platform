@@ -9,7 +9,9 @@
 import {
   CHECKBOX_LABEL_MAX,
   FIELD_DEFAULTS,
+  PROFILE_TEXT_FIELD_TYPES,
   isSenderFieldType,
+  type ProfileTextFieldType,
   type SenderFieldType,
 } from '@aramo/sign-client';
 
@@ -17,14 +19,17 @@ import { FEATURES } from '../../config/features';
 
 export const BASE_FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT'] as const;
 export const EXTRA_FIELD_TYPES = ['SIGNER_NAME', 'CHECKBOX'] as const;
-export const PROFILE_FIELD_TYPES = ['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] as const;
+// FIELD-PARITY-1 P1-2 — the catalog's profile prefill types (@aramo/sign-client over
+// @aramo/sign-fields). The three tiers together are the catalog's `send_mobile` surface
+// (held by __tests__/editorReducer.test.ts); this file only orders and gates the tools.
+export const PROFILE_FIELD_TYPES: readonly ProfileTextFieldType[] = PROFILE_TEXT_FIELD_TYPES;
 export const AUTHORING_FIELD_TYPES = [
   ...BASE_FIELD_TYPES,
   ...EXTRA_FIELD_TYPES,
   ...PROFILE_FIELD_TYPES,
 ] as const;
 
-export type ProfileFieldType = (typeof PROFILE_FIELD_TYPES)[number];
+export type ProfileFieldType = ProfileTextFieldType;
 
 const PROFILE_SET: ReadonlySet<string> = new Set(PROFILE_FIELD_TYPES);
 

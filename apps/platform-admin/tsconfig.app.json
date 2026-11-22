@@ -18,6 +18,7 @@
       "@aramo/subscription": ["../../dist/libs/subscription/src/index.d.ts"],
       "@aramo/sign": ["../../dist/libs/sign/src/index.d.ts"],
       "@aramo/sign-client": ["../../dist/libs/sign-client/src/index.d.ts"],
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"],
       "@aramo/documents": ["../../dist/libs/documents/src/index.d.ts"],

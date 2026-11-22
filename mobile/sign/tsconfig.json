@@ -5,9 +5,11 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "types": ["jest", "node"],
-    // Client Rule Consolidation G-3 — the ONE repo library this app imports.
+    // Client Rule Consolidation G-3 — the ONE repo library this app imports; FIELD-PARITY-1
+    // P1-1 — plus the field catalog that library imports and re-exports.
     "paths": {
-      "@aramo/sign-client": ["../../libs/sign-client/src/index.ts"]
+      "@aramo/sign-client": ["../../libs/sign-client/src/index.ts"],
+      "@aramo/sign-fields": ["../../libs/sign-fields/src/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

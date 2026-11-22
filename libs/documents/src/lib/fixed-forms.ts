@@ -8,6 +8,8 @@
 // never edited by a tenant (§7.3). Field geometry is PDF-native, exactly what Sign places:
 // page_number 0-based, points, origin bottom-left, (x, y) the box's lower-left corner.
 
+import { fieldTypesFor, isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-fields';
+
 /** field_schema.render_schema_version of a fixed-form version. */
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
 
@@ -22,16 +24,18 @@ export const PLATFORM_TEMPLATE_ASSET_PREFIX = 'documents/platform/template-asset
  * §7.2 — the field types a fixed form may place: the intersection Aramo Sign executes
  * (text, date, checkbox, name, signature, initials). "date" is the signing date and
  * "name" the signer's printed name — the only date and name Sign fills.
+ * FIELD-PARITY-1 P1-2 — the catalog's `template_fixed_form` surface (@aramo/sign-fields), in
+ * catalog order; P1-6: never PAYMENT.
  */
-export const FIXED_FORM_FIELD_TYPES = ['TEXT', 'SIGN_DATE', 'CHECKBOX', 'SIGNER_NAME', 'SIGNATURE', 'INITIALS'] as const;
-export type FixedFormFieldType = (typeof FIXED_FORM_FIELD_TYPES)[number];
+export const FIXED_FORM_FIELD_TYPES: readonly FieldTypeOn<'template_fixed_form'>[] = fieldTypesFor('template_fixed_form');
+export type FixedFormFieldType = FieldTypeOn<'template_fixed_form'>;
 
 export const FIXED_FORM_MAX_FIELDS = 200;
 export const FIXED_FORM_MIN_FIELD_SIZE = 8;
 const FIELD_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 export function isFixedFormFieldType(v: unknown): v is FixedFormFieldType {
-  return typeof v === 'string' && (FIXED_FORM_FIELD_TYPES as readonly string[]).includes(v);
+  return isFieldTypeOn('template_fixed_form', v);
 }
 
 export interface FixedFormPage {
