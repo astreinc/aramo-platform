@@ -9,7 +9,9 @@ import {
   importFieldKey,
   matchTagRole,
   parseTemplateFieldSettings,
+  senderFilledFieldsEnabled,
   type DetectResult,
+  type FieldOptions,
   type FieldImportWarning,
 } from '@aramo/sign-fields';
 import {
@@ -76,6 +78,15 @@ export interface FixedFormFieldView {
   readonly group_rule: string | null;
   readonly min_selected: number | null;
   readonly name_mode: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (NULL / false = not set).
+  readonly tooltip: string | null;
+  readonly placeholder: string | null;
+  readonly read_only: boolean;
+  readonly sender_filled: boolean;
+  readonly validation: string | null;
+  readonly font_size: number | null;
+  readonly data_name: string | null;
+  readonly options: FieldOptions | null;
 }
 
 /** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload imported (absent without a flag). */
@@ -109,6 +120,14 @@ export function toFieldView(f: {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: unknown;
 }): FixedFormFieldView {
   return {
     field_key: f.field_key,
@@ -127,6 +146,14 @@ export function toFieldView(f: {
     group_rule: f.group_rule ?? null,
     min_selected: f.min_selected ?? null,
     name_mode: f.name_mode ?? null,
+    tooltip: f.tooltip ?? null,
+    placeholder: f.placeholder ?? null,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
+    validation: f.validation ?? null,
+    font_size: f.font_size ?? null,
+    data_name: f.data_name ?? null,
+    options: (f.options ?? null) as FieldOptions | null,
   };
 }
 
@@ -156,6 +183,8 @@ export function fixedFormContentOf(field_schema: unknown, fallbackTitle: string)
   };
 }
 
+const FIXED_FORM_TYPE_LIST = fieldTypesFor('template_fixed_form').join(', ');
+
 // One placed field from a request body (shape only — the publish rules are fixedFormIssues).
 const FIELD_MEMBERS: readonly string[] = [
   'field_key',
@@ -184,7 +213,8 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
   }
   const field_key = typeof o['field_key'] === 'string' ? o['field_key'] : '';
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(field_key)) throw at('field_key', 'field_key_invalid', 'field_key must be lower_snake');
-  if (!isFixedFormFieldType(o['field_type'])) throw at('field_type', 'field_type_invalid', 'field_type must be TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE or INITIALS');
+  // FIELD-PARITY-1 P3 — the message names the catalog's template_fixed_form projection.
+  if (!isFixedFormFieldType(o['field_type'])) throw at('field_type', 'field_type_invalid', `field_type must be one of ${FIXED_FORM_TYPE_LIST}`);
   const text = (k: 'binding_key' | 'signer_role'): string | null => {
     const v = o[k];
     if (v === undefined || v === null || v === '') return null;
@@ -201,9 +231,10 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
   if (typeof required !== 'boolean') throw at('required', 'field_required_invalid', 'required must be true or false');
   const ordinal = o['ordinal'] === undefined ? index : o['ordinal'];
   if (typeof ordinal !== 'number' || !Number.isInteger(ordinal) || ordinal < 0) throw at('ordinal', 'field_ordinal_invalid', 'ordinal must be a non-negative integer');
-  // FIELD-PARITY-1 P1-3 — the settings the type takes (the catalog), by Sign's rules; one the
-  // type does not take is refused (field_config_not_applicable), never dropped.
-  const parsed = parseTemplateFieldSettings(o, o['field_type']);
+  // FIELD-PARITY-1 P1-3 / P3 — the settings the type takes (the catalog), by Sign's rules; one
+  // the type does not take is refused (field_config_not_applicable), never dropped. A
+  // sender-filled field is refused while SIGN_SENDER_FILLED_FIELDS_ENABLED is off (R-3, dark).
+  const parsed = parseTemplateFieldSettings(o, o['field_type'], { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
   if (!parsed.ok) throw at(parsed.refusal.setting, parsed.refusal.reason, parsed.refusal.message);
   return {
     field_key,
@@ -334,7 +365,7 @@ export class FixedFormService {
       if (f.role !== null && signer_role === null) {
         warnings.push({ code: 'text_tag_role_unknown', message: `{{${f.name}}}: no signer role is "${f.role}"; the field has no role yet.`, name: f.name, page_number: f.page_number });
       }
-      const view: FixedFormFieldView = {
+      const view: FixedFormFieldView = toFieldView({
         field_key: importFieldKey(f.name, keys),
         field_type: f.field_type,
         binding_key: null,
@@ -351,7 +382,7 @@ export class FixedFormService {
         group_rule: f.group_rule,
         min_selected: null,
         name_mode: null,
-      };
+      });
       return { view, source: f.source, source_name: f.name };
     });
     await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf }, fields: [...existing, ...created.map((c) => c.view)] });

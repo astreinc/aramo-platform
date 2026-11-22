@@ -143,13 +143,15 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
   it('apply_text_tags: tags become fields; refused tags are reported and stay visible; used tags are covered', async () => {
     const bytes = await taggedPdf();
     const out = await prepareFixedFormPdf(bytes, { import_fields: false, apply_text_tags: true }, new Set(), 'r');
+    // FIELD-PARITY-1 P3 (R-1) — {{title:…}} is a fixed-form type now (TITLE); {{stamp:…}} stays unknown.
     expect(out.fields.map((f) => [f.field_type, f.role, f.required, f.label])).toEqual([
       ['SIGNATURE', 'Employee', true, null],
       ['SIGNER_NAME', 'employee', true, null],
       ['SIGN_DATE', 'Chair', true, null],
+      ['TITLE', 'Employee', true, null],
       ['CHECKBOX', 'Employee', false, 'I have read the policy'],
     ]);
-    expect(out.warnings.map((w) => w.code).sort()).toEqual(['text_tag_type_not_allowed', 'text_tag_type_unknown']);
+    expect(out.warnings.map((w) => w.code).sort()).toEqual(['text_tag_type_unknown']);
     // Every field is on page 0, inside the page, at least 8 points each way.
     for (const f of out.fields) {
       expect(f.page_number).toBe(0);
@@ -162,7 +164,7 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
     expect(out.bytes).not.toBe(bytes);
     const ops = await pageOperators(out.bytes);
     const covers = ops.match(/1 1 1 rg\n0 w\n\[\] 0 d\n1 0 0 1 [\d.]+ [\d.]+ cm/g) ?? [];
-    expect(covers).toHaveLength(4);
+    expect(covers).toHaveLength(5); // FIELD-PARITY-1 P3 — the {{title:…}} tag is used now too.
     expect(ops.indexOf('1 1 1 rg')).toBeGreaterThan(ops.lastIndexOf('Tj'));
     // The cover of the signature tag sits over the tag's glyph box (from the text layer).
     const layer = await extractTextLayer(bytes);
@@ -227,10 +229,11 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — FixedFormService.uploadPdf', () => {
       ['signature_employee', 'employee', 1],
       ['name_employee_required', 'employee', 2],
       ['date_chair', null, 3],
-      ['checkbox_employee_label_i_have_read_the_policy', 'employee', 4],
+      ['title_employee', 'employee', 4],
+      ['checkbox_employee_label_i_have_read_the_policy', 'employee', 5],
     ]);
-    expect(out.field_import?.fields.map((f) => f.source)).toEqual(['text_tag', 'text_tag', 'text_tag', 'text_tag']);
-    expect(out.field_import?.warnings.map((w) => w.code).sort()).toEqual(['text_tag_role_unknown', 'text_tag_type_not_allowed', 'text_tag_type_unknown']);
+    expect(out.field_import?.fields.map((f) => f.source)).toEqual(['text_tag', 'text_tag', 'text_tag', 'text_tag', 'text_tag']);
+    expect(out.field_import?.warnings.map((w) => w.code).sort()).toEqual(['text_tag_role_unknown', 'text_tag_type_unknown']);
   });
 
   it('import_fields: form fields arrive without a role (the author assigns them)', async () => {

@@ -31,7 +31,11 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
 // Row 35 — the placeable types (the server's authoring list). PAYMENT is offered only when the
 // server reports payments available AND the editor can author a payment's amount; this editor
 // cannot yet, so a PAYMENT (placed through the API) stays shown but locked here.
-export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(placeableFieldTypes({ payments_available: false }));
+// FIELD-PARITY-1 P3 — the server accepts ACKNOWLEDGEMENT and the new types from a sender; until
+// Prepare's settings panel edits them (the web authoring slice empties this list), a stored one
+// is kept locked and sent back exactly as stored (every setting kept).
+export const P3_PENDING_WEB_TYPES: ReadonlySet<string> = new Set(['ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT']);
+export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(placeableFieldTypes({ payments_available: false }).filter((t) => !P3_PENDING_WEB_TYPES.has(t)));
 
 // The Prepare palette order (unchanged from before P1-5).
 const ORDER: readonly FieldType[] = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'];

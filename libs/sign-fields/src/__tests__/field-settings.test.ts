@@ -15,12 +15,15 @@ import {
 describe('FIELD-PARITY-1 P1-3 — which settings a template field type takes', () => {
   it('is the catalog settings without the PAYMENT ones (P1-6)', () => {
     for (const t of FIELD_TYPE_KEYS) {
-      expect(templateSettingsOf(t)).toEqual(fieldSettingsOf(t).filter((s) => (TEMPLATE_FIELD_SETTINGS as readonly string[]).includes(s)));
+      // The same set (in TEMPLATE_FIELD_SETTINGS order).
+      expect([...templateSettingsOf(t)].sort()).toEqual(fieldSettingsOf(t).filter((s) => (TEMPLATE_FIELD_SETTINGS as readonly string[]).includes(s)).sort());
     }
-    expect(templateSettingsOf('SIGNER_NAME')).toEqual(['name_mode']);
-    expect(templateSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected']);
+    // FIELD-PARITY-1 P3 §6.2 — label, tooltip and data_name on every type; the rest per type.
+    expect(templateSettingsOf('SIGNER_NAME')).toEqual(['label', 'name_mode', 'tooltip', 'placeholder', 'font_size', 'data_name']);
+    expect(templateSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'read_only', 'sender_filled', 'data_name']);
+    expect(templateSettingsOf('RADIO')).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'read_only', 'sender_filled', 'data_name']);
     expect(templateSettingsOf('PAYMENT')).toEqual([]);
-    expect(templateSettingsOf('MULTILINE_TEXT')).toEqual([]);
+    expect(templateSettingsOf('MULTILINE_TEXT')).toEqual(['label', 'tooltip', 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'options']);
     expect(templateSettingsOf('NOT_A_TYPE')).toEqual([]);
   });
 });
@@ -36,8 +39,8 @@ describe('FIELD-PARITY-1 P1-3 — parseTemplateFieldSettings', () => {
   });
 
   it('a setting the type does not take is refused, never ignored', () => {
-    const r = parseTemplateFieldSettings({ label: 'Agree' }, 'TEXT');
-    expect(r).toEqual({ ok: false, refusal: expect.objectContaining({ setting: 'label', reason: 'field_config_not_applicable' }) });
+    const r = parseTemplateFieldSettings({ placeholder: 'Agree' }, 'SIGNATURE');
+    expect(r).toEqual({ ok: false, refusal: expect.objectContaining({ setting: 'placeholder', reason: 'field_config_not_applicable' }) });
     expect(parseTemplateFieldSettings({ name_mode: 'SIGNER_ENTERED' }, 'CHECKBOX')).toMatchObject({ ok: false, refusal: { setting: 'name_mode', reason: 'field_config_not_applicable' } });
     expect(parseTemplateFieldSettings({ group_key: 'g' }, 'MULTILINE_TEXT')).toMatchObject({ ok: false, refusal: { setting: 'group_key', reason: 'field_config_not_applicable' } });
   });

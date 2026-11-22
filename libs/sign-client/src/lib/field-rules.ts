@@ -23,6 +23,10 @@ export interface FieldRuleRow {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // FIELD-PARITY-1 P3 S-4 / S-5 — a sender-filled (and a read-only) field holds the sender's
+  // value: never the signer's to fill, never a completion unit.
+  sender_filled?: boolean | null;
+  read_only?: boolean | null;
 }
 
 // Sign 1.14 — a PAYMENT field is filled by the server when its payment succeeds
@@ -57,7 +61,7 @@ export function isPaymentField(f: Pick<FieldRuleRow, 'field_type'>): boolean {
 }
 
 export interface FieldRuleViolation {
-  reason: 'required_field_unfilled' | 'checkbox_required_unchecked' | 'checkbox_group_select_one' | 'checkbox_group_min_selected' | 'payment_required';
+  reason: 'required_field_unfilled' | 'checkbox_required_unchecked' | 'checkbox_group_select_one' | 'checkbox_group_min_selected' | 'radio_group_select_one' | 'payment_required';
   field_id?: string;
   group_key?: string;
 }
@@ -84,6 +88,14 @@ export interface SignerFieldLike {
   readonly name_mode?: string | null;
   /** The signer view's flag for a value the server fills (never the signer's to fill). */
   readonly server_filled?: boolean | null;
+  /** FIELD-PARITY-1 P3 S-5 — the sender filled the value before sending (never the signer's). */
+  readonly sender_filled?: boolean | null;
+  readonly read_only?: boolean | null;
+}
+
+/** FIELD-PARITY-1 P3 S-4 / S-5 — a value the signer may not change (the sender's, shown read-only). */
+export function isSignerLocked(f: Pick<SignerFieldLike, 'sender_filled' | 'read_only'>): boolean {
+  return f.sender_filled === true || f.read_only === true;
 }
 
 export interface SignerFieldUnit<T> {
@@ -94,9 +106,12 @@ export interface SignerFieldUnit<T> {
   readonly group_key?: string;
 }
 
-/** A check box that belongs to a group (a non-empty group_key). */
+/**
+ * A check box (or, FIELD-PARITY-1 P3 T-5, a radio button) that belongs to a group (a non-empty
+ * group_key). A radio group's rule is always SELECT_ONE.
+ */
 export function checkboxGroupOf(f: Pick<SignerFieldLike, 'field_type' | 'group_key'>): string | null {
-  return f.field_type === 'CHECKBOX' && typeof f.group_key === 'string' && f.group_key.length > 0 ? f.group_key : null;
+  return (f.field_type === 'CHECKBOX' || f.field_type === 'RADIO') && typeof f.group_key === 'string' && f.group_key.length > 0 ? f.group_key : null;
 }
 
 /**
@@ -116,7 +131,7 @@ export function signerFieldUnits<T extends SignerFieldLike>(
       units.push({ fields: [f], done: state.filled(f), reason: 'payment_required' });
       continue;
     }
-    if (f.server_filled === true || isServerFilledName(f)) continue;
+    if (f.server_filled === true || isServerFilledName(f) || isSignerLocked(f)) continue;
     const g = checkboxGroupOf(f);
     if (g !== null) {
       groups.set(g, [...(groups.get(g) ?? []), f]);
@@ -128,14 +143,16 @@ export function signerFieldUnits<T extends SignerFieldLike>(
   }
   for (const [group_key, boxes] of groups) {
     const checked = boxes.filter((b) => state.checked(b)).length;
-    const one = (boxes[0]?.group_rule ?? 'SELECT_ANY') === 'SELECT_ONE';
+    const radio = boxes[0]?.field_type === 'RADIO';
+    const one = radio || (boxes[0]?.group_rule ?? 'SELECT_ANY') === 'SELECT_ONE';
+    const oneReason = radio ? 'radio_group_select_one' : 'checkbox_group_select_one';
     if (one && checked > 1) {
-      units.push({ fields: boxes, done: false, reason: 'checkbox_group_select_one', group_key });
+      units.push({ fields: boxes, done: false, reason: oneReason, group_key });
       continue;
     }
     if (!boxes.some((b) => b.required)) continue;
     const min = one ? 1 : boxes.reduce((m, b) => Math.max(m, b.min_selected ?? 1), 1);
-    units.push({ fields: boxes, done: checked >= min, reason: one ? 'checkbox_group_select_one' : 'checkbox_group_min_selected', group_key });
+    units.push({ fields: boxes, done: checked >= min, reason: one ? oneReason : 'checkbox_group_min_selected', group_key });
   }
   return units;
 }
@@ -146,7 +163,9 @@ export function signerFieldUnits<T extends SignerFieldLike>(
 //     succeeded payment (payment required before the signer can complete);
 //   - a required ungrouped check box must be checked ('true');
 //   - any other required field must be filled;
-//   - SELECT_ONE: at most one box checked, exactly one when the group is required;
+//   - SELECT_ONE (and every RADIO group): at most one box checked, exactly one when the
+//     group is required;
+//   - FIELD-PARITY-1 P3 — a sender-filled / read-only field is the sender's (skipped here);
 //   - a required group needs at least min_selected boxes checked (default 1).
 // A group is required when any of its boxes is required.
 export function evaluateSignerFieldRules(fields: readonly FieldRuleRow[]): FieldRuleViolation | null {

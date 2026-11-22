@@ -18,8 +18,8 @@ export type { FieldDefaults } from '@aramo/sign-fields';
 
 /**
  * The types a sender authors on PUT …/fields (PX-V1 + M-A6 §2.1 + M-A12 W1-C.4). PAYMENT is
- * authorable separately, only while payments are available (Sign 1.14); ACKNOWLEDGEMENT is
- * engine-only (the S2S and Sign API paths) and is never placed by a sender.
+ * authorable separately, only while payments are available (Sign 1.14). FIELD-PARITY-1 P3 —
+ * ACKNOWLEDGEMENT is authorable (ruling R-2) and the five new types join (T-3..T-7).
  */
 export const SENDER_FIELD_TYPES: readonly FieldTypeOn<'send_web'>[] = fieldTypesFor('send_web');
 export type SenderFieldType = FieldTypeOn<'send_web'>;

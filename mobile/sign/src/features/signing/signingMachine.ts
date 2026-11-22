@@ -125,6 +125,12 @@ export const FIELD_LABEL: Record<FieldType, string> = {
   EMAIL: 'Email',
   COMPANY: 'Company',
   TITLE: 'Title',
+  // FIELD-PARITY-1 P3 — the new catalog types (labels only; the signer UI for them is a later slice).
+  DATE: 'Date',
+  DROPDOWN: 'Dropdown',
+  RADIO: 'Radio button',
+  NUMBER: 'Number',
+  MULTILINE_TEXT: 'Multi-line text',
 };
 
 export const ACK_TEXT = '✓ I acknowledge and agree';

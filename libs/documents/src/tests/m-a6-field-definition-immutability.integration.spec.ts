@@ -187,7 +187,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 §3.4 — Te
 
     // The type-scoped CHECKs (the same as Sign's SignatureField).
     const set = (sql: string, id: string): Promise<string> => refused(`UPDATE "documents"."TemplateFieldDefinition" SET ${sql} WHERE id = $1`, [id]);
-    expect(await set(`label = 'x'`, sig.id)).toContain('TemplateFieldDefinition_label_check');
+    // FIELD-PARITY-1 P3 S-1 — a label on any type now; an empty one is still refused.
+    expect(await set(`label = ''`, sig.id)).toContain('TemplateFieldDefinition_label_check');
     expect(await set(`name_mode = 'SIGNER_ENTERED'`, sig.id)).toContain('TemplateFieldDefinition_name_mode_check');
     expect(await set(`name_mode = 'TYPED'`, name.id)).toContain('TemplateFieldDefinition_name_mode_check');
     expect(await set(`group_rule = NULL`, box.id)).toContain('TemplateFieldDefinition_group_rule_check');
@@ -211,5 +212,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 §3.4 — Te
       `SELECT column_name FROM information_schema.columns WHERE table_schema = 'documents' AND table_name = 'TemplateFieldDefinition' AND column_name IN ('label','group_key','group_rule','min_selected','name_mode') ORDER BY column_name`,
     );
     expect(cols.rows.map((r: { column_name: string }) => r.column_name)).toEqual(['group_key', 'group_rule', 'label', 'min_selected', 'name_mode']);
+  });
+
+  // FIELD-PARITY-1 P3 (migration 20261122200000_field_parity_1_p3_template_field_types_settings) —
+  // the new types and settings: stored on a DRAFT, held by the CHECKs, frozen once ACTIVE by the
+  // same trigger (the migration fires no row trigger and changes no row).
+  it('FIELD-PARITY-1 P3 — new types and settings are stored on a DRAFT, refused by the CHECKs off-type, and frozen once ACTIVE', async () => {
+    const { versionId } = await draft();
+    await addField(versionId, 'sig_p3', 1);
+    const add = (field_key: string, field_type: string, ordinal: number, over: Record<string, unknown> = {}) =>
+      templates.addField({ tenant_id: TENANT, template_version_id: versionId, field_key, field_type, required: false, page_number: 0, x: 10, y: 10 + ordinal * 30, width: 120, height: 20, signer_role: 'client', ordinal, ...over });
+    const dd = await add('city', 'DROPDOWN', 2, { options: { choices: [{ value: 'ny', label: 'New York' }] }, placeholder: 'Pick', tooltip: 'Where', data_name: 'city' });
+    const num = await add('fee', 'NUMBER', 3, { validation: 'number_range', options: { min: 1, format: 'money', currency: 'USD', decimals: 2 }, font_size: 9 });
+    const radio = await add('yes', 'RADIO', 4, { label: 'Yes', group_key: 'vote', group_rule: 'SELECT_ONE' });
+    await add('ack', 'ACKNOWLEDGEMENT', 5, { label: 'I have read it' });
+    await add('title', 'TITLE', 6);
+    expect(dd).toMatchObject({ options: { choices: [{ value: 'ny', label: 'New York' }] }, placeholder: 'Pick', tooltip: 'Where', data_name: 'city', read_only: false, sender_filled: false });
+    expect(num).toMatchObject({ validation: 'number_range', font_size: 9 });
+    expect(radio).toMatchObject({ group_rule: 'SELECT_ONE', min_selected: null });
+
+    const set = (sql: string, id: string): Promise<string> => refused(`UPDATE "documents"."TemplateFieldDefinition" SET ${sql} WHERE id = $1`, [id]);
+    expect(await set(`options = NULL`, dd.id)).toContain('TemplateFieldDefinition_dropdown_choices_check');
+    expect(await set(`group_rule = 'SELECT_ANY'`, radio.id)).toContain('TemplateFieldDefinition_radio_group_check');
+    expect(await set(`validation = 'email'`, num.id)).toContain('TemplateFieldDefinition_validation_check');
+    expect(await set(`font_size = 99`, num.id)).toContain('TemplateFieldDefinition_font_size_check');
+    expect(await set(`data_name = 'Bad Name'`, dd.id)).toContain('TemplateFieldDefinition_data_name_check');
+    expect(await set(`read_only = true`, dd.id)).toContain('TemplateFieldDefinition_read_only_check');
+    expect(await set(`options = '[1]'::jsonb`, num.id)).toContain('TemplateFieldDefinition_options_check');
+    expect(await set(`tooltip = ''`, dd.id)).toContain('TemplateFieldDefinition_tooltip_check');
+    expect(await refused(
+      `INSERT INTO "documents"."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, required, ordinal, sender_filled) VALUES ($1, $2, 'sf', 'SIGNATURE', true, 9, true)`,
+      [randomUUID(), versionId],
+    )).toContain('TemplateFieldDefinition_sender_filled_check');
+    expect(await refused(
+      `INSERT INTO "documents"."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, required, ordinal) VALUES ($1, $2, 'bad', 'PAYMENT', true, 9)`,
+      [randomUUID(), versionId],
+    )).toContain('TemplateFieldDefinition_type_check');
+
+    await templates.recordPreview({ tenant_id: TENANT, version_id: versionId });
+    await templates.activateVersion({ tenant_id: TENANT, version_id: versionId, actor_id: ACTOR });
+    expect(await set(`tooltip = 'Changed'`, dd.id)).toContain('TemplateFieldDefinition is immutable');
+    expect(await set(`options = '{"choices":[{"value":"la","label":"LA"}]}'::jsonb`, dd.id)).toContain('TemplateFieldDefinition is immutable');
+  });
+
+  it('FIELD-PARITY-1 P3 — the new-settings migration re-runs cleanly and leaves existing rows NULL / false', async () => {
+    const sql = readFileSync(resolve(ROOT, 'libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql'), 'utf8');
+    await db.query(sql);
+    await db.query(sql);
+    const stale = await db.query(`SELECT count(*)::int AS n FROM "documents"."TemplateFieldDefinition" WHERE field_type = 'SIGNATURE' AND (read_only OR sender_filled OR options IS NOT NULL OR tooltip IS NOT NULL)`);
+    expect(stale.rows[0]).toEqual({ n: 0 });
   });
 });

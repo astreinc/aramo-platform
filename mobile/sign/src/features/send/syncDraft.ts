@@ -128,6 +128,16 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       group_key: f.group_key,
       group_rule: f.group_rule,
       min_selected: f.min_selected,
+      // FIELD-PARITY-1 P3 — a preserved field keeps every setting it was stored with (a
+      // DROPDOWN without its choices would be refused), only those that are set.
+      ...(f.tooltip != null ? { tooltip: f.tooltip } : {}),
+      ...(f.placeholder != null ? { placeholder: f.placeholder } : {}),
+      ...(f.read_only === true ? { read_only: true } : {}),
+      ...(f.sender_filled === true ? { sender_filled: true } : {}),
+      ...(f.validation != null ? { validation: f.validation } : {}),
+      ...(f.font_size != null ? { font_size: f.font_size } : {}),
+      ...(f.data_name != null ? { data_name: f.data_name } : {}),
+      ...(f.options != null ? { options: f.options } : {}),
     }));
   return [...authored, ...preserved];
 }

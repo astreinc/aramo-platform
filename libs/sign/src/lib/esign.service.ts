@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerMayStillSign } from '@aramo/sign-client';
+import { fieldValueRefusal, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository, type LockingTx } from './esign.repository.js';
@@ -156,6 +157,16 @@ export interface SignerFieldView {
   server_filled: boolean;
   // Sign 1.14 — the amount to pay for a PAYMENT field (null for every other type).
   payment: { amount_minor: number; currency: string } | null;
+  // FIELD-PARITY-1 P3 §6.2 — the field settings the signer page applies. sender_filled /
+  // read_only: the value is the sender's, shown read-only (fillField refuses a change).
+  tooltip: string | null;
+  placeholder: string | null;
+  read_only: boolean;
+  sender_filled: boolean;
+  validation: string | null;
+  font_size: number | null;
+  data_name: string | null;
+  options: FieldOptions | null;
 }
 
 // Sign 1.14 — the signer's PAYMENT field, checked under the envelope row lock.
@@ -604,7 +615,8 @@ export class EsignService {
           viewed_at: null,
         },
       });
-      await tx.signatureField.updateMany({ where: { tenant_id: ctx.tenant_id, signer_id: signer.id }, data: { value: null, signature_method: null, filled_at: null } });
+      // FIELD-PARITY-1 P3 S-5 — a sender-filled value is the sender's and stays for the delegate.
+      await tx.signatureField.updateMany({ where: { tenant_id: ctx.tenant_id, signer_id: signer.id, sender_filled: false }, data: { value: null, signature_method: null, filled_at: null } });
       await tx.signingSession.updateMany({
         where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: signer.id, status: { in: [...LIVE_SESSION_STATUSES] } },
         data: { status: 'REVOKED', revoked_at: now },
@@ -658,10 +670,16 @@ export class EsignService {
       if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
         throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
       }
+      // FIELD-PARITY-1 P3 S-4 / S-5 — a sender-filled (or read-only) value is the sender's.
+      if (field.sender_filled === true || field.read_only === true) throw new SignatureFieldValueRefusedError(fieldId, 'field_read_only');
       // M-A12 W1-C.4 — FIRST_NAME / LAST_NAME / EMAIL / COMPANY / TITLE are text (at most
       // 200 characters); an EMAIL field holds an email address.
       const profileRefusal = profileTextValueRefusal(field.field_type, input.value);
       if (profileRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, profileRefusal);
+      // FIELD-PARITY-1 P3 §6 — the new types' formats (DATE, NUMBER, DROPDOWN, MULTILINE_TEXT)
+      // and the validation presets (the one rule, @aramo/sign-fields fieldValueRefusal).
+      const valueRefusal = fieldValueRefusal({ field_type: field.field_type, validation: field.validation ?? null, options: (field.options ?? null) as FieldOptions | null }, input.value);
+      if (valueRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, valueRefusal);
       // Client Rule Consolidation C0-2 — SIGN_DATE is the server's to stamp: the client's
       // value is ignored (its tap only marks the field as filled for the signer), and
       // completeSigner stamps it again at signing.
@@ -675,6 +693,14 @@ export class EsignService {
         where: { id: fieldId },
         data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: now },
       });
+      // FIELD-PARITY-1 P3 T-5 — choosing one radio button clears the others of its group (the
+      // same signer), so a radio group never holds two choices.
+      if (field.field_type === 'RADIO' && input.value === 'true' && field.group_key !== null) {
+        await tx.signatureField.updateMany({
+          where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, field_type: 'RADIO', group_key: field.group_key, id: { not: fieldId } },
+          data: { value: 'false', signature_method: null, filled_at: now },
+        });
+      }
     });
   }
 
@@ -736,6 +762,14 @@ export class EsignService {
           name_mode: f.name_mode ?? null,
           server_filled: serverFilled,
           payment,
+          tooltip: f.tooltip ?? null,
+          placeholder: f.placeholder ?? null,
+          read_only: f.read_only === true,
+          sender_filled: f.sender_filled === true,
+          validation: f.validation ?? null,
+          font_size: f.font_size ?? null,
+          data_name: f.data_name ?? null,
+          options: (f.options ?? null) as FieldOptions | null,
           };
         }),
     );

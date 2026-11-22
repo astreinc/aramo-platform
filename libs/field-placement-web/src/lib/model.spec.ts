@@ -9,17 +9,21 @@ import { applySettings, groupSize } from './settings';
 // check-box group rules (moved from sign-web field-config.ts) and the one keymap.
 
 describe('paletteFor — the catalog projection per surface', () => {
-  it('send_web: the 11 placeable types; PAYMENT only while payments are available (P1-6)', () => {
+  it('send_web: the 17 placeable types (FIELD-PARITY-1 P3); PAYMENT only while payments are available (P1-6)', () => {
     const p = paletteFor('send_web');
     expect(p.map((t) => t.type).sort()).toEqual([...fieldTypesFor('send_web')].sort());
-    expect(p).toHaveLength(11);
-    expect(p.some((t) => t.type === 'PAYMENT' || t.type === 'ACKNOWLEDGEMENT')).toBe(false);
+    expect(p).toHaveLength(17);
+    expect(p.some((t) => t.type === 'PAYMENT')).toBe(false);
+    expect(p.some((t) => t.type === 'ACKNOWLEDGEMENT')).toBe(true);
     expect(paletteFor('send_web', { payments_available: true }).some((t) => t.type === 'PAYMENT')).toBe(true);
   });
 
-  it('template_fixed_form: the 6 types, never PAYMENT; host order and labels; catalog sizes', () => {
+  it('template_fixed_form: the catalog template types, never PAYMENT; host order and labels; catalog sizes', () => {
     const p = paletteFor('template_fixed_form', { order: ['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX'], labels: { SIGN_DATE: 'Date' }, payments_available: true });
-    expect(p.map((t) => t.type)).toEqual(['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX']);
+    // The host order first, then the rest of the projection (FIELD-PARITY-1 P3 widened it).
+    expect(p.map((t) => t.type).slice(0, 6)).toEqual(['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX']);
+    expect(p.map((t) => t.type).sort()).toEqual([...fieldTypesFor('template_fixed_form')].sort());
+    expect(p.some((t) => t.type === 'PAYMENT')).toBe(false);
     expect(p.find((t) => t.type === 'SIGN_DATE')?.label).toBe('Date');
     for (const t of p) expect({ width: t.width, height: t.height, required: t.required }).toEqual(FIELD_DEFAULTS[t.type]);
   });
@@ -35,8 +39,9 @@ describe('editableSettingsOf — catalog settings ∩ host capabilities', () => 
   const all = { settings: ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode'] as const };
   it('sign-web edits every Sign setting the type accepts', () => {
     expect(editableSettingsOf('CHECKBOX', all)).toEqual(['label', 'group_key', 'group_rule', 'min_selected']);
-    expect(editableSettingsOf('SIGNER_NAME', all)).toEqual(['name_mode']);
-    expect(editableSettingsOf('SIGNATURE', all)).toEqual([]);
+    // FIELD-PARITY-1 P3 — label applies to every type now.
+    expect(editableSettingsOf('SIGNER_NAME', all)).toEqual(['name_mode', 'label']);
+    expect(editableSettingsOf('SIGNATURE', all)).toEqual(['label']);
   });
   it('the console (no settings until P1-3) edits none', () => {
     expect(editableSettingsOf('CHECKBOX', { settings: [] })).toEqual([]);

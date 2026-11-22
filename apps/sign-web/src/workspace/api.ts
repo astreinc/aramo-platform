@@ -292,6 +292,15 @@ export interface EnvelopeField {
   // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
   payment_amount_minor?: number | null;
   payment_currency?: 'USD' | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (null / false = not set).
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: Readonly<Record<string, unknown>> | null;
 }
 
 // Sign 1.14 — the organization's Stripe Connect account (Settings → Payments).
@@ -880,10 +889,12 @@ export const senderApi = {
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
       // M-A6 §2 — the type's configuration travels with the field; a value never does.
-      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency }) => ({
+      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options }) => ({
         // An engine-only type goes back with its stored id, unchanged (the server
-        // keeps it only when identical to the stored row).
-        ...(id != null && !SENDER_FIELD_TYPES.has(field_type) ? { id } : {}),
+        // keeps it only when identical to the stored row). FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT
+        // is authorable now, but a stored engine row of it keeps its id (the server passes a
+        // row with no recipient or size through unchanged).
+        ...(id != null && (!SENDER_FIELD_TYPES.has(field_type) || field_type === 'ACKNOWLEDGEMENT') ? { id } : {}),
         envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
         ...(name_mode != null ? { name_mode } : {}),
         ...(label != null ? { label } : {}),
@@ -891,6 +902,15 @@ export const senderApi = {
         ...(group_rule != null ? { group_rule } : {}),
         ...(min_selected != null ? { min_selected } : {}),
         ...(payment_amount_minor != null ? { payment_amount_minor, payment_currency: payment_currency ?? 'USD' } : {}),
+        // FIELD-PARITY-1 P3 — every setting that is set goes back (a stored DROPDOWN keeps its choices).
+        ...(tooltip != null ? { tooltip } : {}),
+        ...(placeholder != null ? { placeholder } : {}),
+        ...(read_only === true ? { read_only } : {}),
+        ...(sender_filled === true ? { sender_filled } : {}),
+        ...(validation != null ? { validation } : {}),
+        ...(font_size != null ? { font_size } : {}),
+        ...(data_name != null ? { data_name } : {}),
+        ...(options != null ? { options } : {}),
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),

@@ -613,6 +613,17 @@ const DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql',
 );
+// FIELD-PARITY-1 P3 (new field types and settings) — TemplateFieldDefinition's type CHECK widens
+// (DROPDOWN, RADIO, ACKNOWLEDGEMENT, the profile types) and it gains eight setting columns
+// (tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options;
+// ADD-not-rename, nullable or false-defaulted, type-scoped CHECKs; label now on every type).
+// Changes the returned shapes: the Sign S2S render field_definitions, the template field rows and
+// the fixed-form field views carry the new settings (the regenerated client SELECTs the new
+// columns) → registered (CLAUDE.md law); after the P1-3 migration.
+const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql',
+);
 // FIELD-PARITY-1 P2-5 / P2-6 (fillable-PDF import, text tags) — NO migration: imported fields are
 // ordinary TemplateFieldDefinition rows (the P1-3 columns above). The only returned-shape change is
 // the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
@@ -3773,6 +3784,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TP6_PLATFORM_TEMPLATE_ASSET_MIGRATION,
         DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION,
         DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION,
+        DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,

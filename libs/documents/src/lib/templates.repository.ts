@@ -52,9 +52,32 @@ export interface FingerprintField {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings; same rule (NULL / false = not set, left out).
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: unknown;
 }
-// FIELD-PARITY-1 P1-3 — the five setting columns, in one place for every field write and copy.
-export const TEMPLATE_FIELD_SETTING_COLUMNS = ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode'] as const;
+// FIELD-PARITY-1 P1-3 / P3 — the setting columns, in one place for every field write and copy.
+export const TEMPLATE_FIELD_SETTING_COLUMNS = [
+  'label',
+  'group_key',
+  'group_rule',
+  'min_selected',
+  'name_mode',
+  'tooltip',
+  'placeholder',
+  'read_only',
+  'sender_filled',
+  'validation',
+  'font_size',
+  'data_name',
+  'options',
+] as const;
 type SettingColumn = (typeof TEMPLATE_FIELD_SETTING_COLUMNS)[number];
 export interface TemplateFieldSettingColumns {
   label: string | null;
@@ -62,8 +85,18 @@ export interface TemplateFieldSettingColumns {
   group_rule: string | null;
   min_selected: number | null;
   name_mode: string | null;
+  tooltip: string | null;
+  placeholder: string | null;
+  read_only: boolean;
+  sender_filled: boolean;
+  validation: string | null;
+  font_size: number | null;
+  data_name: string | null;
+  // A JSON column: present only when set (absent leaves the column NULL; Prisma refuses a bare
+  // null for JSON).
+  options?: never;
 }
-/** The setting columns of a field (absent → NULL), for a create or a copy. */
+/** The setting columns of a field (absent → NULL / false), for a create or a copy. */
 export function templateFieldSettingColumns(f: Partial<Pick<FingerprintField, SettingColumn>>): TemplateFieldSettingColumns {
   return {
     label: f.label ?? null,
@@ -71,13 +104,23 @@ export function templateFieldSettingColumns(f: Partial<Pick<FingerprintField, Se
     group_rule: f.group_rule ?? null,
     min_selected: f.min_selected ?? null,
     name_mode: f.name_mode ?? null,
+    tooltip: f.tooltip ?? null,
+    placeholder: f.placeholder ?? null,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
+    validation: f.validation ?? null,
+    font_size: f.font_size ?? null,
+    data_name: f.data_name ?? null,
+    ...(f.options !== undefined && f.options !== null ? { options: f.options as never } : {}),
   };
 }
-function setSettings(f: FingerprintField): Partial<Record<SettingColumn, string | number>> {
-  const out: Partial<Record<SettingColumn, string | number>> = {};
+// A setting joins the fingerprint only when it is set (NULL and false left out), so every
+// existing fingerprint is unchanged.
+function setSettings(f: FingerprintField): Partial<Record<SettingColumn, unknown>> {
+  const out: Partial<Record<SettingColumn, unknown>> = {};
   for (const k of TEMPLATE_FIELD_SETTING_COLUMNS) {
     const v = f[k];
-    if (v !== undefined && v !== null) out[k] = v;
+    if (v !== undefined && v !== null && v !== false) out[k] = v;
   }
   return out;
 }
@@ -219,6 +262,15 @@ export interface AddFieldInput {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2.
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: unknown;
 }
 
 @Injectable()

@@ -7,7 +7,17 @@ import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInp
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 import { EMAIL_PATTERN, ENVELOPE_SUBJECT_MAX } from '@aramo/sign-client';
-import { checkboxGroupIssues, fieldTypesFor, parseTemplateFieldSettings, templateNameModeOf } from '@aramo/sign-fields';
+import {
+  RETIRED_FIELD_TYPES,
+  TEMPLATE_TYPE_MAPPING,
+  checkboxGroupIssues,
+  fieldTypesFor,
+  parseTemplateFieldSettings,
+  senderFilledFieldsEnabled,
+  setFieldSettings,
+  templateNameModeOf,
+  type TemplateFieldSettings,
+} from '@aramo/sign-fields';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -52,8 +62,12 @@ const MAX_COPY_RECIPIENTS = 10;
 // fixed form is held to its own `template_fixed_form` surface (today the same 6 types).
 // FIELD-PARITY-1 P1-4 — a signer field of any other type is REFUSED (409
 // template_field_type_unsupported, assertTemplateFieldsCarried), never silently dropped.
+// FIELD-PARITY-1 P3 (R-1, R-9) — every type the template surfaces carry (the profile types,
+// ACKNOWLEDGEMENT and the new types too); CURRENCY and SIGNER_EMAIL are carried as NUMBER (money)
+// and EMAIL (TEMPLATE_TYPE_MAPPING); IMAGE is retired (refused, template_field_type_retired).
 const TEMPLATE_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_editable'));
 const FIXED_FORM_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_fixed_form'));
+const RETIRED_TYPES: ReadonlySet<string> = new Set(RETIRED_FIELD_TYPES);
 
 function bad(requestId: string, message: string, details?: Record<string, unknown>): AramoError {
   return new AramoError('VALIDATION_ERROR', message, 400, { requestId, ...(details !== undefined ? { details } : {}) });
@@ -378,7 +392,7 @@ export class SenderTemplatesService {
         fields.push({
           envelope_document_id: doc.id,
           signer_id,
-          field_type: d.field_type,
+          field_type: carriedField(d).field_type,
           page_number: d.page_number,
           x: d.x,
           y: d.y,
@@ -487,22 +501,32 @@ export class SenderTemplatesService {
     for (const d of rendered.field_definitions) {
       if (d.signer_role === null || !signerKeys.has(d.signer_role)) continue;
       if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
+      // FIELD-PARITY-1 P1-4 / P3 — the template's settings, unchanged (SIGNER_NAME: NULL =
+      // SIGNER_PROFILE); a CURRENCY / SIGNER_EMAIL field carried as its Sign type (R-9).
+      const carried = carriedField(d);
       fields.push({
         envelope_document_id: doc.id,
         role_key: d.signer_role,
-        field_type: d.field_type,
+        field_type: carried.field_type,
         page_number: d.page_number,
         x: d.x,
         y: d.y,
         width: d.width,
         height: d.height,
         required: d.required,
-        // FIELD-PARITY-1 P1-4 — the template's settings, unchanged (SIGNER_NAME: NULL = SIGNER_PROFILE).
-        label: d.label ?? null,
-        group_key: d.group_key ?? null,
-        group_rule: d.group_rule ?? null,
-        min_selected: d.min_selected ?? null,
-        name_mode: templateNameModeOf(d.field_type, d.name_mode),
+        label: carried.settings.label,
+        group_key: carried.settings.group_key,
+        group_rule: carried.settings.group_rule,
+        min_selected: carried.settings.min_selected,
+        name_mode: templateNameModeOf(carried.field_type, carried.settings.name_mode),
+        tooltip: carried.settings.tooltip,
+        placeholder: carried.settings.placeholder,
+        read_only: carried.settings.read_only,
+        sender_filled: carried.settings.sender_filled,
+        validation: carried.settings.validation,
+        font_size: carried.settings.font_size,
+        data_name: carried.settings.data_name,
+        options: carried.settings.options as Readonly<Record<string, unknown>> | null,
       });
     }
     await this.repo.bindTemplateDraft({
@@ -612,20 +636,29 @@ function assertFixedFormPlaceable(
 // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-4 —
 // no silent drops. Every SIGNER field of the rendered template (a field with a signer role; a
 // field without one is a value the renderer already printed) must be a type the template
-// surface carries and carry only settings that type takes (the catalog), and its check-box
-// groups must hold Sign's group rule; otherwise the request is refused 409 before the envelope
-// is created, naming the field. (The documents-family types with no Sign equivalent — R-9:
-// CURRENCY → NUMBER, SIGNER_EMAIL → EMAIL — are mapped in Phase 3, when Sign gains them.)
+// surface carries and carry only settings that type takes (the catalog), and its check-box /
+// radio groups must hold Sign's group rule; otherwise the request is refused 409 before the
+// envelope is created, naming the field. P3 (ruling R-9): CURRENCY → NUMBER with the money
+// format and SIGNER_EMAIL → EMAIL are carried; IMAGE is retired (template_field_type_retired). A
+// sender-filled field (S-5) is carried only while SIGN_SENDER_FILLED_FIELDS_ENABLED is on
+// (setting_reason sender_filled_not_available otherwise).
 function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[], requestId: string): void {
   const signerFields = defs.filter((d) => d.signer_role !== null);
+  const enabled = senderFilledFieldsEnabled(process.env);
   for (const d of signerFields) {
-    if (!TEMPLATE_FIELD_TYPES.has(d.field_type)) {
+    if (RETIRED_TYPES.has(d.field_type)) {
+      throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field type that is no longer supported. Ask your administrator to update the template.', 409, {
+        requestId,
+        details: { reason: 'template_field_type_retired', field_key: d.field_key, field_type: d.field_type },
+      });
+    }
+    if (!TEMPLATE_FIELD_TYPES.has(d.field_type) && TEMPLATE_TYPE_MAPPING[d.field_type] === undefined) {
       throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field type Aramo Sign cannot place. Ask your administrator to update the template.', 409, {
         requestId,
         details: { reason: 'template_field_type_unsupported', field_key: d.field_key, field_type: d.field_type },
       });
     }
-    const parsed = parseTemplateFieldSettings(d as unknown as Record<string, unknown>, d.field_type);
+    const parsed = parseTemplateFieldSettings(d as unknown as Record<string, unknown>, d.field_type, { sender_filled_enabled: enabled });
     if (!parsed.ok) {
       throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field setting Aramo Sign cannot apply. Ask your administrator to update the template.', 409, {
         requestId,
@@ -641,6 +674,9 @@ function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[
       group_key: d.group_key ?? null,
       group_rule: d.group_rule ?? null,
       min_selected: d.min_selected ?? null,
+      field_type: d.field_type,
+      read_only: d.read_only === true,
+      sender_filled: d.sender_filled === true,
     })),
   );
   if (issue !== undefined) {
@@ -651,16 +687,27 @@ function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[
   }
 }
 
-// FIELD-PARITY-1 P1-4 — a template field's settings as sender-API members (PUT …/fields): only
-// the ones that are set, so the sender rules (fieldConfig) accept exactly what the template
+/**
+ * FIELD-PARITY-1 P3 — a template field as the envelope field it becomes: its Sign type (R-9
+ * mapping: CURRENCY → NUMBER with the money options, SIGNER_EMAIL → EMAIL) and its parsed
+ * settings. Called after assertTemplateFieldsCarried, so the parse cannot fail.
+ */
+export function carriedField(d: SignTemplateFieldDefinition): { readonly field_type: string; readonly settings: TemplateFieldSettings } {
+  const parsed = parseTemplateFieldSettings(d as unknown as Record<string, unknown>, d.field_type, { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+  if (!parsed.ok) throw new Error(`template field ${d.field_key}: ${parsed.refusal.reason}`);
+  const mapped = TEMPLATE_TYPE_MAPPING[d.field_type];
+  if (mapped === undefined) return { field_type: d.field_type, settings: parsed.settings };
+  return { field_type: mapped.field_type, settings: { ...parsed.settings, options: (mapped.options ?? parsed.settings.options) as TemplateFieldSettings['options'] } };
+}
+
+// FIELD-PARITY-1 P1-4 / P3 — a template field's settings as sender-API members (PUT …/fields):
+// only the ones that are set, so the sender rules (fieldConfig) accept exactly what the template
 // carries; a SIGNER_NAME with no name mode is sent as the default, SIGNER_PROFILE.
-function senderSettingsOf(d: SignTemplateFieldDefinition): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
-  for (const k of ['label', 'group_key', 'group_rule', 'min_selected'] as const) {
-    const v = d[k];
-    if (v !== undefined && v !== null) out[k] = v;
-  }
-  const mode = templateNameModeOf(d.field_type, d.name_mode);
+function senderSettingsOf(d: SignTemplateFieldDefinition): Record<string, unknown> {
+  const carried = carriedField(d);
+  const out: Record<string, unknown> = { ...setFieldSettings(carried.settings) };
+  delete out['name_mode'];
+  const mode = templateNameModeOf(carried.field_type, carried.settings.name_mode);
   if (mode !== null) out['name_mode'] = mode;
   return out;
 }

@@ -9,6 +9,7 @@ import {
   type RenderBlock,
   type RenderModel,
 } from '@aramo/documents-rendering';
+import { FIELD_CATALOG, fieldValueDisplay, isCircleMark, isFieldTypeKey, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository, type LockingTx } from './esign.repository.js';
@@ -98,11 +99,20 @@ export type PlacementField = {
   height: number | null;
   value: string | null;
   signature_method: string | null;
+  // FIELD-PARITY-1 P3 — the settings that change how a value prints (absent on older callers).
+  options?: unknown;
+  font_size?: number | null;
 };
+
+/** FIELD-PARITY-1 P3 — how the executed PDF prints values (the envelope's date format). */
+export interface PlacementContext {
+  readonly date_format?: string | null;
+}
 
 export function valuePlacement(
   f: PlacementField,
   stampFor: (signer_id: string | null) => { label: string; id: string },
+  ctx: PlacementContext = {},
 ): PreparedField | null {
   if (f.value === null) return null;
   const isMark = f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS';
@@ -140,13 +150,18 @@ export function valuePlacement(
   }
   // FIELD-PARITY-1 P0-2 — the box size travels with the value, so the renderer draws it
   // inside the box (wrap, shrink, clip). A legacy row with no size renders as before.
+  // P3 — DATE prints in the envelope's date format, NUMBER formatted (money with its currency),
+  // DROPDOWN as its choice's label (fieldValueDisplay; every other type unchanged), and a fixed
+  // font_size (S-7) replaces auto sizing.
+  const value = fieldValueDisplay({ field_type: f.field_type, options: (f.options ?? null) as FieldOptions | null }, f.value, { date_format: ctx.date_format ?? null });
   return {
     field_key: f.id,
     page_number: f.page_number,
     x: f.x,
     y: f.y,
-    value: f.value,
+    value,
     ...(f.width !== null && f.height !== null ? { width: f.width, height: f.height } : {}),
+    ...(f.font_size !== undefined && f.font_size !== null && f.width !== null && f.height !== null ? { font_size: f.font_size } : {}),
   };
 }
 
@@ -168,18 +183,83 @@ const MARK_FIELD_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
 
 // M-A6 §2.5 — one certificate line per check box of a signer: its label (or a
 // positional fallback) and its state.
+// FIELD-PARITY-1 P3 — a radio button is listed by its group (radioGroupLines), never here; a
+// sender-filled box says the sender entered it.
 function checkboxLines(
-  fields: ReadonlyArray<{ signer_id: string | null; field_type: string; label?: string | null; page_number: number; value: string | null; filled_at: Date | null }>,
+  fields: ReadonlyArray<CertificateField>,
   signer_id: string,
 ): string[] {
   return fields
-    .filter((f) => f.signer_id === signer_id && MARK_FIELD_TYPES.has(f.field_type))
+    .filter((f) => f.signer_id === signer_id && MARK_FIELD_TYPES.has(f.field_type) && f.field_type !== 'RADIO')
     .map((f) => {
       const name = f.label !== undefined && f.label !== null && f.label.length > 0
         ? `${f.field_type === 'ACKNOWLEDGEMENT' ? 'Acknowledgement' : 'Checkbox'} "${f.label}"`
         : f.field_type === 'ACKNOWLEDGEMENT' ? `Acknowledgement (page ${f.page_number + 1})` : `Checkbox (page ${f.page_number + 1})`;
-      return `${name}: ${f.filled_at !== null && f.value === 'true' ? 'checked' : 'not checked'}`;
+      return `${name}: ${f.filled_at !== null && f.value === 'true' ? 'checked' : 'not checked'}${f.sender_filled === true ? SENDER_ENTERED : ''}`;
     });
+}
+
+// FIELD-PARITY-1 P3 — the fields the certificate reads.
+type CertificateField = {
+  signer_id: string | null;
+  field_type: string;
+  label?: string | null;
+  page_number: number;
+  value: string | null;
+  filled_at: Date | null;
+  group_key?: string | null;
+  sender_filled?: boolean;
+  options?: unknown;
+};
+
+/** S-5 (ruling R-3) — how the certificate marks a value the sender entered. */
+export const SENDER_ENTERED = ' (entered by the sender before sending)';
+
+// The value-bearing types listed on the certificate: the Phase 3 types, and any field the
+// sender filled. (Earlier text types are not listed, as before: §7 keeps the certificate
+// format beyond listing the new fields.)
+const LISTED_VALUE_TYPES: ReadonlySet<string> = new Set(['DATE', 'DROPDOWN', 'NUMBER', 'MULTILINE_TEXT']);
+const CERTIFICATE_VALUE_MAX = 300;
+
+function certificateText(v: string): string {
+  const one = v.replace(/\s+/g, ' ').trim();
+  return one.length > CERTIFICATE_VALUE_MAX ? `${one.slice(0, CERTIFICATE_VALUE_MAX - 1)}…` : one;
+}
+
+function fieldName(f: CertificateField): string {
+  if (f.label !== undefined && f.label !== null && f.label.length > 0) return `"${f.label}"`;
+  const typeLabel = isFieldTypeKey(f.field_type) ? FIELD_CATALOG[f.field_type].label : f.field_type;
+  return `${typeLabel} (page ${f.page_number + 1})`;
+}
+
+/**
+ * FIELD-PARITY-1 P3 §6 (Rendering) — one certificate line per new-type value of a signer (its
+ * label if set, the value as printed on the PDF) and per sender-filled text value, the sender's
+ * marked as entered by the sender.
+ */
+export function fieldValueLines(fields: ReadonlyArray<CertificateField>, signer_id: string, date_format: string | null): string[] {
+  return fields
+    .filter((f) => f.signer_id === signer_id && !MARK_FIELD_TYPES.has(f.field_type) && (LISTED_VALUE_TYPES.has(f.field_type) || f.sender_filled === true))
+    .map((f) => {
+      const shown = f.filled_at !== null && f.value !== null && f.value.trim().length > 0
+        ? certificateText(fieldValueDisplay({ field_type: f.field_type, options: (f.options ?? null) as FieldOptions | null }, f.value, { date_format }))
+        : 'not filled';
+      return `${fieldName(f)}: ${shown}${f.sender_filled === true ? SENDER_ENTERED : ''}`;
+    });
+}
+
+/** FIELD-PARITY-1 P3 T-5 — one certificate line per radio group of a signer: the chosen option. */
+export function radioGroupLines(fields: ReadonlyArray<CertificateField>, signer_id: string): string[] {
+  const groups = new Map<string, CertificateField[]>();
+  for (const f of fields) {
+    if (f.signer_id !== signer_id || f.field_type !== 'RADIO' || f.group_key === undefined || f.group_key === null) continue;
+    groups.set(f.group_key, [...(groups.get(f.group_key) ?? []), f]);
+  }
+  return [...groups].map(([group_key, boxes]) => {
+    const chosen = boxes.find((b) => b.filled_at !== null && b.value === 'true');
+    const shown = chosen === undefined ? 'none chosen' : chosen.label !== undefined && chosen.label !== null && chosen.label.length > 0 ? `"${chosen.label}"` : `option on page ${chosen.page_number + 1}`;
+    return `Radio group "${group_key}": ${shown}${boxes.some((b) => b.sender_filled === true) ? SENDER_ENTERED : ''}`;
+  });
 }
 
 // Feature-Parity §1.18 — the certificate's RFC 3161 section: each executed document's
@@ -340,7 +420,7 @@ export class ExecutionService implements ExecutionProducerPort {
         continue;
       }
 
-      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor);
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null });
 
       const kept = await this.insertExecutedDocument(tenant_id, envelope_id, doc.id, {
         source_sha256,
@@ -428,6 +508,7 @@ export class ExecutionService implements ExecutionProducerPort {
     tenant_id: string,
     doc: EnvelopeFull['documents'][number],
     stampFor: (signer_id: string | null) => { label: string; id: string },
+    ctx: PlacementContext = {},
   ): Promise<{ source_sha256: string; rendered: { bytes: Uint8Array; sha256: string; truncated_field_keys?: string[] } }> {
     const sourcePdf = await this.source.getSourcePdf({
       tenant_id,
@@ -454,12 +535,14 @@ export class ExecutionService implements ExecutionProducerPort {
           y: f.y,
           kind: 'MARK',
           checked: f.filled_at !== null && f.value === 'true',
+          // FIELD-PARITY-1 P3 T-5 — a radio button is a circle.
+          ...(isCircleMark(f.field_type) ? { shape: 'CIRCLE' as const } : {}),
           ...(f.width !== null ? { width: f.width } : {}),
           ...(f.height !== null ? { height: f.height } : {}),
         });
         continue;
       }
-      const placed = valuePlacement(f, stampFor);
+      const placed = valuePlacement(f, stampFor, ctx);
       if (placed !== null) placements.push(placed);
     }
 
@@ -540,6 +623,9 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(identityChecks.has(s.id) ? [{ type: 'TEXT', text: identityChecks.get(s.id) ?? '' } as RenderBlock] : []),
         // M-A6 §2.5 — the signer's check boxes, by label, with their states.
         ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        // FIELD-PARITY-1 P3 — the new types' values and radio choices; the sender's marked.
+        ...radioGroupLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        ...fieldValueLines(boxes, s.id, full.signer_date_format ?? null).map((text): RenderBlock => ({ type: 'TEXT', text })),
         ...paymentLines(payments, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
       { type: 'HEADING', text: 'Evidence' },
@@ -602,7 +688,7 @@ export class ExecutionService implements ExecutionProducerPort {
     for (const doc of full.documents) {
       const original = byDoc.get(doc.id);
       if (original === undefined || !affectedDocs.has(doc.id)) continue;
-      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor);
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null });
       // The corrected copy is drawn on the same frozen source as the original.
       if (source_sha256 !== original.source_sha256) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'source_changed');
       if (rendered.sha256 === original.executed_sha256) continue;

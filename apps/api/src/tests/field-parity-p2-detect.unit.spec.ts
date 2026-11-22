@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { AuthContextType } from '@aramo/auth';
 import { FIXED_FORM_SCHEMA_V1 } from '@aramo/documents';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { fieldTypesFor } from '@aramo/sign-fields';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlatformFixedFormsController } from '../document-templates-platform/platform-fixed-forms.controller.js';
@@ -53,17 +54,17 @@ function service(bytes: Uint8Array | null, opts: { readFails?: boolean } = {}) {
 }
 
 describe('FIELD-PARITY-1 P2-4 — FixedFormService.fieldSuggestions', () => {
-  it('suggests fixed-form types only: Signature on its line, a Title / Email label as TEXT, the empty box as TEXT', async () => {
+  it('suggests fixed-form types only: Signature on its line, Title / Email labels as their profile types (FIELD-PARITY-1 P3), the empty box as TEXT', async () => {
     const { svc } = service(await formPdf());
     const out = await svc.fieldSuggestions(VERSION, 'r');
     const byReason = Object.fromEntries(out.suggestions.map((s) => [s.reason, s.type]));
-    expect(byReason).toEqual({ 'label:Signature': 'SIGNATURE', 'label:Title': 'TEXT', 'label:Email': 'TEXT', empty_box: 'TEXT' });
+    expect(byReason).toEqual({ 'label:Signature': 'SIGNATURE', 'label:Title': 'TITLE', 'label:Email': 'EMAIL', empty_box: 'TEXT' });
     const sig = out.suggestions.find((s) => s.type === 'SIGNATURE');
     expect(sig).toMatchObject({ page: 1, page_number: 0 });
     expect(Math.abs((sig?.y ?? 0) - 200)).toBeLessThan(3);
     expect(out.skipped_pages).toEqual([]);
     // Every suggestion is a fixed-form palette type.
-    for (const s of out.suggestions) expect(['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX']).toContain(s.type);
+    for (const s of out.suggestions) expect(fieldTypesFor('template_fixed_form') as readonly string[]).toContain(s.type);
   });
 
   it('a version without a PDF, or a PDF that cannot be read, is an empty answer', async () => {

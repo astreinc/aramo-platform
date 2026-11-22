@@ -265,6 +265,9 @@ services:
       # invite links (Invite-S2 / Pattern-2): accept-page + sign-in-page bases
       - INVITE_ACCEPT_URL
       - INVITE_SIGNIN_URL
+      # FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields on template authoring (the
+      # console fixed-form routes and the documents template field route). Dark: unset ⇒ off.
+      - SIGN_SENDER_FILLED_FIELDS_ENABLED
       - ADDRESS_AUTOCOMPLETE_ENABLED
       - ADDRESS_AUTOCOMPLETE_PROVIDER
       - GOOGLE_PLACES_API_KEY
@@ -540,6 +543,9 @@ services:
       # SIGN_RENEWAL_NOTICE_DAYS: days before the commitment end (default 30, 1 to 90).
       - SIGN_RENEWAL_NOTICES_ENABLED
       - SIGN_RENEWAL_NOTICE_DAYS
+      # FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields (PUT …/fields and template →
+      # envelope). Dark: unset ⇒ off (a sender_filled field is refused, sender_filled_not_available).
+      - SIGN_SENDER_FILLED_FIELDS_ENABLED
       # Aramo Sign Mobile M-A12 W1-G — in-app store billing (App Store, Google Play). Dark unless
       # SIGN_STORE_BILLING_ENABLED=1; a store whose values are unset is off (no defaults). Live store
       # billing needs separate PO authorization. Secrets enter only via the box .env (pipe), never the repo.

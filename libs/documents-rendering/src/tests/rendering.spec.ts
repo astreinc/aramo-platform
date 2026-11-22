@@ -614,6 +614,49 @@ describe('text in a box (FIELD-PARITY-1 P0-2)', () => {
   });
 });
 
+describe('FIELD-PARITY-1 P3 — radio marks and a fixed font size', () => {
+  const helvetica = async () => (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+
+  it('a fixed size wraps at that size and clips, never shrinks; auto is unchanged', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 300, width: 160, height: 26 };
+    const text = 'The parties agree that the meeting minutes are a true record of the session';
+    const fixed = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box, 9);
+    expect(fixed.size).toBe(9);
+    expect(fixed.truncated).toBe(true);
+    expect(fixed.lines).toHaveLength(Math.floor(26 / (9 * 1.15)));
+    const auto = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(auto.size).toBeLessThan(11);
+    expect(auto.truncated).toBe(false);
+    const big = layoutTextInBox('Jane', (t, n) => font.widthOfTextAtSize(t, n), { x: 0, y: 0, width: 200, height: 40 }, 20);
+    expect(big).toMatchObject({ size: 20, truncated: false });
+  });
+
+  it('prepareFromSource draws a CIRCLE mark (checked or not) and honours font_size; deterministic', async () => {
+    const source = await makeSourcePdf();
+    const radioOn = { field_key: 'r1', page_number: 0, x: 72, y: 400, width: 14, height: 14, kind: 'MARK' as const, checked: true, shape: 'CIRCLE' as const };
+    const radioOff = { field_key: 'r2', page_number: 0, x: 72, y: 380, width: 14, height: 14, kind: 'MARK' as const, checked: false, shape: 'CIRCLE' as const };
+    const sized = { field_key: 't', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: '$1,250.50', font_size: 9 };
+    const a = await adapter.prepareFromSource(source, [radioOn, radioOff, sized]);
+    const b = await adapter.prepareFromSource(source, [radioOn, radioOff, sized]);
+    expect(a.sha256).toBe(b.sha256);
+    // A circle is not the check-box square, and the fixed size is not auto.
+    const square = await adapter.prepareFromSource(source, [{ ...radioOn, shape: undefined }, radioOff, sized]);
+    expect(square.sha256).not.toBe(a.sha256);
+    const auto = await adapter.prepareFromSource(source, [radioOn, radioOff, { ...sized, font_size: undefined }]);
+    expect(auto.sha256).not.toBe(a.sha256);
+  });
+
+  it('a placement without the P3 keys keeps its render manifest hash (existing executed documents unchanged)', async () => {
+    const source = await makeSourcePdf();
+    const p = { field_key: 'short', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: 'Jane Doe' };
+    const before = await adapter.prepareFromSource(source, [p]);
+    const withUndefined = await adapter.prepareFromSource(source, [{ ...p, font_size: undefined, shape: undefined }]);
+    expect(withUndefined.provenance.render_manifest_sha256).toBe(before.provenance.render_manifest_sha256);
+    expect(withUndefined.sha256).toBe(before.sha256);
+  });
+});
+
 describe('SafePdfPipeline (B6 — governed upload safety)', () => {
   const pipeline = new SafePdfPipeline();
 

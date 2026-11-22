@@ -33,7 +33,9 @@ import { effectiveLegalDocument } from '@aramo/subscription';
 const ROOT = resolve(__dirname, '../../..');
 // Apply ALL esign migrations whole-file, in order — the append-only trigger is
 // $$-quoted (the shared splitDdl is comment/$$-blind), and DOC-4 added the
-// ExecutedDocument migration (never hardcode a single-migration list).
+// ExecutedDocument migration (never hardcode a single-migration list). FIELD-PARITY-1 P3
+// (20261122200000_field_parity_1_p3_field_types_settings: new field types + setting columns;
+// additive response members on the sender detail and the signer view) is applied by this scan.
 function esignMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/sign/prisma/migrations');
   return readdirSync(dir)

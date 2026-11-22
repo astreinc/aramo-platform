@@ -51,6 +51,13 @@ export interface PublishedFixedForm {
 
 type FieldRow = Omit<FixedFormField, 'ordinal'> & { ordinal: number };
 
+// FIELD-PARITY-1 P3 — the row without its JSON options (templateFieldSettingColumns writes them
+// only when set: Prisma refuses a bare null for a JSON column).
+function rowWithoutOptions(f: FieldRow): Omit<FieldRow, 'options'> {
+  const { options: _options, ...rest } = f;
+  return rest;
+}
+
 const PLATFORM_TEMPLATE = { owner_scope: 'PLATFORM', tenant_id: null } as const;
 
 function mapOneDraftConflict(e: unknown, templateId: string): unknown {
@@ -209,7 +216,7 @@ export class FixedFormsRepository {
       if (input.fields !== undefined) {
         await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: version.id } });
         for (const f of input.fields) {
-          await tx.templateFieldDefinition.create({ data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...f, ...templateFieldSettingColumns(f) } });
+          await tx.templateFieldDefinition.create({ data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...rowWithoutOptions(f), ...templateFieldSettingColumns(f) } });
         }
       }
       const field_schema = input.field_schema !== undefined ? input.field_schema : version.field_schema;
@@ -235,7 +242,7 @@ export class FixedFormsRepository {
     const { version } = await this.getPlatformVersion(input.version_id);
     if (version.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
     const created = await this.prisma.templateFieldDefinition.create({
-      data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...input.field, ...templateFieldSettingColumns(input.field) },
+      data: { id: randomUUID(), template_version_id: version.id, format_rule: null, ...rowWithoutOptions(input.field), ...templateFieldSettingColumns(input.field) },
     });
     const fields = await this.listFields(version.id);
     await this.prisma.templateVersion.update({
