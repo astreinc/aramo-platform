@@ -7,6 +7,7 @@ import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInp
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 import { EMAIL_PATTERN, ENVELOPE_SUBJECT_MAX } from '@aramo/sign-client';
+import { fieldTypesFor } from '@aramo/sign-fields';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -47,7 +48,10 @@ const MAX_TITLE = ENVELOPE_SUBJECT_MAX;
 const MAX_COPY_RECIPIENTS = 10;
 // The engine field types a template placement may carry (the internal path is not
 // limited by the public authoring whitelist; ACKNOWLEDGEMENT is never placed by a template).
-const TEMPLATE_FIELD_TYPES = new Set(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX']);
+// FIELD-PARITY-1 P1-2 — the catalog's `template_editable` surface (P1-6: never PAYMENT); a
+// fixed form is held to its own `template_fixed_form` surface (today the same 6 types).
+const TEMPLATE_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_editable'));
+const FIXED_FORM_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_fixed_form'));
 
 function bad(requestId: string, message: string, details?: Record<string, unknown>): AramoError {
   return new AramoError('VALIDATION_ERROR', message, 400, { requestId, ...(details !== undefined ? { details } : {}) });
@@ -551,7 +555,7 @@ function assertFixedFormPlaceable(
     const ok =
       d.signer_role !== null &&
       signerKeys.has(d.signer_role) &&
-      TEMPLATE_FIELD_TYPES.has(d.field_type) &&
+      FIXED_FORM_FIELD_TYPES.has(d.field_type) &&
       d.page_number !== null && d.x !== null && d.y !== null && d.width !== null && d.height !== null;
     if (!ok) {
       throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This form has a field Aramo Sign cannot place. Ask Aramo support.', 409, {

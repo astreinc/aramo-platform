@@ -25,6 +25,7 @@ import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from 
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { isWitness, signingRecipients } from './domain/recipients.js';
+import { CHECK_FIELD_TYPES } from './domain/field-rules.js';
 import { ACCESS_CODE_VERIFIED_EVENT } from './domain/access-code.js';
 import { RECIPIENT_OTP_VERIFIED_EVENT } from './messaging/messaging-rules.js';
 import { formatPaymentAmount } from './payments/sign-payment.repository.js';
@@ -161,8 +162,9 @@ type EnvelopeFull = Awaited<ReturnType<EsignRepository['getEnvelopeFull']>>;
 
 type ArtifactTx = LockingTx & Pick<PrismaService, 'executedDocument' | 'executionCertificate'>;
 
-// M-A6 §1 — field types stamped as a vector check box (MARK).
-const MARK_FIELD_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
+// M-A6 §1 — field types stamped as a vector check box (MARK). FIELD-PARITY-1 P1-2 — the
+// catalog's boolean types (CHECK_FIELD_TYPES, @aramo/sign-client over @aramo/sign-fields).
+const MARK_FIELD_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
 
 // M-A6 §2.5 — one certificate line per check box of a signer: its label (or a
 // positional fallback) and its state.

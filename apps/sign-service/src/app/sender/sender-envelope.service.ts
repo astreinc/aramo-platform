@@ -55,7 +55,6 @@ import {
   awaitingYouSteps,
   inboxHandleKey,
   mintInboxHandle,
-  PROFILE_TEXT_FIELD_TYPES,
   SignUserProfileRepository,
 } from '@aramo/sign';
 import {
@@ -71,6 +70,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
+import { fieldSettingsOf, fieldTypesFor } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -136,12 +136,14 @@ const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
 const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
 const MAX_LABEL = CHECKBOX_LABEL_MAX;
 const MAX_GROUP_KEY = CHECKBOX_GROUP_KEY_MAX;
-const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
-// The 12 engine field types a sender may send back unchanged with their id
-// (SenderFieldPassthrough): FIELD_TYPES + ACKNOWLEDGEMENT. PAYMENT is not among them.
-// The DB CHECK allows 13 (these + PAYMENT). FIELD-PARITY-1 P1-1 — every one of these
-// lists becomes a projection of the one field catalog.
-const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT', ...PROFILE_TEXT_FIELD_TYPES]);
+// FIELD-PARITY-1 P1-2 — the check-box settings are the catalog's (label, group_key,
+// group_rule, min_selected).
+const CHECKBOX_CONFIG = fieldSettingsOf('CHECKBOX');
+// The engine field types a sender may send back unchanged with their id
+// (SenderFieldPassthrough): the catalog's `engine_passthrough` surface (FIELD-PARITY-1 P1-2;
+// today FIELD_TYPES + ACKNOWLEDGEMENT, 12). PAYMENT is not among them; the DB CHECK
+// (`sign_store`) allows 13 (these + PAYMENT).
+const ENGINE_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('engine_passthrough'));
 // Client Rule Consolidation C3 — the limits and patterns below come from @aramo/sign-client
 // (one copy for the server and both Sign clients).
 export { MAX_SIGNERS };

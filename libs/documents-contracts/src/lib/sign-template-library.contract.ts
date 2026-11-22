@@ -128,8 +128,14 @@ export interface SignTemplateRenderRequest {
 // `signing` there is one block per SIGNER role: SIGNATURE, SIGNER_NAME (the printed name
 // Sign fills) and SIGN_DATE, each carrying its role_key. Without `signing`: SIGNATURE and
 // SIGN_DATE of the single block, no role_key (unchanged).
+// FIELD-PARITY-1 P1-2 — the signature-block field types. Kept literal here (a scope:boundary
+// contract every Sign / documents consumer reads through its dist typings); held equal to the
+// catalog's `signature_block` projection by apps/api/src/tests/field-catalog-parity.spec.ts.
+export const SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES = ['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE'] as const;
+export type SignTemplateSignatureFieldType = (typeof SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES)[number];
+
 export interface SignTemplateSignatureField {
-  readonly field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE';
+  readonly field_type: SignTemplateSignatureFieldType;
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
