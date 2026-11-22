@@ -10224,6 +10224,11 @@
     {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/org-admin-web/src/index.ts"
     },
     {
@@ -10309,6 +10314,11 @@
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
     },
     {
       "from": "apps/home-web/vite.config.ts",
@@ -10726,6 +10736,11 @@
     {
       "from": "apps/platform-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/sign-fields/src/index.ts"
     },
     {
@@ -10907,6 +10922,11 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
     },
     {
@@ -10928,6 +10948,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
     },
     {
       "from": "apps/sign-web/vite.config.ts",
@@ -30781,6 +30806,16 @@
       "status": "unscoped",
       "to": "libs/settings/src/lib/known-settings.ts"
     },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/PrepareEditor.tsx"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx"
+    },
     { "from": "doc/step4-compute-iac.md", "status": "unscoped", "to": "doc/runbooks/run-layer.md" },
     {
       "from": "doc/step4-compute-iac.md",
@@ -32776,6 +32811,16 @@
       "from": "libs/field-masking/src/tests/compensation-field-map.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/d5-non-invertibility.spec.ts"
+    },
+    {
+      "from": "libs/field-placement-web/project.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "libs/field-placement-web/project.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/tsconfig.lib.json"
     },
     {
       "from": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql",
@@ -38801,6 +38846,11 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/export/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
@@ -39029,6 +39079,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/export/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
