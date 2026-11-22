@@ -7,7 +7,7 @@ import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInp
 import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 import { EMAIL_PATTERN, ENVELOPE_SUBJECT_MAX } from '@aramo/sign-client';
-import { fieldTypesFor } from '@aramo/sign-fields';
+import { checkboxGroupIssues, fieldTypesFor, parseTemplateFieldSettings, templateNameModeOf } from '@aramo/sign-fields';
 
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../document-templates-http.adapter.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -50,6 +50,8 @@ const MAX_COPY_RECIPIENTS = 10;
 // limited by the public authoring whitelist; ACKNOWLEDGEMENT is never placed by a template).
 // FIELD-PARITY-1 P1-2 — the catalog's `template_editable` surface (P1-6: never PAYMENT); a
 // fixed form is held to its own `template_fixed_form` surface (today the same 6 types).
+// FIELD-PARITY-1 P1-4 — a signer field of any other type is REFUSED (409
+// template_field_type_unsupported, assertTemplateFieldsCarried), never silently dropped.
 const TEMPLATE_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_editable'));
 const FIXED_FORM_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_fixed_form'));
 
@@ -327,10 +329,13 @@ export class SenderTemplatesService {
       body: { values: input.values, created_by: auth.sub, client_id: null },
       requestId,
     });
+    // FIELD-PARITY-1 P1-4 — every signer field is carried with its settings, or the request is
+    // refused before the envelope is created (the frozen Document stays unused).
+    assertTemplateFieldsCarried(rendered.field_definitions, requestId);
     // The signer roles the fields need. More than one ⇒ refused (the frozen Document stays unused).
     const needed = new Set<string>();
     for (const f of rendered.signature_fields) if (f.role_key !== undefined) needed.add(f.role_key);
-    for (const d of rendered.field_definitions) if (d.signer_role !== null && TEMPLATE_FIELD_TYPES.has(d.field_type)) needed.add(d.signer_role);
+    for (const d of rendered.field_definitions) if (d.signer_role !== null) needed.add(d.signer_role);
     const signerKeys = new Set((rendered.signing?.roles ?? item.signing?.roles ?? []).filter((r) => r.kind === 'SIGNER').map((r) => r.role_key));
     const neededSigners = [...needed].filter((k) => signerKeys.size === 0 || signerKeys.has(k));
     if (neededSigners.length > 1) throw selfSignSingleRecipient(requestId);
@@ -368,9 +373,21 @@ export class SenderTemplatesService {
         fields.push({ envelope_document_id: doc.id, signer_id, field_type: f.field_type, page_number: f.page_number, x: f.x, y: f.y, width: f.width, height: f.height, required: true });
       }
       for (const d of rendered.field_definitions) {
-        if (d.signer_role === null || d.signer_role !== role || !TEMPLATE_FIELD_TYPES.has(d.field_type)) continue;
+        if (d.signer_role === null || d.signer_role !== role) continue;
         if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
-        fields.push({ envelope_document_id: doc.id, signer_id, field_type: d.field_type, page_number: d.page_number, x: d.x, y: d.y, width: d.width, height: d.height, required: d.required });
+        fields.push({
+          envelope_document_id: doc.id,
+          signer_id,
+          field_type: d.field_type,
+          page_number: d.page_number,
+          x: d.x,
+          y: d.y,
+          width: d.width,
+          height: d.height,
+          required: d.required,
+          // FIELD-PARITY-1 P1-4 — the settings the type takes (the sender rules re-check them).
+          ...senderSettingsOf(d),
+        });
       }
       if (fields.length > 0) await this.envelopes.replaceFields(auth, env.id, { fields }, requestId);
     }
@@ -440,6 +457,8 @@ export class SenderTemplatesService {
     // role must receive one, else the request is refused before the envelope is created (the
     // frozen Document stays unused), never silently left without a field.
     if (rendered.template_kind === 'FIXED_FORM') assertFixedFormPlaceable(rendered.field_definitions, bound, requestId);
+    // FIELD-PARITY-1 P1-4 — every signer field is carried with its settings, or refused here.
+    assertTemplateFieldsCarried(rendered.field_definitions, requestId);
 
     const title = rendered.title.slice(0, MAX_TITLE);
     const env = await this.repo.createDraft({
@@ -466,9 +485,25 @@ export class SenderTemplatesService {
     }
     // UPLOADED_PDF field definitions placed per role (TemplateFieldDefinition.signer_role).
     for (const d of rendered.field_definitions) {
-      if (d.signer_role === null || !signerKeys.has(d.signer_role) || !TEMPLATE_FIELD_TYPES.has(d.field_type)) continue;
+      if (d.signer_role === null || !signerKeys.has(d.signer_role)) continue;
       if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
-      fields.push({ envelope_document_id: doc.id, role_key: d.signer_role, field_type: d.field_type, page_number: d.page_number, x: d.x, y: d.y, width: d.width, height: d.height, required: d.required });
+      fields.push({
+        envelope_document_id: doc.id,
+        role_key: d.signer_role,
+        field_type: d.field_type,
+        page_number: d.page_number,
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+        required: d.required,
+        // FIELD-PARITY-1 P1-4 — the template's settings, unchanged (SIGNER_NAME: NULL = SIGNER_PROFILE).
+        label: d.label ?? null,
+        group_key: d.group_key ?? null,
+        group_rule: d.group_rule ?? null,
+        min_selected: d.min_selected ?? null,
+        name_mode: templateNameModeOf(d.field_type, d.name_mode),
+      });
     }
     await this.repo.bindTemplateDraft({
       tenant_id: auth.tenant_id,
@@ -572,4 +607,60 @@ function assertFixedFormPlaceable(
       details: { reason: 'fixed_form_role_without_field', roles: unplaced },
     });
   }
+}
+
+// FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-4 —
+// no silent drops. Every SIGNER field of the rendered template (a field with a signer role; a
+// field without one is a value the renderer already printed) must be a type the template
+// surface carries and carry only settings that type takes (the catalog), and its check-box
+// groups must hold Sign's group rule; otherwise the request is refused 409 before the envelope
+// is created, naming the field. (The documents-family types with no Sign equivalent — R-9:
+// CURRENCY → NUMBER, SIGNER_EMAIL → EMAIL — are mapped in Phase 3, when Sign gains them.)
+function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[], requestId: string): void {
+  const signerFields = defs.filter((d) => d.signer_role !== null);
+  for (const d of signerFields) {
+    if (!TEMPLATE_FIELD_TYPES.has(d.field_type)) {
+      throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field type Aramo Sign cannot place. Ask your administrator to update the template.', 409, {
+        requestId,
+        details: { reason: 'template_field_type_unsupported', field_key: d.field_key, field_type: d.field_type },
+      });
+    }
+    const parsed = parseTemplateFieldSettings(d as unknown as Record<string, unknown>, d.field_type);
+    if (!parsed.ok) {
+      throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field setting Aramo Sign cannot apply. Ask your administrator to update the template.', 409, {
+        requestId,
+        details: { reason: 'template_field_setting_unsupported', field_key: d.field_key, field_type: d.field_type, setting: parsed.refusal.setting, setting_reason: parsed.refusal.reason },
+      });
+    }
+  }
+  const [issue] = checkboxGroupIssues(
+    signerFields.map((d) => ({
+      field_key: d.field_key,
+      signer_role: d.signer_role,
+      required: d.required,
+      group_key: d.group_key ?? null,
+      group_rule: d.group_rule ?? null,
+      min_selected: d.min_selected ?? null,
+    })),
+  );
+  if (issue !== undefined) {
+    throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a check-box group Aramo Sign cannot apply. Ask your administrator to update the template.', 409, {
+      requestId,
+      details: { reason: 'template_field_setting_unsupported', group_key: issue.group_key, setting_reason: issue.reason },
+    });
+  }
+}
+
+// FIELD-PARITY-1 P1-4 — a template field's settings as sender-API members (PUT …/fields): only
+// the ones that are set, so the sender rules (fieldConfig) accept exactly what the template
+// carries; a SIGNER_NAME with no name mode is sent as the default, SIGNER_PROFILE.
+function senderSettingsOf(d: SignTemplateFieldDefinition): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const k of ['label', 'group_key', 'group_rule', 'min_selected'] as const) {
+    const v = d[k];
+    if (v !== undefined && v !== null) out[k] = v;
+  }
+  const mode = templateNameModeOf(d.field_type, d.name_mode);
+  if (mode !== null) out['name_mode'] = mode;
+  return out;
 }
