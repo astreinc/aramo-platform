@@ -59,6 +59,10 @@ const PACT_FILE = resolve(ROOT, 'pact/pacts/aramo-core-sign-service.json');
 // DOC-4C (R1 seam A) — the sign-web → sign-service signer-session pact.
 const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json');
 // PX-1 (PX-V1 §12) — the esign-web → sign-service sender-console pact.
+// FIELD-PARITY-1 P2-5 / P2-6 — POST …/envelopes/{id}/documents gains opt-in import_fields /
+// apply_text_tags and an optional `field_import` response member (openapi/sign.yaml
+// SenderUploadedDocument). No migration; the recorded upload interaction sends neither flag, so
+// its response is unchanged and nothing is re-seeded here.
 const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
 // Aramo Sign Mobile — the native app → sign-service pact (directive §4 B-12). Its
 // consumer `sign-mobile` also has a separate pact with aramo-auth-service (verify.ts).

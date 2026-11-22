@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES } from '@aramo/documents-contracts';
-import { fieldTypesFor, type FieldSurface, type SurfaceGate } from '@aramo/sign-fields';
+import { FIELD_IMPORT_WARNING_CODES, fieldTypesFor, type FieldSurface, type SurfaceGate } from '@aramo/sign-fields';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
@@ -86,10 +86,20 @@ describe('FIELD-PARITY-1 P1-2 — catalog parity: OpenAPI enums', () => {
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'AddFieldRequest', path: ['field_type'], surface: 'template_documents_store' },
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'SignTemplateSignatureField', path: ['field_type'], surface: 'signature_block' },
     { where: 'platform.yaml', schemas: PLATFORM, schema: 'FixedFormField', path: ['field_type'], surface: 'template_fixed_form' },
+    // FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload imports (never PAYMENT: imports are not gated).
+    { where: 'platform.yaml', schemas: PLATFORM, schema: 'FixedFormImportedField', path: ['field_type'], surface: 'template_fixed_form' },
+    { where: 'sign.yaml', schemas: SIGN, schema: 'SenderImportedField', path: ['field_type'], surface: 'send_web' },
   ];
 
   it.each(CASES.map((c) => [`${c.where} ${c.schema}.${c.path.join('.')}`, c] as const))('%s = its catalog projection', (_name, c) => {
     expect(sorted(enumAt(c.schemas, c.schema, c.path))).toEqual(projection(c.surface, c.gate));
+  });
+});
+
+describe('FIELD-PARITY-1 P2-5 / P2-6 — the import warning codes', () => {
+  it('both OpenAPI FieldImportWarning enums = FIELD_IMPORT_WARNING_CODES', () => {
+    expect(sorted(enumAt(PLATFORM, 'FieldImportWarning', ['code']))).toEqual(sorted(FIELD_IMPORT_WARNING_CODES));
+    expect(sorted(enumAt(SIGN, 'FieldImportWarning', ['code']))).toEqual(sorted(FIELD_IMPORT_WARNING_CODES));
   });
 });
 

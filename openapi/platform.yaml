@@ -5028,6 +5028,19 @@ paths:
         Refused 422 `VALIDATION_ERROR` details.reason `pdf_too_large` / `pdf_unsafe` / `pdf_invalid`.
         Stored once as a PlatformTemplateAsset under the platform prefix of the documents bucket; the
         draft points at it and the preview gate re-arms. DRAFT only. Requires `platform:document_template:manage`.
+
+        FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the upload, the
+        stored bytes and the response are unchanged):
+        `import_fields` — the PDF's form fields (AcroForm) become fields (text / multi-line / dropdown /
+        list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature →
+        SIGNATURE; no signer role yet), the form's active content (field / widget / page / document
+        actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
+        before the gate above decides; an XFA-only form is refused 422 details.reason `xfa_only_form`.
+        `apply_text_tags` — `{{type:role[:required|optional][:label=…]}}` tags become fields sized to the
+        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag is
+        covered with white on the stored PDF (doc/sign/text-tags.md). The response then carries
+        `field_import` (the fields added after any existing ones, and named warnings). A non-boolean flag
+        is refused 400 details.reason `import_flag_invalid`.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -7252,6 +7265,90 @@ components:
         content_base64:
           type: string
           description: The official PDF, base64 (at most 10 MB decoded).
+        import_fields:
+          type: boolean
+          default: false
+          description: FIELD-PARITY-1 P2-5 — import the PDF's form fields, strip its form scripting and flatten it.
+        apply_text_tags:
+          type: boolean
+          default: false
+          description: FIELD-PARITY-1 P2-6 — turn {{type:role…}} text tags into fields and cover them.
+    FieldImportWarning:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - pdf_field_type_unsupported
+            - pdf_field_type_not_allowed
+            - pdf_field_read_only
+            - pdf_field_hidden
+            - pdf_field_signed
+            - pdf_field_not_on_page
+            - text_tag_invalid
+            - text_tag_type_unknown
+            - text_tag_type_not_allowed
+            - text_tag_option_unknown
+            - text_tag_label_not_applicable
+            - text_tag_rotated_page
+            - text_tags_unreadable
+            - text_tag_role_missing
+            - text_tag_role_unknown
+            - field_assigned_to_first_recipient
+            - too_many_fields
+        message: { type: string }
+        name:
+          type: string
+          description: The form field name or the tag (without braces) the warning is about.
+        page_number: { type: integer, description: 0-based }
+    FixedFormFieldImport:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload added to the draft.
+      required: [fields, warnings, stripped]
+      properties:
+        fields:
+          type: array
+          description: The fields added (after the existing ones), each with where it came from.
+          items:
+            $ref: '#/components/schemas/FixedFormImportedField'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldImportWarning'
+        stripped:
+          type: array
+          description: The active-content PDF keys removed (e.g. /AcroForm, /XFA, /A, /AA, /JavaScript, /OpenAction).
+          items: { type: string }
+    FixedFormImportedField:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — a FixedFormField added by an upload, with where it came from.
+      required: [field_key, field_type, binding_key, signer_role, required, page_number, x, y, width, height, ordinal, label, group_key, group_rule, min_selected, name_mode, source, source_name]
+      properties:
+        field_key: { type: string }
+        field_type: { type: string, enum: [TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE, INITIALS] }
+        binding_key: { type: 'null' }
+        signer_role:
+          type: [string, 'null']
+          description: The matched signer role of a tag; null for a form field or an unmatched tag.
+        required: { type: boolean }
+        page_number: { type: integer, description: 0-based }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        ordinal: { type: integer }
+        label: { type: [string, 'null'], maxLength: 200 }
+        group_key: { type: [string, 'null'], maxLength: 64 }
+        group_rule: { type: [string, 'null'], enum: [SELECT_ONE, null] }
+        min_selected: { type: 'null' }
+        name_mode: { type: 'null' }
+        source: { type: string, enum: [pdf_form, text_tag] }
+        source_name: { type: string, description: 'The PDF form field name, or the tag without braces.' }
     FixedFormPdfContent:
       type: object
       additionalProperties: false
@@ -7406,6 +7503,9 @@ components:
               field_key: { type: string }
               role_key: { type: string }
         previewed: { type: boolean }
+        field_import:
+          $ref: '#/components/schemas/FixedFormFieldImport'
+          description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.
     PlatformPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request in the operator queue (counts only).
