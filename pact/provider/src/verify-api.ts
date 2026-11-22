@@ -613,6 +613,11 @@ const DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql',
 );
+// FIELD-PARITY-1 P2-5 / P2-6 (fillable-PDF import, text tags) — NO migration: imported fields are
+// ordinary TemplateFieldDefinition rows (the P1-3 columns above). The only returned-shape change is
+// the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
+// FixedFormVersionView.field_import), present only when the request opts in with import_fields /
+// apply_text_tags; without the flags the response is unchanged, so no interaction here changes.
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(

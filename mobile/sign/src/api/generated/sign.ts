@@ -726,7 +726,7 @@ export interface paths {
         put?: never;
         /**
          * Upload a PDF to a DRAFT envelope (E-Sign-owned source).
-         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write. M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed. With the capability off a Word file keeps the 400 unsupported_file_type refusal.
+         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write. M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed. With the capability off a Word file keeps the 400 unsupported_file_type refusal. FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the stored bytes and the response are unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text / multi-line / dropdown / list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature → SIGNATURE), and the form's active content (field, widget, page and document actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened before the safe-PDF gate decides; an XFA-only form is refused 400 details.reason xfa_only_form. apply_text_tags: {{type:role[:required|optional][:label=…]}} tags become fields sized to the tag and each used tag is covered with white on the stored PDF (doc/sign/text-tags.md). A tag's role is matched case-insensitively to a signing recipient's name, email or template role; form fields, tags without a role and tags matching nobody go to the first signing recipient (named warnings). With fields to create and no signing recipient the upload is refused 422 details.reason field_import_needs_recipient before anything is stored. A non-boolean flag is refused 400 details.reason import_flag_invalid. The response then carries field_import.
          */
         post: operations["uploadSenderDocument"];
         delete?: never;
@@ -5163,6 +5163,52 @@ export interface components {
             pages: components["schemas"]["SenderPageSize"][];
             /** @description Sign Mobile D-W6-1 — the envelope revision after this upload (the response's ETag is "{envelope_id}.{revision}"); send it as the next If-Match. A replay with the same Idempotency-Key returns the first response unchanged. */
             revision: number;
+            /** @description FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags. */
+            field_import?: components["schemas"]["SenderFieldImport"];
+        };
+        /** @description FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload created on the new document, and why anything found was not (or was differently) imported. */
+        SenderFieldImport: {
+            fields: components["schemas"]["SenderImportedField"][];
+            warnings: components["schemas"]["FieldImportWarning"][];
+            /** @description The active-content PDF keys removed (e.g. /AcroForm, /XFA, /A, /AA, /JavaScript, /OpenAction). */
+            stripped: string[];
+        };
+        /** @description FIELD-PARITY-1 P2-5 / P2-6 — an envelope field created from the upload (the same field GET …/envelopes/{id} lists). */
+        SenderImportedField: {
+            /** Format: uuid */
+            id: string | null;
+            /** @enum {string} */
+            source: "pdf_form" | "text_tag";
+            /** @description The PDF form field name, or the tag without braces. */
+            source_name: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "SIGN_DATE" | "INITIALS" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            required: boolean;
+            label: string | null;
+            group_key: string | null;
+            /** @enum {string|null} */
+            group_rule: "SELECT_ONE" | null;
+            min_selected: null;
+            /** @enum {string|null} */
+            name_mode: "SIGNER_PROFILE" | null;
+        };
+        /** @description FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently. */
+        FieldImportWarning: {
+            /** @enum {string} */
+            code: "pdf_field_type_unsupported" | "pdf_field_type_not_allowed" | "pdf_field_read_only" | "pdf_field_hidden" | "pdf_field_signed" | "pdf_field_not_on_page" | "text_tag_invalid" | "text_tag_type_unknown" | "text_tag_type_not_allowed" | "text_tag_option_unknown" | "text_tag_label_not_applicable" | "text_tag_rotated_page" | "text_tags_unreadable" | "text_tag_role_missing" | "text_tag_role_unknown" | "field_assigned_to_first_recipient" | "too_many_fields";
+            message: string;
+            /** @description The form field name or the tag (without braces) the warning is about. */
+            name?: string;
+            page_number?: number;
         };
         SenderLedgerEvent: {
             /** Format: uuid */
@@ -7154,6 +7200,16 @@ export interface operations {
                     filename?: string;
                     title?: string;
                     content_base64: string;
+                    /**
+                     * @description FIELD-PARITY-1 P2-5 — import the PDF's form fields, strip its form scripting and flatten it.
+                     * @default false
+                     */
+                    import_fields?: boolean;
+                    /**
+                     * @description FIELD-PARITY-1 P2-6 — turn {{type:role…}} text tags into fields and cover them.
+                     * @default false
+                     */
+                    apply_text_tags?: boolean;
                 };
             };
         };
@@ -7175,7 +7231,7 @@ export interface operations {
             409: components["responses"]["Conflict"];
             412: components["responses"]["RevisionMismatch"];
             413: components["responses"]["WordTooLarge"];
-            /** @description 422 — details.reason idempotency_key_reuse (the Idempotency-Key was used with a different request), or (M-A13 R-4) word_password_protected / word_conversion_failed (the Word file could not be converted to PDF). */
+            /** @description 422 — details.reason idempotency_key_reuse (the Idempotency-Key was used with a different request), or (M-A13 R-4) word_password_protected / word_conversion_failed (the Word file could not be converted to PDF), or (FIELD-PARITY-1 P2-5 / P2-6) field_import_needs_recipient (fields were found to import and the envelope has no signing recipient). */
             422: {
                 headers: {
                     [name: string]: unknown;

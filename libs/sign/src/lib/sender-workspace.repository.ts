@@ -514,7 +514,11 @@ export class EsignSenderRepository {
     expected_revision?: number;
     // Sign Mobile D-W6-2 — the page sizes the caller measured from the accepted bytes.
     pages?: readonly DocumentPageSize[];
-  }): Promise<SenderDocumentRow & { revision: number }> {
+    // FIELD-PARITY-1 P2-5 / P2-6 — fields imported from the upload (form fields, text tags),
+    // created on the new document in the same transaction. Each names a recipient of this
+    // envelope (checked here, as replaceDraftFields does).
+    fields?: readonly Omit<SenderFieldInput, 'envelope_document_id' | 'passthrough_id'>[];
+  }): Promise<SenderDocumentRow & { revision: number; field_ids: string[] }> {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const last = await tx.envelopeDocument.findFirst({
@@ -547,9 +551,39 @@ export class EsignSenderRepository {
       if (input.pages !== undefined && input.pages.length > 0) {
         await tx.signEnvelopeDocumentPages.create({ data: { envelope_document_id: row.id, tenant_id: input.tenant_id, pages: input.pages.map((p) => ({ width: p.width, height: p.height })) } });
       }
+      const field_ids: string[] = [];
+      if (input.fields !== undefined && input.fields.length > 0) {
+        const signers = await tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
+        const signerIds = new Set(signers.map((s) => s.id));
+        for (const f of input.fields) {
+          if (f.signer_id === null || !signerIds.has(f.signer_id)) throw new EnvelopeNotFoundError(`signer ${f.signer_id ?? 'none'}`);
+          const id = randomUUID();
+          await tx.signatureField.create({
+            data: {
+              id,
+              tenant_id: input.tenant_id,
+              envelope_document_id: row.id,
+              signer_id: f.signer_id,
+              field_type: f.field_type,
+              page_number: f.page_number,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              required: f.required,
+              label: f.label ?? null,
+              group_key: f.group_key ?? null,
+              group_rule: f.group_rule ?? null,
+              min_selected: f.min_selected ?? null,
+              name_mode: f.name_mode ?? null,
+            },
+          });
+          field_ids.push(id);
+        }
+      }
       // Sign Mobile D-W6-1 — the revision this write produced, so the caller can
       // chain its next If-Match without re-reading the envelope.
-      return { ...row, revision: await this.repo.revisionIn(tx, input.envelope_id) };
+      return { ...row, revision: await this.repo.revisionIn(tx, input.envelope_id), field_ids };
     });
   }
 

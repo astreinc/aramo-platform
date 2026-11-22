@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PDFDocument } from 'pdf-lib';
+import { readPageFrames } from '@aramo/documents-rendering';
 
 import { DocumentTextLayerService } from './document-text-layer.service.js';
 import { type FieldSuggestion, type PageFrame, suggestFields } from './field-suggestions.js';
@@ -13,13 +13,9 @@ import { type FieldSuggestion, type PageFrame, suggestFields } from './field-sug
 
 const FRAME_CACHE_MAX = 64;
 
-export async function readPageFrames(bytes: Uint8Array): Promise<PageFrame[]> {
-  const pdf = await PDFDocument.load(bytes, { updateMetadata: false });
-  return pdf.getPages().map((p) => {
-    const crop = p.getCropBox();
-    return { width: p.getWidth(), height: p.getHeight(), view: { x: crop.x, y: crop.y, width: crop.width, height: crop.height }, rotation: p.getRotation().angle };
-  });
-}
+// FIELD-PARITY-1 P2-6 — the page-frame reader moved to @aramo/documents-rendering (one copy,
+// shared with the text-tag upload); re-exported unchanged.
+export { readPageFrames };
 
 @Injectable()
 export class FieldSuggestionsService {

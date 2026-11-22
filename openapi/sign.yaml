@@ -1622,6 +1622,17 @@ paths:
         on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same
         as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed.
         With the capability off a Word file keeps the 400 unsupported_file_type refusal.
+        FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the stored bytes and the response are
+        unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text / multi-line / dropdown / list → TEXT,
+        check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature → SIGNATURE), and the form's active content (field,
+        widget, page and document actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
+        before the safe-PDF gate decides; an XFA-only form is refused 400 details.reason xfa_only_form. apply_text_tags:
+        {{type:role[:required|optional][:label=…]}} tags become fields sized to the tag and each used tag is covered with white on
+        the stored PDF (doc/sign/text-tags.md). A tag's role is matched case-insensitively to a signing recipient's name, email or
+        template role; form fields, tags without a role and tags matching nobody go to the first signing recipient (named
+        warnings). With fields to create and no signing recipient the upload is refused 422 details.reason
+        field_import_needs_recipient before anything is stored. A non-boolean flag is refused 400 details.reason import_flag_invalid.
+        The response then carries field_import.
       tags: [sender]
       security:
         - senderSession: []
@@ -1644,6 +1655,14 @@ paths:
                   type: string
                 content_base64:
                   type: string
+                import_fields:
+                  type: boolean
+                  default: false
+                  description: FIELD-PARITY-1 P2-5 — import the PDF's form fields, strip its form scripting and flatten it.
+                apply_text_tags:
+                  type: boolean
+                  default: false
+                  description: FIELD-PARITY-1 P2-6 — turn {{type:role…}} text tags into fields and cover them.
       responses:
         '201':
           description: The attached document with its page geometry and the envelope's new revision.
@@ -1673,7 +1692,8 @@ paths:
         '422':
           description: >-
             422 — details.reason idempotency_key_reuse (the Idempotency-Key was used with a different request), or (M-A13 R-4)
-            word_password_protected / word_conversion_failed (the Word file could not be converted to PDF).
+            word_password_protected / word_conversion_failed (the Word file could not be converted to PDF), or (FIELD-PARITY-1
+            P2-5 / P2-6) field_import_needs_recipient (fields were found to import and the envelope has no signing recipient).
           content:
             application/json:
               schema:
@@ -10585,6 +10605,113 @@ components:
           description: >-
             Sign Mobile D-W6-1 — the envelope revision after this upload (the response's ETag is "{envelope_id}.{revision}");
             send it as the next If-Match. A replay with the same Idempotency-Key returns the first response unchanged.
+        field_import:
+          $ref: '#/components/schemas/SenderFieldImport'
+          description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.
+    SenderFieldImport:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload created on the new document, and why anything found was not (or was differently) imported.
+      required: [fields, warnings, stripped]
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/SenderImportedField'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldImportWarning'
+        stripped:
+          type: array
+          description: The active-content PDF keys removed (e.g. /AcroForm, /XFA, /A, /AA, /JavaScript, /OpenAction).
+          items:
+            type: string
+    SenderImportedField:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — an envelope field created from the upload (the same field GET …/envelopes/{id} lists).
+      required: [id, source, source_name, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, group_key, group_rule, min_selected, name_mode]
+      properties:
+        id:
+          type: [string, 'null']
+          format: uuid
+        source:
+          type: string
+          enum: [pdf_form, text_tag]
+        source_name:
+          type: string
+          description: The PDF form field name, or the tag without braces.
+        envelope_document_id:
+          type: string
+          format: uuid
+        signer_id:
+          type: string
+          format: uuid
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE]
+        page_number:
+          type: integer
+          minimum: 0
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        required:
+          type: boolean
+        label:
+          type: [string, 'null']
+          maxLength: 200
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, null]
+        min_selected:
+          type: 'null'
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, null]
+    FieldImportWarning:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - pdf_field_type_unsupported
+            - pdf_field_type_not_allowed
+            - pdf_field_read_only
+            - pdf_field_hidden
+            - pdf_field_signed
+            - pdf_field_not_on_page
+            - text_tag_invalid
+            - text_tag_type_unknown
+            - text_tag_type_not_allowed
+            - text_tag_option_unknown
+            - text_tag_label_not_applicable
+            - text_tag_rotated_page
+            - text_tags_unreadable
+            - text_tag_role_missing
+            - text_tag_role_unknown
+            - field_assigned_to_first_recipient
+            - too_many_fields
+        message:
+          type: string
+        name:
+          type: string
+          description: The form field name or the tag (without braces) the warning is about.
+        page_number:
+          type: integer
+          minimum: 0
     SenderLedgerEvent:
       type: object
       required: [id, event_type, occurred_at, actor, event_hash]

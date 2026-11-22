@@ -915,20 +915,28 @@
     ],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
+      "PdfFormImportError",
       "PdfLibDocumentRenderingAdapter",
       "RenderFailedError",
       "SafePdfPipeline",
       "TEXT_BOX_MAX_SIZE",
       "TEXT_BOX_MIN_SIZE",
+      "TEXT_LAYER_MAX_PAGES",
+      "TEXT_LAYER_MAX_WORDS",
       "UnsafePdfError",
+      "coverPdfBoxes",
+      "extractTextLayer",
+      "importPdfForm",
       "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
       "layoutTextInBox",
       "manifestProjection",
+      "readPageFrames",
       "sanitizeWinAnsi",
       "stampTextInBox",
       "stampTextUnbounded",
+      "wordsOfRun",
       "wrapTextToWidth"
     ],
     "@aramo/engagement": [
@@ -2792,23 +2800,42 @@
       "FIELD_CATALOG",
       "FIELD_DEFAULTS",
       "FIELD_GROUP_KEY_MAX",
+      "FIELD_IMPORT_WARNING_CODES",
       "FIELD_LABEL_MAX",
       "FIELD_SURFACES",
       "FIELD_TYPE_KEYS",
+      "IMPORT_MIN_FIELD_SIZE",
       "NO_TEMPLATE_FIELD_SETTINGS",
+      "PDF_FORM_FIELD_KINDS",
+      "PDF_FORM_FIELD_MAPPING",
       "PROFILE_TEXT_FIELD_TYPES",
       "SIGNER_NAME_MODES",
       "TEMPLATE_FIELD_SETTINGS",
+      "TEXT_TAG_COVER_PAD",
+      "TEXT_TAG_PATTERN",
+      "TEXT_TAG_TYPE_ALIASES",
       "WHEN_PAYMENTS_AVAILABLE",
       "checkboxGroupIssues",
       "fieldSettingsOf",
       "fieldTypesFor",
+      "findTextTags",
+      "fitImportBox",
+      "importFieldKey",
+      "importGroupKey",
       "isFieldTypeKey",
       "isFieldTypeOn",
       "isPaymentsGatedOn",
+      "matchTagRole",
       "parseTemplateFieldSettings",
+      "parseTextTag",
+      "planPdfFormFields",
+      "planTextTags",
+      "tagBoxToPdf",
+      "tagCoverRect",
+      "tagFieldRect",
       "templateNameModeOf",
-      "templateSettingsOf"
+      "templateSettingsOf",
+      "textTagTypeOf"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -4053,6 +4080,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-parity-p2-import.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l1b-write-visibility.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4906,6 +4939,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/field-parity-p2-upload-import.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -6437,6 +6476,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-parity-p2-import.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10043,6 +10088,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-parity-p2-import.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/fixtures/rtr-seed-catalog.ts",
         "project": "api",
         "status": "excluded"
@@ -10365,6 +10416,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/field-parity-p2-import.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
