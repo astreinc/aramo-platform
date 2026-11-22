@@ -134,6 +134,52 @@ describe('FixedFormStudio (§7.2)', () => {
     expect(screen.queryByRole('button', { name: /Upload PDF/ })).toBeNull();
   });
 
+  it('FIELD-PARITY-1 P0-1 — the target page follows the scrolled page column; a new field lands in its visible part', async () => {
+    const page = { width: 612, height: 792 };
+    const three = vi.fn(async (): Promise<LoadedPdf> => ({ pages: [page, page, page], render: async () => undefined, destroy: () => undefined }));
+    const pdf = { asset_id: 'a1', sha256: 'f'.repeat(64), byte_size: 2048, page_count: 3, pages: [page, page, page] };
+    const ds = source({ view: vi.fn(async () => view({ content: { ...view().content, pdf } })) });
+    // Layout stand-in (jsdom has none): the column sits at y 100..900 (cut to jsdom's 768px
+    // window); pages are 720×932px with a 16px gap, shifted up by the column's scrollTop.
+    let scrollTop = 0;
+    const s = 720 / 612;
+    const rect = (left: number, top: number, w: number, h: number) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top, toJSON: () => ({}) });
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.dataset['testid'] === 'ffs-center') return rect(300, 100, 840, 800) as DOMRect;
+      const m = /^ffs-page-(\d+)$/.exec(this.dataset['testid'] ?? '');
+      if (m !== null) return rect(360, 116 + Number(m[1]) * (792 * s + 16) - scrollTop, 720, 792 * s) as DOMRect;
+      return rect(0, 0, 0, 0) as DOMRect;
+    });
+    try {
+      render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={three} />);
+      await screen.findByTestId('ffs-page-2');
+      expect(screen.getByText(/Fields are added to page 1\./)).toBeInTheDocument();
+
+      // Scroll the column so page 3 fills the view, its top 184px above the column's top.
+      scrollTop = 2 * (792 * s + 16) + 116 - 100 + 184;
+      fireEvent.scroll(screen.getByTestId('ffs-center'));
+      expect(await screen.findByText(/Fields are added to page 3\./)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(ds.saveLayout).toHaveBeenCalled());
+      const saved = (ds.saveLayout as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as { fields: Array<{ page_number: number; x: number; y: number; height: number }> };
+      const f = saved.fields[0] ?? { page_number: -1, x: -1, y: -1, height: 0 };
+      expect(f.page_number).toBe(2);
+      // Page 3's top is 184px above the view → the visible region starts 184/s pt down the page;
+      // the field sits 72pt inside it (top-left frame), stored bottom-left.
+      const top = 792 - f.y - f.height;
+      expect(top).toBeCloseTo(184 / s + 72, 1);
+      expect(f.x).toBe(72);
+
+      // A click on a page still selects it explicitly.
+      fireEvent.pointerDown(screen.getByTestId('ffs-page-0'));
+      expect(screen.getByText(/Fields are added to page 1\./)).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('a template with no version offers to start the first one', async () => {
     const ds = source({ loadTemplate: vi.fn(async () => ({ ...TEMPLATE, draft_version_id: null })) });
     render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
