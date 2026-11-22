@@ -97,6 +97,7 @@ export function FieldsStep({
       suggestDocs={suggestDocs}
       fieldScale={sizeScale(settings.data?.default_field_size)}
       bottomInset={insets.bottom}
+      senderFilledEnabled={p.senderFilledEnabled === true}
     />
   );
 }

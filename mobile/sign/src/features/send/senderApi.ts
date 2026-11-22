@@ -92,6 +92,8 @@ export interface FieldWire {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: Readonly<Record<string, unknown>> | null;
+  /** S-5 (ruling R-3, dark) — a sender-filled field's value; any other value is refused. */
+  readonly value?: string | null;
 }
 
 type SenderFieldsBody =

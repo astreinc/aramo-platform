@@ -6,6 +6,7 @@
 import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, MAX_COPY_RECIPIENTS as SHARED_MAX_COPY, MAX_SIGNERS } from '@aramo/sign-client';
 
 import type { EditorField } from '../editor/editorReducer';
+import { settingsFromServer } from '../editor/fieldSettings';
 import { isAuthoringFieldType } from '../editor/fieldTypes';
 import { wireToEditor, type PageSize } from '../editor/geometry';
 import type { LocalDraft, SendStep } from '../../state/draftStore';
@@ -133,6 +134,11 @@ export interface SendDraftPayload {
   readonly allowDelegation?: boolean;
   /** The server's allow_delegation as last read (the PATCH carries a change only). */
   readonly serverAllowDelegation?: boolean;
+  /**
+   * FIELD-PARITY-1 P3 S-5 (ruling R-3) — the server's sender_filled_fields_enabled as last
+   * read: the settings sheet offers sender-filled (and read-only) only while it is true.
+   */
+  readonly senderFilledEnabled?: boolean;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -251,6 +257,8 @@ export interface ServerField {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: Readonly<Record<string, unknown>> | null;
+  /** S-5 — a sender-filled field's value (the sender's own; null otherwise). */
+  readonly value?: string | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
@@ -266,6 +274,8 @@ export interface ServerEnvelope {
   readonly documents: readonly ServerDocument[];
   readonly recipients: readonly ServerRecipient[];
   readonly fields: readonly ServerField[];
+  /** FIELD-PARITY-1 P3 S-5 — sender-filled fields switched on (absent on an older server: false). */
+  readonly senderFilledFieldsEnabled: boolean;
 }
 
 function rec(v: unknown): Record<string, unknown> {
@@ -346,17 +356,41 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
       group_key: typeof f['group_key'] === 'string' ? (f['group_key'] as string) : null,
       group_rule: typeof f['group_rule'] === 'string' ? (f['group_rule'] as string) : null,
       min_selected: num(f['min_selected']),
+      // FIELD-PARITY-1 P3 §6.2 — every other setting, only where set (a preserved field goes
+      // back with them; a DROPDOWN without its choices would be refused).
+      ...(typeof f['tooltip'] === 'string' ? { tooltip: f['tooltip'] as string } : {}),
+      ...(typeof f['placeholder'] === 'string' ? { placeholder: f['placeholder'] as string } : {}),
+      ...(f['read_only'] === true ? { read_only: true } : {}),
+      ...(f['sender_filled'] === true ? { sender_filled: true } : {}),
+      ...(typeof f['validation'] === 'string' ? { validation: f['validation'] as string } : {}),
+      ...(num(f['font_size']) !== null ? { font_size: num(f['font_size']) } : {}),
+      ...(typeof f['data_name'] === 'string' ? { data_name: f['data_name'] as string } : {}),
+      ...(f['options'] !== null && typeof f['options'] === 'object' && !Array.isArray(f['options'])
+        ? { options: f['options'] as Record<string, unknown> }
+        : {}),
+      ...(f['sender_filled'] === true && typeof f['value'] === 'string' ? { value: f['value'] as string } : {}),
     })),
+    senderFilledFieldsEnabled: o['sender_filled_fields_enabled'] === true,
   };
 }
 
 /** The editor's configuration for a server field of an authoring type. */
 function configOf(f: ServerField): Partial<EditorField> {
+  // FIELD-PARITY-1 P3 §6.2 — the P3 settings of every type, then the M-A6 ones.
+  const p3 = settingsFromServer(f);
   if (f.field_type === 'SIGNER_NAME')
-    return { nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' };
-  if (f.field_type !== 'CHECKBOX') return {};
+    return {
+      ...p3,
+      nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE',
+      ...(f.label !== null ? { label: f.label } : {}),
+    };
+  if (f.field_type === 'RADIO') {
+    return { ...p3, label: f.label, groupKey: f.group_key, groupRule: 'SELECT_ONE', minSelected: null };
+  }
+  if (f.field_type !== 'CHECKBOX') return { ...p3, ...(f.label !== null ? { label: f.label } : {}) };
   const rule = f.group_rule === 'SELECT_ONE' || f.group_rule === 'SELECT_ANY' ? f.group_rule : null;
   return {
+    ...p3,
     label: f.label,
     groupKey: f.group_key,
     groupRule: f.group_key !== null ? (rule ?? 'SELECT_ANY') : null,
@@ -400,8 +434,10 @@ export function payloadFromServer(
   const preservedFields: ServerField[] = [];
   env.fields.forEach((f, i) => {
     // A type the editor does not author is kept untouched, never dropped: the fields
-    // PUT replaces every field, so dropping it here would delete it on the next sync.
-    if (!isAuthoringFieldType(f.field_type)) {
+    // PUT replaces every field, so dropping it here would delete it on the next sync. So is an
+    // engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT, FIELD-PARITY-1
+    // P3): the server passes it through only unchanged, with its id.
+    if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
       preservedFields.push(f);
       return;
     }
@@ -437,6 +473,7 @@ export function payloadFromServer(
       fields,
       ...(preservedFields.length > 0 ? { preservedFields } : {}),
       ...(env.allowDelegation ? { allowDelegation: true, serverAllowDelegation: true } : {}),
+      ...(env.senderFilledFieldsEnabled ? { senderFilledEnabled: true } : {}),
       etag,
       dirty: CLEAN,
     },

@@ -32,14 +32,20 @@ function placed(tool: (typeof AUTHORING_FIELD_TYPES)[number] = 'SIGNATURE', key 
 }
 
 describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
-  it('is the four base tools plus Name and Checkbox; ACKNOWLEDGEMENT stays engine-only', () => {
+  it('is the four base tools plus Name and Checkbox, the profile types and (FIELD-PARITY-1 P3) the new types and ACKNOWLEDGEMENT', () => {
     expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([
+      'ACKNOWLEDGEMENT',
       'CHECKBOX',
       'COMPANY',
+      'DATE',
+      'DROPDOWN',
       'EMAIL',
       'FIRST_NAME',
       'INITIALS',
       'LAST_NAME',
+      'MULTILINE_TEXT',
+      'NUMBER',
+      'RADIO',
       'SIGNATURE',
       'SIGNER_NAME',
       'SIGN_DATE',
@@ -47,14 +53,14 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
       'TITLE',
     ]);
     expect(Object.keys(FIELD_TYPE_SPECS).sort()).toEqual([...AUTHORING_FIELD_TYPES].sort());
-    for (const other of ['ACKNOWLEDGEMENT', 'NAME', 'STAMP']) {
+    for (const other of ['PAYMENT', 'NAME', 'STAMP']) {
       expect(isAuthoringFieldType(other)).toBe(false);
     }
   });
 
-  // FIELD-PARITY-1 P3 — the server accepts these on send_mobile; the app's tools for them come
-  // with the mobile authoring slice, which empties this list.
-  const P3_PENDING_MOBILE_TOOLS = ['ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT'];
+  // FIELD-PARITY-1 P3 — the server accepts these on send_mobile; the app's authoring slice adds
+  // their tools, so nothing is pending.
+  const P3_PENDING_MOBILE_TOOLS: string[] = [];
   it('FIELD-PARITY-1 P1-2 — the tool tiers together are the catalog send_mobile surface (PAYMENT gated, never a tool)', () => {
     const surface = fieldTypesFor('send_mobile').filter((t) => !P3_PENDING_MOBILE_TOOLS.includes(t));
     expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([...surface].sort());
@@ -65,8 +71,8 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
 
   it('shows Name and Checkbox only behind FEATURES.extraFieldTypes (on in this build)', () => {
     expect(FEATURES.extraFieldTypes).toBe(true);
-    expect(toolFieldTypes(false, false)).toEqual(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT']);
-    expect(toolFieldTypes(true, false)).toEqual([
+    expect(toolFieldTypes(false, false, false)).toEqual(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT']);
+    expect(toolFieldTypes(true, false, false)).toEqual([
       'SIGNATURE',
       'INITIALS',
       'SIGN_DATE',
@@ -79,7 +85,7 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
 
   it('M-A12 W1-C.4: the profile auto-fill types are in the palette (FEATURES.profileFieldTypes)', () => {
     expect(FEATURES.profileFieldTypes).toBe(true);
-    expect(toolFieldTypes(true, true).slice(-5)).toEqual([
+    expect(toolFieldTypes(true, true, false).slice(-5)).toEqual([
       'FIRST_NAME',
       'LAST_NAME',
       'EMAIL',
@@ -105,7 +111,7 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
   it('refuses to pick or load an engine-only type', () => {
     const s = editorReducer(initialEditorState([], 'r1'), {
       type: 'pickTool',
-      tool: 'ACKNOWLEDGEMENT' as never,
+      tool: 'PAYMENT' as never,
     });
     expect(s.tool).toBeNull();
     const loaded = editorReducer(initialEditorState(), {
@@ -117,7 +123,7 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
           docKey: 'd1',
           page: 0,
           recipientKey: 'r1',
-          type: 'ACKNOWLEDGEMENT' as never,
+          type: 'PAYMENT' as never,
           x: 0,
           y: 0,
           width: 16,
@@ -284,9 +290,11 @@ describe('editor reducer', () => {
     ]);
   });
 
-  it('starts every type except Text and Checkbox as required', () => {
+  it('starts every type except the optional ones (the catalog default) as required', () => {
+    // P1-0 — Text, Checkbox and the P3 input types (Date, Dropdown, Radio, Number, Multi-line) start optional.
+    const optional = new Set(['TEXT', 'CHECKBOX', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT']);
     for (const tool of AUTHORING_FIELD_TYPES) {
-      expect(placed(tool).fields[0]!.required).toBe(tool !== 'TEXT' && tool !== 'CHECKBOX');
+      expect(placed(tool).fields[0]!.required).toBe(!optional.has(tool));
     }
   });
 

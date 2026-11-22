@@ -8,6 +8,7 @@
 import { isApiError } from '../../api/errors';
 import { parseEtag } from '../../api/workspaceClient';
 import type { EditorField } from '../editor/editorReducer';
+import { p3SettingsWire } from '../editor/fieldSettings';
 import { editorToWire } from '../editor/geometry';
 import type { DocumentBytesStore } from './documentBytes';
 import {
@@ -138,20 +139,32 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       ...(f.font_size != null ? { font_size: f.font_size } : {}),
       ...(f.data_name != null ? { data_name: f.data_name } : {}),
       ...(f.options != null ? { options: f.options } : {}),
+      ...(f.sender_filled === true && f.value != null ? { value: f.value } : {}),
     }));
   return [...authored, ...preserved];
 }
 
-/** M-A6 §2 — the configuration a field type carries on the wire (never a value). */
+/**
+ * M-A6 §2 — the configuration a field type carries on the wire. FIELD-PARITY-1 P3 §6.2 — plus
+ * every P3 setting its type takes and that is set (fieldSettings.ts p3SettingsWire), and the
+ * sender's value of a sender-filled field only (S-5; any other value is refused).
+ */
 function configWire(f: EditorField): Partial<FieldWire> {
-  if (f.type === 'SIGNER_NAME') return { name_mode: f.nameMode ?? 'SIGNER_PROFILE' };
-  if (f.type !== 'CHECKBOX') return {};
+  const p3 = p3SettingsWire(f) as Partial<FieldWire>;
+  const label = (f.label ?? '').trim();
+  if (f.type === 'SIGNER_NAME') return { name_mode: f.nameMode ?? 'SIGNER_PROFILE', ...(label ? { label } : {}), ...p3 };
+  if (f.type === 'RADIO') {
+    // T-5 — always one option of a group; its rule is SELECT_ONE (the server's default).
+    return { ...(label ? { label } : {}), group_key: f.groupKey ?? null, ...p3 };
+  }
+  if (f.type !== 'CHECKBOX') return { ...(label ? { label } : {}), ...p3 };
   const grouped = typeof f.groupKey === 'string' && f.groupKey.length > 0;
   return {
     label: f.label ?? null,
     group_key: grouped ? f.groupKey : null,
     group_rule: grouped ? (f.groupRule ?? 'SELECT_ANY') : null,
     min_selected: grouped && f.groupRule !== 'SELECT_ONE' ? (f.minSelected ?? null) : null,
+    ...p3,
   };
 }
 
