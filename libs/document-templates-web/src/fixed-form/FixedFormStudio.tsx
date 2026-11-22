@@ -10,12 +10,12 @@ import {
   type PlacedField,
   type UploadFieldOptionsValue,
 } from '@aramo/field-placement-web';
-import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX, TEMPLATE_FIELD_SETTINGS } from '@aramo/sign-fields';
+import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX } from '@aramo/sign-fields';
 
 import { ProductTagsSelect, templateProductsLine, type TemplateProductKey } from '../template-products';
 import { loadPdf as defaultLoadPdf, type LoadedPdf } from '../pdf';
 
-import { FIXED_FORM_DOC_ID, FIXED_FORM_EDITOR_COPY, FIXED_FORM_PALETTE, fixedFormFieldsToWire, fixedFormFieldsToPlaced } from './fixed-form-placement';
+import { FIXED_FORM_DOC_ID, FIXED_FORM_EDITOR_COPY, FIXED_FORM_PALETTE, FIXED_FORM_SETTINGS, fixedFormFieldsToWire, fixedFormFieldsToPlaced } from './fixed-form-placement';
 import {
   FIXED_FORM_MAX_BYTES,
   base64ToBytes,
@@ -576,9 +576,10 @@ export function FixedFormStudio({
         assignees={assignees}
         allowUnassigned
         prefills={prefills}
-        // FIELD-PARITY-1 P1-3 — the template API stores label / group / name mode (the server's
-        // rule: @aramo/sign-fields parseTemplateFieldSettings); the editor offers them per type.
-        capabilities={{ settings: TEMPLATE_FIELD_SETTINGS, prefillTypes: ['TEXT'], limits: { labelMax: FIELD_LABEL_MAX, groupKeyMax: FIELD_GROUP_KEY_MAX } }}
+        // FIELD-PARITY-1 P1-3 / P3 — the template API stores every field setting (the server's
+        // rule: @aramo/sign-fields parseTemplateFieldSettings); the editor offers them per type
+        // (FIXED_FORM_SETTINGS: all but sender-filled / read-only, which ship dark).
+        capabilities={{ settings: FIXED_FORM_SETTINGS, prefillTypes: ['TEXT'], limits: { labelMax: FIELD_LABEL_MAX, groupKeyMax: FIELD_GROUP_KEY_MAX } }}
         readOnly={!editable}
         newFieldId={(type, fields) => nextFieldKey(type, fields.map((f) => ({ field_key: f.id })))}
         paletteMode="add"

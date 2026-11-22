@@ -4,8 +4,8 @@
 // goes back with the same keys in the same order, changed only where the editor changed it; a
 // new field has exactly the shape the Studio sent before P1-5.
 
-import { DEFAULT_SETTINGS, DEFAULT_PLACEMENT_COPY, type PlacedField, type PlacementCopy } from '@aramo/field-placement-web';
-import { DEFAULT_CHECKBOX_GROUP_RULE, DEFAULT_SIGNER_NAME_MODE, type FieldTypeKey } from '@aramo/sign-fields';
+import { DEFAULT_PLACEMENT_COPY, settingsFromWire, settingsToWire, type PlacedField, type PlacementCopy } from '@aramo/field-placement-web';
+import { TEMPLATE_FIELD_SETTINGS, type FieldSetting, type FieldTypeKey } from '@aramo/sign-fields';
 
 import { FIXED_FORM_FIELD_TYPES, type FixedFormField } from './fixed-form-model';
 
@@ -46,50 +46,38 @@ export function fixedFormFieldsToPlaced(fields: readonly FixedFormField[]): Plac
       required: f.required,
       assignee: f.signer_role,
       binding: f.binding_key,
-      settings: settingsFromWire(f),
+      settings: settingsFromStored(f),
       ...(placed ? {} : { hidden: true }),
     };
   });
 }
 
-/** P1-3 — the stored settings → the editor's settings (unset → the editor defaults). */
-function settingsFromWire(f: FixedFormField): PlacedField['settings'] {
-  return {
-    ...DEFAULT_SETTINGS,
-    nameMode: (f.name_mode ?? DEFAULT_SIGNER_NAME_MODE) as PlacedField['settings']['nameMode'],
-    label: f.label ?? '',
-    groupKey: f.group_key ?? '',
-    groupRule: (f.group_rule ?? DEFAULT_CHECKBOX_GROUP_RULE) as PlacedField['settings']['groupRule'],
-    minSelected: f.min_selected ?? null,
-  };
+/** P1-3 / P3 — the stored settings → the editor's settings (unset → the editor defaults). */
+function settingsFromStored(f: FixedFormField): PlacedField['settings'] {
+  return settingsFromWire(f);
 }
 
 /**
- * P1-3 — the editor's settings → wire members, only for the types that take them (the server's
- * rule, @aramo/sign-fields parseTemplateFieldSettings). An unset setting is sent as null so a
- * cleared value clears; SIGNER_NAME's default (SIGNER_PROFILE) is stored as NULL.
+ * FIELD-PARITY-1 P3 §6.2 — the settings the Studio edits: every template setting except
+ * sender-filled and read-only. The fixed-form view does not say whether sender-filled fields are
+ * switched on (the server flag SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark), so the Studio
+ * does not offer them; a stored one is kept (round-trips) and still shown on the field.
  */
-function settingsToWire(p: PlacedField): Partial<FixedFormField> {
-  if (p.type === 'CHECKBOX') {
-    const grouped = p.settings.groupKey.trim() !== '';
-    return {
-      label: p.settings.label.trim() === '' ? null : p.settings.label.trim(),
-      group_key: grouped ? p.settings.groupKey.trim() : null,
-      group_rule: grouped ? p.settings.groupRule : null,
-      min_selected: grouped ? p.settings.minSelected : null,
-    };
-  }
-  if (p.type === 'SIGNER_NAME') {
-    return { name_mode: p.settings.nameMode === DEFAULT_SIGNER_NAME_MODE ? null : p.settings.nameMode };
-  }
-  return {};
+export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only');
+
+/**
+ * P1-3 / P3 — the editor's settings → wire members, only the settings the type takes (the
+ * catalog; the server's rule, @aramo/sign-fields parseTemplateFieldSettings). A new field sends
+ * only what is set; an edited stored field sends every setting its type takes, NULL when unset,
+ * so a cleared value clears. SIGNER_NAME's default (SIGNER_PROFILE) is stored as NULL.
+ */
+function settingsToStored(p: PlacedField, isNew: boolean): Partial<FixedFormField> {
+  return settingsToWire(p.type, p.settings, { members: isNew ? 'set' : 'all', nameModeDefaultNull: true }) as Partial<FixedFormField>;
 }
 
 /** Has the editor changed any setting from what was stored? Unchanged fields round-trip byte-equal. */
 function settingsChanged(p: PlacedField, orig: FixedFormField): boolean {
-  const before = settingsFromWire(orig);
-  const s = p.settings;
-  return s.nameMode !== before.nameMode || s.label !== before.label || s.groupKey !== before.groupKey || s.groupRule !== before.groupRule || s.minSelected !== before.minSelected;
+  return JSON.stringify(p.settings) !== JSON.stringify(settingsFromStored(orig));
 }
 
 /** Editor → wire, in editor order, `ordinal` = position (as before P1-5), with P1-3 settings. */
@@ -110,7 +98,7 @@ export function fixedFormFieldsToWire(placed: readonly PlacedField[], stored: Re
       height: p.height,
       ordinal: i,
     };
-    const settings = orig === undefined || settingsChanged(p, orig) ? settingsToWire(p) : {};
+    const settings = orig === undefined ? settingsToStored(p, true) : settingsChanged(p, orig) ? settingsToStored(p, false) : {};
     return { ...base, field_type: p.type, binding_key: p.binding, signer_role: p.assignee, required: p.required, page_number: p.page, x: p.x, y: p.y, width: p.width, height: p.height, ordinal: i, ...settings };
   });
 }
