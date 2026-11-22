@@ -1,7 +1,7 @@
 import { FIELD_DEFAULTS, fieldTypesFor } from '@aramo/sign-fields';
 import { describe, expect, it } from 'vitest';
 
-import { fieldKeyIntent, isUndoKey } from './keymap';
+import { KEYMAP, editorKeyIntent, fieldKeyIntent, isRedoKey, isUndoKey } from './keymap';
 import { DEFAULT_SETTINGS, editableSettingsOf, paletteFor, typeLabelOf, type PlacedField } from './model';
 import { applySettings, groupSize } from './settings';
 
@@ -93,7 +93,33 @@ describe('the keymap', () => {
     expect(fieldKeyIntent({ key: 'Enter' })).toEqual({ kind: 'select' });
     expect(fieldKeyIntent({ key: 'a' })).toBeNull();
   });
-  it('Cmd/Ctrl+Z undoes (Shift is reserved for a Phase 2 redo)', () => {
+  it('P2-2 — Shift+Enter / Shift+Space toggle the focused field in the selection', () => {
+    expect(fieldKeyIntent({ key: 'Enter', shiftKey: true })).toEqual({ kind: 'toggle' });
+    expect(fieldKeyIntent({ key: ' ', shiftKey: true })).toEqual({ kind: 'toggle' });
+    expect(fieldKeyIntent({ key: ' ' })).toEqual({ kind: 'select' });
+  });
+  it('P2-3 — redo is Shift+Cmd/Ctrl+Z or Ctrl+Y; the editor-wide shortcuts', () => {
+    expect(isRedoKey({ key: 'z', metaKey: true, shiftKey: true })).toBe(true);
+    expect(isRedoKey({ key: 'Z', ctrlKey: true, shiftKey: true })).toBe(true);
+    expect(isRedoKey({ key: 'y', ctrlKey: true })).toBe(true);
+    expect(isRedoKey({ key: 'z', metaKey: true })).toBe(false);
+    expect(editorKeyIntent({ key: 'z', metaKey: true })).toBe('undo');
+    expect(editorKeyIntent({ key: 'z', metaKey: true, shiftKey: true })).toBe('redo');
+    expect(editorKeyIntent({ key: 'd', metaKey: true })).toBe('duplicate');
+    expect(editorKeyIntent({ key: 'D', ctrlKey: true })).toBe('duplicate');
+    expect(editorKeyIntent({ key: 'c', ctrlKey: true })).toBe('copy');
+    expect(editorKeyIntent({ key: 'v', metaKey: true })).toBe('paste');
+    expect(editorKeyIntent({ key: 'a', ctrlKey: true })).toBe('select-all');
+    expect(editorKeyIntent({ key: 'd' })).toBeNull();
+    expect(editorKeyIntent({ key: 'c', ctrlKey: true, altKey: true })).toBeNull();
+    expect(editorKeyIntent({ key: 'v', ctrlKey: true, shiftKey: true })).toBeNull();
+  });
+  it('KEYMAP lists every shortcut once', () => {
+    const keys = KEYMAP.map((k) => k.keys);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const k of ['Cmd/Ctrl+D', 'Cmd/Ctrl+C', 'Cmd/Ctrl+V', 'Cmd/Ctrl+A', 'Cmd/Ctrl+Z', 'Shift+Cmd/Ctrl+Z or Ctrl+Y', 'Shift while dragging', 'Shift+click']) expect(keys).toContain(k);
+  });
+  it('Cmd/Ctrl+Z undoes (Shift+Cmd/Ctrl+Z is redo)', () => {
     expect(isUndoKey({ key: 'z', metaKey: true })).toBe(true);
     expect(isUndoKey({ key: 'Z', ctrlKey: true })).toBe(true);
     expect(isUndoKey({ key: 'z', metaKey: true, shiftKey: true })).toBe(false);

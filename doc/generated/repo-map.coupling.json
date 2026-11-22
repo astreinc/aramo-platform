@@ -30816,6 +30816,11 @@
       "status": "unscoped",
       "to": "libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx"
     },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/lib/keymap.ts"
+    },
     { "from": "doc/step4-compute-iac.md", "status": "unscoped", "to": "doc/runbooks/run-layer.md" },
     {
       "from": "doc/step4-compute-iac.md",

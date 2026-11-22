@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { toTopLeft, type PdfPageInfo } from './lib/geometry';
+import { toTopLeft, type Box, type PdfPageInfo } from './lib/geometry';
 import { type PlacedField, type PlacementAssignee, type PlacementDocument } from './lib/model';
 import './field-placement.css';
 
@@ -8,6 +8,9 @@ import './field-placement.css';
 // rendered by the host's renderer, with the placed fields drawn over them. Editable inside
 // PlacementEditor; read-only (no roles, no tab stops) for a preview such as the console's
 // fixed-form preview.
+//
+// P2 (§5 P2-2 / P2-3) — overlays drawn above the page and under the fields, never taking the
+// pointer: the drag-a-box rectangle, the alignment guides of a drag, and the optional grid.
 
 /** Renders one page into a canvas at a CSS width (the host's pdf.js loader). */
 export type PageRenderer = (docId: string, pageIndex: number, canvas: HTMLCanvasElement, cssWidth: number) => Promise<void>;
@@ -51,7 +54,16 @@ export interface PlacementPagesProps {
   /** A type is armed: a click on the page places it. */
   readonly placing?: boolean;
   /** A pointer-down on a page's background, with the point in the page's top-left frame (points). */
-  readonly onPagePointer?: (slot: PageSlot, point: { x: number; y: number }) => void;
+  readonly onPagePointer?: (slot: PageSlot, point: { x: number; y: number }, e: ReactPointerEvent<HTMLElement>) => void;
+  /** Pointer moves / up after a pointer-down on a page's background (the point is kept on the page). */
+  readonly onPagePointerMove?: (slot: PageSlot, point: { x: number; y: number }, e: ReactPointerEvent<HTMLElement>) => void;
+  readonly onPagePointerUp?: (slot: PageSlot, point: { x: number; y: number }, e: ReactPointerEvent<HTMLElement>) => void;
+  /** P2-2 — the drag-a-box rectangle being drawn (top-left frame, points) and its page. */
+  readonly marquee?: { readonly slotIndex: number; readonly rect: Box } | null;
+  /** P2-3 — alignment guides on one page (top-left frame, points). */
+  readonly guides?: { readonly docId: string; readonly page: number; readonly xs: readonly number[]; readonly ys: readonly number[] } | null;
+  /** P2-3 — draw a grid of this step (points); null for none. */
+  readonly grid?: number | null;
   readonly onFieldPointerDown?: (f: PlacedField, mode: 'move' | 'resize', e: ReactPointerEvent<HTMLElement>, slot: PageSlot) => void;
   readonly onFieldPointerMove?: (e: ReactPointerEvent<HTMLElement>) => void;
   readonly onFieldPointerUp?: () => void;
@@ -69,6 +81,14 @@ function PageCanvas({ render, docId, page, width }: { readonly render: PageRende
 
 const pct = (v: number, of: number): string => `${(v / of) * 100}%`;
 
+/** A pointer position in a page's top-left frame (points), kept on the page. */
+function pagePoint(el: HTMLElement, e: { clientX: number; clientY: number }, size: PdfPageInfo): { x: number; y: number } {
+  const r = el.getBoundingClientRect();
+  const x = r.width > 0 ? ((e.clientX - r.left) / r.width) * size.width : 0;
+  const y = r.height > 0 ? ((e.clientY - r.top) / r.height) * size.height : 0;
+  return { x: Math.max(0, Math.min(size.width, x)), y: Math.max(0, Math.min(size.height, y)) };
+}
+
 export function PlacementPages({
   documents,
   renderPage,
@@ -80,6 +100,11 @@ export function PlacementPages({
   selection = [],
   placing = false,
   onPagePointer,
+  onPagePointerMove,
+  onPagePointerUp,
+  marquee = null,
+  guides = null,
+  grid = null,
   onFieldPointerDown,
   onFieldPointerMove,
   onFieldPointerUp,
@@ -109,13 +134,33 @@ export function PlacementPages({
               onPointerDown={(e) => {
                 if (onPagePointer === undefined) return;
                 if (e.target !== e.currentTarget && !(e.target instanceof HTMLCanvasElement)) return;
-                const r = e.currentTarget.getBoundingClientRect();
-                const x = r.width > 0 ? ((e.clientX - r.left) / r.width) * size.width : 0;
-                const y = r.height > 0 ? ((e.clientY - r.top) / r.height) * size.height : 0;
-                onPagePointer(slot, { x, y });
+                onPagePointer(slot, pagePoint(e.currentTarget, e, size), e);
               }}
+              onPointerMove={onPagePointerMove === undefined ? undefined : (e) => onPagePointerMove(slot, pagePoint(e.currentTarget, e, size), e)}
+              onPointerUp={onPagePointerUp === undefined ? undefined : (e) => onPagePointerUp(slot, pagePoint(e.currentTarget, e, size), e)}
             >
               <PageCanvas render={renderPage} docId={slot.docId} page={slot.page} width={pageWidth} />
+              {grid !== null && grid > 0 ? (
+                <div className="fpe-grid" aria-hidden="true" data-testid={`${p}-grid-${slot.index}`} style={{ backgroundSize: `${(grid / size.width) * pageWidth}px ${(grid / size.width) * pageWidth}px` }} />
+              ) : null}
+              {guides !== null && guides.docId === slot.docId && guides.page === slot.page ? (
+                <>
+                  {guides.xs.map((x) => (
+                    <div key={`gx${x}`} className="fpe-guide fpe-guide--v" aria-hidden="true" data-testid={`${p}-guide-v`} style={{ left: pct(x, size.width) }} />
+                  ))}
+                  {guides.ys.map((y) => (
+                    <div key={`gy${y}`} className="fpe-guide fpe-guide--h" aria-hidden="true" data-testid={`${p}-guide-h`} style={{ top: pct(y, size.height) }} />
+                  ))}
+                </>
+              ) : null}
+              {marquee !== null && marquee.slotIndex === slot.index ? (
+                <div
+                  className="fpe-marquee"
+                  aria-hidden="true"
+                  data-testid={`${p}-marquee`}
+                  style={{ left: pct(marquee.rect.x, size.width), top: pct(marquee.rect.y, size.height), width: pct(marquee.rect.width, size.width), height: pct(marquee.rect.height, size.height) }}
+                />
+              ) : null}
               {fields
                 .filter((f) => f.docId === slot.docId && f.page === slot.page && f.hidden !== true)
                 .map((f) => {

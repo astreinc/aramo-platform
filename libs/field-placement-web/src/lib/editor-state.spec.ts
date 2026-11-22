@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   HISTORY_LIMIT,
+  alignFields,
   applyChanges,
   assignField,
+  assignFields,
+  distributeFields,
+  placeFields,
+  sameSizeFields,
   configureField,
   diffFields,
   editorReducer,
@@ -170,5 +175,126 @@ describe('gestures and selection', () => {
     expect(s.selection).toEqual(['a', 'b']);
     s = run(s, { type: 'exec', command: removeFields(['a']) });
     expect(s.selection).toEqual(['b']);
+  });
+});
+
+// ---- FIELD-PARITY-1 §5 P2-1..P2-3 ---------------------------------------------------------
+
+/** Run a command, then check undo restores the start and redo restores the result (one entry). */
+function roundTrip(start: EditorState, action: EditorAction): EditorState {
+  const done = run(start, action);
+  expect(done.past).toHaveLength(start.past.length + 1);
+  const undone = run(done, { type: 'undo' });
+  expect(undone.fields).toEqual(start.fields);
+  const redone = run(undone, { type: 'redo' });
+  expect(redone.fields).toEqual(done.fields);
+  expect(redone.lastRedo).toBe(done.past[done.past.length - 1]!.label);
+  expect(redone.lastUndo).toBeNull();
+  return done;
+}
+
+describe('P2 many-field commands (each one undo step, undo and redo)', () => {
+  it('placeFields adds many as one step (Repeat down of 9 rows = 1 undo)', () => {
+    const rows = Array.from({ length: 9 }, (_, i) => field(`r${i}`, { y: 500 - 30 * (i + 1) }));
+    const s = roundTrip(initialEditorState([field('a')]), { type: 'exec', command: placeFields(rows, 'Repeat down 9 rows') });
+    expect(s.fields).toHaveLength(10);
+    expect(s.past[0]!.label).toBe('Repeat down 9 rows');
+  });
+
+  it('assignFields reassigns many; locked fields keep theirs', () => {
+    const s = roundTrip(initialEditorState([field('a'), field('b'), field('k', { locked: true })]), { type: 'exec', command: assignFields(['a', 'b', 'k'], { assignee: 's2', binding: null }) });
+    expect(s.fields.map((f) => f.assignee)).toEqual(['s2', 's2', 's1']);
+  });
+
+  it('removeFields deletes many as one step', () => {
+    const s = roundTrip(initialEditorState([field('a'), field('b'), field('c')]), { type: 'exec', command: removeFields(['a', 'c'], 'Delete 2 fields') });
+    expect(s.fields.map((f) => f.id)).toEqual(['b']);
+  });
+
+  it('nudge and resize act on every selected field; a group stops together at the page edge', () => {
+    const start = initialEditorState([field('a', { x: 4 }), field('b', { x: 300 })]);
+    const s = roundTrip(start, { type: 'exec', command: nudgeFields(['a', 'b'], -10, 0) });
+    expect(s.fields.map((f) => f.x)).toEqual([0, 296]);
+    const r = roundTrip(start, { type: 'exec', command: resizeFields(['a', 'b'], 10, 0) });
+    expect(r.fields.map((f) => f.width)).toEqual([240, 240]);
+  });
+
+  it.each([
+    ['left', 'x', [100, 100]],
+    ['right', 'x', [100, 270]],
+    ['hcenter', 'x', [100, 185]],
+    ['top', 'y', [500, 500]],
+    ['bottom', 'y', [400, 400]],
+    ['vcenter', 'y', [450, 450]],
+  ] as const)('align %s (top-left maths, stored PDF-native)', (edge, axis, want) => {
+    // a: x 100..330, top 270; b: x 200..260, top 370 (both 22 high).
+    const a = field('a', { x: 100, y: 500, width: 230, height: 22 });
+    const b = field('b', { x: 200, y: 400, width: 60, height: 22 });
+    const s = roundTrip(initialEditorState([a, b]), { type: 'exec', command: alignFields(['a', 'b'], edge) });
+    expect(s.fields.map((f) => f[axis])).toEqual(want);
+  });
+
+  it('align leaves locked fields and fields on other pages alone; a lone field per page does not move', () => {
+    const s = run(initialEditorState([field('a', { x: 50 }), field('k', { x: 10, locked: true }), field('p', { x: 5, page: 1 })]), { type: 'exec', command: alignFields(['a', 'k', 'p'], 'left') });
+    expect(s.fields.map((f) => f.x)).toEqual([50, 10, 5]);
+    expect(s.past).toHaveLength(0);
+  });
+
+  it('distribute equalises gaps; hundredths rounding on the console', () => {
+    const fs = [field('a', { x: 0, width: 10 }), field('b', { x: 13, width: 10 }), field('c', { x: 100, width: 10 })];
+    const s = roundTrip(initialEditorState(fs), { type: 'exec', command: distributeFields(['a', 'b', 'c'], 'horizontal') });
+    expect(s.fields.map((f) => f.x)).toEqual([0, 50, 100]);
+    const v = [field('a', { y: 700, height: 20 }), field('b', { y: 650, height: 20 }), field('c', { y: 100, height: 20 })];
+    const t = editorReducer(initialEditorState(v), { type: 'exec', command: distributeFields(['a', 'b', 'c'], 'vertical') }, ctx('hundredths'));
+    expect(t.fields.map((f) => f.y)).toEqual([700, 400, 100]);
+  });
+
+  it('same width / height copy the first id (the anchor); top-left corners stay', () => {
+    const fs = [field('a', { width: 100, height: 30 }), field('b', { width: 50, height: 22 })];
+    const w = roundTrip(initialEditorState(fs), { type: 'exec', command: sameSizeFields(['a', 'b'], 'width') });
+    expect(w.fields.map((f) => f.width)).toEqual([100, 100]);
+    const h = roundTrip(initialEditorState(fs), { type: 'exec', command: sameSizeFields(['b', 'a'], 'height') });
+    // a's top (792 - 500 - 30 = 262) stays; its height becomes 22 → y = 792 - 262 - 22 = 508.
+    expect(h.fields[0]).toMatchObject({ height: 22, y: 508 });
+  });
+});
+
+describe('P2 gestures: many fields, snap and guides', () => {
+  it('dragging one field of a selection moves the selection as ONE undo step', () => {
+    let s = run(initialEditorState([field('a'), field('b', { x: 300 }), field('c', { x: 10 })]), { type: 'gesture-start' });
+    s = run(s, { type: 'gesture-move', id: 'a', ids: ['a', 'b'], mode: 'move', dx: 20, dy: 0 }, { type: 'gesture-end', label: 'Move 2 fields' });
+    expect(s.fields.map((f) => f.x)).toEqual([120, 320, 10]);
+    expect(s.past).toHaveLength(1);
+    const u = run(s, { type: 'undo' });
+    expect(u.fields.map((f) => f.x)).toEqual([100, 300, 10]);
+    expect(run(u, { type: 'redo' }).fields.map((f) => f.x)).toEqual([120, 320, 10]);
+  });
+
+  it('a group drag keeps its shape at the page edge', () => {
+    const s = run(initialEditorState([field('a', { x: 300 }), field('b', { x: 350 })]), { type: 'gesture-start' }, { type: 'gesture-move', id: 'a', ids: ['a', 'b'], mode: 'move', dx: 500, dy: 0 });
+    // b's right edge stops at 612 → dx 32; a moves the same.
+    expect(s.fields.map((f) => f.x)).toEqual([332, 382]);
+  });
+
+  it('snaps to another field’s edge and leaves a guide; Shift (no snap) does not; gesture end clears the guides', () => {
+    const fs = [field('a', { x: 100, y: 500 }), field('t', { x: 50, y: 300 })];
+    const snap = { edges: true, grid: null, threshold: 5 };
+    let s = run(initialEditorState(fs), { type: 'gesture-start' }, { type: 'gesture-move', id: 'a', mode: 'move', dx: -47, dy: -150, snap });
+    expect(s.fields[0]).toMatchObject({ x: 50 });
+    expect(s.guides).toMatchObject({ docId: 'd1', page: 0 });
+    expect(s.guides!.xs).toContain(50);
+    const free = run(initialEditorState(fs), { type: 'gesture-start' }, { type: 'gesture-move', id: 'a', mode: 'move', dx: -47, dy: -150, snap: null });
+    expect(free.fields[0]).toMatchObject({ x: 53 });
+    expect(free.guides).toBeNull();
+    s = run(s, { type: 'gesture-end', label: 'Move field' });
+    expect(s.guides).toBeNull();
+  });
+
+  it('the grid snaps the top-left corner; resize snaps the right edge to another field', () => {
+    const g = run(initialEditorState([field('a', { x: 100, y: 500 })]), { type: 'gesture-start' }, { type: 'gesture-move', id: 'a', mode: 'move', dx: 3, dy: 0, snap: { edges: false, grid: 10, threshold: 5 } });
+    expect(g.fields[0]!.x).toBe(100);
+    const r = run(initialEditorState([field('a', { x: 100, width: 100 }), field('t', { x: 50, y: 300, width: 155 })]), { type: 'gesture-start' }, { type: 'gesture-move', id: 'a', mode: 'resize', dx: 3, dy: 0, snap: { edges: true, grid: null, threshold: 5 } });
+    expect(r.fields[0]!.width).toBe(105);
+    expect(r.guides!.xs).toEqual([205]);
   });
 });

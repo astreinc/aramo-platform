@@ -1,6 +1,6 @@
-# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5)
+# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5, P2-1..P2-3)
 
-Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §8 item 5, ruling R-8.
+Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §5 P2-1..P2-3, §8 item 5, ruling R-8.
 
 As of P1-5, sign-web Prepare (`apps/sign-web/src/workspace/pages/PrepareEditor.tsx`) and the console fixed-form Studio (`libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx`) both host one shared web editor, `libs/field-placement-web` (`PlacementEditor`). So the two web columns below show the same behaviour, except where a row names a host option.
 
@@ -10,7 +10,7 @@ Legend:
 - ✔ — present.
 - ✗ — absent.
 - ◐ — present with the difference noted.
-- P2 — Phase 2 (§5), not built in any column yet.
+- P2 — Phase 2 (§5), not built in that column yet (mobile: a follow-up, see the end of this file).
 
 ## 1. Palette and field types
 | # | Behaviour | sign-web | Console | Mobile |
@@ -47,14 +47,14 @@ Legend:
 | 4.1 | Drag to move; drag the corner to resize; the box is kept inside the page (minimum 14pt) | ✔ | ✔ | ✔ |
 | 4.2 | Drag rounding: whole points, top-left frame | ✔ (`precision="integer"`) | — | ◐ own rounding |
 | 4.3 | Drag rounding: hundredths, PDF-native frame | — | ✔ (`precision="hundredths"`) | — |
-| 4.4 | Arrow keys move 2pt, Shift+arrow 10pt | ✔ | ✔ (new) | ◐ on-screen buttons, 4pt |
-| 4.5 | Alt+arrows resize (2pt, Shift 10pt) | ✔ | ✔ (new) | ◐ on-screen buttons |
-| 4.6 | Delete or Backspace removes the focused field | ✔ | ✔ (new) | ◐ ✕ on the field |
+| 4.4 | Arrow keys move 2pt, Shift+arrow 10pt (the whole selection when the focused field is in it) | ✔ | ✔ (new) | ◐ on-screen buttons, 4pt |
+| 4.5 | Alt+arrows resize (2pt, Shift 10pt) (the whole selection) | ✔ | ✔ (new) | ◐ on-screen buttons |
+| 4.6 | Delete or Backspace removes the focused field (the whole selection) | ✔ | ✔ (new) | ◐ ✕ on the field |
 | 4.7 | Escape deselects; Enter or Space selects; focus selects | ✔ | ✔ | n/a |
 | 4.8 | Undo: button, plus Cmd/Ctrl+Z outside text controls | ✔ (20 steps) | ✔ (new, 20 steps) | ◐ button, 30 steps |
-| 4.9 | One drag is one undo step | ✔ | ✔ | ✔ |
-| 4.10 | Redo | P2 (in the reducer only) | P2 (in the reducer only) | P2 |
-| 4.11 | Duplicate, copy/paste, repeat-down, multi-select, align, snap | P2 | P2 | P2 |
+| 4.9 | One drag is one undo step (also when it moves many fields) | ✔ | ✔ | ✔ |
+| 4.10 | Redo: button, plus Shift+Cmd/Ctrl+Z or Ctrl+Y outside text controls (P2-3) | ✔ (new) | ✔ (new) | P2 |
+| 4.11 | Duplicate, copy/paste, Repeat down, multi-select, align, snap | ✔ see §8 | ✔ see §8 | P2 |
 
 ## 5. Field settings (inspector)
 The settings shown are the catalog's `fieldSettingsOf(type)` intersected with the host's capabilities.
@@ -84,11 +84,51 @@ The settings shown are the catalog's `fieldSettingsOf(type)` intersected with th
 | 7.3 | Live announcements: field added, field deleted, undone | ✔ (new) | ✔ (new) | ◐ |
 | 7.4 | Labelled panes (left, pages, right) and labelled controls | ✔ | ✔ ("Form setup", "Form pages", "Field and checks") | ✔ |
 
+## 8. Phase 2: duplicate, multi-select, arrange, snap (P2-1..P2-3)
+Both web hosts get these from the shared editor (`libs/field-placement-web`), so the two web columns match. Each action is one undo step, has a labelled button as well as a key, and announces its result.
+
+| # | Behaviour | sign-web | Console | Mobile |
+|---|---|---|---|---|
+| 8.1 | Duplicate the selection (button, Cmd/Ctrl+D): 10pt right and down, new ids from the host (`newFieldId`), selected and focused, "N fields duplicated." | ✔ | ✔ (ids run on: `text_2`, `text_3` …) | P2 |
+| 8.2 | Copy (button, Cmd/Ctrl+C) and Paste (toolbar button, Cmd/Ctrl+V) onto the page in view at the same position; pasting back onto the source page steps 10pt each time; clamped to a smaller page | ✔ | ✔ | P2 |
+| 8.3 | Repeat down: N copies (1 to 50) of the selected field or row at a set distance (points, top to top; suggested: row height + 6); rows that would leave the page are not added and are announced ("2 rows added. 7 rows did not fit on the page.") | ✔ | ✔ | P2 |
+| 8.4 | Copies keep type, size, assignee or prefill binding, required and settings; a duplicated or pasted check box stays in its group; Repeat down gives each new row its own group (`<key>_2`, `<key>_3` …, the next free one, cut to the host's group-key limit) | ✔ | ✔ | P2 |
+| 8.5 | Locked (engine-only) and hidden fields are never duplicated, copied or arranged (they can still be deleted) | ✔ | n/a (none can be stored) | P2 |
+| 8.6 | Multi-select: Shift+click, Shift+Enter / Shift+Space, drag-a-box on the page background (Shift adds), Cmd/Ctrl+A (the page's fields) | ✔ | ✔ | P2 |
+| 8.7 | Move (drag or arrows), resize (corner or Alt+arrows), delete and reassign the whole selection; a group stops together at the page edge | ✔ | ✔ | P2 |
+| 8.8 | Align left / centre / right / top / middle / bottom; distribute across / down (3 or more); same width / height (copies the first selected field) — per page | ✔ | ✔ | P2 |
+| 8.9 | Snap while dragging to other fields' edges and centres, with guide lines; optional 10pt grid (toolbar "Grid"); "Snap" toggle; Shift turns snapping off for a drag | ✔ | ✔ | P2 |
+| 8.10 | Positions are clamped to the page and rounded by the host's rule (4.2 / 4.3) | ✔ whole points | ✔ hundredths | P2 |
+| 8.11 | The saved field shape and the save call are unchanged (more fields are just more fields) | ✔ (`prepare-wire.spec.ts`) | ✔ (`fixed-form-placement.spec.ts`) | n/a |
+| 8.12 | "Keyboard shortcuts" list in the left panel (the `KEYMAP` table) | ✔ | ✔ | n/a |
+
+### The keymap (one for both web hosts; `libs/field-placement-web/src/lib/keymap.ts` `KEYMAP`)
+| Keys | Action |
+|---|---|
+| Arrow keys | Move the selection 2pt |
+| Shift+Arrow keys | Move the selection 10pt |
+| Alt+Arrow keys | Resize the selection (2pt; with Shift 10pt) |
+| Delete / Backspace | Delete the selection |
+| Enter / Space | Select the focused field |
+| Shift+Enter / Shift+Space | Add or remove the focused field from the selection |
+| Escape | Clear the selection |
+| Cmd/Ctrl+A | Select every field on the page |
+| Cmd/Ctrl+D | Duplicate the selection |
+| Cmd/Ctrl+C | Copy the selection |
+| Cmd/Ctrl+V | Paste onto the page in view (same position) |
+| Cmd/Ctrl+Z | Undo |
+| Shift+Cmd/Ctrl+Z or Ctrl+Y | Redo |
+| Shift while dragging | Turn snapping off for this drag |
+| Shift+click | Add or remove a field from the selection |
+
+Cmd/Ctrl+A, D, C and V act only while focus is in the editor (or on nothing), so the host page keeps its own copy and paste; none of the shortcuts act inside a text control.
+
 ## Mobile follow-ups (not in P1-5)
 These rows are where mobile differs from the web editor:
 - 2.2 / 3.3 — in-view placement.
 - 4.4 — nudge step (4pt on mobile, 2pt on web).
 - 4.8 — undo depth (30 on mobile, 20 on web).
 - 6.1 — autosave.
+- 4.10 and §8 (P2-1..P2-3) — redo, duplicate, copy/paste, Repeat down, multi-select, arrange and snap. The pure helpers (`lib/clone.ts`, `lib/arrange.ts`, the commands in `lib/editor-state.ts`) are DOM-free and can be reused by the mobile reducer.
 
 Aligning them is a mobile change. Per §8 item 5 it is tracked against this checklist; it is not built here.
