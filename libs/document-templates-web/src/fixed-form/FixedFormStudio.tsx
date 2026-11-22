@@ -1,18 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  FieldImportResult,
+  NO_UPLOAD_FIELD_OPTIONS,
+  PlacementEditor,
+  UploadFieldOptions,
+  suggestionsFromWire,
+  uploadFlags,
+  useAutosave,
+  type PlacedField,
+  type UploadFieldOptionsValue,
+} from '@aramo/field-placement-web';
+import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX } from '@aramo/sign-fields';
 
 import { ProductTagsSelect, templateProductsLine, type TemplateProductKey } from '../template-products';
-import { type LoadedPdf } from '../pdf';
+import { loadPdf as defaultLoadPdf, type LoadedPdf } from '../pdf';
 
-import { FixedFormCanvas } from './FixedFormCanvas';
+import { FIXED_FORM_DOC_ID, FIXED_FORM_EDITOR_COPY, FIXED_FORM_PALETTE, FIXED_FORM_SETTINGS, fixedFormFieldsToWire, fixedFormFieldsToPlaced } from './fixed-form-placement';
 import {
-  FIXED_FORM_FIELD_TYPES,
   FIXED_FORM_MAX_BYTES,
   base64ToBytes,
   bytesToBase64,
-  fixedFormFieldLabel,
   nextFieldKey,
   roleKeyFromLabel,
   type FixedFormField,
+  type FixedFormFieldImport,
+  type FixedFormFieldSuggestions,
   type FixedFormIssue,
   type FixedFormRole,
   type FixedFormVersionView,
@@ -25,6 +37,12 @@ import './fixed-form.css';
 // checkbox, name, signature, initials — what Aramo Sign executes; a text field may instead be
 // prefilled by a variable), check, publish and withdraw like any default. A new issuer edition
 // is a new version (the draft starts from the current one; upload the new PDF on it).
+//
+// FIELD-PARITY-1 P1-5 (ruling R-8) — the palette, page column, field panel, keyboard map, undo
+// and the P0-1 viewport behaviour are the ONE shared placement editor (@aramo/field-placement-web,
+// the same one sign-web Prepare uses). This Studio keeps its chrome (top bar: Save, Check,
+// Publish, Discard, Withdraw; form setup; checks) and its data source calls; the layout also
+// saves automatically 600ms after an edit (the same rule as Prepare), through saveLayout.
 //
 // The host supplies the data source (platform-web: /platform/document-templates*). The server
 // is authoritative for every rule; the Studio shows its issue list and refusals.
@@ -48,7 +66,13 @@ export interface FixedFormStudioDataSource {
   view(versionId: string): Promise<FixedFormVersionView>;
   pdf(versionId: string): Promise<{ content_base64: string }>;
   createDraft(templateId: string): Promise<FixedFormVersionView>;
-  uploadPdf(versionId: string, content_base64: string): Promise<FixedFormVersionView>;
+  /**
+   * FIELD-PARITY-1 P2-5 / P2-6 — `options` carries only the ticked upload flags (none: the upload
+   * is unchanged); the answer then has `field_import`.
+   */
+  uploadPdf(versionId: string, content_base64: string, options?: { import_fields?: true; apply_text_tags?: true }): Promise<FixedFormVersionView>;
+  /** FIELD-PARITY-1 P2-4 — the detector's suggestions for the version's PDF ("Find fields"). */
+  fieldSuggestions?(versionId: string): Promise<FixedFormFieldSuggestions>;
   saveLayout(
     versionId: string,
     body: { signing: { roles: readonly FixedFormRole[]; routing_mode: 'PARALLEL' | 'SEQUENTIAL' }; fields: readonly FixedFormField[] },
@@ -88,32 +112,41 @@ export function FixedFormStudio({
   renderAccount,
   onEntityName,
   formatError = defaultFormat,
-  loadPdfFn,
+  loadPdfFn = defaultLoadPdf,
 }: FixedFormStudioProps) {
   const [template, setTemplate] = useState<FixedFormStudioTemplate | null>(null);
   const [typeProducts, setTypeProducts] = useState<readonly TemplateProductKey[]>([]);
   const [view, setView] = useState<FixedFormVersionView | null>(null);
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
+  const [pdf, setPdf] = useState<LoadedPdf | null>(null);
+  const [pdfFailed, setPdfFailed] = useState(false);
   const [roles, setRoles] = useState<FixedFormRole[]>([]);
   const [routing, setRouting] = useState<'PARALLEL' | 'SEQUENTIAL'>('PARALLEL');
-  const [fields, setFields] = useState<FixedFormField[]>([]);
+  // FIELD-PARITY-1 P1-5 — the fields as the shared editor last reported them; `stored` keeps the
+  // server's objects so an unchanged field goes back exactly as read.
+  const [placed, setPlaced] = useState<readonly PlacedField[]>([]);
+  const [stored, setStored] = useState<ReadonlyMap<string, FixedFormField>>(new Map());
+  const [loadKey, setLoadKey] = useState(0);
+  const [revision, setRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [activeRole, setActiveRole] = useState<string>('');
-  const [page, setPage] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checkIssues, setCheckIssues] = useState<FixedFormIssue[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // FIELD-PARITY-1 P2-5 / P2-6 — the upload options (off by default) and the last import's result.
+  const [uploadOpts, setUploadOpts] = useState<UploadFieldOptionsValue>(NO_UPLOAD_FIELD_OPTIONS);
+  const [importResult, setImportResult] = useState<FixedFormFieldImport | null>(null);
 
+  // Replaces the whole working copy (load, upload, new draft, publish) — the editor resets.
   const adopt = useCallback((v: FixedFormVersionView) => {
     setView(v);
     setRoles([...v.content.signing.roles]);
     setRouting(v.content.signing.routing_mode);
-    setFields([...v.fields]);
+    setPlaced(fixedFormFieldsToPlaced(v.fields));
+    setStored(new Map(v.fields.map((f) => [f.field_key, f])));
+    setLoadKey((k) => k + 1);
     setDirty(false);
-    setActiveRole((cur) => (v.content.signing.roles.some((r) => r.role_key === cur) ? cur : (v.content.signing.roles.find((r) => r.kind === 'SIGNER')?.role_key ?? '')));
   }, []);
 
   const loadPdfBytes = useCallback(
@@ -153,11 +186,43 @@ export function FixedFormStudio({
     void reload();
   }, [reload]);
 
+  // The official PDF, loaded once per upload (pdf.js, lazily).
+  useEffect(() => {
+    let live = true;
+    let loaded: LoadedPdf | null = null;
+    setPdf(null);
+    setPdfFailed(false);
+    if (pdfBytes === null) return undefined;
+    loadPdfFn(pdfBytes).then(
+      (doc) => {
+        loaded = doc;
+        if (live) setPdf(doc);
+        else doc.destroy();
+      },
+      () => {
+        if (live) setPdfFailed(true);
+      },
+    );
+    return () => {
+      live = false;
+      loaded?.destroy();
+    };
+  }, [pdfBytes, loadPdfFn]);
+
   const editable = canManage && view?.status === 'DRAFT';
-  const variables = useMemo(() => new Map((view?.variables ?? []).map((v) => [v.key, v])), [view]);
-  const sel = fields.find((f) => f.field_key === selected) ?? null;
-  const pages = view?.content.pdf?.pages ?? [];
   const published = template?.current_version !== null && template?.current_version !== undefined;
+  const documents = useMemo(() => (pdf === null ? [] : [{ id: FIXED_FORM_DOC_ID, title: view?.content.title ?? '', pages: pdf.pages }]), [pdf, view?.content.title]);
+  const renderPage = useCallback((_doc: string, index: number, canvas: HTMLCanvasElement, width: number) => pdf?.render(index, canvas, width) ?? Promise.resolve(), [pdf]);
+  const assignees = useMemo(() => roles.filter((r) => r.kind === 'SIGNER').map((r) => ({ id: r.role_key, label: r.label })), [roles]);
+  const prefills = useMemo(() => (view?.variables ?? []).map((v) => ({ key: v.key, label: v.label })), [view]);
+  // FIELD-PARITY-1 P2-4 — "Find fields" on a draft with a PDF (the console's fixed-form route).
+  const versionId = view?.version_id ?? null;
+  const hasPdf = view?.content.pdf != null;
+  const loadSuggestions = useMemo(() => {
+    const get = ds.fieldSuggestions;
+    if (get === undefined || versionId === null || !hasPdf) return undefined;
+    return async () => suggestionsFromWire(FIXED_FORM_DOC_ID, (await get.call(ds, versionId)).suggestions);
+  }, [ds, versionId, hasPdf]);
 
   async function act(name: string, fn: () => Promise<void>) {
     setBusy(name);
@@ -173,46 +238,40 @@ export function FixedFormStudio({
     }
   }
 
-  const edit = (next: FixedFormField[]) => {
-    setFields(next);
+  const edited = () => {
     setDirty(true);
     setCheckIssues(null);
+    setRevision((r) => r + 1);
   };
 
-  function addField(type: string) {
-    const page0 = pages[page] ?? pages[0];
-    if (page0 === undefined) return;
-    const spec = FIXED_FORM_FIELD_TYPES.find((t) => t.type === type);
-    const width = spec?.width ?? 120;
-    const height = spec?.height ?? 18;
-    const field_key = nextFieldKey(type, fields);
-    const offset = (fields.filter((f) => f.page_number === page).length % 10) * 12;
-    const f: FixedFormField = {
-      field_key,
-      field_type: type,
-      binding_key: null,
-      signer_role: activeRole === '' ? null : activeRole,
-      required: type !== 'CHECKBOX',
-      page_number: pages[page] !== undefined ? page : 0,
-      x: Math.min(72 + offset, Math.max(0, page0.width - width)),
-      y: Math.max(0, page0.height - 144 - offset - height),
-      width,
-      height,
-      ordinal: fields.length,
-    };
-    edit([...fields, f]);
-    setSelected(field_key);
-  }
-
-  function updateSelected(patch: Partial<FixedFormField>) {
-    if (sel === null) return;
-    edit(fields.map((f) => (f.field_key === sel.field_key ? { ...f, ...patch } : f)));
-  }
+  // The layout save (autosave and the Save button): the same saveLayout body as before P1-5.
+  // The response refreshes the issues / previewed state; the working copy is kept (an edit made
+  // while the save was in flight is not overwritten), and stays dirty if one was.
+  const latest = useRef({ view, roles, routing, placed, stored, revision });
+  latest.current = { view, roles, routing, placed, stored, revision };
+  const saveLayout = useCallback(async () => {
+    const cur = latest.current;
+    if (cur.view === null) return;
+    setBusy('save');
+    setError(null);
+    try {
+      const v = await ds.saveLayout(cur.view.version_id, { signing: { roles: cur.roles, routing_mode: cur.routing }, fields: fixedFormFieldsToWire(cur.placed, cur.stored) });
+      setView(v);
+      if (latest.current.revision === cur.revision) setDirty(false);
+    } catch (e) {
+      setError(formatError(e, 'That did not work.'));
+      const issues = issuesOf(e);
+      if (issues.length > 0) setCheckIssues(issues);
+      throw e;
+    } finally {
+      setBusy(null);
+    }
+  }, [ds, formatError]);
+  const autosave = useAutosave({ revision, enabled: editable, save: saveLayout, formatError: (e) => formatError(e, 'Not saved.') });
 
   function setRolesEdited(next: FixedFormRole[]) {
     setRoles(next.map((r, i) => ({ ...r, order: i + 1 })));
-    setDirty(true);
-    setCheckIssues(null);
+    edited();
   }
 
   async function onUpload(file: File) {
@@ -221,19 +280,16 @@ export function FixedFormStudio({
       setError('The PDF is larger than 10 MB.');
       return;
     }
+    setImportResult(null);
     await act('upload', async () => {
       const b64 = bytesToBase64(await file.arrayBuffer());
-      const v = await ds.uploadPdf(view.version_id, b64);
+      const flags = uploadFlags(uploadOpts);
+      const v = Object.keys(flags).length > 0 ? await ds.uploadPdf(view.version_id, b64, flags) : await ds.uploadPdf(view.version_id, b64);
       adopt(v);
+      setImportResult(v.field_import ?? null);
       await loadPdfBytes(v);
     });
   }
-
-  const save = () =>
-    act('save', async () => {
-      if (view === null) return;
-      adopt(await ds.saveLayout(view.version_id, { signing: { roles, routing_mode: routing }, fields: fields.map((f, i) => ({ ...f, ordinal: i })) }));
-    });
 
   if (loadError !== null) {
     return (
@@ -255,6 +311,159 @@ export function FixedFormStudio({
     view === null
       ? 'No version yet'
       : `v${view.version_number} · ${view.status === 'DRAFT' ? 'Draft' : view.status === 'ACTIVE' ? 'Published' : 'Retired'}`;
+
+  const empty =
+    view === null ? (
+      <div className="ffs-empty">This form has no version yet.</div>
+    ) : pdfBytes === null ? (
+      <div className="ffs-empty">No PDF yet. Upload the official form to place fields on it.</div>
+    ) : pdfFailed ? (
+      <div className="ffs-empty" role="alert">
+        The PDF could not be displayed.
+      </div>
+    ) : (
+      <div className="ffs-empty">Loading the form…</div>
+    );
+
+  const setup = (
+    <>
+      <h2>Official PDF</h2>
+      {view?.content.pdf != null ? (
+        <p className="ffs-note" data-testid="ffs-pdf-meta">
+          {view.content.pdf.page_count} page{view.content.pdf.page_count === 1 ? '' : 's'} · {(view.content.pdf.byte_size / 1024).toFixed(0)} KB
+        </p>
+      ) : (
+        <p className="ffs-note">No PDF uploaded.</p>
+      )}
+      {editable ? (
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            hidden
+            data-testid="ffs-upload-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file !== undefined) void onUpload(file);
+            }}
+          />
+          <button type="button" className="ffs-btn" disabled={busy !== null} onClick={() => fileRef.current?.click()}>
+            {view?.content.pdf != null ? 'Replace PDF…' : 'Upload PDF…'}
+          </button>
+          <p className="ffs-note">PDF only, up to 10 MB, no scripts or embedded files.</p>
+          <UploadFieldOptions value={uploadOpts} onChange={setUploadOpts} disabled={busy !== null} idPrefix="ffs" />
+        </>
+      ) : null}
+      {importResult !== null ? <FieldImportResult result={importResult} idPrefix="ffs" onClose={() => setImportResult(null)} /> : null}
+
+      <h2>Product tags</h2>
+      {canManage && ds.updateProducts !== undefined ? (
+        <ProductTagsSelect
+          label="Used in"
+          value={template.products}
+          options={typeProducts}
+          helper="At least one is needed to publish."
+          onChange={(next) =>
+            void act('tags', async () => {
+              await ds.updateProducts!(template.id, next);
+              setTemplate({ ...template, products: next });
+            })
+          }
+        />
+      ) : (
+        <p className="ffs-note">{templateProductsLine(template.products) || 'None'}</p>
+      )}
+
+      <h2>Signer roles</h2>
+      {roles.map((r, i) => (
+        <div className="ffs-row" key={r.role_key}>
+          <input
+            type="text"
+            aria-label={`Role ${i + 1} name`}
+            value={r.label}
+            disabled={!editable}
+            onChange={(e) => setRolesEdited(roles.map((x) => (x.role_key === r.role_key ? { ...x, label: e.target.value } : x)))}
+          />
+          <select
+            aria-label={`Role ${i + 1} kind`}
+            className="ffs-select"
+            value={r.kind}
+            disabled={!editable}
+            onChange={(e) => setRolesEdited(roles.map((x) => (x.role_key === r.role_key ? { ...x, kind: e.target.value as 'SIGNER' | 'CC' } : x)))}
+          >
+            <option value="SIGNER">Signs</option>
+            <option value="CC">Gets a copy</option>
+          </select>
+          {editable ? (
+            <button
+              type="button"
+              className="ffs-btn ffs-btn--danger"
+              aria-label={`Remove role ${r.label}`}
+              disabled={roles.length <= 1 || placed.some((f) => f.assignee === r.role_key)}
+              title={placed.some((f) => f.assignee === r.role_key) ? 'Move or delete its fields first' : undefined}
+              onClick={() => setRolesEdited(roles.filter((x) => x.role_key !== r.role_key))}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {editable ? (
+        <button
+          type="button"
+          className="ffs-btn"
+          disabled={roles.length >= 20}
+          onClick={() => {
+            const label = `Signer ${roles.filter((r) => r.kind === 'SIGNER').length + 1}`;
+            const role_key = roleKeyFromLabel(label, new Set(roles.map((r) => r.role_key)));
+            setRolesEdited([...roles, { role_key, label, kind: 'SIGNER', order: roles.length + 1 }]);
+          }}
+        >
+          Add role
+        </button>
+      ) : null}
+      <div className="ffs-row" style={{ marginTop: 8 }}>
+        <label htmlFor="ffs-routing">Signing order</label>
+        <select
+          id="ffs-routing"
+          className="ffs-select"
+          value={routing}
+          disabled={!editable}
+          onChange={(e) => {
+            setRouting(e.target.value as 'PARALLEL' | 'SEQUENTIAL');
+            edited();
+          }}
+        >
+          <option value="PARALLEL">Any order</option>
+          <option value="SEQUENTIAL">In role order</option>
+        </select>
+      </div>
+    </>
+  );
+
+  const checks = (
+    <section className="fpe-section">
+      <h2>Checks</h2>
+      {dirty ? <p className="ffs-note">Unsaved changes — save, then check.</p> : null}
+      {(() => {
+        const list = checkIssues ?? (dirty ? [] : (view?.issues ?? []));
+        if (view === null) return null;
+        if (!dirty && list.length === 0) {
+          return <p className="ffs-ok">{view.previewed ? 'Checked. Ready to publish.' : 'No problems found. Check the form before publishing.'}</p>;
+        }
+        return (
+          <ul className="ffs-issues" data-testid="ffs-issues">
+            {list.map((i, n) => (
+              <li key={`${i.code}-${i.field_key ?? i.role_key ?? n}`}>{i.message}</li>
+            ))}
+          </ul>
+        );
+      })()}
+      {template.products.length === 0 ? <p className="ffs-note">Add a product tag before publishing.</p> : null}
+    </section>
+  );
 
   return (
     <div className="ffs-root" data-testid="fixed-form-studio">
@@ -278,7 +487,7 @@ export function FixedFormStudio({
         ) : null}
         {editable ? (
           <>
-            <button type="button" className="ffs-btn" disabled={busy !== null || !dirty} onClick={() => void save()}>
+            <button type="button" className="ffs-btn" disabled={busy !== null || !dirty} onClick={() => void autosave.flush()}>
               Save
             </button>
             <button
@@ -353,242 +562,44 @@ export function FixedFormStudio({
         </p>
       ) : null}
 
-      <div className="ffs-body">
-        <aside className="ffs-panel" aria-label="Form setup">
-          <h2>Official PDF</h2>
-          {view?.content.pdf != null ? (
-            <p className="ffs-note" data-testid="ffs-pdf-meta">
-              {view.content.pdf.page_count} page{view.content.pdf.page_count === 1 ? '' : 's'} · {(view.content.pdf.byte_size / 1024).toFixed(0)} KB
-            </p>
-          ) : (
-            <p className="ffs-note">No PDF uploaded.</p>
-          )}
-          {editable ? (
-            <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                hidden
-                data-testid="ffs-upload-input"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (file !== undefined) void onUpload(file);
-                }}
-              />
-              <button type="button" className="ffs-btn" disabled={busy !== null} onClick={() => fileRef.current?.click()}>
-                {view?.content.pdf != null ? 'Replace PDF…' : 'Upload PDF…'}
-              </button>
-              <p className="ffs-note">PDF only, up to 10 MB, no scripts or embedded files.</p>
-            </>
-          ) : null}
-
-          <h2>Product tags</h2>
-          {canManage && ds.updateProducts !== undefined ? (
-            <ProductTagsSelect
-              label="Used in"
-              value={template.products}
-              options={typeProducts}
-              helper="At least one is needed to publish."
-              onChange={(next) =>
-                void act('tags', async () => {
-                  await ds.updateProducts!(template.id, next);
-                  setTemplate({ ...template, products: next });
-                })
-              }
-            />
-          ) : (
-            <p className="ffs-note">{templateProductsLine(template.products) || 'None'}</p>
-          )}
-
-          <h2>Signer roles</h2>
-          {roles.map((r, i) => (
-            <div className="ffs-row" key={r.role_key}>
-              <input
-                type="text"
-                aria-label={`Role ${i + 1} name`}
-                value={r.label}
-                disabled={!editable}
-                onChange={(e) => setRolesEdited(roles.map((x) => (x.role_key === r.role_key ? { ...x, label: e.target.value } : x)))}
-              />
-              <select
-                aria-label={`Role ${i + 1} kind`}
-                className="ffs-select"
-                value={r.kind}
-                disabled={!editable}
-                onChange={(e) => setRolesEdited(roles.map((x) => (x.role_key === r.role_key ? { ...x, kind: e.target.value as 'SIGNER' | 'CC' } : x)))}
-              >
-                <option value="SIGNER">Signs</option>
-                <option value="CC">Gets a copy</option>
-              </select>
-              {editable ? (
-                <button
-                  type="button"
-                  className="ffs-btn ffs-btn--danger"
-                  aria-label={`Remove role ${r.label}`}
-                  disabled={roles.length <= 1 || fields.some((f) => f.signer_role === r.role_key)}
-                  title={fields.some((f) => f.signer_role === r.role_key) ? 'Move or delete its fields first' : undefined}
-                  onClick={() => setRolesEdited(roles.filter((x) => x.role_key !== r.role_key))}
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
-          ))}
-          {editable ? (
-            <button
-              type="button"
-              className="ffs-btn"
-              disabled={roles.length >= 20}
-              onClick={() => {
-                const label = `Signer ${roles.filter((r) => r.kind === 'SIGNER').length + 1}`;
-                const role_key = roleKeyFromLabel(label, new Set(roles.map((r) => r.role_key)));
-                setRolesEdited([...roles, { role_key, label, kind: 'SIGNER', order: roles.length + 1 }]);
-              }}
-            >
-              Add role
-            </button>
-          ) : null}
-          <div className="ffs-row" style={{ marginTop: 8 }}>
-            <label htmlFor="ffs-routing">Signing order</label>
-            <select
-              id="ffs-routing"
-              className="ffs-select"
-              value={routing}
-              disabled={!editable}
-              onChange={(e) => {
-                setRouting(e.target.value as 'PARALLEL' | 'SEQUENTIAL');
-                setDirty(true);
-              }}
-            >
-              <option value="PARALLEL">Any order</option>
-              <option value="SEQUENTIAL">In role order</option>
-            </select>
-          </div>
-
-          {editable ? (
-            <>
-              <h2>Place a field</h2>
-              <div className="ffs-row">
-                <label htmlFor="ffs-active-role">For</label>
-                <select id="ffs-active-role" className="ffs-select" value={activeRole} onChange={(e) => setActiveRole(e.target.value)}>
-                  {roles
-                    .filter((r) => r.kind === 'SIGNER')
-                    .map((r) => (
-                      <option key={r.role_key} value={r.role_key}>
-                        {r.label}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="ffs-palette">
-                {FIXED_FORM_FIELD_TYPES.map((t) => (
-                  <button key={t.type} type="button" className="ffs-btn" disabled={pages.length === 0} onClick={() => addField(t.type)} data-testid={`ffs-add-${t.type}`}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <p className="ffs-note">Fields are added to page {page + 1}. Drag to move; drag the corner to resize.</p>
-            </>
-          ) : null}
-        </aside>
-
-        <main className="ffs-center" aria-label="Form pages">
-          {view === null ? (
-            <div className="ffs-empty">This form has no version yet.</div>
-          ) : (
-            <FixedFormCanvas
-              pdfBytes={pdfBytes}
-              fields={fields}
-              roles={roles}
-              selected={selected}
-              editable={editable}
-              onSelect={setSelected}
-              onChange={edit}
-              onPage={setPage}
-              variableLabel={(k) => `Prefilled: ${variables.get(k)?.label ?? k}`}
-              {...(loadPdfFn !== undefined ? { loadPdfFn } : {})}
-            />
-          )}
-        </main>
-
-        <aside className="ffs-panel ffs-panel--right" aria-label="Field and checks">
-          <h2>Field</h2>
-          {sel === null ? (
-            <p className="ffs-note">Select a field on the form.</p>
-          ) : (
-            <div data-testid="ffs-inspector">
-              <p className="ffs-note">
-                {fixedFormFieldLabel(sel.field_type)} · <code>{sel.field_key}</code> · page {(sel.page_number ?? 0) + 1}
-              </p>
-              <div className="ffs-row">
-                <label htmlFor="ffs-field-owner">Filled by</label>
-                <select
-                  id="ffs-field-owner"
-                  className="ffs-select"
-                  disabled={!editable}
-                  value={sel.binding_key !== null ? `var:${sel.binding_key}` : `role:${sel.signer_role ?? ''}`}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v.startsWith('var:')) updateSelected({ binding_key: v.slice(4), signer_role: null });
-                    else updateSelected({ binding_key: null, signer_role: v.slice(5) || null });
-                  }}
-                >
-                  {roles
-                    .filter((r) => r.kind === 'SIGNER')
-                    .map((r) => (
-                      <option key={r.role_key} value={`role:${r.role_key}`}>
-                        {r.label}
-                      </option>
-                    ))}
-                  {sel.field_type === 'TEXT'
-                    ? [...variables.values()].map((v) => (
-                        <option key={v.key} value={`var:${v.key}`}>
-                          Prefilled: {v.label}
-                        </option>
-                      ))
-                    : null}
-                </select>
-              </div>
-              <label className="ffs-row">
-                <input type="checkbox" checked={sel.required} disabled={!editable || sel.binding_key !== null} onChange={(e) => updateSelected({ required: e.target.checked })} />
-                Required
-              </label>
-              {editable ? (
-                <button
-                  type="button"
-                  className="ffs-btn ffs-btn--danger"
-                  onClick={() => {
-                    edit(fields.filter((f) => f.field_key !== sel.field_key));
-                    setSelected(null);
-                  }}
-                >
-                  Delete field
-                </button>
-              ) : null}
-            </div>
-          )}
-
-          <h2>Checks</h2>
-          {dirty ? <p className="ffs-note">Unsaved changes — save, then check.</p> : null}
-          {(() => {
-            const list = checkIssues ?? (dirty ? [] : (view?.issues ?? []));
-            if (view === null) return null;
-            if (!dirty && list.length === 0) {
-              return <p className="ffs-ok">{view.previewed ? 'Checked. Ready to publish.' : 'No problems found. Check the form before publishing.'}</p>;
-            }
-            return (
-              <ul className="ffs-issues" data-testid="ffs-issues">
-                {list.map((i, n) => (
-                  <li key={`${i.code}-${i.field_key ?? i.role_key ?? n}`}>{i.message}</li>
-                ))}
-              </ul>
-            );
-          })()}
-          {template.products.length === 0 ? <p className="ffs-note">Add a product tag before publishing.</p> : null}
-        </aside>
-      </div>
+      <PlacementEditor
+        documents={documents}
+        renderPage={renderPage}
+        surface="template_fixed_form"
+        palette={FIXED_FORM_PALETTE}
+        fields={placed}
+        resetKey={loadKey}
+        onChange={(next) => {
+          setPlaced(next);
+          edited();
+        }}
+        assignees={assignees}
+        allowUnassigned
+        prefills={prefills}
+        // FIELD-PARITY-1 P1-3 / P3 — the template API stores every field setting (the server's
+        // rule: @aramo/sign-fields parseTemplateFieldSettings); the editor offers them per type
+        // (FIXED_FORM_SETTINGS: all but sender-filled / read-only, which ship dark).
+        capabilities={{ settings: FIXED_FORM_SETTINGS, prefillTypes: ['TEXT'], limits: { labelMax: FIELD_LABEL_MAX, groupKeyMax: FIELD_GROUP_KEY_MAX } }}
+        readOnly={!editable}
+        newFieldId={(type, fields) => nextFieldKey(type, fields.map((f) => ({ field_key: f.id })))}
+        paletteMode="add"
+        precision="hundredths"
+        pageWidth={720}
+        idPrefix="ffs"
+        copy={FIXED_FORM_EDITOR_COPY}
+        leftPanelTop={setup}
+        rightPanelBottom={checks}
+        toolbarEnd={
+          editable ? (
+            <span className="ffs-note" role="status" data-testid="ffs-save-state">
+              {autosave.state === 'saving' ? 'Saving…' : autosave.state === 'saved' ? 'Saved' : autosave.state === 'error' ? 'Not saved' : ''}
+            </span>
+          ) : null
+        }
+        empty={empty}
+        showFieldKey
+        {...(editable && loadSuggestions !== undefined ? { loadSuggestions } : {})}
+      />
     </div>
   );
 }

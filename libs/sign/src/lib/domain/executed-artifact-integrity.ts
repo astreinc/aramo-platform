@@ -31,6 +31,9 @@ export interface ExecutedArtifactRecordedPayload {
   sha256: string;
   byte_size: number;
   source_sha256?: string;
+  // FIELD-PARITY-1 P0-2 — EXECUTED_DOCUMENT only, present only when any: the
+  // SignatureField ids whose text was clipped to its box on the executed PDF.
+  truncated_field_keys?: string[];
 }
 
 // SX-1 item 1 — a second write for an artifact that already exists carried

@@ -107,6 +107,15 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
 .sg-input { min-height: 44px; padding: 10px 12px; border: 1px solid var(--sg-line); border-radius: 10px; font: inherit; font-size: 15px; width: 100%; }
 .sg-input--area { min-height: 90px; resize: vertical; }
+/* FIELD-PARITY-1 P3 — the field editor: caption, help, money prefix, counter and the inline error. */
+.sg-select { background: #fff; }
+.sg-fieldedit { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.sg-fieldedit__label { font-weight: 600; font-size: 14px; }
+.sg-fieldedit__help { font-size: 13px; color: var(--sg-todo-ink); margin: 0; }
+.sg-fieldedit__row { display: flex; align-items: center; gap: 8px; }
+.sg-fieldedit__prefix { font-weight: 600; min-width: 1ch; }
+.sg-fieldedit__count { font-size: 12px; color: var(--sg-todo-ink); align-self: flex-end; margin: 0; }
+.sg-input[aria-invalid='true'] { border-color: var(--sg-danger); }
 .sg-preview { min-height: 72px; border: 1px solid var(--sg-line); border-radius: 10px; display: flex; align-items: center; padding: 0 16px; font-family: 'Aramo Signature', 'Segoe Script', 'Brush Script MT', cursive; font-size: 30px; margin-bottom: 12px; }
 .sg-pad { width: 100%; height: 160px; border: 1px dashed var(--sg-line); border-radius: 10px; touch-action: none; background: #fff; display: block; margin-bottom: 8px; }
 
@@ -140,6 +149,10 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-onpage--box { border-style: solid; border-radius: 3px; background: #fff; }
 .sg-onpage--box.sg-onpage--done { border: 1.5px solid #14306b; background: #fff; }
 .sg-onpage--box .sg-onpage__val { font-size: inherit; line-height: 1; font-weight: 700; color: #14306b; }
+/* FIELD-PARITY-1 P3 T-5 — a radio option is a circle (the executed PDF draws circles too). */
+.sg-onpage--radio { border-radius: 50%; }
+/* FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value: shown, not a target. */
+.sg-onpage--locked { cursor: default; border-style: solid; border-color: var(--sg-line); background: rgba(255, 255, 255, 0.6); }
 /* The on-screen counterpart of the executed-PDF stamp: a rounded bracket with
    "Signed by:" on its top arm. */
 .sg-onpage--stamp { justify-content: flex-start; padding-left: 9px; border: 0; border-radius: 0; }

@@ -9,7 +9,9 @@
 import {
   CHECKBOX_LABEL_MAX,
   FIELD_DEFAULTS,
+  PROFILE_TEXT_FIELD_TYPES,
   isSenderFieldType,
+  type ProfileTextFieldType,
   type SenderFieldType,
 } from '@aramo/sign-client';
 
@@ -17,14 +19,21 @@ import { FEATURES } from '../../config/features';
 
 export const BASE_FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT'] as const;
 export const EXTRA_FIELD_TYPES = ['SIGNER_NAME', 'CHECKBOX'] as const;
-export const PROFILE_FIELD_TYPES = ['FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] as const;
+// FIELD-PARITY-1 P3 §6.1 — the new types (T-3..T-7) and ACKNOWLEDGEMENT (T-2, ruling R-2), shown
+// while FEATURES.phase3FieldTypes is on, in the Send flow editor (Sign a document keeps its row).
+export const PHASE3_FIELD_TYPES = ['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT'] as const;
+// FIELD-PARITY-1 P1-2 — the catalog's profile prefill types (@aramo/sign-client over
+// @aramo/sign-fields). The three tiers together are the catalog's `send_mobile` surface
+// (held by __tests__/editorReducer.test.ts); this file only orders and gates the tools.
+export const PROFILE_FIELD_TYPES: readonly ProfileTextFieldType[] = PROFILE_TEXT_FIELD_TYPES;
 export const AUTHORING_FIELD_TYPES = [
   ...BASE_FIELD_TYPES,
   ...EXTRA_FIELD_TYPES,
   ...PROFILE_FIELD_TYPES,
+  ...PHASE3_FIELD_TYPES,
 ] as const;
 
-export type ProfileFieldType = (typeof PROFILE_FIELD_TYPES)[number];
+export type ProfileFieldType = ProfileTextFieldType;
 
 const PROFILE_SET: ReadonlySet<string> = new Set(PROFILE_FIELD_TYPES);
 
@@ -37,21 +46,39 @@ export function isProfileFieldType(v: unknown): v is ProfileFieldType {
 // (@aramo/sign-client SENDER_FIELD_TYPES); this file only orders the tools.
 export type AuthoringFieldType = SenderFieldType & (typeof AUTHORING_FIELD_TYPES)[number];
 
-/** Every type the server accepts from a sender (a saved draft may hold any of them). */
+const AUTHORING_SET: ReadonlySet<string> = new Set(AUTHORING_FIELD_TYPES);
+
+/**
+ * A type this editor authors: one the server accepts from a sender AND the editor has a tool
+ * for. FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT and the new types (DATE, DROPDOWN, RADIO, NUMBER,
+ * MULTILINE_TEXT) are authored too, with their settings (fieldSettings.ts). A stored engine
+ * row with no recipient or size stays preserved untouched (draftModel preservedFields).
+ */
 export function isAuthoringFieldType(v: unknown): v is AuthoringFieldType {
-  return isSenderFieldType(v);
+  return isSenderFieldType(v) && AUTHORING_SET.has(v);
 }
 
 /** The tools the editor offers in this build. */
 export function toolFieldTypes(
   extra: boolean = FEATURES.extraFieldTypes,
   profile: boolean = FEATURES.profileFieldTypes,
+  phase3: boolean = FEATURES.phase3FieldTypes,
 ): readonly AuthoringFieldType[] {
   return [
     ...BASE_FIELD_TYPES,
     ...(extra ? EXTRA_FIELD_TYPES : []),
     ...(profile ? PROFILE_FIELD_TYPES : []),
+    ...(phase3 ? PHASE3_FIELD_TYPES : []),
   ];
+}
+
+const PHASE3_SET: ReadonlySet<string> = new Set(PHASE3_FIELD_TYPES);
+/**
+ * The types "Sign a document" (self-signing) places and fills: every authoring type but the
+ * Phase 3 ones, whose values it does not fill yet (its fill sheet is the signer's side).
+ */
+export function isSelfSignFieldType(v: unknown): v is AuthoringFieldType {
+  return isAuthoringFieldType(v) && !PHASE3_SET.has(v);
 }
 
 /** M-A13 #11 (R-5) — the base zoom is "Fit" (fit to width); larger levels keep their %. */
@@ -94,6 +121,12 @@ const LOOK: Readonly<Record<AuthoringFieldType, Pick<FieldTypeSpec, 'label' | 'n
   EMAIL: { label: 'Email', noun: 'email' },
   COMPANY: { label: 'Company', noun: 'company' },
   TITLE: { label: 'Title', noun: 'title' },
+  DATE: { label: 'Date (chosen)', noun: 'a date' },
+  DROPDOWN: { label: 'Dropdown', noun: 'a dropdown' },
+  RADIO: { label: 'Radio button', noun: 'a radio button' },
+  NUMBER: { label: 'Number', noun: 'a number' },
+  MULTILINE_TEXT: { label: 'Multi-line text', noun: 'multi-line text' },
+  ACKNOWLEDGEMENT: { label: 'Acknowledgement', noun: 'an acknowledgement' },
 };
 
 export const FIELD_TYPE_SPECS: Readonly<Record<AuthoringFieldType, FieldTypeSpec>> = Object.fromEntries(
@@ -149,4 +182,21 @@ export function selfSignTools(
   available: readonly AuthoringFieldType[] = toolFieldTypes(),
 ): typeof SELF_SIGN_TOOLS {
   return SELF_SIGN_TOOLS.filter((x) => available.includes(x.type));
+}
+
+/** FIELD-PARITY-1 P3 — the Phase 3 tools, after the M-A19 row in the Send flow editor. */
+export const PHASE3_TOOLS: typeof SELF_SIGN_TOOLS = [
+  { type: 'DATE', label: 'Date picker', icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M9 15l2 2 4-4' },
+  { type: 'DROPDOWN', label: 'Dropdown', icon: 'M4 6h16v12H4zM14 11l2 2 2-2' },
+  { type: 'RADIO', label: 'Radio', icon: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
+  { type: 'NUMBER', label: 'Number', icon: 'M9 4 7 20M17 4l-2 16M4 9h17M3 15h17' },
+  { type: 'MULTILINE_TEXT', label: 'Multi-line', icon: 'M4 6h16M4 10h16M4 14h16M4 18h10' },
+  { type: 'ACKNOWLEDGEMENT', label: 'Acknowledge', icon: 'M5 5h14v14H5zM8.5 12l2.5 2.5 4.5-5M3 22h18' },
+];
+
+/** The Send flow editor's tool row: the M-A19 row, then the Phase 3 tools this build offers. */
+export function sendTools(
+  available: readonly AuthoringFieldType[] = toolFieldTypes(),
+): typeof SELF_SIGN_TOOLS {
+  return [...selfSignTools(available), ...PHASE3_TOOLS.filter((x) => available.includes(x.type))];
 }

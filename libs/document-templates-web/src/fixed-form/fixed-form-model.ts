@@ -6,19 +6,59 @@
 // Field geometry is PDF-native — exactly what Aramo Sign places: page_number 0-based, points,
 // origin bottom-left, (x, y) the box's lower-left corner.
 
+import { FIELD_DEFAULTS, fieldTypesFor, type FieldTypeOn } from '@aramo/sign-fields';
+
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
 export const FIXED_FORM_MAX_BYTES = 10 * 1024 * 1024;
 
-/** §7.2 — the field types Aramo Sign executes, in palette order, with their labels and sizes. */
-export const FIXED_FORM_FIELD_TYPES = [
-  { type: 'SIGNATURE', label: 'Signature', width: 160, height: 32 },
-  { type: 'INITIALS', label: 'Initials', width: 56, height: 28 },
-  { type: 'SIGNER_NAME', label: 'Name', width: 160, height: 18 },
-  { type: 'SIGN_DATE', label: 'Date', width: 96, height: 18 },
-  { type: 'TEXT', label: 'Text', width: 160, height: 18 },
-  { type: 'CHECKBOX', label: 'Checkbox', width: 14, height: 14 },
-] as const;
-export type FixedFormFieldType = (typeof FIXED_FORM_FIELD_TYPES)[number]['type'];
+/**
+ * §7.2 — the field types Aramo Sign executes on a fixed form: the catalog's
+ * `template_fixed_form` surface (FIELD-PARITY-1 P1-2, @aramo/sign-fields).
+ */
+export type FixedFormFieldType = FieldTypeOn<'template_fixed_form'>;
+
+export interface FixedFormFieldTypeSpec {
+  readonly type: FixedFormFieldType;
+  readonly label: string;
+  /** Default size in PDF points (FIELD-PARITY-1 P1-0: the catalog's one table). */
+  readonly width: number;
+  readonly height: number;
+  /** Whether a newly placed field starts required (P1-0: the catalog's one rule). */
+  readonly required: boolean;
+}
+
+// The Studio's own palette label and order. Keyed by the projection's type, so a type the
+// catalog adds to (or removes from) the fixed-form surface fails to compile until it is listed.
+const PALETTE: Readonly<Record<FixedFormFieldType, { readonly label: string; readonly order: number }>> = {
+  SIGNATURE: { label: 'Signature', order: 0 },
+  INITIALS: { label: 'Initials', order: 1 },
+  SIGNER_NAME: { label: 'Name', order: 2 },
+  SIGN_DATE: { label: 'Date', order: 3 },
+  TEXT: { label: 'Text', order: 4 },
+  CHECKBOX: { label: 'Checkbox', order: 5 },
+  // FIELD-PARITY-1 P3 (ruling R-1) — the profile types, ACKNOWLEDGEMENT and the new types. DATE
+  // is the chosen date ("Date" above is the signing date, SIGN_DATE).
+  FIRST_NAME: { label: 'First name', order: 6 },
+  LAST_NAME: { label: 'Last name', order: 7 },
+  EMAIL: { label: 'Email', order: 8 },
+  COMPANY: { label: 'Company', order: 9 },
+  TITLE: { label: 'Title', order: 10 },
+  ACKNOWLEDGEMENT: { label: 'Acknowledgement', order: 11 },
+  DATE: { label: 'Chosen date', order: 12 },
+  DROPDOWN: { label: 'Dropdown', order: 13 },
+  RADIO: { label: 'Radio button', order: 14 },
+  NUMBER: { label: 'Number', order: 15 },
+  MULTILINE_TEXT: { label: 'Multi-line text', order: 16 },
+};
+
+/**
+ * §7.2 — the field types, in palette order, with their labels, default sizes and required
+ * defaults. FIELD-PARITY-1 P1-0 — the size and required default are the catalog's (the same
+ * table Sign's Prepare and the Aramo Sign app use), no longer a console-only table.
+ */
+export const FIXED_FORM_FIELD_TYPES: readonly FixedFormFieldTypeSpec[] = fieldTypesFor('template_fixed_form')
+  .map((type) => ({ type, label: PALETTE[type].label, width: FIELD_DEFAULTS[type].width, height: FIELD_DEFAULTS[type].height, required: FIELD_DEFAULTS[type].required }))
+  .sort((a, b) => PALETTE[a.type].order - PALETTE[b.type].order);
 
 export function fixedFormFieldLabel(type: string): string {
   return FIXED_FORM_FIELD_TYPES.find((t) => t.type === type)?.label ?? type;
@@ -68,6 +108,21 @@ export interface FixedFormField {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — per-field settings (NULL / absent = unset; SIGNER_NAME NULL = SIGNER_PROFILE).
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (same rule; absent / NULL / false = not set).
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly font_size?: number | null;
+  readonly data_name?: string | null;
+  readonly options?: unknown;
 }
 
 export interface FixedFormVariable {
@@ -96,6 +151,31 @@ export interface FixedFormVersionView {
   readonly variables: readonly FixedFormVariable[];
   readonly issues: readonly FixedFormIssue[];
   readonly previewed: boolean;
+  /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
+  readonly field_import?: FixedFormFieldImport;
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload added, warned about and removed. */
+export interface FixedFormFieldImport {
+  readonly fields: ReadonlyArray<FixedFormField & { readonly source: 'pdf_form' | 'text_tag'; readonly source_name: string }>;
+  readonly warnings: ReadonlyArray<{ readonly code: string; readonly message: string; readonly name?: string; readonly page_number?: number }>;
+  readonly stripped: readonly string[];
+}
+
+/** FIELD-PARITY-1 P2-4 — GET …/fixed-form/field-suggestions (the field frame: page_number 0-based, points, bottom-left). */
+export interface FixedFormFieldSuggestions {
+  readonly suggestions: ReadonlyArray<{
+    readonly type: string;
+    readonly page: number;
+    readonly page_number: number;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly reason: string;
+    readonly confidence: number;
+  }>;
+  readonly skipped_pages: ReadonlyArray<{ readonly page: number; readonly reason: string }>;
 }
 
 /** A role key from a label: lower_snake, unique among `taken`. */

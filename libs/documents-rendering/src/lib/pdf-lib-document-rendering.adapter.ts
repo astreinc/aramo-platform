@@ -88,6 +88,123 @@ export function wrapTextToWidth(text: string, measure: (s: string) => number, ma
   return out;
 }
 
+// ── Text in a box (FIELD-PARITY-1 P0-2) ────────────────────────────────────────
+// The ONE text stamper for values drawn into a field box on a final PDF: the signer's
+// typed text, profile values and the fixed-form prefill. In order:
+//   1. characters the standard font can't draw are replaced with "?" (WinAnsi);
+//   2. the value wraps to the box width over as many lines as fit at 11pt;
+//   3. if it doesn't fit, the font shrinks 1pt at a time down to 7pt, re-wrapping;
+//   4. if it still doesn't fit at 7pt, only the lines that fit are drawn and the
+//      result says `truncated: true` (the caller records it in the audit trail).
+// The text block is centred vertically in the box with 2pt side padding, so every
+// glyph (ascender to descender) stays inside the box. Pure + deterministic.
+export interface TextBox {
+  x: number;
+  y: number; // bottom edge (PDF points, bottom-left origin)
+  width: number;
+  height: number;
+}
+
+export interface TextBoxLine {
+  text: string;
+  x: number;
+  y: number; // baseline
+}
+
+export interface TextBoxLayout {
+  size: number;
+  lines: TextBoxLine[];
+  truncated: boolean;
+}
+
+export const TEXT_BOX_MAX_SIZE = 11;
+export const TEXT_BOX_MIN_SIZE = 7;
+const TEXT_BOX_PADDING = 2;
+const TEXT_BOX_LINE_HEIGHT = 1.15; // × font size
+// Helvetica (AFM) ascender / descender, as a fraction of the font size.
+const HELVETICA_ASCENT = 0.718;
+const HELVETICA_DESCENT = 0.207;
+
+// pdf-lib's own drawText handling (cleanText / lineSplit) removes or splits on these,
+// so they never reach the encoder.
+const PDF_LIB_HANDLED = /[\t\n\f\r\v\b\u0085\u2028\u2029]/;
+const charsetCache = new WeakMap<PDFFont, ReadonlySet<number>>();
+function charsetOf(font: PDFFont): ReadonlySet<number> {
+  let set = charsetCache.get(font);
+  if (set === undefined) {
+    set = new Set(font.getCharacterSet());
+    charsetCache.set(font, set);
+  }
+  return set;
+}
+
+// WinAnsi rule — the one place: a character the font can't encode prints as "?", so a
+// value never breaks the render. Line breaks become "\n" and tabs a space.
+export function sanitizeWinAnsi(text: string, font: PDFFont): string {
+  const charset = charsetOf(font);
+  let out = '';
+  for (const ch of text.replace(/\r\n?|[\u0085\u2028\u2029\f\v]/g, '\n').replace(/\t/g, ' ')) {
+    out += ch === '\n' || charset.has(ch.codePointAt(0) ?? -1) ? ch : '?';
+  }
+  return out;
+}
+
+// The pure layout of `text` (already sanitised) in `box`. `measure(s, size)` is the
+// font's widthOfTextAtSize.
+// FIELD-PARITY-1 P3 S-7 — `fixedSize` (points): wrap at that size and clip, never shrink.
+export function layoutTextInBox(text: string, measure: (s: string, size: number) => number, box: TextBox, fixedSize?: number): TextBoxLayout {
+  const value = text.replace(/^\s+|\s+$/g, '');
+  if (value.length === 0) return { size: fixedSize ?? TEXT_BOX_MAX_SIZE, lines: [], truncated: false };
+  const maxWidth = Math.max(1, box.width - 2 * TEXT_BOX_PADDING);
+  const largest = fixedSize ?? TEXT_BOX_MAX_SIZE;
+  const smallest = fixedSize ?? TEXT_BOX_MIN_SIZE;
+  let size = largest;
+  let wrapped: string[] = [];
+  let capacity = 0;
+  for (size = largest; size >= smallest; size -= 1) {
+    const s = size;
+    wrapped = wrapTextToWidth(value, (t) => measure(t, s), maxWidth);
+    capacity = Math.floor(box.height / (size * TEXT_BOX_LINE_HEIGHT));
+    if (capacity >= 1 && wrapped.length <= capacity) break;
+  }
+  if (size < smallest) size = smallest; // loop ran out: clip at the smallest size (7pt, or the fixed size)
+  const keep = Math.max(1, capacity);
+  const truncated = wrapped.length > keep;
+  const lines = truncated ? wrapped.slice(0, keep) : wrapped;
+  const lineHeight = size * TEXT_BOX_LINE_HEIGHT;
+  const top = box.y + box.height - (box.height - lines.length * lineHeight) / 2;
+  const glyph = (HELVETICA_ASCENT + HELVETICA_DESCENT) * size;
+  return {
+    size,
+    truncated,
+    lines: lines.map((t, i) => ({
+      text: t,
+      x: box.x + TEXT_BOX_PADDING,
+      y: top - (i + 1) * lineHeight + (lineHeight - glyph) / 2 + HELVETICA_DESCENT * size,
+    })),
+  };
+}
+
+// Draw `value` inside `box` on `page` (sanitise → wrap → shrink → clip).
+export function stampTextInBox(page: PDFPage, font: PDFFont, box: TextBox, value: string, fixedSize?: number): TextBoxLayout {
+  const layout = layoutTextInBox(sanitizeWinAnsi(value, font), (s, size) => font.widthOfTextAtSize(s, size), box, fixedSize);
+  const color = rgb(0, 0, 0);
+  for (const line of layout.lines) {
+    if (line.text.length > 0) page.drawText(line.text, { x: line.x, y: line.y, size: layout.size, font, color });
+  }
+  return layout;
+}
+
+// A placement with no box size (legacy rows / engine fields): drawn exactly as before —
+// one unbounded run at (x, y) — except that a character the font can't encode prints as
+// "?" instead of failing the render. Every value that rendered before renders the same.
+export function stampTextUnbounded(page: PDFPage, font: PDFFont, at: { x: number; y: number }, value: string, size = TEXT_BOX_MAX_SIZE): void {
+  const charset = charsetOf(font);
+  let text = '';
+  for (const ch of value) text += PDF_LIB_HANDLED.test(ch) || charset.has(ch.codePointAt(0) ?? -1) ? ch : '?';
+  page.drawText(text, { x: at.x, y: at.y, size, font, color: rgb(0, 0, 0) });
+}
+
 // ── Fixed signature block (B2, spec §9.3 / Amendment A1 §2.3) ──────────────────
 // Three equal columns across the content width: TALENT SIGNATURE (signature area) ·
 // PRINTED NAME (the bound talent name, wrapped to the column) · DATE SIGNED (blank;
@@ -586,6 +703,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         script = await doc.embedFont(Buffer.from(SIGNATURE_SCRIPT_FONT_BASE64, 'base64'), { subset: true });
       }
       const pages = doc.getPages();
+      const truncated: string[] = [];
       for (const p of placements) {
         const page = pages[p.page_number];
         if (page === undefined) throw new RenderFailedError(`placement page ${p.page_number} out of range`);
@@ -595,7 +713,8 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         }
         if (p.kind === 'MARK') {
           if (p.checked === undefined) throw new RenderFailedError(`mark placement ${p.field_key} missing checked`);
-          drawMark(page, p, p.checked);
+          if (p.shape === 'CIRCLE') drawRadio(page, p, p.checked);
+          else drawMark(page, p, p.checked);
         } else if (p.kind === 'IMAGE') {
           // DOC-4 B1 — DRAWN/UPLOADED signature image. Embed is deterministic
           // (identical bytes → identical embedded object), preserving hash-stability.
@@ -625,8 +744,12 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
             const inner = p.stamp !== undefined ? { x: box.x + 8, y: box.y + 6, w: box.w - 10, h: box.h - 10 } : { x: box.x, y: box.y, w: box.w, h: box.h };
             const size = Math.max(6, Math.min(inner.h * 0.62, (inner.w / Math.max(1, script.widthOfTextAtSize(p.value, 1))) * 0.98));
             page.drawText(p.value, { x: inner.x, y: inner.y + (inner.h - size) / 2 + size * 0.22, size, font: script, color: rgb(0.08, 0.12, 0.32) });
+          } else if (p.width !== undefined && p.height !== undefined) {
+            // FIELD-PARITY-1 P0-2 — a value with a box is drawn inside it.
+            const layout = stampTextInBox(page, font, { x: p.x, y: p.y, width: p.width, height: p.height }, p.value, p.font_size);
+            if (layout.truncated) truncated.push(p.field_key);
           } else {
-            page.drawText(p.value, { x: p.x, y: p.y, size: p.size ?? 11, font, color: rgb(0, 0, 0) });
+            stampTextUnbounded(page, font, { x: p.x, y: p.y }, p.value, p.size ?? TEXT_BOX_MAX_SIZE);
           }
         }
       }
@@ -653,11 +776,21 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           font: p.font,
           stamp: p.stamp,
           checked: p.checked,
+          // FIELD-PARITY-1 P3 — undefined for every earlier placement (JSON drops it), so
+          // existing manifests hash exactly as before.
+          shape: p.shape,
+          font_size: p.font_size,
         }))),
         source_artifact_sha256,
         output_sha256,
       };
-      return { bytes, sha256: output_sha256, page_count: doc.getPageCount(), provenance };
+      return {
+        bytes,
+        sha256: output_sha256,
+        page_count: doc.getPageCount(),
+        provenance,
+        ...(truncated.length > 0 ? { truncated_field_keys: truncated } : {}),
+      };
     } catch (e) {
       if (e instanceof RenderFailedError) throw e;
       throw new RenderFailedError(e instanceof Error ? e.message : String(e));
@@ -682,6 +815,16 @@ function drawMark(page: PDFPage, p: PreparedField, checked: boolean): void {
   // SVG path in a y-down frame anchored at the square's top-left corner.
   const path = `M ${side * 0.2} ${side * 0.52} L ${side * 0.42} ${side * 0.74} L ${side * 0.8} ${side * 0.24}`;
   page.drawSvgPath(path, { x: p.x, y: p.y + side, borderColor: ink, borderWidth: Math.max(1, side * 0.12) });
+}
+
+// FIELD-PARITY-1 P3 T-5 — a radio button: a circle at the box's lower-left corner, sized to
+// the box's shorter side, with a filled dot when chosen. Vector only (no glyph).
+function drawRadio(page: PDFPage, p: PreparedField, checked: boolean): void {
+  const side = Math.max(6, Math.min(p.width ?? 12, p.height ?? 12));
+  const r = side / 2;
+  const ink = rgb(0, 0, 0);
+  page.drawCircle({ x: p.x + r, y: p.y + r, size: r, borderColor: ink, borderWidth: Math.max(0.6, side * 0.07) });
+  if (checked) page.drawCircle({ x: p.x + r, y: p.y + r, size: r * 0.5, color: ink });
 }
 
 // PX-2 — DocuSign-style signature frame: a rounded left bracket whose top and

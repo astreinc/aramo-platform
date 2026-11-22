@@ -1,3 +1,4 @@
+import { FIELD_DEFAULTS, fieldTypesFor } from '@aramo/sign-fields';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -5,7 +6,7 @@ import { clampBox, toPdf, toTopLeft, type LoadedPdf } from '../pdf';
 
 import { FixedFormStudio, type FixedFormStudioDataSource, type FixedFormStudioTemplate } from './FixedFormStudio';
 import { FixedFormPreview } from './FixedFormPreview';
-import { base64ToBytes, bytesToBase64, nextFieldKey, roleKeyFromLabel, type FixedFormVersionView } from './fixed-form-model';
+import { FIXED_FORM_FIELD_TYPES, base64ToBytes, bytesToBase64, nextFieldKey, roleKeyFromLabel, type FixedFormVersionView } from './fixed-form-model';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.2 / §7.3 — the Platform Studio's
 // fixed-form mode and the tenant read-only preview. pdf.js does not run under jsdom: a fake
@@ -78,6 +79,36 @@ describe('fixed-form model helpers', () => {
   });
 });
 
+describe('FIELD-PARITY-1 P1-0 / P1-2 — the palette is the catalog', () => {
+  it('offers exactly the template_fixed_form types, in the Studio order, with the catalog sizes and required defaults', () => {
+    // FIELD-PARITY-1 P3 (R-1) — the original six first, then the profile types, ACKNOWLEDGEMENT and the new types.
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type)).toEqual([
+      'SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX',
+      'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT',
+    ]);
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type).sort()).toEqual([...fieldTypesFor('template_fixed_form')].sort());
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label).slice(0, 6)).toEqual(['Signature', 'Initials', 'Name', 'Date', 'Text', 'Checkbox']);
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'DATE')?.label).toBe('Chosen date');
+    for (const t of FIXED_FORM_FIELD_TYPES) expect({ width: t.width, height: t.height, required: t.required }).toEqual(FIELD_DEFAULTS[t.type]);
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'SIGNATURE')).toMatchObject({ width: 230, height: 50, required: true });
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'TEXT')).toMatchObject({ width: 230, height: 22, required: false });
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'CHECKBOX')).toMatchObject({ width: 18, height: 18, required: false });
+  });
+
+  it('a placed field takes the catalog default size and required default', async () => {
+    const ds = source();
+    render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    await screen.findByTestId('ffs-page-0');
+    fireEvent.click(screen.getByTestId('ffs-add-SIGNATURE'));
+    fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(ds.saveLayout).toHaveBeenCalled());
+    const body = (ds.saveLayout as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { fields: Array<Record<string, unknown>> };
+    expect(body.fields[0]).toMatchObject({ field_type: 'SIGNATURE', width: 230, height: 50, required: true });
+    expect(body.fields[1]).toMatchObject({ field_type: 'TEXT', width: 230, height: 22, required: false });
+  });
+});
+
 describe('FixedFormStudio (§7.2)', () => {
   it('places a field for the chosen role, saves the layout, checks, then publishes', async () => {
     const ds = source();
@@ -132,6 +163,52 @@ describe('FixedFormStudio (§7.2)', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(screen.queryByTestId('ffs-add-SIGNATURE')).toBeNull();
     expect(screen.queryByRole('button', { name: /Upload PDF/ })).toBeNull();
+  });
+
+  it('FIELD-PARITY-1 P0-1 — the target page follows the scrolled page column; a new field lands in its visible part', async () => {
+    const page = { width: 612, height: 792 };
+    const three = vi.fn(async (): Promise<LoadedPdf> => ({ pages: [page, page, page], render: async () => undefined, destroy: () => undefined }));
+    const pdf = { asset_id: 'a1', sha256: 'f'.repeat(64), byte_size: 2048, page_count: 3, pages: [page, page, page] };
+    const ds = source({ view: vi.fn(async () => view({ content: { ...view().content, pdf } })) });
+    // Layout stand-in (jsdom has none): the column sits at y 100..900 (cut to jsdom's 768px
+    // window); pages are 720×932px with a 16px gap, shifted up by the column's scrollTop.
+    let scrollTop = 0;
+    const s = 720 / 612;
+    const rect = (left: number, top: number, w: number, h: number) => ({ left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top, toJSON: () => ({}) });
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.dataset['testid'] === 'ffs-center') return rect(300, 100, 840, 800) as DOMRect;
+      const m = /^ffs-page-(\d+)$/.exec(this.dataset['testid'] ?? '');
+      if (m !== null) return rect(360, 116 + Number(m[1]) * (792 * s + 16) - scrollTop, 720, 792 * s) as DOMRect;
+      return rect(0, 0, 0, 0) as DOMRect;
+    });
+    try {
+      render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={three} />);
+      await screen.findByTestId('ffs-page-2');
+      expect(screen.getByText(/Fields are added to page 1\./)).toBeInTheDocument();
+
+      // Scroll the column so page 3 fills the view, its top 184px above the column's top.
+      scrollTop = 2 * (792 * s + 16) + 116 - 100 + 184;
+      fireEvent.scroll(screen.getByTestId('ffs-center'));
+      expect(await screen.findByText(/Fields are added to page 3\./)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(ds.saveLayout).toHaveBeenCalled());
+      const saved = (ds.saveLayout as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as { fields: Array<{ page_number: number; x: number; y: number; height: number }> };
+      const f = saved.fields[0] ?? { page_number: -1, x: -1, y: -1, height: 0 };
+      expect(f.page_number).toBe(2);
+      // Page 3's top is 184px above the view → the visible region starts 184/s pt down the page;
+      // the field sits 72pt inside it (top-left frame), stored bottom-left.
+      const top = 792 - f.y - f.height;
+      expect(top).toBeCloseTo(184 / s + 72, 1);
+      expect(f.x).toBe(72);
+
+      // A click on a page still selects it explicitly.
+      fireEvent.pointerDown(screen.getByTestId('ffs-page-0'));
+      expect(screen.getByText(/Fields are added to page 1\./)).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('a template with no version offers to start the first one', async () => {

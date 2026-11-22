@@ -5028,6 +5028,19 @@ paths:
         Refused 422 `VALIDATION_ERROR` details.reason `pdf_too_large` / `pdf_unsafe` / `pdf_invalid`.
         Stored once as a PlatformTemplateAsset under the platform prefix of the documents bucket; the
         draft points at it and the preview gate re-arms. DRAFT only. Requires `platform:document_template:manage`.
+
+        FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the upload, the
+        stored bytes and the response are unchanged):
+        `import_fields` — the PDF's form fields (AcroForm) become fields (text / multi-line / dropdown /
+        list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature →
+        SIGNATURE; no signer role yet), the form's active content (field / widget / page / document
+        actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
+        before the gate above decides; an XFA-only form is refused 422 details.reason `xfa_only_form`.
+        `apply_text_tags` — `{{type:role[:required|optional][:label=…]}}` tags become fields sized to the
+        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag is
+        covered with white on the stored PDF (doc/sign/text-tags.md). The response then carries
+        `field_import` (the fields added after any existing ones, and named warnings). A non-boolean flag
+        is refused 400 details.reason `import_flag_invalid`.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -5077,6 +5090,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FixedFormPdfContent'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
+  /platform/document-templates/versions/{versionId}/fixed-form/field-suggestions:
+    get:
+      operationId: getPlatformFixedFormFieldSuggestions
+      tags: [Platform Document Templates]
+      summary: Suggested fields for a fixed-form version's PDF (FIELD-PARITY-1 P2-4, "Suggest fields").
+      description: |
+        FIELD-PARITY-1 §5 P2-4. The shared deterministic detector (the one Aramo Sign's envelope route runs with
+        `detect=all`), over the stored PDF's text layer and drawn rectangles: label patterns ("Signature:", "Initials",
+        "Name:", "Date:", …), underscore lines, empty boxes and ruled table cells, and checkbox glyphs (☐ □). Only the
+        fixed-form palette's types are suggested: a label of a type the form cannot hold (e.g. "Title:", "Email:")
+        becomes TEXT. Field frame: page_number 0-based, PDF points, origin bottom-left. Overlaps removed; at most 300;
+        rotated pages are listed in `skipped_pages`. No model and no network; no text is logged. A version without a
+        PDF, or a PDF that cannot be read, answers an empty list. Requires `platform:document_template:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The suggestions (possibly none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormFieldSuggestions'
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -7252,6 +7299,99 @@ components:
         content_base64:
           type: string
           description: The official PDF, base64 (at most 10 MB decoded).
+        import_fields:
+          type: boolean
+          default: false
+          description: FIELD-PARITY-1 P2-5 — import the PDF's form fields, strip its form scripting and flatten it.
+        apply_text_tags:
+          type: boolean
+          default: false
+          description: FIELD-PARITY-1 P2-6 — turn {{type:role…}} text tags into fields and cover them.
+    FieldImportWarning:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - pdf_field_type_unsupported
+            - pdf_field_type_not_allowed
+            - pdf_field_read_only
+            - pdf_field_hidden
+            - pdf_field_signed
+            - pdf_field_not_on_page
+            - text_tag_invalid
+            - text_tag_type_unknown
+            - text_tag_type_not_allowed
+            - text_tag_option_unknown
+            - text_tag_label_not_applicable
+            - text_tag_rotated_page
+            - text_tags_unreadable
+            - text_tag_role_missing
+            - text_tag_role_unknown
+            - field_assigned_to_first_recipient
+            - too_many_fields
+        message: { type: string }
+        name:
+          type: string
+          description: The form field name or the tag (without braces) the warning is about.
+        page_number: { type: integer, description: 0-based }
+    FixedFormFieldImport:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload added to the draft.
+      required: [fields, warnings, stripped]
+      properties:
+        fields:
+          type: array
+          description: The fields added (after the existing ones), each with where it came from.
+          items:
+            $ref: '#/components/schemas/FixedFormImportedField'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldImportWarning'
+        stripped:
+          type: array
+          description: The active-content PDF keys removed (e.g. /AcroForm, /XFA, /A, /AA, /JavaScript, /OpenAction).
+          items: { type: string }
+    FixedFormImportedField:
+      type: object
+      additionalProperties: false
+      description: FIELD-PARITY-1 P2-5 / P2-6 — a FixedFormField added by an upload, with where it came from.
+      required: [field_key, field_type, binding_key, signer_role, required, page_number, x, y, width, height, ordinal, label, group_key, group_rule, min_selected, name_mode, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, source, source_name]
+      properties:
+        field_key: { type: string }
+        field_type: { type: string, enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT] }
+        binding_key: { type: 'null' }
+        signer_role:
+          type: [string, 'null']
+          description: The matched signer role of a tag; null for a form field or an unmatched tag.
+        required: { type: boolean }
+        page_number: { type: integer, description: 0-based }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+        ordinal: { type: integer }
+        label: { type: [string, 'null'], maxLength: 200 }
+        group_key: { type: [string, 'null'], maxLength: 64 }
+        group_rule: { type: [string, 'null'], enum: [SELECT_ONE, null] }
+        min_selected: { type: 'null' }
+        name_mode: { type: 'null' }
+        # FIELD-PARITY-1 P3 — an imported field carries no P3 setting (null / false).
+        tooltip: { type: 'null' }
+        placeholder: { type: 'null' }
+        read_only: { type: boolean, enum: [false] }
+        sender_filled: { type: boolean, enum: [false] }
+        validation: { type: 'null' }
+        font_size: { type: 'null' }
+        data_name: { type: 'null' }
+        options: { type: 'null' }
+        source: { type: string, enum: [pdf_form, text_tag] }
+        source_name: { type: string, description: 'The PDF form field name, or the tag without braces.' }
     FixedFormPdfContent:
       type: object
       additionalProperties: false
@@ -7285,7 +7425,12 @@ components:
       required: [field_key, field_type, page_number, x, y, width, height]
       properties:
         field_key: { type: string }
-        field_type: { type: string, enum: [TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE, INITIALS] }
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT]
+          description: >-
+            FIELD-PARITY-1 P3 (ruling R-1) — every type the catalog allows on a template surface (the
+            template_fixed_form projection); never PAYMENT.
         binding_key:
           type: [string, 'null']
           description: A variable that prefills a TEXT field (then signer_role is null).
@@ -7297,6 +7442,118 @@ components:
         width: { type: [number, 'null'] }
         height: { type: [number, 'null'] }
         ordinal: { type: integer }
+        # FIELD-PARITY-1 P1-3 — the Aramo Sign field settings (M-A6 §2). A setting the field type does not
+        # take is refused 422 (details.reason field_config_not_applicable); NULL = not set.
+        label:
+          type: [string, 'null']
+          maxLength: 200
+          description: The field's name (FIELD-PARITY-1 P3 S-1, any type); a check box's caption, a RADIO's option text.
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+          description: CHECKBOX or RADIO (required for RADIO, rule always SELECT_ONE) — boxes of one signer role sharing a key form a group.
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, SELECT_ANY, null]
+          description: CHECKBOX only, needs group_key (default SELECT_ANY).
+        min_selected:
+          type: [integer, 'null']
+          minimum: 1
+          description: CHECKBOX only, needs group_key; 1 for SELECT_ONE (NULL = 1).
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+          description: SIGNER_NAME only — NULL = SIGNER_PROFILE (Sign fills the signer's name).
+        tooltip:
+          type: [string, 'null']
+          maxLength: 500
+          description: FIELD-PARITY-1 P3 S-1 — hint shown to the signer.
+        placeholder:
+          type: [string, 'null']
+          maxLength: 200
+          description: FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types).
+        read_only:
+          type: boolean
+          description: FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled).
+        sender_filled:
+          type: boolean
+          description: >-
+            FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE,
+            DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag
+            SIGN_SENDER_FILLED_FIELDS_ENABLED is on.
+        validation:
+          type: [string, 'null']
+          enum: [email, phone, us_zip, number_range, date_range, max_length, null]
+          description: >-
+            FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER:
+            number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+        font_size:
+          type: [integer, 'null']
+          minimum: 6
+          maximum: 36
+          description: FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box).
+        data_name:
+          type: [string, 'null']
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field.
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+    FieldOptions:
+      type: object
+      additionalProperties: false
+      description: >-
+        FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN:
+        choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER:
+        format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default
+        2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation
+        date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or
+        a key the type does not take, is refused (options_invalid).
+      properties:
+        choices:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DropdownChoice'
+        format:
+          type: string
+          enum: [plain, money]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 6
+        min:
+          type: number
+        max:
+          type: number
+        min_date:
+          type: string
+          format: date
+        max_date:
+          type: string
+          format: date
+        max_length:
+          type: integer
+          minimum: 1
+          maximum: 4000
+    DropdownChoice:
+      type: object
+      additionalProperties: false
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 100
+        label:
+          type: string
+          maxLength: 200
     FixedFormFieldList:
       type: object
       additionalProperties: false
@@ -7318,6 +7575,39 @@ components:
           maxItems: 200
           items:
             $ref: '#/components/schemas/FixedFormField'
+    FixedFormFieldSuggestions:
+      type: object
+      description: FIELD-PARITY-1 P2-4 — the detector's suggestions for a fixed form (types of the fixed-form palette only).
+      required: [suggestions, skipped_pages]
+      properties:
+        suggestions:
+          type: array
+          maxItems: 300
+          items:
+            type: object
+            required: [type, page, page_number, x, y, width, height, reason, confidence]
+            properties:
+              type:
+                type: string
+                enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX]
+              page: { type: integer, minimum: 1, description: 1-based page number. }
+              page_number: { type: integer, minimum: 0, description: 0-based page index (the field's page_number). }
+              x: { type: number, minimum: 0 }
+              y: { type: number, minimum: 0 }
+              width: { type: number, exclusiveMinimum: 0 }
+              height: { type: number, exclusiveMinimum: 0 }
+              reason:
+                type: string
+                description: "`label:<Label>` (e.g. `label:Title`), `underscore_line`, `empty_box`, `empty_cell` or `checkbox_glyph`."
+              confidence: { type: number, minimum: 0, maximum: 1 }
+        skipped_pages:
+          type: array
+          items:
+            type: object
+            required: [page, reason]
+            properties:
+              page: { type: integer, minimum: 1 }
+              reason: { type: string, enum: [rotated] }
     FixedFormVersionView:
       type: object
       additionalProperties: false
@@ -7384,6 +7674,9 @@ components:
               field_key: { type: string }
               role_key: { type: string }
         previewed: { type: boolean }
+        field_import:
+          $ref: '#/components/schemas/FixedFormFieldImport'
+          description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.
     PlatformPrivacyRequest:
       type: object
       description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request in the operator queue (counts only).

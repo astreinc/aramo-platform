@@ -200,13 +200,18 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     pdf.addPage([612, 792]);
     sources.getSourcePdf.mockResolvedValue(await pdf.save());
     const base = { envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72, y: 72, width: 200, height: 40 };
-    // M-A6 §2.1 — ACKNOWLEDGEMENT stays engine-only; SIGNER_NAME and CHECKBOX are authorable.
-    for (const bad of [{ field_type: 'STAMP' }, { field_type: 'ACKNOWLEDGEMENT' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
+    // M-A6 §2.1 — SIGNER_NAME and CHECKBOX are authorable. FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT too (R-2).
+    for (const bad of [{ field_type: 'STAMP' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
       await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, ...bad }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
-    await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, field_type: 'ACKNOWLEDGEMENT' }] }, 'r')).rejects.toMatchObject({
-      // M-A12 W1-C.4 — + the profile text fields.
-      context: { details: { reason: 'v1_field_type', allowed: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'] } },
+    await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, field_type: 'STAMP' }] }, 'r')).rejects.toMatchObject({
+      // M-A12 W1-C.4 — + the profile text fields; FIELD-PARITY-1 P3 — + ACKNOWLEDGEMENT and the new types.
+      context: {
+        details: {
+          reason: 'v1_field_type',
+          allowed: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT'],
+        },
+      },
     });
     expect(repo.replaceDraftFields).not.toHaveBeenCalled();
     await svc.replaceFields(AUTH, 'e1', { fields: [base] }, 'r');
@@ -248,7 +253,7 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
       const cases: Array<[Record<string, unknown>, string]> = [
         [{ ...name, name_mode: 'SENDER' }, 'name_mode_invalid'],
         [{ ...box, name_mode: 'SIGNER_PROFILE' }, 'field_config_not_applicable'],
-        [{ ...name, label: 'Agree' }, 'field_config_not_applicable'],
+        [{ ...name, validation: 'email' }, 'field_config_not_applicable'],
         [{ ...box, field_type: 'TEXT', width: 100, group_key: 'g' }, 'field_config_not_applicable'],
         [{ ...box, group_rule: 'SELECT_ONE' }, 'checkbox_group_required'],
         [{ ...box, min_selected: 2 }, 'checkbox_group_required'],
@@ -296,6 +301,105 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
       }
       await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...box, group_key: 'g', min_selected: 3 }, { ...box, y: 100, group_key: 'g', min_selected: 3 }] }, 'r')).rejects.toMatchObject({
         context: { details: { reason: 'checkbox_group_min_exceeds_size' } },
+      });
+    });
+
+    // FIELD-PARITY-1 P3 §6 — the new types and settings, through the one settings rule.
+    describe('FIELD-PARITY-1 P3 — new types and settings', () => {
+      const at = { envelope_document_id: 'd1', signer_id: 's1', page_number: 0, x: 72, y: 72, width: 150, height: 22 };
+
+      it('accepts the new types with their settings and stores them', async () => {
+        const { svc, repo } = await setup();
+        const fields = [
+          { ...at, field_type: 'DATE', label: 'Effective date', validation: 'date_range', options: { min_date: '2026-01-01' }, data_name: 'effective', font_size: 9 },
+          { ...at, y: 110, field_type: 'DROPDOWN', options: { choices: ['a', { value: 'b', label: 'Bee' }] }, placeholder: 'Choose', tooltip: 'Pick one' },
+          { ...at, y: 150, width: 14, height: 14, field_type: 'RADIO', label: 'Yes', group_key: 'vote', required: false },
+          { ...at, y: 170, width: 14, height: 14, field_type: 'RADIO', label: 'No', group_key: 'vote', required: false },
+          { ...at, y: 200, field_type: 'NUMBER', options: { format: 'money' } },
+          { ...at, y: 240, field_type: 'MULTILINE_TEXT', height: 60, validation: 'max_length', options: { max_length: 300 } },
+          { ...at, y: 320, field_type: 'ACKNOWLEDGEMENT', width: 300, label: 'I have read the policy' },
+          { ...at, y: 360, field_type: 'TEXT', label: 'Reference', validation: 'us_zip' },
+        ];
+        await svc.replaceFields(AUTH, 'e1', { fields }, 'r');
+        const s = stored(repo);
+        expect(s.map((f) => f['field_type'])).toEqual(['DATE', 'DROPDOWN', 'RADIO', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT', 'TEXT']);
+        expect(s[0]).toMatchObject({ label: 'Effective date', validation: 'date_range', options: { min_date: '2026-01-01' }, data_name: 'effective', font_size: 9, sender_filled: false, read_only: false });
+        expect(s[1]).toMatchObject({ options: { choices: [{ value: 'a', label: 'a' }, { value: 'b', label: 'Bee' }] }, placeholder: 'Choose', tooltip: 'Pick one' });
+        expect(s[2]).toMatchObject({ group_key: 'vote', group_rule: 'SELECT_ONE', min_selected: null });
+        expect(s[4]).toMatchObject({ options: { format: 'money', currency: 'USD', decimals: 2 } });
+        expect(s[6]).toMatchObject({ label: 'I have read the policy' });
+        expect(s[7]).toMatchObject({ label: 'Reference', validation: 'us_zip' });
+        for (const f of s) expect(f).not.toHaveProperty('sender_value');
+      });
+
+      it('refuses a broken setting with its named reason', async () => {
+        const { svc } = await setup();
+        const cases: Array<[Record<string, unknown>, string]> = [
+          [{ ...at, field_type: 'DROPDOWN' }, 'dropdown_choices_invalid'],
+          [{ ...at, field_type: 'RADIO', width: 14, height: 14 }, 'radio_group_required'],
+          [{ ...at, field_type: 'RADIO', width: 14, height: 14, group_key: 'v', group_rule: 'SELECT_ANY' }, 'radio_group_invalid'],
+          [{ ...at, field_type: 'NUMBER', options: { currency: 'EUR' } }, 'number_format_invalid'],
+          [{ ...at, field_type: 'TEXT', validation: 'number_range' }, 'validation_invalid'],
+          [{ ...at, field_type: 'TEXT', font_size: 99 }, 'font_size_invalid'],
+          [{ ...at, field_type: 'TEXT', data_name: 'Bad Name' }, 'data_name_invalid'],
+          [{ ...at, field_type: 'SIGNATURE', placeholder: 'x' }, 'field_config_not_applicable'],
+          [{ ...at, field_type: 'TEXT', read_only: true }, 'read_only_requires_sender_filled'],
+        ];
+        for (const [f, reason] of cases) {
+          await expect(svc.replaceFields(AUTH, 'e1', { fields: [f] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason } } });
+        }
+      });
+
+      it('S-5 is dark: sender_filled is refused while SIGN_SENDER_FILLED_FIELDS_ENABLED is off; a value stays refused', async () => {
+        const { svc, repo } = await setup();
+        await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, field_type: 'TEXT', sender_filled: true, value: 'ACME-1' }] }, 'r')).rejects.toMatchObject({
+          context: { details: { reason: 'sender_filled_not_available', field: 'sender_filled' } },
+        });
+        await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, field_type: 'DATE', value: '2026-05-01' }] }, 'r')).rejects.toMatchObject({
+          context: { details: { reason: 'sender_value_refused', field: 'value' } },
+        });
+        expect(repo.replaceDraftFields).not.toHaveBeenCalled();
+      });
+
+      it('S-5 with the flag on: the sender value is checked by the value rule and handed to the repository as the sender\'s', async () => {
+        vi.stubEnv('SIGN_SENDER_FILLED_FIELDS_ENABLED', '1');
+        try {
+          const { svc, repo } = await setup();
+          await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, field_type: 'DATE', sender_filled: true, value: '2026-02-30' }] }, 'r')).rejects.toMatchObject({
+            context: { details: { reason: 'date_value_invalid', field: 'value' } },
+          });
+          await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, field_type: 'TEXT', value: 'x' }] }, 'r')).rejects.toMatchObject({
+            context: { details: { reason: 'sender_value_refused' } },
+          });
+          const radio = { ...at, width: 14, height: 14, field_type: 'RADIO', group_key: 'v', sender_filled: true, read_only: true };
+          await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...radio, value: 'true' }, { ...radio, y: 100, value: 'true' }] }, 'r')).rejects.toMatchObject({
+            context: { details: { reason: 'radio_group_select_one' } },
+          });
+          await svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, field_type: 'NUMBER', sender_filled: true, read_only: true, value: '1250.5', options: { format: 'money' } }, { ...at, y: 150, field_type: 'TEXT', sender_filled: true }] }, 'r');
+          const s = stored(repo);
+          expect(s[0]).toMatchObject({ sender_filled: true, read_only: true, sender_value: '1250.5' });
+          expect(s[1]).toMatchObject({ sender_filled: true, sender_value: null });
+          expect((repo.replaceDraftFields.mock.calls.at(-1)?.[0] as { actor_ref?: string }).actor_ref).toBe(AUTH.sub);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      });
+
+      it('readiness: a required sender-filled field needs the sender\'s value', () => {
+        const { svc } = envelopeService();
+        const base = { documents: [{}], recipients: [{ id: 's1', name: 'Alex' }] };
+        const sig = { signer_id: 's1', field_type: 'SIGNATURE', required: true };
+        expect(svc.readiness({ ...base, fields: [sig, { signer_id: 's1', field_type: 'TEXT', required: true, sender_filled: true, value: null, label: 'Reference' }] } as never)).toEqual({
+          ok: false,
+          problems: ['Fill in Reference before sending'],
+        });
+        expect(svc.readiness({ ...base, fields: [sig, { signer_id: 's1', field_type: 'TEXT', required: true, sender_filled: true, value: 'R-1' }] } as never)).toEqual({ ok: true, problems: [] });
+      });
+
+      it('a legacy engine ACKNOWLEDGEMENT (no recipient / size) still passes through unchanged; a sender-authored one is a normal field', async () => {
+        const { svc, repo } = await setup();
+        await svc.replaceFields(AUTH, 'e1', { fields: [{ ...at, id: 'f-ack', field_type: 'ACKNOWLEDGEMENT', width: 300 }] }, 'r');
+        expect(stored(repo)[0]).not.toHaveProperty('passthrough_id');
       });
     });
   });

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 // The signer app's native controls, in ONE place. sign-web is the isolated
 // external-signer SPA (scope:sign, DOC-4 R-4-2) with no design-system
@@ -26,4 +26,11 @@ export function CheckIn(props: InputHTMLAttributes<HTMLInputElement>) {
 export function TextBox(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   // eslint-disable-next-line no-restricted-syntax -- isolated signer SPA native control (scope:sign, no design-system dep).
   return <textarea className="sg-input sg-input--area" {...props} />;
+}
+
+// FIELD-PARITY-1 P3 T-4 — a DROPDOWN field's choices (the browser's own list: keyboard, screen
+// reader and mobile picker for free).
+export function SelectIn({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
+  // eslint-disable-next-line no-restricted-syntax -- isolated signer SPA native control (scope:sign, no design-system dep).
+  return <select className="sg-input sg-select" {...props}>{children}</select>;
 }

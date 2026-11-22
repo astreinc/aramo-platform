@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { isDraftEditable } from '@aramo/sign-client';
@@ -101,6 +101,56 @@ export interface SenderFieldInput {
   // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
   payment_amount_minor?: number | null;
   payment_currency?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the field settings (validated by the caller with
+  // @aramo/sign-fields parseFieldSettings; the type-scoped CHECKs are the backstop).
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: FieldOptionsJson | null;
+  // S-5 (ruling R-3, dark) — the value the sender typed for a sender_filled field (validated by
+  // the caller with fieldValueRefusal). Absent / NULL: no value yet. Only a sender_filled field
+  // may carry one.
+  sender_value?: string | null;
+}
+
+/** FIELD-PARITY-1 P3 — the per-type options of a field (a JSON object). */
+export type FieldOptionsJson = Readonly<Record<string, unknown>>;
+
+/** FIELD-PARITY-1 P3 — the setting columns of a field row (absent → NULL / false). */
+export function fieldSettingColumns(f: {
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: FieldOptionsJson | null;
+}): {
+  tooltip: string | null;
+  placeholder: string | null;
+  read_only: boolean;
+  sender_filled: boolean;
+  validation: string | null;
+  font_size: number | null;
+  data_name: string | null;
+  options?: never;
+} {
+  return {
+    tooltip: f.tooltip ?? null,
+    placeholder: f.placeholder ?? null,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
+    validation: f.validation ?? null,
+    font_size: f.font_size ?? null,
+    data_name: f.data_name ?? null,
+    // A JSON column: absent leaves the column NULL (Prisma refuses a bare null for JSON).
+    ...(f.options !== undefined && f.options !== null ? { options: f.options as never } : {}),
+  };
 }
 
 // Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
@@ -126,6 +176,22 @@ export interface TemplateFieldInput {
   width: number;
   height: number;
   required: boolean;
+  // FIELD-PARITY-1 P1-4 — the template field's Sign settings (M-A6 §2), carried unchanged.
+  // Absent / NULL = not set; a SIGNER_NAME with no name_mode is SIGNER_PROFILE (the default).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the template field's other settings, carried unchanged.
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: FieldOptionsJson | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
@@ -416,9 +482,16 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
-            // M-A6 §3.3 / §2.2 — the role's printed name is filled by Sign from the
-            // signer's profile (SIGNER_PROFILE, the default name mode).
-            name_mode: f.field_type === 'SIGNER_NAME' ? 'SIGNER_PROFILE' : null,
+            // FIELD-PARITY-1 P1-4 — the template's settings. M-A6 §3.3 / §2.2 — a SIGNER_NAME
+            // the template left without a name mode is filled by Sign from the signer's
+            // profile (SIGNER_PROFILE, the default name mode), exactly as before.
+            label: f.label ?? null,
+            group_key: f.group_key ?? null,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            name_mode: f.field_type === 'SIGNER_NAME' ? (f.name_mode ?? 'SIGNER_PROFILE') : null,
+            // FIELD-PARITY-1 P3 — the other settings, unchanged.
+            ...fieldSettingColumns(f),
           },
         });
       }
@@ -502,7 +575,11 @@ export class EsignSenderRepository {
     expected_revision?: number;
     // Sign Mobile D-W6-2 — the page sizes the caller measured from the accepted bytes.
     pages?: readonly DocumentPageSize[];
-  }): Promise<SenderDocumentRow & { revision: number }> {
+    // FIELD-PARITY-1 P2-5 / P2-6 — fields imported from the upload (form fields, text tags),
+    // created on the new document in the same transaction. Each names a recipient of this
+    // envelope (checked here, as replaceDraftFields does).
+    fields?: readonly Omit<SenderFieldInput, 'envelope_document_id' | 'passthrough_id'>[];
+  }): Promise<SenderDocumentRow & { revision: number; field_ids: string[] }> {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const last = await tx.envelopeDocument.findFirst({
@@ -535,9 +612,39 @@ export class EsignSenderRepository {
       if (input.pages !== undefined && input.pages.length > 0) {
         await tx.signEnvelopeDocumentPages.create({ data: { envelope_document_id: row.id, tenant_id: input.tenant_id, pages: input.pages.map((p) => ({ width: p.width, height: p.height })) } });
       }
+      const field_ids: string[] = [];
+      if (input.fields !== undefined && input.fields.length > 0) {
+        const signers = await tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
+        const signerIds = new Set(signers.map((s) => s.id));
+        for (const f of input.fields) {
+          if (f.signer_id === null || !signerIds.has(f.signer_id)) throw new EnvelopeNotFoundError(`signer ${f.signer_id ?? 'none'}`);
+          const id = randomUUID();
+          await tx.signatureField.create({
+            data: {
+              id,
+              tenant_id: input.tenant_id,
+              envelope_document_id: row.id,
+              signer_id: f.signer_id,
+              field_type: f.field_type,
+              page_number: f.page_number,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              required: f.required,
+              label: f.label ?? null,
+              group_key: f.group_key ?? null,
+              group_rule: f.group_rule ?? null,
+              min_selected: f.min_selected ?? null,
+              name_mode: f.name_mode ?? null,
+            },
+          });
+          field_ids.push(id);
+        }
+      }
       // Sign Mobile D-W6-1 — the revision this write produced, so the caller can
       // chain its next If-Match without re-reading the envelope.
-      return { ...row, revision: await this.repo.revisionIn(tx, input.envelope_id) };
+      return { ...row, revision: await this.repo.revisionIn(tx, input.envelope_id), field_ids };
     });
   }
 
@@ -748,7 +855,11 @@ export class EsignSenderRepository {
   }
 
   // Replaces every field of the envelope. Documents and signers must belong to it.
-  async replaceDraftFields(input: { tenant_id: string; envelope_id: string; fields: readonly SenderFieldInput[]; expected_revision?: number }): Promise<number> {
+  // FIELD-PARITY-1 P3 S-5 — a sender_filled field may carry the sender's value (sender_value):
+  // it is stored as the field's value (filled_at = now), and the write is recorded in the
+  // hash-chained ledger as SENDER_FIELD_VALUES_SET, attributed to the sender (actor_ref), with
+  // each value's SHA-256 (never the value itself).
+  async replaceDraftFields(input: { tenant_id: string; envelope_id: string; fields: readonly SenderFieldInput[]; expected_revision?: number; actor_ref?: string }): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
@@ -773,11 +884,15 @@ export class EsignSenderRepository {
       if (docIds.size > 0) {
         await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] }, ...(keep.length > 0 ? { id: { notIn: keep } } : {}) } });
       }
+      const senderValues: Array<{ field_id: string; field_type: string; label: string | null; data_name: string | null; value_sha256: string }> = [];
+      const now = new Date();
       for (const f of input.fields) {
         if (f.passthrough_id !== undefined) continue;
+        const id = randomUUID();
+        const senderValue = f.sender_filled === true && typeof f.sender_value === 'string' ? f.sender_value : null;
         await tx.signatureField.create({
           data: {
-            id: randomUUID(),
+            id,
             tenant_id: input.tenant_id,
             envelope_document_id: f.envelope_document_id,
             signer_id: f.signer_id,
@@ -795,7 +910,22 @@ export class EsignSenderRepository {
             name_mode: f.name_mode ?? null,
             payment_amount_minor: f.payment_amount_minor ?? null,
             payment_currency: f.payment_currency ?? null,
+            ...fieldSettingColumns(f),
+            ...(senderValue !== null ? { value: senderValue, filled_at: now } : {}),
           },
+        });
+        if (senderValue !== null) {
+          senderValues.push({ field_id: id, field_type: f.field_type, label: f.label ?? null, data_name: f.data_name ?? null, value_sha256: createHash('sha256').update(senderValue).digest('hex') });
+        }
+      }
+      if (senderValues.length > 0) {
+        await this.repo.appendEvent(tx, {
+          tenant_id: input.tenant_id,
+          envelope_id: input.envelope_id,
+          event_type: SENDER_FIELD_VALUES_SET_EVENT,
+          actor_type: 'SERVICE',
+          ...(input.actor_ref !== undefined ? { actor_ref: input.actor_ref } : {}),
+          payload: { entered_by: 'SENDER', fields: senderValues },
         });
       }
       return input.fields.length;
@@ -806,7 +936,24 @@ export class EsignSenderRepository {
 // M-A6 §2 (coordinator ruling) — identical type, recipient, document, page,
 // geometry, required setting and configuration.
 function sameField(
-  stored: { field_type: string; signer_id: string | null; envelope_document_id: string; page_number: number; x: number; y: number; width: number | null; height: number | null; required: boolean; label: string | null; group_key: string | null; group_rule: string | null; min_selected: number | null; name_mode: string | null },
+  stored: {
+    field_type: string;
+    signer_id: string | null;
+    envelope_document_id: string;
+    page_number: number;
+    x: number;
+    y: number;
+    width: number | null;
+    height: number | null;
+    required: boolean;
+    label: string | null;
+    group_key: string | null;
+    group_rule: string | null;
+    min_selected: number | null;
+    name_mode: string | null;
+    read_only?: boolean;
+    sender_filled?: boolean;
+  },
   f: SenderFieldInput,
 ): boolean {
   return stored.field_type === f.field_type
@@ -822,8 +969,14 @@ function sameField(
     && stored.group_key === (f.group_key ?? null)
     && stored.group_rule === (f.group_rule ?? null)
     && stored.min_selected === (f.min_selected ?? null)
-    && stored.name_mode === (f.name_mode ?? null);
+    && stored.name_mode === (f.name_mode ?? null)
+    // FIELD-PARITY-1 P3 — a passed-through engine field is never sender-filled or read-only.
+    && (stored.read_only ?? false) === false
+    && (stored.sender_filled ?? false) === false;
 }
+
+/** FIELD-PARITY-1 P3 S-5 — the ledger event of the sender's values for sender-filled fields. */
+export const SENDER_FIELD_VALUES_SET_EVENT = 'SENDER_FIELD_VALUES_SET';
 
 export type { Db as SenderWorkspaceDb };
 

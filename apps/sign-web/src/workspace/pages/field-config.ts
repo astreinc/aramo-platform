@@ -1,86 +1,46 @@
+import {
+  DEFAULT_SETTINGS,
+  applySettings,
+  groupSize,
+  settingsFromWire,
+  settingsToWire,
+  type ConfigurableField,
+  type GroupRule,
+  type NameMode,
+  type PlacementSettings,
+  type SettingsPatch,
+} from '@aramo/field-placement-web';
+
 import type { EnvelopeField, FieldType } from '../api';
 
-// M-A6 §2 — the Name and Checkbox configuration in the sender editor. Pure
-// helpers (the editor state and the PUT payload), unit-tested on their own.
+// M-A6 §2 — the Name and Checkbox configuration in the sender editor: the wire mapping
+// (stored field ↔ editor settings, and the PUT payload's configuration). FIELD-PARITY-1 P1-5 —
+// the editor settings and the check-box group rules (applyConfig / groupSize) moved into the
+// shared placement editor (@aramo/field-placement-web), re-exported here under their old names.
+// FIELD-PARITY-1 P3 §6.2 — every setting the type takes (the catalog's fieldSettingsOf) now
+// travels: label, tooltip, placeholder, read-only, sender-filled with the sender's value,
+// validation, font size, data name and options, through the editor's shared wire mapping.
 
-export type NameMode = 'SIGNER_PROFILE' | 'SIGNER_ENTERED';
-export type GroupRule = 'SELECT_ONE' | 'SELECT_ANY';
+export type { NameMode, GroupRule, ConfigurableField };
+export type FieldConfig = PlacementSettings;
+export type ConfigPatch = SettingsPatch;
+export const DEFAULT_CONFIG: FieldConfig = DEFAULT_SETTINGS;
+export const applyConfig = applySettings;
+export { groupSize };
 
-export interface FieldConfig {
-  // SIGNER_NAME — the server fills the signer's name (SIGNER_PROFILE, default),
-  // or the signer types it.
-  nameMode: NameMode;
-  // CHECKBOX — caption, group key ('' = no group), rule and minimum.
-  label: string;
-  groupKey: string;
-  groupRule: GroupRule;
-  minSelected: number | null;
-}
-
-export interface ConfigurableField extends FieldConfig {
-  key: string;
-  signerId: string;
-  type: FieldType;
-  required: boolean;
-}
-
-export const DEFAULT_CONFIG: FieldConfig = { nameMode: 'SIGNER_PROFILE', label: '', groupKey: '', groupRule: 'SELECT_ANY', minSelected: null };
+/** The configuration members of a PUT field (and `value`, a sender-filled field's own value). */
+export type FieldConfigWire = Partial<
+  Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'value'>
+>;
 
 // Stored field → editor config.
 export function configFromWire(f: EnvelopeField): FieldConfig {
-  return {
-    nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE',
-    label: f.label ?? '',
-    groupKey: f.group_key ?? '',
-    groupRule: f.group_rule === 'SELECT_ONE' ? 'SELECT_ONE' : 'SELECT_ANY',
-    minSelected: f.min_selected ?? null,
-  };
+  return settingsFromWire(f);
 }
 
-// Editor config → the PUT payload's configuration for this type. Only the
-// properties the type takes are sent; a value is never sent (§2.2).
-export function configToWire(type: FieldType, c: FieldConfig): Partial<Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected'>> {
-  if (type === 'SIGNER_NAME') return { name_mode: c.nameMode };
-  if (type !== 'CHECKBOX') return {};
-  const label = c.label.trim();
-  const group = c.groupKey.trim();
-  return {
-    ...(label.length > 0 ? { label } : {}),
-    ...(group.length > 0
-      ? { group_key: group, group_rule: c.groupRule, ...(c.groupRule === 'SELECT_ANY' && c.minSelected !== null ? { min_selected: c.minSelected } : {}) }
-      : {}),
-  };
-}
-
-export type ConfigPatch = Partial<FieldConfig> & { required?: boolean };
-
-// Apply an inspector change to one field, keeping its check-box group
-// consistent: a group belongs to one recipient and shares its rule, minimum and
-// required setting (the server refuses an inconsistent group). Joining an
-// existing group adopts that group's settings; changing a group setting applies
-// it to every box of the group.
-export function applyConfig<T extends ConfigurableField>(fields: readonly T[], key: string, patch: ConfigPatch): T[] {
-  const target = fields.find((f) => f.key === key);
-  if (target === undefined) return [...fields];
-  let next: T = { ...target, ...patch };
-  if (next.groupRule === 'SELECT_ONE') next = { ...next, minSelected: null };
-  const group = next.type === 'CHECKBOX' ? next.groupKey.trim() : '';
-  const sameGroup = (f: T) => f.key !== key && f.type === 'CHECKBOX' && f.signerId === next.signerId && f.groupKey.trim() === group;
-  if (group.length > 0 && patch.groupKey !== undefined && target.groupKey.trim() !== group) {
-    const peer = fields.find(sameGroup);
-    if (peer !== undefined) next = { ...next, groupRule: peer.groupRule, minSelected: peer.minSelected, required: peer.required };
-  }
-  const shared = group.length > 0 && (patch.groupRule !== undefined || patch.minSelected !== undefined || patch.required !== undefined);
-  return fields.map((f) => {
-    if (f.key === key) return next;
-    if (shared && sameGroup(f)) return { ...f, groupRule: next.groupRule, minSelected: next.minSelected, required: next.required };
-    return f;
-  });
-}
-
-// The number of boxes in a field's group (for the minimum's upper bound).
-export function groupSize(fields: readonly ConfigurableField[], f: ConfigurableField): number {
-  const g = f.groupKey.trim();
-  if (f.type !== 'CHECKBOX' || g.length === 0) return 1;
-  return fields.filter((o) => o.type === 'CHECKBOX' && o.signerId === f.signerId && o.groupKey.trim() === g).length;
+// Editor config → the PUT payload's configuration for this type. Only the settings the type
+// takes and that are set are sent (name_mode always for SIGNER_NAME); a value only for a
+// sender-filled field (S-5, ruling R-3 — every other value is refused: sender_value_refused).
+export function configToWire(type: FieldType, c: FieldConfig): FieldConfigWire {
+  return settingsToWire(type, c, { senderValues: true }) as FieldConfigWire;
 }

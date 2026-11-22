@@ -1,5 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
-import type { FixedFormField, FixedFormRole, FixedFormVersionView } from '@aramo/document-templates-web';
+import type { FixedFormField, FixedFormFieldSuggestions, FixedFormRole, FixedFormVersionView } from '@aramo/document-templates-web';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.1, §7.2 — typed client for the
 // fixed-form authoring routes of an Aramo default of a FIXED_FORM document type
@@ -18,8 +18,14 @@ export const fixedFormsApi = {
   pdf(versionId: string): Promise<{ sha256: string; byte_size: number; content_base64: string }> {
     return apiClient.get(`${BASE}/versions/${versionId}/fixed-form/pdf`);
   },
-  uploadPdf(versionId: string, content_base64: string): Promise<FixedFormVersionView> {
-    return apiClient.put(`${BASE}/versions/${versionId}/fixed-form/pdf`, { content_base64 });
+  // FIELD-PARITY-1 P2-5 / P2-6 — `options` holds only the ticked flags (import_fields /
+  // apply_text_tags); without them the body is exactly { content_base64 }.
+  uploadPdf(versionId: string, content_base64: string, options: { import_fields?: true; apply_text_tags?: true } = {}): Promise<FixedFormVersionView> {
+    return apiClient.put(`${BASE}/versions/${versionId}/fixed-form/pdf`, { content_base64, ...options });
+  },
+  // FIELD-PARITY-1 P2-4 — the deterministic detector's suggestions for the version's PDF.
+  fieldSuggestions(versionId: string): Promise<FixedFormFieldSuggestions> {
+    return apiClient.get(`${BASE}/versions/${versionId}/fixed-form/field-suggestions`);
   },
   saveLayout(
     versionId: string,

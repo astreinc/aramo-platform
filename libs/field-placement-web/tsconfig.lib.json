@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/field-placement-web",
+    "rootDir": "src",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/field-placement-web/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.spec.tsx", "src/test-setup.ts"]
+}

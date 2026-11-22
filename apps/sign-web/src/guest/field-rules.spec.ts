@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { completionProblem, incompleteMessage, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import { completionProblem, incompleteMessage, isLocked, isRadio, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 import type { SignField } from './sign-api.js';
 
 // M-A6 §2.3 — the signer page mirrors the server's completion rules.
@@ -56,5 +56,47 @@ describe('completion rules (M-A6 §2.3)', () => {
     expect(selectOneSiblings(fields, fields[2] as SignField)).toEqual([]);
     expect(incompleteMessage('checkbox_group_select_one')).toMatch(/exactly one/);
     expect(incompleteMessage(undefined)).toMatch(/required fields/);
+  });
+});
+
+// FIELD-PARITY-1 P3 §6 — radio groups (T-5) and the sender's values (S-4 / S-5).
+describe('FIELD-PARITY-1 P3 completion rules', () => {
+  const r = (id: string, over: Partial<SignField> = {}) => f(id, { field_type: 'RADIO', group_key: 'g', group_rule: 'SELECT_ONE', ...over });
+
+  it('a required radio group needs exactly one choice; never two', () => {
+    const fields = [r('a'), r('b')];
+    expect(isRadio(fields[0] as SignField)).toBe(true);
+    expect(completionProblem(fields, {})).toBe('Choose one option in each required set of choices.');
+    expect(completionProblem(fields, { a: 'true', b: 'false' })).toBeNull();
+    expect(completionProblem(fields, { a: 'true', b: 'true' })).toBe('Choose only one option in each set of choices.');
+    expect(requirements(fields, {})).toHaveLength(1);
+  });
+
+  it('an optional radio group may stay empty', () => {
+    expect(completionProblem([r('a', { required: false }), r('b', { required: false })], {})).toBeNull();
+  });
+
+  it('radio siblings are cleared whatever the stored group rule', () => {
+    const fields = [r('a', { group_rule: null }), r('b', { group_rule: null }), r('c', { group_key: 'other' })];
+    expect(selectOneSiblings(fields, fields[0] as SignField).map((x) => x.field_id)).toEqual(['b']);
+  });
+
+  it('a sender-filled / read-only field is never a requirement', () => {
+    const locked = f('t', { field_type: 'TEXT', read_only: true, sender_filled: true, value: 'ACME' });
+    expect(isLocked(locked)).toBe(true);
+    expect(requirements([locked], {})).toEqual([]);
+    const lockedBox = f('b', { read_only: true, sender_filled: true });
+    expect(completionProblem([lockedBox], {})).toBeNull();
+  });
+
+  it('the new types are ordinary required fields', () => {
+    for (const t of ['DATE', 'DROPDOWN', 'NUMBER', 'MULTILINE_TEXT']) {
+      expect(completionProblem([f('x', { field_type: t })], {})).toBe('Some required fields still need your input.');
+      expect(completionProblem([f('x', { field_type: t })], { x: 'v' })).toBeNull();
+    }
+  });
+
+  it('the server’s radio refusal at Finish', () => {
+    expect(incompleteMessage('radio_group_select_one')).toBe('Choose exactly one option in each set of choices.');
   });
 });

@@ -33,8 +33,14 @@ export default defineConfig({
       // workspace (platform-web precedent). The guest zone never imports it (zones.spec.ts).
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
       // Client Rule Consolidation C2-2 — the pure Sign client rules (one copy with mobile/sign
-      // and the server). Pure TS with no imports, so the guest zone may use it too.
+      // and the server). Pure TS whose one import is @aramo/sign-fields, so the guest zone may use it too.
       '@aramo/sign-client': resolve(root, '../../libs/sign-client/src/index.ts'),
+      // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
+      // @aramo/sign-client and @aramo/document-templates-web.
+      '@aramo/sign-fields': resolve(root, '../../libs/sign-fields/src/index.ts'),
+      // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared), imported by
+      // @aramo/document-templates-web (the console form Studio) and sign-web Prepare.
+      '@aramo/field-placement-web': resolve(root, '../../libs/field-placement-web/src/index.ts'),
     },
   },
   server: {

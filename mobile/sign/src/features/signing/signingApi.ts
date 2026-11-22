@@ -3,7 +3,13 @@
 // Every operation is typed from openapi/sign.yaml (B-12). The guest client's typed
 // post() has no path parameters, so the field fill (/fields/{fieldId}/fill) goes through
 // postRaw() with its body and response typed from the generated operation.
-import { DELEGATE_REASON_MAX, isValidDelegate, type DelegateInput } from '@aramo/sign-client';
+import {
+  DELEGATE_REASON_MAX,
+  incompleteReasonMessage,
+  isFieldValueRefusalReason,
+  isValidDelegate,
+  type DelegateInput,
+} from '@aramo/sign-client';
 
 import { isApiError } from '../../api/errors';
 import { endsSigningSession, type GuestSigningSession } from '../../api/guestSigningClient';
@@ -46,6 +52,8 @@ export type SigningFailure =
   /** The envelope reached an end state (completed, declined, voided, expired). */
   | 'executed'
   | 'incomplete'
+  /** FIELD-PARITY-1 P3 — the server refused one field's value (fieldRefusalOf names it). */
+  | 'value_refused'
   /** UAT SEC-04 — the sender set an access code and this session has not entered it. */
   | 'access_code'
   /** UAT SEC-04 — five wrong access codes locked this recipient out. */
@@ -72,7 +80,26 @@ export function classifySigningError(e: unknown): SigningFailure {
   if (e.is('SIGNER_NOT_YET_ELIGIBLE', 'not_your_turn')) return 'not_your_turn';
   if (e.is('ENVELOPE_ALREADY_EXECUTED', 'envelope_not_signable')) return 'executed';
   if (e.is('SIGNATURE_FIELD_INCOMPLETE')) return 'incomplete';
+  if (isFieldValueRefusalReason(e.reason)) return 'value_refused';
   return 'error';
+}
+
+/**
+ * FIELD-PARITY-1 P3 — a fill the server refused for its value (VALIDATION_ERROR with a value
+ * reason and the field's id), or null. The words are @aramo/sign-client fieldValueRefusalText.
+ */
+export function fieldRefusalOf(e: unknown): { readonly fieldId: string | null; readonly reason: string } | null {
+  if (!isApiError(e) || !isFieldValueRefusalReason(e.reason)) return null;
+  const id = e.details['field_id'];
+  return { fieldId: typeof id === 'string' && id.length > 0 ? id : null, reason: e.reason as string };
+}
+
+/** The server's 409 SIGNATURE_FIELD_INCOMPLETE in plain words (a radio group named as such). */
+export function incompleteCopy(e: unknown): string {
+  const reason = isApiError(e) ? e.reason : null;
+  return typeof reason === 'string' && reason !== 'SIGNATURE_FIELD_INCOMPLETE' && reason.length > 0
+    ? incompleteReasonMessage(reason)
+    : SIGNING_COPY.incomplete;
 }
 
 export const SIGNING_COPY = {

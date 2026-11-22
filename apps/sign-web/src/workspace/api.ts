@@ -7,6 +7,8 @@ import {
   placeableFieldTypes,
   refusalMessage,
   isReminderStale as sharedReminderStale,
+  type AnyFieldType,
+  type FieldTypeOn,
   type InboxActions,
   type SenderActions,
 } from '@aramo/sign-client';
@@ -42,7 +44,8 @@ export type EnvelopeStatus = 'DRAFT' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'D
 export type RecipientStatus = 'PENDING' | 'VIEWED' | 'SIGNED' | 'DECLINED';
 // Sign 1.14 — PAYMENT: paid by the signer on Stripe's hosted page (only while features.payments).
 // M-A12 W1-C.4 — + the profile text fields FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE.
-export type FieldType = 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'SIGNER_NAME' | 'TEXT' | 'CHECKBOX' | 'ACKNOWLEDGEMENT' | 'PAYMENT' | 'FIRST_NAME' | 'LAST_NAME' | 'EMAIL' | 'COMPANY' | 'TITLE';
+// FIELD-PARITY-1 P1-2 — every type an envelope stores: the catalog's `sign_store` projection.
+export type FieldType = AnyFieldType;
 
 export interface SenderContext {
   user: { id: string; email: string | null; display_name: string | null };
@@ -289,6 +292,17 @@ export interface EnvelopeField {
   // Sign 1.14 — PAYMENT only: the amount in cents and the currency (USD).
   payment_amount_minor?: number | null;
   payment_currency?: 'USD' | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (null / false = not set).
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: Readonly<Record<string, unknown>> | null;
+  // S-5 (ruling R-3, dark) — a sender-filled field's value, the sender's own (null otherwise).
+  value?: string | null;
 }
 
 // Sign 1.14 — the organization's Stripe Connect account (Settings → Payments).
@@ -368,6 +382,9 @@ export interface EnvelopeDetail {
   purge?: PurgeInfo | null;
   // Client Rule Consolidation C1 — what the caller may do (read it with senderActionsOf).
   actions?: SenderActions;
+  // FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields switched on (the server flag;
+  // absent / false: Prepare does not offer them).
+  sender_filled_fields_enabled?: boolean;
 }
 
 export interface LedgerEvent {
@@ -389,6 +406,18 @@ export interface UploadedDocument {
   byte_size: number | null;
   page_count: number;
   pages: { width: number; height: number }[];
+  /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
+  field_import?: {
+    fields: unknown[];
+    warnings: { code: string; message: string; name?: string; page_number?: number }[];
+    stripped: string[];
+  };
+}
+
+/** FIELD-PARITY-1 P2-4 — GET …/documents/{documentId}/field-suggestions?detect=all. */
+export interface DocumentFieldSuggestions {
+  suggestions: { type: string; page: number; page_number: number; x: number; y: number; width: number; height: number; reason?: string; confidence?: number }[];
+  skipped_pages?: { page: number; reason: string }[];
 }
 
 export interface DocumentRow {
@@ -520,7 +549,8 @@ export interface TemplatePreview {
 export interface FromTemplateResult {
   envelope: EnvelopeDetail;
   template: { template_id: string; version_id: string; version_number: number };
-  suggested_fields: { field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE'; page_number: number; x: number; y: number; width: number; height: number; role_key?: string }[];
+  // FIELD-PARITY-1 P1-2 — the renderer's signature block: the catalog's `signature_block` projection.
+  suggested_fields: { field_type: FieldTypeOn<'signature_block'>; page_number: number; x: number; y: number; width: number; height: number; role_key?: string }[];
   signing?: TemplateSigning | null;
 }
 
@@ -844,8 +874,12 @@ export const senderApi = {
   // Sign Mobile M-A3 §3 — the sender message (server sanitizes; > ENVELOPE_MESSAGE_MAX is refused; null clears).
   setMessage: (id: string, message: string | null) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { message }),
   events: (id: string) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/envelopes/${enc(id)}/events`),
-  upload: (id: string, file: { filename: string; title: string; content_base64: string }) =>
-    apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, file),
+  // FIELD-PARITY-1 P2-5 / P2-6 — `options` holds only the ticked flags; without them the body is unchanged.
+  upload: (id: string, file: { filename: string; title: string; content_base64: string }, options: { import_fields?: true; apply_text_tags?: true } = {}) =>
+    apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, { ...file, ...options }),
+  // FIELD-PARITY-1 P2-4 — the deterministic detector (labels, lines, boxes, glyphs) for Prepare.
+  fieldSuggestions: (id: string, docId: string) =>
+    apiClient.get<DocumentFieldSuggestions>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}/field-suggestions?detect=all`),
   renameDocument: (id: string, docId: string, title: string) =>
     apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`, { title }),
   reorderDocuments: (id: string, order: string[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/order`, { order }),
@@ -859,11 +893,14 @@ export const senderApi = {
     apiClient.put<RecipientMessaging>(`${BASE}/envelopes/${enc(id)}/recipients/${enc(signerId)}/messaging`, body),
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
-      // M-A6 §2 — the type's configuration travels with the field; a value never does.
-      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency }) => ({
+      // M-A6 §2 — the type's configuration travels with the field; a value never does, except a
+      // sender-filled field's own value (FIELD-PARITY-1 P3 S-5, ruling R-3).
+      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, value }) => ({
         // An engine-only type goes back with its stored id, unchanged (the server
-        // keeps it only when identical to the stored row).
-        ...(id != null && !SENDER_FIELD_TYPES.has(field_type) ? { id } : {}),
+        // keeps it only when identical to the stored row). FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT
+        // is authorable now, but a stored engine row of it keeps its id (the server passes a
+        // row with no recipient or size through unchanged).
+        ...(id != null && (!SENDER_FIELD_TYPES.has(field_type) || field_type === 'ACKNOWLEDGEMENT') ? { id } : {}),
         envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
         ...(name_mode != null ? { name_mode } : {}),
         ...(label != null ? { label } : {}),
@@ -871,6 +908,17 @@ export const senderApi = {
         ...(group_rule != null ? { group_rule } : {}),
         ...(min_selected != null ? { min_selected } : {}),
         ...(payment_amount_minor != null ? { payment_amount_minor, payment_currency: payment_currency ?? 'USD' } : {}),
+        // FIELD-PARITY-1 P3 — every setting that is set goes back (a stored DROPDOWN keeps its choices).
+        ...(tooltip != null ? { tooltip } : {}),
+        ...(placeholder != null ? { placeholder } : {}),
+        ...(read_only === true ? { read_only } : {}),
+        ...(sender_filled === true ? { sender_filled } : {}),
+        ...(validation != null ? { validation } : {}),
+        ...(font_size != null ? { font_size } : {}),
+        ...(data_name != null ? { data_name } : {}),
+        ...(options != null ? { options } : {}),
+        // S-5 — the sender's value travels only with a sender-filled field.
+        ...(sender_filled === true && value != null ? { value } : {}),
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),

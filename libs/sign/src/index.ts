@@ -13,7 +13,11 @@ export {
   type TemplateFieldInput,
   type SenderDocumentRow,
   type DocumentPageSize,
+  type FieldOptionsJson,
   DELETED_DRAFT_SUBJECT,
+  // FIELD-PARITY-1 P3 S-5 — the ledger event of the sender's values; the setting columns.
+  SENDER_FIELD_VALUES_SET_EVENT,
+  fieldSettingColumns,
 } from './lib/sender-workspace.repository.js';
 // Feature-Parity Program §1.13 — read-only organization reports.
 export {

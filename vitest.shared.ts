@@ -89,6 +89,11 @@ export default defineConfig({
       // type:client-shared), imported by libs/sign, apps/sign-web and mobile/sign.
       // Mirrors tsconfig.base.json (the add-alias-in-same-PR lesson).
       '@aramo/sign-client': resolve(root, 'libs/sign-client/src/index.ts'),
+      // FIELD-PARITY-1 P1-1 (ruling R-4) — the one field catalog (scope:shared,
+      // type:client-shared). Mirrors tsconfig.base.json.
+      '@aramo/sign-fields': resolve(root, 'libs/sign-fields/src/index.ts'),
+      // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared). Mirrors tsconfig.base.json.
+      '@aramo/field-placement-web': resolve(root, 'libs/field-placement-web/src/index.ts'),
       // ATI-SEP-1 T0 (ADR-0036) — the Talent Intelligence libs (own database, scope:intelligence)
       // and the shared ATS ⇄ TI contract (scope:shared). Mirrors tsconfig.base.json.
       '@aramo/intelligence-contracts': resolve(root, 'libs/intelligence-contracts/src/index.ts'),

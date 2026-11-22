@@ -17,7 +17,7 @@ import {
   StreamableFile,
   UseFilters,
 } from '@nestjs/common';
-import { AramoExceptionFilter, RequestId } from '@aramo/common';
+import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, EsignSenderBoundary } from '@aramo/identity';
 import type { Request, Response } from 'express';
@@ -236,13 +236,27 @@ export class EsignSenderController {
   // above (no model; nothing leaves the platform). Same scope and visibility as the text-layer
   // route (404 otherwise); in the PUT fields frame (page_number 0-based, points, origin
   // bottom-left); at most 6; any failure after the visibility check is an empty list.
+  // FIELD-PARITY-1 §5 P2-4 — `?detect=all` (opt-in; the default answer is unchanged) runs the
+  // shared detector: label patterns, underscore lines, empty boxes / table cells and checkbox
+  // glyphs on every page, each with a reason and a confidence, at most 300; rotated pages are
+  // listed in skipped_pages.
   @Get('envelopes/:id/documents/:documentId/field-suggestions')
   @EsignSenderBoundary(ESIGN_READ_SCOPE)
-  fieldSuggestionsOf(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('documentId') documentId: string) {
+  fieldSuggestionsOf(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Query('detect') detect?: string,
+  ) {
+    if (detect !== undefined && detect !== 'all' && detect !== 'signature_block') {
+      throw new AramoError('VALIDATION_ERROR', 'detect must be all or signature_block', 400, { requestId, details: { field: 'detect', reason: 'detect_invalid' } });
+    }
+    const all = detect === 'all';
     return this.run(requestId, async () => {
       const v = await this.envelopes.documentVersion(auth, id, documentId, requestId);
-      if (this.suggestions === undefined) return { suggestions: [] };
-      return this.suggestions.suggest(documentId, v.version, v.load);
+      if (this.suggestions === undefined) return all ? { suggestions: [], skipped_pages: [] } : { suggestions: [] };
+      return all ? this.suggestions.suggest(documentId, v.version, v.load, 'all') : this.suggestions.suggest(documentId, v.version, v.load);
     });
   }
 

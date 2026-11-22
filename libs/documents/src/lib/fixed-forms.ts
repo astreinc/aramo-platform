@@ -8,6 +8,8 @@
 // never edited by a tenant (§7.3). Field geometry is PDF-native, exactly what Sign places:
 // page_number 0-based, points, origin bottom-left, (x, y) the box's lower-left corner.
 
+import { checkboxGroupIssues, fieldTypesFor, isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-fields';
+
 /** field_schema.render_schema_version of a fixed-form version. */
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
 
@@ -19,19 +21,22 @@ export const FIXED_FORM_MIME = 'application/pdf';
 export const PLATFORM_TEMPLATE_ASSET_PREFIX = 'documents/platform/template-assets';
 
 /**
- * §7.2 — the field types a fixed form may place: the intersection Aramo Sign executes
- * (text, date, checkbox, name, signature, initials). "date" is the signing date and
- * "name" the signer's printed name — the only date and name Sign fills.
+ * §7.2 — the field types a fixed form may place: originally the intersection Aramo Sign
+ * executed (text, date, checkbox, name, signature, initials). FIELD-PARITY-1 P1-2 — the
+ * catalog's `template_fixed_form` surface (@aramo/sign-fields), in catalog order; P1-6: never
+ * PAYMENT. P3 (ruling R-1, superseding TEMPLATE-PRODUCT-1 §7 line 126) — every type the
+ * catalog allows on a template surface: + the profile types, ACKNOWLEDGEMENT, DATE (a chosen
+ * date), DROPDOWN, RADIO, NUMBER and MULTILINE_TEXT.
  */
-export const FIXED_FORM_FIELD_TYPES = ['TEXT', 'SIGN_DATE', 'CHECKBOX', 'SIGNER_NAME', 'SIGNATURE', 'INITIALS'] as const;
-export type FixedFormFieldType = (typeof FIXED_FORM_FIELD_TYPES)[number];
+export const FIXED_FORM_FIELD_TYPES: readonly FieldTypeOn<'template_fixed_form'>[] = fieldTypesFor('template_fixed_form');
+export type FixedFormFieldType = FieldTypeOn<'template_fixed_form'>;
 
 export const FIXED_FORM_MAX_FIELDS = 200;
 export const FIXED_FORM_MIN_FIELD_SIZE = 8;
 const FIELD_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 export function isFixedFormFieldType(v: unknown): v is FixedFormFieldType {
-  return typeof v === 'string' && (FIXED_FORM_FIELD_TYPES as readonly string[]).includes(v);
+  return isFieldTypeOn('template_fixed_form', v);
 }
 
 export interface FixedFormPage {
@@ -83,6 +88,22 @@ export interface FixedFormField {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (M-A6 §2; @aramo/sign-fields
+  // parseTemplateFieldSettings decides which type takes which). Absent / NULL = not set.
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (same rule; absent / NULL / false = not set).
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly font_size?: number | null;
+  readonly data_name?: string | null;
+  readonly options?: unknown;
 }
 
 /** The content a new fixed-form version starts from: no PDF yet, one signer role. */
@@ -125,7 +146,9 @@ export interface FixedFormIssue {
  *   - a TEXT field with a variable prefills it (no signer role, the variable must be one the
  *     type allows); every other field belongs to a SIGNER role;
  *   - each box lies on an existing page, inside it, at least 8 points each way;
- *   - every SIGNER role has at least one SIGNATURE field.
+ *   - every SIGNER role has at least one SIGNATURE field;
+ *   - FIELD-PARITY-1 P1-3 — the boxes of a check-box group share one signer role, rule,
+ *     minimum and required setting, and the minimum is not more than the boxes (Sign's rule).
  */
 export function fixedFormIssues(input: {
   pdf: FixedFormPdfRef | null;
@@ -180,6 +203,23 @@ export function fixedFormIssues(input: {
     if (!input.fields.some((f) => f.signer_role === role_key && f.field_type === 'SIGNATURE')) {
       out.push({ code: 'role_without_signature', message: `Signer role ${role_key} has no signature field.`, role_key });
     }
+  }
+  const grouped = input.fields.map((f) => ({
+    field_key: f.field_key,
+    signer_role: f.signer_role,
+    required: f.required,
+    group_key: f.group_key ?? null,
+    group_rule: f.group_rule ?? null,
+    min_selected: f.min_selected ?? null,
+    // FIELD-PARITY-1 P3 — a group is one type (check boxes or radio buttons) and one
+    // read-only / sender-filled setting.
+    field_type: f.field_type,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
+  }));
+  for (const g of checkboxGroupIssues(grouped)) {
+    const first = grouped.find((f) => f.group_key === g.group_key);
+    out.push({ code: g.reason, message: g.message, ...(first !== undefined ? { field_key: first.field_key } : {}) });
   }
   return out;
 }

@@ -9,15 +9,23 @@ import { TYPES, V1_TYPES } from './PrepareEditor';
 // M-A6 §2 — Name and Checkbox authoring in the sender editor: the tool set, the
 // configuration on the PUT payload (never a value) and group consistency.
 
-const box = (key: string, over: Partial<ConfigurableField> = {}): ConfigurableField => ({ key, signerId: 's1', type: 'CHECKBOX', required: true, ...DEFAULT_CONFIG, ...over });
+// FIELD-PARITY-1 P1-5 — the group rules now run on the shared editor's field shape
+// (id / assignee / settings); the behaviour is unchanged.
+type Box = ConfigurableField;
+const box = (id: string, over: Partial<Box['settings']> & { assignee?: string; required?: boolean } = {}): Box => {
+  const { assignee = 's1', required = true, ...settings } = over;
+  return { id, assignee, type: 'CHECKBOX', required, settings: { ...DEFAULT_CONFIG, ...settings } };
+};
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('sender field tools (M-A6 §2.1)', () => {
-  it('Name and Checkbox are authorable; Acknowledgement is not', () => {
-    // M-A12 W1-C.4 — + the profile text fields.
-    expect([...V1_TYPES].sort()).toEqual(['CHECKBOX', 'COMPANY', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE']);
-    expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(false);
+  it('Name and Checkbox are authorable; FIELD-PARITY-1 P3 — so are Acknowledgement and the new types', () => {
+    // M-A12 W1-C.4 — + the profile text fields; FIELD-PARITY-1 P3 (R-2, T-3..T-7) — + ACKNOWLEDGEMENT and the new types.
+    expect([...V1_TYPES].sort()).toEqual([
+      'ACKNOWLEDGEMENT', 'CHECKBOX', 'COMPANY', 'DATE', 'DROPDOWN', 'EMAIL', 'FIRST_NAME', 'INITIALS', 'LAST_NAME', 'MULTILINE_TEXT', 'NUMBER', 'RADIO', 'SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'TITLE',
+    ]);
+    expect(V1_TYPES.has('ACKNOWLEDGEMENT')).toBe(true);
     expect(TYPES.SIGNER_NAME.label).toBe('Name');
     // C3 (audit rows 36–37) — the one size table (the app's): a checkbox is 18 × 18 and optional.
     expect(TYPES.CHECKBOX).toMatchObject({ w: 18, h: 18, required: false });
@@ -31,7 +39,8 @@ describe('sender field tools (M-A6 §2.1)', () => {
 describe('configToWire / configFromWire', () => {
   it('a name carries only name_mode (default SIGNER_PROFILE)', () => {
     expect(configToWire('SIGNER_NAME', DEFAULT_CONFIG)).toEqual({ name_mode: 'SIGNER_PROFILE' });
-    expect(configToWire('SIGNER_NAME', { ...DEFAULT_CONFIG, nameMode: 'SIGNER_ENTERED', label: 'x' })).toEqual({ name_mode: 'SIGNER_ENTERED' });
+    // FIELD-PARITY-1 P3 S-1 — a name takes a label now (the catalog); never a group.
+    expect(configToWire('SIGNER_NAME', { ...DEFAULT_CONFIG, nameMode: 'SIGNER_ENTERED', label: 'x', groupKey: 'g' })).toEqual({ name_mode: 'SIGNER_ENTERED', label: 'x' });
   });
 
   it('a checkbox carries label and group settings; min only for SELECT_ANY groups', () => {
@@ -41,22 +50,29 @@ describe('configToWire / configFromWire', () => {
     expect(configToWire('CHECKBOX', { ...DEFAULT_CONFIG, groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: 2 })).toEqual({ group_key: 'g', group_rule: 'SELECT_ONE' });
   });
 
-  it('other types carry no configuration', () => {
-    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, label: 'x', groupKey: 'g' })).toEqual({});
+  it('other types carry only the settings they take (a signature: label, tooltip, data name)', () => {
+    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, groupKey: 'g', placeholder: 'p', fontSize: 9 })).toEqual({});
+    expect(configToWire('SIGNATURE', { ...DEFAULT_CONFIG, label: 'x', tooltip: 't', dataName: 'buyer_sig' })).toEqual({ label: 'x', tooltip: 't', data_name: 'buyer_sig' });
+  });
+
+  it('FIELD-PARITY-1 P3 — a value goes out only for a sender-filled field', () => {
+    expect(configToWire('TEXT', { ...DEFAULT_CONFIG, senderValue: 'x' })).toEqual({});
+    expect(configToWire('TEXT', { ...DEFAULT_CONFIG, senderFilled: true, senderValue: 'x' })).toEqual({ sender_filled: true, value: 'x' });
+    expect(configToWire('DROPDOWN', { ...DEFAULT_CONFIG, options: { choices: [{ value: ' a ', label: '' }] } })).toEqual({ options: { choices: [{ value: 'a', label: 'a' }] } });
   });
 
   it('reads stored configuration back', () => {
     expect(configFromWire({ envelope_document_id: 'd', signer_id: 's', field_type: 'CHECKBOX', page_number: 0, x: 0, y: 0, width: 14, height: 14, required: true, label: 'A', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: null })).toEqual({
-      nameMode: 'SIGNER_PROFILE', label: 'A', groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: null,
+      ...DEFAULT_CONFIG, nameMode: 'SIGNER_PROFILE', label: 'A', groupKey: 'g', groupRule: 'SELECT_ONE', minSelected: null,
     });
   });
 });
 
 describe('applyConfig — check-box groups stay consistent', () => {
   it('changing a group rule, minimum or required applies to every box of that recipient group', () => {
-    const fields = [box('a', { groupKey: 'g' }), box('b', { groupKey: 'g' }), box('c', { groupKey: 'g', signerId: 's2' }), box('d')];
+    const fields = [box('a', { groupKey: 'g' }), box('b', { groupKey: 'g' }), box('c', { groupKey: 'g', assignee: 's2' }), box('d')];
     const next = applyConfig(fields, 'a', { groupRule: 'SELECT_ONE' });
-    expect(next.map((f) => f.groupRule)).toEqual(['SELECT_ONE', 'SELECT_ONE', 'SELECT_ANY', 'SELECT_ANY']);
+    expect(next.map((f) => f.settings.groupRule)).toEqual(['SELECT_ONE', 'SELECT_ONE', 'SELECT_ANY', 'SELECT_ANY']);
     const req = applyConfig(next, 'b', { required: false });
     expect(req.map((f) => f.required)).toEqual([false, false, true, true]);
   });
@@ -64,9 +80,9 @@ describe('applyConfig — check-box groups stay consistent', () => {
   it('joining an existing group adopts its settings; SELECT_ONE clears the minimum', () => {
     const fields = [box('a', { groupKey: 'g', minSelected: 2, required: false }), box('b')];
     const joined = applyConfig(fields, 'b', { groupKey: 'g' });
-    expect(joined[1]).toMatchObject({ groupKey: 'g', minSelected: 2, required: false });
+    expect(joined[1]).toMatchObject({ required: false, settings: { groupKey: 'g', minSelected: 2 } });
     const one = applyConfig(joined, 'a', { groupRule: 'SELECT_ONE' });
-    expect(one.map((f) => f.minSelected)).toEqual([null, null]);
+    expect(one.map((f) => f.settings.minSelected)).toEqual([null, null]);
     expect(groupSize(one, one[0] as ConfigurableField)).toBe(2);
   });
 });

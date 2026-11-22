@@ -19,6 +19,11 @@ export const FEATURES = {
   /** M-A12 W1-C.4 — First name, Last name, Email, Company and Title fields. */
   profileFieldTypes: true,
   /**
+   * FIELD-PARITY-1 P3 §6.1 — Date (chosen), Dropdown, Radio, Number, Multi-line text and
+   * Acknowledgement tools in the Send flow editor, with their settings sheet.
+   */
+  phase3FieldTypes: true,
+  /**
    * M-A12 W1-G — in-app purchase through the platform store. Built; the Plans screen still
    * shows prices and purchase controls ONLY while the server reports store billing as
    * available (`store_purchase_eligible` or plans with `store_products`).

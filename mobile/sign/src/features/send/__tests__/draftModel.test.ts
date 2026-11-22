@@ -57,7 +57,8 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       group_rule: 'SELECT_ANY',
       min_selected: 2,
     },
-    { ...geo, id: 'f-ack', field_type: 'ACKNOWLEDGEMENT', x: 300, y: 300, required: true },
+    // An API-placed PAYMENT: a type the app does not author (FIELD-PARITY-1 P3 made ACKNOWLEDGEMENT authorable).
+    { ...geo, id: 'f-ack', field_type: 'PAYMENT', x: 300, y: 300, required: true },
   ]);
   const { payload } = payloadFromServer(env, '"e1.3"', new Map([['d1', [PAGE]]]));
 
@@ -74,7 +75,7 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
 
   it('keeps a non-authoring type untouched instead of dropping it', () => {
     expect(payload.preservedFields).toEqual([
-      expect.objectContaining({ field_type: 'ACKNOWLEDGEMENT', x: 300, y: 300, signer_id: 's1' }),
+      expect.objectContaining({ field_type: 'PAYMENT', x: 300, y: 300, signer_id: 's1' }),
     ]);
   });
 
@@ -100,7 +101,7 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       id: 'f-ack',
       envelope_document_id: 'd1',
       signer_id: 's1',
-      field_type: 'ACKNOWLEDGEMENT',
+      field_type: 'PAYMENT',
       page_number: 0,
       x: 300,
       y: 300,

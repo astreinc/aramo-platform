@@ -4472,6 +4472,48 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/project.json"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/documents/fixed-form.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/prisma/migrations/20261122200000_field_parity_1_p3_field_types_settings/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/documents.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
@@ -10194,7 +10236,17 @@
     {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/auth-service/Dockerfile",
@@ -10278,7 +10330,17 @@
     {
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/platform-admin/Dockerfile",
@@ -10684,6 +10746,16 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
       "from": "apps/portal-web/project.json",
       "status": "unscoped",
       "to": "apps/portal-web/vite.config.ts"
@@ -10862,7 +10934,17 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/sign-web/vite.config.ts",
@@ -10882,7 +10964,17 @@
     {
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
     },
     {
       "from": "apps/talent-intelligence-service/project.json",
@@ -30726,6 +30818,61 @@
       "status": "unscoped",
       "to": "libs/settings/src/lib/known-settings.ts"
     },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/pages/PrepareEditor.tsx"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "doc/sign/text-tags.md"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/FieldSettingsPanel.tsx"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/lib/keymap.ts"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/lib/field-detect.ts"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "mobile/sign/src/features/editor/FieldSettingsSheet.tsx"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "doc/sign/field-placement-parity-checklist.md"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/pdf-form-import.ts"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/lib/field-import-copy.ts"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/lib/field-import.ts"
+    },
     { "from": "doc/step4-compute-iac.md", "status": "unscoped", "to": "doc/runbooks/run-layer.md" },
     {
       "from": "doc/step4-compute-iac.md",
@@ -32335,6 +32482,11 @@
       "to": "libs/documents-contracts/tsconfig.lib.json"
     },
     {
+      "from": "libs/documents-contracts/src/lib/sign-template-library.contract.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
       "from": "libs/documents-rendering/project.json",
       "status": "unscoped",
       "to": "libs/documents-rendering/src/index.ts"
@@ -32360,6 +32512,11 @@
       "to": "apps/api/src/rtr/rtr-template-content.ts"
     },
     {
+      "from": "libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
       "from": "libs/documents/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -32373,6 +32530,28 @@
       "from": "libs/documents/project.json",
       "status": "unscoped",
       "to": "libs/documents/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/documents/src/lib/templates.controller.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
+      "from": "libs/documents/src/lib/templates.controller.ts",
+      "status": "production",
+      "to": "openapi/documents.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32711,6 +32890,16 @@
       "from": "libs/field-masking/src/tests/compensation-field-map.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/d5-non-invertibility.spec.ts"
+    },
+    {
+      "from": "libs/field-placement-web/project.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
+    {
+      "from": "libs/field-placement-web/project.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/tsconfig.lib.json"
     },
     {
       "from": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql",
@@ -34367,6 +34556,42 @@
       "status": "production",
       "to": "libs/sign/src/lib/domain/recipients.ts"
     },
+    {
+      "from": "libs/sign-fields/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "libs/sign-fields/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/tsconfig.lib.json"
+    },
+    {
+      "excludedBy": "src/__tests__/**/*",
+      "from": "libs/sign-fields/src/__tests__/field-detect.test.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/tests/m-a14-field-suggestions.spec.ts"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/catalog.ts",
+      "status": "production",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/field-detect.ts",
+      "status": "production",
+      "to": "apps/sign-service/src/app/text-layer/field-suggestions.ts"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/field-import-copy.ts",
+      "status": "production",
+      "to": "doc/sign/text-tags.md"
+    },
+    {
+      "from": "libs/sign/prisma/migrations/20261122200000_field_parity_1_p3_field_types_settings/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/tsconfig.lib.json" },
     {
@@ -35787,6 +36012,11 @@
       "status": "unscoped",
       "to": "libs/sign-client/project.json"
     },
+    {
+      "from": "mobile/sign/project.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/project.json"
+    },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },
@@ -35830,6 +36060,11 @@
       "from": "mobile/sign/src/api/generated/platform-signup.ts",
       "status": "unscoped",
       "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "mobile/sign/src/api/generated/sign.ts",
+      "status": "unscoped",
+      "to": "doc/sign/text-tags.md"
     },
     {
       "from": "mobile/sign/src/api/generated/sign.ts",
@@ -35926,6 +36161,11 @@
       "status": "unscoped",
       "to": "libs/sign-client/src/index.ts"
     },
+    {
+      "from": "mobile/sign/tsconfig.json",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/index.ts"
+    },
     { "from": "openapi/ats.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "openapi/auth.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     {
@@ -35940,6 +36180,7 @@
     },
     { "from": "openapi/common.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "openapi/common.yaml", "status": "unscoped", "to": "openapi/auth.yaml" },
+    { "from": "openapi/platform.yaml", "status": "unscoped", "to": "doc/sign/text-tags.md" },
     { "from": "openapi/platform.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     {
       "from": "openapi/portal.yaml",
@@ -35947,6 +36188,7 @@
       "to": "ci/scripts/verify-portal-refusal.ts"
     },
     { "from": "openapi/portal.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
+    { "from": "openapi/sign.yaml", "status": "unscoped", "to": "doc/sign/text-tags.md" },
     { "from": "package.json", "status": "unscoped", "to": "apps/api/src/policy/seed-lifecycle.ts" },
     {
       "from": "package.json",
@@ -36716,6 +36958,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261103140100_template_product_1_tenant_template_visibility/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -37600,6 +37852,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "pact/consumers/ats-web/src/communications.consumer.test.ts"
     },
     {
@@ -37662,6 +37919,7 @@
       "status": "unscoped",
       "to": "apps/sign-service/src/main.ts"
     },
+    { "from": "pact/provider/src/verify-sign.ts", "status": "unscoped", "to": "openapi/sign.yaml" },
     {
       "from": "pact/provider/src/verify-sign.ts",
       "status": "unscoped",
@@ -38711,6 +38969,11 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/export/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
@@ -38782,6 +39045,7 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "tsconfig.base.json",
@@ -38938,6 +39202,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/export/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/field-placement-web/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/import/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/ingestion/src/index.ts" },
@@ -38997,6 +39266,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-client/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign-fields/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     {
       "from": "vitest.shared.ts",

@@ -1,0 +1,31 @@
+{
+  "name": "field-placement-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/field-placement-web/src",
+  "projectType": "library",
+  "tags": ["scope:shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/field-placement-web",
+        "main": "libs/field-placement-web/src/index.ts",
+        "tsConfig": "libs/field-placement-web/tsconfig.lib.json",
+        "assets": [{ "input": "libs/field-placement-web/src", "glob": "**/*.css", "output": "src" }]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/field-placement-web/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --root libs/field-placement-web"
+      }
+    }
+  }
+}

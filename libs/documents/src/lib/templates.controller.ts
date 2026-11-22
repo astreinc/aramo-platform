@@ -18,6 +18,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
+import { RETIRED_FIELD_TYPES, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled } from '@aramo/sign-fields';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -53,20 +54,12 @@ const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 // DOC-TEMPLATE-LIB-1 T-6 [TD] — a withdrawal notice stays listed this long after its
 // effective date, so the Org Home banner can still explain the change.
 const WITHDRAWAL_NOTICE_GRACE_DAYS = 30;
-const FIELD_TYPES = new Set([
-  'TEXT',
-  'MULTILINE_TEXT',
-  'DATE',
-  'NUMBER',
-  'CURRENCY',
-  'CHECKBOX',
-  'IMAGE',
-  'SIGNATURE',
-  'INITIALS',
-  'SIGN_DATE',
-  'SIGNER_NAME',
-  'SIGNER_EMAIL',
-]);
+// FIELD-PARITY-1 P1-2 / P3 — the catalog's `template_documents_authoring` surface: the
+// TemplateFieldDefinition CHECK (template_documents_store) minus IMAGE, retired from authoring by
+// ruling R-9 (refused with details.reason field_type_retired; existing rows stay readable). Held
+// equal to openapi/documents.yaml AddFieldRequest by apps/api/src/tests/field-catalog-parity.spec.ts.
+const FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('template_documents_authoring'));
+const RETIRED_TYPES: ReadonlySet<string> = new Set(RETIRED_FIELD_TYPES);
 const RESOURCE_TYPES = new Set([
   'TALENT',
   'REQUISITION',
@@ -184,6 +177,21 @@ interface AddFieldBody {
   format_rule?: string;
   signer_role?: string;
   ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (which type takes which: the catalog).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2.
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean | null;
+  sender_filled?: boolean | null;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: unknown;
 }
 
 @Controller('v1/document-templates')
@@ -699,10 +707,23 @@ export class DocumentTemplatesController {
     @RequestId() requestId: string,
   ) {
     validate(typeof body?.field_key === 'string' && body.field_key.length > 0, 'field_key is required', requestId);
+    if (RETIRED_TYPES.has(body?.field_type)) {
+      throw new AramoError('VALIDATION_ERROR', `${body.field_type} fields can no longer be added`, 400, { requestId, details: { field: 'field_type', reason: 'field_type_retired' } });
+    }
     validate(FIELD_TYPES.has(body.field_type), 'invalid field_type', requestId);
     validate(typeof body?.ordinal === 'number', 'ordinal is required', requestId);
+    // FIELD-PARITY-1 P1-3 / P3 — a setting the type does not take is refused with a named reason
+    // (the same reasons as Sign's sender API), never stored or dropped. A sender-filled field
+    // (S-5) is refused while SIGN_SENDER_FILLED_FIELDS_ENABLED is off (dark, ruling R-3).
+    const parsed = parseTemplateFieldSettings(body as unknown as Record<string, unknown>, body.field_type, { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+    if (!parsed.ok) {
+      throw new AramoError('VALIDATION_ERROR', parsed.refusal.message, 400, {
+        requestId,
+        details: { field: parsed.refusal.setting, reason: parsed.refusal.reason },
+      });
+    }
     try {
-      return await this.repo.addField({ tenant_id: auth.tenant_id, template_version_id: versionId, ...body });
+      return await this.repo.addField({ tenant_id: auth.tenant_id, template_version_id: versionId, ...body, ...parsed.settings });
     } catch (e) {
       throw toHttp(e, requestId);
     }

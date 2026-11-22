@@ -515,3 +515,208 @@ describe('from-template — Aramo fixed form (TEMPLATE-PRODUCT-1 §7.4)', () => 
     }
   });
 });
+
+// FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-3 / P1-4
+// — a template field carries its Sign settings onto the envelope field unchanged, and a signer
+// field the template surface cannot carry is refused (409, named) before the envelope exists:
+// never silently dropped.
+describe('from-template — FIELD-PARITY-1 P1-4: settings carried, no silent drop', () => {
+  const a = auth(SENDER_SCOPES);
+  const recipients = [
+    { role_key: 'agency', name: 'Agency Rep', email: 'agency@x.test' },
+    { role_key: 'client', name: 'Client Signer', email: 'client@x.test' },
+  ];
+  const def = (field_key: string, field_type: string, signer_role: string | null, over: Record<string, unknown> = {}) => ({
+    field_key,
+    field_type,
+    signer_role,
+    required: true,
+    page_number: 0,
+    x: 72,
+    y: 72,
+    width: 160,
+    height: 24,
+    ...over,
+  });
+  const box = (field_key: string, over: Record<string, unknown> = {}) =>
+    def(field_key, 'CHECKBOX', 'client', { required: false, label: `Option ${field_key}`, group_key: 'colour', group_rule: 'SELECT_ONE', min_selected: 1, ...over });
+  const WITH_SETTINGS: SignTemplateRenderResponse = {
+    ...RENDERED_ROLES,
+    signature_fields: ROLE_FIELDS,
+    field_definitions: [
+      def('client_name_typed', 'SIGNER_NAME', 'client', { name_mode: 'SIGNER_ENTERED' }),
+      def('agency_name', 'SIGNER_NAME', 'agency', { name_mode: null }),
+      box('red'),
+      box('blue'),
+      // A value the renderer already printed (no signer role): never placed, never refused.
+      def('notes', 'MULTILINE_TEXT', null, { page_number: null, x: null, y: null, width: null, height: null }),
+    ],
+  };
+  const reasonOf = (e: unknown): unknown => (e as { context?: { details?: unknown } }).context?.details;
+
+  it('multi-role: label, group, rule, minimum and name mode reach the envelope fields (NULL name mode = SIGNER_PROFILE)', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce(WITH_SETTINGS);
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r');
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+    const placed = bind.fields.slice(ROLE_FIELDS.length);
+    expect(placed).toEqual([
+      expect.objectContaining({ role_key: 'client', field_type: 'SIGNER_NAME', name_mode: 'SIGNER_ENTERED', label: null, group_key: null }),
+      expect.objectContaining({ role_key: 'agency', field_type: 'SIGNER_NAME', name_mode: 'SIGNER_PROFILE' }),
+      expect.objectContaining({ role_key: 'client', field_type: 'CHECKBOX', label: 'Option red', group_key: 'colour', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null }),
+      expect.objectContaining({ role_key: 'client', field_type: 'CHECKBOX', label: 'Option blue', group_key: 'colour', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null }),
+    ]);
+  });
+
+  it('a field from a provider without settings maps exactly as before (all NULL; SIGNER_NAME → SIGNER_PROFILE)', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions: [def('n', 'SIGNER_NAME', 'client'), def('c', 'CHECKBOX', 'agency')] });
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r');
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+    expect(bind.fields.slice(ROLE_FIELDS.length)).toEqual([
+      expect.objectContaining({ field_type: 'SIGNER_NAME', label: null, group_key: null, group_rule: null, min_selected: null, name_mode: 'SIGNER_PROFILE' }),
+      expect.objectContaining({ field_type: 'CHECKBOX', label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null }),
+    ]);
+  });
+
+  it('multi-role: a signer field of a type the template surface cannot carry is refused 409, naming it (was a silent drop)', async () => {
+    // FIELD-PARITY-1 P3 — every catalog template type is carried now; PAYMENT never is (P1-6).
+    for (const field_type of ['PAYMENT', 'STAMP']) {
+      const h = harness({ registry: AVAILABLE, roles: true });
+      (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions: [def('due', field_type, 'client')] });
+      const e = await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r').catch((x: unknown) => x);
+      expect(e).toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', statusCode: 409 });
+      expect(reasonOf(e)).toEqual({ reason: 'template_field_type_unsupported', field_key: 'due', field_type });
+      expect(h.repo.createDraft).not.toHaveBeenCalled();
+      expect(h.repo.bindTemplateDraft).not.toHaveBeenCalled();
+    }
+  });
+
+  it('FIELD-PARITY-1 P3 (R-9) — IMAGE is retired: a signer IMAGE field is refused 409 template_field_type_retired', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions: [def('logo', 'IMAGE', 'client')] });
+    const e = await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r').catch((x: unknown) => x);
+    expect(e).toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', statusCode: 409 });
+    expect(reasonOf(e)).toEqual({ reason: 'template_field_type_retired', field_key: 'logo', field_type: 'IMAGE' });
+    expect(h.repo.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('FIELD-PARITY-1 P3 — every new type and setting survives template → envelope; CURRENCY → NUMBER (money), SIGNER_EMAIL → EMAIL', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    const choices = [{ value: 'ny', label: 'New York' }];
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...RENDERED_ROLES,
+      field_definitions: [
+        def('due', 'DATE', 'client', { required: false, label: 'Due date', validation: 'date_range', options: { min_date: '2026-01-01' }, data_name: 'due_date', font_size: 9 }),
+        def('city', 'DROPDOWN', 'client', { options: { choices }, placeholder: 'Pick one', tooltip: 'Where' }),
+        def('vote_yes', 'RADIO', 'client', { required: false, label: 'Yes', group_key: 'vote', group_rule: 'SELECT_ONE' }),
+        def('vote_no', 'RADIO', 'client', { required: false, label: 'No', group_key: 'vote', group_rule: 'SELECT_ONE' }),
+        def('qty', 'NUMBER', 'client', { validation: 'number_range', options: { min: 1, max: 9 } }),
+        def('notes', 'MULTILINE_TEXT', 'client', { validation: 'max_length', options: { max_length: 500 } }),
+        def('ack', 'ACKNOWLEDGEMENT', 'client', { label: 'I have read it' }),
+        def('fee', 'CURRENCY', 'client'),
+        def('mail', 'SIGNER_EMAIL', 'client'),
+        def('title', 'TITLE', 'agency'),
+      ],
+    });
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r');
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+    const carried = bind.fields.slice(ROLE_FIELDS.length);
+    expect(carried.map((f) => f['field_type'])).toEqual(['DATE', 'DROPDOWN', 'RADIO', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT', 'NUMBER', 'EMAIL', 'TITLE']);
+    expect(carried[0]).toMatchObject({ label: 'Due date', validation: 'date_range', options: { min_date: '2026-01-01' }, data_name: 'due_date', font_size: 9, required: false });
+    expect(carried[1]).toMatchObject({ options: { choices }, placeholder: 'Pick one', tooltip: 'Where' });
+    expect(carried[2]).toMatchObject({ label: 'Yes', group_key: 'vote', group_rule: 'SELECT_ONE', min_selected: null });
+    expect(carried[4]).toMatchObject({ validation: 'number_range', options: { min: 1, max: 9 } });
+    expect(carried[6]).toMatchObject({ label: 'I have read it' });
+    expect(carried[7]).toMatchObject({ options: { format: 'money', currency: 'USD', decimals: 2 } });
+    expect(carried[9]).toMatchObject({ role_key: 'agency' });
+  });
+
+  it('FIELD-PARITY-1 P3 S-5 — a sender-filled template field is refused while the flag is off, carried while it is on', async () => {
+    const field_definitions = [def('ref', 'TEXT', 'client', { sender_filled: true, read_only: true })];
+    const off = harness({ registry: AVAILABLE, roles: true });
+    (off.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions });
+    const e = await off.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r').catch((x: unknown) => x);
+    expect(reasonOf(e)).toMatchObject({ reason: 'template_field_setting_unsupported', field_key: 'ref', setting: 'sender_filled', setting_reason: 'sender_filled_not_available' });
+    vi.stubEnv('SIGN_SENDER_FILLED_FIELDS_ENABLED', '1');
+    try {
+      const on = harness({ registry: AVAILABLE, roles: true });
+      (on.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions });
+      await on.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r');
+      const bind = (on.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+      expect(bind.fields.slice(ROLE_FIELDS.length)[0]).toMatchObject({ field_type: 'TEXT', sender_filled: true, read_only: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('multi-role: a setting the type does not take, or a broken check-box group, is refused 409 before the envelope exists', async () => {
+    for (const [defs, details] of [
+      [[def('t', 'TEXT', 'client', { group_key: 'x' })], { reason: 'template_field_setting_unsupported', field_key: 't', setting: 'group_key', setting_reason: 'field_config_not_applicable' }],
+      // FIELD-PARITY-1 P3 — a dropdown without choices, a radio without a group, a radio mixed into a check-box group.
+      [[def('d', 'DROPDOWN', 'client')], { reason: 'template_field_setting_unsupported', field_key: 'd', setting: 'options', setting_reason: 'dropdown_choices_invalid' }],
+      [[def('r', 'RADIO', 'client', { label: 'Yes' })], { reason: 'template_field_setting_unsupported', field_key: 'r', setting: 'group_key', setting_reason: 'radio_group_required' }],
+      [[box('red'), def('blue', 'RADIO', 'client', { required: false, group_key: 'colour', group_rule: 'SELECT_ONE' })], { reason: 'template_field_setting_unsupported', group_key: 'colour', setting_reason: 'checkbox_group_inconsistent' }],
+      [[def('n', 'SIGNER_NAME', 'client', { name_mode: 'TYPED' })], { reason: 'template_field_setting_unsupported', field_key: 'n', setting: 'name_mode', setting_reason: 'name_mode_invalid' }],
+      [[box('red'), box('blue', { signer_role: 'agency' })], { reason: 'template_field_setting_unsupported', group_key: 'colour', setting_reason: 'checkbox_group_inconsistent' }],
+      [[box('red', { group_rule: 'SELECT_ANY', min_selected: 3 }), box('blue', { group_rule: 'SELECT_ANY', min_selected: 3 })], { reason: 'template_field_setting_unsupported', group_key: 'colour', setting_reason: 'checkbox_group_min_exceeds_size' }],
+    ] as const) {
+      const h = harness({ registry: AVAILABLE, roles: true });
+      (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, field_definitions: defs });
+      const e = await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r').catch((x: unknown) => x);
+      expect(e).toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', statusCode: 409 });
+      expect(reasonOf(e)).toMatchObject(details);
+      expect(h.repo.createDraft).not.toHaveBeenCalled();
+    }
+  });
+
+  describe('self mode (M-A12 W1-A)', () => {
+    function selfHarness(rendered: SignTemplateRenderResponse) {
+      const h = harness({ registry: AVAILABLE, roles: true });
+      (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rendered);
+      Object.assign(h.envelopes, { selfRecipient: vi.fn(async () => ({ name: 'Me', email: 'me@x.test' })) });
+      Object.assign(h.repo, { replaceDraftRecipients: vi.fn(async () => [{ id: 'signer-1' }]) });
+      return h;
+    }
+    const ONE_ROLE: SignTemplateRenderResponse = {
+      ...RENDERED_ROLES,
+      signature_fields: [],
+      field_definitions: [def('sig', 'SIGNATURE', 'client'), def('name', 'SIGNER_NAME', 'client', { name_mode: 'SIGNER_ENTERED' }), box('red'), box('blue'), def('plain', 'SIGNER_NAME', 'client')],
+    };
+
+    it('the sender fields carry the settings that are set (SIGNER_NAME with none → SIGNER_PROFILE)', async () => {
+      const h = selfHarness(ONE_ROLE);
+      await h.svc.createEnvelope(a, { template_id: TEMPLATE, mode: 'self' }, 'r');
+      const body = (h.envelopes.replaceFields.mock.calls[0] as unknown[])[2] as { fields: Array<Record<string, unknown>> };
+      expect(body.fields).toEqual([
+        expect.objectContaining({ field_type: 'SIGNATURE' }),
+        expect.objectContaining({ field_type: 'SIGNER_NAME', name_mode: 'SIGNER_ENTERED' }),
+        expect.objectContaining({ field_type: 'CHECKBOX', label: 'Option red', group_key: 'colour', group_rule: 'SELECT_ONE', min_selected: 1 }),
+        expect.objectContaining({ field_type: 'CHECKBOX', label: 'Option blue', group_key: 'colour', group_rule: 'SELECT_ONE', min_selected: 1 }),
+        expect.objectContaining({ field_type: 'SIGNER_NAME', name_mode: 'SIGNER_PROFILE' }),
+      ]);
+      for (const k of ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode']) expect(body.fields[0]).not.toHaveProperty(k);
+      expect(body.fields[2]).not.toHaveProperty('name_mode');
+    });
+
+    it('FIELD-PARITY-1 P3 — the sender fields carry the new settings and the R-9 mapping (only what is set)', async () => {
+      const h = selfHarness({
+        ...ONE_ROLE,
+        field_definitions: [def('sig', 'SIGNATURE', 'client'), def('fee', 'CURRENCY', 'client'), def('city', 'DROPDOWN', 'client', { options: { choices: [{ value: 'a', label: 'A' }] }, tooltip: 'Pick' })],
+      });
+      await h.svc.createEnvelope(a, { template_id: TEMPLATE, mode: 'self' }, 'r');
+      const body = (h.envelopes.replaceFields.mock.calls[0] as unknown[])[2] as { fields: Array<Record<string, unknown>> };
+      expect(body.fields[1]).toMatchObject({ field_type: 'NUMBER', options: { format: 'money', currency: 'USD', decimals: 2 } });
+      expect(body.fields[2]).toMatchObject({ field_type: 'DROPDOWN', options: { choices: [{ value: 'a', label: 'A' }] }, tooltip: 'Pick' });
+      for (const k of ['read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'placeholder']) expect(body.fields[2]).not.toHaveProperty(k);
+    });
+
+    it('a signer field of an unsupported type is refused 409 before the envelope exists (was a silent drop)', async () => {
+      const h = selfHarness({ ...ONE_ROLE, field_definitions: [def('sig', 'SIGNATURE', 'client'), def('amount', 'PAYMENT', 'client')] });
+      const e = await h.svc.createEnvelope(a, { template_id: TEMPLATE, mode: 'self' }, 'r').catch((x: unknown) => x);
+      expect(e).toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', statusCode: 409 });
+      expect(reasonOf(e)).toEqual({ reason: 'template_field_type_unsupported', field_key: 'amount', field_type: 'PAYMENT' });
+      expect(h.repo.createDraft).not.toHaveBeenCalled();
+    });
+  });
+});

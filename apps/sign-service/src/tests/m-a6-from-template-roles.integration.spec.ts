@@ -15,7 +15,7 @@ import { SignJWT, exportSPKI, generateKeyPair, type KeyLike } from 'jose';
 import { PDFDocument } from 'pdf-lib';
 import { Client } from 'pg';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../app/app.module.js';
 import { DOCUMENT_TEMPLATES_PORT, type DocumentTemplatesPort } from '../app/document-templates-http.adapter.js';
@@ -69,6 +69,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
   let key: KeyLike;
   let pdf: Uint8Array = new Uint8Array();
   let renders = 0;
+  // FIELD-PARITY-1 P1-4 — the placed field definitions the next render returns (default none).
+  let nextDefs: SignTemplateRenderResponse['field_definitions'] = [];
   const saved: Record<string, string | undefined> = {};
 
   // The Documents template library, as apps/api answers it: the template is usable only by
@@ -98,7 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
         signature_fields: (['client', 'agency'] as const).flatMap((role_key, i2) =>
           (['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE'] as const).map((field_type, j) => ({ field_type, page_number: 0, x: 60 + j * 170, y: 300 - i2 * 90, width: 160, height: 20, role_key })),
         ),
-        field_definitions: [],
+        field_definitions: nextDefs,
         signing: SIGNING,
       };
     },
@@ -330,5 +332,62 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
     expect((await db.query(`SELECT status FROM "sign"."SignatureEnvelope" WHERE id = $1`, [id])).rows[0].status).toBe('COMPLETED');
     expect((await db.query(`SELECT status FROM "sign"."Signer" WHERE id = $1`, [copy])).rows[0].status).toBe('PENDING');
     expect((await db.query(`SELECT count(*)::int AS n FROM "sign"."SigningSession" WHERE signer_id = $1`, [copy])).rows[0].n).toBe(0);
+  });
+
+  // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-4 —
+  // the template's field settings land on sign."SignatureField" unchanged (the type-scoped CHECKs
+  // accept them); a signer field Sign cannot place is refused 409 before any envelope is written.
+  describe('FIELD-PARITY-1 P1-4', () => {
+    const def = (field_key: string, field_type: string, signer_role: string, y: number, over: Record<string, unknown> = {}) => ({
+      field_key, field_type, signer_role, required: false, page_number: 0, x: 410, y, width: 18, height: 18,
+      label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null, ...over,
+    });
+    afterEach(() => {
+      nextDefs = [];
+    });
+
+    it('carries label, group, rule, minimum and name mode onto the envelope fields', async () => {
+      nextDefs = [
+        def('yes', 'CHECKBOX', 'client', 500, { label: 'Yes', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 }),
+        def('no', 'CHECKBOX', 'client', 470, { label: 'No', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 }),
+        def('typed_name', 'SIGNER_NAME', 'agency', 440, { width: 160, height: 20, required: true, name_mode: 'SIGNER_ENTERED' }),
+        def('profile_name', 'SIGNER_NAME', 'agency', 410, { width: 160, height: 20, required: true }),
+      ];
+      const res = await http().post('/v1/sign/sender/envelopes/from-template').set(await H(ANN)).send({ template_id: TEMPLATE, recipients });
+      expect(res.status).toBe(201);
+      const rows = await db.query(
+        `SELECT f.field_type, s.signer_role, f.label, f.group_key, f.group_rule, f.min_selected, f.name_mode
+           FROM "sign"."SignatureField" f JOIN "sign"."Signer" s ON s.id = f.signer_id
+          WHERE s.envelope_id = $1 AND f.x = 410 ORDER BY f.y DESC`,
+        [res.body.envelope.id],
+      );
+      expect(rows.rows).toEqual([
+        { field_type: 'CHECKBOX', signer_role: 'client', label: 'Yes', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null },
+        { field_type: 'CHECKBOX', signer_role: 'client', label: 'No', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null },
+        { field_type: 'SIGNER_NAME', signer_role: 'agency', label: null, group_key: null, group_rule: null, min_selected: null, name_mode: 'SIGNER_ENTERED' },
+        { field_type: 'SIGNER_NAME', signer_role: 'agency', label: null, group_key: null, group_rule: null, min_selected: null, name_mode: 'SIGNER_PROFILE' },
+      ]);
+    });
+
+    // P3 (R-1) made MULTILINE_TEXT placeable, so the refused type is one no Sign surface knows.
+    it('a signer field of a type Sign cannot place is refused 409 template_field_type_unsupported; no envelope is written', async () => {
+      const before = await envelopeCount();
+      nextDefs = [def('notes', 'HOLOGRAM', 'client', 500, { width: 200, height: 60 })];
+      const res = await http().post('/v1/sign/sender/envelopes/from-template').set(await H(ANN)).send({ template_id: TEMPLATE, recipients });
+      expect(res.status).toBe(409);
+      expect(res.body.error.details).toEqual({ reason: 'template_field_type_unsupported', field_key: 'notes', field_type: 'HOLOGRAM' });
+      expect(await envelopeCount()).toBe(before);
+    });
+
+    it('P3 — a MULTILINE_TEXT signer field is carried onto the envelope', async () => {
+      nextDefs = [def('notes', 'MULTILINE_TEXT', 'client', 500, { width: 200, height: 60 })];
+      const res = await http().post('/v1/sign/sender/envelopes/from-template').set(await H(ANN)).send({ template_id: TEMPLATE, recipients });
+      expect(res.status).toBe(201);
+      const rows = await db.query(
+        `SELECT f.field_type FROM "sign"."SignatureField" f JOIN "sign"."Signer" s ON s.id = f.signer_id WHERE s.envelope_id = $1 AND f.x = 410`,
+        [res.body.envelope.id],
+      );
+      expect(rows.rows).toEqual([{ field_type: 'MULTILINE_TEXT' }]);
+    });
   });
 });

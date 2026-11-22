@@ -2,24 +2,34 @@
 // places, their default size and whether a new field starts required. ONE table for both
 // Sign clients; the server's authoring list (sender-envelope.service.ts FIELD_TYPES) is
 // SENDER_FIELD_TYPES below.
-import { PAYMENT_FIELD_TYPE, PROFILE_TEXT_FIELD_TYPES } from './field-rules.js';
+// FIELD-PARITY-1 P1-0 / P1-1 — the lists and the default table are now projections of the one
+// field catalog (@aramo/sign-fields, scope:shared, so the console's Form Studio reads the same
+// table). This module keeps its public API unchanged.
+import {
+  FIELD_DEFAULTS as CATALOG_FIELD_DEFAULTS,
+  fieldTypesFor,
+  isFieldTypeOn,
+  type FieldDefaults,
+  type FieldTypeOn,
+  type FieldTypeOnWhenAvailable,
+} from '@aramo/sign-fields';
+
+export type { FieldDefaults } from '@aramo/sign-fields';
 
 /**
  * The types a sender authors on PUT …/fields (PX-V1 + M-A6 §2.1 + M-A12 W1-C.4). PAYMENT is
- * authorable separately, only while payments are available (Sign 1.14); ACKNOWLEDGEMENT is
- * engine-only (the S2S and Sign API paths) and is never placed by a sender.
+ * authorable separately, only while payments are available (Sign 1.14). FIELD-PARITY-1 P3 —
+ * ACKNOWLEDGEMENT is authorable (ruling R-2) and the five new types join (T-3..T-7).
  */
-export const SENDER_FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', ...PROFILE_TEXT_FIELD_TYPES] as const;
-export type SenderFieldType = (typeof SENDER_FIELD_TYPES)[number];
+export const SENDER_FIELD_TYPES: readonly FieldTypeOn<'send_web'>[] = fieldTypesFor('send_web');
+export type SenderFieldType = FieldTypeOn<'send_web'>;
 
 /** Every field type a sender view may show (a stored field may be of any of them). */
-export const ALL_FIELD_TYPES = [...SENDER_FIELD_TYPES, 'ACKNOWLEDGEMENT', PAYMENT_FIELD_TYPE] as const;
-export type AnyFieldType = (typeof ALL_FIELD_TYPES)[number];
-
-const SENDER_SET: ReadonlySet<string> = new Set(SENDER_FIELD_TYPES);
+export const ALL_FIELD_TYPES: readonly FieldTypeOn<'sign_store'>[] = fieldTypesFor('sign_store');
+export type AnyFieldType = FieldTypeOn<'sign_store'>;
 
 export function isSenderFieldType(v: unknown): v is SenderFieldType {
-  return typeof v === 'string' && SENDER_SET.has(v);
+  return isFieldTypeOn('send_web', v);
 }
 
 /**
@@ -27,16 +37,8 @@ export function isSenderFieldType(v: unknown): v is SenderFieldType {
  * reports payments available (sender context features.payments) AND the client can author a
  * payment's amount.
  */
-export function placeableFieldTypes(input: { readonly payments_available: boolean }): readonly AnyFieldType[] {
-  return input.payments_available ? [...SENDER_FIELD_TYPES, PAYMENT_FIELD_TYPE] : [...SENDER_FIELD_TYPES];
-}
-
-export interface FieldDefaults {
-  /** Default size in PDF points. */
-  readonly width: number;
-  readonly height: number;
-  /** Whether a newly placed field starts required (the sender may change it). */
-  readonly required: boolean;
+export function placeableFieldTypes(input: { readonly payments_available: boolean }): readonly FieldTypeOnWhenAvailable<'send_web'>[] {
+  return fieldTypesFor('send_web', { payments_available: input.payments_available });
 }
 
 /**
@@ -44,22 +46,11 @@ export interface FieldDefaults {
  * required-by-default: SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME and the profile fields
  * start required; TEXT and CHECKBOX start optional. ACKNOWLEDGEMENT and PAYMENT (never placed
  * from the editors today) keep the web's sizes; a PAYMENT field is always required (server).
+ * The values are the catalog's (FIELD-PARITY-1 P1-0), for the types a Sign envelope stores.
  */
-export const FIELD_DEFAULTS: Readonly<Record<AnyFieldType, FieldDefaults>> = {
-  SIGNATURE: { width: 230, height: 50, required: true },
-  INITIALS: { width: 60, height: 30, required: true },
-  SIGN_DATE: { width: 150, height: 22, required: true },
-  TEXT: { width: 230, height: 22, required: false },
-  SIGNER_NAME: { width: 200, height: 22, required: true },
-  CHECKBOX: { width: 18, height: 18, required: false },
-  FIRST_NAME: { width: 150, height: 22, required: true },
-  LAST_NAME: { width: 150, height: 22, required: true },
-  EMAIL: { width: 200, height: 22, required: true },
-  COMPANY: { width: 200, height: 22, required: true },
-  TITLE: { width: 200, height: 22, required: true },
-  ACKNOWLEDGEMENT: { width: 400, height: 26, required: true },
-  PAYMENT: { width: 160, height: 26, required: true },
-};
+export const FIELD_DEFAULTS: Readonly<Record<AnyFieldType, FieldDefaults>> = Object.fromEntries(
+  ALL_FIELD_TYPES.map((t) => [t, CATALOG_FIELD_DEFAULTS[t]]),
+) as Record<AnyFieldType, FieldDefaults>;
 
 /** M-A12 W1-E.2 — the user's default field size (S / M / L) scales the placed size. */
 export const FIELD_SIZE_SCALE = { S: 0.85, M: 1, L: 1.2 } as const;

@@ -116,9 +116,17 @@ export interface PreparedField {
   kind?: 'TEXT' | 'IMAGE' | 'MARK'; // default TEXT
   // MARK placement — required when kind === 'MARK'
   checked?: boolean;
-  // TEXT placement
+  // FIELD-PARITY-1 P3 T-5 — 'CIRCLE' draws a radio button (a circle, filled dot when checked)
+  // instead of the check-box square. Absent ⇒ the square, exactly as before.
+  shape?: 'CIRCLE';
+  // TEXT placement. FIELD-PARITY-1 P0-2: with width + height the value is drawn
+  // inside that box (wrap, shrink 11pt→7pt, clip); without them (legacy rows) it is
+  // one unbounded run at (x, y), as before.
   value?: string;
   size?: number;
+  // FIELD-PARITY-1 P3 S-7 — a fixed font size (points) for a boxed TEXT placement: the value is
+  // wrapped at this size and clipped (never shrunk). Absent ⇒ auto (wrap, shrink 11pt→7pt, clip).
+  font_size?: number;
   // IMAGE placement (DOC-4) — required when kind === 'IMAGE'
   image_bytes?: Uint8Array;
   image_format?: 'PNG' | 'JPG';
@@ -152,6 +160,10 @@ export interface RenderedOutput {
   provenance: RenderProvenance;
   // B2 — present iff the model carried a signature_block (or, M-A6, signature_blocks).
   signature_fields?: SignatureFieldPlacement[];
+  // FIELD-PARITY-1 P0-2 — prepareFromSource only: the field_key of every boxed text
+  // placement whose value did not fit its box even at the smallest size, so only the
+  // lines that fit were drawn. Absent when nothing was clipped.
+  truncated_field_keys?: string[];
 }
 
 export interface PrepareFromSourceOptions {

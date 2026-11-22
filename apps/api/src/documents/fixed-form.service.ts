@@ -1,8 +1,22 @@
 import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
+import { extractPageGraphics, extractTextLayer, readPageFrames } from '@aramo/documents-rendering';
+import {
+  TEMPLATE_FIELD_SETTINGS,
+  detectFields,
+  fieldTypesFor,
+  importFieldKey,
+  matchTagRole,
+  parseTemplateFieldSettings,
+  senderFilledFieldsEnabled,
+  type DetectResult,
+  type FieldOptions,
+  type FieldImportWarning,
+} from '@aramo/sign-fields';
 import {
   FIXED_FORM_MAX_BYTES,
+  FIXED_FORM_MAX_FIELDS,
   FIXED_FORM_SCHEMA_V1,
   PLATFORM_TEMPLATE_ASSET_PREFIX,
   FixedFormsRepository,
@@ -23,7 +37,7 @@ import {
 
 import { parseSigningConfig } from '../rtr/rtr-html-content.js';
 
-import { acceptFixedFormPdf } from './fixed-form-pdf.js';
+import { prepareFixedFormPdf, type FixedFormImportOptions } from './fixed-form-pdf.js';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7 — the fixed-form rules shared
 // by the platform authoring routes (§7.1, §7.2), the tenant read-only routes (§7.3) and the
@@ -58,6 +72,28 @@ export interface FixedFormFieldView {
   readonly width: number | null;
   readonly height: number | null;
   readonly ordinal: number;
+  // FIELD-PARITY-1 P1-3 — the Sign field settings (NULL = not set).
+  readonly label: string | null;
+  readonly group_key: string | null;
+  readonly group_rule: string | null;
+  readonly min_selected: number | null;
+  readonly name_mode: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (NULL / false = not set).
+  readonly tooltip: string | null;
+  readonly placeholder: string | null;
+  readonly read_only: boolean;
+  readonly sender_filled: boolean;
+  readonly validation: string | null;
+  readonly font_size: number | null;
+  readonly data_name: string | null;
+  readonly options: FieldOptions | null;
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload imported (absent without a flag). */
+export interface FixedFormFieldImport {
+  readonly fields: Array<FixedFormFieldView & { readonly source: 'pdf_form' | 'text_tag'; readonly source_name: string }>;
+  readonly warnings: FieldImportWarning[];
+  readonly stripped: string[];
 }
 
 const ROUTING = new Set(['PARALLEL', 'SEQUENTIAL']);
@@ -79,6 +115,19 @@ export function toFieldView(f: {
   width: number | null;
   height: number | null;
   ordinal: number;
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: unknown;
 }): FixedFormFieldView {
   return {
     field_key: f.field_key,
@@ -92,6 +141,19 @@ export function toFieldView(f: {
     width: f.width,
     height: f.height,
     ordinal: f.ordinal,
+    label: f.label ?? null,
+    group_key: f.group_key ?? null,
+    group_rule: f.group_rule ?? null,
+    min_selected: f.min_selected ?? null,
+    name_mode: f.name_mode ?? null,
+    tooltip: f.tooltip ?? null,
+    placeholder: f.placeholder ?? null,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
+    validation: f.validation ?? null,
+    font_size: f.font_size ?? null,
+    data_name: f.data_name ?? null,
+    options: (f.options ?? null) as FieldOptions | null,
   };
 }
 
@@ -121,19 +183,38 @@ export function fixedFormContentOf(field_schema: unknown, fallbackTitle: string)
   };
 }
 
+const FIXED_FORM_TYPE_LIST = fieldTypesFor('template_fixed_form').join(', ');
+
 // One placed field from a request body (shape only — the publish rules are fixedFormIssues).
+const FIELD_MEMBERS: readonly string[] = [
+  'field_key',
+  'field_type',
+  'binding_key',
+  'signer_role',
+  'required',
+  'page_number',
+  'x',
+  'y',
+  'width',
+  'height',
+  'ordinal',
+  // FIELD-PARITY-1 P1-3 — the Sign field settings.
+  ...TEMPLATE_FIELD_SETTINGS,
+];
+
 export function parseFieldInput(raw: unknown, index: number, requestId: string): Omit<FixedFormField, 'ordinal'> & { ordinal: number } {
   const o = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : null) as Record<string, unknown> | null;
   const at = (field: string, reason: string, message: string): AramoError => invalid(`field ${index + 1}: ${message}`, requestId, { reason, index, field });
   if (o === null) throw at('field', 'field_invalid', 'must be an object');
   for (const k of Object.keys(o)) {
-    if (!['field_key', 'field_type', 'binding_key', 'signer_role', 'required', 'page_number', 'x', 'y', 'width', 'height', 'ordinal'].includes(k)) {
+    if (!FIELD_MEMBERS.includes(k)) {
       throw at(k, 'field_unknown_member', `${k} is not a field property`);
     }
   }
   const field_key = typeof o['field_key'] === 'string' ? o['field_key'] : '';
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(field_key)) throw at('field_key', 'field_key_invalid', 'field_key must be lower_snake');
-  if (!isFixedFormFieldType(o['field_type'])) throw at('field_type', 'field_type_invalid', 'field_type must be TEXT, SIGN_DATE, CHECKBOX, SIGNER_NAME, SIGNATURE or INITIALS');
+  // FIELD-PARITY-1 P3 — the message names the catalog's template_fixed_form projection.
+  if (!isFixedFormFieldType(o['field_type'])) throw at('field_type', 'field_type_invalid', `field_type must be one of ${FIXED_FORM_TYPE_LIST}`);
   const text = (k: 'binding_key' | 'signer_role'): string | null => {
     const v = o[k];
     if (v === undefined || v === null || v === '') return null;
@@ -150,6 +231,11 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
   if (typeof required !== 'boolean') throw at('required', 'field_required_invalid', 'required must be true or false');
   const ordinal = o['ordinal'] === undefined ? index : o['ordinal'];
   if (typeof ordinal !== 'number' || !Number.isInteger(ordinal) || ordinal < 0) throw at('ordinal', 'field_ordinal_invalid', 'ordinal must be a non-negative integer');
+  // FIELD-PARITY-1 P1-3 / P3 — the settings the type takes (the catalog), by Sign's rules; one
+  // the type does not take is refused (field_config_not_applicable), never dropped. A
+  // sender-filled field is refused while SIGN_SENDER_FILLED_FIELDS_ENABLED is off (R-3, dark).
+  const parsed = parseTemplateFieldSettings(o, o['field_type'], { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+  if (!parsed.ok) throw at(parsed.refusal.setting, parsed.refusal.reason, parsed.refusal.message);
   return {
     field_key,
     field_type: o['field_type'],
@@ -162,6 +248,7 @@ export function parseFieldInput(raw: unknown, index: number, requestId: string):
     width: num('width'),
     height: num('height'),
     ordinal,
+    ...parsed.settings,
   };
 }
 
@@ -232,15 +319,26 @@ export class FixedFormService {
     return this.forms.createPlatformDraft({ template_id, created_by: actor, initial: emptyFixedFormContent(template.name) });
   }
 
-  /** §7.1 — validate, store under the platform prefix, record the asset, point the draft at it. */
-  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string }) {
+  /**
+   * §7.1 — validate, store under the platform prefix, record the asset, point the draft at it.
+   * FIELD-PARITY-1 P2-5 / P2-6 — with `import_fields` / `apply_text_tags` (default false) the
+   * stored PDF is the stripped / flattened / tag-covered one and the found fields are added
+   * to the draft's fields (prepareFixedFormPdf). A form field has no signer role (the author
+   * assigns it in the Studio); a tag's role is matched case-insensitively to a role key or
+   * label, and left unassigned (warning) when none matches.
+   */
+  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string; import?: FixedFormImportOptions }): Promise<{ field_import: FixedFormFieldImport | null }> {
     const { version, template } = await this.platformVersion(input.version_id, input.requestId);
     if (version.status !== 'DRAFT') {
       throw new AramoError('TEMPLATE_IMMUTABLE', `TemplateVersion ${version.id} is not a DRAFT`, 409, { requestId: input.requestId });
     }
-    const accepted = await acceptFixedFormPdf(input.bytes, input.requestId);
+    const opts: FixedFormImportOptions = input.import ?? { import_fields: false, apply_text_tags: false };
+    const importing = opts.import_fields || opts.apply_text_tags;
+    const existing = importing ? (await this.forms.listFields(version.id)).map(toFieldView) : [];
+    const prepared = await prepareFixedFormPdf(input.bytes, opts, new Set(existing.flatMap((f) => (f.group_key === null ? [] : [f.group_key]))), input.requestId);
+    const accepted = prepared.accepted;
     const storage_key = `${PLATFORM_TEMPLATE_ASSET_PREFIX}/${version.id}/${accepted.sha256}.pdf`;
-    await this.storage.putArtifact({ storage_key, body: Buffer.from(input.bytes), content_type: 'application/pdf', requestId: input.requestId });
+    await this.storage.putArtifact({ storage_key, body: Buffer.from(prepared.bytes), content_type: 'application/pdf', requestId: input.requestId });
     const asset = await this.forms.createPlatformAsset({
       template_version_id: version.id,
       storage_key,
@@ -251,7 +349,72 @@ export class FixedFormService {
     });
     const { content } = fixedFormContentOf(version.field_schema, template.name);
     const pdf: FixedFormPdfRef = { asset_id: asset.id, sha256: asset.sha256, byte_size: asset.byte_size, page_count: asset.page_count, pages: accepted.pages };
-    return this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf } });
+    if (!importing) {
+      await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf } });
+      return { field_import: null };
+    }
+    const warnings: FieldImportWarning[] = [...prepared.warnings];
+    const room = Math.max(0, FIXED_FORM_MAX_FIELDS - existing.length);
+    if (prepared.fields.length > room) {
+      warnings.push({ code: 'too_many_fields', message: `A form holds at most ${FIXED_FORM_MAX_FIELDS} fields; ${prepared.fields.length - room} found fields were not added.` });
+    }
+    const roles = content.signing.roles.filter((r) => r.kind === 'SIGNER').map((r) => ({ id: r.role_key, names: [r.role_key, r.label] }));
+    const keys = new Set(existing.map((f) => f.field_key));
+    const created = prepared.fields.slice(0, room).map((f, i) => {
+      const signer_role = f.role === null ? null : matchTagRole(f.role, roles);
+      if (f.role !== null && signer_role === null) {
+        warnings.push({ code: 'text_tag_role_unknown', message: `{{${f.name}}}: no signer role is "${f.role}"; the field has no role yet.`, name: f.name, page_number: f.page_number });
+      }
+      const view: FixedFormFieldView = toFieldView({
+        field_key: importFieldKey(f.name, keys),
+        field_type: f.field_type,
+        binding_key: null,
+        signer_role,
+        required: f.required,
+        page_number: f.page_number,
+        x: f.x,
+        y: f.y,
+        width: f.width,
+        height: f.height,
+        ordinal: existing.length + i,
+        label: f.label,
+        group_key: f.group_key,
+        group_rule: f.group_rule,
+        min_selected: null,
+        name_mode: null,
+      });
+      return { view, source: f.source, source_name: f.name };
+    });
+    await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf }, fields: [...existing, ...created.map((c) => c.view)] });
+    return {
+      field_import: {
+        fields: created.map((c) => ({ ...c.view, source: c.source, source_name: c.source_name })),
+        warnings,
+        stripped: prepared.stripped,
+      },
+    };
+  }
+
+  /**
+   * FIELD-PARITY-1 §5 P2-4 — the Studio's "Suggest fields": the shared deterministic detector
+   * (@aramo/sign-fields detectFields, the same one Sign's envelope route runs) over the stored
+   * PDF's text layer, page frames and drawn rectangles, limited to the fixed-form palette (a
+   * "Title:" label becomes TEXT here). No model, no network, no text logged. The version must be
+   * a fixed form (404 / 409 as the other routes); after that, a version without a PDF, or any
+   * failure reading it, is an empty answer (the feature is a convenience).
+   */
+  async fieldSuggestions(version_id: string, requestId: string): Promise<DetectResult> {
+    const { version, template } = await this.platformVersion(version_id, requestId);
+    const { content } = fixedFormContentOf(version.field_schema, template.name);
+    const none: DetectResult = { suggestions: [], skipped_pages: [] };
+    if (content.pdf === null) return none;
+    try {
+      const bytes = new Uint8Array(await this.readPdf(content.pdf, requestId));
+      const [pages, frames, graphics] = await Promise.all([extractTextLayer(bytes), readPageFrames(bytes), extractPageGraphics(bytes).catch(() => [])]);
+      return detectFields(pages, frames, { graphics, types: fieldTypesFor('template_fixed_form') });
+    } catch {
+      return none;
+    }
   }
 
   /** §7.2 — replace the signer roles (+ title) and every placed field of a DRAFT in one write. */

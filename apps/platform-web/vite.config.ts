@@ -30,6 +30,12 @@ export default defineConfig({
       '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
       // PLATFORM-UX-1 F-9 (R-11) — the Template Studio reuses the shared rtr-html-v1 codec.
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
+      // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
+      // @aramo/sign-client and @aramo/document-templates-web.
+      '@aramo/sign-fields': resolve(root, '../../libs/sign-fields/src/index.ts'),
+      // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared), imported by
+      // @aramo/document-templates-web (the console form Studio) and sign-web Prepare.
+      '@aramo/field-placement-web': resolve(root, '../../libs/field-placement-web/src/index.ts'),
     },
   },
   server: {

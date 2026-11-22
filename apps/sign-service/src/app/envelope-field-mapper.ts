@@ -1,5 +1,6 @@
 import { type AddFieldInput } from '@aramo/sign';
 import { type ProviderFieldInput } from '@aramo/documents-contracts';
+import { fieldTypesFor } from '@aramo/sign-fields';
 
 // PX-V1 F2 — resolve + validate positioned fields supplied on envelope creation,
 // mapping the public ProviderFieldInput (ordinal / signing_order references) to
@@ -8,17 +9,12 @@ import { type ProviderFieldInput } from '@aramo/documents-contracts';
 // signer reference throw BEFORE any row is written. Page-SIZE bounds are enforced
 // by the renderer at stamp time (pdf-lib adapter); define time enforces structure.
 
-// Mirrors the SignatureField_type_check DB constraint so the API rejects unknown
-// types with a clear error instead of a downstream CHECK violation.
-const ALLOWED_FIELD_TYPES = new Set([
-  'SIGNATURE',
-  'INITIALS',
-  'SIGN_DATE',
-  'SIGNER_NAME',
-  'TEXT',
-  'CHECKBOX',
-  'ACKNOWLEDGEMENT',
-]);
+// The service-to-service / Sign API allow-list: the catalog's `sign_api_s2s` surface
+// (FIELD-PARITY-1 P1-2, @aramo/sign-fields; today SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME,
+// TEXT, CHECKBOX, ACKNOWLEDGEMENT). It is NOT the SignatureField_type_check DB constraint
+// (the `sign_store` surface, which adds PAYMENT and the profile types). Unknown types are
+// rejected here with a clear error instead of a downstream CHECK violation.
+const ALLOWED_FIELD_TYPES: ReadonlySet<string> = new Set(fieldTypesFor('sign_api_s2s'));
 
 export interface CreatedDocumentRef {
   id: string;

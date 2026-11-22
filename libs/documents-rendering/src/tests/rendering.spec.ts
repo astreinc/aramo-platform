@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PdfLibDocumentRenderingAdapter,
@@ -11,7 +11,15 @@ import {
   layoutSignatureBlock,
   manifestProjection,
   wrapTextToWidth,
+  layoutTextInBox,
+  sanitizeWinAnsi,
+  stampTextInBox,
+  stampTextUnbounded,
+  TEXT_BOX_MAX_SIZE,
+  TEXT_BOX_MIN_SIZE,
   type RenderModel,
+  type TextBox,
+  type TextBoxLayout,
 } from '../index.js';
 
 // DOC-2 boundary 5/6 — the rendering adapter + safe-upload pipeline. Pure pdf-lib,
@@ -484,6 +492,168 @@ describe('PdfLibDocumentRenderingAdapter (UPLOADED_PDF path)', () => {
         },
       ]),
     ).rejects.toBeInstanceOf(RenderFailedError);
+  });
+});
+
+// FIELD-PARITY-1 P0-2 — the one text-in-box stamper (executed PDF + fixed-form prefill).
+describe('text in a box (FIELD-PARITY-1 P0-2)', () => {
+  const helvetica = async () => (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+  // Helvetica ascender / descender (AFM), to check every glyph stays inside the box.
+  const inside = (layout: TextBoxLayout, box: TextBox, width: (s: string) => number): void => {
+    for (const l of layout.lines) {
+      expect(l.x).toBeGreaterThanOrEqual(box.x);
+      expect(l.x + width(l.text)).toBeLessThanOrEqual(box.x + box.width + 1e-9);
+      expect(l.y - 0.207 * layout.size).toBeGreaterThanOrEqual(box.y - 1e-9);
+      expect(l.y + 0.718 * layout.size).toBeLessThanOrEqual(box.y + box.height + 1e-9);
+    }
+  };
+
+  it('a short value is one line at 11pt inside the box, not truncated', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 120, width: 180, height: 22 };
+    const out = layoutTextInBox('Jane Doe', (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(out).toMatchObject({ size: TEXT_BOX_MAX_SIZE, truncated: false });
+    expect(out.lines.map((l) => l.text)).toEqual(['Jane Doe']);
+    expect(out.lines[0]?.x).toBe(74);
+    inside(out, box, (t) => font.widthOfTextAtSize(t, out.size));
+  });
+
+  it('long text wraps to the box width over several lines at 11pt', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 300, width: 160, height: 60 };
+    const text = 'The parties agree that the meeting minutes are a true record of the session';
+    const out = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(out.size).toBe(11);
+    expect(out.truncated).toBe(false);
+    expect(out.lines.length).toBeGreaterThan(1);
+    expect(out.lines.map((l) => l.text).join(' ')).toBe(text);
+    inside(out, box, (t) => font.widthOfTextAtSize(t, out.size));
+  });
+
+  it('text that does not fit at 11pt shrinks (re-wrapping) before anything is cut', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 300, width: 160, height: 26 }; // two lines at 11pt
+    const text = 'The parties agree that the meeting minutes are a true record of the session';
+    const out = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(out.size).toBeLessThan(11);
+    expect(out.size).toBeGreaterThanOrEqual(TEXT_BOX_MIN_SIZE);
+    expect(out.truncated).toBe(false);
+    expect(out.lines.map((l) => l.text).join(' ')).toBe(text);
+    inside(out, box, (t) => font.widthOfTextAtSize(t, out.size));
+  });
+
+  it('text that does not fit at 7pt is clipped to the lines that fit, flagged truncated', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 300, width: 120, height: 20 };
+    const text = 'word '.repeat(200).trim();
+    const out = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(out.size).toBe(TEXT_BOX_MIN_SIZE);
+    expect(out.truncated).toBe(true);
+    expect(out.lines).toHaveLength(Math.floor(20 / (7 * 1.15)));
+    inside(out, box, (t) => font.widthOfTextAtSize(t, out.size));
+  });
+
+  it('a single word wider than the box is broken by character, never drawn past the edge', async () => {
+    const font = await helvetica();
+    const box = { x: 10, y: 10, width: 60, height: 40 };
+    const out = layoutTextInBox('x'.repeat(40), (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(out.lines.map((l) => l.text).join('')).toBe('x'.repeat(40));
+    inside(out, box, (t) => font.widthOfTextAtSize(t, out.size));
+  });
+
+  it('replaces characters the standard font cannot draw (WinAnsi), keeping those it can', async () => {
+    const font = await helvetica();
+    expect(sanitizeWinAnsi('Nimbus Leasing — 東京 “O’Brien” café €5\tx\r\ny', font)).toBe('Nimbus Leasing — ?? “O’Brien” café €5 x\ny');
+    expect(sanitizeWinAnsi('ok 🙂', font)).toBe('ok ?');
+  });
+
+  it('stampTextInBox draws each laid-out line at the fitted size (sanitised)', async () => {
+    const font = await helvetica();
+    const page = { drawText: vi.fn() };
+    const box = { x: 72, y: 120, width: 180, height: 22 };
+    const out = stampTextInBox(page as unknown as Parameters<typeof stampTextInBox>[0], font, box, 'Acme 東京');
+    expect(page.drawText).toHaveBeenCalledTimes(1);
+    expect(page.drawText.mock.calls[0]?.[0]).toBe('Acme ??');
+    expect(page.drawText.mock.calls[0]?.[1]).toMatchObject({ x: out.lines[0]?.x, y: out.lines[0]?.y, size: 11, font });
+    const blank = { drawText: vi.fn() };
+    expect(stampTextInBox(blank as unknown as Parameters<typeof stampTextInBox>[0], font, box, '   ').lines).toEqual([]);
+    expect(blank.drawText).not.toHaveBeenCalled();
+  });
+
+  it('a placement with no box size (legacy row) draws one unbounded run at (x, y), as before', async () => {
+    const font = await helvetica();
+    const page = { drawText: vi.fn() };
+    const long = 'A legacy value that is much longer than any box would be on the page';
+    stampTextUnbounded(page as unknown as Parameters<typeof stampTextUnbounded>[0], font, { x: 72, y: 120 }, long);
+    expect(page.drawText).toHaveBeenCalledWith(long, expect.objectContaining({ x: 72, y: 120, size: 11, font }));
+    // Only an undrawable character changes (it used to fail the render).
+    stampTextUnbounded(page as unknown as Parameters<typeof stampTextUnbounded>[0], font, { x: 72, y: 120 }, 'a\tb\nc 東');
+    expect(page.drawText).toHaveBeenLastCalledWith('a\tb\nc ?', expect.objectContaining({ size: 11 }));
+  });
+
+  it('prepareFromSource stamps a boxed value inside its box and reports clipped field keys', async () => {
+    const source = await makeSourcePdf();
+    const fits = { field_key: 'short', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: 'Jane Doe' };
+    const clipped = { field_key: 'long', page_number: 0, x: 72, y: 200, width: 120, height: 20, value: 'word '.repeat(200) };
+    const a = await adapter.prepareFromSource(source, [fits, clipped]);
+    const b = await adapter.prepareFromSource(source, [fits, clipped]);
+    expect(a.sha256).toBe(b.sha256);
+    expect(a.truncated_field_keys).toEqual(['long']);
+    const none = await adapter.prepareFromSource(source, [fits]);
+    expect(none).not.toHaveProperty('truncated_field_keys');
+    // The boxed render differs from the legacy unbounded one (the box changes the drawing).
+    const legacy = await adapter.prepareFromSource(source, [{ field_key: 'short', page_number: 0, x: 72, y: 120, value: 'Jane Doe' }]);
+    expect(legacy.sha256).not.toBe(none.sha256);
+    expect(legacy).not.toHaveProperty('truncated_field_keys');
+  });
+
+  it('a value with characters outside WinAnsi renders instead of failing, on both paths', async () => {
+    const source = await makeSourcePdf();
+    await expect(adapter.prepareFromSource(source, [{ field_key: 'x', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: '東京 Ltd' }])).resolves.toMatchObject({ page_count: 1 });
+    await expect(adapter.prepareFromSource(source, [{ field_key: 'x', page_number: 0, x: 72, y: 120, value: '東京 Ltd' }])).resolves.toMatchObject({ page_count: 1 });
+  });
+});
+
+describe('FIELD-PARITY-1 P3 — radio marks and a fixed font size', () => {
+  const helvetica = async () => (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+
+  it('a fixed size wraps at that size and clips, never shrinks; auto is unchanged', async () => {
+    const font = await helvetica();
+    const box = { x: 72, y: 300, width: 160, height: 26 };
+    const text = 'The parties agree that the meeting minutes are a true record of the session';
+    const fixed = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box, 9);
+    expect(fixed.size).toBe(9);
+    expect(fixed.truncated).toBe(true);
+    expect(fixed.lines).toHaveLength(Math.floor(26 / (9 * 1.15)));
+    const auto = layoutTextInBox(text, (t, n) => font.widthOfTextAtSize(t, n), box);
+    expect(auto.size).toBeLessThan(11);
+    expect(auto.truncated).toBe(false);
+    const big = layoutTextInBox('Jane', (t, n) => font.widthOfTextAtSize(t, n), { x: 0, y: 0, width: 200, height: 40 }, 20);
+    expect(big).toMatchObject({ size: 20, truncated: false });
+  });
+
+  it('prepareFromSource draws a CIRCLE mark (checked or not) and honours font_size; deterministic', async () => {
+    const source = await makeSourcePdf();
+    const radioOn = { field_key: 'r1', page_number: 0, x: 72, y: 400, width: 14, height: 14, kind: 'MARK' as const, checked: true, shape: 'CIRCLE' as const };
+    const radioOff = { field_key: 'r2', page_number: 0, x: 72, y: 380, width: 14, height: 14, kind: 'MARK' as const, checked: false, shape: 'CIRCLE' as const };
+    const sized = { field_key: 't', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: '$1,250.50', font_size: 9 };
+    const a = await adapter.prepareFromSource(source, [radioOn, radioOff, sized]);
+    const b = await adapter.prepareFromSource(source, [radioOn, radioOff, sized]);
+    expect(a.sha256).toBe(b.sha256);
+    // A circle is not the check-box square, and the fixed size is not auto.
+    const square = await adapter.prepareFromSource(source, [{ ...radioOn, shape: undefined }, radioOff, sized]);
+    expect(square.sha256).not.toBe(a.sha256);
+    const auto = await adapter.prepareFromSource(source, [radioOn, radioOff, { ...sized, font_size: undefined }]);
+    expect(auto.sha256).not.toBe(a.sha256);
+  });
+
+  it('a placement without the P3 keys keeps its render manifest hash (existing executed documents unchanged)', async () => {
+    const source = await makeSourcePdf();
+    const p = { field_key: 'short', page_number: 0, x: 72, y: 120, width: 180, height: 22, value: 'Jane Doe' };
+    const before = await adapter.prepareFromSource(source, [p]);
+    const withUndefined = await adapter.prepareFromSource(source, [{ ...p, font_size: undefined, shape: undefined }]);
+    expect(withUndefined.provenance.render_manifest_sha256).toBe(before.provenance.render_manifest_sha256);
+    expect(withUndefined.sha256).toBe(before.sha256);
   });
 });
 

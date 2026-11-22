@@ -1,0 +1,30 @@
+{
+  "name": "sign-fields",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/sign-fields/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:client-shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/sign-fields",
+        "main": "libs/sign-fields/src/index.ts",
+        "tsConfig": "libs/sign-fields/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/sign-fields/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --root libs/sign-fields"
+      }
+    }
+  }
+}

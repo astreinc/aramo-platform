@@ -17,7 +17,7 @@ import type { GuestSigningSession } from '../../api/guestSigningClient';
 import { newIdempotencyKey, type WorkspaceClient } from '../../api/workspaceClient';
 import type { EditorField } from '../editor/editorReducer';
 import { editorToWire, wireToEditor } from '../editor/geometry';
-import { isAuthoringFieldType } from '../editor/fieldTypes';
+import { isSelfSignFieldType } from '../editor/fieldTypes';
 import { parseEnvelope } from '../send/draftModel';
 import { etagFor } from '../../api/workspaceClient';
 import { refusalMessage } from '../../api/refusalMessages';
@@ -335,7 +335,9 @@ export async function startFromTemplate(
   }
   const fields: EditorField[] = [];
   for (const f of v.env.fields) {
-    if (!isAuthoringFieldType(f.field_type)) continue;
+    // FIELD-PARITY-1 P3 — Sign a document places and fills the types it has tools for (not the
+    // Phase 3 types, whose values its fill sheet does not take yet).
+    if (!isSelfSignFieldType(f.field_type)) continue;
     const doc = docs.find((x) => x.serverId === f.envelope_document_id);
     const page = doc?.pages?.[f.page_number];
     if (!doc || !page) continue;

@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { FIXED_FORM_SCHEMA_V1, type PublishedFixedForm, type TemplateAuditPort } from '@aramo/documents';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { stampTextInBox } from '@aramo/documents-rendering';
+import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlatformFixedFormsController } from '../document-templates-platform/platform-fixed-forms.controller.js';
@@ -96,6 +97,28 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.1 — the official PDF gate', () => {
     expect(stamped.byteLength).toBeGreaterThan(bytes.byteLength);
     expect((await PDFDocument.load(stamped)).getPageCount()).toBe(1);
   });
+
+  // FIELD-PARITY-1 P0-2 — the prefill is drawn by the ONE shared text-in-box stamper (the
+  // executed PDF uses the same one): a long value wraps / shrinks / clips inside its box.
+  it('prefill uses the shared text-in-box stamper (same bytes as stamping directly)', async () => {
+    const bytes = await pdfBytes(1);
+    const box = { x: 72, y: 500, width: 140, height: 30 };
+    const text = 'Corporate Meeting Minutes of the Board of Directors — 東京 office, held in person and by video';
+    const stamped = await stampFixedFormValues(bytes, [{ page_number: 0, ...box, text }]);
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const layout = stampTextInBox(doc.getPage(0), font, box, text);
+    const direct = await doc.save({ useObjectStreams: false });
+    expect(Buffer.from(stamped).equals(Buffer.from(direct))).toBe(true);
+    // The value did not fit one line: it is wrapped (and shrunk) inside the box.
+    expect(layout.lines.length).toBeGreaterThan(1);
+    expect(layout.size).toBeLessThanOrEqual(11);
+    for (const l of layout.lines) {
+      expect(l.x + font.widthOfTextAtSize(l.text, layout.size)).toBeLessThanOrEqual(box.x + box.width);
+      expect(l.y).toBeGreaterThan(box.y);
+      expect(l.y).toBeLessThan(box.y + box.height);
+    }
+  });
 });
 
 describe('TEMPLATE-PRODUCT-1 TP-6 §7.2 — fields and layout', () => {
@@ -114,6 +137,48 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.2 — fields and layout', () => {
     expect(r({ field_key: 'Bad Key', field_type: 'TEXT', page_number: 0, x: 0, y: 0, width: 9, height: 9 })).toBe('field_key_invalid');
     expect(r({ field_key: 'x', field_type: 'TEXT', page_number: -1, x: 0, y: 0, width: 9, height: 9 })).toBe('field_position_invalid');
     expect(r({ field_key: 'x', field_type: 'TEXT', page_number: 0, x: 0, y: 0, width: 9, height: 9, value: 'v' })).toBe('field_unknown_member');
+  });
+
+  // FIELD-PARITY-1 P1-3 — the fixed-form field carries the Sign settings the type takes.
+  it('parseFieldInput accepts the Sign settings the type takes and refuses the others with a named reason', () => {
+    const at = { page_number: 0, x: 0, y: 0, width: 18, height: 18, signer_role: 'employee' };
+    expect(parseFieldInput({ field_key: 'box_a', field_type: 'CHECKBOX', ...at, label: ' Agree ', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: 1 }, 0, 'r')).toMatchObject({
+      label: 'Agree',
+      group_key: 'g',
+      group_rule: 'SELECT_ONE',
+      min_selected: 1,
+      name_mode: null,
+    });
+    expect(parseFieldInput({ field_key: 'name', field_type: 'SIGNER_NAME', ...at, name_mode: 'SIGNER_ENTERED' }, 0, 'r')).toMatchObject({ name_mode: 'SIGNER_ENTERED', label: null });
+    // NULL settings (the Studio echoes the view back) are accepted on every type.
+    expect(parseFieldInput({ field_key: 'sig', field_type: 'SIGNATURE', ...at, label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null }, 0, 'r')).toMatchObject({
+      label: null,
+      group_key: null,
+      group_rule: null,
+      min_selected: null,
+      name_mode: null,
+    });
+    const refused = (raw: Record<string, unknown>): { reason: string; field: string } => {
+      try {
+        parseFieldInput({ field_key: 'f', ...at, ...raw }, 0, 'r');
+      } catch (e) {
+        const d = (e as AramoError).context?.details as { reason: string; field: string };
+        expect((e as AramoError).statusCode).toBe(422);
+        return { reason: d.reason, field: d.field };
+      }
+      return { reason: 'ok', field: '' };
+    };
+    // FIELD-PARITY-1 P3 — a label applies to every type; group_key still does not apply to TEXT.
+    expect(refused({ field_type: 'TEXT', label: 'x' })).toEqual({ reason: 'ok', field: '' });
+    expect(refused({ field_type: 'TEXT', group_key: 'g' })).toEqual({ reason: 'field_config_not_applicable', field: 'group_key' });
+    expect(refused({ field_type: 'DROPDOWN' })).toEqual({ reason: 'dropdown_choices_invalid', field: 'options' });
+    expect(refused({ field_type: 'RADIO', label: 'Yes' })).toEqual({ reason: 'radio_group_required', field: 'group_key' });
+    expect(refused({ field_type: 'TEXT', sender_filled: true })).toEqual({ reason: 'sender_filled_not_available', field: 'sender_filled' });
+    expect(refused({ field_type: 'SIGNATURE', name_mode: 'SIGNER_ENTERED' })).toEqual({ reason: 'field_config_not_applicable', field: 'name_mode' });
+    expect(refused({ field_type: 'SIGNER_NAME', name_mode: 'TYPED' })).toEqual({ reason: 'name_mode_invalid', field: 'name_mode' });
+    expect(refused({ field_type: 'CHECKBOX', group_rule: 'SELECT_ONE' })).toEqual({ reason: 'checkbox_group_required', field: 'group_rule' });
+    expect(refused({ field_type: 'CHECKBOX', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: 2 })).toEqual({ reason: 'checkbox_group_invalid', field: 'min_selected' });
+    expect(refused({ field_type: 'CHECKBOX', payment_amount_minor: 500 })).toEqual({ reason: 'field_unknown_member', field: 'payment_amount_minor' });
   });
 
   it('fixedFormContentOf parses roles with the shared signing parser (invalid → reported)', () => {
@@ -346,6 +411,23 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.4 — Sign', () => {
     expect(out).toMatchObject({ document_id: 'doc-1', template_version_id: VERSION, template_kind: 'FIXED_FORM', signature_fields: [] });
     expect(out.field_definitions.map((f) => f.field_key)).toEqual(['sig']);
     expect(out.signing?.roles.map((r) => r.role_key)).toEqual(['employee']);
+  });
+
+  // FIELD-PARITY-1 P1-4 — the settings travel to Sign with each signer field.
+  it('"Use" returns each signer field with its Sign settings (NULL when unset)', async () => {
+    const base = { binding_key: null, signer_role: 'employee', required: false, page_number: 0, x: 72, y: 72, width: 18, height: 18 };
+    const fields = [
+      { field_key: 'sig', field_type: 'SIGNATURE', ...base, required: true, width: 160, height: 32, ordinal: 0 },
+      { field_key: 'box', field_type: 'CHECKBOX', ...base, ordinal: 1, label: 'Agree', group_key: 'g', group_rule: 'SELECT_ANY', min_selected: 1, name_mode: null },
+      { field_key: 'nm', field_type: 'SIGNER_NAME', ...base, ordinal: 2, label: null, group_key: null, group_rule: null, min_selected: null, name_mode: 'SIGNER_ENTERED' },
+    ];
+    const { svc } = await sign({ fields });
+    const out = await svc.render({ tenant_id: TENANT, template_id: TEMPLATE, values: {}, created_by: ACTOR, client_id: null, idempotency_key: 'k-87654321', requestId: 'r' });
+    expect(out.field_definitions).toEqual([
+      expect.objectContaining({ field_key: 'sig', label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null }),
+      expect.objectContaining({ field_key: 'box', label: 'Agree', group_key: 'g', group_rule: 'SELECT_ANY', min_selected: 1, name_mode: null }),
+      expect.objectContaining({ field_key: 'nm', label: null, name_mode: 'SIGNER_ENTERED' }),
+    ]);
   });
 
   it('a replayed key returns the same frozen revision without writing again', async () => {

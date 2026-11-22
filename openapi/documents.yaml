@@ -1992,6 +1992,24 @@ components:
                   width: { type: [number, 'null'] }
                   height: { type: [number, 'null'] }
                   ordinal: { type: integer }
+                  # FIELD-PARITY-1 P1-3 — the field's Sign settings (NULL = not set).
+                  label: { type: [string, 'null'] }
+                  group_key: { type: [string, 'null'] }
+                  group_rule: { type: [string, 'null'], enum: [SELECT_ONE, SELECT_ANY, null] }
+                  min_selected: { type: [integer, 'null'] }
+                  name_mode: { type: [string, 'null'], enum: [SIGNER_PROFILE, SIGNER_ENTERED, null] }
+                  # FIELD-PARITY-1 P3 §6.2 — the other settings (NULL / false = not set).
+                  tooltip: { type: [string, 'null'] }
+                  placeholder: { type: [string, 'null'] }
+                  read_only: { type: boolean }
+                  sender_filled: { type: boolean }
+                  validation: { type: [string, 'null'], enum: [email, phone, us_zip, number_range, date_range, max_length, null] }
+                  font_size: { type: [integer, 'null'] }
+                  data_name: { type: [string, 'null'] }
+                  options:
+                    oneOf:
+                      - $ref: '#/components/schemas/FieldOptions'
+                      - type: 'null'
             variables:
               type: array
               items:
@@ -2665,6 +2683,59 @@ components:
           properties:
             available: { type: boolean }
             tenant_name: { type: [string, 'null'] }
+    FieldOptions:
+      type: object
+      additionalProperties: false
+      description: >-
+        FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN:
+        choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER:
+        format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default
+        2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation
+        date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or
+        a key the type does not take, is refused (options_invalid).
+      properties:
+        choices:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/DropdownChoice'
+        format:
+          type: string
+          enum: [plain, money]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 6
+        min:
+          type: number
+        max:
+          type: number
+        min_date:
+          type: string
+          format: date
+        max_date:
+          type: string
+          format: date
+        max_length:
+          type: integer
+          minimum: 1
+          maximum: 4000
+    DropdownChoice:
+      type: object
+      additionalProperties: false
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 100
+        label:
+          type: string
+          maxLength: 200
     TemplateFieldDefinition:
       type: object
       description: The canonical field model (a PDF AcroForm field is only one representation).
@@ -2685,13 +2756,74 @@ components:
           type: string
         field_type:
           type: string
-          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY, CHECKBOX, IMAGE, SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, SIGNER_EMAIL]
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT, CURRENCY, IMAGE, SIGNER_EMAIL]
+          description: >-
+            FIELD-PARITY-1 P3 — the catalog's template_documents_store projection: every Sign template type
+            (+ ACKNOWLEDGEMENT, the profile types, DROPDOWN, RADIO) and the documents-only CURRENCY, IMAGE
+            (retired from authoring, ruling R-9; existing rows stay readable) and SIGNER_EMAIL.
         required:
           type: boolean
         page_number:
           type: [integer, 'null']
         ordinal:
           type: integer
+        label:
+          type: [string, 'null']
+          maxLength: 200
+          description: FIELD-PARITY-1 P1-3 — the box's caption (Aramo Sign M-A6 §2); P3 S-1 — any type's name (a RADIO's option text).
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX only; boxes of one signer role sharing a key form a group.
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, SELECT_ANY, null]
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX only; present exactly when group_key is.
+        min_selected:
+          type: [integer, 'null']
+          minimum: 1
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX groups only; 1 for SELECT_ONE (NULL = 1).
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+          description: FIELD-PARITY-1 P1-3 — SIGNER_NAME only; NULL = SIGNER_PROFILE.
+        tooltip:
+          type: [string, 'null']
+          maxLength: 500
+          description: FIELD-PARITY-1 P3 S-1 — hint shown to the signer.
+        placeholder:
+          type: [string, 'null']
+          maxLength: 200
+          description: FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types).
+        read_only:
+          type: boolean
+          description: FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled).
+        sender_filled:
+          type: boolean
+          description: >-
+            FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE,
+            DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag
+            SIGN_SENDER_FILLED_FIELDS_ENABLED is on.
+        validation:
+          type: [string, 'null']
+          enum: [email, phone, us_zip, number_range, date_range, max_length, null]
+          description: >-
+            FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER:
+            number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+        font_size:
+          type: [integer, 'null']
+          minimum: 6
+          maximum: 36
+          description: FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box).
+        data_name:
+          type: [string, 'null']
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field.
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
     DocumentRequirement:
       type: object
       description: The generic requirement bridge (R12). Satisfaction is independent of business transitions.
@@ -2843,7 +2975,10 @@ components:
           type: string
         field_type:
           type: string
-          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY, CHECKBOX, IMAGE, SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, SIGNER_EMAIL]
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT, CURRENCY, SIGNER_EMAIL]
+          description: >-
+            FIELD-PARITY-1 P3 — the catalog's template_documents_authoring projection. IMAGE is retired from
+            authoring (ruling R-9): refused 400 details.reason field_type_retired.
         binding_key:
           type: string
         required:
@@ -2860,6 +2995,66 @@ components:
           type: number
         ordinal:
           type: integer
+        label:
+          type: [string, 'null']
+          maxLength: 200
+          description: >-
+            FIELD-PARITY-1 P1-3 / P3 S-1 — any type's name (a RADIO's option text). A setting the field type does
+            not take is refused 400 (details.reason field_config_not_applicable); every other setting refusal
+            names its reason (e.g. dropdown_choices_invalid, radio_group_required, sender_filled_not_available).
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX only.
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, SELECT_ANY, null]
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX only, needs group_key (default SELECT_ANY).
+        min_selected:
+          type: [integer, 'null']
+          minimum: 1
+          description: FIELD-PARITY-1 P1-3 — CHECKBOX only, needs group_key; 1 for SELECT_ONE.
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+          description: FIELD-PARITY-1 P1-3 — SIGNER_NAME only (absent = SIGNER_PROFILE).
+        tooltip:
+          type: [string, 'null']
+          maxLength: 500
+          description: FIELD-PARITY-1 P3 S-1 — hint shown to the signer.
+        placeholder:
+          type: [string, 'null']
+          maxLength: 200
+          description: FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types).
+        read_only:
+          type: boolean
+          description: FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled).
+        sender_filled:
+          type: boolean
+          description: >-
+            FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE,
+            DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag
+            SIGN_SENDER_FILLED_FIELDS_ENABLED is on.
+        validation:
+          type: [string, 'null']
+          enum: [email, phone, us_zip, number_range, date_range, max_length, null]
+          description: >-
+            FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER:
+            number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+        font_size:
+          type: [integer, 'null']
+          minimum: 6
+          maximum: 36
+          description: FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box).
+        data_name:
+          type: [string, 'null']
+          pattern: '^[a-z][a-z0-9_]{0,63}$'
+          description: FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field.
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
     CreateRequirementRequest:
       type: object
       required:
@@ -3172,6 +3367,24 @@ components:
               y: { type: [number, 'null'] }
               width: { type: [number, 'null'] }
               height: { type: [number, 'null'] }
+              # FIELD-PARITY-1 P1-3 / P1-4 — the field's Sign settings, carried onto the envelope field (ADD, optional).
+              label: { type: [string, 'null'] }
+              group_key: { type: [string, 'null'] }
+              group_rule: { type: [string, 'null'], enum: [SELECT_ONE, SELECT_ANY, null] }
+              min_selected: { type: [integer, 'null'] }
+              name_mode: { type: [string, 'null'], enum: [SIGNER_PROFILE, SIGNER_ENTERED, null] }
+              # FIELD-PARITY-1 P3 §6.2 — the other settings (NULL / false = not set).
+              tooltip: { type: [string, 'null'] }
+              placeholder: { type: [string, 'null'] }
+              read_only: { type: boolean }
+              sender_filled: { type: boolean }
+              validation: { type: [string, 'null'], enum: [email, phone, us_zip, number_range, date_range, max_length, null] }
+              font_size: { type: [integer, 'null'] }
+              data_name: { type: [string, 'null'] }
+              options:
+                oneOf:
+                  - $ref: '#/components/schemas/FieldOptions'
+                  - type: 'null'
         template_kind:
           type: string
           enum: [EDITABLE, FIXED_FORM]

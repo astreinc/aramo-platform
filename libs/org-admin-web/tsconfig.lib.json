@@ -12,7 +12,9 @@
     "types": ["node"],
     "paths": {
       "@aramo/fe-foundation": ["../../dist/libs/fe-foundation/src/index.d.ts"],
-      "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"]
+      "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"],
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"],
+      "@aramo/field-placement-web": ["../../dist/libs/field-placement-web/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

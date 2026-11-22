@@ -3,7 +3,8 @@
 //
 // Pure TypeScript ESM: no React, no React Native, no DOM, no `node:*`, no Buffer, no
 // Prisma, no Nest, and no npm dependency (nx module boundary: type:client-shared). One
-// copy, imported by apps/sign-web, mobile/sign and libs/sign (the server).
+// copy, imported by apps/sign-web, mobile/sign and libs/sign (the server). Its one repo
+// import is @aramo/sign-fields, the field catalog (FIELD-PARITY-1 P1-1).
 //
 // Relative imports carry the `.js` suffix (the repo's nodenext rule). Metro resolves them
 // to the `.ts` source through mobile/sign/metro.config.js; Jest through moduleNameMapper.
@@ -33,6 +34,7 @@ export {
   evaluateSignerFieldRules,
   signerFieldUnits,
   checkboxGroupOf,
+  isSignerLocked,
   type SignerFieldLike,
   type SignerFieldUnit,
   type SignerNameMode,
@@ -135,6 +137,76 @@ export {
   type FieldDefaults,
   type FieldSizeKey,
 } from './lib/field-types.js';
+// FIELD-PARITY-1 P1-1 (ruling R-4) — the one field catalog lives in @aramo/sign-fields
+// (scope:shared); re-exported here so the Sign clients keep importing one library. The
+// Sign-scoped FIELD_DEFAULTS above is the catalog's table for the types an envelope stores.
+export {
+  FIELD_CATALOG,
+  FIELD_SURFACES,
+  FIELD_TYPE_KEYS,
+  WHEN_PAYMENTS_AVAILABLE,
+  fieldTypesFor,
+  isFieldTypeOn,
+  isFieldTypeKey,
+  isPaymentsGatedOn,
+  fieldSettingsOf,
+  // FIELD-PARITY-1 P3 §6 — the settings rule, the value rules and how a value prints (one copy
+  // for the server and both Sign apps).
+  isCircleMark,
+  parseFieldSettings,
+  fieldValueRefusal,
+  fieldValueDisplay,
+  formatChosenDate,
+  formatNumberValue,
+  hasFieldValue,
+  isIsoDate,
+  FIELD_VALIDATIONS,
+  VALIDATIONS_BY_TYPE,
+  OPTION_KEYS_BY_TYPE,
+  NUMBER_FORMATS,
+  // FIELD-PARITY-1 P3 — the app's settings sheet (NUMBER money defaults, decimals limit).
+  DEFAULT_MONEY_CURRENCY,
+  DEFAULT_MONEY_DECIMALS,
+  NUMBER_DECIMALS_MAX,
+  FIELD_TOOLTIP_MAX,
+  FIELD_PLACEHOLDER_MAX,
+  FIELD_FONT_SIZE_MIN,
+  FIELD_FONT_SIZE_MAX,
+  FIELD_DATA_NAME_PATTERN,
+  DROPDOWN_CHOICES_MAX,
+  MULTILINE_TEXT_MAX,
+  FIELD_SETTING_REFUSAL_REASONS,
+  FIELD_VALUE_REFUSAL_REASONS,
+  type FieldSettings,
+  type FieldOptions,
+  type DropdownChoice,
+  type FieldValidation,
+  type FieldSettingRefusalReason,
+  type FieldValueRefusalReason,
+  type FieldSurface,
+  type FieldCatalogEntry,
+  type FieldTypeKey,
+  type FieldTypeOn,
+  type FieldTypeOnWhenAvailable,
+  type FieldValueKind,
+  type FieldFiller,
+  type FieldSetting,
+  type SurfaceGate,
+  // FIELD-PARITY-1 P2-4 — the editors' pending-suggestion rule and reason words (web and app);
+  // P2-5 / P2-6 — the upload options' words and the import-result copy.
+  DETECT_LIMIT,
+  pendingSuggestions,
+  suggestionReasonText,
+  isSuggestedFieldType,
+  UPLOAD_OPTION_COPY,
+  FIELD_IMPORT_WARNING_COPY,
+  TEXT_TAG_HELP,
+  fieldImportWarningText,
+  fieldImportSummary,
+  type SuggestedFieldType,
+  type PendingSuggestionLike,
+  type PlacedBoxLike,
+} from '@aramo/sign-fields';
 export {
   ROLE_LABELS,
   roleLabel,
@@ -213,3 +285,27 @@ export {
   selfSignTarget,
   type SessionIssueRefusalReason,
 } from './lib/locked-rules.js';
+// FIELD-PARITY-1 P3 §6 — the signer's input rules and words (sign-web guest page and the app).
+export {
+  SIGNER_FIELD_VALUE_COPY,
+  SIGNER_FIELD_VALUE_FALLBACK,
+  signerInputKind,
+  isSignerEditorKind,
+  signerFieldCaption,
+  signerFieldTooltip,
+  signerFieldPlaceholder,
+  isSenderValueField,
+  dropdownChoicesOf,
+  fieldInputLimit,
+  fieldInputHint,
+  dateBoundsOf,
+  numberPrefixOf,
+  normalizeSignerInput,
+  fieldValueRefusalText,
+  isFieldValueRefusalReason,
+  signerValueProblem,
+  signerUnitMessage,
+  incompleteReasonMessage,
+  type SignerInputField,
+  type SignerInputKind,
+} from './lib/signer-field-input.js';

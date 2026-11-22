@@ -45,6 +45,17 @@ describe('evaluateSignerFieldRules (M-A6 §2.3)', () => {
     ['min 2, one checked', [f('a', { ...two, ...on }), f('b', { ...two, ...off }), f('c', two)], { reason: 'checkbox_group_min_selected', group_key: 'g' }],
     ['min 2, two checked', [f('a', { ...two, ...on }), f('b', { ...two, ...on }), f('c', two)], null],
     ['min 2 optional, none checked', [f('a', { ...two, required: false }), f('b', { ...two, required: false })], null],
+    // FIELD-PARITY-1 P3 T-5 — a radio group is SELECT_ONE (its own reason).
+    ['radio required, none chosen', [f('a', { field_type: 'RADIO', ...one }), f('b', { field_type: 'RADIO', ...one })], { reason: 'radio_group_select_one', group_key: 'g' }],
+    ['radio one chosen', [f('a', { field_type: 'RADIO', ...one, ...on }), f('b', { field_type: 'RADIO', ...one, ...off })], null],
+    ['radio optional, two chosen', [f('a', { field_type: 'RADIO', ...one, required: false, ...on }), f('b', { field_type: 'RADIO', ...one, required: false, ...on })], { reason: 'radio_group_select_one', group_key: 'g' }],
+    ['radio optional, none chosen', [f('a', { field_type: 'RADIO', ...one, required: false }), f('b', { field_type: 'RADIO', ...one, required: false })], null],
+    // T-3 / T-4 / T-6 / T-7 — required new types are filled like text.
+    ['required date unfilled', [f('a', { field_type: 'DATE' })], { reason: 'required_field_unfilled', field_id: 'a' }],
+    ['required dropdown filled', [f('a', { field_type: 'DROPDOWN', value: 'x', filled_at: at })], null],
+    // S-4 / S-5 — a sender-filled (read-only) field is never the signer's unit.
+    ['sender-filled required text', [f('a', { field_type: 'TEXT', sender_filled: true })], null],
+    ['sender-filled read-only number', [f('a', { field_type: 'NUMBER', sender_filled: true, read_only: true })], null],
   ];
 
   it.each(cases)('%s', (_name, fields, expected) => {
