@@ -339,7 +339,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
   // accept them); a signer field Sign cannot place is refused 409 before any envelope is written.
   describe('FIELD-PARITY-1 P1-4', () => {
     const def = (field_key: string, field_type: string, signer_role: string, y: number, over: Record<string, unknown> = {}) => ({
-      field_key, field_type, signer_role, required: false, page_number: 0, x: 400, y, width: 18, height: 18,
+      field_key, field_type, signer_role, required: false, page_number: 0, x: 410, y, width: 18, height: 18,
       label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null, ...over,
     });
     afterEach(() => {
@@ -358,7 +358,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
       const rows = await db.query(
         `SELECT f.field_type, s.signer_role, f.label, f.group_key, f.group_rule, f.min_selected, f.name_mode
            FROM "sign"."SignatureField" f JOIN "sign"."Signer" s ON s.id = f.signer_id
-          WHERE s.envelope_id = $1 AND f.x = 400 ORDER BY f.y DESC`,
+          WHERE s.envelope_id = $1 AND f.x = 410 ORDER BY f.y DESC`,
         [res.body.envelope.id],
       );
       expect(rows.rows).toEqual([
@@ -369,13 +369,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 from-templat
       ]);
     });
 
+    // P3 (R-1) made MULTILINE_TEXT placeable, so the refused type is one no Sign surface knows.
     it('a signer field of a type Sign cannot place is refused 409 template_field_type_unsupported; no envelope is written', async () => {
       const before = await envelopeCount();
-      nextDefs = [def('notes', 'MULTILINE_TEXT', 'client', 500, { width: 200, height: 60 })];
+      nextDefs = [def('notes', 'HOLOGRAM', 'client', 500, { width: 200, height: 60 })];
       const res = await http().post('/v1/sign/sender/envelopes/from-template').set(await H(ANN)).send({ template_id: TEMPLATE, recipients });
       expect(res.status).toBe(409);
-      expect(res.body.error.details).toEqual({ reason: 'template_field_type_unsupported', field_key: 'notes', field_type: 'MULTILINE_TEXT' });
+      expect(res.body.error.details).toEqual({ reason: 'template_field_type_unsupported', field_key: 'notes', field_type: 'HOLOGRAM' });
       expect(await envelopeCount()).toBe(before);
+    });
+
+    it('P3 — a MULTILINE_TEXT signer field is carried onto the envelope', async () => {
+      nextDefs = [def('notes', 'MULTILINE_TEXT', 'client', 500, { width: 200, height: 60 })];
+      const res = await http().post('/v1/sign/sender/envelopes/from-template').set(await H(ANN)).send({ template_id: TEMPLATE, recipients });
+      expect(res.status).toBe(201);
+      const rows = await db.query(
+        `SELECT f.field_type FROM "sign"."SignatureField" f JOIN "sign"."Signer" s ON s.id = f.signer_id WHERE s.envelope_id = $1 AND f.x = 410`,
+        [res.body.envelope.id],
+      );
+      expect(rows.rows).toEqual([{ field_type: 'MULTILINE_TEXT' }]);
     });
   });
 });
