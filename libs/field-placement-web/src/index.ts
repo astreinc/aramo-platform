@@ -36,6 +36,13 @@ export {
   resizeFields,
   assignField,
   configureField,
+  // P2 (§5 P2-1..P2-3) — many-field commands.
+  placeFields,
+  assignFields,
+  alignFields,
+  distributeFields,
+  sameSizeFields,
+  type PageGuides,
   type Command,
   type CommandContext,
   type DragPrecision,
@@ -44,7 +51,40 @@ export {
   type FieldChange,
   type HistoryEntry,
 } from './lib/editor-state';
-export { NUDGE_STEP, NUDGE_STEP_LARGE, fieldKeyIntent, isUndoKey, isTextControl, type KeyLike, type FieldKeyIntent } from './lib/keymap';
+export {
+  NUDGE_STEP,
+  NUDGE_STEP_LARGE,
+  KEYMAP,
+  fieldKeyIntent,
+  editorKeyIntent,
+  isUndoKey,
+  isRedoKey,
+  isTextControl,
+  type KeyLike,
+  type FieldKeyIntent,
+  type EditorKeyIntent,
+} from './lib/keymap';
+// P2 (§5 P2-1..P2-3) — arrange / snap geometry and the copy builders (pure).
+export {
+  GRID_STEP,
+  SNAP_DISTANCE_PX,
+  boundsOf,
+  rectFromPoints,
+  intersects,
+  alignBoxes,
+  distributeBoxes,
+  sameSizeBoxes,
+  snapMove,
+  snapResize,
+  clampGroupDelta,
+  type AlignEdge,
+  type Axis,
+  type Dimension,
+  type SnapOptions,
+  type SnapResult,
+  type GuideLines,
+} from './lib/arrange';
+export { DUPLICATE_OFFSET, REPEAT_MAX, REPEAT_DEFAULT_GAP, cloneFields, repeatDown, repeatPitchOf, nextGroupKey, copyable, type CloneContext, type RepeatResult } from './lib/clone';
 export { AUTOSAVE_DELAY_MS, useAutosave, type Autosave, type AutosaveOptions, type SaveState } from './lib/useAutosave';
 // The editor geometry (moved from @aramo/document-templates-web/pdf, which re-exports it).
 export { clampBox, toPdf, toTopLeft, type Box, type PdfPageInfo } from './lib/geometry';

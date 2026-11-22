@@ -1,10 +1,14 @@
-// FIELD-PARITY-1 P1-5 — the placement editor's state: the fields, the selection (a SET of ids,
-// so Phase 2 multi-select needs no new model) and a command-based history. Every edit is a
-// Command (a named, pure fields → fields step); the reducer records each executed command as
-// an invertible diff, so undo replays the diff backwards and redo (kept in the reducer for
-// Phase 2 P2-3, not yet offered in the UI) replays it forwards. A pointer gesture (drag, resize)
-// updates live without history and is recorded as ONE entry when it ends.
+// FIELD-PARITY-1 P1-5 — the placement editor's state: the fields, the selection (a SET of ids)
+// and a command-based history. Every edit is a Command (a named, pure fields → fields step);
+// the reducer records each executed command as an invertible diff, so undo replays the diff
+// backwards and redo replays it forwards. A pointer gesture (drag, resize) updates live without
+// history and is recorded as ONE entry when it ends.
+//
+// P2 (§5 P2-1..P2-3): many-field commands (add many, reassign, align, distribute, same size);
+// a gesture moves or resizes every selected field and may snap to other fields' edges or the
+// grid, leaving the guide lines to draw in `guides`; redo is offered by the editor.
 
+import { alignBoxes, clampGroupDelta, distributeBoxes, sameSizeBoxes, snapMove, snapResize, type AlignEdge, type Axis, type Dimension, type SnapOptions } from './arrange';
 import { clampBox, toPdf, toTopLeft, type Box, type PdfPageInfo } from './geometry';
 import { type PageRef, type PlacedField } from './model';
 import { applySettings, type SettingsPatch } from './settings';
@@ -43,15 +47,25 @@ export interface HistoryEntry {
 
 export interface EditorState {
   readonly fields: readonly PlacedField[];
-  /** The selected field ids (Phase 1 selects one at a time; the set is Phase 2-ready). */
+  /** The selected field ids; the first is the anchor (same width / height copies it). */
   readonly selection: readonly string[];
   readonly past: readonly HistoryEntry[];
   readonly future: readonly HistoryEntry[];
   readonly gesture: { readonly before: readonly PlacedField[] } | null;
   /** Bumped by every user edit (not by a reset): what a host's autosave watches. */
   readonly rev: number;
-  /** The label of the last undone / redone entry (for the live announcement). */
+  /** The label of the last undone entry (for the live announcement). */
   readonly lastUndo: string | null;
+  /** The label of the last redone entry (for the live announcement). */
+  readonly lastRedo: string | null;
+  /** P2-3 — the alignment guides of the gesture in progress (null when none). */
+  readonly guides: PageGuides | null;
+}
+
+/** Guide lines on one page, in its top-left frame (points). */
+export interface PageGuides extends PageRef {
+  readonly xs: readonly number[];
+  readonly ys: readonly number[];
 }
 
 export type EditorAction =
@@ -61,11 +75,22 @@ export type EditorAction =
   | { readonly type: 'undo' }
   | { readonly type: 'redo' }
   | { readonly type: 'gesture-start' }
-  | { readonly type: 'gesture-move'; readonly id: string; readonly mode: 'move' | 'resize'; readonly dx: number; readonly dy: number }
+  | {
+      readonly type: 'gesture-move';
+      /** The field under the pointer (its box is what snaps). */
+      readonly id: string;
+      /** Every field the gesture moves or resizes (default: just `id`). */
+      readonly ids?: readonly string[];
+      readonly mode: 'move' | 'resize';
+      readonly dx: number;
+      readonly dy: number;
+      /** Snap (P2-3); null or absent = no snapping (Shift held, or snapping off). */
+      readonly snap?: SnapOptions | null;
+    }
   | { readonly type: 'gesture-end'; readonly label: string };
 
 export function initialEditorState(fields: readonly PlacedField[]): EditorState {
-  return { fields: [...fields], selection: [], past: [], future: [], gesture: null, rev: 0, lastUndo: null };
+  return { fields: [...fields], selection: [], past: [], future: [], gesture: null, rev: 0, lastUndo: null, lastRedo: null, guides: null };
 }
 
 /** The changes between two field lists (by id, with each side's index). */
@@ -104,6 +129,7 @@ function record(state: EditorState, label: string, before: readonly PlacedField[
     future: [],
     rev: state.rev + 1,
     lastUndo: null,
+    lastRedo: null,
   };
 }
 
@@ -137,37 +163,70 @@ export function editorReducer(state: EditorState, action: EditorAction, ctx: Com
       const entry = state.past[state.past.length - 1];
       if (entry === undefined) return state;
       const fields = applyChanges(state.fields, entry.changes, 'before');
-      return { ...state, fields, selection: keepSelection(state.selection, fields), past: state.past.slice(0, -1), future: [...state.future, entry], rev: state.rev + 1, lastUndo: entry.label };
+      return { ...state, fields, selection: keepSelection(state.selection, fields), past: state.past.slice(0, -1), future: [...state.future, entry], rev: state.rev + 1, lastUndo: entry.label, lastRedo: null };
     }
     case 'redo': {
       const entry = state.future[state.future.length - 1];
       if (entry === undefined) return state;
       const fields = applyChanges(state.fields, entry.changes, 'after');
-      return { ...state, fields, selection: keepSelection(state.selection, fields), past: [...state.past, entry], future: state.future.slice(0, -1), rev: state.rev + 1, lastUndo: entry.label };
+      return { ...state, fields, selection: keepSelection(state.selection, fields), past: [...state.past, entry], future: state.future.slice(0, -1), rev: state.rev + 1, lastUndo: null, lastRedo: entry.label };
     }
     case 'gesture-start':
       return { ...state, gesture: { before: state.fields } };
     case 'gesture-move': {
-      const origin = state.gesture?.before.find((f) => f.id === action.id);
-      if (origin === undefined || origin.locked === true) return state;
+      const before = state.gesture?.before;
+      const origin = before?.find((f) => f.id === action.id);
+      if (before === undefined || origin === undefined || origin.locked === true) return state;
       const page = ctx.pageSize({ docId: origin.docId, page: origin.page });
       if (page === undefined) return state;
+      const ids = new Set(action.ids ?? [action.id]);
+      ids.add(action.id);
+      const movers = before.flatMap((f) => {
+        if (!ids.has(f.id) || f.locked === true || f.hidden === true) return [];
+        const pg = ctx.pageSize({ docId: f.docId, page: f.page });
+        return pg === undefined ? [] : [{ f, page: pg, tl: toTopLeft(boxOf(f), pg.height) }];
+      });
+      const others = before.filter((f) => !ids.has(f.id) && f.hidden !== true && f.docId === origin.docId && f.page === origin.page).map((f) => toTopLeft(boxOf(f), page.height));
       const tl = toTopLeft(boxOf(origin), page.height);
-      const moved =
-        action.mode === 'move'
-          ? clampBox({ ...tl, x: tl.x + action.dx, y: tl.y + action.dy }, page)
-          : clampBox({ ...tl, width: tl.width + action.dx, height: tl.height + action.dy }, page);
-      const box = roundGestureBox(moved, page, ctx.precision);
-      const fields = state.fields.map((f) => (f.id === action.id ? withBox(f, box) : f));
-      return { ...state, fields, rev: fields.some((f, i) => f !== state.fields[i]) ? state.rev + 1 : state.rev };
+      const next = new Map<string, Box>();
+      let guides: PageGuides | null = null;
+      if (action.mode === 'move') {
+        let d = clampGroupDelta(movers.map((m) => ({ box: m.tl, page: m.page })), action.dx, action.dy);
+        if (action.snap) {
+          const s = snapMove({ ...tl, x: tl.x + d.dx, y: tl.y + d.dy }, others, action.snap);
+          const snapped = clampGroupDelta(movers.map((m) => ({ box: m.tl, page: m.page })), d.dx + s.dx, d.dy + s.dy);
+          // Keep a guide only where the snap survived the page clamp.
+          const xs = Math.abs(snapped.dx - (d.dx + s.dx)) < 0.001 ? s.xs : [];
+          const ys = Math.abs(snapped.dy - (d.dy + s.dy)) < 0.001 ? s.ys : [];
+          d = snapped;
+          if (xs.length > 0 || ys.length > 0) guides = { docId: origin.docId, page: origin.page, xs, ys };
+        }
+        for (const m of movers) next.set(m.f.id, roundGestureBox(clampBox({ ...m.tl, x: m.tl.x + d.dx, y: m.tl.y + d.dy }, m.page), m.page, ctx.precision));
+      } else {
+        let dw = action.dx;
+        let dh = action.dy;
+        if (action.snap) {
+          const s = snapResize({ ...tl, width: tl.width + dw, height: tl.height + dh }, others, action.snap);
+          dw += s.dx;
+          dh += s.dy;
+          if (s.xs.length > 0 || s.ys.length > 0) guides = { docId: origin.docId, page: origin.page, xs: s.xs, ys: s.ys };
+        }
+        for (const m of movers) next.set(m.f.id, roundGestureBox(clampBox({ ...m.tl, width: m.tl.width + dw, height: m.tl.height + dh }, m.page), m.page, ctx.precision));
+      }
+      const fields = state.fields.map((f) => {
+        const b = next.get(f.id);
+        return b === undefined ? f : withBox(f, b);
+      });
+      const changed = fields.some((f, i) => f !== state.fields[i]);
+      return { ...state, fields, guides, rev: changed ? state.rev + 1 : state.rev };
     }
     case 'gesture-end': {
       const g = state.gesture;
       if (g === null) return state;
-      const done = { ...state, gesture: null };
+      const done = { ...state, gesture: null, guides: null };
       const changes = diffFields(g.before, state.fields);
       if (changes.length === 0) return done;
-      return { ...done, past: [...state.past, { label: action.label, changes }].slice(-HISTORY_LIMIT), future: [], lastUndo: null };
+      return { ...done, past: [...state.past, { label: action.label, changes }].slice(-HISTORY_LIMIT), future: [], lastUndo: null, lastRedo: null };
     }
   }
 }
@@ -187,19 +246,27 @@ export function removeFields(ids: readonly string[], label = 'Delete field'): Co
   return { label, run: (fields) => fields.filter((f) => !set.has(f.id)) };
 }
 
-/** Keyboard move by (dx, dy) points in the top-left frame (down = +dy), kept inside the page. */
+/**
+ * Keyboard move by (dx, dy) points in the top-left frame (down = +dy), kept inside the page.
+ * Several fields move together: at a page edge the whole selection stops, keeping its shape.
+ */
 export function nudgeFields(ids: readonly string[], dx: number, dy: number, label = 'Move field'): Command {
   const set = new Set(ids);
   return {
     label,
-    run: (fields, ctx) =>
-      fields.map((f) => {
-        if (!set.has(f.id) || !editable(f)) return f;
+    run: (fields, ctx) => {
+      const items = fields.flatMap((f) => {
+        if (!set.has(f.id) || !editable(f)) return [];
         const page = ctx.pageSize({ docId: f.docId, page: f.page });
-        if (page === undefined) return f;
-        const tl = toTopLeft(boxOf(f), page.height);
-        return withBox(f, toPdf(clampBox({ ...tl, x: tl.x + dx, y: tl.y + dy }, page), page.height));
-      }),
+        return page === undefined ? [] : [{ id: f.id, box: toTopLeft(boxOf(f), page.height), page }];
+      });
+      const d = clampGroupDelta(items, dx, dy);
+      const byId = new Map(items.map((i) => [i.id, i]));
+      return fields.map((f) => {
+        const i = byId.get(f.id);
+        return i === undefined ? f : withBox(f, toPdf(clampBox({ ...i.box, x: i.box.x + d.dx, y: i.box.y + d.dy }, i.page), i.page.height));
+      });
+    },
   };
 }
 
@@ -221,9 +288,96 @@ export function resizeFields(ids: readonly string[], dw: number, dh: number, lab
 
 /** Who fills a field: a recipient / role, or (console) a template variable. */
 export function assignField(id: string, to: { readonly assignee: string | null; readonly binding: string | null }, label = 'Change who fills the field'): Command {
+  return assignFields([id], to, label);
+}
+
+/** P2-2 — reassign many fields at once (locked fields keep theirs). */
+export function assignFields(ids: readonly string[], to: { readonly assignee: string | null; readonly binding: string | null }, label = 'Change who fills the fields'): Command {
+  const set = new Set(ids);
   return {
     label,
-    run: (fields) => fields.map((f) => (f.id === id && editable(f) && (f.assignee !== to.assignee || f.binding !== to.binding) ? { ...f, assignee: to.assignee, binding: to.binding } : f)),
+    run: (fields) => fields.map((f) => (set.has(f.id) && editable(f) && (f.assignee !== to.assignee || f.binding !== to.binding) ? { ...f, assignee: to.assignee, binding: to.binding } : f)),
+  };
+}
+
+/** P2-1 — add many fields (duplicate, paste, Repeat down): one command, so one undo step. */
+export function placeFields(added: readonly PlacedField[], label = 'Add fields'): Command {
+  return { label, run: (fields) => [...fields, ...added] };
+}
+
+/**
+ * Rearrange the editable, visible fields among `ids`, page by page (fields on different pages
+ * are arranged with the others on their own page), in the top-left frame; each result is
+ * clamped to its page and rounded by the host's precision rule.
+ */
+function arrange(ids: readonly string[], label: string, step: (boxes: Box[], fields: PlacedField[]) => Box[]): Command {
+  const set = new Set(ids);
+  return {
+    label,
+    run: (fields, ctx) => {
+      const groups = new Map<string, PlacedField[]>();
+      for (const f of fields) {
+        if (!set.has(f.id) || !editable(f) || f.hidden === true) continue;
+        const k = `${f.docId}\u0000${f.page}`;
+        groups.set(k, [...(groups.get(k) ?? []), f]);
+      }
+      const next = new Map<string, Box>();
+      for (const group of groups.values()) {
+        const first = group[0]!;
+        const page = ctx.pageSize({ docId: first.docId, page: first.page });
+        if (page === undefined) continue;
+        // Order the group by the caller's id order (the first id is the anchor).
+        const ordered = [...group].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+        const input = ordered.map((f) => toTopLeft(boxOf(f), page.height));
+        const out = step(input, ordered);
+        ordered.forEach((f, i) => {
+          const o = out[i]!;
+          const x = input[i]!;
+          // A field the step leaves where it is keeps its stored box exactly (no re-rounding).
+          if (o.x === x.x && o.y === x.y && o.width === x.width && o.height === x.height) return;
+          next.set(f.id, roundGestureBox(clampBox(o, page), page, ctx.precision));
+        });
+      }
+      return fields.map((f) => {
+        const b = next.get(f.id);
+        return b === undefined ? f : withBox(f, b);
+      });
+    },
+  };
+}
+
+const ALIGN_LABEL: Readonly<Record<AlignEdge, string>> = {
+  left: 'Align left',
+  hcenter: 'Align centre',
+  right: 'Align right',
+  top: 'Align top',
+  vcenter: 'Align middle',
+  bottom: 'Align bottom',
+};
+
+/** P2-2 — align to the selection's left / centre / right / top / middle / bottom (per page). */
+export function alignFields(ids: readonly string[], edge: AlignEdge): Command {
+  return arrange(ids, ALIGN_LABEL[edge], (boxes) => alignBoxes(boxes, edge));
+}
+
+/** P2-2 — equal gaps between 3 or more fields (per page); the outermost two stay. */
+export function distributeFields(ids: readonly string[], axis: Axis): Command {
+  return arrange(ids, axis === 'horizontal' ? 'Distribute horizontally' : 'Distribute vertically', (boxes) => distributeBoxes(boxes, axis));
+}
+
+/** P2-2 — give every field the anchor's (the first id's) width or height; top-left corners stay. */
+export function sameSizeFields(ids: readonly string[], dim: Dimension): Command {
+  const anchorId = ids[0];
+  return {
+    label: dim === 'width' ? 'Make same width' : 'Make same height',
+    run: (fields, ctx) => {
+      const anchor = fields.find((f) => f.id === anchorId);
+      if (anchor === undefined) return [...fields];
+      const page = ctx.pageSize({ docId: anchor.docId, page: anchor.page });
+      if (page === undefined) return [...fields];
+      const a = toTopLeft(boxOf(anchor), page.height);
+      return arrange(ids, '', (boxes) => sameSizeBoxes(boxes, a, dim)).run(fields, ctx);
+    },
   };
 }
 
