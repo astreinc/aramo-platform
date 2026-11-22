@@ -5,9 +5,12 @@
 // (fieldTypesFor); the database CHECKs and OpenAPI enums stay literal and are held equal to
 // their projection by the catalog-parity test (apps/api/src/tests/field-catalog-parity.spec.ts).
 //
-// Phase 1 is a refactor: each surface flag records EXACTLY the set that surface accepts today.
-// A surface is widened (Phase 3) by flipping a flag here, then the CHECK / enum the parity
-// test names.
+// Phase 1 was a refactor: each surface flag recorded EXACTLY the set that surface accepted.
+// Phase 3 (§6, rulings R-1, R-2, R-9) widens the send and template surfaces here: the profile
+// types and ACKNOWLEDGEMENT join every send and template surface, and five new types (DATE,
+// DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT) join the Sign store and every send and template
+// surface. The S2S / Sign API surface (sign_api_s2s) is NOT widened: its contract and mapper
+// carry no settings, so it keeps its 7 types.
 
 /** Where a field type may appear. */
 export const FIELD_SURFACES = [
@@ -25,8 +28,13 @@ export const FIELD_SURFACES = [
   'template_fixed_form',
   /** A template field carried onto an envelope (sender-templates.service.ts). */
   'template_editable',
-  /** documents."TemplateFieldDefinition" (its field-type CHECK) and the documents template API. */
+  /** documents."TemplateFieldDefinition" (its field-type CHECK): every type a template field row may hold. */
   'template_documents_store',
+  /**
+   * FIELD-PARITY-1 P3 (ruling R-9) — the types the documents template API (POST …/fields) accepts:
+   * the store minus IMAGE, which is retired from authoring (existing rows stay readable).
+   */
+  'template_documents_authoring',
   /** A renderer-drawn signature block of a generated template. */
   'signature_block',
   /**
@@ -47,10 +55,32 @@ export type SurfaceRule = true | typeof WHEN_PAYMENTS_AVAILABLE;
 export type FieldSurfaceRules = { readonly [S in FieldSurface]?: SurfaceRule };
 
 export type FieldValueKind = 'signature_image' | 'text' | 'date' | 'boolean' | 'option' | 'number' | 'money' | 'image';
-/** Who supplies the value (§6 S-5). */
+/** Who supplies the value (§6 S-5). A sender-filled field (the sender_filled setting) is the sender's. */
 export type FieldFiller = 'signer' | 'server' | 'sender';
-/** The per-field settings a sender may set today (Sign SignatureField columns). */
-export type FieldSetting = 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode' | 'payment_amount_minor' | 'payment_currency';
+/**
+ * The per-field settings (the Sign SignatureField / documents TemplateFieldDefinition setting
+ * columns). FIELD-PARITY-1 P3 §6.2 adds: tooltip (S-1), placeholder (S-2), read_only (S-4),
+ * sender_filled (S-5, dark), validation (S-6, with its parameters in options), font_size (S-7),
+ * data_name (S-9) and options (the per-type options: DROPDOWN choices, NUMBER format, the
+ * validation parameters). label (S-1) now applies to every type. required (S-3) is a column of
+ * every field, not a setting.
+ */
+export type FieldSetting =
+  | 'label'
+  | 'tooltip'
+  | 'placeholder'
+  | 'read_only'
+  | 'sender_filled'
+  | 'validation'
+  | 'font_size'
+  | 'data_name'
+  | 'options'
+  | 'group_key'
+  | 'group_rule'
+  | 'min_selected'
+  | 'name_mode'
+  | 'payment_amount_minor'
+  | 'payment_currency';
 
 export interface FieldCatalogEntry {
   readonly key: string;
@@ -67,11 +97,26 @@ export interface FieldCatalogEntry {
   readonly filled_by_name_mode?: { readonly SIGNER_PROFILE: FieldFiller; readonly SIGNER_ENTERED: FieldFiller };
   /** M-A12 W1-C.4 — a text field the signer's own Sign profile pre-fills (the signer may edit). */
   readonly prefill?: 'signer_profile';
+  /**
+   * FIELD-PARITY-1 P3 T-5 — a boolean type drawn as a circle (RADIO: one option of an exactly-one
+   * group), not the check-box square. Absent: a square.
+   */
+  readonly mark_shape?: 'circle';
   readonly settings: readonly FieldSetting[];
   readonly surfaces: FieldSurfaceRules;
 }
 
-const CHECKBOX_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
+// FIELD-PARITY-1 P3 §6.2 — which settings each kind of type takes. label, tooltip and data_name
+// (S-1, S-9) apply to every type. The rest:
+//   placeholder (S-2)        — types the signer types or picks into;
+//   read_only, sender_filled — types whose value the sender may supply (S-4, S-5);
+//   validation (S-6)         — TEXT (email, phone, us_zip, max_length), MULTILINE_TEXT (max_length),
+//                              NUMBER (number_range), DATE (date_range);
+//   font_size (S-7)          — types drawn as text on the executed PDF;
+//   options                  — DROPDOWN (choices), NUMBER (format), and the validation parameters.
+const NAMED = ['label', 'tooltip', 'data_name'] as const;
+const CHECKBOX_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'data_name', 'read_only', 'sender_filled'] as const;
+const PROFILE_SETTINGS = [...NAMED, 'placeholder', 'font_size'] as const;
 
 // The surfaces shared by the six types every family has (the fixed-form intersection).
 const SIX = {
@@ -83,15 +128,31 @@ const SIX = {
   template_fixed_form: true,
   template_editable: true,
   template_documents_store: true,
+  template_documents_authoring: true,
 } as const;
-// M-A12 W1-C.4 — the profile text types: sender-placed, signer-filled; not on S2S or templates.
-const PROFILE = { sign_store: true, send_web: true, send_mobile: true, engine_passthrough: true } as const;
-// Documents-family types with no Sign equivalent (ruling R-9 maps or retires them in P1-4).
-const DOCUMENTS_ONLY = { template_documents_store: true } as const;
+// M-A12 W1-C.4 — the profile text types: sender-placed, signer-filled. FIELD-PARITY-1 P3 T-1 (R-1)
+// — now on every template surface too; still not on S2S.
+const PROFILE = {
+  sign_store: true,
+  send_web: true,
+  send_mobile: true,
+  engine_passthrough: true,
+  template_fixed_form: true,
+  template_editable: true,
+  template_documents_store: true,
+  template_documents_authoring: true,
+} as const;
+// FIELD-PARITY-1 P3 T-3..T-7 — the new types: every send and template surface; not S2S.
+const PHASE3 = PROFILE;
+// Documents-family types with no Sign equivalent (ruling R-9): CURRENCY and SIGNER_EMAIL are
+// mapped when a template carries them onto an envelope (TEMPLATE_TYPE_MAPPING) and stay
+// authorable for template data; IMAGE is retired from authoring (the store keeps it readable).
+const DOCUMENTS_ONLY = { template_documents_store: true, template_documents_authoring: true } as const;
+const RETIRED = { template_documents_store: true } as const;
 
 /**
  * The catalog, in the Sign authoring order (the order SENDER_FIELD_TYPES and ALL_FIELD_TYPES
- * have always had), then the documents-only types.
+ * have always had), then the Phase 3 types, then the documents-only types.
  */
 export const FIELD_CATALOG = {
   SIGNATURE: {
@@ -103,7 +164,7 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'signature_image',
     filled_by: 'signer',
-    settings: [],
+    settings: NAMED,
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   SIGN_DATE: {
@@ -116,7 +177,7 @@ export const FIELD_CATALOG = {
     value_kind: 'date',
     // Client Rule Consolidation C0-2 — stamped by the server when the signer completes.
     filled_by: 'server',
-    settings: [],
+    settings: [...NAMED, 'font_size'],
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   INITIALS: {
@@ -128,7 +189,7 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'signature_image',
     filled_by: 'signer',
-    settings: [],
+    settings: NAMED,
     surfaces: { ...SIX, suggestion: true },
   },
   TEXT: {
@@ -140,7 +201,7 @@ export const FIELD_CATALOG = {
     required: false,
     value_kind: 'text',
     filled_by: 'signer',
-    settings: [],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
     surfaces: { ...SIX, suggestion: true },
   },
   SIGNER_NAME: {
@@ -155,7 +216,7 @@ export const FIELD_CATALOG = {
     // (and a legacy engine field with no name_mode) is typed by the signer.
     filled_by: 'server',
     filled_by_name_mode: { SIGNER_PROFILE: 'server', SIGNER_ENTERED: 'signer' },
-    settings: ['name_mode'],
+    settings: ['name_mode', ...NAMED, 'placeholder', 'font_size'],
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   CHECKBOX: {
@@ -180,7 +241,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     prefill: 'signer_profile',
-    settings: [],
+    settings: PROFILE_SETTINGS,
     surfaces: PROFILE,
   },
   LAST_NAME: {
@@ -193,7 +254,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     prefill: 'signer_profile',
-    settings: [],
+    settings: PROFILE_SETTINGS,
     surfaces: PROFILE,
   },
   EMAIL: {
@@ -206,7 +267,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     prefill: 'signer_profile',
-    settings: [],
+    settings: PROFILE_SETTINGS,
     surfaces: { ...PROFILE, suggestion: true },
   },
   COMPANY: {
@@ -219,7 +280,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     prefill: 'signer_profile',
-    settings: [],
+    settings: PROFILE_SETTINGS,
     surfaces: { ...PROFILE, suggestion: true },
   },
   TITLE: {
@@ -232,7 +293,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     prefill: 'signer_profile',
-    settings: [],
+    settings: PROFILE_SETTINGS,
     surfaces: { ...PROFILE, suggestion: true },
   },
   ACKNOWLEDGEMENT: {
@@ -244,9 +305,10 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'boolean',
     filled_by: 'signer',
-    settings: [],
-    // M-A6 line 33 — engine-only: S2S / Sign API, and sent back unchanged by a sender.
-    surfaces: { sign_store: true, sign_api_s2s: true, engine_passthrough: true },
+    settings: NAMED,
+    // M-A6 line 33 made it engine-only (S2S / Sign API, sent back unchanged by a sender).
+    // FIELD-PARITY-1 P3 T-2 (ruling R-2, amends M-A6 line 33) — authorable in sends and templates.
+    surfaces: { ...PHASE3, sign_api_s2s: true },
   },
   PAYMENT: {
     key: 'PAYMENT',
@@ -263,20 +325,9 @@ export const FIELD_CATALOG = {
     // P1-6 — send-only, and only while payments are available; never on a template surface.
     surfaces: { sign_store: true, send_web: WHEN_PAYMENTS_AVAILABLE, send_mobile: WHEN_PAYMENTS_AVAILABLE },
   },
-  // ---- documents-family only (documents."TemplateFieldDefinition"); the sender's template
-  // data is rendered into the PDF before Sign sees it (§1.5).
-  MULTILINE_TEXT: {
-    key: 'MULTILINE_TEXT',
-    label: 'Multi-line text',
-    glyph: '¶',
-    width: 230,
-    height: 66,
-    required: false,
-    value_kind: 'text',
-    filled_by: 'sender',
-    settings: [],
-    surfaces: DOCUMENTS_ONLY,
-  },
+  // ---- FIELD-PARITY-1 P3 §6.1 — the new types (T-3..T-7). Signer-filled; a sender-filled field
+  // (S-5, dark) is the sender's. In a documents template a field of these types with no signer
+  // role is template data the renderer prints (unchanged); with a signer role it is a Sign field.
   DATE: {
     key: 'DATE',
     label: 'Date',
@@ -284,10 +335,41 @@ export const FIELD_CATALOG = {
     width: 150,
     height: 22,
     required: false,
+    // T-3 — a chosen date (stored YYYY-MM-DD), drawn in the envelope's date format.
     value_kind: 'date',
-    filled_by: 'sender',
-    settings: [],
-    surfaces: DOCUMENTS_ONLY,
+    filled_by: 'signer',
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    surfaces: PHASE3,
+  },
+  DROPDOWN: {
+    key: 'DROPDOWN',
+    label: 'Dropdown',
+    glyph: '▾',
+    width: 180,
+    height: 22,
+    required: false,
+    // T-4 — the author's choices (options.choices); the value is the chosen choice's value.
+    value_kind: 'option',
+    filled_by: 'signer',
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'font_size', 'options'],
+    surfaces: PHASE3,
+  },
+  RADIO: {
+    key: 'RADIO',
+    label: 'Radio button',
+    glyph: '◉',
+    width: 18,
+    height: 18,
+    required: false,
+    // T-5 — ONE option of a radio group: every RADIO field with the same group_key (one signer)
+    // is a group whose rule is always SELECT_ONE (exactly one chosen when required, at most one
+    // otherwise) — the check-box SELECT_ONE group rule, drawn as circles. Each box holds 'true'
+    // (chosen) or 'false'; its label is the option's text.
+    value_kind: 'boolean',
+    mark_shape: 'circle',
+    filled_by: 'signer',
+    settings: ['label', 'group_key', 'group_rule', 'tooltip', 'data_name', 'read_only', 'sender_filled'],
+    surfaces: PHASE3,
   },
   NUMBER: {
     key: 'NUMBER',
@@ -296,11 +378,29 @@ export const FIELD_CATALOG = {
     width: 120,
     height: 22,
     required: false,
+    // T-6 — a decimal (stored as its canonical text); options.format 'money' prints it as money
+    // in options.currency (replaces the documents-family CURRENCY, ruling R-9).
     value_kind: 'number',
-    filled_by: 'sender',
-    settings: [],
-    surfaces: DOCUMENTS_ONLY,
+    filled_by: 'signer',
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    surfaces: PHASE3,
   },
+  MULTILINE_TEXT: {
+    key: 'MULTILINE_TEXT',
+    label: 'Multi-line text',
+    glyph: '¶',
+    width: 230,
+    height: 66,
+    required: false,
+    // T-7 — wraps inside its box (the P0-2 stamper); validation max_length caps it.
+    value_kind: 'text',
+    filled_by: 'signer',
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    surfaces: PHASE3,
+  },
+  // ---- documents-family only (documents."TemplateFieldDefinition"); the sender's template
+  // data is rendered into the PDF before Sign sees it (§1.5). Ruling R-9: a signer field of
+  // CURRENCY or SIGNER_EMAIL is mapped onto an envelope (TEMPLATE_TYPE_MAPPING); IMAGE is retired.
   CURRENCY: {
     key: 'CURRENCY',
     label: 'Currency',
@@ -323,7 +423,7 @@ export const FIELD_CATALOG = {
     value_kind: 'image',
     filled_by: 'sender',
     settings: [],
-    surfaces: DOCUMENTS_ONLY,
+    surfaces: RETIRED,
   },
   SIGNER_EMAIL: {
     key: 'SIGNER_EMAIL',
@@ -418,4 +518,22 @@ export const PROFILE_TEXT_FIELD_TYPES = FIELD_TYPE_KEYS.filter(
 /** The settings a type accepts (an empty list: none). */
 export function fieldSettingsOf(type: FieldTypeKey): readonly FieldSetting[] {
   return FIELD_CATALOG[type].settings;
+}
+
+/**
+ * FIELD-PARITY-1 P3 (ruling R-9) — a documents-family template type carried onto an envelope
+ * as a Sign type: CURRENCY becomes NUMBER with the money format, SIGNER_EMAIL becomes EMAIL.
+ * The mapped field keeps its geometry, role, required setting and its other settings.
+ */
+export const TEMPLATE_TYPE_MAPPING: Readonly<Record<string, { readonly field_type: FieldTypeKey; readonly options?: Readonly<Record<string, unknown>> }>> = {
+  CURRENCY: { field_type: 'NUMBER', options: { format: 'money', currency: 'USD', decimals: 2 } },
+  SIGNER_EMAIL: { field_type: 'EMAIL' },
+};
+
+/** FIELD-PARITY-1 P3 (ruling R-9) — types retired from authoring (stored rows stay readable). */
+export const RETIRED_FIELD_TYPES = ['IMAGE'] as const satisfies readonly FieldTypeKey[];
+
+/** FIELD-PARITY-1 P3 T-5 — whether a boolean type is drawn as a circle (RADIO). */
+export function isCircleMark(type: string): boolean {
+  return isFieldTypeKey(type) && (FIELD_CATALOG[type] as FieldCatalogEntry).mark_shape === 'circle';
 }

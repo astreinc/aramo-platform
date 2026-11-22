@@ -169,15 +169,17 @@ describe('P2-6 tag parser', () => {
 
   it('refuses unknown types and types the surface does not accept', () => {
     expect(parseTextTag('stamp:Seller', 'send_web')).toMatchObject({ ok: false, warning: { code: 'text_tag_type_unknown' } });
-    expect(parseTextTag('title:Seller', 'template_fixed_form')).toMatchObject({ ok: false, warning: { code: 'text_tag_type_not_allowed' } });
+    // FIELD-PARITY-1 P3 T-1 — the profile types are now on the fixed-form surface; PAYMENT never is.
+    expect(parseTextTag('title:Seller', 'template_fixed_form')).toMatchObject({ ok: true, tag: { field_type: 'TITLE' } });
+    expect(parseTextTag('payment:Seller', 'template_fixed_form')).toMatchObject({ ok: false, warning: { code: 'text_tag_type_not_allowed' } });
     expect(parseTextTag('payment:Seller', 'send_web')).toMatchObject({ ok: false, warning: { code: 'text_tag_type_not_allowed' } });
     expect(parseTextTag('  ', 'send_web')).toMatchObject({ ok: false, warning: { code: 'text_tag_invalid' } });
   });
 
-  it('warns on an unknown option and a label on a type that takes none', () => {
+  it('warns on an unknown option; a label is kept (FIELD-PARITY-1 P3 S-1: every type takes a label)', () => {
     const p = parseTextTag('text:Buyer:bold:label=Name', 'send_web');
-    expect(p.ok && p.tag.label).toBeNull();
-    expect(p.ok && p.warnings.map((w) => w.code)).toEqual(['text_tag_option_unknown', 'text_tag_label_not_applicable']);
+    expect(p.ok && p.tag.label).toBe('Name');
+    expect(p.ok && p.warnings.map((w) => w.code)).toEqual(['text_tag_option_unknown']);
   });
 });
 

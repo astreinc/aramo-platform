@@ -4,10 +4,12 @@ import { FIELD_DEFAULTS, SENDER_FIELD_TYPES, isSenderFieldType, placeableFieldTy
 
 describe('field types (rows 35–37)', () => {
   it('row 35: the server authoring list; PAYMENT only while payments are available', () => {
-    expect([...SENDER_FIELD_TYPES]).toEqual(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE']);
+    // FIELD-PARITY-1 P3 — + ACKNOWLEDGEMENT (R-2) and the new types (T-3..T-7).
+    const base = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'ACKNOWLEDGEMENT'];
+    const p3 = ['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT'];
+    expect([...SENDER_FIELD_TYPES]).toEqual([...base, ...p3]);
     expect(placeableFieldTypes({ payments_available: false })).not.toContain('PAYMENT');
-    expect(placeableFieldTypes({ payments_available: true })).toEqual([...SENDER_FIELD_TYPES, 'PAYMENT']);
-    expect(placeableFieldTypes({ payments_available: true })).not.toContain('ACKNOWLEDGEMENT');
+    expect(placeableFieldTypes({ payments_available: true })).toEqual([...base, 'PAYMENT', ...p3]);
   });
 
   it.each([
@@ -31,7 +33,8 @@ describe('field types (rows 35–37)', () => {
   it.each([
     ['SIGNATURE', true],
     ['PAYMENT', false],
-    ['ACKNOWLEDGEMENT', false],
+    ['ACKNOWLEDGEMENT', true],
+    ['RADIO', true],
     [7, false],
   ])('isSenderFieldType(%j) → %s', (v, ok) => {
     expect(isSenderFieldType(v)).toBe(ok);

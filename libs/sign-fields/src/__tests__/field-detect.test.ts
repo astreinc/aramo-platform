@@ -138,15 +138,17 @@ describe('detectFields — pages, dedupe, limit, host types', () => {
     expect(out.some((s) => s.type === 'SIGNATURE')).toBe(true);
   });
 
-  it('on a host without the profile types (a fixed form), a Title label becomes TEXT; a type the host lacks is dropped', () => {
+  it('on a host without the profile types, a Title label becomes TEXT; a type the host lacks is dropped', () => {
     const p = page(1, [w('Title:', 72, 100, 30), w('☐', 72, 200, 10, 10)]);
-    const out = detectFields([p], [frame()], { types: fieldTypesFor('template_fixed_form') }).suggestions;
+    const out = detectFields([p], [frame()], { types: ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX'] }).suggestions;
     expect(out.map((s) => [s.type, s.reason])).toEqual([
       ['TEXT', 'label:Title'],
       ['CHECKBOX', 'checkbox_glyph'],
     ]);
     const noBox = detectFields([p], [frame()], { types: ['TEXT'] }).suggestions;
     expect(noBox.map((s) => s.type)).toEqual(['TEXT']);
+    // FIELD-PARITY-1 P3 T-1 — a fixed form now takes the profile types: a Title label stays TITLE.
+    expect(detectFields([p], [frame()], { types: fieldTypesFor('template_fixed_form') }).suggestions.map((s) => s.type)).toEqual(['TITLE', 'CHECKBOX']);
   });
 
   it('never throws on odd input (no frame, empty view, no words)', () => {
