@@ -120,8 +120,9 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
     expect(out.fields.map((f) => [f.name, f.field_type, f.label, f.group_key, f.group_rule, f.required])).toEqual([
       ['Employee Name', 'TEXT', null, null, null, true],
       ['agree', 'CHECKBOX', 'agree', null, null, false],
-      ['status', 'CHECKBOX', 'Single', 'status', 'SELECT_ONE', false],
-      ['status', 'CHECKBOX', 'Married', 'status', 'SELECT_ONE', false],
+      // FIELD-PARITY-1 P3 T-5 — a radio group imports as a RADIO group.
+      ['status', 'RADIO', 'Single', 'status', 'SELECT_ONE', false],
+      ['status', 'RADIO', 'Married', 'status', 'SELECT_ONE', false],
       ['dept', 'TEXT', null, null, null, false],
       ['Employee Signature', 'SIGNATURE', null, null, null, false],
     ]);

@@ -119,8 +119,9 @@ describe('FIELD-PARITY-1 P2-5 — import_fields on a Sign upload', () => {
     expect(out.field_import.stripped.sort()).toEqual(['/AA', '/AcroForm', '/JavaScript']);
     expect(out.field_import.fields.map((f) => [f['id'], f['source_name'], f['field_type'], f['signer_id'], f['label'], f['group_key'], f['group_rule']])).toEqual([
       ['f1', 'Full name', 'TEXT', 's1', null, null, null],
-      ['f2', 'plan', 'CHECKBOX', 's1', 'Basic', 'plan', 'SELECT_ONE'],
-      ['f3', 'plan', 'CHECKBOX', 's1', 'Pro', 'plan', 'SELECT_ONE'],
+      // FIELD-PARITY-1 P3 T-5 — a radio group imports as a RADIO group.
+      ['f2', 'plan', 'RADIO', 's1', 'Basic', 'plan', 'SELECT_ONE'],
+      ['f3', 'plan', 'RADIO', 's1', 'Pro', 'plan', 'SELECT_ONE'],
       ['f4', 'sig', 'SIGNATURE', 's1', null, null, null],
     ]);
     expect(out.field_import.warnings.map((w) => w.code)).toEqual(['field_assigned_to_first_recipient']);

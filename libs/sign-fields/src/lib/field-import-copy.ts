@@ -60,7 +60,7 @@ export function fieldImportSummary(r: { readonly fields: readonly unknown[]; rea
 export const TEXT_TAG_HELP = {
   syntax: '{{type:role[:required|optional][:label=Caption]}}',
   examples: ['{{signature:Seller}}', '{{date:Seller}}', '{{text:Buyer:required}}', '{{checkbox:Buyer:label=I agree}}'],
-  types: 'signature, initials, date, name, text, checkbox (on envelopes also title, company, email, first_name, last_name)',
+  types: 'signature, initials, date (the signing date), name, text, checkbox, title, company, email, first_name, last_name, date_chosen, number, multiline, acknowledgement',
   notes: [
     'The role matches a signer role (forms) or a recipient’s name, email or role (envelopes); case does not matter.',
     'Each field takes the size of the tag’s text. Tags that become fields are covered with white on the stored PDF.',
