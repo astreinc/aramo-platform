@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { intersectRects, pickTargetPage, placeNewField, visibleArea, visibleRegionInPage } from './fixed-form-viewport';
+import { intersectRects, pickTargetPage, placeNewField, visibleArea, visibleRegionInPage } from './viewport';
 
 // FIELD-PARITY-1 P0-1 (directive §3.1 R-2 / R-3) — target-page selection and new-field placement.
 

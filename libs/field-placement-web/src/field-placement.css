@@ -1,0 +1,250 @@
+/* FIELD-PARITY-1 P1-5 — the shared placement editor. Drawn through the --fpe-* token layer
+ * (defaults below, inside :where so any host rule wins); each host maps the tokens onto its own
+ * theme (sign-web styles.css, the console fixed-form.css), so no component carries a host colour.
+ *
+ * Layout (P0-1 R-1, now in both hosts): the editor fills the height its host gives it (a flex
+ * child of a fixed-height root, or fitHeight); only the page column and each side panel scroll
+ * on their own. At or below 1100px the stacked one-column layout keeps normal page scrolling (R-4). */
+:where(.fpe-root, .fpe-pages) {
+  --fpe-canvas: #f4f6fa;
+  --fpe-surface: #ffffff;
+  --fpe-paper: #ffffff;
+  --fpe-line: #dfe4ea;
+  --fpe-ink: #1b2730;
+  --fpe-muted: #5d6b75;
+  --fpe-faint: #8b94a3;
+  --fpe-brand: #022ac0;
+  --fpe-brand-soft: rgba(2, 42, 192, 0.08);
+  --fpe-on-brand: #ffffff;
+  --fpe-danger: #a8412f;
+  --fpe-radius: 6px;
+  --fpe-panel-width: 280px;
+  --fpe-tone0: rgba(93, 107, 117, 0.16);
+  --fpe-tone0-line: #5d6b75;
+  --fpe-tone1: rgba(2, 42, 192, 0.14);
+  --fpe-tone1-line: #022ac0;
+  --fpe-tone2: rgba(23, 96, 60, 0.16);
+  --fpe-tone2-line: #17603c;
+  --fpe-tone3: rgba(168, 65, 47, 0.14);
+  --fpe-tone3-line: #a8412f;
+  --fpe-tone4: rgba(107, 70, 9, 0.16);
+  --fpe-tone4-line: #6b4609;
+  --fpe-tone5: rgba(91, 33, 182, 0.14);
+  --fpe-tone5-line: #5b21b6;
+}
+
+.fpe-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  color: var(--fpe-ink);
+}
+.fpe-body {
+  display: grid;
+  grid-template-columns: var(--fpe-panel-width) minmax(0, 1fr) var(--fpe-panel-width);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--fpe-canvas);
+}
+.fpe-panel {
+  background: var(--fpe-surface);
+  border-right: 1px solid var(--fpe-line);
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+}
+.fpe-panel--right { border-right: 0; border-left: 1px solid var(--fpe-line); }
+.fpe-section + .fpe-section, .fpe-panel > * + .fpe-section { margin-top: 14px; }
+.fpe-h {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fpe-muted);
+  margin: 14px 0 6px;
+}
+.fpe-section:first-child .fpe-h { margin-top: 0; }
+.fpe-center { overflow: auto; padding: 0 16px 16px; min-height: 0; outline: none; }
+.fpe-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  margin-bottom: 6px;
+  background: var(--fpe-canvas);
+  color: var(--fpe-muted);
+  font-size: 13px;
+}
+.fpe-toolbar__hint { flex: 1; min-width: 0; }
+.fpe-mono { font-variant-numeric: tabular-nums; width: 44px; text-align: center; }
+
+.fpe-btn {
+  border: 1px solid var(--fpe-line);
+  background: var(--fpe-surface);
+  color: var(--fpe-ink);
+  border-radius: var(--fpe-radius);
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.fpe-btn:disabled { opacity: 0.5; cursor: default; }
+.fpe-btn--sm { padding: 3px 8px; }
+.fpe-btn--block { display: block; width: 100%; margin-top: 6px; }
+.fpe-btn--danger { color: var(--fpe-danger); margin-top: 8px; }
+.fpe-btn:focus-visible, .fpe-tool:focus-visible, .fpe-assignee:focus-visible, .fpe-thumb:focus-visible, .fpe-field:focus-visible {
+  outline: 2px solid var(--fpe-brand);
+  outline-offset: 2px;
+}
+
+.fpe-assignee, .fpe-thumb {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border-radius: var(--fpe-radius);
+  border: 1px solid var(--fpe-line);
+  background: var(--fpe-surface);
+  color: var(--fpe-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fpe-assignee.is-on { border-color: var(--fpe-brand); box-shadow: 0 0 0 1px var(--fpe-brand) inset; }
+.fpe-assignee__name { flex: 1; font-weight: 600; }
+.fpe-thumb { border-color: transparent; padding: 5px 6px; margin-bottom: 2px; }
+.fpe-thumb.is-on { background: var(--fpe-brand-soft); }
+.fpe-thumb__box { width: 22px; height: 28px; border: 1px solid var(--fpe-line); border-radius: 3px; background: var(--fpe-paper); flex: none; }
+.fpe-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--fpe-tone0-line); }
+.fpe-swatch--tone1 { background: var(--fpe-tone1-line); }
+.fpe-swatch--tone2 { background: var(--fpe-tone2-line); }
+.fpe-swatch--tone3 { background: var(--fpe-tone3-line); }
+.fpe-swatch--tone4 { background: var(--fpe-tone4-line); }
+.fpe-swatch--tone5 { background: var(--fpe-tone5-line); }
+
+.fpe-palette { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fpe-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: var(--fpe-radius);
+  border: 1px solid var(--fpe-line);
+  background: var(--fpe-surface);
+  color: var(--fpe-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fpe-tool:disabled { opacity: 0.5; cursor: default; }
+.fpe-tool.is-on { border-color: var(--fpe-brand); background: var(--fpe-brand-soft); color: var(--fpe-brand); }
+.fpe-tool__g { width: 20px; flex: none; text-align: center; color: var(--fpe-muted); font-size: 12px; }
+
+.fpe-note { color: var(--fpe-muted); margin: 6px 0; font-size: 13px; }
+.fpe-faint { color: var(--fpe-faint); font-size: 11.5px; }
+.fpe-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fpe-inspector { display: grid; gap: 8px; }
+.fpe-row { display: grid; gap: 4px; }
+.fpe-label { font-size: 12px; color: var(--fpe-muted); }
+.fpe-check { display: flex; gap: 8px; align-items: center; }
+.fpe-select, .fpe-input {
+  min-width: 0;
+  border: 1px solid var(--fpe-line);
+  border-radius: var(--fpe-radius);
+  padding: 5px 7px;
+  font: inherit;
+  background: var(--fpe-surface);
+  color: var(--fpe-ink);
+}
+
+.fpe-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.fpe-pagewrap__lab { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fpe-faint); margin-bottom: 4px; }
+.fpe-page {
+  position: relative;
+  background: var(--fpe-paper);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  user-select: none;
+  touch-action: none;
+}
+.fpe-page--placing { cursor: crosshair; }
+.fpe-page__canvas { width: 100%; height: 100%; display: block; }
+.fpe-field {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid var(--fpe-tone0-line);
+  background: var(--fpe-tone0);
+  color: var(--fpe-ink);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  touch-action: none;
+}
+.fpe-field.is-editable { cursor: move; }
+.fpe-field.is-locked { border-style: dashed; }
+.fpe-field.is-selected { outline: 2px solid var(--fpe-brand); outline-offset: 1px; }
+.fpe-field__label { position: absolute; left: 3px; top: 1px; right: 2px; overflow: hidden; white-space: nowrap; pointer-events: none; }
+.fpe-field__who {
+  position: absolute;
+  top: -14px;
+  left: -1.5px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 13px;
+  padding: 0 4px;
+  border-radius: 3px 3px 0 0;
+  color: var(--fpe-on-brand);
+  background: var(--fpe-tone0-line);
+  pointer-events: none;
+}
+.fpe-field__grip {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--fpe-surface);
+  border: 1.5px solid var(--fpe-brand);
+  cursor: nwse-resize;
+}
+.fpe-field--tone1 { border-color: var(--fpe-tone1-line); background: var(--fpe-tone1); }
+.fpe-field--tone1 .fpe-field__who { background: var(--fpe-tone1-line); }
+.fpe-field--tone2 { border-color: var(--fpe-tone2-line); background: var(--fpe-tone2); }
+.fpe-field--tone2 .fpe-field__who { background: var(--fpe-tone2-line); }
+.fpe-field--tone3 { border-color: var(--fpe-tone3-line); background: var(--fpe-tone3); }
+.fpe-field--tone3 .fpe-field__who { background: var(--fpe-tone3-line); }
+.fpe-field--tone4 { border-color: var(--fpe-tone4-line); background: var(--fpe-tone4); }
+.fpe-field--tone4 .fpe-field__who { background: var(--fpe-tone4-line); }
+.fpe-field--tone5 { border-color: var(--fpe-tone5-line); background: var(--fpe-tone5); }
+.fpe-field--tone5 .fpe-field__who { background: var(--fpe-tone5-line); }
+
+.fpe-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1100px) {
+  .fpe-root { height: auto !important; flex: none; }
+  .fpe-body { grid-template-columns: 1fr; grid-template-rows: none; overflow: visible; }
+  .fpe-panel, .fpe-panel--right { border: 0; border-bottom: 1px solid var(--fpe-line); overflow: visible; }
+  .fpe-center { overflow: visible; }
+}
