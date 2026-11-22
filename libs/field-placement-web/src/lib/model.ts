@@ -15,7 +15,7 @@ export type NameMode = 'SIGNER_PROFILE' | 'SIGNER_ENTERED';
 export type GroupRule = 'SELECT_ONE' | 'SELECT_ANY';
 
 /**
- * The per-field settings the editor can edit (sign."SignatureField" columns, M-A6 §2). Which
+ * The per-field settings the editor can edit (the Sign SignatureField columns, M-A6 §2). Which
  * ones a field shows is the catalog's fieldSettingsOf(type) ∩ the host's capabilities.
  */
 export interface PlacementSettings {
