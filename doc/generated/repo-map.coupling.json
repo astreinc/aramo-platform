@@ -30814,6 +30814,11 @@
     {
       "from": "doc/sign/field-placement-parity-checklist.md",
       "status": "unscoped",
+      "to": "doc/sign/text-tags.md"
+    },
+    {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
       "to": "libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx"
     },
     {
@@ -30822,9 +30827,24 @@
       "to": "libs/field-placement-web/src/lib/keymap.ts"
     },
     {
+      "from": "doc/sign/field-placement-parity-checklist.md",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/lib/field-detect.ts"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "doc/sign/field-placement-parity-checklist.md"
+    },
+    {
       "from": "doc/sign/text-tags.md",
       "status": "unscoped",
       "to": "libs/documents-rendering/src/lib/pdf-form-import.ts"
+    },
+    {
+      "from": "doc/sign/text-tags.md",
+      "status": "unscoped",
+      "to": "libs/sign-fields/src/lib/field-import-copy.ts"
     },
     {
       "from": "doc/sign/text-tags.md",
@@ -34509,9 +34529,25 @@
       "to": "libs/sign-fields/tsconfig.lib.json"
     },
     {
+      "excludedBy": "src/__tests__/**/*",
+      "from": "libs/sign-fields/src/__tests__/field-detect.test.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/tests/m-a14-field-suggestions.spec.ts"
+    },
+    {
       "from": "libs/sign-fields/src/lib/catalog.ts",
       "status": "production",
       "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/field-detect.ts",
+      "status": "production",
+      "to": "apps/sign-service/src/app/text-layer/field-suggestions.ts"
+    },
+    {
+      "from": "libs/sign-fields/src/lib/field-import-copy.ts",
+      "status": "production",
+      "to": "doc/sign/text-tags.md"
     },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/src/index.ts" },
     { "from": "libs/sign/project.json", "status": "unscoped", "to": "libs/sign/tsconfig.lib.json" },

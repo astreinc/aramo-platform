@@ -1,6 +1,6 @@
-# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5, P2-1..P2-3)
+# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5, P2-1..P2-6)
 
-Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §5 P2-1..P2-3, §8 item 5, ruling R-8.
+Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §5 P2-1..P2-6, §8 item 5, ruling R-8.
 
 As of P1-5, sign-web Prepare (`apps/sign-web/src/workspace/pages/PrepareEditor.tsx`) and the console fixed-form Studio (`libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx`) both host one shared web editor, `libs/field-placement-web` (`PlacementEditor`). So the two web columns below show the same behaviour, except where a row names a host option.
 
@@ -102,6 +102,38 @@ Both web hosts get these from the shared editor (`libs/field-placement-web`), so
 | 8.11 | The saved field shape and the save call are unchanged (more fields are just more fields) | ✔ (`prepare-wire.spec.ts`) | ✔ (`fixed-form-placement.spec.ts`) | n/a |
 | 8.12 | "Keyboard shortcuts" list in the left panel (the `KEYMAP` table) | ✔ | ✔ | n/a |
 
+## 9. Phase 2: auto-detect suggestions (P2-4)
+The detector is one deterministic module, `libs/sign-fields/src/lib/field-detect.ts` (`detectFields`). It uses no model and makes no network call. It reads the text layer and the drawn rectangles (`libs/documents-rendering` `extractTextLayer`, `extractPageGraphics`). Both routes run it:
+- Sign: `GET /v1/sign/sender/envelopes/{id}/documents/{documentId}/field-suggestions?detect=all`. Without `detect`, the answer is the unchanged M-A14 one that self-sign uses.
+- Console: `GET /platform/document-templates/versions/{versionId}/fixed-form/field-suggestions`.
+
+Both web hosts get the editor half from the shared editor. Which ghosts are pending is decided by one rule, `pendingSuggestions`, shared by web and mobile.
+
+| # | Behaviour | sign-web | Console | Mobile |
+|---|---|---|---|---|
+| 9.1 | "Find fields" asks the server's detector for the document(s) | ✔ each envelope document, `detect=all` | ✔ the version's PDF | ✔ Send flow, each uploaded document, `detect=all` (a document not uploaded yet has no loader) |
+| 9.2 | Detected: labels (Signature, Sign here, Initials, Name, Printed name, Title, Email, Company, Date), underscore lines, empty boxes and table cells, ☐ □ glyphs, on every page; a rotated page is skipped and reported (`skipped_pages`) | ✔ | ✔ | ✔ |
+| 9.3 | Only the host palette's types are offered as ghosts (a type the host lacks is never shown; on the console, a "Title:" / "Email:" label arrives as TEXT) | ✔ `send_web` | ✔ `template_fixed_form` | ✔ authoring types |
+| 9.4 | Ghosts: dashed boxes under the fields, each a labelled button ("Suggested signature field next to the label “Signature”, page 1") | ✔ | ✔ | ✔ (accessibility actions: add / dismiss) |
+| 9.5 | Accept one: click, Enter or Space → an ordinary field at the box, of its type, with the catalog's required default, for the assignee being placed for; selected | ✔ | ✔ (or "No role" when none) | ✔ tap |
+| 9.6 | Accept all on the page in view / Accept all: ONE undo step | ✔ | ✔ | ✔ ("Accept this page" / "Accept all") |
+| 9.7 | Dismiss one (Delete / Backspace / ×) or Dismiss all; dismissing is not an edit | ✔ | ✔ | ✔ (press and hold / "Dismiss all") |
+| 9.8 | A ghost a field already covers is not offered; undoing an accept brings the ghost back | ✔ | ✔ | ✔ |
+| 9.9 | Accepting needs an assignee (or a host that allows none); the reason is announced | ✔ | ✔ (No role allowed) | ✔ (active signer) |
+| 9.10 | Results announced (found N / none / not available / N added / dismissed) | ✔ | ✔ | ✔ live region |
+| 9.11 | Read-only editor: no suggestions | ✔ | ✔ | n/a |
+| 9.12 | Self-sign (mobile M-A14 banner) | n/a | n/a | ◐ unchanged: the default route answer, SIGNATURE / SIGN_DATE only, at most 6 |
+
+## 10. Phase 2: upload options (P2-5 fillable-PDF import, P2-6 text tags)
+One web component, `libs/field-placement-web` `UploadFieldOptions` / `FieldImportResult`, holds the options and the result. All the words come from `libs/sign-fields` `field-import-copy.ts`, so web and mobile use the same copy.
+
+| # | Behaviour | sign-web | Console | Mobile |
+|---|---|---|---|---|
+| 10.1 | "Import fields from a fillable PDF" and "Apply text tags ({{…}})" check boxes, off by default | ✔ document step (step 1) | ✔ under "Upload PDF…" / "Replace PDF…" | ✗ follow-up (see below) |
+| 10.2 | A flag is sent only when ticked; with neither ticked, the upload body is exactly as before | ✔ | ✔ | — |
+| 10.3 | Result: "N fields added · N warnings · active content removed", each warning code in plain language (all 17 codes) with the tag or field name and page, and the removed PDF keys | ✔ per uploaded file | ✔ (closable) | — |
+| 10.4 | Short in-app text-tag help (syntax, examples, types; full page `doc/sign/text-tags.md`) | ✔ | ✔ | — |
+
 ### The keymap (one for both web hosts; `libs/field-placement-web/src/lib/keymap.ts` `KEYMAP`)
 | Keys | Action |
 |---|---|
@@ -130,5 +162,6 @@ These rows are where mobile differs from the web editor:
 - 4.8 — undo depth (30 on mobile, 20 on web).
 - 6.1 — autosave.
 - 4.10 and §8 (P2-1..P2-3) — redo, duplicate, copy/paste, Repeat down, multi-select, arrange and snap. The pure helpers (`lib/clone.ts`, `lib/arrange.ts`, the commands in `lib/editor-state.ts`) are DOM-free and can be reused by the mobile reducer.
+- §10 (P2-5 / P2-6 upload options) — the app uploads documents offline-first. A document is uploaded later by the draft sync (`features/send/syncDraft.ts`), after the sender may already have placed fields on the device. The sync then replaces the envelope's whole field set (`PUT …/fields`) with the device's fields. So fields imported on upload would be overwritten unless the editor first merges `field_import.fields` into the draft. The upload route and the generated client already accept `import_fields` / `apply_text_tags` (`SenderUploadedDocument.field_import`), and the copy is shared (`@aramo/sign-client` re-exports `UPLOAD_OPTION_COPY`, `fieldImportSummary`, `fieldImportWarningText`). The remaining work is the merge plus the two switches on the add-documents sheet.
 
 Aligning them is a mobile change. Per §8 item 5 it is tracked against this checklist; it is not built here.

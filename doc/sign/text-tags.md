@@ -135,3 +135,16 @@ covered PDF) then passes the same gates as any other upload.
 **Envelope without a recipient.** If an envelope upload finds fields but the envelope has no
 signing recipient, the upload is refused with `422` and reason `field_import_needs_recipient`.
 Nothing is stored.
+
+## In the apps
+
+Both web uploads offer the two options as check boxes. Both are off by default, and a flag is sent only when its box is ticked:
+- the console form Studio, under "Upload PDF…" / "Replace PDF…";
+- the sign-web envelope document step.
+
+After an opted-in upload, the app shows:
+- how many fields were added;
+- each warning in plain language (the copy is `libs/sign-fields/src/lib/field-import-copy.ts`);
+- what was removed from the PDF.
+
+The short syntax summary under "How to write text tags" is `TEXT_TAG_HELP` in the same file. The Aramo Sign app does not offer the options yet; see `doc/sign/field-placement-parity-checklist.md` §10.
