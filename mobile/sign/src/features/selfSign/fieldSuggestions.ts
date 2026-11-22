@@ -19,8 +19,12 @@ import { SELF_KEY, type SelfDoc } from './selfSignModel';
 
 const PATH = '/v1/sign/sender/envelopes/{envelope_id}/documents/{document_id}/field-suggestions';
 
-// FIELD-PARITY-1 P1-2 — the catalog's `suggestion` surface (today SIGNATURE and SIGN_DATE).
-export type SuggestedType = FieldTypeOn<'suggestion'>;
+// FIELD-PARITY-1 P1-2 — the catalog's `suggestion` surface. P2-4 widened that surface for the
+// Send flow's detect=all suggestions (features/editor/senderSuggestions.ts); this route's default
+// answer (the M-A14 signature block) is still SIGNATURE / SIGN_DATE only, and self-sign keeps
+// accepting only those two.
+export type SuggestedType = Extract<FieldTypeOn<'suggestion'>, 'SIGNATURE' | 'SIGN_DATE'>;
+const isSelfSuggestedType = (v: unknown): v is SuggestedType => isFieldTypeOn('suggestion', v) && (v === 'SIGNATURE' || v === 'SIGN_DATE');
 
 export interface FieldSuggestion {
   readonly type: SuggestedType;
@@ -50,7 +54,7 @@ export function parseSuggestions(raw: unknown): FieldSuggestion[] {
     const y = num(so['y']);
     const width = num(so['width']);
     const height = num(so['height']);
-    if (!isFieldTypeOn('suggestion', type)) continue;
+    if (!isSelfSuggestedType(type)) continue;
     if (page === null || !Number.isInteger(page) || page < 1) continue;
     if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) continue;
     out.push({ type, page, x, y, width, height });

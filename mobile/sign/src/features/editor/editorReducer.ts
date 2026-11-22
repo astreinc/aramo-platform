@@ -2,6 +2,8 @@
 // Pure: every action is deterministic (ids come in the action), so it is unit-tested
 // without a renderer. Boxes are in the EDITOR frame (PDF points, top-left origin);
 // geometry.ts converts to and from the wire and the screen.
+import { pendingSuggestions } from '@aramo/sign-client';
+
 import {
   FIELD_TYPE_SPECS,
   MAX_LABEL,
@@ -42,6 +44,20 @@ export interface EditorField extends Box {
   readonly minSelected?: number | null;
 }
 
+/**
+ * FIELD-PARITY-1 P2-4 — a suggested field (the server's deterministic detector), EDITOR frame.
+ * Shown as a ghost until accepted (it becomes a field) or dismissed.
+ */
+export interface EditorSuggestion extends Box {
+  readonly key: string;
+  readonly docKey: string;
+  /** 0-based page index. */
+  readonly page: number;
+  readonly type: string;
+  /** The detector's reason (`label:Title`, `underscore_line`, …). */
+  readonly reason: string;
+}
+
 export interface EditorState {
   readonly fields: readonly EditorField[];
   readonly selected: string | null;
@@ -49,6 +65,9 @@ export interface EditorState {
   readonly activeRecipient: string | null;
   /** Snapshots of `fields`, oldest first, at most UNDO_DEPTH. */
   readonly undo: readonly (readonly EditorField[])[];
+  /** P2-4 — the loaded suggestions (none until "Suggest" runs) and the dismissed keys. */
+  readonly suggestions: readonly EditorSuggestion[];
+  readonly dismissed: readonly string[];
 }
 
 export type EditorAction =
@@ -129,13 +148,36 @@ export type EditorAction =
   | { readonly type: 'delete'; readonly key: string }
   | { readonly type: 'undo' }
   /** Recipients changed elsewhere: drop the fields of removed recipients. */
-  | { readonly type: 'recipientsChanged'; readonly recipientKeys: readonly string[] };
+  | { readonly type: 'recipientsChanged'; readonly recipientKeys: readonly string[] }
+  /** P2-4 — the suggestions just loaded (replaces any before; nothing dismissed). Not an edit. */
+  | { readonly type: 'setSuggestions'; readonly suggestions: readonly EditorSuggestion[] }
+  /**
+   * P2-4 — accept these pending suggestions as fields for the active recipient: ONE undo step.
+   * `fieldKeys[i]` is the new field's key for `keys[i]` (keys come in the action).
+   */
+  | { readonly type: 'acceptSuggestions'; readonly keys: readonly string[]; readonly fieldKeys: readonly string[] }
+  /** P2-4 — hide these suggestions (not an edit: nothing to undo). */
+  | { readonly type: 'dismissSuggestions'; readonly keys: readonly string[] };
 
 export function initialEditorState(
   fields: readonly EditorField[] = [],
   activeRecipient: string | null = null,
 ): EditorState {
-  return { fields, selected: null, tool: null, activeRecipient, undo: [] };
+  return { fields, selected: null, tool: null, activeRecipient, undo: [], suggestions: [], dismissed: [] };
+}
+
+/**
+ * P2-4 — the suggestions still shown as ghosts: an authoring type, not dismissed, not already
+ * covered by a field (so an accepted one disappears and comes back on undo). The rule is the
+ * one the web editor uses (@aramo/sign-fields pendingSuggestions).
+ */
+export function pendingEditorSuggestions(s: Pick<EditorState, 'suggestions' | 'dismissed' | 'fields'>): EditorSuggestion[] {
+  const types = s.suggestions.map((x) => x.type).filter(isAuthoringFieldType);
+  return pendingSuggestions(
+    s.suggestions.map((x) => ({ ...x, id: x.key, docId: x.docKey })),
+    s.fields.map((f) => ({ docId: f.docKey, page: f.page, x: f.x, y: f.y, width: f.width, height: f.height })),
+    { types, dismissed: new Set(s.dismissed) },
+  ).map(({ id: _id, docId: _docId, ...x }) => x);
 }
 
 function pushUndo(s: EditorState): EditorState['undo'] {
@@ -228,6 +270,27 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
         a.fields.filter((f) => isAuthoringFieldType(f.type)),
         a.activeRecipient,
       );
+    case 'setSuggestions':
+      return { ...s, suggestions: a.suggestions, dismissed: [] };
+    case 'dismissSuggestions': {
+      const known = new Set(s.suggestions.map((x) => x.key));
+      const add = a.keys.filter((k) => known.has(k) && !s.dismissed.includes(k));
+      return add.length === 0 ? s : { ...s, dismissed: [...s.dismissed, ...add] };
+    }
+    case 'acceptSuggestions': {
+      const recipient = s.activeRecipient;
+      if (recipient === null) return s;
+      const pending = new Map(pendingEditorSuggestions(s).map((x) => [x.key, x]));
+      const added: EditorField[] = [];
+      a.keys.forEach((k, i) => {
+        const sug = pending.get(k);
+        const key = a.fieldKeys[i];
+        if (!sug || key === undefined || !isAuthoringFieldType(sug.type)) return;
+        added.push(newField(key, sug.type, recipient, sug.docKey, sug.page, { x: sug.x, y: sug.y, width: sug.width, height: sug.height }));
+      });
+      if (added.length === 0) return s;
+      return { ...commit(s, [...s.fields, ...added]), tool: null, selected: added.length === 1 ? (added[0]?.key ?? null) : null };
+    }
     case 'pickTool':
       if (a.tool !== null && !isAuthoringFieldType(a.tool)) return s;
       return { ...s, tool: a.tool, selected: a.tool !== null ? null : s.selected };

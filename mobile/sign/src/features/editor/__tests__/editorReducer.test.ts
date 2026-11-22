@@ -8,8 +8,10 @@ import {
   groupMembers,
   initialEditorState,
   nextGroupKey,
+  pendingEditorSuggestions,
   type EditorAction,
   type EditorState,
+  type EditorSuggestion,
 } from '../editorReducer';
 import {
   AUTHORING_FIELD_TYPES,
@@ -433,5 +435,64 @@ describe('editor reducer', () => {
     expect(fieldAccessibilityLabel(placed('TEXT').fields[0]!, 'Dana Lee')).toBe(
       'Text, for Dana Lee, optional, empty',
     );
+  });
+});
+
+// FIELD-PARITY-1 P2-4 — suggestions in the mobile editor: loaded (not an edit), accepted as fields
+// for the active recipient (ONE undo step for many), dismissed (nothing to undo), and pending
+// only while not dismissed and not covered by a field (so undo brings an accepted one back).
+describe('P2-4 suggestions', () => {
+  const sug = (key: string, over: Partial<EditorSuggestion> = {}): EditorSuggestion => ({ key, docKey: 'd1', page: 0, type: 'TEXT', reason: 'underscore_line', x: 72, y: 100, width: 200, height: 22, ...over });
+  const loaded = () =>
+    run(initialEditorState([], 'r1'), {
+      type: 'setSuggestions',
+      suggestions: [sug('a', { type: 'SIGNATURE', width: 230, height: 50 }), sug('b', { y: 300 }), sug('c', { page: 1, type: 'CHECKBOX', width: 12, height: 12 }), sug('z', { type: 'PAYMENT', y: 500 })],
+    });
+
+  it('loading is not an edit; only authoring types are pending', () => {
+    const s = loaded();
+    expect(s.undo).toHaveLength(0);
+    expect(s.fields).toHaveLength(0);
+    expect(pendingEditorSuggestions(s).map((x) => x.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('accept one: a field of its type at its box, for the active recipient, with the type default; selected', () => {
+    const s = run(loaded(), { type: 'acceptSuggestions', keys: ['a'], fieldKeys: ['k1'] });
+    expect(s.fields).toEqual([expect.objectContaining({ key: 'k1', type: 'SIGNATURE', docKey: 'd1', page: 0, recipientKey: 'r1', x: 72, y: 100, width: 230, height: 50, required: FIELD_TYPE_SPECS.SIGNATURE.requiredByDefault })]);
+    expect(s.selected).toBe('k1');
+    expect(pendingEditorSuggestions(s).map((x) => x.key)).toEqual(['b', 'c']);
+    // Undo removes the field and the ghost is offered again.
+    const u = run(s, { type: 'undo' });
+    expect(u.fields).toHaveLength(0);
+    expect(pendingEditorSuggestions(u).map((x) => x.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('accept all is ONE undo step; an unknown, dismissed or already-covered key is skipped', () => {
+    let s = run(loaded(), { type: 'dismissSuggestions', keys: ['b'] });
+    s = run(s, { type: 'acceptSuggestions', keys: ['a', 'b', 'c', 'nope', 'z'], fieldKeys: ['k1', 'k2', 'k3', 'k4', 'k5'] });
+    expect(s.fields.map((f) => [f.key, f.type, f.page])).toEqual([
+      ['k1', 'SIGNATURE', 0],
+      ['k3', 'CHECKBOX', 1],
+    ]);
+    expect(s.undo).toHaveLength(1);
+    expect(run(s, { type: 'undo' }).fields).toHaveLength(0);
+    // Accepting again adds nothing (they are covered).
+    expect(run(s, { type: 'acceptSuggestions', keys: ['a'], fieldKeys: ['k9'] })).toBe(s);
+  });
+
+  it('the new fields belong to the active recipient; without one nothing is accepted', () => {
+    const s = run(loaded(), { type: 'setRecipient', recipientKey: 'r2' }, { type: 'acceptSuggestions', keys: ['b'], fieldKeys: ['k1'] });
+    expect(s.fields[0]?.recipientKey).toBe('r2');
+    const none = run({ ...loaded(), activeRecipient: null }, { type: 'acceptSuggestions', keys: ['b'], fieldKeys: ['k1'] });
+    expect(none.fields).toHaveLength(0);
+  });
+
+  it('dismiss hides one or many (not an edit); a new load clears the dismissed list', () => {
+    const s = run(loaded(), { type: 'dismissSuggestions', keys: ['a', 'c'] });
+    expect(pendingEditorSuggestions(s).map((x) => x.key)).toEqual(['b']);
+    expect(s.undo).toHaveLength(0);
+    expect(run(s, { type: 'dismissSuggestions', keys: ['a'] })).toBe(s);
+    const again = run(s, { type: 'setSuggestions', suggestions: s.suggestions });
+    expect(pendingEditorSuggestions(again)).toHaveLength(3);
   });
 });

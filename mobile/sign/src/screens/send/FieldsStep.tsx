@@ -2,12 +2,14 @@
 // recipients can be assigned fields: a copy recipient has none (M-A5 §1.5).
 // M-A12 W1-C/W1-E: Find searches the documents already uploaded (the server's text
 // layer); a placed field starts at the user's default field size.
+// FIELD-PARITY-1 P2-4: "Find fields" reads the server's detector for the uploaded documents.
 import { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useServices } from '../../app/ServicesContext';
-import { FieldEditor } from '../../features/editor/FieldEditor';
+import { FieldEditor, type SuggestDoc } from '../../features/editor/FieldEditor';
+import { fetchSenderSuggestions } from '../../features/editor/senderSuggestions';
 import { sizeScale } from '../../features/editor/fieldTypes';
 import { senderTextLayer } from '../../features/find/textLayerApi';
 import type { FindDoc } from '../../features/find/useFind';
@@ -41,6 +43,18 @@ export function FieldsStep({
         load:
           envelopeId && d.serverId && d.pendingUpload === null
             ? () => senderTextLayer(workspace, envelopeId, d.serverId as string)
+            : null,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [uploaded, envelopeId, workspace],
+  );
+  const suggestDocs = useMemo<readonly SuggestDoc[]>(
+    () =>
+      (p?.documents ?? []).map((d) => ({
+        docKey: d.key,
+        load:
+          envelopeId && d.serverId && d.pendingUpload === null
+            ? () => fetchSenderSuggestions(workspace, envelopeId, d.serverId as string)
             : null,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,6 +94,7 @@ export function FieldsStep({
       loadAsset={loadAsset}
       onFieldsChange={onFieldsChange}
       findDocs={findDocs}
+      suggestDocs={suggestDocs}
       fieldScale={sizeScale(settings.data?.default_field_size)}
       bottomInset={insets.bottom}
     />

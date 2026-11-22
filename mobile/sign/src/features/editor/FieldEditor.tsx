@@ -23,6 +23,11 @@
 //            Document sheet, and a bottom sheet with the R-6 tool row, the armed-tool
 //            hint, ▲▼ page buttons and Finish. The Send flow never sets it and is
 //            unchanged.
+//   FIELD-PARITY-1 P2-4: the Send flow's "Find fields" (toolbar; the deterministic detector, not an AI control) asks the server's
+//            deterministic detector for every uploaded document; the suggestions are dashed
+//            ghost boxes — tap one to add it for the active signer, press and hold (or the
+//            accessibility action) to dismiss it; the panel offers Accept page / Accept all
+//            (ONE undo step) / Dismiss all.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -42,6 +47,8 @@ import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
 import { recipientColor, useTheme } from '../../theme';
 import { randomId } from '../../util/ids';
+import { suggestionReasonText } from '@aramo/sign-client';
+
 import {
   editorReducer,
   fieldAccessibilityLabel,
@@ -49,12 +56,16 @@ import {
   groupMembers,
   initialEditorState,
   nextGroupKey,
+  pendingEditorSuggestions,
   type EditorAction,
   type EditorField,
+  type EditorSuggestion,
 } from './editorReducer';
+import { toEditorSuggestions, type WireSuggestion } from './senderSuggestions';
 import {
   FIELD_TYPE_SPECS,
   MAX_LABEL,
+  isAuthoringFieldType,
   selfSignTools,
   toolFieldTypes,
   zoomLabel,
@@ -115,6 +126,16 @@ export interface FieldEditorProps {
   readonly bottomInset?: number;
   /** M-A14 — the Sign Document look; never set by the Send flow. */
   readonly selfSign?: SelfSignChrome;
+  /**
+   * FIELD-PARITY-1 P2-4 — how "Find fields" reads each document's suggestions (keyed like
+   * `documents`; null: not uploaded yet). Absent: no Suggest button.
+   */
+  readonly suggestDocs?: readonly SuggestDoc[];
+}
+
+export interface SuggestDoc {
+  readonly docKey: string;
+  readonly load: (() => Promise<readonly WireSuggestion[]>) | null;
 }
 
 export interface SelfSignChrome {
@@ -159,6 +180,7 @@ export function FieldEditor({
   placeRequest = null,
   bottomInset = 0,
   selfSign,
+  suggestDocs,
 }: FieldEditorProps) {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -175,6 +197,9 @@ export function FieldEditor({
   const scrollRef = useRef<ScrollView>(null);
   const [visible, setVisible] = useState<{ docKey: string; page: number } | null>(null);
   const noFind = useMemo<readonly FindDoc[]>(() => [], []);
+  // FIELD-PARITY-1 P2-4 — the suggestion request in flight and its spoken result.
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestNote, setSuggestNote] = useState('');
   const find = useFind(findDocs ?? noFind);
 
   // Load every document's bytes + page sizes (once per document).
@@ -316,6 +341,43 @@ export function FieldEditor({
     });
   };
 
+  // FIELD-PARITY-1 P2-4 — suggestions.
+  const ghosts = pendingEditorSuggestions(state);
+  const canSuggest = !selfSign && (suggestDocs ?? []).some((d) => d.load !== null);
+  const runSuggest = async () => {
+    if (suggesting) return;
+    setSuggesting(true);
+    setSuggestNote('Looking for fields…');
+    const all: EditorSuggestion[] = [];
+    for (const d of suggestDocs ?? []) {
+      const a = assets[d.docKey];
+      if (!d.load || !a || a === 'failed') continue;
+      try {
+        all.push(...toEditorSuggestions(d.docKey, a.pages, await d.load()));
+      } catch {
+        // A document whose suggestions fail adds none.
+      }
+    }
+    dispatch({ type: 'setSuggestions', suggestions: all });
+    const n = pendingEditorSuggestions({ ...state, suggestions: all, dismissed: [] }).length;
+    setSuggestNote(n === 0 ? 'No fields found to suggest.' : `${n} suggested field${n === 1 ? '' : 's'}. Tap one to add it.`);
+    setSuggesting(false);
+  };
+  const acceptGhosts = (list: readonly EditorSuggestion[]) => {
+    if (list.length === 0) return;
+    dispatch({ type: 'acceptSuggestions', keys: list.map((g) => g.key), fieldKeys: list.map(() => randomId()) });
+    setSuggestNote(`${list.length} field${list.length === 1 ? '' : 's'} added for ${firstName(active?.name ?? '')}.`);
+  };
+  const dismissGhosts = (list: readonly EditorSuggestion[]) => {
+    if (list.length === 0) return;
+    dispatch({ type: 'dismissSuggestions', keys: list.map((g) => g.key) });
+    setSuggestNote(list.length === 1 ? 'Suggestion dismissed.' : `${list.length} suggestions dismissed.`);
+  };
+  const pageInView = visible ?? (documents[0] ? { docKey: documents[0].key, page: 0 } : null);
+  const ghostsInView = pageInView ? ghosts.filter((g) => g.docKey === pageInView.docKey && g.page === pageInView.page) : [];
+  const ghostLabel = (g: EditorSuggestion) =>
+    `Suggested ${isAuthoringFieldType(g.type) ? `${FIELD_TYPE_SPECS[g.type].label.toLowerCase()} field` : 'field'} ${suggestionReasonText(g.reason)}, page ${g.page + 1}`;
+
   // M-A13 #3 — e.g. after adopting a signature that was picked as a tool.
   const placeId = placeRequest?.id ?? null;
   useEffect(() => {
@@ -429,6 +491,36 @@ export function FieldEditor({
                       width={pageWidth}
                       height={scale * size.height}
                     />
+                    {selfSign
+                      ? null
+                      : ghosts
+                          .filter((g) => g.docKey === d.key && g.page === pi)
+                          .map((g) => (
+                            <Pressable
+                              key={`ghost-${g.key}`}
+                              testID={`ghost-${g.key}`}
+                              accessibilityRole="button"
+                              accessibilityLabel={ghostLabel(g)}
+                              accessibilityHint="Double tap to add it. Use the actions to dismiss it."
+                              accessibilityActions={[
+                                { name: 'activate', label: 'Add field' },
+                                { name: 'dismiss', label: 'Dismiss suggestion' },
+                              ]}
+                              onAccessibilityAction={(e) => (e.nativeEvent.actionName === 'dismiss' ? dismissGhosts([g]) : acceptGhosts([g]))}
+                              onPress={() => acceptGhosts([g])}
+                              onLongPress={() => dismissGhosts([g])}
+                              style={[
+                                styles.ghost,
+                                {
+                                  left: g.x * scale,
+                                  top: g.y * scale,
+                                  width: g.width * scale,
+                                  height: g.height * scale,
+                                  borderColor: t.color.accent,
+                                },
+                              ]}
+                            />
+                          ))}
                     {fields.map((f) => (
                       <FieldBox
                         fill={fillFor ? fillFor(f) : null}
@@ -535,6 +627,16 @@ export function FieldEditor({
               onPress={() => (find.open ? find.close() : find.show())}
             />
           ) : null}
+          {canSuggest ? (
+            <Button
+              testID="editor-suggest"
+              title={suggesting ? 'Looking…' : 'Find fields'}
+              variant="text"
+              disabled={suggesting}
+              accessibilityHint="Finds signature lines, labels, boxes and check boxes in the uploaded documents"
+              onPress={() => void runSuggest()}
+            />
+          ) : null}
           {toolbarExtra}
         </View>
         <View style={styles.toolbarRow}>
@@ -615,6 +717,22 @@ export function FieldEditor({
             />
           ) : (
             <>
+              {suggestNote !== '' || ghosts.length > 0 ? (
+                <View testID="editor-suggestions" style={styles.suggestions}>
+                  <Text testID="editor-suggest-note" style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
+                    {ghosts.length > 0
+                      ? `${ghosts.length} suggested field${ghosts.length === 1 ? '' : 's'} (dashed). Tap one to add it for ${firstName(active?.name ?? '')}; press and hold to dismiss it.`
+                      : suggestNote}
+                  </Text>
+                  {ghosts.length > 0 ? (
+                    <View style={styles.suggestActions}>
+                      <Button testID="suggest-accept-page" title="Accept this page" variant="secondary" disabled={ghostsInView.length === 0 || active === null} onPress={() => acceptGhosts(ghostsInView)} />
+                      <Button testID="suggest-accept-all" title={`Accept all (${ghosts.length})`} variant="secondary" disabled={active === null} onPress={() => acceptGhosts(ghosts)} />
+                      <Button testID="suggest-dismiss-all" title="Dismiss all" variant="text" onPress={() => dismissGhosts(ghosts)} />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
               <Text style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
                 {hint}
               </Text>
@@ -1230,6 +1348,10 @@ const styles = StyleSheet.create({
   panelScroll: { flexGrow: 0, flexShrink: 1 },
   panelBody: { gap: 10 },
   hint: { fontSize: 14, lineHeight: 19 },
+  // FIELD-PARITY-1 P2-4 — a suggested field: dashed, under the placed fields.
+  ghost: { position: 'absolute', borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 3, backgroundColor: 'rgba(36,71,216,0.06)' },
+  suggestions: { gap: 8, marginBottom: 8 },
+  suggestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tools: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tool: {
     flexBasis: '47%',
