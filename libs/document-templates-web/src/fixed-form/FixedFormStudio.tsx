@@ -17,6 +17,7 @@ import {
   type FixedFormRole,
   type FixedFormVersionView,
 } from './fixed-form-model';
+import { pickTargetPage, placeNewField, visibleArea, visibleRegionInPage, type ScreenRect } from './fixed-form-viewport';
 import './fixed-form.css';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.2 — the Platform Studio's
@@ -80,6 +81,22 @@ function issuesOf(e: unknown): FixedFormIssue[] {
   return Array.isArray(raw) ? (raw as FixedFormIssue[]) : [];
 }
 
+/** FIELD-PARITY-1 P0-1 — the part of the screen the page column shows: its rect, cut to the window. */
+function columnViewRect(el: HTMLElement): ScreenRect | null {
+  if (typeof window === 'undefined') return null;
+  const r = el.getBoundingClientRect();
+  const left = Math.max(r.left, 0);
+  const top = Math.max(r.top, 0);
+  const right = Math.min(r.right, window.innerWidth);
+  const bottom = Math.min(r.bottom, window.innerHeight);
+  return right > left && bottom > top ? { left, top, right, bottom } : null;
+}
+
+/** The rendered pages in the page column, in page order. */
+function pageEls(el: HTMLElement): HTMLElement[] {
+  return Array.from(el.querySelectorAll<HTMLElement>('.ffs-page'));
+}
+
 export function FixedFormStudio({
   dataSource: ds,
   templateId,
@@ -106,6 +123,10 @@ export function FixedFormStudio({
   const [checkIssues, setCheckIssues] = useState<FixedFormIssue[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // FIELD-PARITY-1 P0-1 — the page column scrolls on its own (R-1); the target page follows it
+  // (R-2) and a new field lands in its visible part (R-3).
+  const centerRef = useRef<HTMLElement | null>(null);
+  const scrollToField = useRef<string | null>(null);
 
   const adopt = useCallback((v: FixedFormVersionView) => {
     setView(v);
@@ -179,27 +200,69 @@ export function FixedFormStudio({
     setCheckIssues(null);
   };
 
+  const columnMounted = template !== null && loadError === null;
+  // R-2 — as the page column (or, stacked, the window) scrolls, the target page is the page with
+  // the largest visible area. A click on a page still selects it (the canvas's onPage).
+  useEffect(() => {
+    const el = centerRef.current;
+    if (el === null || typeof window === 'undefined') return undefined;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const vr = columnViewRect(el);
+      if (vr === null) return;
+      const areas = pageEls(el).map((p) => visibleArea(p.getBoundingClientRect(), vr));
+      if (areas.length > 0) setPage((cur) => pickTargetPage(areas, cur));
+    };
+    const onScroll = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(measure);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', onScroll);
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+    };
+    // Bound when the page column mounts (once the template has loaded).
+  }, [columnMounted]);
+
+  // R-3 — bring a newly added field into view if its spot is not already visible.
+  useEffect(() => {
+    const key = scrollToField.current;
+    if (key === null) return;
+    scrollToField.current = null;
+    const node = centerRef.current?.querySelector<HTMLElement>(`[data-testid="ffs-field-${key}"]`);
+    node?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [fields]);
+
   function addField(type: string) {
-    const page0 = pages[page] ?? pages[0];
+    const target = pages[page] !== undefined ? page : 0;
+    const page0 = pages[target];
     if (page0 === undefined) return;
     const spec = FIXED_FORM_FIELD_TYPES.find((t) => t.type === type);
     const width = spec?.width ?? 120;
     const height = spec?.height ?? 18;
     const field_key = nextFieldKey(type, fields);
-    const offset = (fields.filter((f) => f.page_number === page).length % 10) * 12;
+    const el = centerRef.current;
+    const vr = el === null ? null : columnViewRect(el);
+    const pageEl = el === null ? undefined : pageEls(el)[target];
+    const visible = vr !== null && pageEl !== undefined ? visibleRegionInPage(pageEl.getBoundingClientRect(), vr, page0) : null;
+    const { x, y } = placeNewField({ page: page0, visible, size: { width, height }, cascade: fields.filter((f) => f.page_number === target).length });
     const f: FixedFormField = {
       field_key,
       field_type: type,
       binding_key: null,
       signer_role: activeRole === '' ? null : activeRole,
       required: type !== 'CHECKBOX',
-      page_number: pages[page] !== undefined ? page : 0,
-      x: Math.min(72 + offset, Math.max(0, page0.width - width)),
-      y: Math.max(0, page0.height - 144 - offset - height),
+      page_number: target,
+      x,
+      y,
       width,
       height,
       ordinal: fields.length,
     };
+    scrollToField.current = field_key;
     edit([...fields, f]);
     setSelected(field_key);
   }
@@ -494,7 +557,7 @@ export function FixedFormStudio({
           ) : null}
         </aside>
 
-        <main className="ffs-center" aria-label="Form pages">
+        <main ref={centerRef} className="ffs-center" aria-label="Form pages" data-testid="ffs-center">
           {view === null ? (
             <div className="ffs-empty">This form has no version yet.</div>
           ) : (

@@ -91,3 +91,17 @@ body:has(.pws-root) {
   --ts-warn: var(--pw-warn);
   --ts-warn-bg: var(--pw-warn-bg);
 }
+
+/* FIELD-PARITY-1 P0-1 R-1 — the fixed-form Studio sizes itself to the space under the console
+ * chrome through --ffs-viewport-offset (libs/document-templates-web fixed-form.css). In the
+ * general console frame that chrome is the environment bar + top bar + the content padding
+ * (28px top, 72px bottom; platform-shell.css `.pw-shell .rc-content`). The Studio route
+ * (/document-templates/:id → `.pw-shell--studio`) draws no console top bar and zeroes the content
+ * padding (platform-shell.css "Template Studio route"), so there the chrome is the environment
+ * bar alone — the same offset the Template Studio uses (--ts-envbar-h). */
+.pw-shell .ffs-root {
+  --ffs-viewport-offset: calc(var(--pw-envbar-h) + var(--pw-topbar-h) + 28px + 72px);
+}
+.pw-shell--studio .ffs-root {
+  --ffs-viewport-offset: var(--pw-envbar-h);
+}
