@@ -42,9 +42,17 @@ export function isProfileFieldType(v: unknown): v is ProfileFieldType {
 // (@aramo/sign-client SENDER_FIELD_TYPES); this file only orders the tools.
 export type AuthoringFieldType = SenderFieldType & (typeof AUTHORING_FIELD_TYPES)[number];
 
-/** Every type the server accepts from a sender (a saved draft may hold any of them). */
+const AUTHORING_SET: ReadonlySet<string> = new Set(AUTHORING_FIELD_TYPES);
+
+/**
+ * A type this editor authors: one the server accepts from a sender AND the editor has a tool
+ * for. FIELD-PARITY-1 P3 — the server now also accepts ACKNOWLEDGEMENT and the new types
+ * (DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT); until the app's authoring slice adds their
+ * tools, a stored field of one of them is preserved untouched (draftModel preservedFields),
+ * never loaded into the editor.
+ */
 export function isAuthoringFieldType(v: unknown): v is AuthoringFieldType {
-  return isSenderFieldType(v);
+  return isSenderFieldType(v) && AUTHORING_SET.has(v);
 }
 
 /** The tools the editor offers in this build. */

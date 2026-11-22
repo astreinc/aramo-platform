@@ -36,6 +36,19 @@ const PALETTE: Readonly<Record<FixedFormFieldType, { readonly label: string; rea
   SIGN_DATE: { label: 'Date', order: 3 },
   TEXT: { label: 'Text', order: 4 },
   CHECKBOX: { label: 'Checkbox', order: 5 },
+  // FIELD-PARITY-1 P3 (ruling R-1) — the profile types, ACKNOWLEDGEMENT and the new types. DATE
+  // is the chosen date ("Date" above is the signing date, SIGN_DATE).
+  FIRST_NAME: { label: 'First name', order: 6 },
+  LAST_NAME: { label: 'Last name', order: 7 },
+  EMAIL: { label: 'Email', order: 8 },
+  COMPANY: { label: 'Company', order: 9 },
+  TITLE: { label: 'Title', order: 10 },
+  ACKNOWLEDGEMENT: { label: 'Acknowledgement', order: 11 },
+  DATE: { label: 'Chosen date', order: 12 },
+  DROPDOWN: { label: 'Dropdown', order: 13 },
+  RADIO: { label: 'Radio button', order: 14 },
+  NUMBER: { label: 'Number', order: 15 },
+  MULTILINE_TEXT: { label: 'Multi-line text', order: 16 },
 };
 
 /**

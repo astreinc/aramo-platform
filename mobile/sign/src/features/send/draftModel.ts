@@ -242,6 +242,15 @@ export interface ServerField {
   readonly group_key: string | null;
   readonly group_rule: string | null;
   readonly min_selected: number | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (absent on older servers; null / false = not set).
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly font_size?: number | null;
+  readonly data_name?: string | null;
+  readonly options?: Readonly<Record<string, unknown>> | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
