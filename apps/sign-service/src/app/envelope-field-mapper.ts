@@ -8,8 +8,12 @@ import { type ProviderFieldInput } from '@aramo/documents-contracts';
 // signer reference throw BEFORE any row is written. Page-SIZE bounds are enforced
 // by the renderer at stamp time (pdf-lib adapter); define time enforces structure.
 
-// Mirrors the SignatureField_type_check DB constraint so the API rejects unknown
-// types with a clear error instead of a downstream CHECK violation.
+// The service-to-service / Sign API allow-list: the 7 field types these paths accept
+// (SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT). It is
+// NOT a mirror of the SignatureField_type_check DB constraint, which allows 13 (it adds
+// PAYMENT and the profile types FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE). Unknown
+// types are rejected here with a clear error instead of a downstream CHECK violation.
+// FIELD-PARITY-1 P1-1 — this list becomes a projection of the one field catalog.
 const ALLOWED_FIELD_TYPES = new Set([
   'SIGNATURE',
   'INITIALS',

@@ -25,6 +25,15 @@ export {
   layoutSignatureBlock,
   manifestProjection,
   wrapTextToWidth,
+  layoutTextInBox,
+  sanitizeWinAnsi,
+  stampTextInBox,
+  stampTextUnbounded,
+  TEXT_BOX_MAX_SIZE,
+  TEXT_BOX_MIN_SIZE,
+  type TextBox,
+  type TextBoxLayout,
+  type TextBoxLine,
 } from './lib/pdf-lib-document-rendering.adapter.js';
 export { SafePdfPipeline, type SafePdfLimits } from './lib/safe-upload.pipeline.js';
 export { RenderFailedError, UnsafePdfError } from './lib/errors.js';

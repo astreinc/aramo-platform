@@ -137,7 +137,16 @@ export function valuePlacement(
       ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
     };
   }
-  return { field_key: f.id, page_number: f.page_number, x: f.x, y: f.y, value: f.value };
+  // FIELD-PARITY-1 P0-2 — the box size travels with the value, so the renderer draws it
+  // inside the box (wrap, shrink, clip). A legacy row with no size renders as before.
+  return {
+    field_key: f.id,
+    page_number: f.page_number,
+    x: f.x,
+    y: f.y,
+    value: f.value,
+    ...(f.width !== null && f.height !== null ? { width: f.width, height: f.height } : {}),
+  };
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -335,6 +344,7 @@ export class ExecutionService implements ExecutionProducerPort {
         source_sha256,
         executed_sha256: rendered.sha256,
         bytes: rendered.bytes,
+        truncated_field_keys: rendered.truncated_field_keys ?? [],
       });
       if (kept.inserted) {
         inserted.push(doc.id);
@@ -416,7 +426,7 @@ export class ExecutionService implements ExecutionProducerPort {
     tenant_id: string,
     doc: EnvelopeFull['documents'][number],
     stampFor: (signer_id: string | null) => { label: string; id: string },
-  ): Promise<{ source_sha256: string; rendered: { bytes: Uint8Array; sha256: string } }> {
+  ): Promise<{ source_sha256: string; rendered: { bytes: Uint8Array; sha256: string; truncated_field_keys?: string[] } }> {
     const sourcePdf = await this.source.getSourcePdf({
       tenant_id,
       source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
@@ -732,7 +742,7 @@ export class ExecutionService implements ExecutionProducerPort {
     tenant_id: string,
     envelope_id: string,
     envelope_document_id: string,
-    attempted: { source_sha256: string; executed_sha256: string; bytes: Uint8Array },
+    attempted: { source_sha256: string; executed_sha256: string; bytes: Uint8Array; truncated_field_keys?: readonly string[] },
   ): Promise<{ inserted: boolean; result: ExecutedProductionResult }> {
     type Outcome =
       | { kind: 'inserted' | 'existing'; result: ExecutedProductionResult }
@@ -776,6 +786,10 @@ export class ExecutionService implements ExecutionProducerPort {
           artifact_kind: 'EXECUTED_DOCUMENT',
           source_sha256: attempted.source_sha256,
           envelope_document_id,
+          // FIELD-PARITY-1 P0-2 — the audit trail of text clipped to its box (only when any).
+          ...(attempted.truncated_field_keys !== undefined && attempted.truncated_field_keys.length > 0
+            ? { truncated_field_keys: [...attempted.truncated_field_keys] }
+            : {}),
         };
         await this.repo.appendEvent(tx, { tenant_id, envelope_id, event_type: EXECUTED_DOCUMENT_RECORDED, actor_type: 'SYSTEM', payload });
         return { kind: 'inserted', result: { envelope_document_id, source_sha256: attempted.source_sha256, executed_sha256: attempted.executed_sha256, byte_size } };

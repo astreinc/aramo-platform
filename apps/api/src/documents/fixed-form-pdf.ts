@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 
 import { AramoError } from '@aramo/common';
 import { FIXED_FORM_MAX_BYTES, type FixedFormPage } from '@aramo/documents';
-import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, StandardFonts, rgb, type PDFObject } from 'pdf-lib';
+import { SafePdfPipeline, UnsafePdfError, stampTextInBox } from '@aramo/documents-rendering';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, StandardFonts, type PDFObject } from 'pdf-lib';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.1 — the gate an official PDF
 // passes before it is stored as a PlatformTemplateAsset: PDF only, at most 10 MB, it must
@@ -114,15 +114,10 @@ export interface FixedFormStamp {
   readonly text: string;
 }
 
-// Helvetica (WinAnsi) cannot encode every character: anything outside printable Latin-1 is
-// printed as "?" so a value never breaks the freeze.
-function winAnsi(text: string): string {
-  return text.replace(/[\r\n\t]+/g, ' ').replace(/[^\x20-\x7e\xa0-\xff]/g, '?');
-}
-
 /**
- * §7.4 — print the prefilled values (variables of TEXT fields) on the official PDF. One line
- * per box, Helvetica, sized to the box height, truncated to the box width. With no stamp
+ * §7.4 — print the prefilled values (variables of TEXT fields) on the official PDF with the
+ * shared text-in-box stamper (FIELD-PARITY-1 P0-2, the same one the executed PDF uses):
+ * WinAnsi replacement, wrap to the box width, shrink 11pt → 7pt, then clip. With no stamp
  * the bytes are returned unchanged (the stored PDF is the document).
  */
 export async function stampFixedFormValues(bytes: Uint8Array, stamps: readonly FixedFormStamp[]): Promise<Uint8Array> {
@@ -133,12 +128,7 @@ export async function stampFixedFormValues(bytes: Uint8Array, stamps: readonly F
   for (const s of stamps) {
     const page = pages[s.page_number];
     if (page === undefined) continue;
-    const size = Math.max(6, Math.min(11, s.height * 0.7));
-    let text = winAnsi(s.text);
-    const maxWidth = Math.max(0, s.width - 4);
-    while (text.length > 0 && font.widthOfTextAtSize(text, size) > maxWidth) text = text.slice(0, -1);
-    if (text.length === 0) continue;
-    page.drawText(text, { x: s.x + 2, y: s.y + (s.height - size) / 2 + size * 0.2, size, font, color: rgb(0, 0, 0) });
+    stampTextInBox(page, font, { x: s.x, y: s.y, width: s.width, height: s.height }, s.text);
   }
   return doc.save({ useObjectStreams: false });
 }

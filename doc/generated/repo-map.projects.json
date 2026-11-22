@@ -914,11 +914,17 @@
       "PdfLibDocumentRenderingAdapter",
       "RenderFailedError",
       "SafePdfPipeline",
+      "TEXT_BOX_MAX_SIZE",
+      "TEXT_BOX_MIN_SIZE",
       "UnsafePdfError",
       "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
+      "layoutTextInBox",
       "manifestProjection",
+      "sanitizeWinAnsi",
+      "stampTextInBox",
+      "stampTextUnbounded",
       "wrapTextToWidth"
     ],
     "@aramo/engagement": [
@@ -10113,6 +10119,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-product-1-tp6-fixed-forms.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },

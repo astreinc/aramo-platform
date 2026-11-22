@@ -6,7 +6,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PDFArray, PDFDocument, PDFRawStream, PDFRef, decodePDFRawStream } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFRawStream, PDFRef, StandardFonts, decodePDFRawStream } from 'pdf-lib';
 import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
@@ -327,5 +327,95 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
     expect(certificate).toContain('Checkbox \\"Send me updates\\": not checked');
     expect(certificate).toContain('Checkbox (page 1): not checked');
     expect(certificate).toContain('Acknowledgement (page 1): checked');
+  });
+
+  // FIELD-PARITY-1 P0-2 — signer text is drawn INSIDE its box on the executed PDF
+  // (wrap, shrink 11pt → 7pt, clip); a clipped field is recorded in the audit trail
+  // (EXECUTED_DOCUMENT_RECORDED.truncated_field_keys); a legacy row with no box size
+  // is drawn as before (one run at its x, y).
+  it('P0-2: long signer text stays inside its box; a clipped field is recorded in the ledger', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Minutes', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({
+      tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(),
+      title: 'minutes.pdf', source_sha256: 'seed', ordinal: 1,
+    });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'jane@x.com', name: 'Jane', signing_order: 1 });
+    const fill = async (field_type: string, box: { x: number; y: number; width?: number; height?: number }, value: string) => {
+      const f = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type, page_number: 0, ...box, required: true });
+      await prisma.signatureField.update({ where: { id: f.id }, data: { value, filled_at: new Date() } });
+      return f.id;
+    };
+    const wrapBox = { x: 72, y: 500, width: 160, height: 40 };
+    const clipBox = { x: 72, y: 300, width: 100, height: 14 };
+    const minutes = 'The board approved the minutes of the previous meeting and the budget for the next quarter';
+    const wrapped = await fill('TEXT', wrapBox, minutes);
+    const clipped = await fill('COMPANY', clipBox, 'Very Long Company Name Holdings International Limited Partnership of the Americas');
+    const legacy = await fill('TEXT', { x: 72, y: 700 }, 'Legacy');
+
+    const real = new PdfLibDocumentRenderingAdapter();
+    const captured: PreparedField[][] = [];
+    const outputs: Uint8Array[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: async (src, placements, opts): Promise<RenderedOutput> => {
+        captured.push(placements);
+        const out = await real.prepareFromSource(src, placements, opts);
+        outputs.push(out.bytes);
+        return out;
+      },
+      renderGenerated: (model) => real.renderGenerated(model),
+    };
+    await new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf }).produce(TENANT, env.id);
+
+    const byId = new Map((captured[0] ?? []).map((p) => [p.field_key, p]));
+    expect(byId.get(wrapped)).toMatchObject({ value: minutes, ...wrapBox });
+    expect(byId.get(clipped)).toMatchObject(clipBox);
+    expect(byId.get(legacy)).not.toHaveProperty('width');
+    expect(byId.get(legacy)).not.toHaveProperty('height');
+
+    // Every text run on the executed page: its font size and its baseline origin.
+    const executed = await PDFDocument.load(outputs[0]!);
+    const contents = executed.getPage(0).node.Contents();
+    let ops = '';
+    if (contents instanceof PDFArray) {
+      for (let i = 0; i < contents.size(); i += 1) {
+        const stream = executed.context.lookup(contents.get(i) as PDFRef);
+        if (stream instanceof PDFRawStream) ops += Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+      }
+    }
+    const runs = [...ops.matchAll(/BT\s[^B]*?\/\S+ ([\d.]+) Tf[\s\S]*?1 0 0 1 ([\d.-]+) ([\d.-]+) Tm\s+<([0-9A-Fa-f]*)> Tj[\s\S]*?ET/g)].map((m) => ({
+      size: Number(m[1]), x: Number(m[2]), y: Number(m[3]), text: Buffer.from(m[4] ?? '', 'hex').toString('latin1'),
+    }));
+    const font = await executed.embedFont(StandardFonts.Helvetica);
+    const within = (box: { x: number; y: number; width: number; height: number }) => runs.filter((r) => r.y >= box.y && r.y <= box.y + box.height);
+    const insideBox = (box: { x: number; y: number; width: number; height: number }) => {
+      const inBox = within(box);
+      expect(inBox.length).toBeGreaterThan(0);
+      for (const r of inBox) {
+        expect(r.size).toBeLessThanOrEqual(11);
+        expect(r.size).toBeGreaterThanOrEqual(7);
+        expect(r.x).toBeGreaterThanOrEqual(box.x);
+        expect(r.x + font.widthOfTextAtSize(r.text, r.size)).toBeLessThanOrEqual(box.x + box.width);
+        expect(r.y - 0.207 * r.size).toBeGreaterThanOrEqual(box.y - 0.01);
+        expect(r.y + 0.718 * r.size).toBeLessThanOrEqual(box.y + box.height + 0.01);
+      }
+      return inBox;
+    };
+    // The minutes text wraps over several lines and none of it is lost.
+    const minuteRuns = insideBox(wrapBox);
+    expect(minuteRuns.length).toBeGreaterThan(1);
+    expect(minuteRuns.map((r) => r.text).join(' ')).toBe(minutes);
+    // The company name is clipped to what fits at 7pt.
+    const companyRuns = insideBox(clipBox);
+    expect(companyRuns.every((r) => r.size === 7)).toBe(true);
+    // The legacy row is one 11pt run at its own (x, y).
+    expect(runs).toContainEqual({ size: 11, x: 72, y: 700, text: 'Legacy' });
+
+    // The audit trail names the clipped field (and only it).
+    const recorded = (await db.query(
+      `SELECT payload FROM "sign"."SignatureEvent" WHERE envelope_id = $1 AND event_type = 'EXECUTED_DOCUMENT_RECORDED'`,
+      [env.id],
+    )).rows as Array<{ payload: Record<string, unknown> }>;
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.payload['truncated_field_keys']).toEqual([clipped]);
   });
 });
