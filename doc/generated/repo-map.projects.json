@@ -2715,17 +2715,29 @@
       "wordUploadEnabled"
     ],
     "@aramo/sign-fields": [
+      "CHECKBOX_GROUP_RULES",
+      "DEFAULT_CHECKBOX_GROUP_RULE",
+      "DEFAULT_SIGNER_NAME_MODE",
       "FIELD_CATALOG",
       "FIELD_DEFAULTS",
+      "FIELD_GROUP_KEY_MAX",
+      "FIELD_LABEL_MAX",
       "FIELD_SURFACES",
       "FIELD_TYPE_KEYS",
+      "NO_TEMPLATE_FIELD_SETTINGS",
       "PROFILE_TEXT_FIELD_TYPES",
+      "SIGNER_NAME_MODES",
+      "TEMPLATE_FIELD_SETTINGS",
       "WHEN_PAYMENTS_AVAILABLE",
+      "checkboxGroupIssues",
       "fieldSettingsOf",
       "fieldTypesFor",
       "isFieldTypeKey",
       "isFieldTypeOn",
-      "isPaymentsGatedOn"
+      "isPaymentsGatedOn",
+      "parseTemplateFieldSettings",
+      "templateNameModeOf",
+      "templateSettingsOf"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -14728,6 +14740,7 @@
         "project": "api",
         "status": "excluded"
       },
+      { "project": "api", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/document-templates-web/src/fixed-form/fixed-form.spec.tsx",

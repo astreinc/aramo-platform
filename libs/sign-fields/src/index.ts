@@ -34,3 +34,27 @@ export {
   type FieldDefaults,
   type ProfileTextFieldType,
 } from './lib/catalog.js';
+
+// FIELD-PARITY-1 P1-3 — the settings a template field carries (Sign's M-A6 §2 settings).
+export {
+  TEMPLATE_FIELD_SETTINGS,
+  SIGNER_NAME_MODES,
+  DEFAULT_SIGNER_NAME_MODE,
+  CHECKBOX_GROUP_RULES,
+  DEFAULT_CHECKBOX_GROUP_RULE,
+  FIELD_LABEL_MAX,
+  FIELD_GROUP_KEY_MAX,
+  NO_TEMPLATE_FIELD_SETTINGS,
+  templateSettingsOf,
+  parseTemplateFieldSettings,
+  checkboxGroupIssues,
+  templateNameModeOf,
+  type TemplateFieldSetting,
+  type SignerNameModeSetting,
+  type CheckboxGroupRuleSetting,
+  type TemplateFieldSettings,
+  type FieldSettingRefusal,
+  type TemplateFieldSettingsParse,
+  type GroupedTemplateField,
+  type CheckboxGroupIssue,
+} from './lib/field-settings.js';

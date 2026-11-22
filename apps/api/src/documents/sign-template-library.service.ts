@@ -518,6 +518,12 @@ export class SignTemplateLibraryService {
           y: f.y,
           width: f.width,
           height: f.height,
+          // FIELD-PARITY-1 P1-4 — the settings travel with the field (no silent drop).
+          label: f.label ?? null,
+          group_key: f.group_key ?? null,
+          group_rule: f.group_rule ?? null,
+          min_selected: f.min_selected ?? null,
+          name_mode: f.name_mode ?? null,
         }),
       ),
       signing,

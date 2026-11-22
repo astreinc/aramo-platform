@@ -126,6 +126,13 @@ export interface TemplateFieldInput {
   width: number;
   height: number;
   required: boolean;
+  // FIELD-PARITY-1 P1-4 — the template field's Sign settings (M-A6 §2), carried unchanged.
+  // Absent / NULL = not set; a SIGNER_NAME with no name_mode is SIGNER_PROFILE (the default).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
@@ -416,9 +423,14 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
-            // M-A6 §3.3 / §2.2 — the role's printed name is filled by Sign from the
-            // signer's profile (SIGNER_PROFILE, the default name mode).
-            name_mode: f.field_type === 'SIGNER_NAME' ? 'SIGNER_PROFILE' : null,
+            // FIELD-PARITY-1 P1-4 — the template's settings. M-A6 §3.3 / §2.2 — a SIGNER_NAME
+            // the template left without a name mode is filled by Sign from the signer's
+            // profile (SIGNER_PROFILE, the default name mode), exactly as before.
+            label: f.label ?? null,
+            group_key: f.group_key ?? null,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            name_mode: f.field_type === 'SIGNER_NAME' ? (f.name_mode ?? 'SIGNER_PROFILE') : null,
           },
         });
       }

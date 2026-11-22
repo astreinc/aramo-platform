@@ -388,6 +388,13 @@ model TemplateFieldDefinition {
   format_rule         String?
   signer_role         String?
   ordinal             Int
+  // FIELD-PARITY-1 P1-3 — the Sign's SignatureField settings (M-A6 §2), with the same
+  // type-scoped CHECKs (migration 20261122100000_field_parity_1_template_field_settings).
+  label               String? // CHECKBOX only; 1..200
+  group_key           String? // CHECKBOX only; 1..64
+  group_rule          String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
+  min_selected        Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
+  name_mode           String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only (NULL = SIGNER_PROFILE)
 
   template_version    TemplateVersion @relation(fields: [template_version_id], references: [id], onDelete: Cascade)
 
