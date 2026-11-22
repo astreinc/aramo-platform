@@ -105,3 +105,5 @@ export {
 } from './lib/viewport';
 // P2-4 (§5) — suggestions: the host maps the detector's answer; the editor shows ghosts.
 export { suggestionsFromWire, pendingGhosts, fieldsFromSuggestions, acceptSuggestions, type PlacementSuggestion, type WireSuggestion } from './lib/suggestions';
+// P2-5 / P2-6 (§5) — the opt-in upload options and the import result, for every web upload.
+export { UploadFieldOptions, FieldImportResult, uploadFlags, NO_UPLOAD_FIELD_OPTIONS, type UploadFieldOptionsValue, type FieldImportResultValue } from './UploadFieldOptions';

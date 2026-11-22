@@ -128,3 +128,13 @@ export {
   type PlacedBoxLike,
 } from './lib/field-detect.js';
 
+// FIELD-PARITY-1 P2-5 / P2-6 — the upload options' copy, warning copy and text-tag help (one
+// place for every UI).
+export {
+  UPLOAD_OPTION_COPY,
+  FIELD_IMPORT_WARNING_COPY,
+  TEXT_TAG_HELP,
+  fieldImportWarningText,
+  fieldImportSummary,
+  isFieldImportWarningCode,
+} from './lib/field-import-copy.js';

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { PlacementEditor, useAutosave, type PlacedField } from '@aramo/field-placement-web';
+import {
+  FieldImportResult,
+  NO_UPLOAD_FIELD_OPTIONS,
+  PlacementEditor,
+  UploadFieldOptions,
+  suggestionsFromWire,
+  uploadFlags,
+  useAutosave,
+  type PlacedField,
+  type UploadFieldOptionsValue,
+} from '@aramo/field-placement-web';
 import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX, TEMPLATE_FIELD_SETTINGS } from '@aramo/sign-fields';
 
 import { ProductTagsSelect, templateProductsLine, type TemplateProductKey } from '../template-products';
@@ -13,6 +23,8 @@ import {
   nextFieldKey,
   roleKeyFromLabel,
   type FixedFormField,
+  type FixedFormFieldImport,
+  type FixedFormFieldSuggestions,
   type FixedFormIssue,
   type FixedFormRole,
   type FixedFormVersionView,
@@ -54,7 +66,13 @@ export interface FixedFormStudioDataSource {
   view(versionId: string): Promise<FixedFormVersionView>;
   pdf(versionId: string): Promise<{ content_base64: string }>;
   createDraft(templateId: string): Promise<FixedFormVersionView>;
-  uploadPdf(versionId: string, content_base64: string): Promise<FixedFormVersionView>;
+  /**
+   * FIELD-PARITY-1 P2-5 / P2-6 — `options` carries only the ticked upload flags (none: the upload
+   * is unchanged); the answer then has `field_import`.
+   */
+  uploadPdf(versionId: string, content_base64: string, options?: { import_fields?: true; apply_text_tags?: true }): Promise<FixedFormVersionView>;
+  /** FIELD-PARITY-1 P2-4 — the detector's suggestions for the version's PDF ("Find fields"). */
+  fieldSuggestions?(versionId: string): Promise<FixedFormFieldSuggestions>;
   saveLayout(
     versionId: string,
     body: { signing: { roles: readonly FixedFormRole[]; routing_mode: 'PARALLEL' | 'SEQUENTIAL' }; fields: readonly FixedFormField[] },
@@ -116,6 +134,9 @@ export function FixedFormStudio({
   const [checkIssues, setCheckIssues] = useState<FixedFormIssue[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // FIELD-PARITY-1 P2-5 / P2-6 — the upload options (off by default) and the last import's result.
+  const [uploadOpts, setUploadOpts] = useState<UploadFieldOptionsValue>(NO_UPLOAD_FIELD_OPTIONS);
+  const [importResult, setImportResult] = useState<FixedFormFieldImport | null>(null);
 
   // Replaces the whole working copy (load, upload, new draft, publish) — the editor resets.
   const adopt = useCallback((v: FixedFormVersionView) => {
@@ -194,6 +215,14 @@ export function FixedFormStudio({
   const renderPage = useCallback((_doc: string, index: number, canvas: HTMLCanvasElement, width: number) => pdf?.render(index, canvas, width) ?? Promise.resolve(), [pdf]);
   const assignees = useMemo(() => roles.filter((r) => r.kind === 'SIGNER').map((r) => ({ id: r.role_key, label: r.label })), [roles]);
   const prefills = useMemo(() => (view?.variables ?? []).map((v) => ({ key: v.key, label: v.label })), [view]);
+  // FIELD-PARITY-1 P2-4 — "Find fields" on a draft with a PDF (the console's fixed-form route).
+  const versionId = view?.version_id ?? null;
+  const hasPdf = view?.content.pdf != null;
+  const loadSuggestions = useMemo(() => {
+    const get = ds.fieldSuggestions;
+    if (get === undefined || versionId === null || !hasPdf) return undefined;
+    return async () => suggestionsFromWire(FIXED_FORM_DOC_ID, (await get.call(ds, versionId)).suggestions);
+  }, [ds, versionId, hasPdf]);
 
   async function act(name: string, fn: () => Promise<void>) {
     setBusy(name);
@@ -251,10 +280,13 @@ export function FixedFormStudio({
       setError('The PDF is larger than 10 MB.');
       return;
     }
+    setImportResult(null);
     await act('upload', async () => {
       const b64 = bytesToBase64(await file.arrayBuffer());
-      const v = await ds.uploadPdf(view.version_id, b64);
+      const flags = uploadFlags(uploadOpts);
+      const v = Object.keys(flags).length > 0 ? await ds.uploadPdf(view.version_id, b64, flags) : await ds.uploadPdf(view.version_id, b64);
       adopt(v);
+      setImportResult(v.field_import ?? null);
       await loadPdfBytes(v);
     });
   }
@@ -321,8 +353,10 @@ export function FixedFormStudio({
             {view?.content.pdf != null ? 'Replace PDF…' : 'Upload PDF…'}
           </button>
           <p className="ffs-note">PDF only, up to 10 MB, no scripts or embedded files.</p>
+          <UploadFieldOptions value={uploadOpts} onChange={setUploadOpts} disabled={busy !== null} idPrefix="ffs" />
         </>
       ) : null}
+      {importResult !== null ? <FieldImportResult result={importResult} idPrefix="ffs" onClose={() => setImportResult(null)} /> : null}
 
       <h2>Product tags</h2>
       {canManage && ds.updateProducts !== undefined ? (
@@ -563,6 +597,7 @@ export function FixedFormStudio({
         }
         empty={empty}
         showFieldKey
+        {...(editable && loadSuggestions !== undefined ? { loadSuggestions } : {})}
       />
     </div>
   );

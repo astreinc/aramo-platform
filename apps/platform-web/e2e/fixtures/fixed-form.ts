@@ -98,7 +98,11 @@ export function fixedFormMock(fx: FixedFormFixture, pdfBase64: string): MockOpti
   };
 }
 
-export async function openFixedFormStudio(page: Page, fx: FixedFormFixture): Promise<void> {
+/**
+ * FIELD-PARITY-1 P2-4..P2-6 journeys add their own routes (the PDF upload with its import
+ * result, the field suggestions); they are checked before the fixture's.
+ */
+export async function openFixedFormStudio(page: Page, fx: FixedFormFixture, extra: Pick<MockOptions, 'overrides'> = {}): Promise<void> {
   // The renderer's worker is imported as `pdfjs-dist/build/pdf.worker.min.mjs?url`. The Vite dev
   // server answers that with `export default "<url>"` only when node_modules sits inside the
   // workspace root; with node_modules linked from outside it (a git worktree) it serves the raw
@@ -107,7 +111,8 @@ export async function openFixedFormStudio(page: Page, fx: FixedFormFixture): Pro
     const u = new URL(route.request().url());
     return route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(u.pathname)};` });
   });
-  await openBuild(page, `/document-templates/${fx.templateId}`, fixedFormMock(fx, await fixedFormPdf(fx.pages)));
+  const base = fixedFormMock(fx, await fixedFormPdf(fx.pages));
+  await openBuild(page, `/document-templates/${fx.templateId}`, { ...base, overrides: [...(extra.overrides ?? []), ...(base.overrides ?? [])] });
   await expect(page.getByTestId('fixed-form-studio')).toBeVisible();
   await expect(page.getByTestId(`ffs-page-${fx.pages - 1}`)).toBeVisible();
 }

@@ -221,6 +221,8 @@ export {
   type FixedFormSigning,
   type FixedFormVariable,
   type FixedFormVersionView,
+  type FixedFormFieldImport,
+  type FixedFormFieldSuggestions,
 } from './fixed-form/fixed-form-model';
 export {
   listFixedForms,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
+import { FieldImportResult, NO_UPLOAD_FIELD_OPTIONS, UploadFieldOptions, uploadFlags, type UploadFieldOptionsValue } from '@aramo/field-placement-web';
 import {
   PDF_PICKER_TYPES,
   SIGNERS_FULL_MESSAGE,
@@ -35,6 +36,7 @@ import {
   type RecipientKind,
   type RecipientMessaging,
   type RoutingMode,
+  type UploadedDocument,
   validAccessCode,
 } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
@@ -173,9 +175,15 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
   const [error, setError] = useState('');
   const [over, setOver] = useState(false);
   const [titles, setTitles] = useState<Record<string, string>>({});
+  // FIELD-PARITY-1 P2-5 / P2-6 — the opt-in upload options (off by default) and each opted-in
+  // upload's result (the file name with its field_import).
+  const [uploadOpts, setUploadOpts] = useState<UploadFieldOptionsValue>(NO_UPLOAD_FIELD_OPTIONS);
+  const [imports, setImports] = useState<{ name: string; result: NonNullable<UploadedDocument['field_import']> }[]>([]);
 
   const upload = async (files: FileList | File[]) => {
     setError('');
+    setImports([]);
+    const flags = uploadFlags(uploadOpts);
     for (const f of Array.from(files)) {
       const check = checkPickedFile({ name: f.name, mimeType: f.type, size: f.size, head: await headOf(f), wordAllowed: false });
       if (!check.ok) {
@@ -185,7 +193,12 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
       setBusy(`Uploading ${f.name}…`);
       try {
         const content_base64 = await fileToBase64(f);
-        await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
+        const up =
+          Object.keys(flags).length > 0
+            ? await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 }, flags)
+            : await senderApi.upload(env.id, { filename: f.name, title: titleFromFilename(f.name), content_base64 });
+        const result = up.field_import;
+        if (result !== undefined) setImports((xs) => [...xs, { name: f.name, result }]);
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -245,6 +258,15 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <div style={{ fontWeight: 600, marginTop: 6 }}>Drop PDFs here or click to upload</div>
             <div className="sg-muted">PDF files up to 25 MB each</div>
           </label>
+          <UploadFieldOptions value={uploadOpts} onChange={setUploadOpts} disabled={busy !== ''} idPrefix="docs" />
+          {imports.map((x) => (
+            <div key={x.name} data-testid="docs-import">
+              <div className="sg-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+                {x.name}
+              </div>
+              <FieldImportResult result={x.result} idPrefix="docs" />
+            </div>
+          ))}
           {/* DOC-TEMPLATE-LIB-1 T-5 — start from one of the organization's document templates
               (shown only when the plan capability and the template permission allow it). */}
           {templatesUsable ? (

@@ -129,6 +129,31 @@ export interface FixedFormVersionView {
   readonly variables: readonly FixedFormVariable[];
   readonly issues: readonly FixedFormIssue[];
   readonly previewed: boolean;
+  /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
+  readonly field_import?: FixedFormFieldImport;
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload added, warned about and removed. */
+export interface FixedFormFieldImport {
+  readonly fields: ReadonlyArray<FixedFormField & { readonly source: 'pdf_form' | 'text_tag'; readonly source_name: string }>;
+  readonly warnings: ReadonlyArray<{ readonly code: string; readonly message: string; readonly name?: string; readonly page_number?: number }>;
+  readonly stripped: readonly string[];
+}
+
+/** FIELD-PARITY-1 P2-4 — GET …/fixed-form/field-suggestions (the field frame: page_number 0-based, points, bottom-left). */
+export interface FixedFormFieldSuggestions {
+  readonly suggestions: ReadonlyArray<{
+    readonly type: string;
+    readonly page: number;
+    readonly page_number: number;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly reason: string;
+    readonly confidence: number;
+  }>;
+  readonly skipped_pages: ReadonlyArray<{ readonly page: number; readonly reason: string }>;
 }
 
 /** A role key from a label: lower_snake, unique among `taken`. */

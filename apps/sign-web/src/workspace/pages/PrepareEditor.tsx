@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadPdf, type LoadedPdf } from '@aramo/document-templates-web/pdf';
-import { PlacementEditor, useAutosave, type PlacedField, type PlacementDocument } from '@aramo/field-placement-web';
+import { PlacementEditor, suggestionsFromWire, useAutosave, type PlacedField, type PlacementDocument, type PlacementSuggestion } from '@aramo/field-placement-web';
 import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
@@ -146,6 +146,22 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     formatError: (e) => errorMessage(e),
   });
   const readiness = useMemo(() => readinessOf(env), [env]);
+  // FIELD-PARITY-1 P2-4 — "Find fields": the Sign route's full detector (detect=all) for every
+  // document, as ghosts in the editor. A document whose suggestions fail adds none.
+  const docIds = env.documents.map((d) => d.id).join(',');
+  const loadSuggestions = useCallback(async (): Promise<PlacementSuggestion[]> => {
+    const lists = await Promise.all(
+      env.documents.map(async (d) => {
+        try {
+          return suggestionsFromWire(d.id, (await senderApi.fieldSuggestions(env.id, d.id)).suggestions);
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return lists.flat();
+    // One loader per envelope + document set.
+  }, [env.id, docIds]);
 
   if (env.documents.length === 0 || signers.length === 0) {
     return (
@@ -189,6 +205,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
           idPrefix="prep"
           copy={{ paletteTitle: 'Fields · click a type, then the page', leftLabel: 'Recipients and fields', rightLabel: 'Field properties and readiness' }}
           whoOf={(a) => a.label.split(' ')[0] ?? a.label}
+          loadSuggestions={loadSuggestions}
           fitHeight={{ bottomReserve: 120 }}
           toolbarEnd={
             <span className="sg-faint" style={{ fontSize: 12, minWidth: 60 }} role="status" data-testid="save-state">
