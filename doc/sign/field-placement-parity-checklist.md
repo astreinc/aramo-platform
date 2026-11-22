@@ -1,6 +1,6 @@
-# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5, P2-1..P2-6)
+# Field placement: behaviour-parity checklist (FIELD-PARITY-1 P1-5, P2-1..P2-6, P3)
 
-Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §5 P2-1..P2-6, §8 item 5, ruling R-8.
+Source: `Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED` §4 P1-5, §5 P2-1..P2-6, §6 (Phase 3), §8 item 5, rulings R-1, R-2, R-3, R-8.
 
 As of P1-5, sign-web Prepare (`apps/sign-web/src/workspace/pages/PrepareEditor.tsx`) and the console fixed-form Studio (`libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx`) both host one shared web editor, `libs/field-placement-web` (`PlacementEditor`). So the two web columns below show the same behaviour, except where a row names a host option.
 
@@ -15,10 +15,10 @@ Legend:
 ## 1. Palette and field types
 | # | Behaviour | sign-web | Console | Mobile |
 |---|---|---|---|---|
-| 1.1 | The palette is the catalog projection for its surface (`fieldTypesFor`) | ✔ `send_web` (11 types) | ✔ `template_fixed_form` (6 types) | ✔ `send_mobile` tool tiers (held equal by `editorReducer.test.ts`) |
+| 1.1 | The palette is the catalog projection for its surface (`fieldTypesFor`) | ✔ `send_web` (17 types since P3) | ✔ `template_fixed_form` (17 types since P3) | ✔ `send_mobile` tool tiers, 17 types since P3 (held equal by `editorReducer.test.ts`) |
 | 1.2 | Default size and required default come from the catalog `FIELD_DEFAULTS` (P1-0) | ✔ | ✔ | ✔ |
 | 1.3 | PAYMENT is never in the palette (Prepare cannot author an amount); an API-placed one is shown locked (P1-6) | ✔ | ✔ (no template surface allows it) | ✔ |
-| 1.4 | An engine-only stored field (ACKNOWLEDGEMENT; PAYMENT) is shown locked: it can't be moved or edited, can be deleted, and is sent back exactly as stored | ✔ | n/a (none can be stored) | ✔ |
+| 1.4 | A stored field the editor can't author (an API-placed PAYMENT; since P3 also an engine row with no recipient or size, such as an S2S ACKNOWLEDGEMENT) is shown locked: it can't be moved or edited, can be deleted, and is sent back exactly as stored | ✔ | n/a (none can be stored) | ✔ (kept on the draft, not drawn) |
 | 1.5 | Palette labels and order are host copy; glyphs come from the catalog | ✔ | ✔ (SIGN_DATE shown as "Date") | ◐ own labels |
 
 ## 2. Placing
@@ -63,8 +63,9 @@ The settings shown are the catalog's `fieldSettingsOf(type)` intersected with th
 |---|---|---|---|---|
 | 5.1 | Reassign the field to another recipient or role | ✔ | ✔ | ✔ |
 | 5.2 | Required toggle (check-box groups share it) | ✔ | ✔ | ✔ |
-| 5.3 | Name: "comes from profile / signer types it" (`name_mode`) | ✔ | ✗ hidden until P1-3 (capability flag) | ✔ |
-| 5.4 | Check box label, group, rule (any / one), minimum; group consistency rules | ✔ | ✗ hidden until P1-3 (capability flag) | ✔ |
+| 5.3 | Name: "comes from profile / signer types it" (`name_mode`) | ✔ | ✔ (since P1-3) | ✔ |
+| 5.4 | Check box label, group, rule (any / one), minimum; group consistency rules | ✔ | ✔ (since P1-3) | ✔ |
+| 5.7 | Phase 3 settings (label on every type, tooltip, placeholder, validation, font size, data name, options, sender-filled) | ✔ see §11 | ✔ see §11 | ✔ see §11 |
 | 5.5 | Size and page shown; field key shown | ◐ size + page | ✔ size + page + key | ◐ |
 | 5.6 | Delete button | ✔ | ✔ | ◐ ✕ on the field |
 
@@ -133,6 +134,28 @@ One web component, `libs/field-placement-web` `UploadFieldOptions` / `FieldImpor
 | 10.2 | A flag is sent only when ticked; with neither ticked, the upload body is exactly as before | ✔ | ✔ | — |
 | 10.3 | Result: "N fields added · N warnings · active content removed", each warning code in plain language (all 17 codes) with the tag or field name and page, and the removed PDF keys | ✔ per uploaded file | ✔ (closable) | — |
 | 10.4 | Short in-app text-tag help (syntax, examples, types; full page `doc/sign/text-tags.md`) | ✔ | ✔ | — |
+
+## 11. Phase 3: new types and settings (§6, rulings R-1, R-2, R-3, R-6, R-7)
+One rule decides which settings a type shows on every editor: the catalog's `fieldSettingsOf(type)` (`@aramo/sign-fields`, re-exported by `@aramo/sign-client`), intersected with what the host offers. The web editor's panel is `libs/field-placement-web/src/FieldSettingsPanel.tsx`; the app's sheet is `mobile/sign/src/features/editor/FieldSettingsSheet.tsx`. Every editor runs the server's ONE settings rule (`parseFieldSettings`) on the field it is editing and shows the refusal message before saving.
+
+| # | Behaviour | sign-web | Console | Mobile |
+|---|---|---|---|---|
+| 11.1 | Nothing pending: `P3_PENDING_WEB_TYPES` / `P3_PENDING_MOBILE_TOOLS` are empty | ✔ | n/a | ✔ |
+| 11.2 | ACKNOWLEDGEMENT is on the palette (T-2, R-2) | ✔ | ✔ | ✔ |
+| 11.3 | DATE (a chosen date), DROPDOWN, RADIO, NUMBER and MULTILINE_TEXT are on the palette (T-3..T-7) | ✔ | ✔ ("Chosen date") | ✔ Send flow; ◐ Sign a document keeps its row (its fill sheet takes only the older types) |
+| 11.4 | Label (S-1) on every type that takes it; for RADIO it is the option text | ✔ | ✔ | ✔ commits when editing ends |
+| 11.5 | Tooltip (S-1), placeholder (S-2), data name (S-9) | ✔ | ✔ | ✔ |
+| 11.6 | Validation preset per type (TEXT: email, phone, US ZIP, max length; MULTILINE_TEXT: max length; NUMBER: number range; DATE: date range), with its parameters; a parameter is sent only while its preset is chosen | ✔ | ✔ | ✔ (date bounds typed as YYYY-MM-DD) |
+| 11.7 | Font size auto (default) or fixed 6..36pt (S-7) | ✔ auto / fixed + points | ✔ | ✔ auto / fixed + −/+ |
+| 11.8 | DROPDOWN choices: start with two; add, remove, reorder; value + label (a blank value is the label) | ✔ | ✔ | ◐ labels only (a choice's value follows its label; a stored value is kept) |
+| 11.9 | NUMBER format: number or money; currency (ISO code, default USD) and decimals (money default 2) | ✔ | ✔ | ✔ |
+| 11.10 | RADIO: a new one gets its own group (always select-one); "Add option" adds the next option just below in the same group, as one undo step; the group shares required, read-only and sender-filled; no rule or minimum control | ✔ | ✔ | ✔ |
+| 11.11 | Sender-filled (S-5, dark) shown only when the server says `sender_filled_fields_enabled`; then the sender types the value (input by type: date, number, choice, chosen option, check) and may make it read-only (S-4) | ✔ from the envelope detail | ✗ the fixed-form view carries no flag; a stored sender-filled field is kept and round-trips | ✔ from the envelope detail (a draft not yet read from the server: off) |
+| 11.12 | The sender's value goes on the wire only with a sender-filled field; any other value is never sent | ✔ | n/a (a template has no sender value) | ✔ |
+| 11.13 | A stored field keeps every setting: untouched fields go back unchanged | ✔ | ✔ byte-equal (`fixed-form-placement.spec.ts` FP3-S-1) | ✔ (a preserved field also keeps its settings and value) |
+| 11.14 | Conditional display (S-8) and ATTACHMENT (T-8) | ✗ follow-up (R-7, R-6) | ✗ | ✗ |
+| 11.15 | Fillable-PDF import: a radio group becomes a RADIO group; multi-line text becomes MULTILINE_TEXT; a dropdown stays TEXT until the reader and upload hosts carry its choices | ✔ | ✔ | n/a (§10) |
+| 11.16 | Text tags: `date_chosen`, `number`, `multiline`, `acknowledgement` (and aliases); DROPDOWN / RADIO tags are refused (`doc/sign/text-tags.md`) | ✔ | ✔ | n/a (§10) |
 
 ### The keymap (one for both web hosts; `libs/field-placement-web/src/lib/keymap.ts` `KEYMAP`)
 | Keys | Action |
