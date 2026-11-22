@@ -248,3 +248,26 @@
   .fpe-panel, .fpe-panel--right { border: 0; border-bottom: 1px solid var(--fpe-line); overflow: visible; }
   .fpe-center { overflow: visible; }
 }
+
+/* P2 (§5 P2-2 / P2-3) — page overlays (never take the pointer), the arrange tools, the keymap. */
+.fpe-grid, .fpe-guide, .fpe-marquee { position: absolute; pointer-events: none; }
+.fpe-grid {
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--fpe-brand-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--fpe-brand-soft) 1px, transparent 1px);
+}
+.fpe-guide { background: var(--fpe-danger); z-index: 3; }
+.fpe-guide--v { top: 0; bottom: 0; width: 1px; }
+.fpe-guide--h { left: 0; right: 0; height: 1px; }
+.fpe-marquee { border: 1px dashed var(--fpe-brand); background: var(--fpe-brand-soft); z-index: 3; }
+.fpe-btn.is-on { border-color: var(--fpe-brand); background: var(--fpe-brand-soft); color: var(--fpe-brand); }
+.fpe-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.fpe-tools--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fpe-tools .fpe-btn { padding: 4px 6px; font-size: 12px; }
+.fpe-inline { display: flex; gap: 6px; align-items: end; }
+.fpe-inline .fpe-row { flex: 1; }
+.fpe-inline .fpe-input { width: 100%; box-sizing: border-box; }
+.fpe-keys { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 12px; color: var(--fpe-muted); }
+.fpe-keys dt { font-weight: 600; color: var(--fpe-ink); white-space: nowrap; }
+.fpe-keys dd { margin: 0; }
