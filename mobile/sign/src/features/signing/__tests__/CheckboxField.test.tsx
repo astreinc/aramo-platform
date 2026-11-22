@@ -58,4 +58,24 @@ describe('CheckboxField', () => {
     show({ label: null });
     expect(screen.queryByTestId('field-caption-yes')).toBeNull();
   });
+
+  // FIELD-PARITY-1 P3 T-5 / S-4 — a radio option and a sender's (locked) box.
+  it('a radio option is a circle, announced as a radio button, ● when chosen', () => {
+    show({ shape: 'circle', checked: true });
+    const el = screen.getByTestId('field-yes');
+    expect(el.props.accessibilityRole).toBe('radio');
+    expect(screen.getByTestId('field-check-yes')).toHaveTextContent('●');
+    expect(StyleSheet.flatten(el.props.style).borderRadius).toBe(5);
+  });
+
+  it('a locked box is shown but not a target; the tooltip is its hint', () => {
+    const onPress = show({ locked: true, checked: true, accessibilityHint: 'Set by the sender' });
+    const el = screen.getByTestId('field-yes');
+    expect(el.props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(el.props.accessibilityHint).toBe('Set by the sender');
+    fireEvent.press(el);
+    fireEvent.press(screen.getByTestId('field-caption-yes'));
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });
+
