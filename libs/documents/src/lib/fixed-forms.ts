@@ -21,11 +21,12 @@ export const FIXED_FORM_MIME = 'application/pdf';
 export const PLATFORM_TEMPLATE_ASSET_PREFIX = 'documents/platform/template-assets';
 
 /**
- * §7.2 — the field types a fixed form may place: the intersection Aramo Sign executes
- * (text, date, checkbox, name, signature, initials). "date" is the signing date and
- * "name" the signer's printed name — the only date and name Sign fills.
- * FIELD-PARITY-1 P1-2 — the catalog's `template_fixed_form` surface (@aramo/sign-fields), in
- * catalog order; P1-6: never PAYMENT.
+ * §7.2 — the field types a fixed form may place: originally the intersection Aramo Sign
+ * executed (text, date, checkbox, name, signature, initials). FIELD-PARITY-1 P1-2 — the
+ * catalog's `template_fixed_form` surface (@aramo/sign-fields), in catalog order; P1-6: never
+ * PAYMENT. P3 (ruling R-1, superseding TEMPLATE-PRODUCT-1 §7 line 126) — every type the
+ * catalog allows on a template surface: + the profile types, ACKNOWLEDGEMENT, DATE (a chosen
+ * date), DROPDOWN, RADIO, NUMBER and MULTILINE_TEXT.
  */
 export const FIXED_FORM_FIELD_TYPES: readonly FieldTypeOn<'template_fixed_form'>[] = fieldTypesFor('template_fixed_form');
 export type FixedFormFieldType = FieldTypeOn<'template_fixed_form'>;
@@ -94,6 +95,15 @@ export interface FixedFormField {
   readonly group_rule?: string | null;
   readonly min_selected?: number | null;
   readonly name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (same rule; absent / NULL / false = not set).
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly font_size?: number | null;
+  readonly data_name?: string | null;
+  readonly options?: unknown;
 }
 
 /** The content a new fixed-form version starts from: no PDF yet, one signer role. */
@@ -201,6 +211,11 @@ export function fixedFormIssues(input: {
     group_key: f.group_key ?? null,
     group_rule: f.group_rule ?? null,
     min_selected: f.min_selected ?? null,
+    // FIELD-PARITY-1 P3 — a group is one type (check boxes or radio buttons) and one
+    // read-only / sender-filled setting.
+    field_type: f.field_type,
+    read_only: f.read_only === true,
+    sender_filled: f.sender_filled === true,
   }));
   for (const g of checkboxGroupIssues(grouped)) {
     const first = grouped.find((f) => f.group_key === g.group_key);

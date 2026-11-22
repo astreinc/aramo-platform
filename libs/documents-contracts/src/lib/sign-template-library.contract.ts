@@ -162,6 +162,17 @@ export interface SignTemplateFieldDefinition {
   readonly group_rule?: string | null;
   readonly min_selected?: number | null;
   readonly name_mode?: string | null;
+  // FIELD-PARITY-1 P3 §6.2 — the other settings (same rule: absent = NULL / false = not set).
+  // options is the per-type options object (DROPDOWN choices, NUMBER format, the validation
+  // parameters); see @aramo/sign-fields FieldOptions.
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly font_size?: number | null;
+  readonly data_name?: string | null;
+  readonly options?: Readonly<Record<string, unknown>> | null;
 }
 
 export interface SignTemplateRenderResponse {
