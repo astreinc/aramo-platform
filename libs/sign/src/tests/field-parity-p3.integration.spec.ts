@@ -116,7 +116,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('FIELD-PARITY-1 P3
       ['TEXT', ', data_name', ['Bad Name'], 'SignatureField_data_name_check'],
       ['TEXT', ', read_only', [true], 'SignatureField_read_only_check'],
       ['SIGNATURE', ', sender_filled', [true], 'SignatureField_sender_filled_check'],
-      ['TEXT', ', options', [[1]], 'SignatureField_options_check'],
+      // A JSON array (not an object); sent as JSON text — node-pg would send a JS array as a Postgres array literal.
+      ['TEXT', ', options', ['[1]'], 'SignatureField_options_check'],
       ['TEXT', ', tooltip', [''], 'SignatureField_tooltip_check'],
       ['TEXT', ', placeholder', ['x'.repeat(201)], 'SignatureField_placeholder_check'],
       ['TEXT', ', group_key, group_rule', ['g', 'SELECT_ANY'], 'SignatureField_group_key_check'],
