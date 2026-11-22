@@ -7,6 +7,7 @@ import { WORD_COPY } from './file-rules.js';
 import { isDailyAllowance, limitReachedCopy } from './plan.js';
 import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_MIN_LENGTH, PHONE_HINT, SIGNERS_FULL_MESSAGE } from './validation.js';
 import { MAX_COPY_RECIPIENTS } from './recipients.js';
+import { SIGNER_FIELD_VALUE_COPY } from './signer-field-input.js';
 
 export const FALLBACK_MESSAGE = 'Something went wrong. Try again.';
 export const ENVELOPE_CHANGED = 'This envelope changed. Showing the latest version.';
@@ -49,6 +50,8 @@ export const RECIPIENT_COPY = {
 export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   ...WORD_COPY,
   ...RECIPIENT_COPY,
+  // FIELD-PARITY-1 P3 §6 — a field value the server refused (fill: VALIDATION_ERROR details.reason).
+  ...SIGNER_FIELD_VALUE_COPY,
   // Sign-in (native auth, M-A1; Apple Go-Live A1).
   idp_not_permitted_for_tenant: 'Your account doesn’t use this sign-in option. Sign in the way you usually do.',
   invalid_grant: 'Sign-in didn’t finish. Try again.',

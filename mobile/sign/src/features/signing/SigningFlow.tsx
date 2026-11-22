@@ -16,7 +16,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -50,6 +49,7 @@ import {
   type SavedMarks,
 } from './adopt';
 import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
+import { FieldEditor } from './FieldEditor';
 import { boxOnPage, PdfPages, pageSizesFromBase64, type PageLayout } from './PdfPages';
 import {
   acceptAndLoad,
@@ -72,6 +72,8 @@ import {
   delegateRefusalCopy,
   delegateSigning,
   delegatedCopy,
+  fieldRefusalOf,
+  incompleteCopy,
   validDelegate,
   loadSource,
   openSigning,
@@ -87,8 +89,13 @@ import {
   adopt,
   advance,
   attemptFinish,
+  blockedMessage,
   canFinish,
+  defaultBox,
   displayOf,
+  isEditorField,
+  isLocked,
+  isRadio,
   emptyCaption,
   fieldAnnouncement,
   fieldLabel,
@@ -107,6 +114,7 @@ import { ReportSheet, type ReportSendResult } from '../../screens/envelope/Repor
 import { CheckboxField } from './CheckboxField';
 import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
+import { fieldValueRefusalText, signerFieldTooltip, signerInputKind } from '@aramo/sign-client';
 import { ZoomablePages } from './ZoomablePages';
 
 type Phase =
@@ -222,7 +230,6 @@ export function SigningFlow(props: SigningFlowProps) {
     null,
   );
   const [textFor, setTextFor] = useState<{ fieldId: string; initial: string } | null>(null);
-  const [textDraft, setTextDraft] = useState('');
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineError, setDeclineError] = useState<string | null>(null);
   const [delegateOpen, setDelegateOpen] = useState(false);
@@ -353,7 +360,7 @@ export function SigningFlow(props: SigningFlowProps) {
         const top =
           (docY.current[f.document_id] ?? 0) +
           (pageY.current[f.document_id]?.[f.page_number] ?? 0) +
-          boxOnPage(f, layout).top;
+          boxOnPage(f, layout, defaultBox(f.field_type)).top;
         scrollRef.current?.scrollTo({
           y: Math.max(0, top * zoomRef.current - 150),
           animated: !reduceMotion,
@@ -374,7 +381,6 @@ export function SigningFlow(props: SigningFlowProps) {
     commit(next);
     if (effect.kind === 'adopt') setAdoptFor({ fieldId: effect.fieldId, target: effect.target });
     else if (effect.kind === 'text') {
-      setTextDraft(effect.initial);
       setTextFor({ fieldId: effect.fieldId, initial: effect.initial });
     } else if (next.currentId && next.currentId !== f.field_id) {
       focusField(next.currentId);
@@ -407,7 +413,8 @@ export function SigningFlow(props: SigningFlowProps) {
     const check = attemptFinish(stateRef.current);
     if (check.blocked) {
       commit(check.state);
-      toast.show(SIGNING_COPY.incomplete);
+      // FIELD-PARITY-1 P3 — a group rule (a radio group needs one choice) is named as such.
+      toast.show(blockedMessage(check.state) ?? SIGNING_COPY.incomplete);
       focusField(check.state.currentId);
       return;
     }
@@ -436,8 +443,21 @@ export function SigningFlow(props: SigningFlowProps) {
     } catch (e) {
       const kind = classifySigningError(e);
       if (kind === 'network' || kind === 'error') setSubmitError(SIGNING_COPY.submitFailed);
-      else if (kind === 'incomplete') {
-        setSubmitError(SIGNING_COPY.incomplete);
+      else if (kind === 'value_refused') {
+        // FIELD-PARITY-1 P3 — the server refused one value: name it in plain words and take
+        // the signer to that field (every value already stored stays stored).
+        const r = fieldRefusalOf(e);
+        const f = r?.fieldId ? stateRef.current.fields.find((x) => x.field_id === r.fieldId) : undefined;
+        setSubmitError(fieldValueRefusalText(r?.reason, f ?? null, { date_format: stateRef.current.dateFormat ?? null }));
+        if (f) {
+          commit({ ...stateRef.current, currentId: f.field_id });
+          focusField(f.field_id);
+        }
+      } else if (kind === 'incomplete') {
+        setSubmitError(incompleteCopy(e));
+        const next = advance(stateRef.current);
+        commit(next);
+        focusField(next.currentId);
       } else fail(e);
     } finally {
       setBusy(false);
@@ -834,20 +854,23 @@ export function SigningFlow(props: SigningFlowProps) {
     ) : null;
     const onPage = state.fields.filter((f) => f.document_id === documentId && f.page_number === index);
     // UAT SIG-03 — touch areas never overlap a neighbouring field's.
-    const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout)] as const));
+    const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout, defaultBox(f.field_type))] as const));
     const allBoxes = [...boxes.values()];
     return [highlight, ...onPage
       .flatMap((f) => {
-        const box = boxes.get(f.field_id) ?? boxOnPage(f, layout);
+        const box = boxes.get(f.field_id) ?? boxOnPage(f, layout, defaultBox(f.field_type));
         const v = state.values[f.field_id];
-        const shown = displayOf(f, v);
+        const shown = displayOf(f, v, state.dateFormat ?? null);
+        const locked = isLocked(f);
+        const tooltip = signerFieldTooltip(f);
         const current = state.currentId === f.field_id;
         const filled = isFilled(state, f.field_id);
         const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
         // UAT SIG-03 retest (web ≡ app) — a check box is the box itself: a plain square with
         // ✓ when checked, never its caption squeezed inside (it showed "Ye"); the caption sits
         // beside the box, as on the web, and tapping it toggles that box.
-        if (f.field_type === 'CHECKBOX') {
+        // FIELD-PARITY-1 P3 T-5 — a radio option is the same control, drawn as a circle.
+        if (f.field_type === 'CHECKBOX' || isRadio(f)) {
           return [
             <CheckboxField
               key={f.field_id}
@@ -859,7 +882,10 @@ export function SigningFlow(props: SigningFlowProps) {
               checked={v?.value === 'true'}
               current={current}
               hitSlop={slop}
+              shape={isRadio(f) ? 'circle' : 'box'}
+              locked={locked}
               accessibilityLabel={fieldAnnouncement(state, f, signerName)}
+              {...(tooltip !== null ? { accessibilityHint: tooltip } : {})}
               onPress={() => onTap(f)}
               setRef={(r) => {
                 fieldRefs.current[f.field_id] = r;
@@ -875,14 +901,22 @@ export function SigningFlow(props: SigningFlowProps) {
             }}
             testID={`field-${f.field_id}`}
             onPress={() => onTap(f)}
+            disabled={locked}
             accessibilityRole="button"
             accessibilityLabel={fieldAnnouncement(state, f, signerName)}
-            accessibilityHint={filled ? 'Double tap to clear' : 'Double tap to fill'}
+            accessibilityState={locked ? { disabled: true } : undefined}
+            accessibilityHint={
+              locked
+                ? tooltip ?? undefined
+                : [tooltip, isEditorField(f) ? 'Double tap to edit' : filled ? 'Double tap to clear' : 'Double tap to fill'].filter((x) => x !== null).join('. ')
+            }
             hitSlop={slop}
             style={[
               styles.field,
               { left: box.left, top: box.top, width: box.width, height: box.height },
-              filled
+              locked
+                ? { borderWidth: 1, borderColor: t.color.separator, backgroundColor: 'rgba(255,255,255,0.6)' }
+                : filled
                 ? {
                     borderWidth: 1,
                     borderColor: 'rgba(2,42,192,0.30)',
@@ -1170,42 +1204,26 @@ export function SigningFlow(props: SigningFlowProps) {
       <Sheet
         visible={textFor !== null}
         onClose={() => setTextFor(null)}
-        title={
-          state.fields.find((f) => f.field_id === textFor?.fieldId)?.field_type === 'SIGNER_NAME'
-            ? 'Enter your name'
-            : textFor
-              ? `Enter ${fieldLabel(state.fields.find((f) => f.field_id === textFor.fieldId)?.field_type ?? 'TEXT').toLowerCase()}`
-              : 'Enter text'
-        }
+        title={sheetTitle(state.fields.find((f) => f.field_id === textFor?.fieldId) ?? null)}
       >
-        <TextInput
-          testID="text-field-input"
-          value={textDraft}
-          onChangeText={setTextDraft}
-          accessibilityLabel="Text"
-          autoFocus
-          maxLength={500}
-          style={[
-            styles.textInput,
-            {
-              borderColor: t.color.separator,
-              color: t.color.text,
-              backgroundColor: t.color.surface,
-            },
-          ]}
-        />
-        <Button
-          testID="text-field-save"
-          title="Save"
-          onPress={() => {
-            if (textFor) {
-              const next = setText(stateRef.current, textFor.fieldId, textDraft);
-              commit(next);
-              setTextFor(null);
-              if (next.currentId && next.currentId !== textFor.fieldId) focusField(next.currentId);
-            }
-          }}
-        />
+        {(() => {
+          const f = textFor ? state.fields.find((x) => x.field_id === textFor.fieldId) : undefined;
+          if (!textFor || !f) return null;
+          return (
+            <FieldEditor
+              key={textFor.fieldId}
+              field={f}
+              initial={textFor.initial}
+              dateFormat={state.dateFormat ?? null}
+              onSave={(value) => {
+                const next = setText(stateRef.current, textFor.fieldId, value);
+                commit(next);
+                setTextFor(null);
+                if (next.currentId && next.currentId !== textFor.fieldId) focusField(next.currentId);
+              }}
+            />
+          );
+        })()}
       </Sheet>
       <ReasonSheet
         visible={declineOpen}
@@ -1220,6 +1238,17 @@ export function SigningFlow(props: SigningFlowProps) {
       />
     </View>
   );
+}
+
+/** The field editor sheet's title (FIELD-PARITY-1 P3: a date is chosen, a choice is picked). */
+export function sheetTitle(f: SigningField | null): string {
+  if (f === null) return 'Enter text';
+  if (f.field_type === 'SIGNER_NAME') return 'Enter your name';
+  const kind = signerInputKind(f.field_type);
+  if (kind === 'date') return 'Choose a date';
+  if (kind === 'dropdown') return 'Choose an option';
+  if (kind === 'multiline') return 'Enter text';
+  return `Enter ${fieldLabel(f.field_type).toLowerCase()}`;
 }
 
 /** UAT SEC-04 — the access-code step (the web signer page's copy and behaviour). */
@@ -1516,5 +1545,4 @@ const styles = StyleSheet.create({
   },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   offline: { padding: 12 },
-  textInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 17, minHeight: 48 },
 });

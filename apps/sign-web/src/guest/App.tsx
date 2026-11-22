@@ -1,13 +1,35 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { DELEGATE_REASON_MAX, SIGN_DATE_PREVIEW_NOTE, isValidDeclineReason, isValidDelegate, signDatePreview } from '@aramo/sign-client';
+import {
+  DELEGATE_REASON_MAX,
+  SIGN_DATE_PREVIEW_NOTE,
+  dateBoundsOf,
+  dropdownChoicesOf,
+  fieldInputHint,
+  fieldInputLimit,
+  fieldValueDisplay,
+  fieldValueRefusalText,
+  formatChosenDate,
+  isFieldValueRefusalReason,
+  isIsoDate,
+  isValidDeclineReason,
+  isValidDelegate,
+  normalizeSignerInput,
+  numberPrefixOf,
+  signDatePreview,
+  signerFieldCaption,
+  signerFieldTooltip,
+  signerFieldPlaceholder,
+  signerInputKind,
+  signerValueProblem,
+} from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
 import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
 
-import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
+import { Btn, CheckIn, SelectIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SAVED_MARK_FONT_KEY, SignApiError, signApi, type GuestSavedMark, type GuestSavedMarks, type QesStatus, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
-import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isPayment, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isLocked, isPayment, isRadio, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -62,6 +84,12 @@ const FIELD_LABEL: Record<string, string> = {
   EMAIL: 'Email',
   COMPANY: 'Company',
   TITLE: 'Title',
+  // FIELD-PARITY-1 P3 T-3..T-7 — the new types (a field's label setting names it first).
+  DATE: 'Date',
+  DROPDOWN: 'Choice',
+  RADIO: 'Option',
+  NUMBER: 'Number',
+  MULTILINE_TEXT: 'Text',
 };
 const ACTION_LABEL: Record<string, string> = {
   SIGNATURE: 'Sign',
@@ -77,13 +105,19 @@ const ACTION_LABEL: Record<string, string> = {
   EMAIL: 'Enter email',
   COMPANY: 'Enter company',
   TITLE: 'Enter title',
+  DATE: 'Choose date',
+  DROPDOWN: 'Choose',
+  RADIO: 'Choose',
+  NUMBER: 'Enter number',
+  MULTILINE_TEXT: 'Enter text',
 };
 
 // M-A6 — a check box shows its caption; a server-filled name says where it is from.
-function fieldLabel(f: SignField): string {
-  if (f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0) return f.label;
+// FIELD-PARITY-1 P3 S-1 — any field's label setting is its caption and accessible name (a
+// radio button's label is its option's text).
+export function fieldLabel(f: SignField): string {
   if (isServerName(f)) return 'Your name';
-  return FIELD_LABEL[f.field_type] ?? f.field_type;
+  return signerFieldCaption(f) ?? FIELD_LABEL[f.field_type] ?? f.field_type;
 }
 
 /**
@@ -110,6 +144,12 @@ function ReportLink({ token, className }: { readonly token?: string; readonly cl
 // The signing token never goes to Stripe: it is kept in this tab while the payer is away.
 const PAYMENT_RETURN_PATH = '/s/payment-return';
 const PAYMENT_TOKEN_KEY = 'aramo-sign-payment-token';
+// FIELD-PARITY-1 P3 — the page's words for a field save and the sender's values.
+const SAVE_FAILED = "That didn't save. Check your connection and try again — your other entries are kept.";
+export const SENDER_VALUE = 'Filled in by the sender';
+// A chosen radio option on the page (the executed PDF draws a filled circle).
+const RADIO_MARK = '●';
+const NOTICE_FOCUS = 'notice';
 
 function paymentReturn(): { field_id: string } | null {
   if (window.location.pathname !== PAYMENT_RETURN_PATH) return null;
@@ -339,7 +379,7 @@ function Dialog({ title, onClose, children }: { readonly title: string; readonly
   useEffect(() => {
     const el = ref.current;
     const focusables = () =>
-      el ? [...el.querySelectorAll<HTMLElement>('button, input, textarea, canvas[tabindex]')].filter((n) => !n.hasAttribute('disabled')) : [];
+      el ? [...el.querySelectorAll<HTMLElement>('button, input, select, textarea, canvas[tabindex]')].filter((n) => !n.hasAttribute('disabled')) : [];
     focusables()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -511,26 +551,144 @@ function AdoptDialog({
   );
 }
 
-function TextDialog({
+// FIELD-PARITY-1 P3 §6 — the editor for every field the signer types or picks: text and the
+// profile types, MULTILINE_TEXT (counter), NUMBER (money prefix, decimal keypad), DATE (the
+// browser's date picker inside the field's date_range; stored YYYY-MM-DD, previewed in the
+// envelope's date format) and DROPDOWN (the sender's choices). The caption is the field's label
+// (S-1), the help text its tooltip, the hint its placeholder (S-2). A value the server would
+// refuse (@aramo/sign-client signerValueProblem) is named inline, announced, and focused; a
+// refusal the server still returns comes back through onSave and is shown the same way.
+export function FieldDialog({
+  field,
   title,
   initial,
+  dateFormat,
   onSave,
   onClose,
 }: {
+  readonly field: SignField;
   readonly title: string;
   readonly initial: string;
-  readonly onSave: (v: string) => void;
+  readonly dateFormat: string | null | undefined;
+  /** Resolves to the refusal message to show, or null when saved. */
+  readonly onSave: (v: string) => Promise<string | null>;
   readonly onClose: () => void;
 }) {
+  const kind = signerInputKind(field.field_type);
   const [v, setV] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement & HTMLTextAreaElement & HTMLSelectElement>(null);
+  const id = `sg-fe-${field.field_id}`;
+  const help = signerFieldTooltip(field);
+  const hint = fieldInputHint(field, { date_format: dateFormat ?? null });
+  const placeholder = signerFieldPlaceholder(field) ?? undefined;
+  const limit = fieldInputLimit(field);
+  const prefix = numberPrefixOf(field);
+  const bounds = dateBoundsOf(field);
+  const choices = kind === 'dropdown' ? dropdownChoicesOf(field) : [];
+  const describedBy = [help !== null ? `${id}-help` : null, hint !== null ? `${id}-hint` : null, error !== null ? `${id}-err` : null].filter((x) => x !== null).join(' ') || undefined;
+  const common = {
+    id,
+    ref: input,
+    value: v,
+    'aria-invalid': error !== null,
+    'aria-describedby': describedBy,
+    'aria-required': field.required,
+  } as const;
+  const change = (next: string) => {
+    setV(next);
+    if (error !== null) setError(null);
+  };
+  const apply = async () => {
+    const value = normalizeSignerInput(field, v);
+    const problem = signerValueProblem(field, value);
+    if (problem !== null) {
+      setError(fieldValueRefusalText(problem, field, { date_format: dateFormat ?? null }));
+      input.current?.focus();
+      return;
+    }
+    setSaving(true);
+    const refused = await onSave(value);
+    setSaving(false);
+    if (refused !== null) {
+      setError(refused);
+      input.current?.focus();
+    }
+  };
+  const preview = kind === 'date' && isIsoDate(v) ? formatChosenDate(v, dateFormat) : null;
   return (
     <Dialog title={title} onClose={onClose}>
-      <TextIn value={v} onChange={(e) => setV(e.target.value)} aria-label={title} />
+      <div className="sg-fieldedit">
+        <label className="sg-fieldedit__label" htmlFor={id}>
+          {title}
+          {field.required ? '' : ' (optional)'}
+        </label>
+        {help !== null ? (
+          <p className="sg-fieldedit__help" id={`${id}-help`}>
+            {help}
+          </p>
+        ) : null}
+        {kind === 'multiline' ? (
+          <TextBox {...common} rows={5} placeholder={placeholder} maxLength={limit ?? undefined} onChange={(e) => change(e.target.value)} />
+        ) : kind === 'dropdown' ? (
+          <SelectIn {...common} onChange={(e) => change(e.target.value)}>
+            <option value="" disabled>
+              {placeholder ?? 'Choose an option'}
+            </option>
+            {choices.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </SelectIn>
+        ) : kind === 'date' ? (
+          <TextIn {...common} type="date" min={bounds.min ?? undefined} max={bounds.max ?? undefined} placeholder={placeholder} onChange={(e) => change(e.target.value)} />
+        ) : kind === 'number' ? (
+          <span className="sg-fieldedit__row">
+            {prefix !== null ? (
+              <span className="sg-fieldedit__prefix" aria-hidden="true">
+                {prefix}
+              </span>
+            ) : null}
+            <TextIn {...common} inputMode="decimal" placeholder={placeholder} onChange={(e) => change(e.target.value)} />
+          </span>
+        ) : (
+          <TextIn
+            {...common}
+            type={field.validation === 'email' || field.field_type === 'EMAIL' ? 'email' : field.validation === 'phone' ? 'tel' : 'text'}
+            inputMode={field.validation === 'us_zip' ? 'numeric' : undefined}
+            placeholder={placeholder}
+            maxLength={limit ?? undefined}
+            onChange={(e) => change(e.target.value)}
+          />
+        )}
+        {hint !== null ? (
+          <p className="sg-fieldedit__help" id={`${id}-hint`}>
+            {hint}
+          </p>
+        ) : null}
+        {preview !== null ? (
+          <p className="sg-fieldedit__help" data-testid="sg-date-preview">
+            Shown on the document as {preview}
+          </p>
+        ) : null}
+        {kind === 'multiline' && limit !== null ? (
+          <p className="sg-fieldedit__count" aria-live="polite" data-testid="sg-count">
+            {v.length} / {limit}
+          </p>
+        ) : null}
+        {error !== null ? (
+          <p className="sg-error" role="alert" id={`${id}-err`} data-testid="sg-field-error">
+            {error}
+          </p>
+        ) : null}
+      </div>
       <div className="sg-dialog__foot">
         <Btn variant="secondary" onClick={onClose}>
           Cancel
         </Btn>
-        <Btn disabled={v.trim().length === 0} onClick={() => onSave(v.trim())}>
+        <Btn disabled={saving || v.trim().length === 0} onClick={() => void apply()}>
           Apply
         </Btn>
       </div>
@@ -928,6 +1086,15 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [allSigned, setAllSigned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
+  // FIELD-PARITY-1 P3 — accessibility: after a refused Finish, focus moves to the first field
+  // still to do (its action in "Your fields"), or to the notice when there is none.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusId === null) return;
+    const el = document.getElementById(focusId === NOTICE_FOCUS ? 'sg-notice' : `sg-act-${focusId}`);
+    el?.focus();
+    setFocusId(null);
+  }, [focusId, screen]);
   // B3 — the qualified-signature step (null = not required) and the delegation hand-off.
   const [qes, setQes] = useState<QesStatus | null>(null);
   const [delegateOpen, setDelegateOpen] = useState(false);
@@ -1013,6 +1180,12 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     setFilled((m) => {
       const next = { ...m };
       for (const f of v.fields) {
+        // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value is shown as it is (never the signer's).
+        if (isLocked(f)) {
+          if (typeof f.value === 'string' && f.value.length > 0) next[f.field_id] = f.value;
+          else delete next[f.field_id];
+          continue;
+        }
         if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = typeof f.value === 'string' && f.value.length > 0 ? f.value : FILLED_MARK;
       }
       return next;
@@ -1086,7 +1259,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const doneRequired = reqs.filter((r) => r.done).length;
   const problem = completionProblem(fields, filled);
   const progress = `${doneRequired} of ${required.length} required fields filled`;
-  const pending = (f: SignField): boolean => !isServerName(f) && (isBox(f) ? !isChecked(filled[f.field_id]) : filled[f.field_id] === undefined);
+  const pending = (f: SignField): boolean => !isServerName(f) && !isLocked(f) && (isBox(f) ? !isChecked(filled[f.field_id]) : filled[f.field_id] === undefined);
   const unmet = new Set(reqs.filter((r) => !r.done).map((r) => r.key));
   const nextField =
     fields.find((f) => pending(f) && (unmet.has(f.field_id) || (typeof f.group_key === 'string' && unmet.has(`group:${f.group_key}`)))) ??
@@ -1112,21 +1285,30 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     }
   };
 
-  const fill = async (f: SignField, value: string, method?: string): Promise<boolean> => {
+  // Save one field. FIELD-PARITY-1 P3 — a value the server refuses (VALIDATION_ERROR with a
+  // value reason) comes back as its plain-language message (@aramo/sign-client), never the
+  // server's text; `message: null` means the page moved to another screen.
+  const save = async (f: SignField, value: string, method?: string): Promise<{ ok: true } | { ok: false; message: string | null }> => {
     setBusy(true);
     setNotice(null);
     try {
       await signApi.fillField(token, f.field_id, value, method);
       setFilled((m) => ({ ...m, [f.field_id]: value }));
-      return true;
+      return { ok: true };
     } catch (e) {
+      if (e instanceof SignApiError && isFieldValueRefusalReason(e.reason)) return { ok: false, message: fieldValueRefusalText(e.reason, f, { date_format: view?.date_format ?? null }) };
       const s = screenForError(e);
-      if (s === 'error' || s === 'network') setNotice("That didn't save. Check your connection and try again — your other entries are kept.");
-      else setScreen(s);
-      return false;
+      if (s === 'error' || s === 'network') return { ok: false, message: SAVE_FAILED };
+      setScreen(s);
+      return { ok: false, message: null };
     } finally {
       setBusy(false);
     }
+  };
+  const fill = async (f: SignField, value: string, method?: string): Promise<boolean> => {
+    const r = await save(f, value, method);
+    if (!r.ok && r.message !== null) setNotice(r.message);
+    return r.ok;
   };
 
   // UAT SIG-03 — Start / Next field brings a check box into view without checking it
@@ -1135,6 +1317,12 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const goTo = (f: SignField) => {
     setActiveField(f.field_id);
     if (f.document_id !== activeDoc) setActiveDoc(f.document_id);
+  };
+  // FIELD-PARITY-1 P3 — accessibility: Start / Next field on a box (or a radio option) also
+  // moves keyboard focus to it in "Your fields".
+  const focusOn = (f: SignField) => {
+    goTo(f);
+    setFocusId(f.field_id);
   };
 
   // Every field stays editable until Finish signing (the backend accepts a new
@@ -1147,6 +1335,8 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     const done = filled[f.field_id] !== undefined;
     // M-A6 §2.2 — the server fills this name; the page never sends one.
     if (isServerName(f)) return;
+    // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value is shown, never changed here.
+    if (isLocked(f)) return;
     // Sign 1.14 — a payment is made on Stripe's hosted page (never on this page).
     if (isPayment(f)) {
       if (done) return;
@@ -1161,9 +1351,24 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       // M-A12 W1-E.2 / C0-2 — a PREVIEW in the envelope's stamped format; the server stamps
       // the stored SIGN_DATE at signing (Client Rule Consolidation C2: the shared formatter).
       if (!done) void fill(f, signDatePreview(view?.date_format));
+    } else if (isRadio(f)) {
+      void choose(f);
     } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
       void toggle(f);
     } else setTextFor(f);
+  };
+  // FIELD-PARITY-1 P3 T-5 — choosing a radio button: the server clears the group's other
+  // options, so the page shows them cleared once the choice is saved. A chosen option stays
+  // chosen (choose another option to change it).
+  const choose = async (f: SignField) => {
+    if (isChecked(filled[f.field_id])) return;
+    if (!(await fill(f, 'true'))) return;
+    const others = selectOneSiblings(fields, f);
+    setFilled((m) => {
+      const next = { ...m };
+      for (const o of others) next[o.field_id] = 'false';
+      return next;
+    });
   };
   // M-A6 §2.3 — a box toggles: checking sends 'true', unchecking 'false'. In a
   // SELECT_ONE group, checking one box unchecks the others.
@@ -1205,9 +1410,11 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       setBusy(false);
     }
   };
-  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f) && !isPayment(f);
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f) && !isPayment(f) && !isLocked(f);
   const statusOf = (f: SignField): string => {
     if (isServerName(f)) return 'From the signing request';
+    if (isLocked(f)) return SENDER_VALUE;
+    if (isRadio(f)) return isChecked(filled[f.field_id]) ? 'Chosen' : 'Not chosen';
     if (isPayment(f)) {
       const amount = f.payment ? formatAmount(f.payment.amount_minor, f.payment.currency) : '';
       return filled[f.field_id] !== undefined ? `Paid ${amount}` : `Payment required · ${amount}`;
@@ -1232,6 +1439,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       if (e instanceof SignApiError && e.code === 'SIGNATURE_FIELD_INCOMPLETE') {
         setScreen('workspace');
         setNotice(incompleteMessage(e.reason));
+        // Focus the first field still to do (the notice is announced either way).
+        if (nextField !== null) goTo(nextField);
+        setFocusId(nextField?.field_id ?? NOTICE_FOCUS);
       } else {
         const s = screenForError(e);
         if (s === 'error' || s === 'network') setFinishError(true);
@@ -1324,10 +1534,13 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const displayOf = (f: SignField): FieldDisplay | null => {
     const v = filled[f.field_id];
     if (v === undefined) return null;
+    if (isRadio(f)) return isChecked(v) ? { kind: 'mark', value: RADIO_MARK } : null;
     if (isBox(f)) return isChecked(v) ? { kind: 'mark', value: FILLED_MARK } : null;
     if (v.startsWith('data:image/')) return { kind: 'image', value: v };
     if (v === FILLED_MARK) return { kind: 'mark', value: FILLED_MARK };
-    return { kind: 'text', value: v };
+    // FIELD-PARITY-1 P3 — a chosen date in the envelope's format, a number as printed (money
+    // with its currency), a dropdown as its choice's label: what the executed PDF prints.
+    return { kind: 'text', value: fieldValueDisplay(f, v, { date_format: view?.date_format ?? null }) };
   };
 
   // ── End states ──
@@ -1613,8 +1826,18 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
               </p>
             ) : null}
             <div className="sg-dialog__foot">
-              <Btn variant="secondary" onClick={() => setScreen('workspace')}>
-                Back to document
+              <Btn
+                variant="secondary"
+                onClick={() => {
+                  setScreen('workspace');
+                  // FIELD-PARITY-1 P3 — with a rule unmet, back goes to the first field still to do.
+                  if (problem !== null && nextField !== null) {
+                    goTo(nextField);
+                    setFocusId(nextField.field_id);
+                  }
+                }}
+              >
+                {problem !== null && nextField !== null ? 'Go to the field' : 'Back to document'}
               </Btn>
               <Btn disabled={busy || !allDone || qesPending} onClick={() => void finish()}>
                 {busy ? 'Finishing…' : finishError ? 'Try again' : 'Finish signing'}
@@ -1643,6 +1866,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 display={displayOf}
                 activeField={activeField}
                 label={fieldLabel}
+                locked={isLocked}
                 actionLabel={(f) => ACTION_LABEL[f.field_type] ?? 'Complete'}
                 onField={(f) => {
                   if (!busy) act(f);
@@ -1664,7 +1888,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
               {progress}
             </p>
             {notice ? (
-              <p className="sg-error" role="alert">
+              <p className="sg-error" role="alert" id="sg-notice" tabIndex={-1}>
                 {notice}
               </p>
             ) : null}
@@ -1683,26 +1907,55 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                     </li>
                   );
                 }
+                const help = signerFieldTooltip(f);
+                const helpId = help !== null ? `sg-help-${f.field_id}` : undefined;
+                const helpLine =
+                  help !== null ? (
+                    <span className="sg-field__meta" id={helpId} data-testid="sg-field-help">
+                      {help}
+                    </span>
+                  ) : null;
+                // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value: shown, never a button.
+                if (isLocked(f)) {
+                  const shown = displayOf(f);
+                  return (
+                    <li key={f.field_id} className="sg-field sg-field--done" data-testid="sg-sender-value">
+                      <span className="sg-field__text">
+                        <span className="sg-field__name">{fieldLabel(f)}</span>
+                        <span className="sg-field__meta">
+                          {shown?.kind === 'text' ? `${shown.value} · ` : shown?.kind === 'mark' ? (isRadio(f) ? 'Chosen · ' : 'Checked · ') : ''}
+                          {SENDER_VALUE.toLowerCase()} · page {f.page_number + 1}
+                        </span>
+                        {helpLine}
+                      </span>
+                    </li>
+                  );
+                }
                 if (isBox(f)) {
                   const on = isChecked(filled[f.field_id]);
+                  const radio = isRadio(f);
+                  const verb = radio ? (on ? 'Chosen' : 'Choose') : on ? 'Uncheck' : 'Check';
                   return (
                     <li key={f.field_id} className={`sg-field${on ? ' sg-field--done' : ''}${activeField === f.field_id ? ' sg-field--active' : ''}`}>
                       <span className="sg-field__text">
                         <span className="sg-field__name">{fieldLabel(f)}</span>
                         <span className="sg-field__meta">
                           page {f.page_number + 1}
-                          {f.group_rule === 'SELECT_ONE' ? ' · choose one' : typeof f.group_key === 'string' && f.group_key.length > 0 ? ' · choose any' : ''}
+                          {radio || f.group_rule === 'SELECT_ONE' ? ' · choose one' : typeof f.group_key === 'string' && f.group_key.length > 0 ? ' · choose any' : ''}
                           {f.required ? ' · required' : ' · optional'}
                         </span>
+                        {helpLine}
                       </span>
                       <Btn
+                        id={`sg-act-${f.field_id}`}
                         variant={on ? 'quiet' : f.required ? 'primary' : 'secondary'}
                         disabled={busy}
-                        aria-pressed={on}
+                        {...(radio ? { role: 'radio', 'aria-checked': on } : { 'aria-pressed': on })}
+                        aria-describedby={helpId}
                         onClick={() => act(f)}
-                        aria-label={`${on ? 'Uncheck' : 'Check'}: ${fieldLabel(f)}, page ${f.page_number + 1}`}
+                        aria-label={`${verb}: ${fieldLabel(f)}, page ${f.page_number + 1}`}
                       >
-                        {on ? 'Uncheck' : 'Check'}
+                        {verb}
                       </Btn>
                     </li>
                   );
@@ -1716,18 +1969,26 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                         {f.required ? ' · required' : ' · optional'}
                         {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
+                      {helpLine}
                     </span>
                     {done ? (
                       <span className="sg-done-actions">
                         <span className="sg-ok">Filled</span>
                         {editable(f) ? (
-                          <Btn variant="quiet" disabled={busy} onClick={() => act(f)} aria-label={`Change ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
+                          <Btn id={`sg-act-${f.field_id}`} variant="quiet" disabled={busy} onClick={() => act(f)} aria-describedby={helpId} aria-label={`Change ${fieldLabel(f)}, page ${f.page_number + 1}`}>
                             Change
                           </Btn>
                         ) : null}
                       </span>
                     ) : (
-                      <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
+                      <Btn
+                        id={`sg-act-${f.field_id}`}
+                        variant={f.required ? 'primary' : 'secondary'}
+                        disabled={busy}
+                        onClick={() => act(f)}
+                        aria-describedby={helpId}
+                        aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${fieldLabel(f)}, page ${f.page_number + 1}`}
+                      >
                         {ACTION_LABEL[f.field_type] ?? 'Complete'}
                       </Btn>
                     )}
@@ -1753,7 +2014,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 {problem}
               </span>
             ) : (
-              <Btn disabled={busy || nextField === null} onClick={() => nextField && (isBox(nextField) ? goTo(nextField) : act(nextField))}>
+              <Btn disabled={busy || nextField === null} onClick={() => nextField && (isBox(nextField) ? focusOn(nextField) : act(nextField))}>
                 {doneRequired === 0 ? 'Start' : 'Next field'}
               </Btn>
             )}
@@ -1778,14 +2039,19 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
         />
       ) : null}
       {textFor ? (
-        <TextDialog
-          title={FIELD_LABEL[textFor.field_type] ?? 'Text'}
+        <FieldDialog
+          field={textFor}
+          title={fieldLabel(textFor)}
+          dateFormat={view?.date_format ?? null}
           initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' && !isServerName(textFor) ? suggestedName : ''}
           onClose={() => setTextFor(null)}
-          onSave={(v) => {
+          onSave={async (v) => {
             const f = textFor;
+            const r = await save(f, v);
+            // A refused value stays in the editor with its message; anything else closes it.
+            if (!r.ok && r.message !== null) return r.message;
             setTextFor(null);
-            void fill(f, v);
+            return null;
           }}
         />
       ) : null}

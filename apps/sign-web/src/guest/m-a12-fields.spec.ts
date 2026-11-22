@@ -23,4 +23,11 @@ describe('M-A12 — signer rendering', () => {
       expect(box.left).toBe('10%');
     }
   });
+
+  it('FIELD-PARITY-1 P3 — the new types take the catalog’s default box', () => {
+    const page = { width: 600, height: 800 };
+    expect(fieldBox({ field_type: 'MULTILINE_TEXT', x: 0, y: 0, width: null, height: null }, page).height).toBe(`${(66 / 800) * 100}%`);
+    expect(fieldBox({ field_type: 'RADIO', x: 0, y: 0, width: null, height: null }, page).width).toBe(`${(18 / 600) * 100}%`);
+    for (const t of ['DATE', 'DROPDOWN', 'NUMBER']) expect(fieldBox({ field_type: t, x: 0, y: 0, width: null, height: null }, page).height).toBe(`${(22 / 800) * 100}%`);
+  });
 });

@@ -28,6 +28,7 @@ export function PdfDocument({
   display,
   activeField,
   label,
+  locked,
   actionLabel,
   onField,
   onError,
@@ -38,6 +39,8 @@ export function PdfDocument({
   readonly display: (f: SignField) => FieldDisplay | null;
   readonly activeField: string | null;
   readonly label: (f: SignField) => string;
+  /** FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value: shown, not a target. */
+  readonly locked?: (f: SignField) => boolean;
   readonly actionLabel: (f: SignField) => string;
   readonly onField: (f: SignField) => void;
   readonly onError: () => void;
@@ -233,20 +236,32 @@ export function PdfDocument({
                 // UAT SIG-03 — a check box is drawn as the box itself: no "Check" badge, which
                 // is wider than a small box and spilled over its caption and, on a phone, over
                 // the neighbouring box (a tap meant for "Yes" toggled "No").
-                const box_ = f.field_type === 'CHECKBOX';
-                const cls = `sg-onpage${box_ ? ' sg-onpage--box' : ''}${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
+                // FIELD-PARITY-1 P3 T-5 — a radio option is drawn the same way, as a circle.
+                const radio = f.field_type === 'RADIO';
+                const box_ = f.field_type === 'CHECKBOX' || radio;
+                const fixed = locked?.(f) === true;
+                const cls = `sg-onpage${box_ ? ' sg-onpage--box' : ''}${radio ? ' sg-onpage--radio' : ''}${fixed ? ' sg-onpage--locked' : ''}${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
                 return (
                   <div
                     key={f.field_id}
                     id={`sg-f-${f.field_id}`}
-                    role="button"
-                    tabIndex={0}
+                    role={fixed ? 'note' : 'button'}
+                    tabIndex={fixed ? undefined : 0}
                     className={cls}
                     style={box}
-                    aria-label={shown !== null ? `${label(f)}, filled. Select to change` : `${actionLabel(f)}: ${label(f)}, page ${i + 1}${f.required ? ', required' : ''}`}
-                    onClick={() => onField(f)}
+                    title={typeof f.tooltip === 'string' && f.tooltip.length > 0 ? f.tooltip : undefined}
+                    aria-label={
+                      fixed
+                        ? `${label(f)}${shown?.kind === 'text' ? `: ${shown.value}` : ''}, filled in by the sender`
+                        : shown !== null
+                          ? `${label(f)}, filled. Select to change`
+                          : `${actionLabel(f)}: ${label(f)}, page ${i + 1}${f.required ? ', required' : ''}`
+                    }
+                    onClick={() => {
+                      if (!fixed) onField(f);
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
+                      if (!fixed && (e.key === 'Enter' || e.key === ' ')) {
                         e.preventDefault();
                         onField(f);
                       }
@@ -254,13 +269,13 @@ export function PdfDocument({
                     data-testid="sg-onpage-field"
                   >
                     {shown === null ? (
-                      box_ ? null : <span className="sg-onpage__cta">{actionLabel(f)}</span>
+                      box_ || fixed ? null : <span className="sg-onpage__cta">{actionLabel(f)}</span>
                     ) : shown.kind === 'image' ? (
                       <img src={shown.value} alt="Your signature" className="sg-onpage__img" />
                     ) : (
                       <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
-                    {f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0 ? (
+                    {box_ && typeof f.label === 'string' && f.label.length > 0 ? (
                       // M-A6 §2.3 — the box's caption, beside the box. Like a form label, tapping
                       // it toggles this box (UAT SIG-03: a larger target that never overlaps
                       // the box above or below).

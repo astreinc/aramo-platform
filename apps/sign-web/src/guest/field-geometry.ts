@@ -1,3 +1,5 @@
+import { FIELD_CATALOG, isFieldTypeKey } from '@aramo/sign-client';
+
 import type { SignField } from './sign-api';
 
 // PX-2 — pure field geometry (no renderer). Fields arrive PDF-native: page_number
@@ -26,7 +28,8 @@ export interface PageSize {
 
 // PDF bottom-left box → CSS percentages of the page (top-left origin).
 export function fieldBox(f: Pick<SignField, 'field_type' | 'x' | 'y' | 'width' | 'height'>, page: PageSize): { left: string; top: string; width: string; height: string } {
-  const [dw, dh] = DEFAULT_SIZE[f.field_type] ?? [160, 24];
+  // FIELD-PARITY-1 P3 — a type without its own entry takes the catalog's default box.
+  const [dw, dh] = DEFAULT_SIZE[f.field_type] ?? (isFieldTypeKey(f.field_type) ? [FIELD_CATALOG[f.field_type].width, FIELD_CATALOG[f.field_type].height] : [160, 24]);
   const w = f.width ?? dw;
   const h = f.height ?? dh;
   const top = page.height - f.y - h;

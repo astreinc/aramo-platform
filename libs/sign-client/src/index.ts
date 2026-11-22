@@ -281,3 +281,27 @@ export {
   selfSignTarget,
   type SessionIssueRefusalReason,
 } from './lib/locked-rules.js';
+// FIELD-PARITY-1 P3 §6 — the signer's input rules and words (sign-web guest page and the app).
+export {
+  SIGNER_FIELD_VALUE_COPY,
+  SIGNER_FIELD_VALUE_FALLBACK,
+  signerInputKind,
+  isSignerEditorKind,
+  signerFieldCaption,
+  signerFieldTooltip,
+  signerFieldPlaceholder,
+  isSenderValueField,
+  dropdownChoicesOf,
+  fieldInputLimit,
+  fieldInputHint,
+  dateBoundsOf,
+  numberPrefixOf,
+  normalizeSignerInput,
+  fieldValueRefusalText,
+  isFieldValueRefusalReason,
+  signerValueProblem,
+  signerUnitMessage,
+  incompleteReasonMessage,
+  type SignerInputField,
+  type SignerInputKind,
+} from './lib/signer-field-input.js';
