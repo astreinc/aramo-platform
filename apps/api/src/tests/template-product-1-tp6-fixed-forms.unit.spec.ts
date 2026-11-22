@@ -168,7 +168,12 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.2 — fields and layout', () => {
       }
       return { reason: 'ok', field: '' };
     };
-    expect(refused({ field_type: 'TEXT', label: 'x' })).toEqual({ reason: 'field_config_not_applicable', field: 'label' });
+    // FIELD-PARITY-1 P3 — a label applies to every type; group_key still does not apply to TEXT.
+    expect(refused({ field_type: 'TEXT', label: 'x' })).toEqual({ reason: 'ok', field: '' });
+    expect(refused({ field_type: 'TEXT', group_key: 'g' })).toEqual({ reason: 'field_config_not_applicable', field: 'group_key' });
+    expect(refused({ field_type: 'DROPDOWN' })).toEqual({ reason: 'dropdown_choices_invalid', field: 'options' });
+    expect(refused({ field_type: 'RADIO', label: 'Yes' })).toEqual({ reason: 'radio_group_required', field: 'group_key' });
+    expect(refused({ field_type: 'TEXT', sender_filled: true })).toEqual({ reason: 'sender_filled_not_available', field: 'sender_filled' });
     expect(refused({ field_type: 'SIGNATURE', name_mode: 'SIGNER_ENTERED' })).toEqual({ reason: 'field_config_not_applicable', field: 'name_mode' });
     expect(refused({ field_type: 'SIGNER_NAME', name_mode: 'TYPED' })).toEqual({ reason: 'name_mode_invalid', field: 'name_mode' });
     expect(refused({ field_type: 'CHECKBOX', group_rule: 'SELECT_ONE' })).toEqual({ reason: 'checkbox_group_required', field: 'group_rule' });

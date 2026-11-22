@@ -52,9 +52,14 @@ describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
     }
   });
 
+  // FIELD-PARITY-1 P3 — the server accepts these on send_mobile; the app's tools for them come
+  // with the mobile authoring slice, which empties this list.
+  const P3_PENDING_MOBILE_TOOLS = ['ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT'];
   it('FIELD-PARITY-1 P1-2 — the tool tiers together are the catalog send_mobile surface (PAYMENT gated, never a tool)', () => {
-    expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([...fieldTypesFor('send_mobile')].sort());
-    expect([...toolFieldTypes(true, true)].sort()).toEqual([...fieldTypesFor('send_mobile')].sort());
+    const surface = fieldTypesFor('send_mobile').filter((t) => !P3_PENDING_MOBILE_TOOLS.includes(t));
+    expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([...surface].sort());
+    expect([...toolFieldTypes(true, true)].sort()).toEqual([...surface].sort());
+    for (const t of P3_PENDING_MOBILE_TOOLS) expect(fieldTypesFor('send_mobile')).toContain(t);
     expect(AUTHORING_FIELD_TYPES).not.toContain('PAYMENT');
   });
 

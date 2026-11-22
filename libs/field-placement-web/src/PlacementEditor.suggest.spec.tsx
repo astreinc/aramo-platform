@@ -14,7 +14,8 @@ const DOCS = [{ id: 'd1', title: 'Contract', pages: [LETTER, LETTER] }];
 const sug = (id: string, over: Partial<PlacementSuggestion> = {}): PlacementSuggestion => ({ id, type: 'TEXT', docId: 'd1', page: 0, x: 100, y: 500, width: 200, height: 22, reason: 'underscore_line', ...over });
 const SUGGESTIONS = [
   sug('a', { type: 'SIGNATURE', x: 72, y: 100, width: 230, height: 50, reason: 'label:Signature' }),
-  sug('b', { type: 'TITLE', x: 72, y: 300, reason: 'label:Title' }),
+  // FIELD-PARITY-1 P3 — TITLE is now on the fixed-form palette; PAYMENT never is (P1-6).
+  sug('b', { type: 'PAYMENT', x: 72, y: 300, reason: 'label:Title' }),
   sug('c', { type: 'CHECKBOX', x: 72, y: 400, width: 12, height: 12, reason: 'checkbox_glyph' }),
   sug('d', { page: 1, x: 72, y: 600, reason: 'empty_cell' }),
 ];
@@ -56,7 +57,7 @@ const ghost = (id: string) => screen.queryByTestId(`fpe-ghost-${id}`);
 const announce = () => screen.getByTestId('fpe-announce');
 
 describe('P2-4 suggestions in the shared editor', () => {
-  it('Find fields shows the palette types as ghosts (TITLE is not on the fixed-form palette)', async () => {
+  it('Find fields shows the palette types as ghosts (PAYMENT is not on the fixed-form palette)', async () => {
     const { loadSuggestions } = setup();
     expect(ghost('a')).toBeNull();
     await find();
@@ -146,16 +147,18 @@ describe('P2-4 suggestions in the shared editor', () => {
     expect(screen.getByTestId('fpe-suggestions-none')).toHaveTextContent('No fields found.');
   });
 
-  it('read-only or without a source: no Suggestions section; on the send palette TITLE is offered', async () => {
+  it('read-only or without a source: no Suggestions section; a type off the palette is never offered', async () => {
     const { unmount } = setup({ readOnly: true });
     expect(screen.queryByTestId('fpe-suggestions')).toBeNull();
     unmount();
     const r2 = setup({ loadSuggestions: undefined });
     expect(screen.queryByTestId('fpe-suggestions')).toBeNull();
     r2.unmount();
+    // PAYMENT (ghost b) is off the send palette too while payments are not available.
     setup({ surface: 'send_web' });
     await find();
-    expect(ghost('b')).not.toBeNull();
+    expect(ghost('a')).not.toBeNull();
+    expect(ghost('b')).toBeNull();
   });
 
   it('without an assignee and none allowed, accepting is refused with a reason', async () => {

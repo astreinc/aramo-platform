@@ -81,9 +81,14 @@ describe('fixed-form model helpers', () => {
 
 describe('FIELD-PARITY-1 P1-0 / P1-2 — the palette is the catalog', () => {
   it('offers exactly the template_fixed_form types, in the Studio order, with the catalog sizes and required defaults', () => {
-    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type)).toEqual(['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX']);
+    // FIELD-PARITY-1 P3 (R-1) — the original six first, then the profile types, ACKNOWLEDGEMENT and the new types.
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type)).toEqual([
+      'SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX',
+      'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT',
+    ]);
     expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type).sort()).toEqual([...fieldTypesFor('template_fixed_form')].sort());
-    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label)).toEqual(['Signature', 'Initials', 'Name', 'Date', 'Text', 'Checkbox']);
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label).slice(0, 6)).toEqual(['Signature', 'Initials', 'Name', 'Date', 'Text', 'Checkbox']);
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'DATE')?.label).toBe('Chosen date');
     for (const t of FIXED_FORM_FIELD_TYPES) expect({ width: t.width, height: t.height, required: t.required }).toEqual(FIELD_DEFAULTS[t.type]);
     expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'SIGNATURE')).toMatchObject({ width: 230, height: 50, required: true });
     expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'TEXT')).toMatchObject({ width: 230, height: 22, required: false });

@@ -273,7 +273,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 §2 Name and
     const refused: Array<[string, string, unknown[], string]> = [
       ['TEXT', ', name_mode', ['SIGNER_PROFILE'], 'SignatureField_name_mode_check'],
       ['SIGNER_NAME', ', name_mode', ['SENDER'], 'SignatureField_name_mode_check'],
-      ['SIGNATURE', ', label', ['x'], 'SignatureField_label_check'],
+      // FIELD-PARITY-1 P3 S-1 — a label on any type now; an empty one is still refused.
+      ['SIGNATURE', ', label', [''], 'SignatureField_label_check'],
       ['CHECKBOX', ', label', [''], 'SignatureField_label_check'],
       ['TEXT', ', group_key, group_rule', ['g', 'SELECT_ANY'], 'SignatureField_group_key_check'],
       ['CHECKBOX', ', group_rule', ['SELECT_ANY'], 'SignatureField_group_rule_check'],

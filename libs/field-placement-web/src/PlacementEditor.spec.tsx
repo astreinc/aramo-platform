@@ -52,7 +52,9 @@ describe('PlacementEditor — arm mode (sign-web)', () => {
   it('the palette is the send_web projection; pick a type, then click the page to place it for the active recipient', () => {
     const { last } = setup();
     expect(screen.queryByTestId('fpe-add-PAYMENT')).toBeNull();
-    expect(screen.queryByTestId('fpe-add-ACKNOWLEDGEMENT')).toBeNull();
+    // FIELD-PARITY-1 P3 (R-2) — ACKNOWLEDGEMENT is authorable now; the new types are on the palette.
+    expect(screen.queryByTestId('fpe-add-ACKNOWLEDGEMENT')).not.toBeNull();
+    expect(screen.queryByTestId('fpe-add-DROPDOWN')).not.toBeNull();
     fireEvent.click(screen.getByTestId('fpe-assignee-s2'));
     fireEvent.click(screen.getByTestId('fpe-add-SIGNATURE'));
     expect(screen.getByTestId('fpe-add-SIGNATURE')).toHaveAttribute('aria-pressed', 'true');

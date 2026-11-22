@@ -2,7 +2,17 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES } from '@aramo/documents-contracts';
-import { FIELD_IMPORT_WARNING_CODES, fieldTypesFor, type FieldSurface, type SurfaceGate } from '@aramo/sign-fields';
+import {
+  FIELD_IMPORT_WARNING_CODES,
+  FIELD_TYPE_KEYS,
+  FIELD_VALIDATIONS,
+  OPTION_KEYS_BY_TYPE,
+  VALIDATIONS_BY_TYPE,
+  fieldSettingsOf,
+  fieldTypesFor,
+  type FieldSurface,
+  type SurfaceGate,
+} from '@aramo/sign-fields';
 import { describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 
@@ -83,7 +93,8 @@ describe('FIELD-PARITY-1 P1-2 — catalog parity: OpenAPI enums', () => {
     { where: 'sign.yaml', schemas: SIGN, schema: 'SenderTemplateSignatureField', path: ['field_type'], surface: 'signature_block' },
     { where: 'sign.yaml', schemas: SIGN, schema: 'DocumentFieldSuggestions', path: ['suggestions', '[]', 'type'], surface: 'suggestion' },
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'TemplateFieldDefinition', path: ['field_type'], surface: 'template_documents_store' },
-    { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'AddFieldRequest', path: ['field_type'], surface: 'template_documents_store' },
+    // FIELD-PARITY-1 P3 (R-9) — the documents template API accepts the store minus IMAGE.
+    { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'AddFieldRequest', path: ['field_type'], surface: 'template_documents_authoring' },
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'SignTemplateSignatureField', path: ['field_type'], surface: 'signature_block' },
     { where: 'platform.yaml', schemas: PLATFORM, schema: 'FixedFormField', path: ['field_type'], surface: 'template_fixed_form' },
     // FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload imports (never PAYMENT: imports are not gated).
@@ -108,12 +119,11 @@ describe('FIELD-PARITY-1 P1-2 — catalog parity: TypeScript literals kept outsi
     expect(sorted(SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES)).toEqual(projection('signature_block'));
   });
 
-  it("the fixed-form field_type refusal message (apps/api fixed-form.service.ts) names exactly template_fixed_form", () => {
+  it('the fixed-form field_type refusal message (apps/api fixed-form.service.ts) is the catalog projection, never a literal list', () => {
+    // FIELD-PARITY-1 P3 — the message is built from fieldTypesFor('template_fixed_form').
     const src = read('apps/api/src/documents/fixed-form.service.ts');
-    const m = /'field_type must be ([A-Z_, ]+) or ([A-Z_]+)'/.exec(src);
-    expect(m).not.toBeNull();
-    const named = [...(m?.[1] ?? '').split(',').map((x) => x.trim()), m?.[2] ?? ''];
-    expect(sorted(named)).toEqual(projection('template_fixed_form'));
+    expect(src).toContain("fieldTypesFor('template_fixed_form').join(', ')");
+    expect(src).not.toMatch(/'field_type must be [A-Z_, ]+ or [A-Z_]+'/);
   });
 });
 
@@ -123,5 +133,74 @@ describe('FIELD-PARITY-1 P1-6 — PAYMENT is send-only on every contract', () =>
     expect(enumAt(PLATFORM, 'FixedFormField', ['field_type'])).not.toContain('PAYMENT');
     expect(enumAt(DOCUMENTS, 'AddFieldRequest', ['field_type'])).not.toContain('PAYMENT');
     expect(enumAt(SIGN, 'SenderFieldInput', ['field_type'])).toContain('PAYMENT');
+  });
+});
+
+// FIELD-PARITY-1 P3 §6.2 — the setting CHECKs of both field tables and the OpenAPI settings
+// schemas are held equal to the shared settings rule (@aramo/sign-fields).
+describe('FIELD-PARITY-1 P3 — settings parity: CHECKs and OpenAPI', () => {
+  const SIGN_P3 = read('libs/sign/prisma/migrations/20261122200000_field_parity_1_p3_field_types_settings/migration.sql');
+  const DOCS_P3 = read('libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql');
+  const quoted = (sql: string): string[] => [...sql.matchAll(/'([A-Za-z_]+)'/g)].map((m) => m[1] as string);
+  const checkBody = (sql: string, constraint: string): string => {
+    const i = sql.indexOf(`ADD CONSTRAINT "${constraint}"`);
+    if (i < 0) throw new Error(`no ${constraint}`);
+    const end = sql.indexOf(';', i);
+    return sql.slice(i, end);
+  };
+
+  it.each([
+    ['Sign', SIGN_P3, 'SignatureField'],
+    ['documents', DOCS_P3, 'TemplateFieldDefinition'],
+  ] as const)('%s: the sender_filled CHECK names exactly the types that take sender_filled', (_n, sql, table) => {
+    const types = quoted(checkBody(sql, `${table}_sender_filled_check`));
+    expect(sorted(types)).toEqual(sorted(FIELD_TYPE_KEYS.filter((t) => fieldSettingsOf(t).includes('sender_filled'))));
+  });
+
+  it.each([
+    ['Sign', SIGN_P3, 'SignatureField'],
+    ['documents', DOCS_P3, 'TemplateFieldDefinition'],
+  ] as const)('%s: the validation CHECK pairs each type with exactly its presets', (_n, sql, table) => {
+    const body = checkBody(sql, `${table}_validation_check`);
+    const pairs: Record<string, string[]> = {};
+    for (const m of body.matchAll(/"field_type" = '([A-Z_]+)' AND "validation" (?:IN \(([^)]*)\)|= '([a-z_]+)')/g)) {
+      pairs[m[1] as string] = m[2] !== undefined ? quoted(m[2]) : [m[3] as string];
+    }
+    expect(Object.keys(pairs).sort()).toEqual(Object.keys(VALIDATIONS_BY_TYPE).sort());
+    for (const [t, presets] of Object.entries(VALIDATIONS_BY_TYPE)) expect(sorted(pairs[t] ?? [])).toEqual(sorted(presets));
+  });
+
+  it('the two P3 migrations add the same setting columns with the same CHECKs', () => {
+    const normalize = (sql: string, table: string): string[] =>
+      sql
+        .split('\n')
+        .filter((l) => !l.startsWith('--') && !/_type_check/.test(l))
+        .join('\n')
+        // The schema-qualified table names (either schema) read as T.
+        .replace(/"(?:sign|documents)"\."[A-Za-z]+"/g, 'T')
+        .replaceAll(`${table}_`, 'T_')
+        .split(';')
+        .map((x) => x.replace(/\s+/g, ' ').trim())
+        .filter((x) => x.length > 0 && !x.includes('"field_type" IN (\'SIGNATURE\''));
+    expect(normalize(DOCS_P3, 'TemplateFieldDefinition')).toEqual(normalize(SIGN_P3, 'SignatureField'));
+  });
+
+  it.each([
+    ['sign.yaml', SIGN, 'SenderFieldInput'],
+    ['sign.yaml', SIGN, 'SenderEnvelopeField'],
+    ['documents.yaml', DOCUMENTS, 'TemplateFieldDefinition'],
+    ['documents.yaml', DOCUMENTS, 'AddFieldRequest'],
+    ['platform.yaml', PLATFORM, 'FixedFormField'],
+  ] as const)('%s %s: validation enum = FIELD_VALIDATIONS', (_w, schemas, schema) => {
+    expect(sorted(enumAt(schemas, schema, ['validation']).filter((v) => v !== 'null'))).toEqual(sorted(FIELD_VALIDATIONS));
+  });
+
+  it.each([
+    ['sign.yaml', SIGN],
+    ['documents.yaml', DOCUMENTS],
+    ['platform.yaml', PLATFORM],
+  ] as const)('%s FieldOptions: its keys = every option key of OPTION_KEYS_BY_TYPE', (_w, schemas) => {
+    const props = Object.keys(((schemas['FieldOptions'] as { properties: Record<string, unknown> }).properties));
+    expect(sorted(props)).toEqual(sorted(new Set(Object.values(OPTION_KEYS_BY_TYPE).flat())));
   });
 });
