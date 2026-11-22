@@ -63,6 +63,10 @@ const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json'
 // apply_text_tags and an optional `field_import` response member (openapi/sign.yaml
 // SenderUploadedDocument). No migration; the recorded upload interaction sends neither flag, so
 // its response is unchanged and nothing is re-seeded here.
+// FIELD-PARITY-1 P2-4 — GET …/documents/{documentId}/field-suggestions gains the opt-in query
+// `detect=all` (more types, reason / confidence, skipped_pages; openapi/sign.yaml
+// DocumentFieldSuggestions). No migration; without the query the answer is the M-A14 one, so no
+// recorded interaction changes.
 const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
 // Aramo Sign Mobile — the native app → sign-service pact (directive §4 B-12). Its
 // consumer `sign-mobile` also has a separate pact with aramo-auth-service (verify.ts).

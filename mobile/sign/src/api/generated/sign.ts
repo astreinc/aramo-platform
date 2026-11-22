@@ -828,7 +828,7 @@ export interface paths {
         };
         /**
          * Suggested signature and date boxes for a document (M-A14 R-3, "Auto suggest fields").
-         * @description Aramo Sign Mobile M-A14 R-3 / §2. Deterministic, no model: the server reads the document's existing text layer (the text-layer route's extraction and cache) and proposes SIGNATURE and SIGN_DATE boxes on or after signature and date labels ("Signature", "Signed", "Signed by", "Sign here", "Date", "Dated", "Date signed"; whole words, any case; on the underline that follows or sits above the label when there is one). Only pages that hold a signature suggestion, the last such pages first; overlaps removed; at most 6. Boxes use the PUT fields frame (SenderFieldInput): page_number 0-based, PDF points, origin bottom-left, (x, y) the lower-left corner, inside the page's MediaBox; `page` is the same page 1-based. A rotated page gets none. Requires sign:envelope:read and the same visibility as the source route (another tenant's envelope, an envelope the caller may not see, or a document not in the envelope is 404); after that, any failure is 200 with an empty list. No document text leaves the platform or is logged.
+         * @description Aramo Sign Mobile M-A14 R-3 / §2. Deterministic, no model: the server reads the document's existing text layer (the text-layer route's extraction and cache) and proposes SIGNATURE and SIGN_DATE boxes on or after signature and date labels ("Signature", "Signed", "Signed by", "Sign here", "Date", "Dated", "Date signed"; whole words, any case; on the underline that follows or sits above the label when there is one). Only pages that hold a signature suggestion, the last such pages first; overlaps removed; at most 6. Boxes use the PUT fields frame (SenderFieldInput): page_number 0-based, PDF points, origin bottom-left, (x, y) the lower-left corner, inside the page's MediaBox; `page` is the same page 1-based. A rotated page gets none. Requires sign:envelope:read and the same visibility as the source route (another tenant's envelope, an envelope the caller may not see, or a document not in the envelope is 404); after that, any failure is 200 with an empty list. No document text leaves the platform or is logged. FIELD-PARITY-1 P2-4 — with `detect=all` (opt-in; without it the answer above is unchanged) the shared deterministic detector runs on every page: label patterns ("Signature:", "Sign here", "Initials", "Name:", "Printed name:", "Title:", "Email:", "Company:", "Date:" — the signing date next to a signature, otherwise TEXT), underscore lines (TEXT sized to the run), empty drawn boxes and ruled table cells (TEXT, or CHECKBOX when small and square) and checkbox glyphs (☐ □ → CHECKBOX). Each suggestion carries its `reason` and `confidence`; overlaps are removed; at most 300 (the most confident); a rotated page gets none and is listed in `skipped_pages`. Only the types a sender may place are suggested. No model and no network.
          */
         get: operations["getSenderDocumentFieldSuggestions"];
         put?: never;
@@ -4938,11 +4938,14 @@ export interface components {
                 }[];
             }[];
         };
-        /** @description Aramo Sign Mobile M-A14 R-3 — deterministic SIGNATURE / SIGN_DATE suggestions for one document, in the PUT fields frame (page_number 0-based, PDF points, origin bottom-left, (x, y) the box's lower-left corner). At most 6; empty when nothing was found or the document could not be read. */
+        /** @description Aramo Sign Mobile M-A14 R-3 — deterministic suggestions for one document, in the PUT fields frame (page_number 0-based, PDF points, origin bottom-left, (x, y) the box's lower-left corner). By default SIGNATURE / SIGN_DATE only, at most 6; with detect=all (FIELD-PARITY-1 P2-4) any type of the catalog's `suggestion` surface, at most 300, each with `reason` and `confidence`, plus `skipped_pages`. Empty when nothing was found or the document could not be read. */
         DocumentFieldSuggestions: {
             suggestions: {
-                /** @enum {string} */
-                type: "SIGNATURE" | "SIGN_DATE";
+                /**
+                 * @description FIELD-PARITY-1 P2-4 — the catalog's `suggestion` surface (the default answer uses only SIGNATURE and SIGN_DATE).
+                 * @enum {string}
+                 */
+                type: "SIGNATURE" | "SIGN_DATE" | "INITIALS" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "EMAIL" | "COMPANY" | "TITLE";
                 /** @description 1-based page number (as in the text layer). */
                 page: number;
                 /** @description 0-based page index, exactly the PUT fields page_number. */
@@ -4951,6 +4954,16 @@ export interface components {
                 y: number;
                 width: number;
                 height: number;
+                /** @description detect=all only — why: `label:<Label>` (e.g. `label:Title`), `underscore_line`, `empty_box`, `empty_cell` or `checkbox_glyph`. */
+                reason?: string;
+                /** @description detect=all only — how sure the rule is (a label on its line > a glyph > a box > a bare line). */
+                confidence?: number;
+            }[];
+            /** @description detect=all only — pages that get no suggestions, and why (a rotated page). */
+            skipped_pages?: {
+                page: number;
+                /** @enum {string} */
+                reason: "rotated";
             }[];
         };
         /** @description Aramo Sign Mobile M-A14 R-4 — the signed-in account's own counts: envelopes it signed (self-signed in its tenant and received at its verified identity, as the inbox matches them) and their pages. Counts only. */
@@ -7420,7 +7433,10 @@ export interface operations {
     };
     getSenderDocumentFieldSuggestions: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description FIELD-PARITY-1 P2-4 — `all` runs the full detector; `signature_block` (the default) is the M-A14 answer. */
+                detect?: "signature_block" | "all";
+            };
             header?: never;
             path: {
                 /** @description The signature envelope id (UUID). */
@@ -7441,6 +7457,7 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentFieldSuggestions"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];

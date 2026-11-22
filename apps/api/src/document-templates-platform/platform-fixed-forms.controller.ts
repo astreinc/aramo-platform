@@ -20,6 +20,9 @@ import { FixedFormService, toFieldView } from '../documents/fixed-form.service.j
 //                                                                         FIELD-PARITY-1 P2-5 / P2-6: opt-in
 //                                                                         import_fields / apply_text_tags)
 //   GET  /platform/document-templates/versions/:versionId/fixed-form/pdf  the PDF (base64 JSON)
+//   GET  /platform/document-templates/versions/:versionId/fixed-form/field-suggestions  FIELD-PARITY-1
+//                                                                         P2-4: the deterministic detector's
+//                                                                         suggestions (read scope)
 //   PUT  /platform/document-templates/versions/:versionId/fixed-form/layout  roles + title + every field
 //   POST /platform/document-templates/versions/:versionId/fields         add ONE field (mirrors the
 //                                                                         tenant POST versions/:versionId/fields)
@@ -105,6 +108,15 @@ export class PlatformFixedFormsController {
       const bytes = await this.forms.readPdf(pdf, requestId);
       return { sha256: pdf.sha256, byte_size: bytes.byteLength, content_base64: bytes.toString('base64') };
     });
+  }
+
+  // FIELD-PARITY-1 §5 P2-4 — "Suggest fields": deterministic, no model; any version the reader
+  // may view (the Studio offers it only while editing a draft).
+  @Get('document-templates/versions/:versionId/fixed-form/field-suggestions')
+  @RequireScopes('platform:document_template:read')
+  async fieldSuggestions(@Param('versionId', ParseUUIDPipe) versionId: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    this.assertPlatform(auth, requestId);
+    return this.run(requestId, () => this.forms.fieldSuggestions(versionId, requestId));
   }
 
   @Put('document-templates/versions/:versionId/fixed-form/layout')

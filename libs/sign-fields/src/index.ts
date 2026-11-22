@@ -97,3 +97,44 @@ export {
   type TagTextPage,
   type TextTagPlan,
 } from './lib/field-import.js';
+
+// FIELD-PARITY-1 P2-4 — the deterministic field detector (labels, underscore lines, empty boxes
+// and table cells, checkbox glyphs) and the editors' pending-suggestion rule; the M-A14
+// signature-block mode moved here from apps/sign-service unchanged.
+export {
+  SUGGESTION_LIMIT,
+  DETECT_LIMIT,
+  SUGGESTED_SIZE,
+  DETECT_MIN_SIZE,
+  suggestSignatureBlock,
+  detectFields,
+  pendingSuggestions,
+  suggestionReasonText,
+  isSuggestedFieldType,
+  type DetectWord,
+  type DetectTextPage,
+  type DetectRect,
+  type DetectGraphicsPage,
+  type DetectPageFrame,
+  type SuggestedFieldType,
+  type SignatureBlockFieldType,
+  type SignatureBlockSuggestion,
+  type DetectReason,
+  type DetectedField,
+  type SkippedPage,
+  type DetectResult,
+  type DetectOptions,
+  type PendingSuggestionLike,
+  type PlacedBoxLike,
+} from './lib/field-detect.js';
+
+// FIELD-PARITY-1 P2-5 / P2-6 — the upload options' copy, warning copy and text-tag help (one
+// place for every UI).
+export {
+  UPLOAD_OPTION_COPY,
+  FIELD_IMPORT_WARNING_COPY,
+  TEXT_TAG_HELP,
+  fieldImportWarningText,
+  fieldImportSummary,
+  isFieldImportWarningCode,
+} from './lib/field-import-copy.js';

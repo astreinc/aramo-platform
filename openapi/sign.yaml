@@ -1907,6 +1907,13 @@ paths:
         `page` is the same page 1-based. A rotated page gets none. Requires sign:envelope:read and the same visibility as
         the source route (another tenant's envelope, an envelope the caller may not see, or a document not in the envelope
         is 404); after that, any failure is 200 with an empty list. No document text leaves the platform or is logged.
+        FIELD-PARITY-1 P2-4 — with `detect=all` (opt-in; without it the answer above is unchanged) the shared deterministic
+        detector runs on every page: label patterns ("Signature:", "Sign here", "Initials", "Name:", "Printed name:",
+        "Title:", "Email:", "Company:", "Date:" — the signing date next to a signature, otherwise TEXT), underscore lines
+        (TEXT sized to the run), empty drawn boxes and ruled table cells (TEXT, or CHECKBOX when small and square) and
+        checkbox glyphs (☐ □ → CHECKBOX). Each suggestion carries its `reason` and `confidence`; overlaps are removed;
+        at most 300 (the most confident); a rotated page gets none and is listed in `skipped_pages`. Only the types a
+        sender may place are suggested. No model and no network.
       tags: [sender]
       security:
         - senderSession: []
@@ -1914,6 +1921,13 @@ paths:
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
         - $ref: '#/components/parameters/DocumentId'
+        - name: detect
+          in: query
+          required: false
+          description: FIELD-PARITY-1 P2-4 — `all` runs the full detector; `signature_block` (the default) is the M-A14 answer.
+          schema:
+            type: string
+            enum: [signature_block, all]
       responses:
         '200':
           description: OK (possibly an empty list).
@@ -1921,6 +1935,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DocumentFieldSuggestions'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -10209,21 +10225,23 @@ components:
     DocumentFieldSuggestions:
       type: object
       description: >-
-        Aramo Sign Mobile M-A14 R-3 — deterministic SIGNATURE / SIGN_DATE suggestions for one document, in the PUT fields
-        frame (page_number 0-based, PDF points, origin bottom-left, (x, y) the box's lower-left corner). At most 6; empty
-        when nothing was found or the document could not be read.
+        Aramo Sign Mobile M-A14 R-3 — deterministic suggestions for one document, in the PUT fields frame (page_number
+        0-based, PDF points, origin bottom-left, (x, y) the box's lower-left corner). By default SIGNATURE / SIGN_DATE only,
+        at most 6; with detect=all (FIELD-PARITY-1 P2-4) any type of the catalog's `suggestion` surface, at most 300, each
+        with `reason` and `confidence`, plus `skipped_pages`. Empty when nothing was found or the document could not be read.
       required: [suggestions]
       properties:
         suggestions:
           type: array
-          maxItems: 6
+          maxItems: 300
           items:
             type: object
             required: [type, page, page_number, x, y, width, height]
             properties:
               type:
                 type: string
-                enum: [SIGNATURE, SIGN_DATE]
+                description: FIELD-PARITY-1 P2-4 — the catalog's `suggestion` surface (the default answer uses only SIGNATURE and SIGN_DATE).
+                enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, EMAIL, COMPANY, TITLE]
               page:
                 type: integer
                 minimum: 1
@@ -10236,6 +10254,27 @@ components:
               y: { type: number, minimum: 0 }
               width: { type: number, exclusiveMinimum: 0 }
               height: { type: number, exclusiveMinimum: 0 }
+              reason:
+                type: string
+                description: >-
+                  detect=all only — why: `label:<Label>` (e.g. `label:Title`), `underscore_line`, `empty_box`, `empty_cell`
+                  or `checkbox_glyph`.
+              confidence:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: detect=all only — how sure the rule is (a label on its line > a glyph > a box > a bare line).
+        skipped_pages:
+          type: array
+          description: detect=all only — pages that get no suggestions, and why (a rotated page).
+          items:
+            type: object
+            required: [page, reason]
+            properties:
+              page: { type: integer, minimum: 1 }
+              reason:
+                type: string
+                enum: [rotated]
     SignSigningStats:
       type: object
       description: >-

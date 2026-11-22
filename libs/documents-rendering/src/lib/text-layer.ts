@@ -39,6 +39,7 @@ interface PdfTextItem {
 interface PdfjsLike {
   getDocument(src: Record<string, unknown>): { promise: Promise<PdfDocLike> };
   Util: { transform(a: number[], b: number[]): number[] };
+  OPS: Record<string, number>;
 }
 
 interface PdfDocLike {
@@ -46,6 +47,7 @@ interface PdfDocLike {
   getPage(n: number): Promise<{
     getViewport(o: { scale: number }): { width: number; height: number; transform: number[] };
     getTextContent(): Promise<{ items: unknown[] }>;
+    getOperatorList?(o?: { intent?: string }): Promise<{ fnArray: number[]; argsArray: unknown[] }>;
     cleanup?: () => void;
   }>;
   destroy(): Promise<void>;
@@ -148,4 +150,175 @@ export async function readPageFrames(bytes: Uint8Array): Promise<PdfPageFrame[]>
     const crop = p.getCropBox();
     return { width: p.getWidth(), height: p.getHeight(), view: { x: crop.x, y: crop.y, width: crop.width, height: crop.height }, rotation: p.getRotation().angle };
   });
+}
+
+// ── FIELD-PARITY-1 P2-4 — the drawn rectangles and straight lines of each page ─────────────────
+// The field detector (@aramo/sign-fields detectFields) reads empty boxes and ruled table cells
+// from these. Read from pdfjs's operator list (the same pdfjs-dist build as the text layer: no new
+// dependency): every painted path made only of axis-aligned rectangles or straight horizontal /
+// vertical segments, after the current transform, in the same frame as the text layer (0..1 of
+// the page view, origin top-left). A clipping path (painted with endPath) and any curve are not
+// shapes. Nothing is rendered; no text is read here.
+
+/** A drawn rectangle or straight line (w or h 0 for a line): 0..1 of the page view, origin top-left. */
+export interface PageGraphicRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  stroke: boolean;
+  fill: boolean;
+}
+
+export interface PageGraphics {
+  page: number;
+  rects: PageGraphicRect[];
+}
+
+/** Bounds: a pathological PDF never pins the process. */
+export const PAGE_GRAPHICS_MAX_RECTS = 4000;
+export const PAGE_GRAPHICS_MAX_OPS = 200_000;
+
+type Matrix = [number, number, number, number, number, number];
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function multiply(m: Matrix, n: readonly number[]): Matrix {
+  // pdfjs Util.transform(m, n): apply n, then m (n is the inner transform).
+  const [a, b, c, d, e, f] = m;
+  const [na = 1, nb = 0, nc = 0, nd = 1, ne = 0, nf = 0] = n;
+  return [a * na + c * nb, b * na + d * nb, a * nc + c * nd, b * nc + d * nd, a * ne + c * nf + e, b * ne + d * nf + f];
+}
+
+const apply = (m: Matrix, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+/** Whether the matrix keeps axis-aligned boxes axis-aligned (scale / flip / quarter turns only). */
+const axisAligned = (m: Matrix): boolean => (Math.abs(m[1]) < 1e-6 && Math.abs(m[2]) < 1e-6) || (Math.abs(m[0]) < 1e-6 && Math.abs(m[3]) < 1e-6);
+
+interface PathShape {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * The shapes of one constructPath call (pdfjs 4: args [ops, coords, minMax]), in viewport pixels
+ * (scale 1). Null when the path holds a curve or a non-axis-aligned segment (not a shape).
+ */
+function shapesOfPath(OPS: Record<string, number>, ops: readonly number[], coords: readonly number[], m: Matrix): PathShape[] | null {
+  if (!axisAligned(m)) return null;
+  const out: PathShape[] = [];
+  let j = 0;
+  let cur: [number, number] | null = null;
+  let start: [number, number] | null = null;
+  // An open polyline of axis-aligned segments: each segment is its own line.
+  const segment = (p: [number, number], q: [number, number]): boolean => {
+    if (Math.abs(p[0] - q[0]) > 0.01 && Math.abs(p[1] - q[1]) > 0.01) return false;
+    out.push({ x0: Math.min(p[0], q[0]), y0: Math.min(p[1], q[1]), x1: Math.max(p[0], q[0]), y1: Math.max(p[1], q[1]) });
+    return true;
+  };
+  for (const op of ops) {
+    if (op === OPS['rectangle']) {
+      const [x = 0, y = 0, w = 0, h = 0] = coords.slice(j, j + 4);
+      j += 4;
+      const p = apply(m, x, y);
+      const q = apply(m, x + w, y + h);
+      out.push({ x0: Math.min(p[0], q[0]), y0: Math.min(p[1], q[1]), x1: Math.max(p[0], q[0]), y1: Math.max(p[1], q[1]) });
+      cur = null;
+      start = null;
+    } else if (op === OPS['moveTo']) {
+      cur = apply(m, coords[j] ?? 0, coords[j + 1] ?? 0);
+      start = cur;
+      j += 2;
+    } else if (op === OPS['lineTo']) {
+      const q = apply(m, coords[j] ?? 0, coords[j + 1] ?? 0);
+      j += 2;
+      if (cur === null || !segment(cur, q)) return null;
+      cur = q;
+    } else if (op === OPS['closePath']) {
+      if (cur !== null && start !== null && (cur[0] !== start[0] || cur[1] !== start[1]) && !segment(cur, start)) return null;
+      cur = start;
+    } else {
+      // curveTo / curveTo2 / curveTo3 (or anything unknown): not a shape.
+      return null;
+    }
+  }
+  return out;
+}
+
+/** A closed 4-segment outline (a rectangle drawn with moveTo / lineTo) reads as one rectangle. */
+function mergeOutline(shapes: PathShape[]): PathShape[] {
+  if (shapes.length !== 4) return shapes;
+  const xs = shapes.flatMap((s) => [s.x0, s.x1]);
+  const ys = shapes.flatMap((s) => [s.y0, s.y1]);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y0 = Math.min(...ys);
+  const y1 = Math.max(...ys);
+  const h = shapes.filter((s) => Math.abs(s.y0 - s.y1) < 0.01 && Math.abs(s.x0 - x0) < 0.5 && Math.abs(s.x1 - x1) < 0.5).length;
+  const v = shapes.filter((s) => Math.abs(s.x0 - s.x1) < 0.01 && Math.abs(s.y0 - y0) < 0.5 && Math.abs(s.y1 - y1) < 0.5).length;
+  return h === 2 && v === 2 ? [{ x0, y0, x1, y1 }] : shapes;
+}
+
+/** Every page's drawn rectangles and straight lines. Throws when the bytes are not a readable PDF. */
+export async function extractPageGraphics(bytes: Uint8Array): Promise<PageGraphics[]> {
+  const pdfjs = await loadPdfjs();
+  const OPS = pdfjs.OPS;
+  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, disableFontFace: true, useSystemFonts: false, verbosity: 0, stopAtErrors: false });
+  const doc = await task.promise;
+  const paint = new Map<number, { stroke: boolean; fill: boolean }>([
+    [OPS['stroke'] ?? -1, { stroke: true, fill: false }],
+    [OPS['closeStroke'] ?? -1, { stroke: true, fill: false }],
+    [OPS['fill'] ?? -1, { stroke: false, fill: true }],
+    [OPS['eoFill'] ?? -1, { stroke: false, fill: true }],
+    [OPS['fillStroke'] ?? -1, { stroke: true, fill: true }],
+    [OPS['eoFillStroke'] ?? -1, { stroke: true, fill: true }],
+    [OPS['closeFillStroke'] ?? -1, { stroke: true, fill: true }],
+    [OPS['closeEOFillStroke'] ?? -1, { stroke: true, fill: true }],
+  ]);
+  try {
+    const pages: PageGraphics[] = [];
+    const count = Math.min(doc.numPages, TEXT_LAYER_MAX_PAGES);
+    for (let n = 1; n <= count; n += 1) {
+      const page = await doc.getPage(n);
+      const viewport = page.getViewport({ scale: 1 });
+      const rects: PageGraphicRect[] = [];
+      const list = page.getOperatorList === undefined ? { fnArray: [], argsArray: [] } : await page.getOperatorList({ intent: 'display' });
+      let ctm: Matrix = [...(viewport.transform as Matrix)];
+      const stack: Matrix[] = [];
+      let pending: PathShape[] | null = null;
+      const total = Math.min(list.fnArray.length, PAGE_GRAPHICS_MAX_OPS);
+      for (let i = 0; i < total && rects.length < PAGE_GRAPHICS_MAX_RECTS; i += 1) {
+        const fn = list.fnArray[i];
+        const args = list.argsArray[i] as unknown[] | null | undefined;
+        if (fn === OPS['save']) stack.push(ctm);
+        else if (fn === OPS['restore']) ctm = stack.pop() ?? ctm;
+        else if (fn === OPS['transform'] && Array.isArray(args)) ctm = multiply(ctm, args as number[]);
+        else if (fn === OPS['paintFormXObjectBegin']) {
+          stack.push(ctm);
+          const matrix = Array.isArray(args) ? args[0] : null;
+          if (Array.isArray(matrix) && matrix.length === 6) ctm = multiply(ctm, matrix as number[]);
+        } else if (fn === OPS['paintFormXObjectEnd']) ctm = stack.pop() ?? ctm;
+        else if (fn === OPS['constructPath'] && Array.isArray(args)) {
+          const ops = Array.isArray(args[0]) ? (args[0] as number[]) : [];
+          const coords = Array.isArray(args[1]) || ArrayBuffer.isView(args[1]) ? Array.from(args[1] as ArrayLike<number>) : [];
+          const shapes = shapesOfPath(OPS, ops, coords, ctm);
+          pending = shapes === null ? null : [...(pending ?? []), ...shapes];
+        } else if (fn !== undefined && paint.has(fn)) {
+          const how = paint.get(fn) as { stroke: boolean; fill: boolean };
+          for (const s of mergeOutline(pending ?? [])) {
+            if (rects.length >= PAGE_GRAPHICS_MAX_RECTS) break;
+            const x = round(s.x0 / viewport.width);
+            const y = round(s.y0 / viewport.height);
+            rects.push({ x, y, w: round(round(s.x1 / viewport.width) - x), h: round(round(s.y1 / viewport.height) - y), ...how });
+          }
+          pending = null;
+        } else if (fn === OPS['endPath']) pending = null;
+      }
+      page.cleanup?.();
+      pages.push({ page: n, rects });
+    }
+    return pages;
+  } finally {
+    await doc.destroy().catch(() => undefined);
+  }
 }

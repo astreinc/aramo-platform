@@ -29,7 +29,10 @@ export const FIELD_SURFACES = [
   'template_documents_store',
   /** A renderer-drawn signature block of a generated template. */
   'signature_block',
-  /** The deterministic text-layer field suggestions. */
+  /**
+   * The deterministic field suggestions (FIELD-PARITY-1 P2-4, @aramo/sign-fields detectFields):
+   * every type the detector proposes. Each editor still shows only its own palette's types.
+   */
   'suggestion',
 ] as const;
 export type FieldSurface = (typeof FIELD_SURFACES)[number];
@@ -126,7 +129,7 @@ export const FIELD_CATALOG = {
     value_kind: 'signature_image',
     filled_by: 'signer',
     settings: [],
-    surfaces: SIX,
+    surfaces: { ...SIX, suggestion: true },
   },
   TEXT: {
     key: 'TEXT',
@@ -138,7 +141,7 @@ export const FIELD_CATALOG = {
     value_kind: 'text',
     filled_by: 'signer',
     settings: [],
-    surfaces: SIX,
+    surfaces: { ...SIX, suggestion: true },
   },
   SIGNER_NAME: {
     key: 'SIGNER_NAME',
@@ -153,7 +156,7 @@ export const FIELD_CATALOG = {
     filled_by: 'server',
     filled_by_name_mode: { SIGNER_PROFILE: 'server', SIGNER_ENTERED: 'signer' },
     settings: ['name_mode'],
-    surfaces: { ...SIX, signature_block: true },
+    surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   CHECKBOX: {
     key: 'CHECKBOX',
@@ -165,7 +168,7 @@ export const FIELD_CATALOG = {
     value_kind: 'boolean',
     filled_by: 'signer',
     settings: CHECKBOX_SETTINGS,
-    surfaces: SIX,
+    surfaces: { ...SIX, suggestion: true },
   },
   FIRST_NAME: {
     key: 'FIRST_NAME',
@@ -204,7 +207,7 @@ export const FIELD_CATALOG = {
     filled_by: 'signer',
     prefill: 'signer_profile',
     settings: [],
-    surfaces: PROFILE,
+    surfaces: { ...PROFILE, suggestion: true },
   },
   COMPANY: {
     key: 'COMPANY',
@@ -217,7 +220,7 @@ export const FIELD_CATALOG = {
     filled_by: 'signer',
     prefill: 'signer_profile',
     settings: [],
-    surfaces: PROFILE,
+    surfaces: { ...PROFILE, suggestion: true },
   },
   TITLE: {
     key: 'TITLE',
@@ -230,7 +233,7 @@ export const FIELD_CATALOG = {
     filled_by: 'signer',
     prefill: 'signer_profile',
     settings: [],
-    surfaces: PROFILE,
+    surfaces: { ...PROFILE, suggestion: true },
   },
   ACKNOWLEDGEMENT: {
     key: 'ACKNOWLEDGEMENT',

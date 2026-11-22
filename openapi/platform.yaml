@@ -5099,6 +5099,40 @@ paths:
         '409':
           $ref: '#/components/responses/PlatformTemplateConflict'
 
+  /platform/document-templates/versions/{versionId}/fixed-form/field-suggestions:
+    get:
+      operationId: getPlatformFixedFormFieldSuggestions
+      tags: [Platform Document Templates]
+      summary: Suggested fields for a fixed-form version's PDF (FIELD-PARITY-1 P2-4, "Suggest fields").
+      description: |
+        FIELD-PARITY-1 §5 P2-4. The shared deterministic detector (the one Aramo Sign's envelope route runs with
+        `detect=all`), over the stored PDF's text layer and drawn rectangles: label patterns ("Signature:", "Initials",
+        "Name:", "Date:", …), underscore lines, empty boxes and ruled table cells, and checkbox glyphs (☐ □). Only the
+        fixed-form palette's types are suggested: a label of a type the form cannot hold (e.g. "Title:", "Email:")
+        becomes TEXT. Field frame: page_number 0-based, PDF points, origin bottom-left. Overlaps removed; at most 300;
+        rotated pages are listed in `skipped_pages`. No model and no network; no text is logged. A version without a
+        PDF, or a PDF that cannot be read, answers an empty list. Requires `platform:document_template:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The suggestions (possibly none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FixedFormFieldSuggestions'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+
   /platform/document-templates/versions/{versionId}/fixed-form/layout:
     put:
       operationId: savePlatformFixedFormLayout
@@ -7437,6 +7471,39 @@ components:
           maxItems: 200
           items:
             $ref: '#/components/schemas/FixedFormField'
+    FixedFormFieldSuggestions:
+      type: object
+      description: FIELD-PARITY-1 P2-4 — the detector's suggestions for a fixed form (types of the fixed-form palette only).
+      required: [suggestions, skipped_pages]
+      properties:
+        suggestions:
+          type: array
+          maxItems: 300
+          items:
+            type: object
+            required: [type, page, page_number, x, y, width, height, reason, confidence]
+            properties:
+              type:
+                type: string
+                enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX]
+              page: { type: integer, minimum: 1, description: 1-based page number. }
+              page_number: { type: integer, minimum: 0, description: 0-based page index (the field's page_number). }
+              x: { type: number, minimum: 0 }
+              y: { type: number, minimum: 0 }
+              width: { type: number, exclusiveMinimum: 0 }
+              height: { type: number, exclusiveMinimum: 0 }
+              reason:
+                type: string
+                description: "`label:<Label>` (e.g. `label:Title`), `underscore_line`, `empty_box`, `empty_cell` or `checkbox_glyph`."
+              confidence: { type: number, minimum: 0, maximum: 1 }
+        skipped_pages:
+          type: array
+          items:
+            type: object
+            required: [page, reason]
+            properties:
+              page: { type: integer, minimum: 1 }
+              reason: { type: string, enum: [rotated] }
     FixedFormVersionView:
       type: object
       additionalProperties: false

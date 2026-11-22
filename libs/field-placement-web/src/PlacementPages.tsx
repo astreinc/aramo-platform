@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type Point
 
 import { toTopLeft, type Box, type PdfPageInfo } from './lib/geometry';
 import { type PlacedField, type PlacementAssignee, type PlacementDocument } from './lib/model';
+import { type PlacementSuggestion } from './lib/suggestions';
 import './field-placement.css';
 
 // FIELD-PARITY-1 P1-5 — the page column of the shared placement editor: each document's pages
@@ -11,6 +12,8 @@ import './field-placement.css';
 //
 // P2 (§5 P2-2 / P2-3) — overlays drawn above the page and under the fields, never taking the
 // pointer: the drag-a-box rectangle, the alignment guides of a drag, and the optional grid.
+// P2-4 — suggested (ghost) fields, dashed, under the placed fields: each is a button (click /
+// Enter / Space accepts it; Delete / Backspace or its × dismisses it).
 
 /** Renders one page into a canvas at a CSS width (the host's pdf.js loader). */
 export type PageRenderer = (docId: string, pageIndex: number, canvas: HTMLCanvasElement, cssWidth: number) => Promise<void>;
@@ -69,6 +72,11 @@ export interface PlacementPagesProps {
   readonly onFieldPointerUp?: () => void;
   readonly onFieldFocus?: (f: PlacedField) => void;
   readonly onFieldKey?: (f: PlacedField, e: ReactKeyboardEvent<HTMLElement>) => void;
+  /** P2-4 — the pending suggestions to draw as ghost fields. */
+  readonly ghosts?: readonly PlacementSuggestion[];
+  readonly ghostLabel?: (g: PlacementSuggestion) => string;
+  readonly onGhostAccept?: (g: PlacementSuggestion) => void;
+  readonly onGhostDismiss?: (g: PlacementSuggestion) => void;
 }
 
 function PageCanvas({ render, docId, page, width }: { readonly render: PageRenderer; readonly docId: string; readonly page: number; readonly width: number }) {
@@ -110,6 +118,10 @@ export function PlacementPages({
   onFieldPointerUp,
   onFieldFocus,
   onFieldKey,
+  ghosts = [],
+  ghostLabel = (g) => `Suggested ${g.type.toLowerCase()} field`,
+  onGhostAccept,
+  onGhostDismiss,
 }: PlacementPagesProps) {
   const slots = pageSlotsOf(documents);
   const many = documents.length > 1;
@@ -161,6 +173,53 @@ export function PlacementPages({
                   style={{ left: pct(marquee.rect.x, size.width), top: pct(marquee.rect.y, size.height), width: pct(marquee.rect.width, size.width), height: pct(marquee.rect.height, size.height) }}
                 />
               ) : null}
+              {readOnly
+                ? null
+                : ghosts
+                    .filter((g) => g.docId === slot.docId && g.page === slot.page)
+                    .map((g) => {
+                      const box = toTopLeft({ x: g.x, y: g.y, width: g.width, height: g.height }, size.height);
+                      const label = ghostLabel(g);
+                      return (
+                        <div
+                          key={`ghost-${g.id}`}
+                          className="fpe-ghost"
+                          style={{ left: pct(box.x, size.width), top: pct(box.y, size.height), width: pct(box.width, size.width), height: pct(box.height, size.height) }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${label}, page ${slot.page + 1}. Press Enter to add it, Delete to dismiss it.`}
+                          title={label}
+                          data-testid={`${p}-ghost-${g.id}`}
+                          data-ghost-id={g.id}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => onGhostAccept?.(g)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onGhostAccept?.(g);
+                            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                              e.preventDefault();
+                              onGhostDismiss?.(g);
+                            }
+                          }}
+                        >
+                          <span className="fpe-ghost__label">{g.type === 'CHECKBOX' ? '' : label.replace(/^Suggested /, '').replace(/ field .*$/, '')}</span>
+                          <button
+                            type="button"
+                            className="fpe-ghost__x"
+                            aria-label="Dismiss suggestion"
+                            tabIndex={-1}
+                            data-testid={`${p}-ghost-dismiss-${g.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onGhostDismiss?.(g);
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
               {fields
                 .filter((f) => f.docId === slot.docId && f.page === slot.page && f.hidden !== true)
                 .map((f) => {

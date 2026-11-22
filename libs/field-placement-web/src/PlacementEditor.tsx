@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { type FieldSurface, type FieldTypeKey } from '@aramo/sign-fields';
+import { suggestionReasonText, type FieldSurface, type FieldTypeKey } from '@aramo/sign-fields';
 
 import { PlacementPages, defaultFace, pageSlotsOf, type FieldFace, type PageRenderer, type PageSlot } from './PlacementPages';
 import { GRID_STEP, SNAP_DISTANCE_PX, intersects, rectFromPoints, type AlignEdge, type SnapOptions } from './lib/arrange';
@@ -40,6 +40,7 @@ import {
   type PlacementPrefill,
 } from './lib/model';
 import { groupSize } from './lib/settings';
+import { acceptSuggestions, fieldsFromSuggestions, pendingGhosts, type PlacementSuggestion } from './lib/suggestions';
 import { pickTargetPage, placeNewField, visibleArea, visibleRegionInPage, type ScreenRect } from './lib/viewport';
 import './field-placement.css';
 
@@ -63,6 +64,12 @@ import './field-placement.css';
 // row at a set distance), each ONE undo step; snapping to other fields' edges and an optional
 // grid with guides while dragging (Shift turns it off); Redo. Every action is a labelled button
 // as well as a key (KEYMAP), and its result is announced.
+//
+// P2-4 (§5, both hosts) — Suggestions: "Find fields" asks the host for the deterministic
+// detector's suggestions; the pending ones (a palette type, not dismissed, not already covered
+// by a field) are drawn as dashed ghost fields. Click / Enter accepts one; "Accept all on this
+// page" / "Accept all" accept many as ONE undo step; Delete or × dismisses one, "Dismiss all"
+// the rest. Accepted ghosts become ordinary fields for the assignee being placed for.
 
 export interface PlacementCopy {
   readonly leftLabel: string;
@@ -140,6 +147,11 @@ export interface PlacementEditorProps {
   readonly showFieldKey?: boolean;
   /** The tag above a field (default: the assignee's label). */
   readonly whoOf?: (a: PlacementAssignee) => string;
+  /**
+   * P2-4 — the host's suggestion source (sign-web: the Sign route with detect=all; console: the
+   * fixed-form route), already in the editor's frame. Absent: no Suggestions section.
+   */
+  readonly loadSuggestions?: () => Promise<readonly PlacementSuggestion[]>;
 }
 
 const ALIGN_TOOLS: readonly { readonly edge: AlignEdge; readonly label: string; readonly glyph: string }[] = [
@@ -203,6 +215,7 @@ export function PlacementEditor(props: PlacementEditorProps) {
     fitHeight,
     showFieldKey = false,
     whoOf = (a) => a.label,
+    loadSuggestions,
   } = props;
   const copy: PlacementCopy = { ...DEFAULT_PLACEMENT_COPY, ...props.copy };
 
@@ -225,6 +238,8 @@ export function PlacementEditor(props: PlacementEditorProps) {
       return;
     }
     dispatch({ type: 'reset', fields: initialFields });
+    setSuggestions(null);
+    setDismissed(new Set());
     // Only the key decides.
   }, [resetKey]);
 
@@ -259,6 +274,10 @@ export function PlacementEditor(props: PlacementEditorProps) {
   const [repeatCount, setRepeatCount] = useState(1);
   const [repeatPitch, setRepeatPitch] = useState<number | null>(null);
   const [marquee, setMarquee] = useState<{ slotIndex: number; rect: Box } | null>(null);
+  // P2-4 — the loaded suggestions (null: not asked yet), the dismissed ids, the load state.
+  const [suggestions, setSuggestions] = useState<readonly PlacementSuggestion[] | null>(null);
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const [finding, setFinding] = useState(false);
   const centerRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const focusField = useRef<string | null>(null);
@@ -281,6 +300,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
   useEffect(() => setRepeatPitch(null), [selectionKey]);
   const assigneeOf = useCallback((id: string | null) => assignees.find((a) => a.id === id), [assignees]);
   const canPlace = !readOnly && slots.length > 0 && (allowUnassigned || active !== null);
+  const paletteTypes = useMemo(() => palette.map((t) => t.type as string), [palette]);
+  const ghosts = useMemo(
+    () => (suggestions === null || readOnly ? [] : pendingGhosts(suggestions, state.fields, { types: paletteTypes, dismissed, pageSize: ctx.current.pageSize })),
+    [suggestions, state.fields, paletteTypes, dismissed, readOnly, slots],
+  );
 
   // ---- Layout: column width (fit), the window-fitted height, the target page ---------------
   useEffect(() => {
@@ -495,6 +519,48 @@ export function PlacementEditor(props: PlacementEditorProps) {
     dispatch({ type: 'exec', command: make(ids) });
     setAnnounce(`${plural(ids.length, 'field')} ${done}.`);
   };
+
+  // ---- P2-4 suggestions -------------------------------------------------------------------
+  const findFields = async () => {
+    if (loadSuggestions === undefined || finding) return;
+    setFinding(true);
+    setAnnounce('Looking for fields…');
+    try {
+      const list = await loadSuggestions();
+      setSuggestions(list);
+      setDismissed(new Set());
+      const n = pendingGhosts(list, state.fields, { types: paletteTypes, dismissed: new Set(), pageSize: ctx.current.pageSize }).length;
+      setAnnounce(n === 0 ? 'No fields found to suggest.' : `${plural(n, 'suggested field')} shown as dashed boxes. Click one to add it.`);
+    } catch {
+      setSuggestions([]);
+      setAnnounce('Suggestions are not available right now.');
+    } finally {
+      setFinding(false);
+    }
+  };
+
+  /** Accept suggestions as ONE undo step; the new fields are selected. */
+  const accept = (list: readonly PlacementSuggestion[], what: string) => {
+    if (readOnly || list.length === 0) return;
+    if (!canPlace) {
+      setAnnounce('Add someone to fill the fields first: a suggested field needs someone to fill it.');
+      return;
+    }
+    const added = fieldsFromSuggestions(list, { assignee: active, fields: state.fields, newId: (type, fields) => newFieldId(type as FieldTypeKey, fields), pageSize: ctx.current.pageSize });
+    if (added.length === 0) return;
+    focusField.current = added.length === 1 ? added[0]!.id : null;
+    dispatch({ type: 'exec', command: acceptSuggestions(added, added.length === 1 ? `Add suggested ${typeLabel(added[0]!.type).toLowerCase()} field` : `Accept ${added.length} suggested fields`) });
+    select(added.map((f) => f.id));
+    const who = assigneeOf(active);
+    setAnnounce(`${what}: ${plural(added.length, 'field')} added${who !== undefined ? ` for ${who.label}` : ''}.`);
+  };
+  const dismiss = (ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    setDismissed((d) => new Set([...d, ...ids]));
+    setAnnounce(ids.length === 1 ? 'Suggestion dismissed.' : `${plural(ids.length, 'suggestion')} dismissed.`);
+    if (ids.length === 1) focusColumn.current = true;
+  };
+  const ghostsOnTarget = targetSlot === undefined ? [] : ghosts.filter((g) => g.docId === targetSlot.docId && g.page === targetSlot.page);
 
   /** Cmd/Ctrl+A — every visible field on the page of the selection (else the page in view). */
   const selectAllOnPage = () => {
@@ -870,6 +936,39 @@ export function PlacementEditor(props: PlacementEditorProps) {
                   Fields are added to {pageName(targetSlot)}. Drag to move; drag the corner to resize.
                 </p>
               </section>
+              {loadSuggestions !== undefined ? (
+                <section className="fpe-section" aria-label="Suggested fields" data-testid={`${p}-suggestions`}>
+                  <h2 className="fpe-h">Suggestions</h2>
+                  <button type="button" className="fpe-btn fpe-btn--block" onClick={() => void findFields()} disabled={finding || slots.length === 0} data-testid={`${p}-find-fields`}>
+                    {finding ? 'Looking for fields…' : suggestions === null ? 'Find fields' : 'Find fields again'}
+                  </button>
+                  {suggestions !== null && !finding ? (
+                    ghosts.length === 0 ? (
+                      <p className="fpe-note" data-testid={`${p}-suggestions-none`}>
+                        {suggestions.length === 0 ? 'No fields found. Place them from the list above.' : 'No suggestions left.'}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="fpe-note" data-testid={`${p}-suggestions-count`}>
+                          {plural(ghosts.length, 'suggested field')} (dashed). Click one, or press Enter on it, to add it; Delete dismisses it.
+                          {assigneeOf(active) !== undefined ? ` Added fields are for ${assigneeOf(active)!.label}.` : ''}
+                        </p>
+                        <div className="fpe-tools fpe-tools--2">
+                          <button type="button" className="fpe-btn" disabled={ghostsOnTarget.length === 0 || !canPlace} onClick={() => accept(ghostsOnTarget, `Accepted on ${pageName(targetSlot)}`)} data-testid={`${p}-accept-page`}>
+                            Accept all on {pageName(targetSlot)}
+                          </button>
+                          <button type="button" className="fpe-btn" disabled={!canPlace} onClick={() => accept(ghosts, 'Accepted every suggestion')} data-testid={`${p}-accept-all`}>
+                            Accept all ({ghosts.length})
+                          </button>
+                        </div>
+                        <button type="button" className="fpe-btn fpe-btn--block" onClick={() => dismiss(ghosts.map((g) => g.id))} data-testid={`${p}-dismiss-all`}>
+                          Dismiss all
+                        </button>
+                      </>
+                    )
+                  ) : null}
+                </section>
+              ) : null}
               <section className="fpe-section">
                 <details data-testid={`${p}-keymap`}>
                   <summary className="fpe-h">Keyboard shortcuts</summary>
@@ -994,6 +1093,10 @@ export function PlacementEditor(props: PlacementEditorProps) {
                 if (!state.selection.includes(f.id)) select([f.id]);
               }}
               onFieldKey={onFieldKey}
+              ghosts={ghosts}
+              ghostLabel={(g) => `Suggested ${typeLabel(g.type).toLowerCase()} field ${suggestionReasonText(g.reason)}`}
+              onGhostAccept={(g) => accept([g], 'Suggestion accepted')}
+              onGhostDismiss={(g) => dismiss([g.id])}
             />
           )}
         </main>

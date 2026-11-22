@@ -392,6 +392,18 @@ export interface UploadedDocument {
   byte_size: number | null;
   page_count: number;
   pages: { width: number; height: number }[];
+  /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
+  field_import?: {
+    fields: unknown[];
+    warnings: { code: string; message: string; name?: string; page_number?: number }[];
+    stripped: string[];
+  };
+}
+
+/** FIELD-PARITY-1 P2-4 — GET …/documents/{documentId}/field-suggestions?detect=all. */
+export interface DocumentFieldSuggestions {
+  suggestions: { type: string; page: number; page_number: number; x: number; y: number; width: number; height: number; reason?: string; confidence?: number }[];
+  skipped_pages?: { page: number; reason: string }[];
 }
 
 export interface DocumentRow {
@@ -848,8 +860,12 @@ export const senderApi = {
   // Sign Mobile M-A3 §3 — the sender message (server sanitizes; > ENVELOPE_MESSAGE_MAX is refused; null clears).
   setMessage: (id: string, message: string | null) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { message }),
   events: (id: string) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/envelopes/${enc(id)}/events`),
-  upload: (id: string, file: { filename: string; title: string; content_base64: string }) =>
-    apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, file),
+  // FIELD-PARITY-1 P2-5 / P2-6 — `options` holds only the ticked flags; without them the body is unchanged.
+  upload: (id: string, file: { filename: string; title: string; content_base64: string }, options: { import_fields?: true; apply_text_tags?: true } = {}) =>
+    apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, { ...file, ...options }),
+  // FIELD-PARITY-1 P2-4 — the deterministic detector (labels, lines, boxes, glyphs) for Prepare.
+  fieldSuggestions: (id: string, docId: string) =>
+    apiClient.get<DocumentFieldSuggestions>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}/field-suggestions?detect=all`),
   renameDocument: (id: string, docId: string, title: string) =>
     apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`, { title }),
   reorderDocuments: (id: string, order: string[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/order`, { order }),
