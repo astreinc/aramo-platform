@@ -61,7 +61,7 @@ const projection = (s: FieldSurface, gate?: SurfaceGate): string[] => sorted(gat
 const PAYMENTS_ON: SurfaceGate = { payments_available: true };
 
 describe('FIELD-PARITY-1 P1-2 — catalog parity: database CHECKs', () => {
-  it('sign."SignatureField" field-type CHECK (latest migration) = sign_store', () => {
+  it('the Sign SignatureField field-type CHECK (latest migration) = sign_store', () => {
     const c = latestCheck('libs/sign/prisma/migrations', 'SignatureField_type_check');
     expect(sorted(c.types), c.migration).toEqual(projection('sign_store'));
   });

@@ -11,7 +11,7 @@
 
 /** Where a field type may appear. */
 export const FIELD_SURFACES = [
-  /** sign."SignatureField" (its field-type CHECK): every type an envelope may store. */
+  /** The Sign SignatureField table (its field-type CHECK): every type an envelope may store. */
   'sign_store',
   /** The sender API (PUT …/fields) as authored from sign-web Prepare. */
   'send_web',
@@ -46,7 +46,7 @@ export type FieldSurfaceRules = { readonly [S in FieldSurface]?: SurfaceRule };
 export type FieldValueKind = 'signature_image' | 'text' | 'date' | 'boolean' | 'option' | 'number' | 'money' | 'image';
 /** Who supplies the value (§6 S-5). */
 export type FieldFiller = 'signer' | 'server' | 'sender';
-/** The per-field settings a sender may set today (sign."SignatureField" columns). */
+/** The per-field settings a sender may set today (Sign SignatureField columns). */
 export type FieldSetting = 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode' | 'payment_amount_minor' | 'payment_currency';
 
 export interface FieldCatalogEntry {
