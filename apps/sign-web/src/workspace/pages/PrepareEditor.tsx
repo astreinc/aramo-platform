@@ -1,76 +1,40 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clampBox, loadPdf, toPdf, toTopLeft, type LoadedPdf, type PdfPageInfo } from '@aramo/document-templates-web/pdf';
-import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_DEFAULTS, placeableFieldTypes } from '@aramo/sign-client';
+import { loadPdf, type LoadedPdf } from '@aramo/document-templates-web/pdf';
+import { PlacementEditor, useAutosave, type PlacedField, type PlacementDocument } from '@aramo/field-placement-web';
+import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
-import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel, TextIn } from '../ui';
+import { Btn, COLORS, ErrorBox, Icon, Loading } from '../ui';
 
-import { DEFAULT_CONFIG, applyConfig, configFromWire, configToWire, groupSize, type ConfigPatch, type FieldConfig } from './field-config';
+import { configFromWire, configToWire } from './field-config';
 import { readinessOf } from './readiness';
 
-// Step 3 · Prepare fields (prototype three-pane editor) over the REAL rendered
-// PDF (PX-V1 §8). Left: recipient selector, field tools, pages. Centre: the
-// page canvases with positioned fields. Right: the selected field's properties
-// and send readiness.
+// Step 3 · Prepare fields over the REAL rendered PDF (PX-V1 §8).
 //
-// Mouse: pick a tool then click a page to place; drag to move; drag the corner to
-// resize; click to select. Keyboard: Tab reaches each field (visible focus ring);
-// arrows move 2pt (Shift: 10pt); Alt+arrows resize; Delete/Backspace removes;
-// "Place on page 1 (keyboard)" adds the chosen field without a mouse. Undo (also
-// Ctrl/Cmd+Z). Changes save automatically (fields are replaced as a whole).
+// FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-5,
+// ruling R-8 — the palette, page column, field properties, keyboard map, undo and the viewport
+// behaviour are the ONE shared placement editor (@aramo/field-placement-web), the same one the
+// console's form Studio uses. This screen supplies its data (the envelope's documents, its
+// signers, its stored fields) and keeps its own chrome (readiness, the wizard footer) and its
+// API call: changes save automatically, 600ms after the last edit, as one PUT of the whole
+// field set (senderApi.fields), exactly as before.
 //
-// Editor frame: TOP-LEFT origin in PDF points, page index 0-based. Converted to
-// the wire's bottom-left frame by toPdf on save.
+// Fields stay PDF-native (bottom-left origin, points, page 0-based) end to end; the editor
+// converts to its top-left frame only inside a gesture.
 
-// Client Rule Consolidation C3 (audit rows 35–37) — the label and glyph are this screen's; the
-// default size and whether a new field starts required come from @aramo/sign-client's ONE table.
-const LOOK: Record<FieldType, { label: string; glyph: string }> = {
-  SIGNATURE: { label: 'Signature', glyph: '✍' },
-  INITIALS: { label: 'Initials', glyph: 'AB' },
-  SIGN_DATE: { label: 'Sign date', glyph: '📅' },
-  SIGNER_NAME: { label: 'Name', glyph: 'Aa' },
-  TEXT: { label: 'Text', glyph: 'T' },
-  CHECKBOX: { label: 'Checkbox', glyph: '☑' },
-  ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓' },
-  // Sign 1.14 — a payment (placed through the API for now): shown locked here and sent back
-  // with its amount on save.
-  PAYMENT: { label: 'Payment', glyph: '$' },
-  // M-A12 W1-C.4 — profile text fields (the signer fills them; the app prefills from their profile).
-  FIRST_NAME: { label: 'First name', glyph: 'Fn' },
-  LAST_NAME: { label: 'Last name', glyph: 'Ln' },
-  EMAIL: { label: 'Email', glyph: '@' },
-  COMPANY: { label: 'Company', glyph: 'Co' },
-  TITLE: { label: 'Title', glyph: 'Ti' },
-};
+// The display entry of every Sign type (label / glyph from the catalog; P1-0: the default size
+// and whether a new field starts required from the ONE table).
 export const TYPES: Record<FieldType, { label: string; glyph: string; w: number; h: number; required: boolean }> = Object.fromEntries(
-  (Object.keys(LOOK) as FieldType[]).map((t) => [t, { ...LOOK[t], w: FIELD_DEFAULTS[t].width, h: FIELD_DEFAULTS[t].height, required: FIELD_DEFAULTS[t].required }]),
+  (fieldTypesFor('sign_store') as FieldType[]).map((t) => [t, { label: FIELD_CATALOG[t].label, glyph: FIELD_CATALOG[t].glyph, w: FIELD_DEFAULTS[t].width, h: FIELD_DEFAULTS[t].height, required: FIELD_DEFAULTS[t].required }]),
 ) as Record<FieldType, { label: string; glyph: string; w: number; h: number; required: boolean }>;
-const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
 // Row 35 — the placeable types (the server's authoring list). PAYMENT is offered only when the
 // server reports payments available AND the editor can author a payment's amount; this editor
 // cannot yet, so a PAYMENT (placed through the API) stays shown but locked here.
 export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(placeableFieldTypes({ payments_available: false }));
 
-interface EdField extends FieldConfig {
-  key: string;
-  docId: string;
-  page: number; // 0-based
-  signerId: string;
-  type: FieldType;
-  x: number; // top-left frame, points
-  y: number;
-  w: number;
-  h: number;
-  required: boolean;
-  // M-A6 §2 — a stored field of a type the sender cannot author (e.g.
-  // ACKNOWLEDGEMENT, from the S2S / Sign API / template paths): kept locked and
-  // sent back exactly as stored, with its id, so the server keeps it.
-  orig?: EnvelopeField;
-}
-
-// A locked engine-only field: it can be deleted but never moved or changed.
-const isLocked = (f: EdField): boolean => f.orig !== undefined && !V1_TYPES.has(f.type);
+// The Prepare palette order (unchanged from before P1-5).
+const ORDER: readonly FieldType[] = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE'];
 
 interface DocPdf {
   docId: string;
@@ -81,6 +45,39 @@ interface DocPdf {
 let seq = 0;
 const newKey = () => `f${Date.now().toString(36)}${(seq += 1)}`;
 
+/** Stored field → editor. A type the sender cannot author (M-A6 §2) is kept locked with the stored field. */
+export function toPlaced(f: EnvelopeField): PlacedField {
+  return {
+    id: f.id ?? newKey(),
+    type: f.field_type,
+    docId: f.envelope_document_id,
+    page: f.page_number,
+    x: f.x,
+    y: f.y,
+    width: f.width,
+    height: f.height,
+    required: f.required,
+    assignee: f.signer_id,
+    binding: null,
+    settings: configFromWire(f),
+    ...(V1_TYPES.has(f.field_type) ? {} : { locked: true }),
+  };
+}
+
+/**
+ * Editor → the PUT payload, the same shape as before P1-5: a locked field goes back exactly as
+ * stored (with its id, so the server keeps it); every other field without an id, with the
+ * configuration its type takes.
+ */
+export function toWire(placed: readonly PlacedField[], stored: ReadonlyMap<string, EnvelopeField>): EnvelopeField[] {
+  return placed.flatMap((f) => {
+    const orig = stored.get(f.id);
+    if (f.locked === true && orig !== undefined) return [orig];
+    const type = f.type as FieldType;
+    return [{ envelope_document_id: f.docId, signer_id: f.assignee ?? '', field_type: type, page_number: f.page, x: f.x, y: f.y, width: f.width, height: f.height, required: f.required, ...configToWire(type, f.settings) }];
+  });
+}
+
 export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
   const nav = useNavigate();
   // Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — fields belong to signers only; a
@@ -88,24 +85,14 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
   const signers = env.recipients.filter((r) => !isCopyRecipient(r));
   const [docs, setDocs] = useState<DocPdf[] | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [fields, setFields] = useState<EdField[]>([]);
+  const [initial, setInitial] = useState<PlacedField[]>([]);
+  const [stored, setStored] = useState<ReadonlyMap<string, EnvelopeField>>(new Map());
+  const [loadKey, setLoadKey] = useState(0);
   const [ready, setReady] = useState(false);
-  const [sel, setSel] = useState<string | null>(null);
-  const [tool, setTool] = useState<FieldType | null>(null);
-  const [rec, setRec] = useState<string | null>(signers[0]?.id ?? null);
-  const [zoom, setZoom] = useState(1);
-  const [undo, setUndo] = useState<EdField[][]>([]);
-  const [save, setSave] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [saveError, setSaveError] = useState('');
-  const [colWidth, setColWidth] = useState(720);
-  const colRef = useRef<HTMLDivElement>(null);
+  const [revision, setRevision] = useState(0);
+  const latest = useRef<readonly PlacedField[]>([]);
 
-  const pageInfo = useCallback(
-    (docId: string, page: number): PdfPageInfo | undefined => docs?.find((d) => d.docId === docId)?.pdf.pages[page],
-    [docs],
-  );
-
-  // Load + measure each source PDF, then project stored fields into the editor frame.
+  // Load + measure each source PDF; keep the stored fields whose page exists.
   useEffect(() => {
     let live = true;
     const loaded: DocPdf[] = [];
@@ -118,14 +105,12 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
       if (!live) return;
       setDocs(loaded);
       const byDoc = new Map(loaded.map((d) => [d.docId, d.pdf.pages]));
-      setFields(
-        env.fields.flatMap((f) => {
-          const page = byDoc.get(f.envelope_document_id)?.[f.page_number];
-          if (page === undefined) return [];
-          const tl = toTopLeft({ x: f.x, y: f.y, width: f.width, height: f.height }, page.height);
-          return [{ key: f.id ?? newKey(), docId: f.envelope_document_id, page: f.page_number, signerId: f.signer_id, type: f.field_type, x: tl.x, y: tl.y, w: tl.width, h: tl.height, required: f.required, ...configFromWire(f), ...(V1_TYPES.has(f.field_type) ? {} : { orig: f }) }];
-        }),
-      );
+      const kept = env.fields.filter((f) => byDoc.get(f.envelope_document_id)?.[f.page_number] !== undefined);
+      const placed = kept.map(toPlaced);
+      setStored(new Map(kept.map((f, i) => [placed[i]!.id, f] as const)));
+      setInitial(placed);
+      latest.current = placed;
+      setLoadKey((k) => k + 1);
       setReady(true);
     })().catch((e: unknown) => {
       if (live) setLoadError(errorMessage(e, 'The document could not be loaded.'));
@@ -137,118 +122,30 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     // Load once per envelope + document set.
   }, [env.id, env.documents.map((d) => d.id).join(',')]);
 
-  // Column width → page CSS width.
-  useEffect(() => {
-    const el = colRef.current;
-    if (el === null) return undefined;
-    const ro = new ResizeObserver(() => setColWidth(el.clientWidth));
-    ro.observe(el);
-    setColWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, [ready]);
+  const documents = useMemo<PlacementDocument[]>(() => (docs ?? []).map((d) => ({ id: d.docId, title: d.title, pages: d.pdf.pages })), [docs]);
+  const renderPage = useCallback(
+    (docId: string, page: number, canvas: HTMLCanvasElement, width: number) => docs?.find((d) => d.docId === docId)?.pdf.render(page, canvas, width) ?? Promise.resolve(),
+    [docs],
+  );
+  const assignees = useMemo(
+    () =>
+      signers.map((r) => {
+        const i = env.recipients.findIndex((x) => x.id === r.id);
+        return { id: r.id, label: r.name, color: COLORS[i % COLORS.length] ?? '#2447D8' };
+      }),
+    [env.recipients],
+  );
 
-  // Autosave (debounced) after any change once loaded.
-  const firstSave = useRef(true);
-  useEffect(() => {
-    if (!ready) return undefined;
-    if (firstSave.current) {
-      firstSave.current = false;
-      return undefined;
-    }
-    setSave('saving');
-    const t = setTimeout(() => {
-      const wire: EnvelopeField[] = fields.flatMap((f) => {
-        if (isLocked(f) && f.orig !== undefined) return [f.orig];
-        const page = pageInfo(f.docId, f.page);
-        if (page === undefined) return [];
-        const b = toPdf({ x: f.x, y: f.y, width: f.w, height: f.h }, page.height);
-        return [{ envelope_document_id: f.docId, signer_id: f.signerId, field_type: f.type, page_number: f.page, x: b.x, y: b.y, width: b.width, height: b.height, required: f.required, ...configToWire(f.type, f) }];
-      });
-      senderApi
-        .fields(env.id, wire)
-        .then((d) => {
-          onChange(d);
-          setSave('saved');
-          setSaveError('');
-        })
-        .catch((e: unknown) => {
-          setSave('error');
-          setSaveError(errorMessage(e));
-        });
-    }, 600);
-    return () => clearTimeout(t);
-    // onChange is stable enough (setState); fields drive the save.
-  }, [fields, ready]);
-
-  const colorOf = useCallback((signerId: string) => {
-    const i = env.recipients.findIndex((r) => r.id === signerId);
-    return i < 0 ? '#8B94A3' : (COLORS[i % COLORS.length] ?? '#2447D8');
-  }, [env.recipients]);
-  const nameOf = (signerId: string) => env.recipients.find((r) => r.id === signerId)?.name ?? 'Unassigned';
-
-  const commit = (next: EdField[]) => {
-    setUndo((u) => [...u.slice(-19), fields]);
-    setFields(next);
-  };
-  const doUndo = () => {
-    setUndo((u) => {
-      const prev = u[u.length - 1];
-      if (prev !== undefined) setFields(prev);
-      return u.slice(0, -1);
-    });
-  };
-
-  const place = (docId: string, page: number, cx: number, cy: number) => {
-    if (tool === null) return;
-    const info = pageInfo(docId, page);
-    const signer = rec ?? signers[0]?.id;
-    if (info === undefined || signer === undefined) return;
-    const t = TYPES[tool];
-    const box = clampBox({ x: cx - t.w / 2, y: cy - t.h / 2, width: t.w, height: t.h }, info);
-    const f: EdField = { key: newKey(), docId, page, signerId: signer, type: tool, x: box.x, y: box.y, w: box.width, h: box.height, required: t.required, ...DEFAULT_CONFIG };
-    commit([...fields, f]);
-    setSel(f.key);
-    setTool(null);
-  };
-
-  const placeKeyboard = () => {
-    const d = docs?.[0];
-    const info = d?.pdf.pages[0];
-    if (d === undefined || info === undefined) return;
-    place(d.docId, 0, info.width / 2, info.height / 2);
-  };
-
-  const update = (key: string, fn: (f: EdField) => EdField, record = true) => {
-    const next = fields.map((f) => (f.key === key && !isLocked(f) ? fn(f) : f));
-    if (record) commit(next);
-    else setFields(next);
-  };
-  // M-A6 §2 — inspector changes keep a check-box group consistent.
-  const configure = (key: string, patch: ConfigPatch) => {
-    const target = fields.find((f) => f.key === key);
-    if (target === undefined || isLocked(target)) return;
-    commit(applyConfig(fields, key, patch));
-  };
-  const remove = (key: string) => {
-    commit(fields.filter((f) => f.key !== key));
-    setSel(null);
-  };
-
-  const selected = fields.find((f) => f.key === sel) ?? null;
-  const pageW = Math.max(280, Math.min(colWidth, 760) * zoom);
-  const readiness = useMemo(() => readinessOf(env), [env]);
-
-  // Global undo shortcut.
-  useEffect(() => {
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !(e.target instanceof HTMLInputElement)) {
-        e.preventDefault();
-        doUndo();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+  const autosave = useAutosave({
+    revision,
+    enabled: ready,
+    save: async () => {
+      const d = await senderApi.fields(env.id, toWire(latest.current, stored));
+      onChange(d);
+    },
+    formatError: (e) => errorMessage(e),
   });
+  const readiness = useMemo(() => readinessOf(env), [env]);
 
   if (env.documents.length === 0 || signers.length === 0) {
     return (
@@ -268,400 +165,73 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
 
   return (
     <>
-      <div className="sg-editor">
-        {/* Left — recipients, tools, pages */}
-        <div className="sg-editor__side">
-          <div className="sg-panel">
-            <div className="sg-panel__t">Placing for</div>
-            {signers.map((r) => {
-              const n = fields.filter((f) => f.signerId === r.id).length;
-              return (
-                <Bare key={r.id} className={r.id === rec ? 'sg-recsel sg-recsel--on' : 'sg-recsel'} aria-pressed={r.id === rec} onClick={() => setRec(r.id)}>
-                  <span className="sg-swatch" style={{ background: colorOf(r.id) }} />
-                  <span className="sg-ellipsis" style={{ flex: 1, fontWeight: 600 }}>
-                    {r.name}
-                  </span>
-                  <span className="sg-faint" style={{ fontSize: 11.5 }}>
-                    {n} field{n === 1 ? '' : 's'}
-                  </span>
-                </Bare>
-              );
-            })}
-          </div>
-          <div className="sg-panel">
-            <div className="sg-panel__t">Fields · click a type, then the page</div>
-            {TYPE_KEYS.map((t) => {
-              const v1 = V1_TYPES.has(t);
-              return (
-                <Bare
-                  key={t}
-                  className={tool === t ? 'sg-tool sg-tool--on' : 'sg-tool'}
-                  aria-pressed={tool === t}
-                  disabled={!v1}
-                  title={v1 ? undefined : 'Not available in this version of Aramo Sign'}
-                  onClick={() => setTool(tool === t ? null : t)}
-                  data-testid={`tool-${t}`}
-                >
-                  <span className="sg-tool__g" aria-hidden="true">
-                    {TYPES[t].glyph}
-                  </span>
-                  {TYPES[t].label}
-                  {v1 ? null : (
-                    <span className="sg-tag sg-tag--grey" style={{ marginLeft: 'auto' }}>
-                      Not in V1
-                    </span>
-                  )}
-                </Bare>
-              );
-            })}
-            {tool !== null ? (
-              <Btn size="sm" block onClick={placeKeyboard} data-testid="place-keyboard">
-                Place on page 1 (keyboard)
-              </Btn>
-            ) : null}
-          </div>
-          <div className="sg-panel">
-            <div className="sg-panel__t">Pages</div>
-            {(docs ?? []).flatMap((d) =>
-              d.pdf.pages.map((_, i) => (
-                <Bare
-                  key={`${d.docId}:${i}`}
-                  className="sg-thumb"
-                  onClick={() => document.getElementById(`pg-${d.docId}-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                >
-                  <span className="sg-thumb__box" aria-hidden="true" />
-                  <span className="sg-ellipsis" style={{ flex: 1 }}>
-                    {d.title}
-                  </span>
-                  <span className="sg-faint">{i + 1}</span>
-                </Bare>
-              )),
-            )}
-          </div>
-        </div>
-
-        {/* Centre — pages */}
-        <div ref={colRef} style={{ minWidth: 0 }}>
-          <div className="sg-canvas__bar">
-            <span style={{ flex: 1 }}>
-              {tool !== null ? `Click the page to place a ${TYPES[tool].label.toLowerCase()} field for ${nameOf(rec ?? '')}.` : 'Pick a field type on the left, then click the page. Click a field to edit; drag to move.'}
-            </span>
-            <Btn size="sm" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))}>
-              −
-            </Btn>
-            <span className="sg-mono" style={{ width: 44, textAlign: 'center' }}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <Btn size="sm" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(1.6, Math.round((z + 0.1) * 10) / 10))}>
-              +
-            </Btn>
-            <Btn size="sm" onClick={doUndo} disabled={undo.length === 0}>
-              Undo
-            </Btn>
+      <div className="sg-prepare">
+        <PlacementEditor
+          documents={documents}
+          renderPage={renderPage}
+          surface="send_web"
+          // Sign 1.14 / P1-6 — Prepare cannot author a payment's amount yet: PAYMENT stays off the
+          // palette (an API-placed one is shown locked).
+          paymentsAvailable={false}
+          palette={{ order: ORDER }}
+          fields={initial}
+          resetKey={loadKey}
+          onChange={(f) => {
+            latest.current = f;
+            setRevision((r) => r + 1);
+          }}
+          assignees={assignees}
+          capabilities={{ settings: ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode'], limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX } }}
+          newFieldId={() => newKey()}
+          paletteMode="arm"
+          precision="integer"
+          pageWidth="fit"
+          idPrefix="prep"
+          copy={{ paletteTitle: 'Fields · click a type, then the page', leftLabel: 'Recipients and fields', rightLabel: 'Field properties and readiness' }}
+          whoOf={(a) => a.label.split(' ')[0] ?? a.label}
+          fitHeight={{ bottomReserve: 120 }}
+          toolbarEnd={
             <span className="sg-faint" style={{ fontSize: 12, minWidth: 60 }} role="status" data-testid="save-state">
-              {save === 'saving' ? 'Saving…' : save === 'saved' ? 'Saved' : save === 'error' ? 'Not saved' : ''}
+              {autosave.state === 'saving' ? 'Saving…' : autosave.state === 'saved' ? 'Saved' : autosave.state === 'error' ? 'Not saved' : ''}
             </span>
-          </div>
-          {loadError !== '' ? <ErrorBox>{loadError}</ErrorBox> : null}
-          {saveError !== '' ? <ErrorBox>{saveError}</ErrorBox> : null}
-          {!ready && loadError === '' ? <Loading label="Rendering pages…" /> : null}
-          {(docs ?? []).flatMap((d) =>
-            d.pdf.pages.map((info, i) => (
-              <PageView
-                key={`${d.docId}:${i}`}
-                id={`pg-${d.docId}-${i}`}
-                pdf={d.pdf}
-                pageIndex={i}
-                info={info}
-                cssWidth={pageW}
-                label={d.title}
-                placing={tool !== null}
-                onPlace={(x, y) => place(d.docId, i, x, y)}
-                onBackground={() => setSel(null)}
-              >
-                {fields
-                  .filter((f) => f.docId === d.docId && f.page === i)
-                  .map((f) => (
-                    <FieldBox
-                      key={f.key}
-                      f={f}
-                      info={info}
-                      color={colorOf(f.signerId)}
-                      who={nameOf(f.signerId).split(' ')[0] ?? ''}
-                      selected={f.key === sel}
-                      onSelect={() => setSel(f.key)}
-                      onStart={() => setUndo((u) => [...u.slice(-19), fields])}
-                      onLive={(fn) => update(f.key, fn, false)}
-                      onKey={(e) => {
-                        const step = e.shiftKey ? 10 : 2;
-                        const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-                        const a = arrows[e.key];
-                        if (a !== undefined) {
-                          e.preventDefault();
-                          update(f.key, (x) => {
-                            const b = e.altKey
-                              ? clampBox({ x: x.x, y: x.y, width: x.w + a[0], height: x.h + a[1] }, info)
-                              : clampBox({ x: x.x + a[0], y: x.y + a[1], width: x.w, height: x.h }, info);
-                            return { ...x, x: b.x, y: b.y, w: b.width, h: b.height };
-                          });
-                        } else if (e.key === 'Delete' || e.key === 'Backspace') {
-                          e.preventDefault();
-                          remove(f.key);
-                        } else if (e.key === 'Escape') {
-                          setSel(null);
-                        }
-                      }}
-                    />
-                  ))}
-              </PageView>
-            )),
-          )}
-        </div>
-
-        {/* Right — properties + readiness */}
-        <div className="sg-editor__side sg-editor__props">
-          <div className="sg-panel" data-testid="field-properties">
-            <div className="sg-panel__t">Field properties</div>
-            {selected === null ? (
-              <div className="sg-muted" style={{ fontSize: 13 }}>
-                Select a field on the page to edit it. Drag to move; drag the corner handle to resize.
-              </div>
-            ) : (
-              <div className="sg-grid" style={{ gap: 10 }}>
-                <div>
-                  <strong>{TYPES[selected.type].label}</strong>
-                  <div className="sg-faint" style={{ fontSize: 12 }}>
-                    Page {selected.page + 1} · {Math.round(selected.w)} × {Math.round(selected.h)} pt
+          }
+          status={
+            <>
+              {loadError !== '' ? <ErrorBox>{loadError}</ErrorBox> : null}
+              {autosave.error !== '' ? <ErrorBox>{autosave.error}</ErrorBox> : null}
+              {!ready && loadError === '' ? <Loading label="Rendering pages…" /> : null}
+            </>
+          }
+          rightPanelBottom={
+            <>
+              <section className="fpe-section">
+                <h2 className="fpe-h">Readiness</h2>
+                {readiness.items.map((it) => (
+                  <div key={it.t} className="sg-check" style={{ fontSize: 13 }}>
+                    <span className={it.ok ? 'sg-check__ok' : 'sg-check__no'} aria-hidden="true">
+                      {it.ok ? '✓' : '!'}
+                    </span>
+                    {it.t}
                   </div>
-                </div>
-                {isLocked(selected) ? (
-                  <div className="sg-muted" style={{ fontSize: 13 }} data-testid="field-locked">
-                    This field type can’t be edited here. It is kept as it is; you can delete it.
-                  </div>
-                ) : null}
-                {isLocked(selected) ? null : (<>
-                <label className="sg-field">
-                  <span className="sg-label">Recipient</span>
-                  <Sel value={selected.signerId} onChange={(e) => update(selected.key, (x) => ({ ...x, signerId: e.target.value }))}>
-                    {signers.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </Sel>
-                </label>
-                <label className="sg-check">
-                  <Check checked={selected.required} onChange={(e) => configure(selected.key, { required: e.target.checked })} />
-                  Required
-                </label>
-                {selected.type === 'SIGNER_NAME' ? (
-                  <label className="sg-field">
-                    <span className="sg-label">Name comes from</span>
-                    <Sel value={selected.nameMode} onChange={(e) => configure(selected.key, { nameMode: e.target.value === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' })} data-testid="name-mode">
-                      <option value="SIGNER_PROFILE">Signer profile (filled by Aramo Sign)</option>
-                      <option value="SIGNER_ENTERED">Signer types it</option>
-                    </Sel>
-                  </label>
-                ) : null}
-                {selected.type === 'CHECKBOX' ? (
-                  <>
-                    <label className="sg-field">
-                      <span className="sg-label">Label</span>
-                      <TextIn value={selected.label} maxLength={CHECKBOX_LABEL_MAX} onChange={(e) => configure(selected.key, { label: e.target.value })} data-testid="checkbox-label" />
-                    </label>
-                    <label className="sg-field">
-                      <span className="sg-label">Group</span>
-                      <TextIn value={selected.groupKey} maxLength={CHECKBOX_GROUP_KEY_MAX} placeholder="No group" onChange={(e) => configure(selected.key, { groupKey: e.target.value })} data-testid="checkbox-group" />
-                    </label>
-                    {selected.groupKey.trim().length > 0 ? (
-                      <>
-                        <label className="sg-field">
-                          <span className="sg-label">Rule</span>
-                          <Sel value={selected.groupRule} onChange={(e) => configure(selected.key, { groupRule: e.target.value === 'SELECT_ONE' ? 'SELECT_ONE' : 'SELECT_ANY' })} data-testid="checkbox-rule">
-                            <option value="SELECT_ANY">Select any</option>
-                            <option value="SELECT_ONE">Select one</option>
-                          </Sel>
-                        </label>
-                        {selected.groupRule === 'SELECT_ANY' ? (
-                          <label className="sg-field">
-                            <span className="sg-label">Minimum checked (when required)</span>
-                            <TextIn
-                              type="number"
-                              min={1}
-                              max={groupSize(fields, selected)}
-                              value={selected.minSelected ?? 1}
-                              onChange={(e) => {
-                                const n = Math.floor(Number(e.target.value));
-                                if (Number.isFinite(n) && n >= 1) configure(selected.key, { minSelected: Math.min(n, groupSize(fields, selected)) });
-                              }}
-                              data-testid="checkbox-min"
-                            />
-                          </label>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-                </>)}
-                <Btn variant="danger" size="sm" onClick={() => remove(selected.key)}>
-                  Delete field
+                ))}
+              </section>
+              <section className="fpe-section">
+                <Btn block disabled title="Previewing as a recipient needs a sender-scoped preview session (proposed)">
+                  Preview as recipient · Proposed
                 </Btn>
-              </div>
-            )}
-          </div>
-          <div className="sg-panel">
-            <div className="sg-panel__t">Readiness</div>
-            {readiness.items.map((it) => (
-              <div key={it.t} className="sg-check" style={{ fontSize: 13 }}>
-                <span className={it.ok ? 'sg-check__ok' : 'sg-check__no'} aria-hidden="true">
-                  {it.ok ? '✓' : '!'}
-                </span>
-                {it.t}
-              </div>
-            ))}
-          </div>
-          <Btn block disabled title="Previewing as a recipient needs a sender-scoped preview session (proposed)">
-            Preview as recipient · Proposed
-          </Btn>
-        </div>
+              </section>
+            </>
+          }
+        />
       </div>
       <div className="sg-wizfoot">
         <Btn onClick={() => nav(back)}>
           <Icon name="back" size={14} /> Back
         </Btn>
-        <Btn variant="primary" onClick={() => nav(next)} disabled={save === 'saving'} data-testid="prepare-review">
+        <Btn variant="primary" onClick={() => nav(next)} disabled={autosave.state === 'saving'} data-testid="prepare-review">
           Review <Icon name="next" size={14} />
         </Btn>
       </div>
     </>
-  );
-}
-
-function PageView({
-  id,
-  pdf,
-  pageIndex,
-  info,
-  cssWidth,
-  label,
-  placing,
-  onPlace,
-  onBackground,
-  children,
-}: {
-  id: string;
-  pdf: LoadedPdf;
-  pageIndex: number;
-  info: PdfPageInfo;
-  cssWidth: number;
-  label: string;
-  placing: boolean;
-  onPlace: (x: number, y: number) => void;
-  onBackground: () => void;
-  children: React.ReactNode;
-}) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (canvas.current !== null) void pdf.render(pageIndex, canvas.current, cssWidth).catch(() => undefined);
-  }, [pdf, pageIndex, cssWidth]);
-  const cssHeight = (cssWidth / info.width) * info.height;
-  return (
-    <div className="sg-pagewrap" style={{ width: cssWidth }} id={id}>
-      <div className="sg-pagewrap__lab">
-        <span className="sg-ellipsis">{label}</span>
-        <span>Page {pageIndex + 1}</span>
-      </div>
-      <div
-        className={placing ? 'sg-pageview sg-pageview--placing' : 'sg-pageview'}
-        style={{ width: cssWidth, height: cssHeight }}
-        data-testid={`page-${pageIndex}`}
-        onPointerDown={(e) => {
-          if (e.target !== e.currentTarget && !(e.target instanceof HTMLCanvasElement)) return;
-          const r = e.currentTarget.getBoundingClientRect();
-          const x = ((e.clientX - r.left) / r.width) * info.width;
-          const y = ((e.clientY - r.top) / r.height) * info.height;
-          if (placing) onPlace(x, y);
-          else onBackground();
-        }}
-      >
-        <canvas ref={canvas} aria-label={`${label}, page ${pageIndex + 1}`} />
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function FieldBox({
-  f,
-  info,
-  color,
-  who,
-  selected,
-  onSelect,
-  onStart,
-  onLive,
-  onKey,
-}: {
-  f: EdField;
-  info: PdfPageInfo;
-  color: string;
-  who: string;
-  selected: boolean;
-  onSelect: () => void;
-  onStart: () => void;
-  onLive: (fn: (f: EdField) => EdField) => void;
-  onKey: (e: KeyboardEvent<HTMLDivElement>) => void;
-}) {
-  const drag = useRef<{ mode: 'move' | 'size'; sx: number; sy: number; scale: number; ox: number; oy: number; ow: number; oh: number } | null>(null);
-  const start = (e: PointerEvent<HTMLElement>, mode: 'move' | 'size') => {
-    e.stopPropagation();
-    e.preventDefault();
-    const page = (e.currentTarget as HTMLElement).closest('.sg-pageview');
-    if (page === null) return;
-    const r = page.getBoundingClientRect();
-    drag.current = { mode, sx: e.clientX, sy: e.clientY, scale: info.width / r.width, ox: f.x, oy: f.y, ow: f.w, oh: f.h };
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    onStart();
-    onSelect();
-  };
-  const move = (e: PointerEvent<HTMLElement>) => {
-    const d = drag.current;
-    if (d === null) return;
-    const dx = (e.clientX - d.sx) * d.scale;
-    const dy = (e.clientY - d.sy) * d.scale;
-    onLive((x) => {
-      const b =
-        d.mode === 'move'
-          ? clampBox({ x: d.ox + dx, y: d.oy + dy, width: x.w, height: x.h }, info)
-          : clampBox({ x: x.x, y: x.y, width: d.ow + dx, height: d.oh + dy }, info);
-      return { ...x, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
-    });
-  };
-  const end = () => {
-    drag.current = null;
-  };
-  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={`${TYPES[f.type].label} field for ${who}, page ${f.page + 1}`}
-      aria-pressed={selected}
-      className={selected ? 'sg-fieldbox sg-fieldbox--sel' : 'sg-fieldbox'}
-      style={{ left: pct(f.x, info.width), top: pct(f.y, info.height), width: pct(f.w, info.width), height: pct(f.h, info.height), borderColor: color, color, background: `${color}14` }}
-      onPointerDown={(e) => start(e, 'move')}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
-      onFocus={onSelect}
-      onKeyDown={onKey}
-      data-testid="field-box"
-    >
-      <span className="sg-fieldbox__who" style={{ background: color }}>
-        {who}
-      </span>
-      {f.type === 'CHECKBOX' ? '' : TYPES[f.type].label}
-      {selected ? <span className="sg-fieldbox__grip" style={{ borderColor: color }} onPointerDown={(e) => start(e, 'size')} onPointerMove={move} onPointerUp={end} aria-hidden="true" /> : null}
-    </div>
   );
 }

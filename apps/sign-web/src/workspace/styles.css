@@ -918,6 +918,35 @@ a.sg-row:hover {
   color: var(--accent) !important;
   background: var(--accent-soft);
 }
+/* FIELD-PARITY-1 P1-5 — step 3 Prepare is the shared placement editor
+ * (@aramo/field-placement-web, .fpe-*); its tokens map onto this app's theme. The editor sizes
+ * itself to the window under its own top (fitHeight), so the page column and both panels scroll
+ * on their own (≤1100px: stacked, normal page scrolling). */
+.sg-prepare {
+  --fpe-canvas: var(--bg);
+  --fpe-surface: var(--surface);
+  --fpe-paper: var(--paper);
+  --fpe-line: var(--line);
+  --fpe-ink: var(--ink);
+  --fpe-muted: var(--muted);
+  --fpe-faint: var(--faint);
+  --fpe-brand: var(--accent);
+  --fpe-brand-soft: var(--accent-soft);
+  --fpe-danger: var(--bad);
+  --fpe-radius: 8px;
+  --fpe-panel-width: 260px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sg-prepare .fpe-h {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
 .sg-drop {
   border: 1.5px dashed var(--line);
   border-radius: 14px;
@@ -957,173 +986,10 @@ a.sg-row:hover {
   font-weight: 700;
 }
 
-.sg-editor {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 270px;
-  gap: 14px;
-  align-items: start;
-}
-.sg-editor__side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  position: sticky;
-  top: 70px;
-}
-.sg-panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px;
-}
-.sg-panel__t {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 8px;
-}
-.sg-tool {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  margin-bottom: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  text-align: left;
-}
-.sg-tool--on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.sg-tool__g {
-  width: 22px;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-}
-.sg-recsel {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  margin-bottom: 6px;
-  cursor: pointer;
-  text-align: left;
-}
-.sg-recsel--on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
-}
 .sg-swatch {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  flex: none;
-}
-.sg-canvas__bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.sg-pagewrap {
-  margin: 0 auto 18px;
-}
-.sg-pagewrap__lab {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--faint);
-  margin-bottom: 4px;
-}
-.sg-pageview {
-  position: relative;
-  background: var(--paper);
-  box-shadow: 0 1px 3px rgba(20, 24, 31, 0.12), 0 6px 18px rgba(20, 24, 31, 0.06);
-  user-select: none;
-  touch-action: none;
-}
-.sg-pageview canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.sg-pageview--placing {
-  cursor: crosshair;
-}
-.sg-fieldbox {
-  position: absolute;
-  border: 1.5px solid;
-  border-radius: 3px;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 1px 4px;
-  overflow: visible;
-  cursor: move;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
-.sg-fieldbox--sel {
-  box-shadow: 0 0 0 2px rgba(36, 71, 216, 0.25);
-}
-.sg-fieldbox__who {
-  position: absolute;
-  top: -15px;
-  left: -1.5px;
-  font-size: 9px;
-  color: #fff;
-  padding: 0 4px;
-  border-radius: 3px 3px 0 0;
-  line-height: 14px;
-}
-.sg-fieldbox__grip {
-  position: absolute;
-  right: -5px;
-  bottom: -5px;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  background: #fff;
-  border: 1.5px solid;
-  cursor: nwse-resize;
-}
-.sg-thumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-  width: 100%;
-  text-align: left;
-}
-.sg-thumb:hover {
-  background: var(--bg);
-}
-.sg-thumb__box {
-  width: 26px;
-  height: 33px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: #fff;
   flex: none;
 }
 .sg-docrow {
@@ -1217,13 +1083,6 @@ a.sg-row:hover {
 
 /* ── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 1180px) {
-  .sg-editor {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-  .sg-editor__props {
-    grid-column: 1 / -1;
-    position: static;
-  }
   .sg-grid--6 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1240,12 +1099,6 @@ a.sg-row:hover {
   .sg-grid--2,
   .sg-settings {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .sg-editor {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .sg-editor__side {
-    position: static;
   }
   .sg-kv {
     grid-template-columns: repeat(2, minmax(0, 1fr));
