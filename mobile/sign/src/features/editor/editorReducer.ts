@@ -2,7 +2,9 @@
 // Pure: every action is deterministic (ids come in the action), so it is unit-tested
 // without a renderer. Boxes are in the EDITOR frame (PDF points, top-left origin);
 // geometry.ts converts to and from the wire and the screen.
-import { pendingSuggestions } from '@aramo/sign-client';
+import { fieldSettingsOf, isFieldTypeKey, pendingSuggestions } from '@aramo/sign-client';
+
+import { NEW_DROPDOWN_CHOICES, isGroupedType, type EditorFieldSettings } from './fieldSettings';
 
 import {
   FIELD_TYPE_SPECS,
@@ -23,8 +25,10 @@ import {
 } from './geometry';
 
 export const UNDO_DEPTH = 30;
+/** FIELD-PARITY-1 P3 T-5 — the gap (points) between a radio option and the next "Add option" places. */
+export const RADIO_OPTION_GAP = 8;
 
-export interface EditorField extends Box {
+export interface EditorField extends Box, EditorFieldSettings {
   /** Client key (the server re-creates fields on every PUT). */
   readonly key: string;
   /** The draft document's key. */
@@ -37,8 +41,9 @@ export interface EditorField extends Box {
   readonly required: boolean;
   /** M-A6 §2.2 — SIGNER_NAME only (default SIGNER_PROFILE). */
   readonly nameMode?: NameMode;
-  /** M-A6 §2.3 — CHECKBOX only. */
+  /** M-A6 §2.3 — a check box's caption; FIELD-PARITY-1 P3 S-1 — every type's label (a radio's option text). */
   readonly label?: string | null;
+  /** M-A6 §2.3 — CHECKBOX; FIELD-PARITY-1 P3 T-5 — RADIO (always one). */
   readonly groupKey?: string | null;
   readonly groupRule?: GroupRule | null;
   readonly minSelected?: number | null;
@@ -145,6 +150,15 @@ export type EditorAction =
   | { readonly type: 'setGroupRule'; readonly key: string; readonly rule: GroupRule }
   /** Applies to every box of the group; clamped to 1 … group size. */
   | { readonly type: 'setMinSelected'; readonly key: string; readonly min: number }
+  /**
+   * FIELD-PARITY-1 P3 §6.2 — change the P3 settings of a field (one undo step). Only the settings
+   * its type takes apply; a group's read-only / sender-filled apply to every field of the group;
+   * turning sender-filled off clears read-only and the sender's value; a radio option chosen as
+   * the sender's value clears the others of its group.
+   */
+  | { readonly type: 'configure'; readonly key: string; readonly patch: EditorFieldSettings }
+  /** FIELD-PARITY-1 P3 T-5 — "Add option": a sibling radio button just below, same group. */
+  | { readonly type: 'addRadioOption'; readonly key: string; readonly newKey: string; readonly pageSize: PageSize }
   | { readonly type: 'delete'; readonly key: string }
   | { readonly type: 'undo' }
   /** Recipients changed elsewhere: drop the fields of removed recipients. */
@@ -203,6 +217,7 @@ function newField(
   docKey: string,
   page: number,
   box: Box,
+  fields: readonly EditorField[] = [],
 ): EditorField {
   return {
     key,
@@ -219,16 +234,42 @@ function newField(
     ...(tool === 'CHECKBOX'
       ? { label: null, groupKey: null, groupRule: null, minSelected: null }
       : {}),
+    // FIELD-PARITY-1 P3 T-5 — a radio button is always one option of a group (its own, new).
+    ...(tool === 'RADIO'
+      ? { label: 'Option 1', groupKey: nextGroupKey(fields), groupRule: 'SELECT_ONE' as const, minSelected: null }
+      : {}),
+    // T-4 — a dropdown starts with two choices to edit (the server needs at least one).
+    ...(tool === 'DROPDOWN' ? { options: { choices: NEW_DROPDOWN_CHOICES } } : {}),
   };
 }
 
-/** The boxes of `groupKey` (none when null). */
+/** The boxes of `groupKey` (none when null): a check-box group or a radio group (T-5). */
 export function groupMembers(
   fields: readonly EditorField[],
   groupKey: string | null | undefined,
 ): EditorField[] {
   if (groupKey === null || groupKey === undefined) return [];
-  return fields.filter((f) => f.type === 'CHECKBOX' && f.groupKey === groupKey);
+  return fields.filter((f) => isGroupedType(f.type) && f.groupKey === groupKey);
+}
+
+/** The P3 settings `type` takes, from a patch (the rest dropped). */
+function applicablePatch(type: string, patch: EditorFieldSettings): EditorFieldSettings {
+  if (!isFieldTypeKey(type)) return {};
+  const takes = new Set<string>(fieldSettingsOf(type));
+  const key: Record<keyof EditorFieldSettings, string> = {
+    tooltip: 'tooltip',
+    placeholder: 'placeholder',
+    readOnly: 'read_only',
+    senderFilled: 'sender_filled',
+    senderValue: 'sender_filled',
+    validation: 'validation',
+    fontSize: 'font_size',
+    dataName: 'data_name',
+    options: 'options',
+  };
+  return Object.fromEntries(
+    Object.entries(patch).filter(([k]) => takes.has(key[k as keyof EditorFieldSettings])),
+  ) as EditorFieldSettings;
 }
 
 /** A group key not yet used in `fields` ("group-1", "group-2", …). */
@@ -286,7 +327,7 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
         const sug = pending.get(k);
         const key = a.fieldKeys[i];
         if (!sug || key === undefined || !isAuthoringFieldType(sug.type)) return;
-        added.push(newField(key, sug.type, recipient, sug.docKey, sug.page, { x: sug.x, y: sug.y, width: sug.width, height: sug.height }));
+        added.push(newField(key, sug.type, recipient, sug.docKey, sug.page, { x: sug.x, y: sug.y, width: sug.width, height: sug.height }, [...s.fields, ...added]));
       });
       if (added.length === 0) return s;
       return { ...commit(s, [...s.fields, ...added]), tool: null, selected: added.length === 1 ? (added[0]?.key ?? null) : null };
@@ -310,7 +351,7 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
         { width: Math.round(spec.width * k), height: Math.round(spec.height * k) },
         a.pageSize,
       );
-      const f = newField(a.key, tool, recipient, a.docKey, a.page, box);
+      const f = newField(a.key, tool, recipient, a.docKey, a.page, box, s.fields);
       // The tool is released and the new field selected (handoff §4.6).
       return { ...commit(s, [...s.fields, f]), tool: null, selected: f.key };
     }
@@ -383,7 +424,8 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
     }
     case 'setLabel': {
       const f = s.fields.find((x) => x.key === a.key);
-      if (!f || f.type !== 'CHECKBOX') return s;
+      // FIELD-PARITY-1 P3 S-1 — every type that takes a label (the catalog).
+      if (!f || !isFieldTypeKey(f.type) || !fieldSettingsOf(f.type).includes('label')) return s;
       const label = a.label.trim().slice(0, MAX_LABEL);
       const next = label.length > 0 ? label : null;
       if ((f.label ?? null) === next) return s;
@@ -394,7 +436,9 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
     }
     case 'setGroup': {
       const f = s.fields.find((x) => x.key === a.key);
-      if (!f || f.type !== 'CHECKBOX' || (f.groupKey ?? null) === a.groupKey) return s;
+      if (!f || !isGroupedType(f.type) || (f.groupKey ?? null) === a.groupKey) return s;
+      // T-5 — a radio button never leaves every group.
+      if (f.type === 'RADIO' && a.groupKey === null) return s;
       if (a.groupKey === null) {
         const left = mapField(s.fields, a.key, (x) => ({
           ...x,
@@ -406,18 +450,22 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       }
       const others = groupMembers(s.fields, a.groupKey).filter((m) => m.key !== a.key);
       const lead = others[0];
-      if (lead && lead.recipientKey !== f.recipientKey) return s;
+      if (lead && (lead.recipientKey !== f.recipientKey || lead.type !== f.type)) return s;
       const joined = mapField(s.fields, a.key, (x) => ({
         ...x,
         groupKey: a.groupKey,
-        groupRule: lead?.groupRule ?? 'SELECT_ANY',
-        minSelected: lead ? (lead.minSelected ?? null) : null,
+        groupRule: x.type === 'RADIO' ? 'SELECT_ONE' : (lead?.groupRule ?? 'SELECT_ANY'),
+        minSelected: lead && x.type !== 'RADIO' ? (lead.minSelected ?? null) : null,
         required: lead ? lead.required : x.required,
+        // P3 — a group shares its read-only / sender-filled setting.
+        ...(lead ? { readOnly: lead.readOnly === true, senderFilled: lead.senderFilled === true } : {}),
+        ...(lead && lead.senderFilled !== true ? { senderValue: null } : {}),
       }));
       return commit(s, clampGroupMin(joined, f.groupKey));
     }
     case 'setGroupRule': {
       const f = s.fields.find((x) => x.key === a.key);
+      // T-5 — a radio group's rule is always SELECT_ONE.
       if (!f || f.type !== 'CHECKBOX' || !f.groupKey || f.groupRule === a.rule) return s;
       return commit(
         s,
@@ -439,6 +487,49 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
         s,
         mapGroup(s.fields, a.key, (x) => ({ ...x, minSelected: value })),
       );
+    }
+    case 'configure': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f) return s;
+      const patch = applicablePatch(f.type, a.patch);
+      if (Object.keys(patch).length === 0) return s;
+      let next: EditorField = { ...f, ...patch };
+      // S-4 — read-only only with sender-filled; a field no longer sender-filled loses its value.
+      if (next.senderFilled !== true) next = { ...next, readOnly: false, senderValue: null };
+      const changed = (Object.keys(next) as (keyof EditorField)[]).some((k) => JSON.stringify(next[k]) !== JSON.stringify(f[k]));
+      if (!changed) return s;
+      const shared = patch.readOnly !== undefined || patch.senderFilled !== undefined;
+      const radioChosen = f.type === 'RADIO' && patch.senderValue === 'true';
+      const members = new Set(groupMembers(s.fields, f.groupKey).map((m) => m.key));
+      return commit(
+        s,
+        s.fields.map((x) => {
+          if (x.key === f.key) return next;
+          if (!members.has(x.key)) return x;
+          let y = x;
+          if (shared) {
+            y = { ...y, readOnly: next.readOnly === true, senderFilled: next.senderFilled === true };
+            if (next.senderFilled !== true) y = { ...y, senderValue: null };
+          }
+          if (radioChosen && y.senderValue === 'true') y = { ...y, senderValue: 'false' };
+          return y;
+        }),
+      );
+    }
+    case 'addRadioOption': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'RADIO' || !f.groupKey || s.fields.some((x) => x.key === a.newKey)) return s;
+      const count = groupMembers(s.fields, f.groupKey).length;
+      // EDITOR frame (top-left origin): below = a larger y.
+      const box = clampBox({ x: f.x, y: f.y + f.height + RADIO_OPTION_GAP, width: f.width, height: f.height }, a.pageSize);
+      const sibling: EditorField = {
+        ...f,
+        ...box,
+        key: a.newKey,
+        label: `Option ${count + 1}`,
+        senderValue: f.senderFilled === true ? 'false' : null,
+      };
+      return { ...commit(s, [...s.fields, sibling]), selected: sibling.key };
     }
     case 'delete': {
       const f = s.fields.find((x) => x.key === a.key);
@@ -480,7 +571,7 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
 
 /** "{Type}, for {signer}, {required|optional}, {empty}" (handoff §7). */
 export function fieldAccessibilityLabel(f: EditorField, signerName: string): string {
-  const label = f.type === 'CHECKBOX' && f.label ? ` "${f.label}"` : '';
+  const label = f.label && (f.type === 'CHECKBOX' || f.type === 'RADIO' || f.type === 'ACKNOWLEDGEMENT') ? ` "${f.label}"` : '';
   return `${FIELD_TYPE_SPECS[f.type].label}${label}, for ${signerName}, ${f.required ? 'required' : 'optional'}, empty`;
 }
 

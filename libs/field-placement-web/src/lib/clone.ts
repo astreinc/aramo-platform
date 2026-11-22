@@ -9,7 +9,7 @@
 // - A copy keeps type, size, assignee / binding, required and settings; it gets a new id from
 //   the host's newFieldId (called with the fields so far, so the console's text_1, text_2 … run on).
 // - Positions are clamped to the page and rounded by the host's precision rule.
-// - Check-box groups: a duplicated or pasted box stays in its group. Repeat down copies a ROW, so
+// - Check-box and radio groups (FIELD-PARITY-1 P3 T-5): a duplicated or pasted box stays in its group. Repeat down copies a ROW, so
 //   each new row gets its own copy of every group in the row: the group key gains a row suffix
 //   (`<key>_2`, `<key>_3` …; the next free one, cut to the host's group-key limit), and the
 //   group's rule, minimum and required setting come with it.
@@ -17,7 +17,7 @@
 import { roundGestureBox, type DragPrecision } from './editor-state';
 import { boundsOf } from './arrange';
 import { clampBox, toTopLeft, type Box, type PdfPageInfo } from './geometry';
-import { type PageRef, type PlacedField } from './model';
+import { groupKeysOf, isGroupedType, type PageRef, type PlacedField } from './model';
 
 /** The step a duplicate (or a paste onto the same page) moves right and down, in points. */
 export const DUPLICATE_OFFSET = 10;
@@ -103,7 +103,7 @@ export function repeatDown(
   const count = Math.max(0, Math.min(REPEAT_MAX, Math.floor(opts.count)));
   const pitch = Math.max(1, opts.pitch);
   const bounds = boundsOf(row.map((f) => tlOf(f, page)))!;
-  const taken = new Set(all.filter((f) => f.type === 'CHECKBOX').map((f) => f.settings.groupKey.trim()).filter((k) => k.length > 0));
+  const taken = groupKeysOf(all);
   const out: PlacedField[] = [];
   let rows = 0;
   for (let r = 1; r <= count; r += 1) {
@@ -111,10 +111,10 @@ export function repeatDown(
     rows += 1;
     const keys = new Map<string, string>();
     for (const f of row) {
-      const g = f.type === 'CHECKBOX' ? f.settings.groupKey.trim() : '';
+      const g = isGroupedType(f.type) ? f.settings.groupKey.trim() : '';
       let settings = f.settings;
       if (g.length > 0) {
-        const groupId = `${f.assignee ?? ''}\u0000${g}`;
+        const groupId = `${f.type}\u0000${f.assignee ?? ''}\u0000${g}`;
         let key = keys.get(groupId);
         if (key === undefined) {
           key = nextGroupKey(g, r + 1, taken, opts.groupKeyMax);

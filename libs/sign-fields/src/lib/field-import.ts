@@ -35,9 +35,9 @@ export interface ImportedField {
   readonly required: boolean;
   /** A text tag's role (as typed, trimmed); null for a PDF form field or a tag without one. */
   readonly role: string | null;
-  /** CHECKBOX only (the catalog's `label` setting). */
+  /** CHECKBOX / RADIO (the catalog's `label` setting; a radio button's option text), or a tag's label=. */
   readonly label: string | null;
-  /** CHECKBOX only: a radio group's boxes share one group (SELECT_ONE). */
+  /** RADIO only: a radio group's buttons share one group (SELECT_ONE). */
   readonly group_key: string | null;
   readonly group_rule: 'SELECT_ONE' | null;
 }
@@ -140,15 +140,17 @@ export type PdfFormFieldKind = (typeof PDF_FORM_FIELD_KINDS)[number];
 
 /**
  * P2-5 — the catalog type each PDF form field kind becomes (null: not imported).
- *   multi-line text stays TEXT, and a dropdown / list box becomes TEXT, until Phase 3 adds
- *   their own types; a radio group becomes a SELECT_ONE check-box group; a push button has
- *   no catalog equivalent.
+ * FIELD-PARITY-1 P3 — a radio group becomes a RADIO group (T-5: each radio button one RADIO
+ * option of a SELECT_ONE group, labelled with its option) and a multi-line text field a
+ * MULTILINE_TEXT field (T-7). A dropdown / list box still becomes TEXT: a DROPDOWN needs its
+ * choices (options.choices), and neither the form reader nor the upload hosts carry a form
+ * field's options yet. A push button has no catalog equivalent.
  */
 export const PDF_FORM_FIELD_MAPPING: Readonly<Record<PdfFormFieldKind, FieldTypeKey | null>> = {
   text: 'TEXT',
-  multiline_text: 'TEXT',
+  multiline_text: 'MULTILINE_TEXT',
   checkbox: 'CHECKBOX',
-  radio: 'CHECKBOX',
+  radio: 'RADIO',
   dropdown: 'TEXT',
   list: 'TEXT',
   signature: 'SIGNATURE',
@@ -185,8 +187,8 @@ export interface FieldImportPlan {
 
 /**
  * P2-5 — the PDF form's widgets as catalog fields for `surface`. A field keeps its name; a
- * check box takes its tooltip (else its name) as its label; a radio group's boxes become one
- * SELECT_ONE group keyed by the radio name, each labelled with its option. Skipped, each with
+ * check box takes its tooltip (else its name) as its label; a radio group's buttons become one
+ * RADIO group (FIELD-PARITY-1 P3 T-5) keyed by the radio name, each labelled with its option. Skipped, each with
  * a named warning: push buttons, read-only fields, hidden widgets, signatures already signed,
  * widgets on no page, and any type the surface does not accept. `groupKeysTaken` holds the
  * group keys already used where the fields will be stored (it is updated).
@@ -233,16 +235,13 @@ export function planPdfFormFields(widgets: readonly PdfFormWidget[], pages: read
     let label: string | null = null;
     let group_key: string | null = null;
     let group_rule: 'SELECT_ONE' | null = null;
-    if (type === 'CHECKBOX') {
-      if (w.kind === 'radio') {
-        group_key = radioGroups.get(w.name) ?? importGroupKey(w.name, groupKeysTaken);
-        radioGroups.set(w.name, group_key);
-        group_rule = 'SELECT_ONE';
-        label = w.option ?? w.tooltip ?? w.name;
-      } else {
-        label = w.tooltip ?? w.name;
-      }
-      label = clampText(label.trim(), FIELD_LABEL_MAX) || null;
+    if (type === 'RADIO') {
+      group_key = radioGroups.get(w.name) ?? importGroupKey(w.name, groupKeysTaken);
+      radioGroups.set(w.name, group_key);
+      group_rule = 'SELECT_ONE';
+      label = clampText((w.option ?? w.tooltip ?? w.name).trim(), FIELD_LABEL_MAX) || null;
+    } else if (type === 'CHECKBOX') {
+      label = clampText((w.tooltip ?? w.name).trim(), FIELD_LABEL_MAX) || null;
     }
     fields.push({ source: 'pdf_form', name: w.name, field_type: type, ...box, required: w.required, role: null, label, group_key, group_rule });
   }
@@ -253,8 +252,12 @@ export function planPdfFormFields(widgets: readonly PdfFormWidget[], pages: read
 
 /**
  * The lower-case type names a tag may use (a catalog key in any case is accepted too).
- * "date" is the signing date and "name" the signer's printed name (the only date and name
- * Sign fills).
+ * "date" is the signing date (kept for compatibility) and "name" the signer's printed name.
+ * FIELD-PARITY-1 P3 — the chosen date (T-3) is "date_chosen" (or "chosen_date"), multi-line
+ * text (T-7) "multiline" / "multiline_text" / "paragraph", a number (T-6) "number", and the
+ * acknowledgement (T-2) "acknowledgement" / "acknowledge". A tag cannot carry a dropdown's
+ * choices or a radio button's group, so DROPDOWN and RADIO are not tag types
+ * (TEXT_TAG_UNSUPPORTED_TYPES).
  */
 export const TEXT_TAG_TYPE_ALIASES: Readonly<Record<string, FieldTypeKey>> = {
   signature: 'SIGNATURE',
@@ -270,7 +273,21 @@ export const TEXT_TAG_TYPE_ALIASES: Readonly<Record<string, FieldTypeKey>> = {
   email: 'EMAIL',
   first_name: 'FIRST_NAME',
   last_name: 'LAST_NAME',
+  date_chosen: 'DATE',
+  chosen_date: 'DATE',
+  multiline: 'MULTILINE_TEXT',
+  multiline_text: 'MULTILINE_TEXT',
+  paragraph: 'MULTILINE_TEXT',
+  number: 'NUMBER',
+  acknowledgement: 'ACKNOWLEDGEMENT',
+  acknowledge: 'ACKNOWLEDGEMENT',
 };
+
+/**
+ * FIELD-PARITY-1 P3 — catalog types a tag cannot create: a DROPDOWN needs its choices and a
+ * RADIO its group, which the tag syntax does not carry (the field would be refused when stored).
+ */
+export const TEXT_TAG_UNSUPPORTED_TYPES: ReadonlySet<FieldTypeKey> = new Set<FieldTypeKey>(['DROPDOWN', 'RADIO']);
 
 /** A tag: `{{` + 1..300 characters without braces + `}}`. */
 export const TEXT_TAG_PATTERN = /\{\{([^{}]{1,300})\}\}/g;
@@ -315,6 +332,12 @@ export function parseTextTag(inner: string, surface: FieldSurface): TextTagParse
   }
   if (!acceptedOn(surface, field_type)) {
     return { ok: false, warning: { code: 'text_tag_type_not_allowed', message: `{{${text}}}: a ${field_type} field is not accepted on this document.`, name: text } };
+  }
+  if (TEXT_TAG_UNSUPPORTED_TYPES.has(field_type)) {
+    return {
+      ok: false,
+      warning: { code: 'text_tag_type_not_allowed', message: `{{${text}}}: a ${field_type} field can't be made from a tag (it needs its ${field_type === 'DROPDOWN' ? 'choices' : 'group'}); place it in the editor.`, name: text },
+    };
   }
   const warnings: FieldImportWarning[] = [];
   const roleRaw = (parts[1] ?? '').trim();

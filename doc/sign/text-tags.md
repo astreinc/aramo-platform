@@ -39,24 +39,35 @@ text):
     then has no role; on an envelope it goes to the first signing recipient. A tag with no role is
     reported as `text_tag_role_missing`.
 - **required** or **optional** overrides the type's default (`FIELD_DEFAULTS`).
-- **label=** sets a check box's caption. Everything after `label=` belongs to the caption, so it
-  may contain `:`. Other types have no label; on them it is ignored and reported
-  (`text_tag_label_not_applicable`). An unrecognised option is ignored and reported
-  (`text_tag_option_unknown`).
+- **label=** sets the field's label (a check box's caption). Everything after `label=` belongs to
+  the label, so it may contain `:`. Since FIELD-PARITY-1 Phase 3 every type takes a label except
+  Payment; on a type without one it is ignored and reported (`text_tag_label_not_applicable`).
+  An unrecognised option is ignored and reported (`text_tag_option_unknown`).
 
 | Tag name | Field type | Fixed form | Envelope |
 |---|---|---|---|
 | `signature` | SIGNATURE | ✔ | ✔ |
 | `initials` | INITIALS | ✔ | ✔ |
-| `date`, `sign_date` | SIGN_DATE (the signing date) | ✔ | ✔ |
+| `date`, `sign_date` | SIGN_DATE (the signing date; kept as `date` for compatibility) | ✔ | ✔ |
 | `name`, `signer_name` | SIGNER_NAME (the signer's printed name) | ✔ | ✔ |
 | `text` | TEXT | ✔ | ✔ |
 | `checkbox` | CHECKBOX | ✔ | ✔ |
-| `title` | TITLE | ✗ | ✔ |
-| `company` | COMPANY | ✗ | ✔ |
-| `email` | EMAIL | ✗ | ✔ |
-| `first_name` | FIRST_NAME | ✗ | ✔ |
-| `last_name` | LAST_NAME | ✗ | ✔ |
+| `title` | TITLE | ✔ | ✔ |
+| `company` | COMPANY | ✔ | ✔ |
+| `email` | EMAIL | ✔ | ✔ |
+| `first_name` | FIRST_NAME | ✔ | ✔ |
+| `last_name` | LAST_NAME | ✔ | ✔ |
+| `date_chosen`, `chosen_date` | DATE (a date the signer picks, not the signing date) | ✔ | ✔ |
+| `number` | NUMBER (plain; set the money format in the editor) | ✔ | ✔ |
+| `multiline`, `multiline_text`, `paragraph` | MULTILINE_TEXT | ✔ | ✔ |
+| `acknowledgement`, `acknowledge` | ACKNOWLEDGEMENT | ✔ | ✔ |
+
+FIELD-PARITY-1 Phase 3 (ruling R-1) put the profile types on fixed forms and added the last four
+rows. A **dropdown** or **radio button** cannot come from a tag, because a tag cannot carry a
+dropdown's choices or a radio button's group. A `{{dropdown:…}}` or `{{radio:…}}` tag (or the
+catalog key in any case) creates no field. It is left visible and reported as
+`text_tag_type_not_allowed`; place those fields in the editor. The list is
+`TEXT_TAG_UNSUPPORTED_TYPES`.
 
 Payment is never created from a tag.
 
@@ -65,6 +76,7 @@ Examples:
 ```
 Seller: {{signature:Seller}}          Date: {{date:Seller}}
 Buyer name: {{text:Buyer:required}}
+Closing date: {{date_chosen:Buyer:required}}      Notes: {{multiline:Buyer:optional}}
 {{checkbox:Buyer:label=I have read the disclosure}}
 {{initials:buyer@example.com:optional}}
 ```
@@ -95,11 +107,11 @@ appearance is drawn into the page, and the form and its widgets are removed.
 | PDF form field | Catalog field |
 |---|---|
 | Text | TEXT |
-| Multi-line text | TEXT (until Phase 3 adds a multi-line type) |
+| Multi-line text | MULTILINE_TEXT (FIELD-PARITY-1 Phase 3) |
 | Check box | CHECKBOX (label = tooltip, else name) |
-| Radio group | one CHECKBOX per option, in one SELECT_ONE group (group key = the radio name, made unique on the document; label = the option) |
-| Dropdown (combo box) | TEXT (until Phase 3 adds DROPDOWN) |
-| List box | TEXT |
+| Radio group | one RADIO per option, in one radio group (always select-one; group key = the radio name, made unique on the document; label = the option). Before Phase 3 this was a SELECT_ONE check-box group. |
+| Dropdown (combo box) | TEXT. A DROPDOWN needs its choices, and neither the form reader nor the upload routes carry a form field's options yet (a follow-up). |
+| List box | TEXT (same reason) |
 | Signature (unsigned) | SIGNATURE |
 | Signature already signed | not imported (`pdf_field_signed`) |
 | Push button | not imported (`pdf_field_type_unsupported`) |

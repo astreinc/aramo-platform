@@ -62,11 +62,14 @@ import {
   type EditorSuggestion,
 } from './editorReducer';
 import { toEditorSuggestions, type WireSuggestion } from './senderSuggestions';
+import { hasSettings } from './fieldSettings';
+import { GeneralSettings, RadioSettings } from './FieldSettingsSheet';
 import {
   FIELD_TYPE_SPECS,
   MAX_LABEL,
   isAuthoringFieldType,
   selfSignTools,
+  sendTools,
   toolFieldTypes,
   zoomLabel,
   type AuthoringFieldType,
@@ -130,6 +133,11 @@ export interface FieldEditorProps {
    * FIELD-PARITY-1 P2-4 — how "Find fields" reads each document's suggestions (keyed like
    * `documents`; null: not uploaded yet). Absent: no Suggest button.
    */
+  /**
+   * FIELD-PARITY-1 P3 S-5 — the server's sender_filled_fields_enabled: the settings sheet offers
+   * sender-filled (and read-only) only while it is true (they ship dark).
+   */
+  readonly senderFilledEnabled?: boolean;
   readonly suggestDocs?: readonly SuggestDoc[];
 }
 
@@ -181,6 +189,7 @@ export function FieldEditor({
   bottomInset = 0,
   selfSign,
   suggestDocs,
+  senderFilledEnabled = false,
 }: FieldEditorProps) {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -395,8 +404,9 @@ export function FieldEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armId]);
 
-  // M-A19 — every tool in one horizontally scrolling row (the Sign Document row).
-  const rowTools = selfSignTools(toolFieldTypes());
+  // M-A19 — every tool in one horizontally scrolling row (the Sign Document row), then the
+  // FIELD-PARITY-1 P3 tools (Send flow only).
+  const rowTools = sendTools(toolFieldTypes());
 
   const hint = state.tool
     ? `Tap the page to place ${FIELD_TYPE_SPECS[state.tool].noun} for ${firstName(active?.name ?? '')}`
@@ -713,6 +723,7 @@ export function FieldEditor({
               signerName={nameOf(selected.recipientKey)}
               pageSize={pageSizeOf(selected.docKey, selected.page)}
               dispatch={dispatch}
+              senderFilledEnabled={senderFilledEnabled}
               extra={renderSelectionExtra ? renderSelectionExtra(selected) : null}
             />
           ) : (
@@ -998,6 +1009,7 @@ function SelectionPanel({
   signerName,
   pageSize,
   dispatch,
+  senderFilledEnabled,
   extra,
 }: {
   readonly field: EditorField;
@@ -1007,6 +1019,7 @@ function SelectionPanel({
   readonly signerName: string;
   readonly pageSize: PageSize | undefined;
   readonly dispatch: (a: EditorAction) => void;
+  readonly senderFilledEnabled: boolean;
   readonly extra?: ReactNode;
 }) {
   const t = useTheme();
@@ -1019,7 +1032,10 @@ function SelectionPanel({
     pageSize && dispatch({ type: 'grow', key: field.key, dw, dh, pageSize });
   const n = NUDGE_POINTS;
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const configurable = field.type === 'SIGNER_NAME' || field.type === 'CHECKBOX';
+  // FIELD-PARITY-1 P3 §6.2 — every type with a setting (the catalog) has the settings sheet.
+  const configurable = hasSettings(field.type, senderFilledEnabled);
+  const settingsTitle =
+    field.type === 'SIGNER_NAME' ? 'Name settings' : field.type === 'CHECKBOX' ? 'Checkbox settings' : 'Field settings';
   return (
     <View style={styles.panelBody}>
       <View style={styles.selHeader}>
@@ -1056,23 +1072,18 @@ function SelectionPanel({
         />
       </View>
       {configurable ? (
-        <Button
-          variant="secondary"
-          title={field.type === 'SIGNER_NAME' ? 'Name settings' : 'Checkbox settings'}
-          onPress={() => setSettingsOpen(true)}
-        />
+        <Button testID="field-settings-open" variant="secondary" title={settingsTitle} onPress={() => setSettingsOpen(true)} />
       ) : null}
       {configurable ? (
         <Sheet
           visible={settingsOpen}
           onClose={() => setSettingsOpen(false)}
-          title={field.type === 'SIGNER_NAME' ? 'Name' : 'Checkbox'}
+          title={field.type === 'SIGNER_NAME' ? 'Name' : field.type === 'CHECKBOX' ? 'Checkbox' : FIELD_TYPE_SPECS[field.type].label}
         >
-          {field.type === 'SIGNER_NAME' ? (
-            <NameSettings field={field} dispatch={dispatch} />
-          ) : (
-            <CheckboxSettings field={field} fields={fields} dispatch={dispatch} />
-          )}
+          {field.type === 'SIGNER_NAME' ? <NameSettings field={field} dispatch={dispatch} /> : null}
+          {field.type === 'CHECKBOX' ? <CheckboxSettings field={field} fields={fields} dispatch={dispatch} /> : null}
+          {field.type === 'RADIO' ? <RadioSettings field={field} fields={fields} pageSize={pageSize} dispatch={dispatch} /> : null}
+          <GeneralSettings field={field} senderFilledEnabled={senderFilledEnabled} dispatch={dispatch} />
           <Button title="Done" onPress={() => setSettingsOpen(false)} />
         </Sheet>
       ) : null}

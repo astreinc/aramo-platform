@@ -27,7 +27,7 @@ import {
 import { clampBox, toPdf, toTopLeft, type Box } from './lib/geometry';
 import { KEYMAP, editorKeyIntent, fieldKeyIntent, isTextControl } from './lib/keymap';
 import {
-  DEFAULT_SETTINGS,
+  defaultSettingsFor,
   editableSettingsOf,
   paletteFor,
   typeLabelOf,
@@ -39,7 +39,8 @@ import {
   type PlacementDocument,
   type PlacementPrefill,
 } from './lib/model';
-import { groupSize } from './lib/settings';
+import { radioOptionBelow } from './lib/settings-wire';
+import { FieldSettingsPanel } from './FieldSettingsPanel';
 import { acceptSuggestions, fieldsFromSuggestions, pendingGhosts, type PlacementSuggestion } from './lib/suggestions';
 import { pickTargetPage, placeNewField, visibleArea, visibleRegionInPage, type ScreenRect } from './lib/viewport';
 import './field-placement.css';
@@ -419,7 +420,7 @@ export function PlacementEditor(props: PlacementEditorProps) {
       required: entry.required,
       assignee: active,
       binding: null,
-      settings: DEFAULT_SETTINGS,
+      settings: defaultSettingsFor(type, state.fields),
     };
     focusField.current = f.id;
     dispatch({ type: 'exec', command: placeField(f, `Add ${entry.label.toLowerCase()} field`) });
@@ -433,6 +434,19 @@ export function PlacementEditor(props: PlacementEditorProps) {
     dispatch({ type: 'exec', command: removeFields([f.id], `Delete ${typeLabel(f.type).toLowerCase()} field`) });
     dispatch({ type: 'select', ids: [] });
     setAnnounce(`${typeLabel(f.type)} field deleted.`);
+  };
+
+  /** FIELD-PARITY-1 P3 T-5 — "Add option": a sibling radio button below, in the same group (one undo step). */
+  const addRadioOption = (f: PlacedField) => {
+    const size = ctx.current.pageSize({ docId: f.docId, page: f.page });
+    if (size === undefined) return;
+    const sibling = radioOptionBelow(state.fields, f, newFieldId('RADIO', state.fields));
+    const b = toPdf(clampBox(toTopLeft({ x: sibling.x, y: sibling.y, width: sibling.width, height: sibling.height }, size.height), size), size.height);
+    const placed: PlacedField = { ...sibling, x: b.x, y: b.y };
+    focusField.current = placed.id;
+    dispatch({ type: 'exec', command: placeField(placed, 'Add radio option') });
+    dispatch({ type: 'select', ids: [placed.id] });
+    setAnnounce(`${placed.settings.label} added to radio group ${f.settings.groupKey}.`);
   };
 
   /** P2-2 — delete every selected field (a locked field may be deleted). */
@@ -1163,78 +1177,15 @@ export function PlacementEditor(props: PlacementEditorProps) {
                       />
                       Required
                     </label>
-                    {settingsShown.includes('name_mode') ? (
-                      <label className="fpe-row">
-                        <span className="fpe-label">Name comes from</span>
-                        <select
-                          className="fpe-select"
-                          value={selected.settings.nameMode}
-                          onChange={(e) => dispatch({ type: 'exec', command: configureField(selected.id, { nameMode: e.target.value === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' }) })}
-                          data-testid={`${p}-name-mode`}
-                        >
-                          <option value="SIGNER_PROFILE">Signer profile (filled by Aramo Sign)</option>
-                          <option value="SIGNER_ENTERED">Signer types it</option>
-                        </select>
-                      </label>
-                    ) : null}
-                    {settingsShown.includes('label') ? (
-                      <label className="fpe-row">
-                        <span className="fpe-label">Label</span>
-                        <input
-                          className="fpe-input"
-                          type="text"
-                          value={selected.settings.label}
-                          maxLength={capabilities.limits?.labelMax}
-                          onChange={(e) => dispatch({ type: 'exec', command: configureField(selected.id, { label: e.target.value }) })}
-                          data-testid={`${p}-checkbox-label`}
-                        />
-                      </label>
-                    ) : null}
-                    {settingsShown.includes('group_key') ? (
-                      <label className="fpe-row">
-                        <span className="fpe-label">Group</span>
-                        <input
-                          className="fpe-input"
-                          type="text"
-                          value={selected.settings.groupKey}
-                          maxLength={capabilities.limits?.groupKeyMax}
-                          placeholder="No group"
-                          onChange={(e) => dispatch({ type: 'exec', command: configureField(selected.id, { groupKey: e.target.value }) })}
-                          data-testid={`${p}-checkbox-group`}
-                        />
-                      </label>
-                    ) : null}
-                    {settingsShown.includes('group_rule') && selected.settings.groupKey.trim().length > 0 ? (
-                      <label className="fpe-row">
-                        <span className="fpe-label">Rule</span>
-                        <select
-                          className="fpe-select"
-                          value={selected.settings.groupRule}
-                          onChange={(e) => dispatch({ type: 'exec', command: configureField(selected.id, { groupRule: e.target.value === 'SELECT_ONE' ? 'SELECT_ONE' : 'SELECT_ANY' }) })}
-                          data-testid={`${p}-checkbox-rule`}
-                        >
-                          <option value="SELECT_ANY">Select any</option>
-                          <option value="SELECT_ONE">Select one</option>
-                        </select>
-                      </label>
-                    ) : null}
-                    {settingsShown.includes('min_selected') && selected.settings.groupKey.trim().length > 0 && selected.settings.groupRule === 'SELECT_ANY' ? (
-                      <label className="fpe-row">
-                        <span className="fpe-label">Minimum checked (when required)</span>
-                        <input
-                          className="fpe-input"
-                          type="number"
-                          min={1}
-                          max={groupSize(state.fields, selected)}
-                          value={selected.settings.minSelected ?? 1}
-                          onChange={(e) => {
-                            const n = Math.floor(Number(e.target.value));
-                            if (Number.isFinite(n) && n >= 1) dispatch({ type: 'exec', command: configureField(selected.id, { minSelected: Math.min(n, groupSize(state.fields, selected)) }) });
-                          }}
-                          data-testid={`${p}-checkbox-min`}
-                        />
-                      </label>
-                    ) : null}
+                    <FieldSettingsPanel
+                      field={selected}
+                      fields={state.fields}
+                      shown={settingsShown}
+                      capabilities={capabilities}
+                      idPrefix={p}
+                      onChange={(patch) => dispatch({ type: 'exec', command: configureField(selected.id, patch) })}
+                      onAddRadioOption={() => addRadioOption(selected)}
+                    />
                   </>
                 )}
                 {selectionTools}

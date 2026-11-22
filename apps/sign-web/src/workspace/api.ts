@@ -301,6 +301,8 @@ export interface EnvelopeField {
   font_size?: number | null;
   data_name?: string | null;
   options?: Readonly<Record<string, unknown>> | null;
+  // S-5 (ruling R-3, dark) — a sender-filled field's value, the sender's own (null otherwise).
+  value?: string | null;
 }
 
 // Sign 1.14 — the organization's Stripe Connect account (Settings → Payments).
@@ -380,6 +382,9 @@ export interface EnvelopeDetail {
   purge?: PurgeInfo | null;
   // Client Rule Consolidation C1 — what the caller may do (read it with senderActionsOf).
   actions?: SenderActions;
+  // FIELD-PARITY-1 P3 S-5 (ruling R-3) — sender-filled fields switched on (the server flag;
+  // absent / false: Prepare does not offer them).
+  sender_filled_fields_enabled?: boolean;
 }
 
 export interface LedgerEvent {
@@ -888,8 +893,9 @@ export const senderApi = {
     apiClient.put<RecipientMessaging>(`${BASE}/envelopes/${enc(id)}/recipients/${enc(signerId)}/messaging`, body),
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
-      // M-A6 §2 — the type's configuration travels with the field; a value never does.
-      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options }) => ({
+      // M-A6 §2 — the type's configuration travels with the field; a value never does, except a
+      // sender-filled field's own value (FIELD-PARITY-1 P3 S-5, ruling R-3).
+      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, value }) => ({
         // An engine-only type goes back with its stored id, unchanged (the server
         // keeps it only when identical to the stored row). FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT
         // is authorable now, but a stored engine row of it keeps its id (the server passes a
@@ -911,6 +917,8 @@ export const senderApi = {
         ...(font_size != null ? { font_size } : {}),
         ...(data_name != null ? { data_name } : {}),
         ...(options != null ? { options } : {}),
+        // S-5 — the sender's value travels only with a sender-filled field.
+        ...(sender_filled === true && value != null ? { value } : {}),
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),

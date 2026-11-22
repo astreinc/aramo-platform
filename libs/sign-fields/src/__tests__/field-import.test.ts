@@ -4,12 +4,14 @@
 import {
   PDF_FORM_FIELD_KINDS,
   PDF_FORM_FIELD_MAPPING,
+  TEXT_TAG_UNSUPPORTED_TYPES,
   fieldTypesFor,
   findTextTags,
   fitImportBox,
   importFieldKey,
   importGroupKey,
   matchTagRole,
+  parseFieldSettings,
   parseTextTag,
   planPdfFormFields,
   planTextTags,
@@ -43,9 +45,11 @@ describe('P2-5 AcroForm → catalog mapping', () => {
   it('maps every PDF form kind (push button: none)', () => {
     expect(PDF_FORM_FIELD_MAPPING).toEqual({
       text: 'TEXT',
-      multiline_text: 'TEXT',
+      // FIELD-PARITY-1 P3 — multi-line text and radio groups have their own types now; a
+      // dropdown stays TEXT until the reader and hosts carry its choices.
+      multiline_text: 'MULTILINE_TEXT',
       checkbox: 'CHECKBOX',
-      radio: 'CHECKBOX',
+      radio: 'RADIO',
       dropdown: 'TEXT',
       list: 'TEXT',
       signature: 'SIGNATURE',
@@ -80,10 +84,10 @@ describe('P2-5 AcroForm → catalog mapping', () => {
     expect(plan.warnings).toEqual([]);
     expect(plan.fields.map((f) => [f.name, f.field_type, f.label, f.group_key, f.group_rule])).toEqual([
       ['Full name', 'TEXT', null, null, null],
-      ['Notes', 'TEXT', null, null, null],
+      ['Notes', 'MULTILINE_TEXT', null, null, null],
       ['agree', 'CHECKBOX', 'I agree', null, null],
-      ['Colour', 'CHECKBOX', 'Red', 'colour', 'SELECT_ONE'],
-      ['Colour', 'CHECKBOX', 'Blue', 'colour', 'SELECT_ONE'],
+      ['Colour', 'RADIO', 'Red', 'colour', 'SELECT_ONE'],
+      ['Colour', 'RADIO', 'Blue', 'colour', 'SELECT_ONE'],
       ['State', 'TEXT', null, null, null],
       ['Sig1', 'SIGNATURE', null, null, null],
     ]);
@@ -249,5 +253,34 @@ describe('P2-6 tag finder and geometry', () => {
     expect(matchTagRole('SELLER', c)).toBe('r1');
     expect(matchTagRole(' buyer@EXAMPLE.com ', c)).toBe('r2');
     expect(matchTagRole('Chair', c)).toBeNull();
+  });
+});
+
+// FIELD-PARITY-1 P3 — the imported radio group satisfies the ONE settings rule as a RADIO
+// group, and the new tag aliases (with DROPDOWN / RADIO refused as tags).
+describe('P3 — imported radio groups and the new tag types', () => {
+  it('an imported radio button passes the settings rule as one option of a SELECT_ONE group', () => {
+    const plan = planPdfFormFields([widget({ kind: 'radio', name: 'Plan', option: 'Pro', width: 12, height: 12 })], [LETTER], 'send_web', new Set());
+    const f = plan.fields[0]!;
+    expect(parseFieldSettings({ label: f.label, group_key: f.group_key, group_rule: f.group_rule }, f.field_type)).toMatchObject({ ok: true, settings: { group_key: 'plan', group_rule: 'SELECT_ONE', label: 'Pro' } });
+  });
+
+  it('the new aliases name the P3 types; "date" stays the signing date', () => {
+    expect(textTagTypeOf('date')).toBe('SIGN_DATE');
+    expect(textTagTypeOf('date_chosen')).toBe('DATE');
+    expect(textTagTypeOf('chosen_date')).toBe('DATE');
+    expect(textTagTypeOf('multiline')).toBe('MULTILINE_TEXT');
+    expect(textTagTypeOf('paragraph')).toBe('MULTILINE_TEXT');
+    expect(textTagTypeOf('number')).toBe('NUMBER');
+    expect(textTagTypeOf('acknowledgement')).toBe('ACKNOWLEDGEMENT');
+    expect(parseTextTag('date_chosen:Buyer:required', 'template_fixed_form')).toMatchObject({ ok: true, tag: { field_type: 'DATE', role: 'Buyer', required: true } });
+    expect(parseTextTag('multiline:Buyer:label=Notes', 'send_web')).toMatchObject({ ok: true, tag: { field_type: 'MULTILINE_TEXT', label: 'Notes' } });
+  });
+
+  it('a DROPDOWN or RADIO tag is refused (a tag cannot carry choices or a group)', () => {
+    expect([...TEXT_TAG_UNSUPPORTED_TYPES].sort()).toEqual(['DROPDOWN', 'RADIO']);
+    for (const t of ['dropdown:Buyer', 'RADIO:Buyer']) {
+      expect(parseTextTag(t, 'send_web')).toMatchObject({ ok: false, warning: { code: 'text_tag_type_not_allowed' } });
+    }
   });
 });
