@@ -165,4 +165,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('M-A6 §3.4 — Te
     );
     await expect(templates.activateVersion({ tenant_id: TENANT, version_id: versionId, actor_id: ACTOR })).rejects.toBeInstanceOf(TemplatePreviewRequiredError);
   });
+
+  // FIELD-PARITY-1 P1-3 — the Sign field settings columns (migration
+  // 20261122100000_field_parity_1_template_field_settings): written with a DRAFT's fields, held to
+  // Sign's type-scoped CHECKs, and frozen with the version by the same trigger.
+  it('FIELD-PARITY-1 P1-3 — settings are stored on a DRAFT, refused by the CHECKs off-type, and frozen once ACTIVE', async () => {
+    const { versionId } = await draft();
+    const sig = await addField(versionId, 'sig_a', 1);
+    const name = await templates.addField({
+      tenant_id: TENANT, template_version_id: versionId, field_key: 'name_a', field_type: 'SIGNER_NAME', required: true,
+      page_number: 0, x: 10, y: 60, width: 100, height: 20, signer_role: 'client', ordinal: 2, name_mode: 'SIGNER_ENTERED',
+    });
+    const box = await templates.addField({
+      tenant_id: TENANT, template_version_id: versionId, field_key: 'box_a', field_type: 'CHECKBOX', required: false,
+      page_number: 0, x: 10, y: 90, width: 18, height: 18, signer_role: 'client', ordinal: 3,
+      label: 'Agree', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: 1,
+    });
+    expect(name).toMatchObject({ name_mode: 'SIGNER_ENTERED', label: null });
+    expect(box).toMatchObject({ label: 'Agree', group_key: 'g', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null });
+    expect(sig).toMatchObject({ label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null });
+
+    // The type-scoped CHECKs (the same as Sign's SignatureField).
+    const set = (sql: string, id: string): Promise<string> => refused(`UPDATE "documents"."TemplateFieldDefinition" SET ${sql} WHERE id = $1`, [id]);
+    expect(await set(`label = 'x'`, sig.id)).toContain('TemplateFieldDefinition_label_check');
+    expect(await set(`name_mode = 'SIGNER_ENTERED'`, sig.id)).toContain('TemplateFieldDefinition_name_mode_check');
+    expect(await set(`name_mode = 'TYPED'`, name.id)).toContain('TemplateFieldDefinition_name_mode_check');
+    expect(await set(`group_rule = NULL`, box.id)).toContain('TemplateFieldDefinition_group_rule_check');
+    expect(await set(`min_selected = 2`, box.id)).toContain('TemplateFieldDefinition_min_selected_check');
+    expect(await set(`label = ''`, box.id)).toContain('TemplateFieldDefinition_label_check');
+
+    // Published: the same trigger freezes the settings with the field.
+    await templates.recordPreview({ tenant_id: TENANT, version_id: versionId });
+    await templates.activateVersion({ tenant_id: TENANT, version_id: versionId, actor_id: ACTOR });
+    expect(await set(`label = 'Changed'`, box.id)).toContain('TemplateFieldDefinition is immutable');
+    expect(await set(`name_mode = 'SIGNER_PROFILE'`, name.id)).toContain('TemplateFieldDefinition is immutable');
+    const kept = await db.query(`SELECT label, name_mode FROM "documents"."TemplateFieldDefinition" WHERE id IN ($1, $2) ORDER BY ordinal`, [name.id, box.id]);
+    expect(kept.rows).toEqual([{ label: null, name_mode: 'SIGNER_ENTERED' }, { label: 'Agree', name_mode: null }]);
+  });
+
+  it('FIELD-PARITY-1 P1-3 — the settings migration re-runs cleanly (idempotent)', async () => {
+    const sql = readFileSync(resolve(ROOT, 'libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql'), 'utf8');
+    await db.query(sql);
+    await db.query(sql);
+    const cols = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'documents' AND table_name = 'TemplateFieldDefinition' AND column_name IN ('label','group_key','group_rule','min_selected','name_mode') ORDER BY column_name`,
+    );
+    expect(cols.rows.map((r: { column_name: string }) => r.column_name)).toEqual(['group_key', 'group_rule', 'label', 'min_selected', 'name_mode']);
+  });
 });

@@ -38,6 +38,7 @@ const SECRET = 'tp6-s2s-secret';
 const TENANT = '01900000-0000-7000-8000-0000000006e1';
 const SENDER = '00000000-0000-7000-8000-0000000006e2';
 const I9 = '0d0c0000-0000-7000-8000-0000000006f1'; // FIXED_FORM, {sign}
+const SETTINGS_TYPE = '0d0c0000-0000-7000-8000-0000000006f9'; // FIELD-PARITY-1 P1-4, FIXED_FORM, {sign}
 const W4 = '0d0c0000-0000-7000-8000-0000000006f2'; // FIXED_FORM, {ats}
 const PATH = '/v1/documents/esign/templates';
 
@@ -79,7 +80,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
 
   // A published PLATFORM fixed form: the asset is recorded while the version is DRAFT (the DB
   // trigger), then the version is activated and pinned (as the platform publish does).
-  async function publishedForm(typeId: string, name: string, products: string[], pdf: Uint8Array): Promise<{ template: string; version: string }> {
+  // FIELD-PARITY-1 P1-3 — `extra`: more signer fields, with their Sign settings.
+  type ExtraField = { field_key: string; field_type: string; role: string; label?: string; group_key?: string; group_rule?: string; min_selected?: number; name_mode?: string };
+  async function publishedForm(typeId: string, name: string, products: string[], pdf: Uint8Array, extra: ExtraField[] = []): Promise<{ template: string; version: string }> {
     const template = randomUUID();
     const version = randomUUID();
     const asset = randomUUID();
@@ -124,6 +127,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
         `INSERT INTO documents."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, binding_key, required, page_number, x, y, width, height, signer_role, ordinal)
          VALUES ($1, $2, $3, $4, $5, true, 0, 72, $6, 180, 24, $7, $8)`,
         [randomUUID(), version, field_key, field_type, binding, y, role, i],
+      );
+    }
+    for (const [i, f] of extra.entries()) {
+      await db.query(
+        `INSERT INTO documents."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, required, page_number, x, y, width, height, signer_role, ordinal, label, group_key, group_rule, min_selected, name_mode)
+         VALUES ($1, $2, $3, $4, false, 0, 300, $5, 18, 18, $6, $7, $8, $9, $10, $11, $12)`,
+        [randomUUID(), version, f.field_key, f.field_type, 100 + i * 30, f.role, fields.length + i, f.label ?? null, f.group_key ?? null, f.group_rule ?? null, f.min_selected ?? null, f.name_mode ?? null],
       );
     }
     await db.query(`UPDATE documents."TemplateVersion" SET status = 'ACTIVE', activated_at = now(), activated_by = $2 WHERE id = $1`, [version, SENDER]);
@@ -244,5 +254,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     const again = await post('render', i9.template, body, { idempotency_key: 'tp6-render-0001' });
     expect(again.status).toBe(201);
     expect(again.body['document_revision_ref']).toBe(res.body['document_revision_ref']);
+  });
+
+  // FIELD-PARITY-1 P1-4 — the S2S render carries each signer field's Sign settings to sign-service.
+  it('"Use" returns the field settings with every signer field (NULL when unset)', async () => {
+    // Published here (last), so the list assertions above still see only Form I-9.
+    const doc = await PDFDocument.create();
+    doc.addPage([612, 792]);
+    const pdf = await doc.save({ useObjectStreams: false });
+    await fixedType(SETTINGS_TYPE, 'FP1_FORM_SETTINGS', ['sign']);
+    const withSettings = await publishedForm(SETTINGS_TYPE, 'Settings form', ['sign'], pdf, [
+      { field_key: 'answer_yes', field_type: 'CHECKBOX', role: 'employee', label: 'Yes', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 },
+      { field_key: 'answer_no', field_type: 'CHECKBOX', role: 'employee', label: 'No', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 },
+      { field_key: 'employee_name', field_type: 'SIGNER_NAME', role: 'employee', name_mode: 'SIGNER_ENTERED' },
+    ]);
+    const res = await post('render', withSettings.template, { values: {}, created_by: SENDER, client_id: null }, { idempotency_key: 'fp1-render-0001' });
+    expect(res.status).toBe(201);
+    const defs = res.body['field_definitions'] as Array<Record<string, unknown>>;
+    expect(defs.map((d) => d['field_key'])).toEqual(['employee_sig', 'employee_date', 'employer_sig', 'answer_yes', 'answer_no', 'employee_name']);
+    expect(defs[0]).toMatchObject({ label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null });
+    expect(defs[3]).toMatchObject({ label: 'Yes', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1, name_mode: null });
+    expect(defs[4]).toMatchObject({ label: 'No', group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 });
+    expect(defs[5]).toMatchObject({ label: null, name_mode: 'SIGNER_ENTERED' });
   });
 });

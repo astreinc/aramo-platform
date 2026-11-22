@@ -10,6 +10,7 @@ import {
   type FixedFormPdfRef,
   type FixedFormRole,
 } from '../index.js';
+import { templateContentFingerprint, templateFieldSettingColumns } from '../lib/templates.repository.js';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.2 — the fixed-form field rules
 // (pure; the persistence is proven by the TP-6 integration spec).
@@ -130,6 +131,45 @@ describe('TEMPLATE-PRODUCT-1 TP-6 — fixed-form rules (§7.2)', () => {
       title: 'W-4',
       pdf: null,
       signing: { roles: [{ role_key: 'signer', label: 'Signer', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' },
+    });
+  });
+});
+
+// FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §4 P1-3 —
+// a fixed form's check-box groups hold Sign's group rule before it can be published, and the
+// settings are content (they join the preview fingerprint only when set).
+describe('FIELD-PARITY-1 P1-3 — fixed-form field settings', () => {
+  const box = (field_key: string, over: Partial<FixedFormField> = {}): FixedFormField =>
+    field({ field_key, field_type: 'CHECKBOX', required: false, width: 18, height: 18, group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1, ...over });
+
+  it('a consistent check-box group publishes', () => {
+    expect(fixedFormIssues({ pdf: PDF, roles: ROLES, fields: [...READY, box('yes', { label: 'Yes' }), box('no', { label: 'No' })], allowedBindingKeys: ALLOWED })).toEqual([]);
+  });
+
+  it('a group split across roles or rules, or with a minimum above its size, is an issue naming a box', () => {
+    const issues = (boxes: FixedFormField[]) => fixedFormIssues({ pdf: PDF, roles: ROLES, fields: [...READY, ...boxes], allowedBindingKeys: ALLOWED });
+    expect(issues([box('yes'), box('no', { signer_role: 'employer' })])).toEqual([expect.objectContaining({ code: 'checkbox_group_inconsistent', field_key: 'yes' })]);
+    expect(issues([box('yes'), box('no', { group_rule: 'SELECT_ANY' })])).toEqual([expect.objectContaining({ code: 'checkbox_group_inconsistent' })]);
+    const any = { group_rule: 'SELECT_ANY', min_selected: 3 };
+    expect(issues([box('a', any), box('b', any)])).toEqual([expect.objectContaining({ code: 'checkbox_group_min_exceeds_size', field_key: 'a' })]);
+  });
+
+  it('the fingerprint is unchanged for fields without settings and changes when a setting is set', () => {
+    const plain = { ...field({}), format_rule: null };
+    const nulls = { ...plain, label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null };
+    expect(templateContentFingerprint({ a: 1 }, [nulls])).toBe(templateContentFingerprint({ a: 1 }, [plain]));
+    const named = { ...plain, field_type: 'SIGNER_NAME', name_mode: 'SIGNER_ENTERED' };
+    expect(templateContentFingerprint({ a: 1 }, [named])).not.toBe(templateContentFingerprint({ a: 1 }, [{ ...named, name_mode: null }]));
+  });
+
+  it('templateFieldSettingColumns maps absent settings to NULL for every write and copy', () => {
+    expect(templateFieldSettingColumns({})).toEqual({ label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null });
+    expect(templateFieldSettingColumns({ label: 'Yes', group_key: 'g', group_rule: 'SELECT_ANY', min_selected: 2 })).toEqual({
+      label: 'Yes',
+      group_key: 'g',
+      group_rule: 'SELECT_ANY',
+      min_selected: 2,
+      name_mode: null,
     });
   });
 });

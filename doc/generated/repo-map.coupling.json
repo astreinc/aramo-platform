@@ -32441,6 +32441,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/documents/src/tests/org-ux-1-template-adoption.integration.spec.ts",
       "status": "excluded",
       "to": "libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql"
@@ -36806,6 +36812,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261103140100_template_product_1_tenant_template_visibility/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261122100000_field_parity_1_template_field_settings/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

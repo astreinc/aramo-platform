@@ -247,4 +247,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
     const art = await db.query(`SELECT artifact_role, immutability_state FROM "documents"."DocumentArtifact" WHERE document_id = $1`, [docId]);
     expect(art.rows).toEqual([{ artifact_role: 'RENDERED_UNSIGNED', immutability_state: 'FROZEN' }]);
   });
+
+  // FIELD-PARITY-1 P1-3 — the Sign field settings are written with a DRAFT's layout, and a new
+  // version of the form copies them with its fields (they are content, like the geometry).
+  it('FIELD-PARITY-1 P1-3 — layout writes store the field settings; a new version copies them', async () => {
+    const typeId = randomUUID();
+    await fixedType(typeId, 'FP1_FORM_SETTINGS', ['ats']);
+    const t = await templates.createPlatformTemplate({ document_type_id: typeId, name: 'Settings form', template_kind: 'UPLOADED_PDF', products: ['ats'], created_by: ACTOR });
+    const draft = await forms.createPlatformDraft({ template_id: t.id, created_by: ACTOR, initial: emptyFixedFormContent('Settings form') });
+    const asset = await forms.createPlatformAsset({
+      template_version_id: draft.id,
+      storage_key: `documents/platform/template-assets/${draft.id}/${SHA}.pdf`,
+      sha256: SHA,
+      byte_size: 1024,
+      page_count: 1,
+      created_by: ACTOR,
+    });
+    const box = (key: string, ordinal: number, label: string) =>
+      field(key, { field_type: 'CHECKBOX', required: false, width: 18, height: 18, ordinal, label, group_key: 'answer', group_rule: 'SELECT_ONE', min_selected: 1 });
+    await forms.writePlatformDraft({
+      version_id: draft.id,
+      field_schema: {
+        render_schema_version: FIXED_FORM_SCHEMA_V1,
+        title: 'Settings form',
+        pdf: { asset_id: asset.id, sha256: SHA, byte_size: 1024, page_count: 1, pages: [{ width: 612, height: 792 }] },
+        signing: SIGNING,
+      },
+      fields: [field('sig'), box('yes', 1, 'Yes'), box('no', 2, 'No')],
+    });
+    await forms.addPlatformDraftField({ version_id: draft.id, field: field('name', { field_type: 'SIGNER_NAME', ordinal: 3, name_mode: 'SIGNER_ENTERED' }) });
+    const settingsOf = async (version_id: string) =>
+      (await forms.listFields(version_id)).map((f) => [f.field_key, f.label, f.group_key, f.group_rule, f.min_selected, f.name_mode]);
+    const expected = [
+      ['sig', null, null, null, null, null],
+      ['yes', 'Yes', 'answer', 'SELECT_ONE', 1, null],
+      ['no', 'No', 'answer', 'SELECT_ONE', 1, null],
+      ['name', null, null, null, null, 'SIGNER_ENTERED'],
+    ];
+    expect(await settingsOf(draft.id)).toEqual(expected);
+    await templates.recordPlatformPreview(draft.id);
+    await templates.activatePlatformVersion({ version_id: draft.id, actor_id: ACTOR });
+    const v2 = await forms.createPlatformDraft({ template_id: t.id, created_by: ACTOR, initial: null });
+    expect(await settingsOf(v2.id)).toEqual(expected);
+    // The copied draft hashes like its source (settings included), so no spurious content change.
+    const [src, copy] = await Promise.all([templates.getPlatformVersion(draft.id), templates.getPlatformVersion(v2.id)]);
+    expect(copy.content_fingerprint).toBe(src.content_fingerprint);
+  });
 });
+
