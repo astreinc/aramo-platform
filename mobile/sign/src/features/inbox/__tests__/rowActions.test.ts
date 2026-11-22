@@ -11,7 +11,9 @@ import {
   remindFromList,
   voidFromList,
 } from '../listActions';
-import { mayManageListed, swipeActionsFor, type SwipeContext } from '../rowActionRules';
+import { NO_INBOX_ACTIONS, NO_SENDER_ACTIONS } from '@aramo/sign-client';
+
+import { swipeActionsFor, type SwipeContext } from '../rowActionRules';
 import {
   ENVELOPE_STATUSES,
   type InboxItem,
@@ -21,8 +23,6 @@ import {
 import { CTX_OWNER, detail, received, sent, workspaceWith } from './fixtures';
 
 const owner = CTX_OWNER as unknown as SenderContext;
-const withPerms = (p: Record<string, boolean>) =>
-  ({ ...CTX_OWNER, permissions: { ...CTX_OWNER.permissions, ...p } }) as unknown as SenderContext;
 const on: SwipeContext = { sender: owner, online: true };
 
 const sentRow = (e: SenderListItem): AgreementRow => mergeAgreements([e], null)[0]!;
@@ -78,16 +78,20 @@ describe('swipeActionsFor (state + server permissions)', () => {
     expect(kinds(sentRow(sent('DRAFT', { source_application: 'aramo-ats' })))).toEqual([]);
   });
 
-  it('ownership from list facts: read_all without manage_all hides Remind / Void', () => {
-    expect(mayManageListed(owner)).toBe(true);
-    expect(mayManageListed(withPerms({ read_all: true }))).toBe(false);
-    expect(mayManageListed(withPerms({ read_all: true, manage_all: true }))).toBe(true);
-    expect(mayManageListed(withPerms({ send: false }))).toBe(false);
-    expect(mayManageListed(null)).toBe(false);
-    expect(
-      kinds(sentRow(sent('IN_PROGRESS')), { sender: withPerms({ read_all: true }), online: true }),
-    ).toEqual([]);
-    expect(kinds(sentRow(sent('IN_PROGRESS')), { sender: null, online: true })).toEqual([]);
+  // C3 (audit rows 3, 5, 9, 10, 12) — the swipes are the server's row actions, never derived.
+  it('the server decides: a row it allows nothing on has no swipe, whatever its status', () => {
+    expect(kinds(sentRow(sent('IN_PROGRESS', { actions: { ...NO_SENDER_ACTIONS } })))).toEqual([]);
+    expect(kinds(sentRow(sent('DRAFT', { actions: { ...NO_SENDER_ACTIONS } })))).toEqual([]);
+    expect(kinds(recvRow(received({ can_sign: true, actions: { ...NO_INBOX_ACTIONS } })))).toEqual([]);
+    // An older server without `actions` allows nothing either.
+    expect(kinds(sentRow(sent('IN_PROGRESS', { actions: undefined })))).toEqual([]);
+  });
+
+  it('each swipe follows its own key (sign, remind without void, void without remind)', () => {
+    expect(kinds(sentRow(sent('IN_PROGRESS', { actions: { ...NO_SENDER_ACTIONS, sign: true, void: true } })))).toEqual(['sign', 'void']);
+    expect(kinds(sentRow(sent('SENT', { actions: { ...NO_SENDER_ACTIONS, remind: true } })))).toEqual(['remind']);
+    // A Sign Admin's swipe on someone else's draft: the server says edit and delete_draft.
+    expect(kinds(sentRow(sent('DRAFT', { actions: { ...NO_SENDER_ACTIONS, edit: true, send: true, delete_draft: true } })))).toEqual(['edit', 'delete']);
   });
 
   it('offline: only an on-device draft keeps its actions', () => {
@@ -117,7 +121,7 @@ describe('list actions read the detail first', () => {
         ? { status: 200, body: detail(), headers: etag }
         : { status: 200, body: detail(), headers: etag },
     );
-    const r = await remindFromList(workspace, ID, owner);
+    const r = await remindFromList(workspace, ID);
     expect(r.kind).toBe('sent');
     expect(net.calls.map((c) => c.method)).toEqual(['GET', 'POST']);
     expect(net.calls[1]!.url).toMatch(/\/remind$/);
@@ -127,7 +131,7 @@ describe('list actions read the detail first', () => {
 
   it('remind (UAT SND-23): voided elsewhere -> "stale" with the change copy, no remind call', async () => {
     const { net, workspace } = workspaceWith(() => ({ status: 200, body: detail({ status: 'VOIDED' }), headers: etag }));
-    expect(await remindFromList(workspace, ID, owner)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
+    expect(await remindFromList(workspace, ID)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
     expect(net.calls).toHaveLength(1);
   });
 
@@ -137,7 +141,7 @@ describe('list actions read the detail first', () => {
         ? { status: 200, body: detail(), headers: etag }
         : { status: 409, body: { error: { code: 'ESIGN_REMINDER_NOT_ALLOWED', message: 'envelope status VOIDED is not remindable' } } },
     );
-    expect(await remindFromList(workspace, ID, owner)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
+    expect(await remindFromList(workspace, ID)).toEqual({ kind: 'stale', message: ENVELOPE_CHANGED });
   });
 
   it('remind: refused without calling remind when the detail says not the owner', async () => {
@@ -145,7 +149,7 @@ describe('list actions read the detail first', () => {
       status: 200,
       body: detail({ sender: { id: 'other', name: 'X' } }),
     }));
-    expect(await remindFromList(workspace, ID, owner)).toEqual({
+    expect(await remindFromList(workspace, ID)).toEqual({
       kind: 'refused',
       message: NOT_MANAGEABLE,
     });
@@ -159,11 +163,11 @@ describe('list actions read the detail first', () => {
       ],
     });
     const a = workspaceWith(() => ({ status: 200, body: cooling }));
-    const r1 = await remindFromList(a.workspace, ID, owner, Date.parse('2026-10-27T14:00:00.000Z'));
+    const r1 = await remindFromList(a.workspace, ID, Date.parse('2026-10-27T14:00:00.000Z'));
     expect(r1.kind === 'refused' && r1.message).toMatch(/^You can send another reminder at /);
     const none = detail({ recipients: [{ ...detail().recipients[0]!, can_remind: false }] });
     const b = workspaceWith(() => ({ status: 200, body: none }));
-    expect(await remindFromList(b.workspace, ID, owner)).toEqual({
+    expect(await remindFromList(b.workspace, ID)).toEqual({
       kind: 'refused',
       message: NOTHING_TO_REMIND,
     });
@@ -179,7 +183,7 @@ describe('list actions read the detail first', () => {
             body: { error: { code: 'revision_mismatch', reason: 'revision_mismatch' } },
           },
     );
-    const r = await voidFromList(workspace, ID, owner, 'Wrong file');
+    const r = await voidFromList(workspace, ID, 'Wrong file');
     expect(r.kind).toBe('stale');
     expect(net.calls[1]!.headers['If-Match']).toBe(`"${ID}.3"`);
     expect(net.calls[1]!.body).toEqual({ reason: 'Wrong file' });
@@ -191,24 +195,24 @@ describe('list actions read the detail first', () => {
       status: 200,
       body: detail({ status: 'COMPLETED' }),
     }));
-    expect(await voidFromList(workspace, ID, owner, 'reason')).toEqual({
+    expect(await voidFromList(workspace, ID, 'reason')).toEqual({
       kind: 'refused',
       message: NOT_MANAGEABLE,
     });
     expect(net.calls).toHaveLength(1);
   });
 
-  it('edit follows the server’s `editable`', async () => {
+  it('edit follows the server’s actions.edit (C3), not `editable`', async () => {
     const yes = workspaceWith(() => ({
-      status: 200,
-      body: detail({ status: 'DRAFT', editable: true }),
-    }));
-    expect(await checkEditable(yes.workspace, ID, owner)).toEqual({ kind: 'editable' });
-    const no = workspaceWith(() => ({
       status: 200,
       body: detail({ status: 'DRAFT', editable: false }),
     }));
-    expect(await checkEditable(no.workspace, ID, owner)).toEqual({
+    expect(await checkEditable(yes.workspace, ID)).toEqual({ kind: 'editable' });
+    const no = workspaceWith(() => ({
+      status: 200,
+      body: detail({ status: 'DRAFT', editable: true, actions: { ...NO_SENDER_ACTIONS } }),
+    }));
+    expect(await checkEditable(no.workspace, ID)).toEqual({
       kind: 'refused',
       message: NOT_EDITABLE,
     });

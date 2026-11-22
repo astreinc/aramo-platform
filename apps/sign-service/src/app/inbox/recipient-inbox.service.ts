@@ -8,7 +8,6 @@ import {
   isUuid,
   mintInboxHandle,
   openInboxHandle,
-  PURGE_ELIGIBLE_STATUSES,
   RecipientInboxRepository,
   type RecipientInboxEntry,
   type RecipientInboxRow,
@@ -16,11 +15,15 @@ import {
   signBaseUrl,
 } from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
+import { isPartyDeletable } from '@aramo/sign-client';
 
 import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
+import { purgeNotEnabled, refusalError } from '../sender/envelope-actions.js';
 import { purgeViewOf } from '../retention/purge-view.js';
 import { SignPurgeService } from '../retention/sign-purge.service.js';
 import { recipientSenderLabel } from '../sender-label.js';
+
+import { type InboxActionEntry, type InboxActionFacts, inboxActions, inboxDownloadDecision, inboxSignable } from './inbox-actions.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — "Waiting for
@@ -58,8 +61,18 @@ import { recipientSenderLabel } from '../sender-label.js';
 // readiness) + envelope signable + not expired + a live emailed link (W-3). A signable row
 // whose turn is later is `upcoming` (listed in `waiting`, can_sign false).
 
-const SIGNABLE = new Set(['SENT', 'IN_PROGRESS']);
-const PENDING_SIGNER = new Set(['PENDING', 'VIEWED']);
+// Client Rule Consolidation C1 — the facts the inbox action rules read (inbox-actions.ts).
+function actionEntryOf(r: RecipientInboxEntry): InboxActionEntry {
+  return {
+    source: r.source,
+    envelope_status: r.envelope.status,
+    signer_status: r.signer.status,
+    envelope_expires_at: r.envelope.expires_at ?? null,
+    purge_state: r.envelope.purge_state ?? null,
+    turn: r.turn,
+    link_live: r.link_live,
+  };
+}
 
 function notFound(requestId: string): AramoError {
   return new AramoError('NOT_FOUND', 'Not in your inbox', 404, { requestId, details: { reason: 'inbox_item_not_found' } });
@@ -125,15 +138,18 @@ export class RecipientInboxService {
     return { id: b.id };
   }
 
-  private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id) {
+  private async view(r: RecipientInboxEntry, user_id: string, id: string = r.id, folder: InboxActionFacts = { in_deleted_folder: false, removed: false }) {
     // M-A13 R-3 — a PERSONAL sender is shown by their own name, never the stored tenant handle.
     const from = await recipientSenderLabel(this.identity, r.envelope_tenant_id, r.envelope.created_by ?? null);
-    const signable = SIGNABLE.has(r.envelope.status) && PENDING_SIGNER.has(r.signer.status) && (r.envelope.expires_at === null || r.envelope.expires_at.getTime() > Date.now());
+    const now = new Date();
+    const entry = actionEntryOf(r);
+    // C1 — can_sign, can_download and actions come from the same rules (inbox-actions.ts).
+    const actions = inboxActions(entry, folder, now);
     const purge = purgeViewOf(r.envelope);
-    const upcoming = signable && r.turn === 'later';
+    const upcoming = inboxSignable(entry, now) && r.turn === 'later';
     // Discovered items list the signed copy through the emailed link only (no handle route
     // for it): can_download stays false for them.
-    const can_download = r.source === 'bound' && r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED';
+    const can_download = actions.download;
     return {
       id,
       source: r.source,
@@ -151,10 +167,12 @@ export class RecipientInboxService {
       signing_link_valid_days: SIGNING_LINK_VALID_DAYS,
       completed_at: r.envelope.completed_at?.toISOString() ?? null,
       signed_at: r.signer.signed_at?.toISOString() ?? null,
-      can_sign: signable && r.turn === 'now' && r.link_live,
+      can_sign: actions.sign,
       can_download,
       // Present only once the envelope was queued for purge (the item shape is unchanged otherwise).
       ...(purge !== null ? { purge } : {}),
+      // Client Rule Consolidation C1 — what the user may do with this item.
+      actions,
     };
   }
 
@@ -179,7 +197,9 @@ export class RecipientInboxService {
     // Dedupe (rule 5): a recipient reachable through a binding is listed once, as bound.
     const boundSigners = new Set(bound.map((b) => b.row.signer_id));
     const found = (await this.discovered(auth, inboxHandleKey())).filter((d) => inFolder(d.row) && !boundSigners.has(d.row.signer_id));
-    const items = await Promise.all([...bound, ...found].map((i) => this.view(i.row, auth.sub, i.id)));
+    const items = await Promise.all(
+      [...bound, ...found].map((i) => this.view(i.row, auth.sub, i.id, { in_deleted_folder: deleted.has(i.row.envelope_id) || removed.has(i.row.signer_id), removed: removed.has(i.row.signer_id) })),
+    );
     return {
       waiting: items.filter((i) => i.can_sign || i.my_status === 'upcoming'),
       completed: items.filter((i) => i.can_download),
@@ -239,9 +259,9 @@ export class RecipientInboxService {
   async signedCopy(auth: AuthContextType, id: string, requestId: string) {
     const r = isUuid(id) ? await this.repo.getForUser(auth.sub, id) : null;
     if (r === null) throw notFound(requestId);
-    if (!(r.envelope.status === 'COMPLETED' && r.signer.status === 'SIGNED' && r.envelope.purge_state !== 'EXECUTED')) {
-      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'A signed copy is available once everyone has signed', 409, { requestId });
-    }
+    // C1 — the download rule (inbox-actions.ts); a uuid id is a bound item.
+    const refused = inboxDownloadDecision({ source: 'bound', envelope_status: r.envelope.status, signer_status: r.signer.status, purge_state: r.envelope.purge_state ?? null });
+    if (refused !== null && refused !== 'noop') throw refusalError(refused, requestId);
     const raw = await this.repo.issueRecipientCopyAccess(r.envelope_tenant_id, r.envelope_id, r.signer_id);
     return { download_url: `${this.base(requestId)}/d/${raw}` };
   }
@@ -302,11 +322,12 @@ export class RecipientInboxService {
 
   private async partyTarget(auth: AuthContextType, id: string, requestId: string): Promise<{ purges: SignPurgeRepository; r: RecipientInboxRow }> {
     if (this.purges === undefined || this.purgeEngine?.enabled !== true) {
-      throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Document retention and purge are not enabled', 403, { requestId, details: { reason: 'purge_not_enabled' } });
+      throw refusalError(purgeNotEnabled(), requestId);
     }
     const r = isUuid(id) ? await this.repo.getForUser(auth.sub, id) : null;
     if (r === null) throw notFound(requestId);
-    if (!PURGE_ELIGIBLE_STATUSES.includes(r.envelope.status) && r.envelope.status !== 'EXPIRED') {
+    // C3 (D-1) — the Deleted-folder rule SignPurgeRepository.partyDelete runs under the lock.
+    if (!isPartyDeletable(r.envelope.status)) {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a completed, declined, voided or expired envelope can be deleted', 409, { requestId, details: { reason: 'envelope_not_terminal' } });
     }
     return { purges: this.purges, r };

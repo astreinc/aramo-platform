@@ -350,7 +350,7 @@ export function PersonalSignupPage({ siteKey = turnstileSiteKey() }: { siteKey?:
           </span>
           <StepHead
             title="Your personal account is ready"
-            sub={`Sign in with ${viaApple ? 'Apple' : 'Google or Apple'} to start using it. You can send up to 5 documents a month.`}
+            sub={`Sign in with ${viaApple ? 'Apple' : 'Google or Apple'} to start using it.`}
           />
           {step.held !== null ? (
             <div className="su-banner" role="status" data-testid="personal-held">
@@ -537,7 +537,7 @@ function PersonalForm({
     <form className="su-form" onSubmit={submit} noValidate>
       <StepHead
         title="Tell us about you"
-        sub="For your free personal account. 5 documents a month."
+        sub="For your free personal account."
       />
       {lockedEmail === null ? (
         <div className="su-providers" data-testid="personal-apple-start">
@@ -1080,7 +1080,9 @@ function TermsStep({
             ))}
           </div>
           <div className="su-plan" data-testid="personal-plan">
-            <b>Free plan · 5 documents a month · up to 2 a day</b>
+            {/* C3 (audit row 16) — no plan numbers before sign-in: the allowance is shown from the
+                server (/v1/sign/billing/account) once the account exists. */}
+            <b>Free plan</b>
             The free plan may change. We’ll tell you before it does.
           </div>
           <SuCheck id="ps-accept" checked={agreed} onChange={setAgreed} testId="personal-accept">

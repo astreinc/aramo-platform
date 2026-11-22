@@ -10,6 +10,7 @@
 //     shows the plan and usage and "Manage your plan at sign.aramo.ai", with no price and
 //     no link;
 //   - a refusal reason maps to copy ("Ask your admin", "Manage your plan at sign.aramo.ai").
+import { planFacts, storageLabel } from '@aramo/sign-client';
 import type {
   BillingAccountStoreFields,
   BillingPlanStoreFields,
@@ -166,12 +167,6 @@ const FEATURE_LABEL: Record<string, string> = {
   'sign.branding': 'Your logo on signing emails',
 };
 
-function bytesLabel(n: number): string {
-  if (n >= 1024 ** 3) return `${Math.round((n / 1024 ** 3) * 10) / 10} GB`;
-  if (n >= 1024 ** 2) return `${Math.round((n / 1024 ** 2) * 10) / 10} MB`;
-  return `${Math.round(n / 1024)} KB`;
-}
-
 function humanize(key: string): string {
   const s = key.replace(/^sign\./, '').replace(/_/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -180,13 +175,18 @@ function humanize(key: string): string {
 /** The plan's feature lines, from what the server says is included AND operational. */
 export function featureLines(plan: Plan): string[] {
   const lines: string[] = ['Signing is always free'];
-  const env = plan.allowances.find((a) => a.allowance_key === 'sign.envelopes' && a.available);
-  if (env) lines.push(env.unlimited ? 'Unlimited sends' : `${env.included_quantity ?? 0} sends a month`);
+  // Client Rule Consolidation C3 (audit rows 16–17) — the plan's facts are read by
+  // @aramo/sign-client's planFacts (the web reads the same), worded "documents".
+  const facts = planFacts({
+    allowances: plan.allowances.filter((a) => a.available === true),
+    capacities: plan.capacities.filter((c) => c.available === true),
+  });
+  if (facts.monthlyDocuments === 'unlimited') lines.push('Unlimited documents');
+  else if (typeof facts.monthlyDocuments === 'number') lines.push(`${facts.monthlyDocuments} documents a month`);
   const tpl = plan.capacities.find((c) => c.capacity_key === 'sign.templates' && c.available);
   if (tpl && (tpl.unlimited || (tpl.limit ?? 0) > 0))
     lines.push(tpl.unlimited || tpl.limit === null ? 'Unlimited templates' : `${tpl.limit} templates`);
-  const storage = plan.capacities.find((c) => c.capacity_key === 'sign.storage_bytes' && c.available);
-  if (storage && !storage.unlimited && storage.limit !== null) lines.push(`${bytesLabel(storage.limit)} storage`);
+  if (typeof facts.storageBytes === 'number') lines.push(`${storageLabel(facts.storageBytes)} storage`);
   for (const f of plan.features) {
     // D-4 HOLD: no AI feature is ever advertised, whatever the server returns.
     if (!f.enabled || f.available !== true || /(^|\.)ai[_.]/.test(f.feature_key)) continue;

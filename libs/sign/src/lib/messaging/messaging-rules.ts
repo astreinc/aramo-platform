@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { E164_PATTERN } from '@aramo/sign-client';
+
 // Aramo-Sign-Feature-Parity-Program-Directive-v1_0-LOCKED §1.7 / §1.8 / §1.9 — the pure
 // rules of Sign messaging: phone-number validation and masking, the opt-out keywords
 // (STOP), quiet hours, per-tenant rate limits, and the ledger event names. No I/O.
@@ -32,7 +34,8 @@ export const MESSAGING_LEDGER_EVENT_TYPES: readonly string[] = [
 export const SMS_OTP_METHOD = 'SMS_OTP';
 
 // ── Phone numbers ────────────────────────────────────────────────────────────
-const E164 = /^\+[1-9]\d{7,14}$/;
+// Client Rule Consolidation §5 / audit row 24 — the ONE E.164 pattern lives in @aramo/sign-client.
+const E164 = E164_PATTERN;
 
 /** E.164: a plus sign, a non-zero country digit, 8 to 15 digits in all. No spaces. */
 export function isE164(value: unknown): value is string {

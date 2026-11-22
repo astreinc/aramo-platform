@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 86 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 87 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -70,6 +70,7 @@
     "@aramo/selection": "./libs/selection/src/index.ts",
     "@aramo/settings": "./libs/settings/src/index.ts",
     "@aramo/sign": "./libs/sign/src/index.ts",
+    "@aramo/sign-client": "./libs/sign-client/src/index.ts",
     "@aramo/sign-service": "./apps/sign-service/src/app/app.module.ts",
     "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
     "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
@@ -2552,6 +2553,150 @@
       "weighReport",
       "witnessReady"
     ],
+    "@aramo/sign-client": [
+      "ACCESS_CODE_MAX_LENGTH",
+      "ACCESS_CODE_MIN_LENGTH",
+      "ALL_FIELD_TYPES",
+      "AttestedNameRequiredError",
+      "CHECKBOX_GROUP_KEY_MAX",
+      "CHECKBOX_GROUP_RULES",
+      "CHECKBOX_LABEL_MAX",
+      "CHECK_FIELD_TYPES",
+      "COPY_DELIVERIES",
+      "DEFAULT_SIGN_DATE_FORMAT",
+      "DELEGATE_NAME_MAX",
+      "DELEGATE_REASON_MAX",
+      "E164_PATTERN",
+      "EMAIL_MAX",
+      "EMAIL_PATTERN",
+      "ENVELOPE_ALLOWANCE_KEY",
+      "ENVELOPE_CHANGED",
+      "ENVELOPE_MESSAGE_MAX",
+      "ENVELOPE_NOT_AVAILABLE",
+      "ENVELOPE_SUBJECT_MAX",
+      "ENVELOPE_TRANSITIONS",
+      "EnvelopeRevisionMismatchError",
+      "FALLBACK_MESSAGE",
+      "FIELD_DEFAULTS",
+      "FIELD_SIZE_SCALE",
+      "INBOX_ACTION_KEYS",
+      "INBOX_ITEM_CHANGED",
+      "IdempotencyKeyReuseError",
+      "IdempotencyRequestInProgressError",
+      "InboxSigningRefusedError",
+      "MAX_COPY_RECIPIENTS",
+      "MAX_PDF_BYTES",
+      "MAX_SIGNERS",
+      "MAX_WORD_BYTES",
+      "NOT_PDF_REFUSAL",
+      "NO_INBOX_ACTIONS",
+      "NO_PERMISSION",
+      "NO_SENDER_ACTIONS",
+      "NO_SEND_FEATURES",
+      "PARTY_DELETABLE_STATUSES",
+      "PAYMENT_FIELD_TYPE",
+      "PDF_PICKER_TYPES",
+      "PENDING_SIGNER_STATUSES",
+      "PHONE_HINT",
+      "PICKER_TYPES",
+      "PROFILE_TEXT_FIELD_TYPES",
+      "PROFILE_TEXT_MAX",
+      "PURGE_ELIGIBLE_STATUSES",
+      "RECIPIENT_COPY",
+      "RECIPIENT_KINDS",
+      "REFUSAL_COPY",
+      "ROLE_LABELS",
+      "ReminderLimitError",
+      "SEAT_LIMIT_REASON",
+      "SELF_SIGN_NO_REMINDERS",
+      "SENDER_ACTION_KEYS",
+      "SENDER_FIELD_TYPES",
+      "SIGNABLE_ENVELOPE_STATUSES",
+      "SIGNERS_FULL_MESSAGE",
+      "SIGNER_NAME_MODES",
+      "SIGNING_RECIPIENT_KINDS",
+      "SIGN_DATE_FALLBACK_TIME_ZONE",
+      "SIGN_DATE_FORMATS",
+      "SIGN_DATE_PREVIEW_NOTE",
+      "STORAGE_CAPACITY_KEY",
+      "STORAGE_FULL",
+      "SessionIssueRefusedError",
+      "TEMPLATES_CAPACITY_KEY",
+      "TERMINAL_ENVELOPE_STATUSES",
+      "TOO_LARGE_REFUSAL",
+      "VOID_REASON_COPY",
+      "VOID_REASON_MAX",
+      "WORD_COPY",
+      "allSigningRecipientsSigned",
+      "allowanceTermsLine",
+      "checkPickedFile",
+      "checkboxGroupOf",
+      "convertibleWordName",
+      "copyRecipients",
+      "currentTurnOf",
+      "danglingWitness",
+      "duplicateWitness",
+      "envelopeOpenForSigning",
+      "evaluateSignerFieldRules",
+      "formatSignDate",
+      "hostedSessionRefusal",
+      "inboxActionsOf",
+      "isCopyRecipient",
+      "isDailyAllowance",
+      "isDraftEditable",
+      "isE164",
+      "isLinkSigner",
+      "isPartyDeletable",
+      "isPaymentField",
+      "isProfileTextField",
+      "isPurgeEligible",
+      "isPurgeExecuted",
+      "isPurgeQueued",
+      "isReminderStale",
+      "isSenderFieldType",
+      "isServerFilledName",
+      "isSigningRecipient",
+      "isTerminalEnvelopeStatus",
+      "isValidAccessCode",
+      "isValidDeclineReason",
+      "isValidDelegate",
+      "isValidEmail",
+      "isWitness",
+      "isWitnessable",
+      "limitReachedCopy",
+      "localTimeZone",
+      "looksLikePdf",
+      "mayActNow",
+      "messagingOffered",
+      "normalizeAccessCode",
+      "placeableFieldTypes",
+      "planFacts",
+      "predecessorsOf",
+      "profileTextValueRefusal",
+      "recipientKindOf",
+      "refusalMessage",
+      "remindableSigners",
+      "reminderLimitMessage",
+      "resolveSignerTimeZone",
+      "roleLabel",
+      "seatLimitMessage",
+      "selfSignTarget",
+      "sendFeaturesOf",
+      "senderActionsOf",
+      "sessionIssueRefusal",
+      "signDatePreview",
+      "signerFieldUnits",
+      "signerMayStillSign",
+      "signingRecipients",
+      "sizeScale",
+      "storageLabel",
+      "templateAccess",
+      "titleFromFilename",
+      "voidReasonProblem",
+      "witnessReady",
+      "witnessTargets",
+      "wordUploadEnabled"
+    ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
       "DEFAULT_SIGNATURE_PROVIDER",
@@ -4708,6 +4853,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-business-per-seat.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-client-c1-actions.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8713,6 +8864,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-client-c1-actions.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12252,6 +12409,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-client-c1-actions.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-custom-roles.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -14214,6 +14377,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-client-c3-locked-rules.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -14341,6 +14510,160 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/webhook-event-publisher.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" }
+    ],
+    "@aramo/sign-client": [
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/guest/m-a12-fields.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeDetail.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/EnvelopeList.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-sign-web", "status": "production" },
+      { "project": "sign", "status": "production" },
+      {
+        "from": "mobile/sign/src/api/refusalMessages.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/contacts/contactsApi.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/editor/fieldTypes.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/editor/pdfPageSizes.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/envelopeActions.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/fixtures.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/rowActions.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/__tests__/w2Discovery.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/allowance.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/envelopeActions.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/rowActionRules.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/types.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/ui.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/plans/plansModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/profile/signProfile.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/draftModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/fileValidation.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/recipientRoles.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/sendFeatures.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/templates.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/signDate.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/signingApi.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/signingMachine.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/templates/templatesModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/envelope/EnvelopeDetailScreen.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-client-c3-locked-rules.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -16014,6 +16337,13 @@
       "root": "libs/sign",
       "sourceRoot": "libs/sign/src",
       "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-client",
+      "root": "libs/sign-client",
+      "sourceRoot": "libs/sign-client/src",
+      "tags": ["scope:sign", "type:client-shared"],
       "targets": ["build", "lint", "test"]
     },
     {

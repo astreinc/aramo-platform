@@ -7,6 +7,7 @@
 // invented: a template without signing roles brings its documents and the at-most-one
 // signer the backend adds; a template WITH roles (M-A6 §3.2) is bound role by role
 // (`recipients` / `cc`, M-A6 §3.5) exactly as the backend lists them.
+import { templateAccess } from '@aramo/sign-client';
 import { isApiError } from '../../api/errors';
 import { etagFor, type WorkspaceClient } from '../../api/workspaceClient';
 import { parseEnvelope, type RoutingMode } from './draftModel';
@@ -92,17 +93,12 @@ function rec(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-/** The backend's availability signal (never derived on the device). */
+/**
+ * The backend's availability signal (never derived on the device). Client Rule Consolidation
+ * C3 (audit row 14) — the one templates-access rule (@aramo/sign-client; the web uses it too).
+ */
 export function templatesAvailable(context: unknown): boolean {
-  const c = rec(context);
-  // TEMPLATE-PRODUCT-1 §8.1 — the plan side too (Catalog v2 P-6: the Free plan never has
-  // templates); null / absent = not read, as on the web.
-  const plan = c['template_plan'];
-  return (
-    rec(c['features'])['templates'] === true &&
-    rec(c['permissions'])['templates'] === true &&
-    (plan === undefined || plan === null || plan === 'INCLUDED')
-  );
+  return templateAccess(context, 'use') === 'ok';
 }
 
 function parseTemplate(raw: unknown): SenderTemplate {

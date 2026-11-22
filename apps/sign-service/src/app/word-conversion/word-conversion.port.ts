@@ -1,3 +1,5 @@
+import { MAX_WORD_BYTES } from '@aramo/sign-client';
+
 // Aramo-Sign-Mobile-Amendment-M-A13-Field-Test-Remediation-v1_0-LOCKED R-4 (#8) — Word to
 // PDF conversion for the sender document upload. The PDF becomes the document source (the
 // original Word file is never stored). Dark by default: SIGN_WORD_CONVERSION_ENABLED=1 and
@@ -6,7 +8,8 @@
 export const WORD_CONVERSION_PORT = 'WORD_CONVERSION_PORT';
 
 /** R-4 — the input limit (20 MB) and the conversion timeout (60 s). */
-export const WORD_MAX_BYTES = 20 * 1024 * 1024;
+// Client Rule Consolidation C3 (audit row 25) — the limit both Sign clients check.
+export const WORD_MAX_BYTES = MAX_WORD_BYTES;
 export const WORD_CONVERSION_TIMEOUT_MS = 60_000;
 
 export type WordConversionRefusal = 'word_too_large' | 'word_password_protected' | 'word_conversion_failed';

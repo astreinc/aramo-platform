@@ -3,17 +3,21 @@
 // be prepared offline. The server envelope (revision + ETag, M-A3 §6) stays the
 // authority once it exists: a sync only ever writes with If-Match on the revision the
 // draft is based on, and a 412 replaces the local copy with the server's.
+import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, MAX_COPY_RECIPIENTS as SHARED_MAX_COPY, MAX_SIGNERS } from '@aramo/sign-client';
+
 import type { EditorField } from '../editor/editorReducer';
 import { isAuthoringFieldType } from '../editor/fieldTypes';
 import { wireToEditor, type PageSize } from '../editor/geometry';
 import type { LocalDraft, SendStep } from '../../state/draftStore';
 
+// Client Rule Consolidation C3 (audit rows 18–21) — the limits live once in @aramo/sign-client
+// (the server and the web use the same values).
 /** Signing recipients (SIGNER + IN_PERSON_SIGNER), MAX_SIGNERS on the server. */
-export const MAX_RECIPIENTS = 10;
+export const MAX_RECIPIENTS = MAX_SIGNERS;
 /** M-A5 §1.4 — at most 10 RECEIVES_COPY recipients, on top of the signers. */
-export const MAX_COPY_RECIPIENTS = 10;
-export const MESSAGE_MAX = 1000;
-export const SUBJECT_MAX = 200;
+export const MAX_COPY_RECIPIENTS = SHARED_MAX_COPY;
+export const MESSAGE_MAX = ENVELOPE_MESSAGE_MAX;
+export const SUBJECT_MAX = ENVELOPE_SUBJECT_MAX;
 
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
 

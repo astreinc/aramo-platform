@@ -290,6 +290,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile sende
       expect(res.status).toBe(409);
       expect(res.body.error.details.reason).toBe('managed_by_source_application');
     });
+
+    // Client Rule Consolidation C1 — the list row and the detail carry the server's `actions`,
+    // and they agree with what the routes above refuse.
+    it('list rows and the detail carry actions matching the routes: own SENT (void, no draft actions); ATS draft (nothing changeable)', async () => {
+      const sent = randomUUID();
+      const ats = randomUUID();
+      await db.query(`INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at, expires_at) VALUES ($1,$2,'Sent C1','SENT','SINGLE_SIGNATURE',$3, now(), now() + interval '30 days')`, [sent, TENANT, ANN]);
+      await db.query(`INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, source_application) VALUES ($1,$2,'ATS C1','DRAFT','SINGLE_SIGNATURE',$3,'aramo-ats')`, [ats, TENANT, ANN]);
+      const detailSent = await http().get(`/v1/sign/sender/envelopes/${sent}`).set(await H(ANN));
+      expect(detailSent.status).toBe(200);
+      expect(detailSent.body.actions).toMatchObject({ edit: false, send: false, delete_draft: false, void: true, download: false, certificate: false, purge: false });
+      const detailAts = await http().get(`/v1/sign/sender/envelopes/${ats}`).set(await H(ANN));
+      expect(detailAts.body.editable).toBe(false);
+      expect(detailAts.body.actions).toMatchObject({ edit: false, send: false, delete_draft: false, void: false, delete: false, restore: false, host_in_person: false });
+      const list = await http().get('/v1/sign/sender/envelopes').set(await H(ANN));
+      expect(list.status).toBe(200);
+      const byId = new Map((list.body.items as Array<{ id: string; actions: Record<string, boolean> }>).map((i) => [i.id, i.actions]));
+      expect(byId.get(sent)).toEqual(detailSent.body.actions);
+      expect(byId.get(ats)).toEqual(detailAts.body.actions);
+    });
   });
 
   describe('B-11 — user.identity_provider', () => {

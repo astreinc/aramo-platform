@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { E164_PATTERN } from '@aramo/sign-client';
 
 import { errorMessage, profileApi, type SignProfile } from '../api';
 import { Btn, ErrorBox, Field, TextIn } from '../ui';
@@ -11,7 +12,8 @@ import { useWorkspace } from '../workspace';
 
 const DISPLAY_NAME_MAX = 120;
 const FIELD_MAX = 200;
-const E164 = /^\+[1-9][0-9]{1,14}$/;
+// Client Rule Consolidation §5 / audit row 24 — the ONE E.164 pattern (the server's profile uses it too).
+const E164 = E164_PATTERN;
 const ISO2 = /^[A-Za-z]{2}$/;
 
 type Key = 'title' | 'company' | 'phone' | 'address_line1' | 'address_line2' | 'city' | 'region' | 'postal_code' | 'country';

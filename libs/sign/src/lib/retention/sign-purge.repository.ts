@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { PURGE_ELIGIBLE_STATUSES, isPartyDeletable, isPurgeEligible, isPurgeExecuted, isPurgeQueued } from '@aramo/sign-client';
 
 import { EsignRepository } from '../esign.repository.js';
 import { computeEventHash } from '../hash-chain.js';
@@ -36,7 +37,9 @@ import {
 
 export type PurgeLevel = 'DOCUMENTS' | 'DOCUMENTS_AND_METADATA' | 'DOCUMENTS_AND_METADATA_AND_REDACT';
 export const PURGE_LEVELS: readonly PurgeLevel[] = ['DOCUMENTS', 'DOCUMENTS_AND_METADATA', 'DOCUMENTS_AND_METADATA_AND_REDACT'];
-export const PURGE_ELIGIBLE_STATUSES: readonly string[] = ['COMPLETED', 'DECLINED', 'VOIDED'];
+// C3 (D-1) — the eligible set and every in-lock state check are @aramo/sign-client's locked
+// rules (the C1 actions predicates call the same functions).
+export { PURGE_ELIGIBLE_STATUSES } from '@aramo/sign-client';
 export const PURGE_QUEUE_DAYS = 14;
 export const RETENTION_DAYS_MIN = 1;
 export const RETENTION_DAYS_MAX = 9999;
@@ -193,10 +196,10 @@ export class SignPurgeRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockEnvelope(tx as never, tenant_id, envelope_id);
       const e = await this.envelopeRow(tx, tenant_id, envelope_id);
-      if (e === null || !PURGE_ELIGIBLE_STATUSES.includes(e.status) || e.deleted_at !== null) return 'not_eligible';
-      if (e.purge_state === 'EXECUTED') return 'executed';
+      if (e === null || !isPurgeEligible(e.status) || e.deleted_at !== null) return 'not_eligible';
+      if (isPurgeExecuted(e.purge_state)) return 'executed';
       if (e.purge_state === 'DEQUEUED' && input.reason === 'retention') return 'dequeued_by_admin';
-      if (e.purge_state === 'QUEUED') {
+      if (isPurgeQueued(e.purge_state)) {
         const current = e.purge_level as PurgeLevel;
         if (LEVEL_RANK[input.level] <= LEVEL_RANK[current]) return 'already_queued';
         await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { purge_level: input.level } });
@@ -226,7 +229,7 @@ export class SignPurgeRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockEnvelope(tx as never, tenant_id, envelope_id);
       const e = await this.envelopeRow(tx, tenant_id, envelope_id);
-      if (e === null || e.purge_state !== 'QUEUED') return 'not_queued';
+      if (e === null || !isPurgeQueued(e.purge_state)) return 'not_queued';
       await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { purge_state: 'DEQUEUED', purge_waiting_until: null } });
       await this.recordTransition(tx, tenant_id, envelope_id, PURGE_DEQUEUED_EVENT, 'DEQUEUED', e.purge_level as PurgeLevel, e.purge_reason as EsignPurgeReason, null, actor_user_id);
       return 'dequeued';
@@ -464,7 +467,7 @@ export class SignPurgeRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockEnvelope(tx as never, tenant_id, envelope_id);
       const e = await this.envelopeRow(tx, tenant_id, envelope_id);
-      if (e === null || !PURGE_ELIGIBLE_STATUSES.includes(e.status) && e.status !== 'EXPIRED') return 'not_eligible';
+      if (e === null || !isPartyDeletable(e.status)) return 'not_eligible';
       const existing = await tx.signEnvelopePartyDeletion.findUnique({ where: { envelope_id_party_kind_party_key: { envelope_id, party_kind: party.kind, party_key: party.key } } });
       if (existing !== null && existing.restored_at === null) return 'already';
       if (existing === null) {
@@ -481,7 +484,7 @@ export class SignPurgeRepository {
     return this.prisma.$transaction(async (tx) => {
       await this.repo.lockEnvelope(tx as never, tenant_id, envelope_id);
       const e = await this.envelopeRow(tx, tenant_id, envelope_id);
-      if (e?.purge_state === 'EXECUTED') return 'purged';
+      if (isPurgeExecuted(e?.purge_state)) return 'purged';
       const existing = await tx.signEnvelopePartyDeletion.findUnique({ where: { envelope_id_party_kind_party_key: { envelope_id, party_kind: party.kind, party_key: party.key } } });
       if (existing === null || existing.restored_at !== null) return 'not_deleted';
       await tx.signEnvelopePartyDeletion.update({ where: { id: existing.id }, data: { restored_at: new Date() } });
@@ -495,6 +498,15 @@ export class SignPurgeRepository {
       }
       return 'restored';
     });
+  }
+
+  /** Whether this party has this envelope in its Deleted folder (an active row). */
+  async isDeletedBy(envelope_id: string, party: { kind: 'SENDER' | 'RECIPIENT'; key: string }): Promise<boolean> {
+    const row = await this.prisma.signEnvelopePartyDeletion.findUnique({
+      where: { envelope_id_party_kind_party_key: { envelope_id, party_kind: party.kind, party_key: party.key } },
+      select: { restored_at: true },
+    });
+    return row !== null && row.restored_at === null;
   }
 
   /** Envelope ids this party has deleted (active rows): list filters hide or show them. */

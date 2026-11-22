@@ -47,7 +47,7 @@ describe('plans', () => {
 
   it('features come from the catalog: available only, and never an AI feature (D-4)', () => {
     const lines = featureLines(plan('standard'));
-    expect(lines).toContain('Unlimited sends');
+    expect(lines).toContain('Unlimited documents');
     expect(lines).toContain('Unlimited templates');
     expect(lines).toContain('Custom domain');
     expect(lines.join(' ')).not.toMatch(/\bAI\b|ai assist/i);

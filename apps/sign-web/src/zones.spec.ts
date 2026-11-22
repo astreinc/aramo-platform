@@ -27,7 +27,9 @@ describe('Sign S-2 — authentication zones of the one Sign application', () => 
 
   // The guest zone must never import the session/auth library or workspace code:
   // a guest page makes no session call and carries no workspace credentials.
-  it('guest code imports neither @aramo/fe-foundation nor the workspace', () => {
+  // Client Rule Consolidation G-3 / C2 — the ONE exception is @aramo/sign-client: pure
+  // TypeScript rules (no session, no network, no React, no npm dependency).
+  it('guest code imports no @aramo library except @aramo/sign-client, and not the workspace', () => {
     const dir = resolve(__dirname, 'guest');
     const files: string[] = [];
     const walk = (d: string): void => {
@@ -41,7 +43,7 @@ describe('Sign S-2 — authentication zones of the one Sign application', () => 
     expect(files.length).toBeGreaterThan(5);
     for (const f of files) {
       const src = readFileSync(f, 'utf8');
-      expect(src, f).not.toMatch(/from ['"]@aramo\//);
+      expect(src, f).not.toMatch(/from ['"]@aramo\/(?!sign-client['"])/);
       expect(src, f).not.toMatch(/from ['"]\.\.\/workspace/);
     }
   });

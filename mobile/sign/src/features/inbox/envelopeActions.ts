@@ -1,23 +1,25 @@
 // Sender envelope detail: which actions show, and the remind / void calls (handoff
-// §4.3, §1.5; directive §5; M-A3 §6, §7). Visibility follows the envelope state and the
-// permissions/flags the server returns — the device re-derives no policy:
-//   Remind, Void       — SENT / IN_PROGRESS envelopes the user may manage
-//                        (own, or manage_all) that were created in Aramo Sign
-//   Continue editing   — the server's `editable` (own Aramo Sign DRAFT)
-//   Delete draft       — the same `editable` DRAFT (D-W6-3; a sent envelope is voided)
-//   View certificate   — COMPLETED
+// §4.3, §1.5; directive §5; M-A3 §6, §7). Client Rule Consolidation C3 (audit rows 3–10, 13) —
+// every action follows the server's `actions` on the detail (read with senderActionsOf: an
+// absent object allows nothing); the device derives nothing from status, ownership or scopes:
+//   Remind, Void       — actions.remind / actions.void
+//   Continue editing   — actions.edit
+//   Delete draft       — actions.delete_draft (D-W6-3; a sent envelope is voided)
+//   View certificate   — actions.certificate
+//   Host in person     — each recipient's server `hostable`
+import {
+  refusalMessage as sharedRefusal,
+  senderActionsOf,
+  voidReasonProblem,
+  SELF_SIGN_NO_REMINDERS as SHARED_SELF_SIGN_NO_REMINDERS,
+} from '@aramo/sign-client';
+
 import { isApiError, type ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import { newIdempotencyKey, type WorkspaceClient } from '../../api/workspaceClient';
 import { dateTime } from './agreementsModel';
 import { fetchDetail, type DetailWithEtag } from './queries';
-import {
-  OPEN_STATUSES,
-  SIGN_APPLICATION,
-  type DetailRecipient,
-  type SenderContext,
-  type SenderEnvelopeDetail,
-} from './types';
+import { type DetailRecipient, type SenderEnvelopeDetail } from './types';
 
 export interface ActionSet {
   readonly continueEditing: boolean;
@@ -27,53 +29,25 @@ export interface ActionSet {
   readonly void: boolean;
 }
 
-export function mayManage(
-  detail: SenderEnvelopeDetail,
-  ctx: SenderContext | null | undefined,
-): boolean {
-  if (!ctx) return false;
-  const own = detail.sender !== undefined && detail.sender.id === ctx.user.id;
-  const perms = ctx.permissions ?? {};
-  return (own || perms.manage_all === true) && perms.send !== false;
-}
-
-export function actionsFor(
-  detail: SenderEnvelopeDetail,
-  ctx: SenderContext | null | undefined,
-): ActionSet {
-  const fromSign = (detail.source_application ?? SIGN_APPLICATION) === SIGN_APPLICATION;
-  const open = OPEN_STATUSES.has(detail.status);
-  const manage = open && fromSign && mayManage(detail, ctx);
+/** The detail screen's actions: the server's decision, nothing derived on the device. */
+export function actionsFor(detail: SenderEnvelopeDetail): ActionSet {
+  const a = senderActionsOf(detail);
   return {
-    continueEditing: detail.status === 'DRAFT' && detail.editable === true,
-    deleteDraft: detail.status === 'DRAFT' && detail.editable === true,
-    viewCertificate: detail.status === 'COMPLETED',
-    remind: manage,
-    void: manage,
+    continueEditing: a.edit,
+    deleteDraft: a.delete_draft,
+    viewCertificate: a.certificate,
+    remind: a.remind,
+    void: a.void,
   };
 }
 
 /**
- * In-person signers the user can host now (M-A5 §3.1): the server's
- * `features.in_person_signing`, an open Aramo Sign envelope the user may change, an
- * IN_PERSON_SIGNER who hasn't signed or declined, and — signing in order — whose turn
- * it is (`next_signer_id`). The server re-checks all of it and refuses with its reason.
+ * In-person signers the user can host now (M-A5 §3.1): the server's per-recipient `hostable`
+ * (actions.host_in_person and the hosted-session rule), while this build ships hosting.
  */
-export function hostableSigners(
-  detail: SenderEnvelopeDetail,
-  ctx: SenderContext | null | undefined,
-  enabled: boolean,
-): DetailRecipient[] {
-  if (!enabled || ctx?.features?.in_person_signing !== true) return [];
-  const fromSign = (detail.source_application ?? SIGN_APPLICATION) === SIGN_APPLICATION;
-  if (!OPEN_STATUSES.has(detail.status) || !fromSign || !mayManage(detail, ctx)) return [];
-  return detail.recipients.filter(
-    (r) =>
-      r.recipient_kind === 'IN_PERSON_SIGNER' &&
-      r.status !== 'SIGNED' &&
-      r.status !== 'DECLINED' &&
-      (detail.routing_mode !== 'SEQUENTIAL' || detail.next_signer_id === r.id),
-  );
+export function hostableSigners(detail: SenderEnvelopeDetail, enabled: boolean): DetailRecipient[] {
+  if (!enabled) return [];
+  return detail.recipients.filter((r) => (r as { hostable?: boolean }).hostable === true);
 }
 
 /** Signers a reminder would reach now (server flags `can_remind` + no pending cooldown). */
@@ -103,7 +77,7 @@ export function remindLabel(signers: readonly DetailRecipient[]): string {
 }
 
 /** Copy for a self-sign envelope: there is no one to remind (M-A12 W1-A). */
-export const SELF_SIGN_NO_REMINDERS = 'A document you sign yourself has no one to remind.';
+export const SELF_SIGN_NO_REMINDERS = SHARED_SELF_SIGN_NO_REMINDERS;
 
 /**
  * UAT SND-23 — the server refuses a reminder (409 ESIGN_REMINDER_NOT_ALLOWED) when the
@@ -117,29 +91,19 @@ export function isReminderStale(e: ApiError): boolean {
   return e.status === 409 && e.code === 'ESIGN_REMINDER_NOT_ALLOWED' && e.reason === e.code;
 }
 
-/** Copy for a reminder refusal; the 429 carries the exact retry time (M-A3 §7). */
+/** Copy for a reminder refusal (C3 row 8: the shared wording); the 429 carries the exact retry time (M-A3 §7). */
 export function reminderRefusalCopy(e: ApiError): string {
-  if (e.reason === 'self_sign_no_reminders') return SELF_SIGN_NO_REMINDERS;
-  if (isReminderStale(e)) return refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' });
-  if (e.is('reminder_cooldown', 'reminder_daily_limit')) {
-    const at =
-      e.retryAt ??
-      (e.retryAfterSeconds !== null
-        ? new Date(Date.now() + e.retryAfterSeconds * 1000).toISOString()
-        : null);
-    const head =
-      e.reason === 'reminder_daily_limit'
-        ? 'This envelope has had the most reminders allowed in 24 hours.'
-        : 'This signer was reminded less than an hour ago.';
-    return at ? `${head} You can send another reminder at ${dateTime(at)}.` : head;
-  }
-  return refusalMessage(e);
+  const retryAt =
+    e.retryAt ?? (e.retryAfterSeconds !== null ? new Date(Date.now() + e.retryAfterSeconds * 1000).toISOString() : null);
+  return sharedRefusal(
+    { code: e.code, reason: e.reason, status: e.status, details: e.details ?? null, retryAt },
+    { time: (iso) => dateTime(iso) || null },
+  );
 }
 
-export const VOID_REASON_MIN = 3;
-
+/** C3 (audit row 6, Appendix A) — non-empty and at most 500 (the minimum of 3 is dropped). */
 export function voidReasonValid(reason: string): boolean {
-  return reason.trim().length >= VOID_REASON_MIN;
+  return voidReasonProblem(reason) === null;
 }
 
 /**
@@ -301,8 +265,7 @@ export async function deleteDraftEnvelope(
   workspace: WorkspaceClient,
   current: DetailWithEtag,
 ): Promise<DeleteDraftOutcome> {
-  if (current.detail.status !== 'DRAFT' || current.detail.editable !== true)
-    return { kind: 'refused', message: NOT_DELETABLE };
+  if (!senderActionsOf(current.detail).delete_draft) return { kind: 'refused', message: NOT_DELETABLE };
   try {
     await workspace.call('/v1/sign/sender/envelopes/{id}', 'delete', {
       path: { id: current.detail.id },

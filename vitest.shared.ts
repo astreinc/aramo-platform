@@ -85,6 +85,10 @@ export default defineConfig({
       '@aramo/documents-contracts': resolve(root, 'libs/documents-contracts/src/index.ts'),
       '@aramo/documents-rendering': resolve(root, 'libs/documents-rendering/src/index.ts'),
       '@aramo/sign': resolve(root, 'libs/sign/src/index.ts'),
+      // Client Rule Consolidation C2 — the pure Sign client rules (scope:sign,
+      // type:client-shared), imported by libs/sign, apps/sign-web and mobile/sign.
+      // Mirrors tsconfig.base.json (the add-alias-in-same-PR lesson).
+      '@aramo/sign-client': resolve(root, 'libs/sign-client/src/index.ts'),
       // ATI-SEP-1 T0 (ADR-0036) — the Talent Intelligence libs (own database, scope:intelligence)
       // and the shared ATS ⇄ TI contract (scope:shared). Mirrors tsconfig.base.json.
       '@aramo/intelligence-contracts': resolve(root, 'libs/intelligence-contracts/src/index.ts'),

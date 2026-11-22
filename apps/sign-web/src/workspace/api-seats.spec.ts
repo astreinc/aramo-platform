@@ -45,17 +45,20 @@ describe('envelope not found', () => {
   });
 });
 
-// UAT DOC-06 — a Personal account's storage refusal has no organization / admin wording.
+// UAT DOC-06 / C3 (audit row 29) — the storage refusal: one wording for Personal and Business
+// (the app's, with a neutral destination), never the server's text.
 describe('storage full', () => {
-  it('Personal workspace: its own words; Business keeps the organization words', async () => {
-    const { inPersonalWorkspace, PERSONAL_STORAGE_FULL } = await import('./api');
-    expect(inPersonalWorkspace('/personal/envelopes/x/edit')).toBe(true);
-    expect(inPersonalWorkspace('/personalized')).toBe(false);
-    expect(inPersonalWorkspace('/sign/envelopes')).toBe(false);
+  it('Personal and Business read the same words', () => {
+    const want = 'Your storage is full. Remove draft documents you no longer need, or see your plan settings for more storage.';
     window.history.pushState({}, '', '/personal/envelopes/new');
-    expect(errorMessage(new ApiError(409, 'Your organization’s storage is full', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toBe(PERSONAL_STORAGE_FULL);
+    expect(errorMessage(new ApiError(409, 'Your organization’s storage is full', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toBe(want);
     window.history.pushState({}, '', '/sign/envelopes/new');
-    expect(errorMessage(new ApiError(409, 'x', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toMatch(/^Your organization’s storage is full/);
+    expect(errorMessage(new ApiError(409, 'x', 'ESIGN_STORAGE_QUOTA_EXCEEDED'))).toBe(want);
+  });
+
+  it('an unmapped refusal never shows the server text (C3, directive §5)', () => {
+    expect(errorMessage(new ApiError(400, 'recipient 2 needs a valid email (internal id 9f1)', 'VALIDATION_ERROR'))).toBe('Something went wrong. Try again.');
+    expect(errorMessage(new ApiError(400, 'x', 'VALIDATION_ERROR'), 'Couldn’t save.')).toBe('Couldn’t save.');
   });
 });
 
@@ -64,7 +67,8 @@ describe('reminder cooldown', () => {
   it('a refused reminder names the time; the page knows the soonest time from the recipients', async () => {
     const { nextReminderAt } = await import('./api');
     const msg = errorMessage(new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_cooldown', retry_at: '2026-11-19T15:30:00Z' }));
-    expect(msg).toMatch(/^You can send another reminder at .+\.$/);
+    // C3 (audit row 8) — the app's words: why, then when.
+    expect(msg).toMatch(/^This signer was reminded less than an hour ago\. You can send another reminder at .+\.$/);
     const now = new Date('2026-11-19T14:40:00Z');
     expect(nextReminderAt([{ can_remind: false, reminder_available_at: '2026-11-19T15:30:00Z' }, { can_remind: false, reminder_available_at: '2026-11-19T15:10:00Z' }], now)).toBe('2026-11-19T15:10:00Z');
     expect(nextReminderAt([{ can_remind: true, reminder_available_at: null }], now)).toBeNull();

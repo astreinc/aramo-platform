@@ -1,5 +1,6 @@
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
+import { ENVELOPE_MESSAGE_MAX } from '@aramo/sign-client';
 import {
   EnvelopeRevisionMismatchError,
   IdempotencyKeyReuseError,
@@ -28,7 +29,8 @@ import { regulatedHttp } from '../regulated/regulated-http.js';
 //   409 association_inactive | envelope_not_signable | signer_ineligible | not_your_turn | session_revoked | link_expired
 //                                inbox signing revalidation (M-A2 §2.2)
 
-export const MESSAGE_MAX = 1000;
+// Client Rule Consolidation C3 — the one copy lives in @aramo/sign-client.
+export const MESSAGE_MAX = ENVELOPE_MESSAGE_MAX;
 export const SIGNING_LINK_VALID_DAYS = 7;
 
 // The strong validator "{envelope_id}.{revision}" (M-A3 §6).

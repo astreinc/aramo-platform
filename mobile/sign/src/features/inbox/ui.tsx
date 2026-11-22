@@ -4,6 +4,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { VOID_REASON_MAX, isValidDeclineReason, voidReasonProblem } from '@aramo/sign-client';
 
 import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
@@ -302,14 +303,13 @@ export function CheckRow({
   );
 }
 
-/** A sheet asking for a required reason (void, decline): 3+ characters. */
+/** A sheet asking for a required reason (void, decline). C3 (audit rows 6, 27): non-empty, at most 500. */
 export function ReasonSheet({
   visible,
   title,
   body,
   confirmLabel,
   placeholder,
-  minLength = 3,
   busy,
   error,
   onConfirm,
@@ -321,7 +321,6 @@ export function ReasonSheet({
   readonly body: string;
   readonly confirmLabel: string;
   readonly placeholder: string;
-  readonly minLength?: number;
   readonly busy?: boolean;
   readonly error?: string | null;
   readonly onConfirm: (reason: string) => void;
@@ -334,7 +333,7 @@ export function ReasonSheet({
     setReason('');
     onClose();
   };
-  const ok = reason.trim().length >= minLength && !disabledReason;
+  const ok = isValidDeclineReason(reason) && voidReasonProblem(reason) === null && !disabledReason;
   return (
     <Sheet visible={visible} onClose={close} title={title}>
       <Text
@@ -354,7 +353,7 @@ export function ReasonSheet({
         placeholder={placeholder}
         accessibilityLabel="Reason (required)"
         multiline
-        maxLength={500}
+        maxLength={VOID_REASON_MAX}
         style={{
           minHeight: 88,
           borderWidth: 1,

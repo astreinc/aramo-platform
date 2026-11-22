@@ -14,6 +14,19 @@
 // Copy recipients never take part in the signing order: the wire list is the signing
 // recipients in their order, then the copy recipients.
 import {
+  ACCESS_CODE_MAX_LENGTH,
+  ACCESS_CODE_MIN_LENGTH,
+  PHONE_HINT as SHARED_PHONE_HINT,
+  RECIPIENT_COPY,
+  ROLE_LABELS,
+  isE164,
+  isValidAccessCode,
+  isValidEmail,
+  isWitnessable as sharedWitnessable,
+  witnessTargets as sharedWitnessTargets,
+} from '@aramo/sign-client';
+
+import {
   MAX_COPY_RECIPIENTS,
   MAX_RECIPIENTS,
   NO_MESSAGING,
@@ -24,11 +37,12 @@ import {
   type RecipientKind,
 } from './draftModel';
 
+// Client Rule Consolidation C3 (audit row 30, Appendix A) — the one set of role labels.
 export const ROLE_CHIPS: readonly { readonly kind: RecipientKind; readonly label: string }[] = [
-  { kind: 'SIGNER', label: 'Signs' },
-  { kind: 'IN_PERSON_SIGNER', label: 'In person' },
-  { kind: 'RECEIVES_COPY', label: 'Copy' },
-  { kind: 'WITNESS', label: 'Witness' },
+  { kind: 'SIGNER', label: ROLE_LABELS.SIGNER },
+  { kind: 'IN_PERSON_SIGNER', label: ROLE_LABELS.IN_PERSON_SIGNER },
+  { kind: 'RECEIVES_COPY', label: ROLE_LABELS.RECEIVES_COPY },
+  { kind: 'WITNESS', label: ROLE_LABELS.WITNESS },
 ];
 
 export const COPY_TIMING: readonly { readonly key: CopyDelivery; readonly label: string }[] = [
@@ -58,10 +72,9 @@ export function isInPerson(r: Kinded): boolean {
 export function isWitness(r: Kinded): boolean {
   return kindOf(r) === 'WITNESS';
 }
-/** A recipient a witness can attest for. */
+/** A recipient a witness can attest for (C3 audit row 31: @aramo/sign-client's rule). */
 export function isWitnessable(r: Kinded): boolean {
-  const k = kindOf(r);
-  return k === 'SIGNER' || k === 'IN_PERSON_SIGNER';
+  return sharedWitnessable(kindOf(r));
 }
 /** The access code and the identity check apply to these kinds (they sign from a link). */
 export function takesLinkChecks(r: Kinded): boolean {
@@ -75,7 +88,7 @@ export function takesMessaging(r: Kinded): boolean {
 
 /** The recipients a witness (`key`) may attest for. */
 export function witnessTargets(list: readonly DraftRecipient[], key: string): DraftRecipient[] {
-  return list.filter((r) => r.key !== key && isWitnessable(r));
+  return sharedWitnessTargets(list, key);
 }
 
 /** Clear a witness's target when it is gone or can no longer be witnessed. */
@@ -86,20 +99,17 @@ export function clearDanglingWitnesses(list: readonly DraftRecipient[]): DraftRe
   );
 }
 
-export const ACCESS_CODE_MIN = 4;
-export const ACCESS_CODE_MAX = 32;
+// C3 (audit rows 23, 24) — the access code and E.164 rules (@aramo/sign-client; the server's own).
+export const ACCESS_CODE_MIN = ACCESS_CODE_MIN_LENGTH;
+export const ACCESS_CODE_MAX = ACCESS_CODE_MAX_LENGTH;
 /** 4 to 32 printable characters, after trimming (the server's rule). */
-export function validAccessCode(code: string): boolean {
-  const c = code.trim();
-  return c.length >= ACCESS_CODE_MIN && c.length <= ACCESS_CODE_MAX && /^[\x20-\x7E]+$/.test(c);
-}
+export const validAccessCode = isValidAccessCode;
 
-const E164 = /^\+[1-9]\d{7,14}$/;
 /** E.164: a plus sign, a non-zero country digit, 8 to 15 digits in all. */
 export function validPhone(phone: string): boolean {
-  return E164.test(phone.trim());
+  return isE164(phone.trim());
 }
-export const PHONE_HINT = 'Use the international format, for example +14155550123';
+export const PHONE_HINT = SHARED_PHONE_HINT;
 export function signingRecipients<T extends Kinded>(list: readonly T[]): T[] {
   return list.filter((r) => !isCopy(r));
 }
@@ -124,11 +134,8 @@ export function isDuplicateEmail(
   return list.some((r) => r.key !== exceptKey && emailKey(r.email) === k);
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export function validEmail(email: string): boolean {
-  const e = email.trim();
-  return e.length <= 254 && EMAIL_RE.test(e);
-}
+/** C3 (audit row 22) — the server's email rule (@aramo/sign-client). */
+export const validEmail = isValidEmail;
 
 export type AddCheck = 'ok' | 'duplicate' | 'signers_full' | 'copies_full' | 'email_required';
 
@@ -242,26 +249,6 @@ export function recipientsToWire(list: readonly DraftRecipient[]): RecipientWire
   });
 }
 
-/** Sender-facing copy for the role rules (client checks and the server's reasons). */
-export const ROLE_COPY = {
-  duplicate: 'This person is already on the envelope.',
-  signers_full: `An envelope can have up to ${MAX_RECIPIENTS} signers.`,
-  copies_full: `An envelope can have up to ${MAX_COPY_RECIPIENTS} people who receive a copy.`,
-  email_required: 'Add an email address for this person, or choose In person.',
-  copy_delivery_required: 'Choose when each copy recipient receives their copy.',
-  copy_recipient_has_fields: 'People who receive a copy can’t have fields.',
-  assign_to_me_not_signer: 'Only a signer can be assigned to you.',
-  assign_to_me_email_mismatch:
-    'You can assign a recipient to yourself only with your own verified account email.',
-  witness_for_required: 'Choose the signer each witness signs for.',
-  witness_for_invalid: 'A witness signs for a signer.',
-  witness_duplicate: 'A signer can have only one witness.',
-  witness_for_not_allowed: 'Only a witness signs for someone else.',
-  plan_not_eligible: 'This option is available on Business plans.',
-  access_code_invalid: `Access codes are ${ACCESS_CODE_MIN} to ${ACCESS_CODE_MAX} letters, numbers or symbols.`,
-  access_code_not_allowed: 'Only people who sign from a link can have an access code.',
-  identity_verification_not_link_signer: 'Only people who sign from a link can have an identity check.',
-  invalid_phone: PHONE_HINT,
-  recipient_kind_not_supported: 'Text messages and SMS codes are for signers only.',
-  messaging_provider_not_configured: 'Text messages can’t reach this number right now.',
-} as const;
+/** Sender-facing copy for the role rules (client checks and the server's reasons): C3 — the
+ * one copy in @aramo/sign-client (the shared refusal map includes it). */
+export const ROLE_COPY = RECIPIENT_COPY;

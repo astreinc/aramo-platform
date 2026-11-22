@@ -6,6 +6,13 @@
 // M-A12 W1-C.4 (LOCKED) adds the profile auto-fill types FIRST_NAME, LAST_NAME, EMAIL,
 // COMPANY and TITLE (text-valued; the signer's own Sign profile pre-fills them at fill
 // time and the signer may edit), shown while FEATURES.profileFieldTypes is on.
+import {
+  CHECKBOX_LABEL_MAX,
+  FIELD_DEFAULTS,
+  isSenderFieldType,
+  type SenderFieldType,
+} from '@aramo/sign-client';
+
 import { FEATURES } from '../../config/features';
 
 export const BASE_FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT'] as const;
@@ -26,13 +33,13 @@ export function isProfileFieldType(v: unknown): v is ProfileFieldType {
   return typeof v === 'string' && PROFILE_SET.has(v);
 }
 
-export type AuthoringFieldType = (typeof AUTHORING_FIELD_TYPES)[number];
-
-const AUTHORING_SET: ReadonlySet<string> = new Set(AUTHORING_FIELD_TYPES);
+// Client Rule Consolidation C3 (audit row 35) — the same set as the server's authoring list
+// (@aramo/sign-client SENDER_FIELD_TYPES); this file only orders the tools.
+export type AuthoringFieldType = SenderFieldType & (typeof AUTHORING_FIELD_TYPES)[number];
 
 /** Every type the server accepts from a sender (a saved draft may hold any of them). */
 export function isAuthoringFieldType(v: unknown): v is AuthoringFieldType {
-  return typeof v === 'string' && AUTHORING_SET.has(v);
+  return isSenderFieldType(v);
 }
 
 /** The tools the editor offers in this build. */
@@ -59,7 +66,7 @@ export type NameMode = 'SIGNER_PROFILE' | 'SIGNER_ENTERED';
 /** M-A6 §2.3 — a check-box group's rule. */
 export type GroupRule = 'SELECT_ONE' | 'SELECT_ANY';
 
-export const MAX_LABEL = 200;
+export const MAX_LABEL = CHECKBOX_LABEL_MAX;
 
 export interface FieldTypeSpec {
   /** Tool and panel label. */
@@ -73,39 +80,36 @@ export interface FieldTypeSpec {
   readonly requiredByDefault: boolean;
 }
 
-export const FIELD_TYPE_SPECS: Readonly<Record<AuthoringFieldType, FieldTypeSpec>> = {
-  SIGNATURE: {
-    label: 'Signature',
-    noun: 'signature',
-    width: 230,
-    height: 50,
-    requiredByDefault: true,
-  },
-  INITIALS: { label: 'Initials', noun: 'initials', width: 60, height: 30, requiredByDefault: true },
-  SIGN_DATE: { label: 'Date', noun: 'date', width: 150, height: 22, requiredByDefault: true },
-  TEXT: { label: 'Text', noun: 'text', width: 230, height: 22, requiredByDefault: false },
-  SIGNER_NAME: { label: 'Name', noun: 'name', width: 200, height: 22, requiredByDefault: true },
-  CHECKBOX: {
-    label: 'Checkbox',
-    noun: 'a checkbox',
-    width: 18,
-    height: 18,
-    requiredByDefault: false,
-  },
-  FIRST_NAME: { label: 'First name', noun: 'first name', width: 150, height: 22, requiredByDefault: true },
-  LAST_NAME: { label: 'Last name', noun: 'last name', width: 150, height: 22, requiredByDefault: true },
-  EMAIL: { label: 'Email', noun: 'email', width: 200, height: 22, requiredByDefault: true },
-  COMPANY: { label: 'Company', noun: 'company', width: 200, height: 22, requiredByDefault: true },
-  TITLE: { label: 'Title', noun: 'title', width: 200, height: 22, requiredByDefault: true },
+// C3 (audit rows 36–37) — the label and noun are this app's; the default size and whether a
+// new field starts required come from @aramo/sign-client's ONE table (Appendix A).
+const LOOK: Readonly<Record<AuthoringFieldType, Pick<FieldTypeSpec, 'label' | 'noun'>>> = {
+  SIGNATURE: { label: 'Signature', noun: 'signature' },
+  INITIALS: { label: 'Initials', noun: 'initials' },
+  SIGN_DATE: { label: 'Date', noun: 'date' },
+  TEXT: { label: 'Text', noun: 'text' },
+  SIGNER_NAME: { label: 'Name', noun: 'name' },
+  CHECKBOX: { label: 'Checkbox', noun: 'a checkbox' },
+  FIRST_NAME: { label: 'First name', noun: 'first name' },
+  LAST_NAME: { label: 'Last name', noun: 'last name' },
+  EMAIL: { label: 'Email', noun: 'email' },
+  COMPANY: { label: 'Company', noun: 'company' },
+  TITLE: { label: 'Title', noun: 'title' },
 };
 
-/** M-A12 W1-E.2 — the user's default field size: the starting size of a placed field. */
-export const FIELD_SIZE_SCALE = { S: 0.85, M: 1, L: 1.2 } as const;
-export type FieldSizeKey = keyof typeof FIELD_SIZE_SCALE;
+export const FIELD_TYPE_SPECS: Readonly<Record<AuthoringFieldType, FieldTypeSpec>> = Object.fromEntries(
+  AUTHORING_FIELD_TYPES.map((type) => [
+    type,
+    {
+      ...LOOK[type],
+      width: FIELD_DEFAULTS[type].width,
+      height: FIELD_DEFAULTS[type].height,
+      requiredByDefault: FIELD_DEFAULTS[type].required,
+    },
+  ]),
+) as Record<AuthoringFieldType, FieldTypeSpec>;
 
-export function sizeScale(size: string | null | undefined): number {
-  return size === 'S' || size === 'M' || size === 'L' ? FIELD_SIZE_SCALE[size] : 1;
-}
+/** M-A12 W1-E.2 — the user's default field size: the starting size of a placed field. */
+export { FIELD_SIZE_SCALE, sizeScale, type FieldSizeKey } from '@aramo/sign-client';
 
 /**
  * M-A14 R-6 — the Sign Document tool row: one horizontally scrolling row of circles in the

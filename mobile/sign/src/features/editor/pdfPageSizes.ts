@@ -7,6 +7,7 @@
 // draws in. Handles classic and incremental files and compressed object streams
 // (FlateDecode). Anything it cannot read is an error; the caller then falls back to the
 // sizes the upload response reports.
+import { looksLikePdf } from '@aramo/sign-client';
 import { inflate } from './inflate';
 import type { PageSize } from './geometry';
 
@@ -28,9 +29,8 @@ function toBytes(s: string): Uint8Array {
 }
 
 /** True when the bytes start like a PDF (`%PDF-` within the first 1024 bytes). */
-export function looksLikePdf(bytes: Uint8Array): boolean {
-  return latin1(bytes.subarray(0, Math.min(bytes.length, 1024))).includes('%PDF-');
-}
+// C3 (audit row 25) — the one PDF header rule (@aramo/sign-client).
+export { looksLikePdf };
 
 interface ParsedObjects {
   readonly objects: Map<number, string>;

@@ -1,6 +1,8 @@
 // The sender's contacts (M-A3 §5; directive B-6): saved contacts (private to this
 // user and tenant) merged with recent recipients. A contact grants nothing; recipients
 // are validated when the envelope is sent.
+import { isValidEmail } from '@aramo/sign-client';
+
 import type { WorkspaceClient } from '../../api/workspaceClient';
 
 export interface Contact {
@@ -20,13 +22,8 @@ export interface ContactInput {
 
 export const CONTACTS_QUERY_KEY = ['sign', 'sender', 'contacts'] as const;
 
-/** The server's email rule (sender-envelope.service.ts EMAIL_RE). */
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function isValidEmail(email: string): boolean {
-  const e = email.trim();
-  return e.length <= 254 && EMAIL_RE.test(e);
-}
+/** The server's email rule (C3 audit row 22: @aramo/sign-client, sender-envelope.service.ts uses it). */
+export { isValidEmail };
 
 export function contactInputError(input: ContactInput): string | null {
   const name = input.name.trim();

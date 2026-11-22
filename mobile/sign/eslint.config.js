@@ -51,4 +51,10 @@ module.exports = defineConfig([
     files: ['scripts/**/*.mjs'],
     rules: { 'no-console': 'off' },
   },
+  {
+    // Client Rule Consolidation C2-3 — the Jest resolver for libs/sign-client is Node code
+    // (like metro.config.js, which eslint-config-expo already treats as Node).
+    files: ['jest.resolver.js'],
+    languageOptions: { globals: { __dirname: 'readonly', require: 'readonly', module: 'writable' } },
+  },
 ]);

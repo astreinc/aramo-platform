@@ -28,7 +28,6 @@ import {
   RECIPIENT_KINDS,
   currentTurnOf,
   isCopyRecipient,
-  isLinkSigner,
   recipientKindOf,
   signingRecipients,
   type CopyDelivery,
@@ -59,6 +58,18 @@ import {
   PROFILE_TEXT_FIELD_TYPES,
   SignUserProfileRepository,
 } from '@aramo/sign';
+import {
+  selfSignTarget,
+  sessionIssueRefusal,
+  CHECKBOX_GROUP_KEY_MAX,
+  CHECKBOX_LABEL_MAX,
+  EMAIL_MAX,
+  EMAIL_PATTERN,
+  ENVELOPE_SUBJECT_MAX,
+  MAX_SIGNERS,
+  SENDER_FIELD_TYPES,
+  VOID_REASON_MAX,
+} from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
@@ -75,11 +86,28 @@ import {
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { purgeViewOf } from '../retention/purge-view.js';
+import { SignPurgeService } from '../retention/sign-purge.service.js';
 import { SignPaymentsGate, paymentsNotAvailable } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, WordConversionError, disabledWordConversion, isWordFilename, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 
 import { ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
+import {
+  SIGN_APPLICATION,
+  canRemindRecipient,
+  changeRefusal,
+  deleteDraftStateRefusal,
+  downloadStateRefusal,
+  enforce,
+  hostableRecipient,
+  remindModeRefusal,
+  sendStateRefusal,
+  senderActions,
+  voidStateRefusal,
+  type ActionEnvelope,
+  type SenderActionFacts,
+  type SenderActions,
+} from './envelope-actions.js';
 
 // PX-1 — the authenticated sender workspace (esign.aramo.ai). tenant_id and the
 // acting user come ONLY from the verified auth context. Authoring writes are
@@ -100,24 +128,25 @@ import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './en
 // ACKNOWLEDGEMENT stays engine-only (the S2S and Sign API keep all seven).
 // Aramo Sign Mobile M-A12 W1-C.4 — + the profile auto-fill text types (FIRST_NAME,
 // LAST_NAME, EMAIL, COMPANY, TITLE): placed by the sender, filled by the signer.
-export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX', ...PROFILE_TEXT_FIELD_TYPES] as const;
+export const FIELD_TYPES = SENDER_FIELD_TYPES;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
 const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
 const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
-const MAX_LABEL = 200;
-const MAX_GROUP_KEY = 64;
+const MAX_LABEL = CHECKBOX_LABEL_MAX;
+const MAX_GROUP_KEY = CHECKBOX_GROUP_KEY_MAX;
 const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
 // The seven engine field types (the S2S and Sign API paths accept all of them).
 const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT', ...PROFILE_TEXT_FIELD_TYPES]);
-export const MAX_SIGNERS = 10;
+// Client Rule Consolidation C3 — the limits and patterns below come from @aramo/sign-client
+// (one copy for the server and both Sign clients).
+export { MAX_SIGNERS };
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
-const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
 const MAX_FIELDS = 500;
-const MAX_TITLE = 200;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_TITLE = ENVELOPE_SUBJECT_MAX;
+const EMAIL_RE = EMAIL_PATTERN;
 
 // The Sign application's own key (SignatureEnvelope.source_application).
-export const SIGN_APPLICATION = 'aramo-sign';
+export { SIGN_APPLICATION } from './envelope-actions.js';
 
 export const ENVELOPE_TABS: Record<string, readonly string[] | undefined> = {
   all: undefined,
@@ -161,21 +190,20 @@ export function canSelfSignNow(
     routing_mode: string;
     created_by: string;
     source_application: string;
+    expires_at?: Date | null;
     signers: ReadonlyArray<{ id: string; status: string; signing_order: number; bound_user_id: string | null; recipient_kind?: string | null; witness_for_signer_id?: string | null }>;
   },
+  now: Date = new Date(),
 ): boolean {
-  if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') return false;
   if (!auth.scopes.includes(ESIGN_SEND_SCOPE) || env.source_application !== SIGN_APPLICATION) return false;
   if (env.created_by !== auth.sub && !auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return false;
-  const turn = env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
-  return signingRecipients(env.signers).some(
-    (s) =>
-      s.bound_user_id === auth.sub &&
-      recipientKindOf(s) !== 'IN_PERSON_SIGNER' &&
-      (s.status === 'PENDING' || s.status === 'VIEWED') &&
-      (env.routing_mode !== 'SEQUENTIAL' || s.id === turn) &&
-      witnessReady(env.signers, s),
-  );
+  // Client Rule Consolidation C3 (D-1) — the recipient and the session checks are the ONE
+  // functions EsignService.issueSelfSignSession runs under the lock (selfSignTarget,
+  // sessionIssueRefusal). An in-person signer is hosted, not self-signed, and a witness waits
+  // for its signer (both re-checked by the engine when the signer acts).
+  const target = selfSignTarget(env.signers, auth.sub);
+  if (target === null || recipientKindOf(target) === 'IN_PERSON_SIGNER' || !witnessReady(env.signers, target)) return false;
+  return sessionIssueRefusal({ status: env.status, routing_mode: env.routing_mode, expires_at: env.expires_at ?? null }, env.signers, target.id, now) === null;
 }
 
 function iso(d: Date | null | undefined): string | null {
@@ -227,6 +255,8 @@ export class SenderEnvelopeService {
     @Optional() private readonly userData?: SignUserProfileRepository,
     // M-A13 R-4 — Word to PDF conversion (absent or disabled ⇒ Word uploads keep today's refusal).
     @Optional() @Inject(WORD_CONVERSION_PORT) private readonly wordConversion?: WordConversionPort,
+    // Client Rule Consolidation C1 — SIGN_PURGE_ENABLED, for the delete / restore / purge actions.
+    @Optional() private readonly purgeEngine?: SignPurgeService,
   ) {}
 
   /** Feature-Parity (Amendment A1) — the ownership check, for the QES / e-stamp sender routes. */
@@ -273,23 +303,30 @@ export class SenderEnvelopeService {
   // (Sign Admin / Owner). An ordinary sender never changes another member's
   // envelope merely because they share a Business tenant. Visibility first: an
   // envelope the caller cannot see reads as not found.
-  async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+  //
+  // Sign Unified Product S-3 — an envelope that another application created (e.g. an ATS
+  // RTR or offer letter) is visible here but its lifecycle stays with that application,
+  // whose workflow depends on it. Client Rule Consolidation C1 — the check is the `change`
+  // check of the envelope actions (envelope-actions.ts changeRefusal). Returns the view read.
+  async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string) {
     const d = await this.describe(auth, envelope_id, requestId, false);
-    // Sign Unified Product S-3 — an envelope that another application created
-    // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays
-    // with that application, whose workflow depends on it.
-    if (d.source_application !== SIGN_APPLICATION) {
-      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This envelope is managed by the application that sent it', 409, {
-        requestId,
-        details: { reason: 'managed_by_source_application', source_application: d.source_application },
-      });
-    }
-    if (d.sender.id === auth.sub) return;
-    if (auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return;
-    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Only the sender of this envelope, or a Sign Admin, can change it', 403, {
-      requestId,
-      details: { reason: 'envelope_not_owned', missing_scopes: [ESIGN_SCOPE.ENVELOPE_MANAGE_ALL] },
-    });
+    enforce(changeRefusal(auth, { owner_id: d.sender.id, source_application: d.source_application }), requestId);
+    return d;
+  }
+
+  // Client Rule Consolidation C1 — the request facts every envelope's `actions` share (one
+  // read per request; no per-envelope query). `can_author` is the authoring route guard itself
+  // (SenderContextService.assertCanAuthor — the same call every write makes; for a PERSONAL
+  // tenant it opens the FREE subscription, exactly as the context read does).
+  private async actionFacts(auth: AuthContextType, requestId: string): Promise<Omit<SenderActionFacts, 'deleted' | 'can_self_sign_now' | 'inbox_item'>> {
+    return {
+      can_author: await this.context.assertCanAuthor(auth, requestId).then(
+        () => true,
+        () => false,
+      ),
+      purge_enabled: this.purgeEngine?.enabled === true,
+      in_person_available: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_IN_PERSON_SIGNING_FEATURE),
+    };
   }
 
   // ── Reads ──────────────────────────────────────────────────────────────────
@@ -381,6 +418,10 @@ export class SenderEnvelopeService {
     const proof = open && this.inbox !== undefined ? await this.inbox.verifiedEmailProof(auth.sub).catch(() => null) : null;
     const now = new Date();
     const mine = await this.myInboxItemIds(auth.sub, rows, proof, now);
+    // Client Rule Consolidation C1 — one facts read per page; Deleted-folder membership from
+    // the id list already loaded above (no per-row query).
+    const facts = await this.actionFacts(auth, requestId);
+    const deletedSet = new Set(deleted);
     return {
       items: rows.map((e) => ({
         id: e.id,
@@ -403,6 +444,13 @@ export class SenderEnvelopeService {
         mode: envelopeModeOf(e),
         can_self_sign_now: canSelfSignNow(auth, e),
         purge: purgeViewOf(e),
+        // C1 — what the caller may do with this envelope (envelope-actions.ts).
+        actions: senderActions(auth, actionEnvelopeOf(e), {
+          ...facts,
+          deleted: deletedSet.has(e.id),
+          can_self_sign_now: canSelfSignNow(auth, e),
+          inbox_item: (mine.get(e.id) ?? null) !== null,
+        }),
       })),
       counts,
     };
@@ -410,13 +458,47 @@ export class SenderEnvelopeService {
 
   // The sender detail returned to the client: page sizes are filled for documents
   // uploaded before they were stored (Sign Mobile D-W6-2).
+  //
+  // Client Rule Consolidation C1 — the detail carries `actions` (the internal describe reads do
+  // not: they never reach a client).
   async detail(auth: AuthContextType, envelope_id: string, requestId: string) {
-    return this.describe(auth, envelope_id, requestId, true);
+    const { view, env } = await this.describeWith(auth, envelope_id, requestId, true);
+    const actions: SenderActions = await this.actionsOf(auth, env, requestId);
+    // Client Rule Consolidation C3 (audit row 13) — which in-person signer the caller may host
+    // now: the host_in_person action AND the per-recipient rule the hosted-session route
+    // enforces (envelope-actions.ts hostableRecipient). Clients never re-derive it.
+    const actionEnv = actionEnvelopeOf(env);
+    const now = new Date();
+    const recipients = view.recipients.map((r) => {
+      const row = actionEnv.recipients.find((x) => x.id === r.id);
+      return { ...r, hostable: actions.host_in_person && row !== undefined && hostableRecipient(actionEnv, row, now) };
+    });
+    return { ...view, recipients, actions };
+  }
+
+  // C1 — the detail's `actions`: the request facts, this tenant's Deleted-folder membership
+  // (only while purge is enabled — otherwise delete / restore are refused anyway), and the
+  // caller's inbox item while signing is open.
+  private async actionsOf(auth: AuthContextType, env: Awaited<ReturnType<EsignSenderRepository['getEnvelopeDetail']>>, requestId: string): Promise<SenderActions> {
+    const facts = await this.actionFacts(auth, requestId);
+    const deleted = this.purges !== undefined && facts.purge_enabled ? await this.purges.isDeletedBy(env.id, { kind: 'SENDER', key: auth.tenant_id }) : false;
+    let inbox_item = false;
+    if ((env.status === 'SENT' || env.status === 'IN_PROGRESS') && this.inbox !== undefined) {
+      const proof = await this.inbox.verifiedEmailProof(auth.sub).catch(() => null);
+      inbox_item = ((await this.myInboxItemIds(auth.sub, [env], proof, new Date())).get(env.id) ?? null) !== null;
+    }
+    return senderActions(auth, actionEnvelopeOf(env), { ...facts, deleted, can_self_sign_now: canSelfSignNow(auth, env), inbox_item });
   }
 
   // `fillPages` false for the internal visibility / readiness reads, which never
   // need page sizes (no source fetch on those paths).
   private async describe(auth: AuthContextType, envelope_id: string, requestId: string, fillPages: boolean) {
+    return (await this.describeWith(auth, envelope_id, requestId, fillPages)).view;
+  }
+
+  // The view and the envelope row it was built from (C1 — the detail's `actions` read the row's
+  // signers without a second fetch).
+  private async describeWith(auth: AuthContextType, envelope_id: string, requestId: string, fillPages: boolean) {
     const createdBy = await this.ownerFilter(auth, requestId);
     const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
     if (createdBy !== undefined && env.created_by !== createdBy) {
@@ -428,8 +510,9 @@ export class SenderEnvelopeService {
     const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
     // M-A5 §1.2 / §3 — only a SIGNER holds an emailed link, so only a SIGNER is reminded.
     // M-A12 W1-A — a SELF envelope invites no one, so no one is reminded.
-    const canRemind = (s: { id: string; status: string; recipient_kind?: string | null; witness_for_signer_id?: string | null }): boolean =>
-      open && env.envelope_mode !== 'SELF' && isLinkSigner(s) && witnessReady(env.signers, s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
+    // Client Rule Consolidation C1 — the one remind rule (envelope-actions.ts canRemindRecipient).
+    const remindable = { status: env.status, envelope_mode: env.envelope_mode ?? null, routing_mode: env.routing_mode, recipients: env.signers };
+    const canRemind = (s: { id: string; status: string; signing_order: number; recipient_kind?: string | null; witness_for_signer_id?: string | null }): boolean => canRemindRecipient(remindable, s);
     // Sign Mobile M-A3 §7 — when each remindable signer may next be reminded (the
     // later of their 60-minute cooldown and the envelope's rolling 24-hour limit).
     const now = new Date();
@@ -440,13 +523,13 @@ export class SenderEnvelopeService {
       const stored = storedPages(d.page_sizes?.pages);
       pagesOf.set(d.id, stored ?? (fillPages ? await this.fillPageSizes(auth.tenant_id, envelope_id, d.id) : null));
     }
-    const reminderAvailableAt = (s: { id: string; status: string }): string | null => {
+    const reminderAvailableAt = (s: { id: string; status: string; signing_order: number; recipient_kind?: string | null; witness_for_signer_id?: string | null }): string | null => {
       if (!canRemind(s)) return null;
       const signerNext = nextReminderAt(history, s.id, now, SIGN_REMINDER_LIMITS);
       const later = [envelopeNext, signerNext].filter((d): d is Date => d !== null).sort((a, b) => b.getTime() - a.getTime())[0];
       return later === undefined ? null : later.toISOString();
     };
-    return {
+    const view = {
       id: env.id,
       subject: env.subject,
       status: env.status,
@@ -560,6 +643,7 @@ export class SenderEnvelopeService {
         })),
       ),
     };
+    return { view, env };
   }
 
   // Sign Mobile D-W6-2 — measure and store the page sizes of a document uploaded
@@ -691,7 +775,7 @@ export class SenderEnvelopeService {
     }
     if (o['email'] !== undefined || !partial) {
       const email = typeof o['email'] === 'string' ? o['email'].trim() : '';
-      if (!EMAIL_RE.test(email) || email.length > 254) throw bad(requestId, 'A contact needs a valid email', { field: 'email', reason: 'invalid_contact_email' });
+      if (!EMAIL_RE.test(email) || email.length > EMAIL_MAX) throw bad(requestId, 'A contact needs a valid email', { field: 'email', reason: 'invalid_contact_email' });
       out.email = email;
     }
     if (o['organization'] !== undefined) {
@@ -778,9 +862,8 @@ export class SenderEnvelopeService {
 
   async executed(auth: AuthContextType, envelope_id: string, requestId: string) {
     const d = await this.describe(auth, envelope_id, requestId, false);
-    if (d.status !== 'COMPLETED') {
-      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Executed documents exist only for a completed envelope', 409, { requestId });
-    }
+    // C1 — the download / certificate rule (a completed envelope whose documents were not purged).
+    enforce(downloadStateRefusal({ status: d.status, purge_state: d.purge?.state ?? null }, envelope_id), requestId);
     const bundle = await this.provider.getExecutedArtifacts(auth.tenant_id, envelope_id);
     const titles = new Map(d.documents.map((x) => [x.id, x.title]));
     return {
@@ -1022,7 +1105,9 @@ export class SenderEnvelopeService {
   async deleteDraft(auth: AuthContextType, envelope_id: string, requestId: string, ifMatch?: string): Promise<void> {
     await this.context.assertCanAuthor(auth, requestId);
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
-    await this.assertMayChange(auth, envelope_id, requestId);
+    const current = await this.assertMayChange(auth, envelope_id, requestId);
+    // C1 — the delete_draft rule; the repository re-checks DRAFT under the row lock.
+    enforce(deleteDraftStateRefusal(current), requestId);
     let removed: Awaited<ReturnType<EsignSenderRepository['deleteDraft']>>;
     try {
       removed = await this.repo.deleteDraft({ tenant_id: auth.tenant_id, envelope_id, actor_ref: auth.sub, ...(expected !== undefined ? { expected_revision: expected } : {}) });
@@ -1091,7 +1176,7 @@ export class SenderEnvelopeService {
       // M-A5 §3.5 — email is optional for an in-person signer only.
       const email = emailRaw.length === 0 && kind === 'IN_PERSON_SIGNER' ? null : emailRaw;
       if (name.length === 0 || name.length > MAX_TITLE) throw bad(requestId, `recipient ${i + 1} needs a name`, { index: i, field: 'name' });
-      if (email !== null && (!EMAIL_RE.test(email) || email.length > 254)) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
+      if (email !== null && (!EMAIL_RE.test(email) || email.length > EMAIL_MAX)) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
       // M-A5 §1.4 / §3.5 — emails are distinct across all kinds; a missing email is never a duplicate.
       if (email !== null) {
         const k = email.toLowerCase();
@@ -1301,7 +1386,7 @@ export class SenderEnvelopeService {
   // ≥1 signing recipient, every signing recipient has at least one SIGNATURE field,
   // and (M-A5 §1.5) a recipient who receives a copy has no fields.
   readiness(
-    d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'> & { routing_mode?: string },
+    d: Pick<Awaited<ReturnType<SenderEnvelopeService['describe']>>, 'documents' | 'recipients' | 'fields'> & { routing_mode?: string },
   ): { ok: boolean; problems: string[] } {
     const problems: string[] = [];
     // Feature-Parity §1.17 — when signing in order, a witness comes after the signer it witnesses.
@@ -1331,9 +1416,9 @@ export class SenderEnvelopeService {
   async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string, meta: { ip?: string | null; ifMatch?: string } = {}) {
     const tenant = await this.context.assertCanAuthorTenant(auth, requestId);
     let expected = expectedRevision(auth, meta.ifMatch, envelope_id, requestId);
-    await this.assertMayChange(auth, envelope_id, requestId);
-    let d = await this.describe(auth, envelope_id, requestId, false);
-    if (d.status !== 'DRAFT') throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
+    let d = await this.assertMayChange(auth, envelope_id, requestId);
+    // C1 — the send rule (envelope-actions.ts).
+    enforce(sendStateRefusal(d), requestId);
     if (typeof body?.subject === 'string' && body.subject.trim().length > 0 && body.subject.trim() !== d.subject) {
       const rev = await this.repo.updateDraft({ tenant_id: auth.tenant_id, envelope_id, subject: body.subject.trim().slice(0, MAX_TITLE), ...(expected !== undefined ? { expected_revision: expected } : {}) });
       if (expected !== undefined) expected = rev;
@@ -1413,9 +1498,8 @@ export class SenderEnvelopeService {
     const signer_id = body?.signer_id;
     if (signer_id !== undefined && typeof signer_id !== 'string') throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
     // M-A12 W1-A — a self-sign envelope sends no emails, so there is no one to remind.
-    if ((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).envelope_mode === 'SELF') {
-      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'A document you sign yourself has no one to remind', 409, { requestId, details: { reason: 'self_sign_no_reminders' } });
-    }
+    // C1 — the remind rule's mode check (envelope-actions.ts); the engine checks who may be reminded.
+    enforce(remindModeRefusal(await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)), requestId);
     return this.idempotent(auth, `remind:${envelope_id}`, meta.idempotencyKey, { envelope_id, signer_id: signer_id ?? null }, 200, async () => {
       // Personal Free v1.1 §6.3 / §6.6 — a reminder is a new email: the risk gate applies.
       if (tenant?.kind === 'PERSONAL' && this.personal !== undefined) await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);
@@ -1430,9 +1514,10 @@ export class SenderEnvelopeService {
     await this.assertMayChange(auth, envelope_id, requestId);
     const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
     if (reason.length === 0) throw bad(requestId, 'A reason is required to void an envelope');
-    if (reason.length > 500) throw bad(requestId, 'reason must be at most 500 characters');
+    if (reason.length > VOID_REASON_MAX) throw bad(requestId, `reason must be at most ${VOID_REASON_MAX} characters`);
     const d = await this.describe(auth, envelope_id, requestId, false);
-    if (TERMINAL.has(d.status)) throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
+    // C1 — the void rule (envelope-actions.ts).
+    enforce(voidStateRefusal(d), requestId);
     await this.provider.voidEnvelope(auth.tenant_id, envelope_id, reason, auth.sub, expected !== undefined ? { expected_revision: expected } : {});
     return this.detail(auth, envelope_id, requestId);
   }
@@ -1724,4 +1809,28 @@ function isWordDocument(b: Uint8Array): boolean {
   const zip = b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
   const ole = b.length >= 4 && b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0;
   return zip || ole;
+}
+
+// Client Rule Consolidation C1 — the envelope facts the action rules read, from a stored row
+// (list row or detail row: both carry the signers and the purge columns).
+function actionEnvelopeOf(e: {
+  status: string;
+  created_by: string;
+  source_application: string;
+  envelope_mode?: string | null;
+  routing_mode: string;
+  expires_at?: Date | null;
+  purge_state?: string | null;
+  signers: ReadonlyArray<{ id: string; status: string; signing_order: number; recipient_kind?: string | null; witness_for_signer_id?: string | null }>;
+}): ActionEnvelope {
+  return {
+    status: e.status,
+    owner_id: e.created_by,
+    source_application: e.source_application,
+    envelope_mode: e.envelope_mode ?? null,
+    routing_mode: e.routing_mode,
+    expires_at: e.expires_at ?? null,
+    purge_state: e.purge_state ?? null,
+    recipients: e.signers,
+  };
 }

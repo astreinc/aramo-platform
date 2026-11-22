@@ -1,0 +1,30 @@
+{
+  "name": "sign-client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/sign-client/src",
+  "projectType": "library",
+  "tags": ["scope:sign", "type:client-shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/sign-client",
+        "main": "libs/sign-client/src/index.ts",
+        "tsConfig": "libs/sign-client/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/sign-client/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --root libs/sign-client"
+      }
+    }
+  }
+}
