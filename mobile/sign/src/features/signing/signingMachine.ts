@@ -17,14 +17,31 @@
 //   - M-A12 W1-C.4: FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the
 //     signer fills; when the signer is signed in, their own Sign profile pre-fills the
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
+//   - FIELD-PARITY-1 P3 §6: DATE, DROPDOWN, NUMBER and MULTILINE_TEXT open the field editor
+//     (never cleared by a tap); a RADIO option is chosen (its group's other options cleared,
+//     a chosen option stays chosen); a field's label setting names it; a read-only /
+//     sender-filled field shows the sender's value, is never tapped, sent or required; a
+//     value is checked with the server's own rule (@aramo/sign-client signerValueProblem)
+//     before it is kept.
 
 import {
   CHECK_FIELD_TYPES,
+  FIELD_CATALOG,
   PROFILE_TEXT_FIELD_TYPES,
   checkboxGroupOf,
   fieldTypesFor,
+  fieldValueDisplay,
+  isFieldTypeKey,
+  isSignerEditorKind,
+  isSignerLocked,
+  normalizeSignerInput,
   signDatePreview,
+  signerFieldCaption,
   signerFieldUnits,
+  signerInputKind,
+  signerUnitMessage,
+  signerValueProblem,
+  type FieldOptions,
   type FieldTypeOn,
   type SignerFieldLike,
   type SignerFieldUnit,
@@ -59,6 +76,13 @@ export interface SigningField {
   readonly name_mode?: string | null;
   /** M-A6 §2.2 — the server fills this field (a SIGNER_PROFILE name). */
   readonly server_filled?: boolean;
+  /** FIELD-PARITY-1 P3 §6.2 — the settings the signing page applies (absent from older servers). */
+  readonly tooltip?: string | null;
+  readonly placeholder?: string | null;
+  readonly read_only?: boolean;
+  readonly sender_filled?: boolean;
+  readonly validation?: string | null;
+  readonly options?: FieldOptions | null;
 }
 
 export interface SigningDocument {
@@ -162,7 +186,8 @@ export function initialState(
   const ordered = orderFields(fields, documents);
   const values: Record<string, FieldValue> = {};
   for (const f of ordered) {
-    if (f.filled && typeof f.value === 'string' && f.value.length > 0)
+    // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value is shown as it is (stored: never sent).
+    if ((f.filled || isLocked(f)) && typeof f.value === 'string' && f.value.length > 0)
       values[f.field_id] = { value: f.value, fromServer: true };
   }
   return { dateFormat, fields: ordered, values, currentId: null, adopted: {} };
@@ -175,6 +200,26 @@ export function isServerFilled(f: SigningField): boolean {
   return (
     f.server_filled === true || (f.field_type === 'SIGNER_NAME' && f.name_mode === 'SIGNER_PROFILE')
   );
+}
+
+/** FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value: shown, never tapped, sent or required. */
+export function isLocked(f: SigningField): boolean {
+  return isSignerLocked(f);
+}
+
+/** FIELD-PARITY-1 P3 T-5 — one option of a radio group. */
+export function isRadio(f: Pick<SigningField, 'field_type'>): boolean {
+  return f.field_type === 'RADIO';
+}
+
+/** FIELD-PARITY-1 P3 — a field filled in the field editor (text, date, choice, number, multi-line). */
+export function isEditorField(f: Pick<SigningField, 'field_type'>): boolean {
+  return isSignerEditorKind(signerInputKind(f.field_type));
+}
+
+/** The box a field without its own size takes (the catalog's default for its type). */
+export function defaultBox(type: string): readonly [number, number] {
+  return isFieldTypeKey(type) ? [FIELD_CATALOG[type].width, FIELD_CATALOG[type].height] : [160, 24];
 }
 
 /** A check box that belongs to a group. */
@@ -244,6 +289,18 @@ export function nextEmptyRequired(
   return null;
 }
 
+/**
+ * FIELD-PARITY-1 P3 — what a blocked Finish says: the first open group rule in plain words (a
+ * radio group needs one choice), or null for "complete the required fields".
+ */
+export function blockedMessage(s: SigningState): string | null {
+  const open = requiredUnits(s).find((u) => !u.done);
+  if (open === undefined || open.group_key === undefined) return null;
+  const checked = open.fields.filter((f) => isChecked(s, f.field_id)).length;
+  const min_selected = Math.max(1, ...open.fields.map((f) => f.min_selected ?? 1));
+  return signerUnitMessage(open.reason, { checked, min_selected });
+}
+
 /** Bottom bar button: Start → Next field → Finish (handoff §4.4). */
 export function primaryAction(s: SigningState): 'start' | 'next' | 'finish' {
   if (canFinish(s)) return 'finish';
@@ -257,6 +314,7 @@ export function primaryAction(s: SigningState): 'start' | 'next' | 'finish' {
 export function displayOf(
   f: SigningField,
   v: FieldValue | undefined,
+  dateFormat: string | null = null,
 ): { kind: 'image' | 'text' | 'mark' | 'script'; text: string } | null {
   if (!v) return null;
   if (v.display?.startsWith('data:image/')) return { kind: 'image', text: v.display };
@@ -272,24 +330,47 @@ export function displayOf(
       return v.value === 'true' ? { kind: 'mark', text: ACK_TEXT } : null;
     case 'SIGN_DATE':
       return { kind: 'text', text: v.value };
+    // FIELD-PARITY-1 P3 T-5 — a chosen option shows a filled circle (as on the executed PDF).
+    case 'RADIO':
+      return v.value === 'true' ? { kind: 'mark', text: RADIO_MARK } : null;
     default:
-      return { kind: 'text', text: v.value };
+      // FIELD-PARITY-1 P3 — a chosen date in the envelope's format, a number as printed (money
+      // with its currency), a dropdown as its choice's label.
+      return { kind: 'text', text: fieldValueDisplay(f, v.value, { date_format: dateFormat }) };
   }
+}
+
+export const RADIO_MARK = '●';
+
+/** FIELD-PARITY-1 P3 S-1 — a field's name: its label setting, else its type's name. */
+export function fieldCaption(f: SigningField): string {
+  return signerFieldCaption(f) ?? fieldLabel(f.field_type);
 }
 
 /** VoiceOver / TalkBack: "{Type}, for {signer}, {required|optional}, {empty|filled}" (§7). */
 export function fieldAnnouncement(s: SigningState, f: SigningField, signerName: string): string {
   const who = signerName.trim() ? signerName.trim() : 'you';
-  const label = f.field_type === 'CHECKBOX' && f.label ? ` "${f.label}"` : '';
-  const state = CHECK_TYPES.has(f.field_type)
+  // FIELD-PARITY-1 P3 S-1 — any field's label setting names it (a radio option's is its text).
+  const caption = signerFieldCaption(f);
+  const label = caption !== null ? ` "${caption}"` : '';
+  if (isLocked(f)) {
+    const shown = displayOf(f, s.values[f.field_id], s.dateFormat ?? null);
+    const value = shown?.kind === 'text' ? ` ${shown.text},` : shown?.kind === 'mark' ? (isRadio(f) ? ' chosen,' : ' checked,') : '';
+    return `${fieldLabel(f.field_type)}${label},${value} filled in by the sender`;
+  }
+  const state = isRadio(f)
     ? isChecked(s, f.field_id)
-      ? 'checked'
-      : 'not checked'
-    : isServerFilled(f)
-      ? 'filled for you'
-      : isFilled(s, f.field_id)
-        ? 'filled'
-        : 'empty';
+      ? 'chosen'
+      : 'not chosen'
+    : CHECK_TYPES.has(f.field_type)
+      ? isChecked(s, f.field_id)
+        ? 'checked'
+        : 'not checked'
+      : isServerFilled(f)
+        ? 'filled for you'
+        : isFilled(s, f.field_id)
+          ? 'filled'
+          : 'empty';
   return `${fieldLabel(f.field_type)}${label}, for ${who}, ${f.required ? 'required' : 'optional'}, ${state}`;
 }
 
@@ -300,7 +381,12 @@ export function emptyCaption(f: SigningField): string {
   if (f.field_type === 'SIGN_DATE')
     return `${fieldLabel(f.field_type)} · ${f.required ? '' : 'optional · '}${SIGN_DATE_PREVIEW_NOTE}`;
   if (f.field_type === 'CHECKBOX' && f.label) return f.required ? f.label : `${f.label} · optional`;
-  return f.required ? fieldLabel(f.field_type) : `${fieldLabel(f.field_type)} · optional`;
+  // FIELD-PARITY-1 P3 S-1 / S-2 — the placeholder hint, else the label, else the type's name.
+  const name =
+    (typeof f.placeholder === 'string' && f.placeholder.length > 0 ? f.placeholder : null) ??
+    signerFieldCaption(f) ??
+    fieldLabel(f.field_type);
+  return f.required ? name : `${name} · optional`;
 }
 
 function withValue(s: SigningState, id: string, v: FieldValue | null): SigningState {
@@ -337,6 +423,8 @@ export function tapField(
   const focused = { ...s, currentId: fieldId };
   // M-A6 §2.2 — the server fills this name; the signer cannot change it.
   if (isServerFilled(f)) return { state: focused, effect: { kind: 'none' } };
+  // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value; the signer cannot change it.
+  if (isLocked(f)) return { state: focused, effect: { kind: 'none' } };
   // M-A6 §2.3 — a check box toggles; unchecking is sent as 'false'.
   if (CHECK_TYPES.has(f.field_type)) return { state: toggleCheck(s, f), effect: { kind: 'none' } };
   // A name the signer types (never prefilled from the signed-in account).
@@ -345,6 +433,11 @@ export function tapField(
       state: focused,
       effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' },
     };
+  }
+  // FIELD-PARITY-1 P3 — DATE, DROPDOWN, NUMBER, MULTILINE_TEXT open the field editor with the
+  // current value (never cleared by a tap: the editor clears it).
+  if (f.field_type !== 'TEXT' && !PROFILE_TEXT_TYPES.has(f.field_type) && isEditorField(f)) {
+    return { state: focused, effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' } };
   }
   if (PROFILE_TEXT_TYPES.has(f.field_type)) {
     const current = s.values[fieldId]?.value;
@@ -390,10 +483,11 @@ export function toggleCheck(s: SigningState, f: SigningField): SigningState {
     s.values[id]?.fromServer || s.fields.find((x) => x.field_id === id)?.filled === true
       ? { value: 'false' }
       : null;
-  if (isChecked(s, f.field_id)) return withValue(s, f.field_id, off(f.field_id));
+  // FIELD-PARITY-1 P3 T-5 — a chosen radio option stays chosen (choose another to change it).
+  if (isChecked(s, f.field_id)) return isRadio(f) ? { ...s, currentId: f.field_id } : withValue(s, f.field_id, off(f.field_id));
   let next = s;
   const g = groupOf(f);
-  if (g !== null && f.group_rule === 'SELECT_ONE') {
+  if (g !== null && (f.group_rule === 'SELECT_ONE' || isRadio(f))) {
     for (const other of s.fields) {
       if (
         other.field_id !== f.field_id &&
@@ -415,6 +509,15 @@ export function toggleCheck(s: SigningState, f: SigningField): SigningState {
 export function setText(s: SigningState, fieldId: string, text: string): SigningState {
   const t = text.trim();
   return withValue(s, fieldId, t ? { value: t } : null);
+}
+
+/**
+ * FIELD-PARITY-1 P3 — the editor's typing as the value to keep (normalised: "$1,250.5" → "1250.5"),
+ * and the reason the server would refuse it (null: it may be kept; empty clears the field).
+ */
+export function checkEditorValue(f: SigningField, raw: string): { readonly value: string; readonly problem: string | null } {
+  const value = normalizeSignerInput(f, raw);
+  return { value, problem: value.length === 0 ? null : signerValueProblem(f, value) };
 }
 
 /** Adopted in the sheet: reused for the rest of the session, and fills the waiting field. */
@@ -450,7 +553,7 @@ export function fillsToSubmit(
   const out: { fieldId: string; value: string; method?: SignatureMethod }[] = [];
   for (const f of s.fields) {
     const v = s.values[f.field_id];
-    if (!v || v.fromServer || isServerFilled(f)) continue;
+    if (!v || v.fromServer || isServerFilled(f) || isLocked(f)) continue;
     out.push(
       v.method
         ? { fieldId: f.field_id, value: v.value, method: v.method }
