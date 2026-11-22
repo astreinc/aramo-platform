@@ -3,6 +3,8 @@
 // Every operation is typed from openapi/sign.yaml (B-12). The guest client's typed
 // post() has no path parameters, so the field fill (/fields/{fieldId}/fill) goes through
 // postRaw() with its body and response typed from the generated operation.
+import { DELEGATE_REASON_MAX, isValidDelegate, type DelegateInput } from '@aramo/sign-client';
+
 import { isApiError } from '../../api/errors';
 import { endsSigningSession, type GuestSigningSession } from '../../api/guestSigningClient';
 import { refusalMessage } from '../../api/refusalMessages';
@@ -326,8 +328,6 @@ export async function submitSigning(
   return { envelopeStatus: r?.envelope_status ?? 'IN_PROGRESS' };
 }
 
-export const DECLINE_REASON_MIN = 3;
-
 export async function declineSigning(session: GuestSigningSession, reason: string): Promise<void> {
   await session.post('/v1/sign/signing/decline', { reason: reason.trim() });
 }
@@ -342,20 +342,10 @@ export async function loadExecutedCopy(session: GuestSigningSession): Promise<Ex
 
 // ── B3 (Feature-Parity §1.17) — delegate signing ────────────────────────────────
 
-export const DELEGATE_REASON_MAX = 500;
-const DELEGATE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export interface DelegateInput {
-  readonly name: string;
-  readonly email: string;
-  readonly reason?: string;
-}
-
-/** A name and a valid email (the server checks again). */
-export function validDelegate(input: DelegateInput): boolean {
-  const email = input.email.trim();
-  return input.name.trim().length > 0 && email.length <= 254 && DELEGATE_EMAIL_RE.test(email);
-}
+// Client Rule Consolidation C3 (audit row 28) — the delegate rule lives in @aramo/sign-client
+// (email at most 254, reason at most 500; the server checks again).
+export { DELEGATE_REASON_MAX, type DelegateInput } from '@aramo/sign-client';
+export const validDelegate = isValidDelegate;
 
 /**
  * Hand this signature to another person. This link stops working and the delegate is

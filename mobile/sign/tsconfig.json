@@ -4,7 +4,11 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    // Client Rule Consolidation G-3 — the ONE repo library this app imports.
+    "paths": {
+      "@aramo/sign-client": ["../../libs/sign-client/src/index.ts"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules", "ios", "android", "coverage"]

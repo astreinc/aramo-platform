@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
+import { DEFAULT_SIGN_DATE_FORMAT, SIGN_DATE_FORMATS, type SignDateFormat } from './domain/sign-date.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // Aramo Sign Mobile M-A12 §2 W1-E / W1-F — the signed-in user's own Sign data:
@@ -17,9 +18,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // BOTH. All of it is in the M-A8 deletion scope (removeAllForUser) and is counted in
 // the privacy inventory.
 
-export const SIGN_DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'] as const;
-export type SignDateFormat = (typeof SIGN_DATE_FORMATS)[number];
-export const DEFAULT_SIGN_DATE_FORMAT: SignDateFormat = 'MM/DD/YYYY';
+// Client Rule Consolidation C2-4 — the date format list is the one in @aramo/sign-client.
+export { SIGN_DATE_FORMATS, DEFAULT_SIGN_DATE_FORMAT, type SignDateFormat } from './domain/sign-date.js';
 export const SIGN_FIELD_SIZES = ['S', 'M', 'L'] as const;
 export type SignFieldSize = (typeof SIGN_FIELD_SIZES)[number];
 export const DEFAULT_SIGN_FIELD_SIZE: SignFieldSize = 'M';

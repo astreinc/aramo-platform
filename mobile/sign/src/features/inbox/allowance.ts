@@ -4,6 +4,8 @@
 //     `allowance.daily.next_available_at`, shown in local time, never "tomorrow" (C-3);
 //   - the monthly window resets at `allowance.period_end`;
 //   - the copy says "documents" (approved Terms wording); the unit is the envelope (C-4).
+import { limitReachedCopy } from '@aramo/sign-client';
+
 import { dateTime, shortDate } from './agreementsModel';
 import type { BillingAccount } from './types';
 
@@ -81,26 +83,18 @@ export function allowanceChipText(m: AllowanceModel): string {
   return parts.join(' · ');
 }
 
-/** The amber limit banner, monthly first (it outlasts the daily one). */
+/**
+ * The amber limit banner, monthly first (it outlasts the daily one). Client Rule
+ * Consolidation C3 (audit row 17) — the words are @aramo/sign-client's limitReachedCopy
+ * ("documents"), the same the web shows.
+ */
 export function limitBanner(m: AllowanceModel | null): LimitBanner | null {
   if (!m) return null;
   if (m.month && m.month.remaining <= 0) {
-    return {
-      kind: 'monthly',
-      title: 'Monthly limit reached',
-      body: m.resetsAt
-        ? `You’ve used all ${m.month.limit} documents this month. Your allowance resets on ${shortDate(m.resetsAt)}.`
-        : `You’ve used all ${m.month.limit} documents this month.`,
-    };
+    return limitReachedCopy('monthly', m.month.limit, m.resetsAt ? shortDate(m.resetsAt) : null);
   }
   if (m.day && m.day.remaining <= 0) {
-    return {
-      kind: 'daily',
-      title: 'Daily limit reached',
-      body: m.nextAvailableAt
-        ? `You’ve sent ${m.day.limit} documents in the last 24 hours, the most the free plan allows. You can send again at ${dateTime(m.nextAvailableAt)}.`
-        : `You’ve sent ${m.day.limit} documents in the last 24 hours, the most the free plan allows.`,
-    };
+    return limitReachedCopy('daily', m.day.limit, m.nextAvailableAt ? dateTime(m.nextAvailableAt) : null);
   }
   return null;
 }

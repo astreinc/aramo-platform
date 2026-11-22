@@ -4,6 +4,8 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
+import { localTimeZone } from '@aramo/sign-client';
+
 import type { TextLayer } from './find.js';
 
 export interface SignerSession {
@@ -206,16 +208,6 @@ export interface IdentityVerificationStatus {
   verification_url?: string | null;
 }
 
-/** The browser's IANA time zone (null when the runtime does not report one). */
-export function signerTimeZone(): string | null {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return typeof tz === 'string' && tz !== '' ? tz : null;
-  } catch {
-    return null;
-  }
-}
-
 export const signApi = {
   branding(token: string): Promise<SignerBranding | null> {
     return post<{ branding: SignerBranding | null }>('branding', { token }).then((r) => r.branding ?? null);
@@ -263,7 +255,7 @@ export const signApi = {
   // Client Rule Consolidation C0-2 — every fill and the completion carry the signer's IANA
   // time zone: the server stamps SIGN_DATE in it (the value this page shows is a preview).
   fillField(token: string, fieldId: string, value: string, signature_method?: string): Promise<void> {
-    const time_zone = signerTimeZone();
+    const time_zone = localTimeZone();
     return post<void>(`fields/${encodeURIComponent(fieldId)}/fill`, {
       token,
       value,
@@ -272,7 +264,7 @@ export const signApi = {
     });
   },
   complete(token: string): Promise<{ envelope_status: string }> {
-    const time_zone = signerTimeZone();
+    const time_zone = localTimeZone();
     return post<{ envelope_status: string }>('complete', { token, ...(time_zone !== null ? { time_zone } : {}) });
   },
   decline(token: string, reason: string): Promise<void> {

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { DELEGATE_REASON_MAX, SIGN_DATE_PREVIEW_NOTE, isValidDeclineReason, isValidDelegate, signDatePreview } from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
 import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
@@ -142,19 +143,6 @@ function tokenFromLocation(): string {
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
   return new URLSearchParams(window.location.search).get('token') ?? '';
-}
-
-// M-A12 W1-E.2 — the date in the sender's format (stamped on the envelope at send).
-// Client Rule Consolidation C0-2 — this is a PREVIEW only: the server stamps the stored
-// SIGN_DATE at signing (the signer's date in their time zone, the envelope's format). An
-// envelope without a format previews the server's default, MM/DD/YYYY.
-export function today(format?: string | null, now: Date = new Date()): string {
-  const yyyy = String(now.getFullYear());
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  if (format === 'DD/MM/YYYY') return `${dd}/${mm}/${yyyy}`;
-  if (format === 'YYYY-MM-DD') return `${yyyy}-${mm}-${dd}`;
-  return `${mm}/${dd}/${yyyy}`;
 }
 
 function initialsOf(name: string): string {
@@ -569,7 +557,7 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
         </Btn>
         <Btn
           variant="danger"
-          disabled={reason.trim().length === 0 || busy}
+          disabled={!isValidDeclineReason(reason) || busy}
           onClick={() => {
             setBusy(true);
             void onDecline(reason.trim()).finally(() => setBusy(false));
@@ -741,7 +729,8 @@ function DelegateDialog({ onDelegate, onClose }: { readonly onDelegate: (input: 
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ok = name.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // C3 (audit row 28) — the delegate rule shared with the server and the app (email ≤254, reason ≤500).
+  const ok = isValidDelegate({ name, email, reason });
   return (
     <Dialog title="Ask someone else to sign" onClose={onClose}>
       <p className="sg-muted">
@@ -757,7 +746,7 @@ function DelegateDialog({ onDelegate, onClose }: { readonly onDelegate: (input: 
       </label>
       <label className="sg-label">
         Reason (optional)
-        <TextBox value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} rows={2} aria-label="Reason (optional)" />
+        <TextBox value={reason} onChange={(e) => setReason(e.target.value.slice(0, DELEGATE_REASON_MAX))} rows={2} aria-label="Reason (optional)" />
       </label>
       {error !== null ? (
         <p className="sg-error" role="alert">
@@ -1169,7 +1158,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       if (a && !done) void fill(f, a.value, a.method);
       else setAdoptFor(f);
     } else if (t === 'SIGN_DATE') {
-      if (!done) void fill(f, today(view?.date_format));
+      // M-A12 W1-E.2 / C0-2 — a PREVIEW in the envelope's stamped format; the server stamps
+      // the stored SIGN_DATE at signing (Client Rule Consolidation C2: the shared formatter).
+      if (!done) void fill(f, signDatePreview(view?.date_format));
     } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
       void toggle(f);
     } else setTextFor(f);
@@ -1723,7 +1714,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
-                        {f.field_type === 'SIGN_DATE' ? ' · filled in at signing' : ''}
+                        {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
                     </span>
                     {done ? (

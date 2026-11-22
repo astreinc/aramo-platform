@@ -14,16 +14,12 @@
 //                     (witness_for_signer_id), and only after that signer has signed.
 //                     Blocks completion like any signing recipient.
 
-export const RECIPIENT_KINDS = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'] as const;
-export type RecipientKind = (typeof RECIPIENT_KINDS)[number];
+// Client Rule Consolidation C2-4 — the recipient kinds and limits live in
+// @aramo/sign-client (one copy for the server and both Sign clients).
+import { SIGNING_RECIPIENT_KINDS, currentTurnOf, isLinkSigner, isWitness, mayActNow, signingRecipients, witnessReady, type TurnRow as SharedTurnRow } from '@aramo/sign-client';
 
-export const SIGNING_RECIPIENT_KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'WITNESS'];
-
-export const COPY_DELIVERIES = ['ON_SEND', 'ON_COMPLETION', 'BOTH'] as const;
-export type CopyDelivery = (typeof COPY_DELIVERIES)[number];
-
-// M-A5 §1.4 — at most 10 signing recipients (MAX_SIGNERS, unchanged) and 10 copies.
-export const MAX_COPY_RECIPIENTS = 10;
+export { RECIPIENT_KINDS, SIGNING_RECIPIENT_KINDS, COPY_DELIVERIES, MAX_COPY_RECIPIENTS } from '@aramo/sign-client';
+export type { RecipientKind, CopyDelivery } from '@aramo/sign-client';
 
 // M-A5 §3.2 / §4.2 — hosted and self-sign sessions last 30 minutes.
 export const HOSTED_SESSION_TTL_MS = 30 * 60 * 1000;
@@ -43,73 +39,22 @@ export const SIGNER_DELEGATED_EVENT = 'SIGNER_DELEGATED';
 // A Prisma `where` fragment selecting the signing recipients of an envelope.
 export const SIGNING_RECIPIENT_WHERE = { recipient_kind: { in: [...SIGNING_RECIPIENT_KINDS] } };
 
-interface KindRow {
-  recipient_kind?: string | null;
-}
-interface TurnRow extends KindRow {
-  id: string;
-  status: string;
-  signing_order: number;
-  // §1.17 — set for a WITNESS only (rows read without it are never witnesses).
-  witness_for_signer_id?: string | null;
-}
-
-// A row without recipient_kind (an older read) is a SIGNER: the column default.
-export function recipientKindOf(r: KindRow): RecipientKind {
-  const k = r.recipient_kind;
-  return k === 'IN_PERSON_SIGNER' || k === 'RECEIVES_COPY' || k === 'WITNESS' ? k : 'SIGNER';
-}
-
-export function isWitness(r: KindRow): boolean {
-  return recipientKindOf(r) === 'WITNESS';
-}
-
-// §1.17 — a witness may act only once the signer it witnesses has SIGNED. Every
-// other recipient is always "ready" by this rule (turn rules still apply).
-export function witnessReady(rows: readonly { id: string; status: string }[], r: KindRow & { witness_for_signer_id?: string | null }): boolean {
-  if (!isWitness(r)) return true;
-  const principal = rows.find((x) => x.id === r.witness_for_signer_id);
-  return principal !== undefined && principal.status === 'SIGNED';
-}
-
-export function isSigningRecipient(r: KindRow): boolean {
-  return recipientKindOf(r) !== 'RECEIVES_COPY';
-}
-
-export function isCopyRecipient(r: KindRow): boolean {
-  return recipientKindOf(r) === 'RECEIVES_COPY';
-}
-
-// Only a SIGNER (and, §1.17, a WITNESS) is emailed a signing link (invitation and reminder).
-export function isLinkSigner(r: KindRow): boolean {
-  const k = recipientKindOf(r);
-  return k === 'SIGNER' || k === 'WITNESS';
-}
-
-export function signingRecipients<T extends KindRow>(rows: readonly T[]): T[] {
-  return rows.filter(isSigningRecipient);
-}
-
-export function copyRecipients<T extends KindRow & { copy_delivery?: string | null }>(rows: readonly T[], when: 'SEND' | 'COMPLETION'): T[] {
-  const wanted = when === 'SEND' ? ['ON_SEND', 'BOTH'] : ['ON_COMPLETION', 'BOTH'];
-  return rows.filter((r) => isCopyRecipient(r) && wanted.includes(r.copy_delivery ?? ''));
-}
-
-// Every signing recipient has signed (the envelope completes). Copies never block.
-export function allSigningRecipientsSigned(rows: readonly (KindRow & { status: string })[]): boolean {
-  const signing = signingRecipients(rows);
-  return signing.length > 0 && signing.every((s) => s.status === 'SIGNED');
-}
-
-// Multi-Signer §4 — in a SEQUENTIAL envelope the recipient whose turn it is: the
-// lowest signing_order among signing recipients who have not SIGNED (null when
-// every one has). Copies never take a turn.
-export function currentTurnOf<T extends TurnRow>(rows: readonly T[]): T | null {
-  const open = signingRecipients(rows)
-    .filter((s) => s.status !== 'SIGNED')
-    .sort((a, b) => a.signing_order - b.signing_order);
-  return open[0] ?? null;
-}
+// C3 (D-1) — the pure turn rules live in @aramo/sign-client (one copy for the server's
+// in-lock checks and the C1 actions); the database variants below stay here.
+export {
+  recipientKindOf,
+  isWitness,
+  witnessReady,
+  isSigningRecipient,
+  isCopyRecipient,
+  isLinkSigner,
+  signingRecipients,
+  copyRecipients,
+  allSigningRecipientsSigned,
+  currentTurnOf,
+  mayActNow,
+} from '@aramo/sign-client';
+type TurnRow = SharedTurnRow;
 
 // The same rule, read from the database (inside the caller's transaction).
 export async function currentTurnSignerId(
@@ -123,16 +68,6 @@ export async function currentTurnSignerId(
     select: { id: true },
   });
   return next?.id ?? null;
-}
-
-// Whether `signer_id` may act now: PARALLEL — any signing recipient; SEQUENTIAL —
-// only the one whose turn it is.
-export function mayActNow<T extends TurnRow>(routing_mode: string, rows: readonly T[], signer_id: string): boolean {
-  const row = rows.find((r) => r.id === signer_id);
-  if (row === undefined || !isSigningRecipient(row)) return false;
-  if (!witnessReady(rows, row)) return false;
-  if (routing_mode !== 'SEQUENTIAL') return true;
-  return currentTurnOf(rows)?.id === signer_id;
 }
 
 // The recipients emailed a signing link at send: PARALLEL — every SIGNER;

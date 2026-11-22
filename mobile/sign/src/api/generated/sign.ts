@@ -969,8 +969,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Void a non-terminal envelope.
-         * @description A reason is required. Requires sign:envelope:send. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * Void a sent envelope.
+         * @description A reason is required. Requires sign:envelope:send. Only a SENT or IN_PROGRESS envelope is voided; a DRAFT is deleted instead (409 ENVELOPE_ILLEGAL_TRANSITION, details.reason draft_use_delete; Client Rule Consolidation C3). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         post: operations["voidSenderEnvelope"];
         delete?: never;
@@ -4672,6 +4672,7 @@ export interface components {
             mode?: components["schemas"]["SenderEnvelopeMode"];
             /** @description Aramo Sign Mobile M-A12 W1-A.4 — true when the caller may open a self-sign session on this envelope now (a signing recipient bound to them, still to sign, their turn, an Aramo Sign envelope they may act on, and sign:envelope:send). Drives "Sign now"; POST /v1/sign/sender/envelopes/{id}/self-sign-session re-checks everything, including the verified email. */
             can_self_sign_now?: boolean;
+            actions?: components["schemas"]["SenderEnvelopeActions"];
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
         SenderEnvelopeCounts: {
@@ -4756,6 +4757,8 @@ export interface components {
              * @description Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
              */
             reminder_available_at: string | null;
+            /** @description Client Rule Consolidation C3 - the caller may start an in-person (hosted) session for this recipient now (actions.host_in_person and an in-person signer who has not signed or declined, whose turn it is). Present on the envelope detail only. */
+            hostable?: boolean;
             /**
              * Format: uuid
              * @description Feature-Parity §1.17 — for a WITNESS, the recipient it attests for; null otherwise.
@@ -4863,6 +4866,49 @@ export interface components {
             can_sign: boolean;
             /** @description A completed envelope the user signed, on a bound item (a discovered item's signed copy comes through the emailed link). */
             can_download: boolean;
+            actions?: components["schemas"]["RecipientInboxItemActions"];
+        };
+        /** @description Client Rule Consolidation C1 - what the signed-in user may do with this inbox item, decided by the server (clients render it and never derive it). Always present on every item. sign equals can_sign and download equals can_download. */
+        RecipientInboxItemActions: {
+            /** @description POST /v1/sign/inbox/{id}/sign - signable, the user's turn, a live emailed link, not expired. */
+            sign: boolean;
+            /** @description POST /v1/sign/inbox/{id}/signed-copy - a completed envelope the user signed, a bound item, not purged. */
+            download: boolean;
+            /** @description POST /v1/sign/inbox/{id}/remove-from-inbox - the item is not in the Deleted folder. */
+            delete: boolean;
+            /** @description POST /v1/sign/inbox/{id}/return-to-inbox - the user removed this item from their inbox. */
+            restore: boolean;
+            /** @description POST /v1/sign/inbox/{id}/report - a bound item (a discovered item's handle cannot be reported). */
+            report: boolean;
+        };
+        /** @description Client Rule Consolidation C1 - what the caller may do with this envelope, decided by the server from the envelope's status, ownership (the sender, or sign:envelope:manage:all), source application (envelopes another application sent are never changed here), the plan and feature availability, the purge state, the Deleted folder and the caller's scopes. Each key is computed by the same rule that the action's route enforces. Always present on every list row and detail. Time-based limits (the reminder cooldown and daily limit) are reported per recipient as reminder_available_at, and content checks (e.g. not ready to send) by the action itself. */
+        SenderEnvelopeActions: {
+            /** @description Change the draft (PATCH, documents, recipients, fields) - a DRAFT the caller may change, sign:envelope:create. */
+            edit: boolean;
+            /** @description POST .../send - a DRAFT the caller may change, sign:envelope:send. */
+            send: boolean;
+            /** @description DELETE /v1/sign/sender/envelopes/{id} - a DRAFT the caller may change, sign:envelope:create. */
+            delete_draft: boolean;
+            /** @description POST .../void - a SENT or IN_PROGRESS envelope the caller may change, sign:envelope:send (a DRAFT is deleted, never voided). */
+            void: boolean;
+            /** @description POST .../remind - signing open, not a document signed by the sender alone, and a signer who may be reminded now. */
+            remind: boolean;
+            /** @description POST .../delete - retention and purge enabled, a completed, declined, voided or expired envelope the caller may change, not already in the Deleted folder. */
+            delete: boolean;
+            /** @description POST .../restore - retention and purge enabled, in the Deleted folder, the caller may change it, documents not purged. */
+            restore: boolean;
+            /** @description GET .../executed - a COMPLETED envelope whose documents were not purged. */
+            download: boolean;
+            /** @description GET .../executed (certificate) - a COMPLETED envelope whose documents were not purged. */
+            certificate: boolean;
+            /** @description The caller can sign now - can_self_sign_now (POST .../self-sign-session), or an inbox item to sign through (my_inbox_item_id). */
+            sign: boolean;
+            /** @description POST .../hosted-sessions - in-person signing available, the caller may change the envelope, an in-person signer whose turn it is. */
+            host_in_person: boolean;
+            /** @description POST .../purge - retention and purge enabled, sign:envelope:manage:all, a completed, declined or voided envelope not yet purged. */
+            purge: boolean;
+            /** @description POST .../purge/dequeue - retention and purge enabled, sign:envelope:manage:all, a purge is queued. */
+            dequeue_purge: boolean;
         };
         SenderDraftCreated: {
             /** Format: uuid */
@@ -4972,6 +5018,7 @@ export interface components {
             };
             source_application?: string;
             editable: boolean;
+            actions?: components["schemas"]["SenderEnvelopeActions"];
             /** @enum {string} */
             routing_mode?: "PARALLEL" | "SEQUENTIAL";
             /** @description When signing in order and the envelope is open, the signer whose turn it is. */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { logout, useToast } from '@aramo/fe-foundation';
+import { inboxActionsOf } from '@aramo/sign-client';
 
 import { INBOX_ITEM_CHANGED, errorMessage, inboxApi, isInboxItemNotFound, isUpcoming, tokenFromSigningLink, type InboxItem } from '../api';
 import { Btn, TextIn } from '../ui';
@@ -113,7 +114,11 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
     }
   };
 
-  const row = (i: InboxItem) => (
+  // Client Rule Consolidation C3 (audit row 12) — Sign, Signed copy and Delete show only when
+  // the server's item `actions` allows them.
+  const row = (i: InboxItem) => {
+    const actions = inboxActionsOf(i);
+    return (
     <tr key={i.id} data-testid={`inbox-row-${i.id}`}>
       <td>
         <strong>{i.subject}</strong>
@@ -121,26 +126,29 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
       </td>
       <td className="sg-muted">{when(i.sent_at)}</td>
       <td className="sg-muted">
-        {i.can_sign ? `Sign by ${when(i.expires_at)}` : isUpcoming(i) ? 'Not your turn yet' : i.can_download ? `Completed ${when(i.completed_at)}` : i.envelope_status.toLowerCase()}
+        {actions.sign ? `Sign by ${when(i.expires_at)}` : isUpcoming(i) ? 'Not your turn yet' : actions.download ? `Completed ${when(i.completed_at)}` : i.envelope_status.toLowerCase()}
       </td>
       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-        {i.can_sign ? (
+        {actions.sign ? (
           <Btn variant="primary" size="sm" onClick={() => void sign(i)}>
             Sign
           </Btn>
         ) : null}
-        {i.can_download ? (
+        {actions.download ? (
           <Btn size="sm" onClick={() => void copy(i)}>
             Signed copy
           </Btn>
         ) : null}{' '}
         {/* M-A17 — every received item (added or listed automatically), any state. */}
-        <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Delete ${i.subject} from your inbox`} data-testid={`inbox-delete-${i.id}`}>
-          Delete
-        </Btn>
+        {actions.delete ? (
+          <Btn size="sm" variant="ghost" onClick={() => void remove(i)} aria-label={`Delete ${i.subject} from your inbox`} data-testid={`inbox-delete-${i.id}`}>
+            Delete
+          </Btn>
+        ) : null}
       </td>
     </tr>
-  );
+    );
+  };
 
   const section = (title: string, items: InboxItem[], empty: string, testId: string) => (
     <section className="sg-card" data-testid={testId} style={{ marginBottom: 16 }}>
@@ -211,9 +219,11 @@ export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
                           <div className="sg-muted">{i.from ?? 'An Aramo Sign sender'}</div>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <Btn size="sm" onClick={() => void restore(i)} data-testid={`inbox-restore-${i.id}`}>
-                            Restore
-                          </Btn>
+                          {inboxActionsOf(i).restore ? (
+                            <Btn size="sm" onClick={() => void restore(i)} data-testid={`inbox-restore-${i.id}`}>
+                              Restore
+                            </Btn>
+                          ) : null}
                         </td>
                       </tr>
                     ))}

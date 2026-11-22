@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable, Optional } from '@nestjs/common';
 import { ObjectStorageService } from '@aramo/object-storage';
+import { MAX_PDF_BYTES } from '@aramo/sign-client';
 import {
   type DocumentStoragePort,
   type PutOwnedSourceInput,
@@ -21,7 +22,8 @@ import { SignArtifactStore } from './custody/sign-artifact-store.js';
 // under `tenants/<tenant>/envelopes/<envelope>/source/<object_id>`. Reads route by key
 // prefix: `tenants/` keys from the Sign bucket, legacy `esign/source/` keys from the
 // platform document bucket. Dark (unset) = the legacy behaviour, unchanged.
-const MAX_SOURCE_BYTES = 26_214_400; // 25 MiB ceiling on a single source PDF.
+// Client Rule Consolidation C3 (audit row 25) — the 25 MiB ceiling both Sign clients check.
+const MAX_SOURCE_BYTES = MAX_PDF_BYTES;
 
 @Injectable()
 export class EsignObjectStorageDocumentAdapter implements DocumentStoragePort {

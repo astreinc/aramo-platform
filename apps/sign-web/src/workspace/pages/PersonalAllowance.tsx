@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { limitReachedCopy } from '@aramo/sign-client';
 
 import { billingApi, nextSendTime, type BillingAccount } from '../api';
-import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_OFFER, usd } from '../catalog';
+import { FREE_PERSONAL_PLAN_KEY, formatMinor } from '../catalog';
 import { fmtDate } from '../ui';
 
 // Aramo Sign Personal (Free) §4 — the Personal account's usage: the daily window
-// (2 a day) and the monthly allowance (5 a period), as the backend's allowance
+// and the monthly allowance, as the backend's allowance
 // ledger reports them (GET /v1/sign/billing/account). Display only: the send
 // gate is the backend's.
 
@@ -14,7 +15,10 @@ export const BUSINESS_SIGNUP_URL = '/signup';
 export const PERSONAL_PLAN_HREF = '/personal/settings/billing';
 
 // `standard` is false when /account reports `upgrade: null` (the Standard offer is off).
-export function PersonalUpgradeLink({ standard = true }: { standard?: boolean } = {}) {
+// Client Rule Consolidation C3 (audit row 16) — the price is the server's offer
+// (/account `upgrade`); with no offer data the link carries no number.
+export function PersonalUpgradeLink({ standard = true, offer = null }: { standard?: boolean; offer?: BillingAccount['upgrade'] } = {}) {
+  const price = offer?.price_minor != null ? `${formatMinor(offer.price_minor, offer.currency ?? 'USD')}/month` : '';
   if (!standard) {
     return (
       <p className="sg-help" data-testid="personal-upgrade">
@@ -26,9 +30,9 @@ export function PersonalUpgradeLink({ standard = true }: { standard?: boolean } 
     <p className="sg-help" data-testid="personal-upgrade">
       Need to send more?{' '}
       <a href={PERSONAL_PLAN_HREF} data-testid="personal-upgrade-standard">
-        Upgrade to {STANDARD_PERSONAL_OFFER.name}
-      </a>{' '}
-      ({usd(STANDARD_PERSONAL_OFFER.price_minor)}/month, {STANDARD_PERSONAL_OFFER.monthly_documents} documents a month, no daily limit). For a team,{' '}
+        Upgrade your plan
+      </a>
+      {price !== '' ? ` (${price})` : ''}. For a team,{' '}
       <a href={BUSINESS_SIGNUP_URL}>Create a Business organization</a>.
     </p>
   );
@@ -180,13 +184,12 @@ export function PersonalAllowance({ loader = billingApi.account }: { loader?: ()
       {atMonthly || atDaily ? (
         <div className="sg-card__body" style={{ paddingTop: 0 }} role="status">
           <p className="sg-help" style={{ margin: 0 }}>
+            {/* C3 (audit row 17) — the one limit-reached copy ("documents"), shared with the app. */}
             {atMonthly
-              ? 'You’ve used all your envelopes for this month.'
-              : nextSendTime(daily?.next_available_at) !== null
-                ? `You’ve reached the limit for 24 hours. Your next send is available at ${nextSendTime(daily?.next_available_at)}.`
-                : 'You’ve reached the limit for 24 hours. You can send again later.'}
+              ? limitReachedCopy('monthly', monthLimit, a.period_end ? fmtDate(a.period_end) : null).body
+              : limitReachedCopy('daily', daily?.limit ?? null, nextSendTime(daily?.next_available_at)).body}
           </p>
-          {onFree ? <PersonalUpgradeLink standard={account?.upgrade !== null} /> : null}
+          {onFree ? <PersonalUpgradeLink standard={account?.upgrade !== null} offer={account?.upgrade ?? null} /> : null}
         </div>
       ) : null}
     </section>

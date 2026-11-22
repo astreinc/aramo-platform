@@ -15,6 +15,7 @@ import {
   purgeStateFor,
 } from '@aramo/sign';
 import { ESIGN_SCOPE } from '@aramo/identity';
+import { EMAIL_PATTERN, VOID_REASON_MAX, voidReasonProblem } from '@aramo/sign-client';
 import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, SIGN_PRODUCT_KEY } from '@aramo/subscription';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import type { ProviderFieldInput } from '@aramo/documents-contracts';
@@ -41,7 +42,7 @@ import type { SignIntegrationContext } from './sign-api.guard.js';
 
 const MAX_TITLE = 200;
 const MAX_SIGNERS = 10;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = EMAIL_PATTERN;
 
 export interface CreateBody {
   subject?: unknown;
@@ -224,7 +225,7 @@ export class SignApiService {
   }
 
   async void(auth: AuthContextType, integ: SignIntegrationContext, id: string, reason: unknown, requestId: string) {
-    if (typeof reason !== 'string' || reason.trim() === '' || reason.length > 500) throw bad(requestId, 'reason is required (at most 500 characters)');
+    if (typeof reason !== 'string' || voidReasonProblem(reason) !== null) throw bad(requestId, `reason is required (at most ${VOID_REASON_MAX} characters)`);
     await this.changeable(auth, integ, id, requestId);
     return this.provider.voidEnvelope(auth.tenant_id, id, reason.trim(), auth.sub);
   }

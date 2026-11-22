@@ -92,7 +92,9 @@ describe('/signup/personal', () => {
   it('details step in the activation layout; phone and residence offer only the United States and India', async () => {
     at(api({}));
     expect(await screen.findByRole('heading', { name: 'Tell us about you' })).toBeInTheDocument();
-    expect(screen.getByTestId('personal-form')).toHaveTextContent('For your free personal account. 5 documents a month.');
+    // C3 (audit row 16) — no plan numbers before the account exists.
+    expect(screen.getByTestId('personal-form')).toHaveTextContent('For your free personal account.');
+    expect(screen.getByTestId('personal-form')).not.toHaveTextContent('documents a month');
     const nav = screen.getByRole('navigation', { name: 'Setup steps' });
     expect(within(nav).getByTestId('step-form')).toHaveAttribute('aria-current', 'step');
     // Verify phone is listed only once the backend asks for it.
@@ -220,7 +222,8 @@ describe('/signup/personal', () => {
     const docs = within(screen.getByTestId('personal-terms-docs')).getAllByRole('link');
     expect(docs.map((a) => a.getAttribute('href'))).toEqual(DOCS.map((d) => d.url));
     expect(screen.getByTestId('personal-terms-docs')).toHaveTextContent('v1.0');
-    expect(screen.getByTestId('personal-plan')).toHaveTextContent('5 documents a month · up to 2 a day');
+    expect(screen.getByTestId('personal-plan')).toHaveTextContent('Free plan');
+    expect(screen.getByTestId('personal-plan')).not.toHaveTextContent(/documents a month|a day/);
     const box = screen.getByTestId('personal-accept') as HTMLInputElement;
     expect(box.checked).toBe(false);
     expect(screen.getByTestId('personal-complete')).toBeDisabled();

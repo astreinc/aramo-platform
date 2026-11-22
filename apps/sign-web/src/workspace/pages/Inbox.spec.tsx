@@ -41,7 +41,14 @@ import { InboxPage } from './Inbox';
 
 const HANDLE = 'AbCdEf0123456789_-opaque-handle-XYZ';
 
+// Client Rule Consolidation C3 — the page renders the server's item `actions`. These fixtures
+// send what sign-service's C1 inbox rules would (sign = can_sign, download = can_download, a
+// listed item may be deleted, a bound item reported); the page computes none of it.
 function item(id: string, over: Partial<InboxItem> = {}): InboxItem {
+  const i = base(id, over);
+  return 'actions' in over ? i : { ...i, actions: { sign: i.can_sign, download: i.can_download, delete: true, restore: false, report: i.source !== 'discovered' } };
+}
+function base(id: string, over: Partial<InboxItem>): InboxItem {
   return {
     id,
     source: 'bound',
@@ -102,6 +109,23 @@ describe('Waiting for me — W2 inbox discovery', () => {
     const toSign = screen.getByTestId('inbox-waiting');
     expect(within(toSign).queryByText('Second signer')).toBeNull();
     expect(within(toSign).getByText('Nothing is waiting for your signature.')).toBeInTheDocument();
+  });
+
+  it('C3 (audit row 12) — buttons follow the server’s item actions, not can_sign / can_download', async () => {
+    list.mockResolvedValue(
+      lists({
+        waiting: [
+          item('a1', { subject: 'No decision', actions: undefined }),
+          item('a2', { subject: 'Server says no', can_sign: true, actions: { sign: false, download: false, delete: false, restore: false, report: false } }),
+        ],
+      }),
+    );
+    show();
+    const toSign = await screen.findByTestId('inbox-waiting');
+    expect(within(toSign).getByText('No decision')).toBeInTheDocument();
+    expect(within(toSign).queryByRole('button', { name: 'Sign' })).toBeNull();
+    expect(screen.queryByTestId('inbox-delete-a1')).toBeNull();
+    expect(screen.queryByTestId('inbox-delete-a2')).toBeNull();
   });
 
   it('moves the item to To sign once it is the user’s turn (row 4, after signer 1)', async () => {
@@ -185,7 +209,7 @@ describe('Waiting for me — W2 inbox discovery', () => {
     list.mockResolvedValue(lists({ waiting: [item(HANDLE, { source: 'discovered', subject: 'Discovered offer' })] }));
     removeFromInbox.mockResolvedValue({ removed: true });
     returnToInbox.mockResolvedValue({ restored: true });
-    deletedList.mockResolvedValue(lists({ waiting: [item(HANDLE, { source: 'discovered', subject: 'Discovered offer' })] }));
+    deletedList.mockResolvedValue(lists({ waiting: [item(HANDLE, { source: 'discovered', subject: 'Discovered offer', actions: { sign: false, download: false, delete: false, restore: true, report: false } })] }));
     show();
     fireEvent.click(await screen.findByTestId(`inbox-delete-${HANDLE}`));
     await waitFor(() => expect(removeFromInbox).toHaveBeenCalledWith(HANDLE));

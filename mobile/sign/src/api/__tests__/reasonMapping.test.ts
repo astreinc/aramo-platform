@@ -164,6 +164,7 @@ describe('envelope not found copy', () => {
 describe('storage full copy', () => {
   it('says so in the app’s words', () => {
     const e = errorFromBody(409, { error: { code: 'ESIGN_STORAGE_QUOTA_EXCEEDED', message: 'Your organization’s storage is full', details: { reason: 'CAPACITY_EXCEEDED' } } });
-    expect(refusalMessage(e)).toBe('Your storage is full. Remove draft documents you no longer need, or see Account → Plans for more storage.');
+    // C3 (audit row 29) — one wording for web and app; the destination is neutral.
+    expect(refusalMessage(e)).toBe('Your storage is full. Remove draft documents you no longer need, or see your plan settings for more storage.');
   });
 });

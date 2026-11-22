@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "mobile/sign/src",
   "tags": ["scope:sign", "type:app", "platform:mobile"],
-  "implicitDependencies": [],
+  "implicitDependencies": ["sign-client"],
   "namedInputs": {
     "mobileSource": [
       "{projectRoot}/src/**/*",
@@ -15,7 +15,9 @@
       "{projectRoot}/android/app/build.gradle",
       "{projectRoot}/android/app/proguard-rules.pro",
       "{projectRoot}/android/app/src/main/AndroidManifest.xml",
-      "!{projectRoot}/node_modules/**/*"
+      "!{projectRoot}/node_modules/**/*",
+      "{workspaceRoot}/libs/sign-client/src/**/*",
+      "{workspaceRoot}/libs/sign-client/project.json"
     ]
   },
   "targets": {

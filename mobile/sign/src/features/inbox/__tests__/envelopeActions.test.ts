@@ -14,47 +14,38 @@ import {
   voidEnvelope,
   voidReasonValid,
 } from '../envelopeActions';
-import { ENVELOPE_STATUSES, type SenderContext } from '../types';
-import { CTX_OWNER, detail, workspaceWith } from './fixtures';
+import { NO_SENDER_ACTIONS } from '@aramo/sign-client';
 
-const ctx = CTX_OWNER as unknown as SenderContext;
+import { ENVELOPE_STATUSES } from '../types';
+import { detail, workspaceWith } from './fixtures';
 
-describe('action visibility by state', () => {
-  it.each(ENVELOPE_STATUSES)('%s', (status) => {
-    const a = actionsFor(detail({ status, editable: status === 'DRAFT' }), ctx);
-    const open = status === 'SENT' || status === 'IN_PROGRESS';
-    expect(a.remind).toBe(open);
-    expect(a.void).toBe(open);
-    expect(a.continueEditing).toBe(status === 'DRAFT');
-    expect(a.deleteDraft).toBe(status === 'DRAFT');
-    expect(a.viewCertificate).toBe(status === 'COMPLETED');
+// C3 (audit rows 3–10) — the detail's buttons are the server's `actions`, never derived.
+describe('action visibility follows the server’s actions', () => {
+  it.each([
+    ['edit', 'continueEditing'],
+    ['delete_draft', 'deleteDraft'],
+    ['certificate', 'viewCertificate'],
+    ['remind', 'remind'],
+    ['void', 'void'],
+  ] as const)('actions.%s → %s', (key, field) => {
+    for (const status of ENVELOPE_STATUSES) {
+      expect(actionsFor(detail({ status, actions: { ...NO_SENDER_ACTIONS, [key]: true } }))[field]).toBe(true);
+      expect(actionsFor(detail({ status, actions: { ...NO_SENDER_ACTIONS } }))[field]).toBe(false);
+    }
   });
 
-  it('no remind / void on an envelope the user did not send (without manage_all)', () => {
-    const other = detail({ sender: { id: 'someone-else', name: 'X' } });
-    expect(actionsFor(other, ctx)).toMatchObject({ remind: false, void: false });
-    const manager = {
-      ...CTX_OWNER,
-      permissions: { ...CTX_OWNER.permissions, manage_all: true },
-    } as unknown as SenderContext;
-    expect(actionsFor(other, manager)).toMatchObject({ remind: true, void: true });
-  });
-
-  it('no remind / void on an envelope from another application (read-only here)', () => {
-    expect(actionsFor(detail({ source_application: 'aramo-ats' }), ctx)).toMatchObject({
+  it('an older server without `actions`: nothing is offered', () => {
+    expect(actionsFor(detail({ status: 'DRAFT', editable: true, actions: undefined }))).toEqual({
+      continueEditing: false,
+      deleteDraft: false,
+      viewCertificate: false,
       remind: false,
       void: false,
     });
   });
 
-  it('continue editing follows the server’s `editable`, not the status alone', () => {
-    expect(actionsFor(detail({ status: 'DRAFT', editable: false }), ctx).continueEditing).toBe(
-      false,
-    );
-  });
-
-  it('no actions without a sender context (nothing hidden is exposed)', () => {
-    expect(actionsFor(detail(), null)).toMatchObject({ remind: false, void: false });
+  it('`editable` alone no longer opens the editor (the server’s edit decides, with ownership)', () => {
+    expect(actionsFor(detail({ status: 'DRAFT', editable: true, actions: { ...NO_SENDER_ACTIONS } })).continueEditing).toBe(false);
   });
 });
 
@@ -149,8 +140,10 @@ describe('reminder on an envelope changed elsewhere (UAT SND-23)', () => {
 });
 
 describe('void', () => {
-  it('requires a 3+ character reason', () => {
-    expect(voidReasonValid('no')).toBe(false);
+  it('requires a non-empty reason of at most 500', () => {
+    // C3 (audit row 6, Appendix A) — non-empty, at most 500; the minimum of 3 is dropped.
+    expect(voidReasonValid('no')).toBe(true);
+    expect(voidReasonValid('x'.repeat(501))).toBe(false);
     expect(voidReasonValid('  wrong doc ')).toBe(true);
   });
 
@@ -212,7 +205,7 @@ describe('delete draft (D-W6-3)', () => {
   it('never calls the server for a sent envelope or one not editable here', async () => {
     const { net, workspace } = workspaceWith(() => ({ status: 204, body: null }));
     expect((await deleteDraftEnvelope(workspace, { detail: detail({ status: 'SENT' }), etag: null })).kind).toBe('refused');
-    expect((await deleteDraftEnvelope(workspace, { detail: draft({ editable: false }), etag: null })).kind).toBe('refused');
+    expect((await deleteDraftEnvelope(workspace, { detail: draft({ actions: { ...NO_SENDER_ACTIONS } }), etag: null })).kind).toBe('refused');
     expect(net.calls).toHaveLength(0);
   });
 

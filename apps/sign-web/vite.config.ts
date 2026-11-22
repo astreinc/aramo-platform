@@ -32,6 +32,9 @@ export default defineConfig({
       // TEMPLATE-PRODUCT-1 §8.4 — the shared Template Studio (scope:shared) for the Personal
       // workspace (platform-web precedent). The guest zone never imports it (zones.spec.ts).
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
+      // Client Rule Consolidation C2-2 — the pure Sign client rules (one copy with mobile/sign
+      // and the server). Pure TS with no imports, so the guest zone may use it too.
+      '@aramo/sign-client': resolve(root, '../../libs/sign-client/src/index.ts'),
     },
   },
   server: {
