@@ -19,6 +19,9 @@ export default defineConfig({
       // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
       // @aramo/sign-client and @aramo/document-templates-web.
       '@aramo/sign-fields': resolve(root, '../sign-fields/src/index.ts'),
+      // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared), imported by
+      // @aramo/document-templates-web (the console form Studio) and sign-web Prepare.
+      '@aramo/field-placement-web': resolve(root, '../field-placement-web/src/index.ts'),
     },
   },
   test: {

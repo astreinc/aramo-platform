@@ -1,5 +1,7 @@
 // FIELD-PARITY-1 P0-1 (Sign Field Placement Enterprise Parity Directive v1.0 LOCKED §3.1) —
-// pure helpers behind the fixed-form Studio's scrolling page column:
+// pure helpers behind the placement editor's scrolling page column (FIELD-PARITY-1 P1-5: moved
+// from libs/document-templates-web fixed-form-viewport.ts, unchanged, so sign-web Prepare and the
+// console form Studio share them):
 //   R-2  the target page follows the view: the page with the largest visible area;
 //   R-3  a new field lands inside the visible part of the target page.
 // No DOM here: the Studio measures rects and passes plain numbers, so these are unit-tested.

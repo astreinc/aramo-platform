@@ -9,7 +9,13 @@ import { TYPES, V1_TYPES } from './PrepareEditor';
 // M-A6 §2 — Name and Checkbox authoring in the sender editor: the tool set, the
 // configuration on the PUT payload (never a value) and group consistency.
 
-const box = (key: string, over: Partial<ConfigurableField> = {}): ConfigurableField => ({ key, signerId: 's1', type: 'CHECKBOX', required: true, ...DEFAULT_CONFIG, ...over });
+// FIELD-PARITY-1 P1-5 — the group rules now run on the shared editor's field shape
+// (id / assignee / settings); the behaviour is unchanged.
+type Box = ConfigurableField;
+const box = (id: string, over: Partial<Box['settings']> & { assignee?: string; required?: boolean } = {}): Box => {
+  const { assignee = 's1', required = true, ...settings } = over;
+  return { id, assignee, type: 'CHECKBOX', required, settings: { ...DEFAULT_CONFIG, ...settings } };
+};
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -54,9 +60,9 @@ describe('configToWire / configFromWire', () => {
 
 describe('applyConfig — check-box groups stay consistent', () => {
   it('changing a group rule, minimum or required applies to every box of that recipient group', () => {
-    const fields = [box('a', { groupKey: 'g' }), box('b', { groupKey: 'g' }), box('c', { groupKey: 'g', signerId: 's2' }), box('d')];
+    const fields = [box('a', { groupKey: 'g' }), box('b', { groupKey: 'g' }), box('c', { groupKey: 'g', assignee: 's2' }), box('d')];
     const next = applyConfig(fields, 'a', { groupRule: 'SELECT_ONE' });
-    expect(next.map((f) => f.groupRule)).toEqual(['SELECT_ONE', 'SELECT_ONE', 'SELECT_ANY', 'SELECT_ANY']);
+    expect(next.map((f) => f.settings.groupRule)).toEqual(['SELECT_ONE', 'SELECT_ONE', 'SELECT_ANY', 'SELECT_ANY']);
     const req = applyConfig(next, 'b', { required: false });
     expect(req.map((f) => f.required)).toEqual([false, false, true, true]);
   });
@@ -64,9 +70,9 @@ describe('applyConfig — check-box groups stay consistent', () => {
   it('joining an existing group adopts its settings; SELECT_ONE clears the minimum', () => {
     const fields = [box('a', { groupKey: 'g', minSelected: 2, required: false }), box('b')];
     const joined = applyConfig(fields, 'b', { groupKey: 'g' });
-    expect(joined[1]).toMatchObject({ groupKey: 'g', minSelected: 2, required: false });
+    expect(joined[1]).toMatchObject({ required: false, settings: { groupKey: 'g', minSelected: 2 } });
     const one = applyConfig(joined, 'a', { groupRule: 'SELECT_ONE' });
-    expect(one.map((f) => f.minSelected)).toEqual([null, null]);
+    expect(one.map((f) => f.settings.minSelected)).toEqual([null, null]);
     expect(groupSize(one, one[0] as ConfigurableField)).toBe(2);
   });
 });

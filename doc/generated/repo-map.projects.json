@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 88 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 89 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -38,6 +38,7 @@
     "@aramo/export": "./libs/export/src/index.ts",
     "@aramo/fe-foundation": "./libs/fe-foundation/src/index.ts",
     "@aramo/field-masking": "./libs/field-masking/src/index.ts",
+    "@aramo/field-placement-web": "./libs/field-placement-web/src/index.ts",
     "@aramo/identity": "./libs/identity/src/index.ts",
     "@aramo/import": "./libs/import/src/index.ts",
     "@aramo/ingestion": "./libs/ingestion/src/index.ts",
@@ -1122,6 +1123,50 @@
       "omitMaskedCompensationFields",
       "omitMaskedFinancialFields",
       "visibleCompensationFields"
+    ],
+    "@aramo/field-placement-web": [
+      "AUTOSAVE_DELAY_MS",
+      "DEFAULT_PLACEMENT_COPY",
+      "DEFAULT_SETTINGS",
+      "HISTORY_LIMIT",
+      "NEW_FIELD_CASCADE_CYCLE",
+      "NEW_FIELD_CASCADE_STEP",
+      "NEW_FIELD_FALLBACK_TOP",
+      "NEW_FIELD_INSET",
+      "NUDGE_STEP",
+      "NUDGE_STEP_LARGE",
+      "PlacementEditor",
+      "PlacementPages",
+      "applyChanges",
+      "applySettings",
+      "assignField",
+      "clampBox",
+      "configureField",
+      "defaultFace",
+      "diffFields",
+      "editableSettingsOf",
+      "editorReducer",
+      "fieldKeyIntent",
+      "groupSize",
+      "initialEditorState",
+      "intersectRects",
+      "isTextControl",
+      "isUndoKey",
+      "nudgeFields",
+      "pageSlotsOf",
+      "paletteFor",
+      "pickTargetPage",
+      "placeField",
+      "placeNewField",
+      "removeFields",
+      "resizeFields",
+      "roundGestureBox",
+      "toPdf",
+      "toTopLeft",
+      "typeLabelOf",
+      "useAutosave",
+      "visibleArea",
+      "visibleRegionInPage"
     ],
     "@aramo/identity": [
       "ACTOR_TYPES",
@@ -11873,6 +11918,10 @@
         "status": "excluded"
       }
     ],
+    "@aramo/field-placement-web": [
+      { "project": "aramo-sign-web", "status": "production" },
+      { "project": "document-templates-web", "status": "production" }
+    ],
     "@aramo/identity": [
       { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
       { "from": "tools/link-e2e-recruiter-sub.ts", "project": "(unscoped)", "status": "unscoped" },
@@ -14749,6 +14798,13 @@
       },
       { "project": "document-templates-web", "status": "production" },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "libs/field-placement-web/src/lib/model.spec.ts",
+        "project": "field-placement-web",
+        "status": "excluded"
+      },
+      { "project": "field-placement-web", "status": "production" },
       { "project": "sign-client", "status": "production" },
       { "project": "sign-service", "status": "production" }
     ],
@@ -16125,6 +16181,13 @@
       "name": "field-masking",
       "root": "libs/field-masking",
       "sourceRoot": "libs/field-masking/src",
+      "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "field-placement-web",
+      "root": "libs/field-placement-web",
+      "sourceRoot": "libs/field-placement-web/src",
       "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },
