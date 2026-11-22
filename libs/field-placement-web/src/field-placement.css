@@ -5,7 +5,7 @@
  * Layout (P0-1 R-1, now in both hosts): the editor fills the height its host gives it (a flex
  * child of a fixed-height root, or fitHeight); only the page column and each side panel scroll
  * on their own. At or below 1100px the stacked one-column layout keeps normal page scrolling (R-4). */
-:where(.fpe-root, .fpe-pages) {
+:where(.fpe-root, .fpe-pages, .fpe-upload-opts, .fpe-import-result) {
   --fpe-canvas: #f4f6fa;
   --fpe-surface: #ffffff;
   --fpe-paper: #ffffff;
@@ -271,3 +271,80 @@
 .fpe-keys { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 12px; color: var(--fpe-muted); }
 .fpe-keys dt { font-weight: 600; color: var(--fpe-ink); white-space: nowrap; }
 .fpe-keys dd { margin: 0; }
+
+/* FIELD-PARITY-1 P2-4 — suggested (ghost) fields: dashed, under the placed fields. */
+.fpe-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px dashed var(--fpe-brand);
+  background: var(--fpe-brand-soft);
+  border-radius: 3px;
+  cursor: copy;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  opacity: 0.85;
+}
+.fpe-ghost:hover,
+.fpe-ghost:focus-visible {
+  opacity: 1;
+  background: var(--fpe-brand-soft);
+  outline: 2px solid var(--fpe-brand);
+  outline-offset: 1px;
+}
+.fpe-ghost__label {
+  font-size: 10px;
+  line-height: 1;
+  padding: 0 4px;
+  color: var(--fpe-brand);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  pointer-events: none;
+}
+.fpe-ghost__x {
+  border: 0;
+  background: transparent;
+  color: var(--fpe-brand);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+/* FIELD-PARITY-1 P2-5 / P2-6 — the upload options and the import result. */
+.fpe-upload-opts {
+  border: 0;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.fpe-upload-opts__help {
+  display: block;
+  font-size: 12px;
+}
+.fpe-upload-opts__tags {
+  font-size: 12px;
+}
+.fpe-upload-opts__tags p {
+  margin: 4px 0;
+}
+.fpe-import-result {
+  border: 1px solid var(--fpe-line);
+  border-radius: var(--fpe-radius);
+  background: var(--fpe-surface);
+  color: var(--fpe-ink);
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.fpe-import-result__summary {
+  margin: 0 0 4px;
+}
+.fpe-import-result__warnings {
+  margin: 4px 0;
+  padding-left: 18px;
+}

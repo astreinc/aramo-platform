@@ -103,3 +103,5 @@ export {
   type PageRegion,
   type PageSize,
 } from './lib/viewport';
+// P2-4 (§5) — suggestions: the host maps the detector's answer; the editor shows ghosts.
+export { suggestionsFromWire, pendingGhosts, fieldsFromSuggestions, acceptSuggestions, type PlacementSuggestion, type WireSuggestion } from './lib/suggestions';
