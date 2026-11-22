@@ -4585,6 +4585,7 @@
     "libs/document-templates-web/src/fixed-form/FixedFormPreview.tsx",
     "libs/document-templates-web/src/fixed-form/FixedFormStudio.tsx",
     "libs/document-templates-web/src/fixed-form/fixed-form-model.ts",
+    "libs/document-templates-web/src/fixed-form/fixed-form-placement.spec.ts",
     "libs/document-templates-web/src/fixed-form/fixed-form-placement.ts",
     "libs/document-templates-web/src/fixed-form/fixed-form.css",
     "libs/document-templates-web/src/fixed-form/fixed-form.spec.tsx",
