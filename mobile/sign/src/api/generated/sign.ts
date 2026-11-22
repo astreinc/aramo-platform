@@ -434,7 +434,7 @@ export interface paths {
         put?: never;
         /**
          * Fill one of the signer's own fields.
-         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled. Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the signer's calendar date in time_zone, in the envelope's date_format); the value sent for it is ignored, and completeSigner stamps it again at signing.
+         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled. Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the signer's calendar date in time_zone, in the envelope's date_format); the value sent for it is ignored, and completeSigner stamps it again at signing. FIELD-PARITY-1 P3 — a RADIO value is 'true' / 'false' (choosing one clears the others of its group); a DATE value is YYYY-MM-DD; a NUMBER value is a decimal; a DROPDOWN value is one of its options.choices values; a MULTILINE_TEXT value is at most 4000 characters; the validation preset applies. Refusals are 400 with details.reason date_value_invalid, number_value_invalid, number_decimals_exceeded, dropdown_value_invalid, multiline_text_too_long, validation_email_failed, validation_phone_failed, validation_us_zip_failed, validation_max_length_failed, validation_number_range_failed or validation_date_range_failed; a sender-filled or read-only field is refused with field_read_only. Completion refuses an unchosen required radio group with radio_group_select_one.
          */
         post: operations["fillSignerField"];
         delete?: never;
@@ -454,7 +454,7 @@ export interface paths {
         put?: never;
         /**
          * Finish signing for this signer.
-         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group). The server fills every SIGNER_PROFILE name field of the signer when they complete. Client Rule Consolidation C0-2 — the server also stamps every SIGN_DATE field of the signer when they complete: the signer's calendar date in time_zone (UTC when absent or not recognised), in the date_format stamped on the envelope at send (MM/DD/YYYY when none); any value a client sent is overwritten. A signer who has already signed is never re-stamped. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
+         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group); FIELD-PARITY-1 P3 — radio_group_select_one for a radio group (exactly one chosen when required, never more than one). A sender-filled field is the sender's and never blocks completion. The server fills every SIGNER_PROFILE name field of the signer when they complete. Client Rule Consolidation C0-2 — the server also stamps every SIGN_DATE field of the signer when they complete: the signer's calendar date in time_zone (UTC when absent or not recognised), in the date_format stamped on the envelope at send (MM/DD/YYYY when none); any value a client sent is overwritten. A signer who has already signed is never re-stamped. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
          */
         post: operations["completeSigner"];
         delete?: never;
@@ -5066,8 +5066,10 @@ export interface components {
             documents: components["schemas"]["SenderEnvelopeDocument"][];
             recipients: components["schemas"]["SenderEnvelopeRecipient"][];
             fields: components["schemas"]["SenderEnvelopeField"][];
+            /** @description FIELD-PARITY-1 P3 S-5 (ruling R-3) — whether sender-filled fields are switched on (SIGN_SENDER_FILLED_FIELDS_ENABLED). False: the editors do not offer them. */
+            sender_filled_fields_enabled?: boolean;
         };
-        /** @description A stored field of the envelope, as the sender detail returns it. Any of the 13 stored field types in the enum (fields from the service-to-service, Sign API and template paths keep theirs). PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration is null where it does not apply. Other recipients' values are never returned. */
+        /** @description A stored field of the envelope, as the sender detail returns it. Any of the 18 stored field types in the enum (fields from the service-to-service, Sign API and template paths keep theirs). PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration is null where it does not apply; FIELD-PARITY-1 P3 settings are null / false where not set. Other recipients' values are never returned (value is the sender's own value of a sender-filled field, null otherwise). */
         SenderEnvelopeField: {
             /** Format: uuid */
             id: string;
@@ -5076,7 +5078,7 @@ export interface components {
             /** Format: uuid */
             signer_id: string | null;
             /** @enum {string} */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT" | "PAYMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE";
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT" | "PAYMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE" | "DATE" | "DROPDOWN" | "RADIO" | "NUMBER" | "MULTILINE_TEXT";
             page_number: number;
             x: number;
             y: number;
@@ -5098,8 +5100,29 @@ export interface components {
             /** @enum {string|null} */
             group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
             min_selected?: number | null;
+            /** @description FIELD-PARITY-1 P3 S-1 — hint shown to the signer. */
+            tooltip?: string | null;
+            /** @description FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types). */
+            placeholder?: string | null;
+            /** @description FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled). */
+            read_only?: boolean;
+            /** @description FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag SIGN_SENDER_FILLED_FIELDS_ENABLED is on. */
+            sender_filled?: boolean;
+            /**
+             * @description FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER: number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+             * @enum {string|null}
+             */
+            validation?: "email" | "phone" | "us_zip" | "number_range" | "date_range" | "max_length" | null;
+            /** @description FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box). */
+            font_size?: number | null;
+            /** @description FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field. */
+            data_name?: string | null;
+            /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
+            options?: components["schemas"]["FieldOptions"] | null;
+            /** @description FIELD-PARITY-1 P3 S-5 — the sender's own value of a sender-filled field; null for every other field. */
+            value?: string | null;
         };
-        /** @description M-A6 §2 — an engine-only field (a type a sender cannot author, e.g. ACKNOWLEDGEMENT) sent back unchanged on the replace-all PUT. Kept as stored only when `id` names an existing field of the envelope and every other property is identical to the stored row (exactly as the detail returned it); otherwise refused with 400 v1_field_type. Omitting it removes it. */
+        /** @description M-A6 §2 — an engine field sent back unchanged on the replace-all PUT (FIELD-PARITY-1 P3: an ACKNOWLEDGEMENT stored by the S2S / Sign API paths with no recipient or size; every other field is authored with SenderFieldInput). Kept as stored only when `id` names an existing field of the envelope and every other property is identical to the stored row (exactly as the detail returned it); otherwise refused with 400 v1_field_type. Omitting it removes it. */
         SenderFieldPassthrough: {
             /** Format: uuid */
             id: string;
@@ -5108,7 +5131,7 @@ export interface components {
             /** Format: uuid */
             signer_id: string | null;
             /** @enum {string} */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE";
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE" | "DATE" | "DROPDOWN" | "RADIO" | "NUMBER" | "MULTILINE_TEXT";
             page_number: number;
             x: number;
             y: number;
@@ -5130,10 +5153,10 @@ export interface components {
             /** Format: uuid */
             signer_id: string;
             /**
-             * @description M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the service-to-service and Sign API paths keep all seven engine types). Sign 1.14 — PAYMENT is accepted only while payments are available to the organization (403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient. Aramo Sign Mobile M-A12 W1-C.4 — FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the signer fills (apps prefill them from the signer's own Sign profile; the signer may edit). A filled value is at most 200 characters; an EMAIL value is an email address (400 details.reason profile_field_value_invalid / email_field_value_invalid on fill).
+             * @description M-A6 §2.1 — the sender authoring types. FIELD-PARITY-1 P3 — + ACKNOWLEDGEMENT (ruling R-2) and DATE (a chosen date, value YYYY-MM-DD), DROPDOWN (options.choices; value = a choice value), RADIO (one option of a group: group_key required, rule always SELECT_ONE), NUMBER (a decimal; options.format money) and MULTILINE_TEXT. Sign 1.14 — PAYMENT is accepted only while payments are available to the organization (403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); it is always required, one per recipient. Aramo Sign Mobile M-A12 W1-C.4 — FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the signer fills (apps prefill them from the signer's own Sign profile; the signer may edit). A filled value is at most 200 characters; an EMAIL value is an email address (400 details.reason profile_field_value_invalid / email_field_value_invalid on fill).
              * @enum {string}
              */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "PAYMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE";
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "PAYMENT" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE" | "ACKNOWLEDGEMENT" | "DATE" | "DROPDOWN" | "RADIO" | "NUMBER" | "MULTILINE_TEXT";
             page_number: number;
             x: number;
             y: number;
@@ -5145,9 +5168,9 @@ export interface components {
              * @enum {string|null}
              */
             name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
-            /** @description M-A6 §2.3 — CHECKBOX only; the caption printed in the certificate. */
+            /** @description M-A6 §2.3 — a check box's caption printed in the certificate. FIELD-PARITY-1 P3 S-1 — any type (not PAYMENT): the field's name, shown to the signer and used on the certificate and in the audit trail; a RADIO's label is its option text. */
             label?: string | null;
-            /** @description M-A6 §2.3 — CHECKBOX only; boxes sharing a key form a group, which belongs to one recipient and shares one rule, minimum and required setting. */
+            /** @description M-A6 §2.3 — CHECKBOX (and FIELD-PARITY-1 P3 RADIO, where it is required); boxes sharing a key form a group, which belongs to one recipient and shares one type, rule, minimum, required, read-only and sender-filled setting. */
             group_key?: string | null;
             /**
              * @description M-A6 §2.3 — with group_key only (default SELECT_ANY).
@@ -5163,6 +5186,27 @@ export interface components {
              * @enum {string|null}
              */
             payment_currency?: "USD" | null;
+            /** @description FIELD-PARITY-1 P3 S-1 — hint shown to the signer. */
+            tooltip?: string | null;
+            /** @description FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types). */
+            placeholder?: string | null;
+            /** @description FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled). */
+            read_only?: boolean;
+            /** @description FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag SIGN_SENDER_FILLED_FIELDS_ENABLED is on. */
+            sender_filled?: boolean;
+            /**
+             * @description FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER: number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+             * @enum {string|null}
+             */
+            validation?: "email" | "phone" | "us_zip" | "number_range" | "date_range" | "max_length" | null;
+            /** @description FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box). */
+            font_size?: number | null;
+            /** @description FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field. */
+            data_name?: string | null;
+            /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
+            options?: components["schemas"]["FieldOptions"] | null;
+            /** @description Refused (400 sender_value_refused) for every field that is not sender_filled. FIELD-PARITY-1 P3 S-5 — a sender_filled field may carry the sender's value (checked by the field's value rule: e.g. date_value_invalid, dropdown_value_invalid, validation_email_failed); it is recorded in the ledger as SENDER_FIELD_VALUES_SET (attributed to the sender) and marked on the certificate. */
+            value?: string | null;
         };
         SenderUploadedDocument: {
             /** Format: uuid */
@@ -5199,7 +5243,7 @@ export interface components {
             /** Format: uuid */
             signer_id: string;
             /** @enum {string} */
-            field_type: "SIGNATURE" | "SIGN_DATE" | "INITIALS" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE";
+            field_type: "SIGNATURE" | "SIGN_DATE" | "INITIALS" | "TEXT" | "SIGNER_NAME" | "CHECKBOX" | "FIRST_NAME" | "LAST_NAME" | "EMAIL" | "COMPANY" | "TITLE" | "ACKNOWLEDGEMENT" | "DATE" | "DROPDOWN" | "RADIO" | "NUMBER" | "MULTILINE_TEXT";
             page_number: number;
             x: number;
             y: number;
@@ -5213,6 +5257,25 @@ export interface components {
             min_selected: null;
             /** @enum {string|null} */
             name_mode: "SIGNER_PROFILE" | null;
+        };
+        /** @description FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN: choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER: format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default 2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or a key the type does not take, is refused (options_invalid). */
+        FieldOptions: {
+            choices?: components["schemas"]["DropdownChoice"][];
+            /** @enum {string} */
+            format?: "plain" | "money";
+            currency?: string;
+            decimals?: number;
+            min?: number;
+            max?: number;
+            /** Format: date */
+            min_date?: string;
+            /** Format: date */
+            max_date?: string;
+            max_length?: number;
+        };
+        DropdownChoice: {
+            value: string;
+            label: string;
         };
         /** @description FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently. */
         FieldImportWarning: {
@@ -6107,9 +6170,9 @@ export interface operations {
                             filled?: boolean;
                             /** @description The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise. M-A6 §2.4 — for a server-filled name (server_filled true) it is the name the server fills. Other signers' values are never returned. */
                             value?: string | null;
-                            /** @description M-A6 §2.3 — the check box caption (CHECKBOX only). */
+                            /** @description M-A6 §2.3 — the check box caption. FIELD-PARITY-1 P3 S-1 — any type's name (a RADIO's option text). */
                             label?: string | null;
-                            /** @description M-A6 §2.3 — boxes sharing a key form a group (CHECKBOX only). */
+                            /** @description M-A6 §2.3 — boxes sharing a key form a group (CHECKBOX; FIELD-PARITY-1 P3 RADIO, always SELECT_ONE). */
                             group_key?: string | null;
                             /** @enum {string|null} */
                             group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
@@ -6128,6 +6191,25 @@ export interface operations {
                                 /** @enum {string} */
                                 currency?: "USD";
                             } | null;
+                            /** @description FIELD-PARITY-1 P3 S-1 — hint shown to the signer. */
+                            tooltip?: string | null;
+                            /** @description FIELD-PARITY-1 P3 S-2 — hint text in an empty field (entry types). */
+                            placeholder?: string | null;
+                            /** @description FIELD-PARITY-1 P3 S-4 — the signer may not change the value (only with sender_filled). */
+                            read_only?: boolean;
+                            /** @description FIELD-PARITY-1 P3 S-5 (ruling R-3, dark) — the sender types the value before sending (TEXT, CHECKBOX, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT). Refused (sender_filled_not_available) unless the server flag SIGN_SENDER_FILLED_FIELDS_ENABLED is on. */
+                            sender_filled?: boolean;
+                            /**
+                             * @description FIELD-PARITY-1 P3 S-6 — TEXT: email, phone, us_zip, max_length; MULTILINE_TEXT: max_length; NUMBER: number_range; DATE: date_range. Parameters live in options (min/max, min_date/max_date, max_length).
+                             * @enum {string|null}
+                             */
+                            validation?: "email" | "phone" | "us_zip" | "number_range" | "date_range" | "max_length" | null;
+                            /** @description FIELD-PARITY-1 P3 S-7 — a fixed size in points; null = auto (fit the box). */
+                            font_size?: number | null;
+                            /** @description FIELD-PARITY-1 P3 S-9 — a stable lower_snake key per field. */
+                            data_name?: string | null;
+                            /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
+                            options?: components["schemas"]["FieldOptions"] | null;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
