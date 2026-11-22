@@ -7,6 +7,12 @@ export { PlacementEditor, DEFAULT_PLACEMENT_COPY, type PlacementEditorProps, typ
 export { PlacementPages, pageSlotsOf, defaultFace, type PlacementPagesProps, type PageRenderer, type PageSlot, type FieldFace } from './PlacementPages';
 export {
   DEFAULT_SETTINGS,
+  GROUPED_TYPES,
+  NEW_DROPDOWN_CHOICES,
+  isGroupedType,
+  groupKeysOf,
+  freeGroupKey,
+  defaultSettingsFor,
   editableSettingsOf,
   paletteFor,
   typeLabelOf,
@@ -23,6 +29,20 @@ export {
   type PaletteOptions,
 } from './lib/model';
 export { applySettings, groupSize, type SettingsPatch, type ConfigurableField } from './lib/settings';
+// FIELD-PARITY-1 P3 §6.2 — the settings ↔ wire members and the ONE settings rule's refusal.
+export {
+  settingsFromWire,
+  settingsToWire,
+  settingsIssue,
+  optionsToWire,
+  cleanChoices,
+  nextRadioLabel,
+  radioOptionBelow,
+  RADIO_OPTION_GAP,
+  type WireSettings,
+  type SettingsToWireOptions,
+} from './lib/settings-wire';
+export { FieldSettingsPanel, VALIDATION_LABELS, type FieldSettingsPanelProps } from './FieldSettingsPanel';
 export {
   HISTORY_LIMIT,
   editorReducer,

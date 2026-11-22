@@ -348,3 +348,10 @@
   margin: 4px 0;
   padding-left: 18px;
 }
+
+/* FIELD-PARITY-1 P3 §6.2 — the settings controls (choices, number format, refusals). */
+.fpe-fieldset { border: 1px solid var(--fpe-line, #e3e6ee); border-radius: 6px; padding: 6px 8px; margin: 4px 0; display: grid; gap: 6px; }
+.fpe-choice { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; align-items: center; }
+.fpe-choice .fpe-input { width: 100%; box-sizing: border-box; min-width: 0; }
+.fpe-choice__tools { display: flex; gap: 2px; }
+.fpe-note--error { color: var(--fpe-danger); }
