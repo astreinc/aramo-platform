@@ -6,19 +6,46 @@
 // Field geometry is PDF-native — exactly what Aramo Sign places: page_number 0-based, points,
 // origin bottom-left, (x, y) the box's lower-left corner.
 
+import { FIELD_DEFAULTS, fieldTypesFor, type FieldTypeOn } from '@aramo/sign-fields';
+
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
 export const FIXED_FORM_MAX_BYTES = 10 * 1024 * 1024;
 
-/** §7.2 — the field types Aramo Sign executes, in palette order, with their labels and sizes. */
-export const FIXED_FORM_FIELD_TYPES = [
-  { type: 'SIGNATURE', label: 'Signature', width: 160, height: 32 },
-  { type: 'INITIALS', label: 'Initials', width: 56, height: 28 },
-  { type: 'SIGNER_NAME', label: 'Name', width: 160, height: 18 },
-  { type: 'SIGN_DATE', label: 'Date', width: 96, height: 18 },
-  { type: 'TEXT', label: 'Text', width: 160, height: 18 },
-  { type: 'CHECKBOX', label: 'Checkbox', width: 14, height: 14 },
-] as const;
-export type FixedFormFieldType = (typeof FIXED_FORM_FIELD_TYPES)[number]['type'];
+/**
+ * §7.2 — the field types Aramo Sign executes on a fixed form: the catalog's
+ * `template_fixed_form` surface (FIELD-PARITY-1 P1-2, @aramo/sign-fields).
+ */
+export type FixedFormFieldType = FieldTypeOn<'template_fixed_form'>;
+
+export interface FixedFormFieldTypeSpec {
+  readonly type: FixedFormFieldType;
+  readonly label: string;
+  /** Default size in PDF points (FIELD-PARITY-1 P1-0: the catalog's one table). */
+  readonly width: number;
+  readonly height: number;
+  /** Whether a newly placed field starts required (P1-0: the catalog's one rule). */
+  readonly required: boolean;
+}
+
+// The Studio's own palette label and order. Keyed by the projection's type, so a type the
+// catalog adds to (or removes from) the fixed-form surface fails to compile until it is listed.
+const PALETTE: Readonly<Record<FixedFormFieldType, { readonly label: string; readonly order: number }>> = {
+  SIGNATURE: { label: 'Signature', order: 0 },
+  INITIALS: { label: 'Initials', order: 1 },
+  SIGNER_NAME: { label: 'Name', order: 2 },
+  SIGN_DATE: { label: 'Date', order: 3 },
+  TEXT: { label: 'Text', order: 4 },
+  CHECKBOX: { label: 'Checkbox', order: 5 },
+};
+
+/**
+ * §7.2 — the field types, in palette order, with their labels, default sizes and required
+ * defaults. FIELD-PARITY-1 P1-0 — the size and required default are the catalog's (the same
+ * table Sign's Prepare and the Aramo Sign app use), no longer a console-only table.
+ */
+export const FIXED_FORM_FIELD_TYPES: readonly FixedFormFieldTypeSpec[] = fieldTypesFor('template_fixed_form')
+  .map((type) => ({ type, label: PALETTE[type].label, width: FIELD_DEFAULTS[type].width, height: FIELD_DEFAULTS[type].height, required: FIELD_DEFAULTS[type].required }))
+  .sort((a, b) => PALETTE[a.type].order - PALETTE[b.type].order);
 
 export function fixedFormFieldLabel(type: string): string {
   return FIXED_FORM_FIELD_TYPES.find((t) => t.type === type)?.label ?? type;

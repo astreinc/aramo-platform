@@ -254,7 +254,8 @@ export function FixedFormStudio({
       field_type: type,
       binding_key: null,
       signer_role: activeRole === '' ? null : activeRole,
-      required: type !== 'CHECKBOX',
+      // FIELD-PARITY-1 P1-0 — the catalog's required default (TEXT and CHECKBOX start optional).
+      required: spec?.required ?? type !== 'CHECKBOX',
       page_number: target,
       x,
       y,

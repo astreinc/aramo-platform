@@ -1,3 +1,4 @@
+import { FIELD_DEFAULTS, fieldTypesFor } from '@aramo/sign-fields';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -5,7 +6,7 @@ import { clampBox, toPdf, toTopLeft, type LoadedPdf } from '../pdf';
 
 import { FixedFormStudio, type FixedFormStudioDataSource, type FixedFormStudioTemplate } from './FixedFormStudio';
 import { FixedFormPreview } from './FixedFormPreview';
-import { base64ToBytes, bytesToBase64, nextFieldKey, roleKeyFromLabel, type FixedFormVersionView } from './fixed-form-model';
+import { FIXED_FORM_FIELD_TYPES, base64ToBytes, bytesToBase64, nextFieldKey, roleKeyFromLabel, type FixedFormVersionView } from './fixed-form-model';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.2 / §7.3 — the Platform Studio's
 // fixed-form mode and the tenant read-only preview. pdf.js does not run under jsdom: a fake
@@ -75,6 +76,31 @@ describe('fixed-form model helpers', () => {
     const box = { x: 10, y: 20, width: 100, height: 30 };
     expect(toPdf(toTopLeft(box, 792), 792)).toEqual(box);
     expect(clampBox({ x: 600, y: -5, width: 100, height: 30 }, { width: 612, height: 792 })).toEqual({ x: 512, y: 0, width: 100, height: 30 });
+  });
+});
+
+describe('FIELD-PARITY-1 P1-0 / P1-2 — the palette is the catalog', () => {
+  it('offers exactly the template_fixed_form types, in the Studio order, with the catalog sizes and required defaults', () => {
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type)).toEqual(['SIGNATURE', 'INITIALS', 'SIGNER_NAME', 'SIGN_DATE', 'TEXT', 'CHECKBOX']);
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type).sort()).toEqual([...fieldTypesFor('template_fixed_form')].sort());
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label)).toEqual(['Signature', 'Initials', 'Name', 'Date', 'Text', 'Checkbox']);
+    for (const t of FIXED_FORM_FIELD_TYPES) expect({ width: t.width, height: t.height, required: t.required }).toEqual(FIELD_DEFAULTS[t.type]);
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'SIGNATURE')).toMatchObject({ width: 230, height: 50, required: true });
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'TEXT')).toMatchObject({ width: 230, height: 22, required: false });
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'CHECKBOX')).toMatchObject({ width: 18, height: 18, required: false });
+  });
+
+  it('a placed field takes the catalog default size and required default', async () => {
+    const ds = source();
+    render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    await screen.findByTestId('ffs-page-0');
+    fireEvent.click(screen.getByTestId('ffs-add-SIGNATURE'));
+    fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(ds.saveLayout).toHaveBeenCalled());
+    const body = (ds.saveLayout as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { fields: Array<Record<string, unknown>> };
+    expect(body.fields[0]).toMatchObject({ field_type: 'SIGNATURE', width: 230, height: 50, required: true });
+    expect(body.fields[1]).toMatchObject({ field_type: 'TEXT', width: 230, height: 22, required: false });
   });
 });
 

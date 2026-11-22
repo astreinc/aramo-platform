@@ -3,8 +3,9 @@
 //   - Values are LOCAL until Finish: the server has no un-fill, so tapping a filled field
 //     clears it on the device only, and Finish submits the final values with the existing
 //     fill-then-complete calls. A failed submit keeps every value (offline included).
-//   - All 7 engine field types are completed as received: SIGNATURE, INITIALS, SIGN_DATE,
-//     SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT.
+//   - Every engine field type is completed as received (FIELD-PARITY-1 P1-2: the catalog's
+//     `engine_passthrough` projection — SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT,
+//     CHECKBOX, ACKNOWLEDGEMENT and the M-A12 profile types). PAYMENT is paid, not filled.
 //   - Only the signer's own fields are returned by /v1/sign/signing/document, so only they
 //     render or can be tapped (other signers' values are never shown, C-2).
 //   - M-A6 §2: a check box toggles 'true' / 'false' (unchecking is sent as 'false'); a
@@ -17,34 +18,25 @@
 //     signer fills; when the signer is signed in, their own Sign profile pre-fills the
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 
-import { CHECK_FIELD_TYPES, checkboxGroupOf, signDatePreview, signerFieldUnits, type SignerFieldLike, type SignerFieldUnit } from '@aramo/sign-client';
+import {
+  CHECK_FIELD_TYPES,
+  PROFILE_TEXT_FIELD_TYPES,
+  checkboxGroupOf,
+  fieldTypesFor,
+  signDatePreview,
+  signerFieldUnits,
+  type FieldTypeOn,
+  type SignerFieldLike,
+  type SignerFieldUnit,
+} from '@aramo/sign-client';
 
 import { SIGN_DATE_PREVIEW_NOTE } from './signDate';
 
-export const FIELD_TYPES = [
-  'SIGNATURE',
-  'INITIALS',
-  'SIGN_DATE',
-  'SIGNER_NAME',
-  'TEXT',
-  'CHECKBOX',
-  'ACKNOWLEDGEMENT',
-  'FIRST_NAME',
-  'LAST_NAME',
-  'EMAIL',
-  'COMPANY',
-  'TITLE',
-] as const;
+export const FIELD_TYPES: readonly FieldTypeOn<'engine_passthrough'>[] = fieldTypesFor('engine_passthrough');
 
-/** M-A12 W1-C.4 — the profile auto-fill types (text-valued). */
-export const PROFILE_TEXT_TYPES: ReadonlySet<string> = new Set([
-  'FIRST_NAME',
-  'LAST_NAME',
-  'EMAIL',
-  'COMPANY',
-  'TITLE',
-]);
-export type FieldType = (typeof FIELD_TYPES)[number];
+/** M-A12 W1-C.4 — the profile auto-fill types (text-valued; the catalog's prefill types). */
+export const PROFILE_TEXT_TYPES: ReadonlySet<string> = new Set(PROFILE_TEXT_FIELD_TYPES);
+export type FieldType = FieldTypeOn<'engine_passthrough'>;
 
 /** One field of POST /v1/sign/signing/document. */
 export interface SigningField {

@@ -15,6 +15,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@aramo/fe-foundation': resolve(root, '../fe-foundation/src/index.ts'),
+      // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
+      // @aramo/sign-client and @aramo/document-templates-web.
+      '@aramo/sign-fields': resolve(root, '../sign-fields/src/index.ts'),
     },
   },
   test: {

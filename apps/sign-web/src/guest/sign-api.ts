@@ -4,7 +4,7 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
-import { localTimeZone } from '@aramo/sign-client';
+import { localTimeZone, type AnyFieldType } from '@aramo/sign-client';
 
 import type { TextLayer } from './find.js';
 
@@ -16,22 +16,10 @@ export interface SignerSession {
   self_signing?: boolean;
 }
 
-export type SignFieldType =
-  | 'SIGNATURE'
-  | 'INITIALS'
-  | 'SIGN_DATE'
-  | 'SIGNER_NAME'
-  | 'TEXT'
-  | 'CHECKBOX'
-  | 'ACKNOWLEDGEMENT'
-  // Sign 1.14 — paid on Stripe's hosted page; filled by the server once paid.
-  | 'PAYMENT'
-  // Aramo Sign Mobile M-A12 W1-C.4 — profile text fields the signer fills.
-  | 'FIRST_NAME'
-  | 'LAST_NAME'
-  | 'EMAIL'
-  | 'COMPANY'
-  | 'TITLE';
+// FIELD-PARITY-1 P1-2 — every type an envelope stores (the catalog's `sign_store` projection):
+// the engine types, PAYMENT (Sign 1.14 — paid on Stripe's hosted page; filled by the server once
+// paid) and the M-A12 W1-C.4 profile text fields the signer fills.
+export type SignFieldType = AnyFieldType;
 
 export interface SignField {
   field_id: string;

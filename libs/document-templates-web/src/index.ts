@@ -213,6 +213,7 @@ export {
   type FixedFormContent,
   type FixedFormField,
   type FixedFormFieldType,
+  type FixedFormFieldTypeSpec,
   type FixedFormIssue,
   type FixedFormPage,
   type FixedFormPdfRef,
