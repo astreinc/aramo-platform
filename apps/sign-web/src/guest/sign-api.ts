@@ -4,7 +4,7 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
-import { localTimeZone, type AnyFieldType } from '@aramo/sign-client';
+import { localTimeZone, type AnyFieldType, type FieldOptions } from '@aramo/sign-client';
 
 import type { TextLayer } from './find.js';
 
@@ -47,6 +47,18 @@ export interface SignField {
   server_filled?: boolean;
   // Sign 1.14 — the amount to pay (PAYMENT only).
   payment?: { amount_minor: number; currency: string } | null;
+  // FIELD-PARITY-1 P3 §6.2 — the settings the signer page applies (absent: an older server).
+  // label (above) is the field's caption and accessible name; tooltip its help text;
+  // placeholder the input hint; read_only / sender_filled: the sender's value, shown and never
+  // sent; validation + options: the value rules (@aramo/sign-client signerValueProblem).
+  tooltip?: string | null;
+  placeholder?: string | null;
+  read_only?: boolean;
+  sender_filled?: boolean;
+  validation?: string | null;
+  font_size?: number | null;
+  data_name?: string | null;
+  options?: FieldOptions | null;
 }
 
 // Sign 1.14 — starting a payment: Stripe's hosted page, or already paid.

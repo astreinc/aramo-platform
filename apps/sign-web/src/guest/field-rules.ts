@@ -1,4 +1,13 @@
-import { CHECK_FIELD_TYPES, PAYMENT_FIELD_TYPE, checkboxGroupOf, signerFieldUnits, type SignerFieldLike } from '@aramo/sign-client';
+import {
+  CHECK_FIELD_TYPES,
+  PAYMENT_FIELD_TYPE,
+  checkboxGroupOf,
+  incompleteReasonMessage,
+  isSignerLocked,
+  signerFieldUnits,
+  signerUnitMessage,
+  type SignerFieldLike,
+} from '@aramo/sign-client';
 
 import type { SignField } from './sign-api.js';
 
@@ -18,6 +27,12 @@ export const isServerName = (f: Pick<SignField, 'field_type' | 'name_mode' | 'se
 
 export const isChecked = (v: string | undefined): boolean => v === 'true' || v === FILLED_MARK;
 
+// FIELD-PARITY-1 P3 T-5 — one option of a radio group (a group always chooses exactly one).
+export const isRadio = (f: Pick<SignField, 'field_type'>): boolean => f.field_type === 'RADIO';
+
+// FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value: shown, never editable, never a requirement.
+export const isLocked = (f: Pick<SignField, 'read_only' | 'sender_filled'>): boolean => isSignerLocked(f);
+
 // Sign 1.14 — a PAYMENT field: paid on Stripe's hosted page, filled by the server.
 export const isPayment = (f: Pick<SignField, 'field_type'>): boolean => f.field_type === PAYMENT_FIELD_TYPE;
 
@@ -29,10 +44,10 @@ export function formatAmount(amount_minor: number, currency: string): string {
 
 const groupOf = (f: Pick<SignField, 'field_type' | 'group_key'>): string | null => checkboxGroupOf(f);
 
-// The other boxes a SELECT_ONE group unchecks when `f` is checked.
+// The other boxes a SELECT_ONE group (or a radio group) unchecks when `f` is checked.
 export function selectOneSiblings(fields: readonly SignField[], f: SignField): SignField[] {
   const g = groupOf(f);
-  if (g === null || f.group_rule !== 'SELECT_ONE') return [];
+  if (g === null || (f.group_rule !== 'SELECT_ONE' && !isRadio(f))) return [];
   return fields.filter((o) => o.field_id !== f.field_id && groupOf(o) === g);
 }
 
@@ -43,9 +58,10 @@ export interface Requirement {
 }
 
 // Each thing the signer must do before Finish: a required field to fill, a required box to
-// check, a payment, or a group rule to satisfy. Client Rule Consolidation C3 (audit row 38) —
+// check, a payment, or a group rule to satisfy (FIELD-PARITY-1 P3: a radio group needs one
+// choice; a sender's value is never one). Client Rule Consolidation C3 (audit row 38) —
 // the rule itself is @aramo/sign-client's signerFieldUnits (the server's completion check and
-// the Aramo Sign app use the same function); only the words are this page's.
+// the Aramo Sign app use the same function), and so are the words (signerUnitMessage).
 export function requirements(fields: readonly SignField[], filled: Readonly<Record<string, string>>): Requirement[] {
   const units = signerFieldUnits(fields as readonly (SignField & SignerFieldLike)[], {
     filled: (f) => filled[f.field_id] !== undefined,
@@ -55,18 +71,10 @@ export function requirements(fields: readonly SignField[], filled: Readonly<Reco
     const first = u.fields[0] as SignField;
     if (u.group_key !== undefined) {
       const checked = u.fields.filter((b) => isChecked(filled[b.field_id])).length;
-      const min = Math.max(1, ...u.fields.map((b) => b.min_selected ?? 1));
-      const message =
-        u.reason === 'checkbox_group_select_one'
-          ? checked > 1
-            ? 'Choose only one option in each “select one” group.'
-            : 'Choose one option in each required group.'
-          : `Check at least ${min} option${min === 1 ? '' : 's'} in each required group.`;
-      return { key: `group:${u.group_key}`, done: u.done, message };
+      const min_selected = Math.max(1, ...u.fields.map((b) => b.min_selected ?? 1));
+      return { key: `group:${u.group_key}`, done: u.done, message: signerUnitMessage(u.reason, { checked, min_selected }) };
     }
-    if (u.reason === 'payment_required') return { key: first.field_id, done: u.done, message: 'A payment is required before you can finish.' };
-    if (u.reason === 'checkbox_required_unchecked') return { key: first.field_id, done: u.done, message: `Check the required box${first.label ? ` “${first.label}”` : ''}.` };
-    return { key: first.field_id, done: u.done, message: 'Some required fields still need your input.' };
+    return { key: first.field_id, done: u.done, message: signerUnitMessage(u.reason, { label: first.label ?? null }) };
   });
 }
 
@@ -75,11 +83,7 @@ export function completionProblem(fields: readonly SignField[], filled: Readonly
   return requirements(fields, filled).find((r) => !r.done)?.message ?? null;
 }
 
-// The server's 409 SIGNATURE_FIELD_INCOMPLETE reasons, in plain language.
+// The server's 409 SIGNATURE_FIELD_INCOMPLETE reasons, in plain language (@aramo/sign-client).
 export function incompleteMessage(reason: string | undefined): string {
-  if (reason === 'checkbox_required_unchecked') return 'A required box still needs to be checked.';
-  if (reason === 'checkbox_group_select_one') return 'Choose exactly one option in each “select one” group.';
-  if (reason === 'checkbox_group_min_selected') return 'Check enough options in each required group.';
-  if (reason === 'payment_required') return 'A payment is required before you can finish.';
-  return 'Some required fields still need your input.';
+  return incompleteReasonMessage(reason);
 }
