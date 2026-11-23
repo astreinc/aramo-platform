@@ -40,6 +40,7 @@ function view(over: Partial<FixedFormVersionView> = {}): FixedFormVersionView {
     variables: [],
     issues: [],
     previewed: false,
+    sender_filled_fields_enabled: false,
     ...over,
   };
 }

@@ -17,8 +17,8 @@ import { FixedFormService } from '../documents/fixed-form.service.js';
 //   import_fields: a fillable PDF with field / document JavaScript (refused without the flag)
 //     is stripped, flattened and stored; its fields become template_fixed_form catalog fields;
 //     an XFA-only form is refused (xfa_only_form);
-//   apply_text_tags: {{…}} tags become fields, refused tags are reported, every used tag is
-//     covered with white on the stored PDF.
+//   apply_text_tags: {{…}} tags become fields, refused tags are reported, every used tag's text
+//     is removed from the stored PDF and covered with white (FIELD-PARITY-2 A-6).
 
 const ACTOR = '01900000-0000-7000-8000-0000000007a2';
 const TEMPLATE = '01900000-0000-7000-8000-0000000007b1';
@@ -123,9 +123,12 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
       // FIELD-PARITY-1 P3 T-5 — a radio group imports as a RADIO group.
       ['status', 'RADIO', 'Single', 'status', 'SELECT_ONE', false],
       ['status', 'RADIO', 'Married', 'status', 'SELECT_ONE', false],
-      ['dept', 'TEXT', null, null, null, false],
+      // FIELD-PARITY-2 A-5 — a PDF dropdown imports as a DROPDOWN with its choices.
+      ['dept', 'DROPDOWN', null, null, null, false],
       ['Employee Signature', 'SIGNATURE', null, null, null, false],
     ]);
+    expect(out.fields.find((f) => f.name === 'dept')?.options).toEqual({ choices: [{ value: 'HR', label: 'HR' }, { value: 'IT', label: 'IT' }] });
+    expect(out.fields.filter((f) => f.name !== 'dept').every((f) => f.options === null)).toBe(true);
     expect(out.fields.at(-1)).toMatchObject({ page_number: 0, x: 50, y: 100, width: 230, height: 50 });
     expect(out.warnings).toEqual([]);
   });
@@ -173,6 +176,12 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
     expect(tagWord).toBeDefined();
     const sigField = out.fields[0];
     expect(sigField?.x).toBeCloseTo((tagWord?.x ?? 0) * 612, 0);
+    // FIELD-PARITY-2 A-6 (ruling C-8) — the used tags' text is gone from the stored PDF; the
+    // refused tag ({{stamp:…}}) and the ordinary text stay.
+    const stored = (await extractTextLayer(out.bytes))[0]?.words.map((w) => w.t).join(' ') ?? '';
+    expect(stored).not.toMatch(/signature:Employee|name:employee|date:Chair|title:Employee|checkbox:Employee/);
+    expect(stored).toContain('{{stamp:Employee}}');
+    expect(out.warnings.map((w) => w.code)).not.toContain('text_tag_text_not_removed');
   });
 });
 
@@ -240,7 +249,7 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — FixedFormService.uploadPdf', () => {
   it('import_fields: form fields arrive without a role (the author assigns them)', async () => {
     const { svc, forms } = service();
     const out = await svc.uploadPdf({ version_id: VERSION, bytes: await formPdf({ active: true }), actor: ACTOR, requestId: 'r', import: { import_fields: true, apply_text_tags: false } });
-    const write = forms.writePlatformDraft.mock.calls[0]?.[0] as { fields: Array<{ field_key: string; signer_role: string | null; group_key: string | null }> };
+    const write = forms.writePlatformDraft.mock.calls[0]?.[0] as { fields: Array<{ field_key: string; signer_role: string | null; group_key: string | null; field_type: string; options: unknown }> };
     expect(write.fields.map((f) => [f.field_key, f.signer_role, f.group_key])).toEqual([
       ['employee_name', null, null],
       ['agree', null, null],
@@ -249,6 +258,10 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — FixedFormService.uploadPdf', () => {
       ['dept', null, null],
       ['employee_signature', null, null],
     ]);
+    // FIELD-PARITY-2 A-5 — the dropdown is stored and answered with its choices.
+    const dept = write.fields.find((f) => f.field_key === 'dept');
+    expect(dept).toMatchObject({ field_type: 'DROPDOWN', options: { choices: [{ value: 'HR', label: 'HR' }, { value: 'IT', label: 'IT' }] } });
+    expect(out.field_import?.fields.find((f) => f.field_key === 'dept')?.options).toEqual(dept?.options);
     expect(out.field_import?.stripped).toContain('/AcroForm');
   });
 });

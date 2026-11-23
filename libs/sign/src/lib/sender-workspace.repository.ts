@@ -637,6 +637,9 @@ export class EsignSenderRepository {
               group_rule: f.group_rule ?? null,
               min_selected: f.min_selected ?? null,
               name_mode: f.name_mode ?? null,
+              // FIELD-PARITY-2 A-5 — an imported dropdown's choices (options); every other
+              // setting column keeps its default (NULL / false).
+              ...fieldSettingColumns(f),
             },
           });
           field_ids.push(id);

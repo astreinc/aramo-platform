@@ -65,7 +65,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { fieldTypesFor, fieldValueRefusal, parseFieldSettings, senderFilledFieldsEnabled, type FieldImportWarning } from '@aramo/sign-fields';
+import { checkboxGroupIssues, fieldTypesFor, fieldValueRefusal, parseFieldSettings, senderFilledFieldsEnabled, type FieldImportWarning } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -1114,6 +1114,7 @@ export class SenderEnvelopeService {
           group_rule: f.group_rule,
           min_selected: f.min_selected,
           name_mode: f.name_mode,
+          options: f.options,
         })),
         warnings: imported.warnings,
         stripped: imported.stripped,
@@ -1852,38 +1853,43 @@ function passthroughField(o: Record<string, unknown>, field_type: string, i: num
 
 // M-A6 §2.3 — every box of a check-box group belongs to one recipient and shares
 // the group's rule, minimum and required setting; a minimum cannot exceed the
-// group's size.
+// group's size. FIELD-PARITY-2 A-7 — the group rule is the shared one
+// (@aramo/sign-fields checkboxGroupIssues, also used by the template routes and the
+// console fixed form); a box's recipient plays the template's signer role. The sender
+// keeps its own refusal messages and details, and its sender-value check (a sender-filled
+// radio group holds at most one choice), in the same order as before: per group, in the
+// order the groups first appear, inconsistent, then radio_group_select_one, then the minimum.
 function checkboxGroups(fields: ReadonlyArray<SenderFieldInput>, requestId: string): void {
-  const groups = new Map<string, SenderFieldInput[]>();
-  for (const f of fields) {
-    if (f.group_key === undefined || f.group_key === null) continue;
-    const g = groups.get(f.group_key) ?? [];
-    g.push(f);
-    groups.set(f.group_key, g);
-  }
-  for (const [group_key, boxes] of groups) {
-    const [first] = boxes;
-    if (first === undefined) continue;
-    // FIELD-PARITY-1 P3 — and one type (check boxes or radio buttons) and one read-only /
-    // sender-filled setting.
-    const consistent = boxes.every(
-      (b) =>
-        b.signer_id === first.signer_id &&
-        b.group_rule === first.group_rule &&
-        (b.min_selected ?? null) === (first.min_selected ?? null) &&
-        b.required === first.required &&
-        b.field_type === first.field_type &&
-        (b.read_only ?? false) === (first.read_only ?? false) &&
-        (b.sender_filled ?? false) === (first.sender_filled ?? false),
-    );
-    if (!consistent) {
+  const grouped = fields.flatMap((f, i) =>
+    f.group_key === undefined || f.group_key === null
+      ? []
+      : [
+          {
+            field_key: String(i),
+            signer_role: f.signer_id,
+            required: f.required,
+            group_key: f.group_key,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            field_type: f.field_type,
+            read_only: f.read_only ?? false,
+            sender_filled: f.sender_filled ?? false,
+          },
+        ],
+  );
+  const issues = new Map(checkboxGroupIssues(grouped).map((issue) => [issue.group_key, issue.reason]));
+  const groupKeys = [...new Set(grouped.map((g) => g.group_key))];
+  for (const group_key of groupKeys) {
+    const reason = issues.get(group_key);
+    if (reason === 'checkbox_group_inconsistent') {
       throw bad(requestId, `check-box group ${group_key}: every box needs the same recipient, type, rule, minimum, required, read-only and sender-filled setting`, { group_key, reason: 'checkbox_group_inconsistent' });
     }
     // P3 T-5 / S-5 — a sender-filled radio group holds at most one choice.
-    if (first.field_type === 'RADIO' && boxes.filter((b) => b.sender_value === 'true').length > 1) {
+    const boxes = fields.filter((f) => f.group_key === group_key);
+    if (boxes[0]?.field_type === 'RADIO' && boxes.filter((b) => b.sender_value === 'true').length > 1) {
       throw bad(requestId, `radio group ${group_key}: choose one option`, { group_key, reason: 'radio_group_select_one' });
     }
-    if ((first.min_selected ?? 1) > boxes.length) {
+    if (reason === 'checkbox_group_min_exceeds_size') {
       throw bad(requestId, `check-box group ${group_key}: min_selected is more than the boxes in the group`, { group_key, reason: 'checkbox_group_min_exceeds_size' });
     }
   }

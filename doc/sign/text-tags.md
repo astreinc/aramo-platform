@@ -85,10 +85,19 @@ Closing date: {{date_chosen:Buyer:required}}      Notes: {{multiline:Buyer:optio
 points each way and kept on the page. A check box is a square as tall as the tag, at the tag's
 left edge. To get a bigger field, make the tag text bigger or longer.
 
-**Covering (ruling R-5).** Every tag that becomes a field is painted over with a white rectangle on
-the stored PDF: the tag's box plus 1 point on each side. The original upload bytes are not kept.
-Note: the tag's characters are still in the page content underneath the white box. Text
-extraction (for example "Find in document") can still find them, but they are not visible.
+**Removing and covering (ruling C-8, FIELD-PARITY-2 A-6; amends R-5).** Every tag that becomes a
+field is removed from the stored PDF: the text-drawing operations that show the tag's characters
+inside the tag's box are taken out of the page content, and each removed character's width is kept
+as a move, so nothing else on the page shifts. The page's text is then read again; the change is
+kept only if the page's text is exactly the old text without the tag. As a fallback the tag's box
+(plus 1 point on each side) is still painted over with a white rectangle. The original upload bytes,
+and the old page content that held the tag, are not kept.
+
+If a tag's text cannot be removed cleanly (for example it is drawn inside a form XObject, in a
+Type3 font or as vertical text), the tag still becomes a field and is covered, the page content is
+left as it was, and the import summary reports `text_tag_text_not_removed` ("tag text could not be
+removed"): the tag is not visible, but text extraction (for example "Find in document") can still
+find it.
 
 **Limits.**
 - Tags are read from the PDF's text layer. A scanned or image-only PDF has none, so no tags are
@@ -110,8 +119,8 @@ appearance is drawn into the page, and the form and its widgets are removed.
 | Multi-line text | MULTILINE_TEXT (FIELD-PARITY-1 Phase 3) |
 | Check box | CHECKBOX (label = tooltip, else name) |
 | Radio group | one RADIO per option, in one radio group (always select-one; group key = the radio name, made unique on the document; label = the option). Before Phase 3 this was a SELECT_ONE check-box group. |
-| Dropdown (combo box) | TEXT. A DROPDOWN needs its choices, and neither the form reader nor the upload routes carry a form field's options yet (a follow-up). |
-| List box | TEXT (same reason) |
+| Dropdown (combo box) | DROPDOWN with its choices (`options.choices`: each `/Opt` entry's export value and display text), when it has 1 to 50 distinct choices that fit the dropdown rule (FIELD-PARITY-2 A-5). Otherwise TEXT, reported as `pdf_field_dropdown_as_text`. |
+| List box | TEXT, reported as `pdf_field_list_as_text` (a list box lets several be chosen; a DROPDOWN holds one) |
 | Signature (unsigned) | SIGNATURE |
 | Signature already signed | not imported (`pdf_field_signed`) |
 | Push button | not imported (`pdf_field_type_unsupported`) |
@@ -142,7 +151,7 @@ non-JavaScript `/OpenAction`.
 
 An XFA-only form (an XFA stream and no AcroForm widgets) cannot be flattened into anything
 meaningful, so it is refused with reason `xfa_only_form`. The flattened PDF (and, for tags, the
-covered PDF) then passes the same gates as any other upload.
+PDF with the tags removed and covered) then passes the same gates as any other upload.
 
 **Envelope without a recipient.** If an envelope upload finds fields but the envelope has no
 signing recipient, the upload is refused with `422` and reason `field_import_needs_recipient`.

@@ -5031,14 +5031,16 @@ paths:
 
         FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the upload, the
         stored bytes and the response are unchanged):
-        `import_fields` — the PDF's form fields (AcroForm) become fields (text / multi-line / dropdown /
-        list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature →
+        `import_fields` — the PDF's form fields (AcroForm) become fields (text → TEXT, multi-line →
+        MULTILINE_TEXT, dropdown → DROPDOWN with its choices when 1 to 50 fit, otherwise TEXT, list box →
+        TEXT, check box → CHECKBOX, radio group → a RADIO group (one RADIO per option), signature →
         SIGNATURE; no signer role yet), the form's active content (field / widget / page / document
         actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
         before the gate above decides; an XFA-only form is refused 422 details.reason `xfa_only_form`.
         `apply_text_tags` — `{{type:role[:required|optional][:label=…]}}` tags become fields sized to the
-        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag is
-        covered with white on the stored PDF (doc/sign/text-tags.md). The response then carries
+        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag's
+        text is removed from the stored PDF and covered with white (FIELD-PARITY-2 A-6; a tag whose text
+        cannot be removed is only covered, warning `text_tag_text_not_removed`; doc/sign/text-tags.md). The response then carries
         `field_import` (the fields added after any existing ones, and named warnings). A non-boolean flag
         is refused 400 details.reason `import_flag_invalid`.
       security:
@@ -7317,6 +7319,8 @@ components:
           type: string
           enum:
             - pdf_field_type_unsupported
+            - pdf_field_list_as_text
+            - pdf_field_dropdown_as_text
             - pdf_field_type_not_allowed
             - pdf_field_read_only
             - pdf_field_hidden
@@ -7329,6 +7333,7 @@ components:
             - text_tag_label_not_applicable
             - text_tag_rotated_page
             - text_tags_unreadable
+            - text_tag_text_not_removed
             - text_tag_role_missing
             - text_tag_role_unknown
             - field_assigned_to_first_recipient
@@ -7381,7 +7386,8 @@ components:
         group_rule: { type: [string, 'null'], enum: [SELECT_ONE, null] }
         min_selected: { type: 'null' }
         name_mode: { type: 'null' }
-        # FIELD-PARITY-1 P3 — an imported field carries no P3 setting (null / false).
+        # FIELD-PARITY-1 P3 — an imported field carries no P3 setting (null / false), except a
+        # dropdown's choices (FIELD-PARITY-2 A-5).
         tooltip: { type: 'null' }
         placeholder: { type: 'null' }
         read_only: { type: boolean, enum: [false] }
@@ -7389,7 +7395,11 @@ components:
         validation: { type: 'null' }
         font_size: { type: 'null' }
         data_name: { type: 'null' }
-        options: { type: 'null' }
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise.
         source: { type: string, enum: [pdf_form, text_tag] }
         source_name: { type: string, description: 'The PDF form field name, or the tag without braces.' }
     FixedFormPdfContent:
@@ -7611,7 +7621,7 @@ components:
     FixedFormVersionView:
       type: object
       additionalProperties: false
-      required: [template_id, version_id, version_number, status, content, fields, variables, issues, previewed]
+      required: [template_id, version_id, version_number, status, content, fields, variables, issues, previewed, sender_filled_fields_enabled]
       properties:
         template_id: { type: string, format: uuid }
         version_id: { type: string, format: uuid }
@@ -7674,6 +7684,13 @@ components:
               field_key: { type: string }
               role_key: { type: string }
         previewed: { type: boolean }
+        sender_filled_fields_enabled:
+          type: boolean
+          description: >-
+            FIELD-PARITY-2 A-4 (ruling C-9) — true when sender-filled fields are switched on
+            (SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark). The Studio offers the Sender-filled
+            and Read-only settings only when this is true; a stored sender-filled field round-trips
+            either way.
         field_import:
           $ref: '#/components/schemas/FixedFormFieldImport'
           description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.

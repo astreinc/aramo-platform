@@ -254,6 +254,17 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.2 — fields and layout', () => {
     expect(out.previewed).toBe(true);
     expect(templates.recordPlatformPreview).toHaveBeenCalledWith(VERSION);
   });
+
+  it('FIELD-PARITY-2 A-4 — the view says whether sender-filled fields are on (the shared flag reader)', async () => {
+    const { svc } = service();
+    vi.stubEnv('SIGN_SENDER_FILLED_FIELDS_ENABLED', '');
+    expect((await svc.platformView(VERSION, 'r')).sender_filled_fields_enabled).toBe(false);
+    vi.stubEnv('SIGN_SENDER_FILLED_FIELDS_ENABLED', 'true');
+    expect((await svc.platformView(VERSION, 'r')).sender_filled_fields_enabled).toBe(false);
+    vi.stubEnv('SIGN_SENDER_FILLED_FIELDS_ENABLED', '1');
+    expect((await svc.platformView(VERSION, 'r')).sender_filled_fields_enabled).toBe(true);
+    vi.unstubAllEnvs();
+  });
 });
 
 const platformAuth = { sub: ACTOR, consumer_type: 'platform', tenant_id: TENANT, scopes: [] } as unknown as AuthContextType;

@@ -632,6 +632,17 @@ const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
 // FIELD-PARITY-1 P2-4 (auto-detect suggestions) — NO migration and no changed shape: one NEW read
 // route, GET …/fixed-form/field-suggestions (openapi/platform.yaml FixedFormFieldSuggestions), which
 // no consumer pact records yet; every existing interaction's response is unchanged.
+// FIELD-PARITY-2 A-4 (ruling C-9) — NO migration: a returned-shape change only. FixedFormVersionView
+// (openapi/platform.yaml) gains the required boolean `sender_filled_fields_enabled`, read from the
+// server flag through the one shared reader (@aramo/sign-fields senderFilledFieldsEnabled). It is
+// returned only by the console /platform/document-templates/…/fixed-form* routes, which no consumer
+// pact records; the sign-source fixed-form render interaction is a different shape and unchanged.
+// FIELD-PARITY-2 A-5 — NO migration: FixedFormImportedField.options (inside the opt-in
+// `field_import`) may now carry a PDF dropdown's choices, and FieldImportWarning gains two codes;
+// no recorded interaction sends import_fields, so none changes.
+// FIELD-PARITY-2 A-6 (ruling C-8) — NO migration: an apply_text_tags upload removes the used tags'
+// text from the stored PDF (and still covers it); FieldImportWarning gains
+// text_tag_text_not_removed. No recorded interaction sends the flag.
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(

@@ -58,12 +58,22 @@ function settingsFromStored(f: FixedFormField): PlacedField['settings'] {
 }
 
 /**
- * FIELD-PARITY-1 P3 §6.2 — the settings the Studio edits: every template setting except
- * sender-filled and read-only. The fixed-form view does not say whether sender-filled fields are
- * switched on (the server flag SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark), so the Studio
- * does not offer them; a stored one is kept (round-trips) and still shown on the field.
+ * FIELD-PARITY-1 P3 §6.2 — the settings the Studio edits while sender-filled fields are off:
+ * every template setting except sender-filled and read-only (the server flag
+ * SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark). A stored one is kept (round-trips) and
+ * still shown on the field.
  */
 export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only');
+
+/**
+ * FIELD-PARITY-2 A-4 (ruling C-9) — the settings the Studio offers, from the view's
+ * sender_filled_fields_enabled: every template setting when the server flag is on (Sender-filled
+ * and Read-only included), FIXED_FORM_SETTINGS otherwise. A template stores no sender value; the
+ * sender types it when sending.
+ */
+export function fixedFormSettings(view: { readonly sender_filled_fields_enabled?: boolean } | null | undefined): readonly FieldSetting[] {
+  return view?.sender_filled_fields_enabled === true ? TEMPLATE_FIELD_SETTINGS : FIXED_FORM_SETTINGS;
+}
 
 /**
  * P1-3 / P3 — the editor's settings → wire members, only the settings the type takes (the

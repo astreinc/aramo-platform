@@ -151,6 +151,8 @@ export interface FixedFormVersionView {
   readonly variables: readonly FixedFormVariable[];
   readonly issues: readonly FixedFormIssue[];
   readonly previewed: boolean;
+  /** FIELD-PARITY-2 A-4 — sender-filled fields are switched on (server flag; they ship dark). */
+  readonly sender_filled_fields_enabled: boolean;
   /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
   readonly field_import?: FixedFormFieldImport;
 }
