@@ -5031,8 +5031,9 @@ paths:
 
         FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the upload, the
         stored bytes and the response are unchanged):
-        `import_fields` — the PDF's form fields (AcroForm) become fields (text / multi-line / dropdown /
-        list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature →
+        `import_fields` — the PDF's form fields (AcroForm) become fields (text → TEXT, multi-line →
+        MULTILINE_TEXT, dropdown → DROPDOWN with its choices when 1 to 50 fit, otherwise TEXT, list box →
+        TEXT, check box → CHECKBOX, radio group → a RADIO group (one RADIO per option), signature →
         SIGNATURE; no signer role yet), the form's active content (field / widget / page / document
         actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
         before the gate above decides; an XFA-only form is refused 422 details.reason `xfa_only_form`.

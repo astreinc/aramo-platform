@@ -1672,8 +1672,9 @@ paths:
         as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed.
         With the capability off a Word file keeps the 400 unsupported_file_type refusal.
         FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the stored bytes and the response are
-        unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text / multi-line / dropdown / list → TEXT,
-        check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature → SIGNATURE), and the form's active content (field,
+        unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text → TEXT, multi-line → MULTILINE_TEXT,
+        dropdown → DROPDOWN with its choices when 1 to 50 fit, otherwise TEXT, list box → TEXT, check box → CHECKBOX, radio group →
+        a RADIO group (one RADIO per option), signature → SIGNATURE; doc/sign/text-tags.md), and the form's active content (field,
         widget, page and document actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
         before the safe-PDF gate decides; an XFA-only form is refused 400 details.reason xfa_only_form. apply_text_tags:
         {{type:role[:required|optional][:label=…]}} tags become fields sized to the tag and each used tag's text is removed from
@@ -2100,12 +2101,15 @@ paths:
       summary: Replace the positioned fields of a DRAFT envelope.
       description: >
         Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create.
-        Field types are the SenderFieldInput.field_type enum (12): SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and
-        CHECKBOX (M-A6 §2), FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE (M-A12), and PAYMENT only while payments are
-        available to the organization (Sign 1.14; 403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); any other type is 400 v1_field_type,
-        except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough).
-        A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label,
-        group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons:
+        Field types are the SenderFieldInput.field_type enum (18): SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and
+        CHECKBOX (M-A6 §2), FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE (M-A12), ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO,
+        NUMBER and MULTILINE_TEXT (FIELD-PARITY-1 P3), and PAYMENT only while payments are available to the organization
+        (Sign 1.14; 403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); any other type is 400 v1_field_type, except that an engine-only
+        field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough).
+        A sender supplies a value only for a sender-filled field while sender-filled fields are switched on (otherwise 400
+        sender_value_refused). The settings each type takes are the field catalog's (@aramo/sign-fields fieldSettingsOf; for
+        example name_mode on SIGNER_NAME only, and group_key / group_rule on CHECKBOX and RADIO only); a setting the type does
+        not take is 400 field_config_not_applicable; other 400 reasons:
         name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required,
         checkbox_group_inconsistent, checkbox_group_min_exceeds_size.
         Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — a recipient who receives a copy has no fields (400 copy_recipient_has_fields).
