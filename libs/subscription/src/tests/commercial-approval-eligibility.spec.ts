@@ -167,6 +167,10 @@ describe('CCP-A3 chain resolution from the policy (D6, Q1, Q2, Q7) — the chain
     ['A3-CH-12 subscription open (no threshold) → finance', 'SUBSCRIPTION_OPEN', {}, 'FINANCE_ONLY', ['finance_admin']],
     ['A3-CH-13 entitlement grant → finance', 'ENTITLEMENT_GRANT', {}, 'FINANCE_ONLY', ['finance_admin']],
     ['A3-CH-14 conversion → finance', 'CONVERSION', {}, 'FINANCE_ONLY', ['finance_admin']],
+    // CCP Amendment A3 AC-COMP-1 (CCP-PERSONAL-ARRANGED-1 P-6): a payload rule on SUBSCRIPTION_OPEN.
+    ['AC-COMP-1 subscription open arranged at no charge (COMP) → finance → owner', 'SUBSCRIPTION_OPEN', { arrangement: 'COMP' }, 'FINANCE_THEN_OWNER', ['finance_admin', 'platform_owner']],
+    ['AC-COMP-1 subscription open arranged at an agreed price (AGREED) → finance', 'SUBSCRIPTION_OPEN', { arrangement: 'AGREED' }, 'FINANCE_ONLY', ['finance_admin']],
+    ['AC-COMP-1 subscription open without an arrangement → finance', 'SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1' }, 'FINANCE_ONLY', ['finance_admin']],
   ];
   for (const [name, a, p, r, roles] of table) it(name, () => expect(rule(a, p)).toEqual([r, roles]));
 
@@ -361,5 +365,12 @@ describe('CCP-A3 NC-5 apply-time re-check (assertChainStillSatisfiableAtApply; r
     const snapshotBelow = { ...approved, required_chain: BELOW.required_chain, approvals: [{ step_index: 0, approver_user_id: FA }] };
     expect(assertChainStillSatisfiableAtApply.length).toBe(2);
     expect(refusal(() => assertChainStillSatisfiableAtApply(snapshotBelow, roster))).toBe('PASSED');
+  });
+});
+
+describe('CCP Amendment A3 AC-COMP-1 — the COMP chain basis', () => {
+  it('AC-COMP-1 the COMP chain records its ruling in the basis; the other opens keep the A1 basis', () => {
+    expect(resolveRequiredChain('SUBSCRIPTION_OPEN', { arrangement: 'COMP' }, policy).basis).toEqual({ ruling: 'AC-COMP-1', arrangement: 'COMP', escalates: true });
+    expect(resolveRequiredChain('SUBSCRIPTION_OPEN', { arrangement: 'AGREED' }, policy).basis).toEqual({ ruling: 'D6 below threshold' });
   });
 });

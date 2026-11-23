@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { daysUntil, graceStateAt, priceFigure } from '../lib/billing/billing-finance-report.service.js';
+import { compPriceFigure, daysUntil, graceStateAt, priceFigure } from '../lib/billing/billing-finance-report.service.js';
 import type { PlanVersionContent } from '../lib/plan-version.js';
 
 // CCP-C6 — unit tests of the pure figure helpers: the ONLY monetary figure is a plan version's USD
@@ -60,5 +60,18 @@ describe('CCP-C6 figure helpers', () => {
     expect(graceStateAt(null, t)).toBe('NO_GRACE_DATE');
     expect(graceStateAt(new Date('2026-10-27T00:00:00.000Z'), t)).toBe('IN_GRACE');
     expect(graceStateAt(t, t)).toBe('GRACE_ENDED');
+  });
+});
+
+// CCP-PERSONAL-ARRANGED-1 P-3 — a COMP row is shown as "Comp ($0)": amount 0, never the plan's list price.
+describe('CCP-PERSONAL-ARRANGED-1 comp figure', () => {
+  it('ARR-U-FIN-1 the comp figure is 0 USD in the version interval, sourced from the arrangement', () => {
+    expect(compPriceFigure(terms({ list_price_minor: 1000, tenant_kind: 'PERSONAL' }), 'v1')).toEqual({
+      list_price: { amount_minor: 0, currency: 'USD', billing_interval: 'MONTH' },
+      unpriced_reason: null,
+      price_source: 'ARRANGEMENT_COMP',
+      plan_version_id: 'v1',
+    });
+    expect(compPriceFigure(null, null).list_price).toEqual({ amount_minor: 0, currency: 'USD', billing_interval: null });
   });
 });

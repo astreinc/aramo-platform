@@ -95,6 +95,7 @@ function facts(k: Key) {
     current_period_end: s.source === 'SELF_SERVICE' ? plus1(s.pe) : null,
     grace_until: s.grace ? day(s.grace) : null,
     commitment_end: s.commitEnd ? day(s.commitEnd) : null,
+    arrangement: null,
     contract: s.contract ? { id: contractId(k), contract_ref: s.contract } : null,
     provider_linked: s.source === 'SELF_SERVICE',
     open_flags: s.recon ? ['governed_subscription_open'] : [],

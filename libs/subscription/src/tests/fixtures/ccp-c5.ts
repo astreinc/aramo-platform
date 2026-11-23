@@ -24,3 +24,13 @@ export function withoutAccountPriceUnit<V extends { price_unit: AccountView['pri
   }
   return rest;
 }
+
+// CCP-PERSONAL-ARRANGED-1 P-7 — the account read's subscription gains the additive `arranged` flag. The
+// equality corpus holds no arranged row, so the replay adapters strip the flag after checking it is false,
+// and the goldens stay byte-for-byte proofs.
+export function withoutNotArranged<V extends { subscription: AccountView['subscription'] }>(view: V): V {
+  if (view.subscription === null) return view;
+  const { arranged, ...subscription } = view.subscription;
+  if (arranged !== false) throw new Error(`arranged: an equality-corpus subscription is never arranged, got ${JSON.stringify(arranged)}`);
+  return { ...view, subscription: subscription as AccountView['subscription'] };
+}

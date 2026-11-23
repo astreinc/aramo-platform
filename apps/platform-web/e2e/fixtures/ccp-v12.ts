@@ -206,7 +206,7 @@ function revenue(holder: boolean) {
     tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
     ...(holder ? { mrr_minor: 30000, arr_minor: 360000 } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' }),
     by_product: [{ product_key: 'sign', subscriptions: 8, ...(holder ? { mrr_minor: 30000, arr_minor: 360000 } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' }) }],
-    counts: { open_commercial_subscriptions: 8, included: 5, excluded: 3, excluded_by_reason: { CONTRACT_PRICED: 2, STATUS_NOT_REVENUE_BEARING: 1 }, not_commercial_by_source: {} },
+    counts: { open_commercial_subscriptions: 8, included: 5, excluded: 3, excluded_by_reason: { CONTRACT_PRICED: 2, STATUS_NOT_REVENUE_BEARING: 1 }, not_commercial_by_source: {}, arranged_no_charge: 0 },
     renewal_pipeline: {
       months: 6,
       from_month: '2026-10',

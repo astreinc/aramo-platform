@@ -93,6 +93,26 @@ describe('PlansView', () => {
     expect(screen.getByTestId('plan-current')).toBeTruthy();
   });
 
+  // CCP-PERSONAL-ARRANGED-1 P-7 — a plan arranged with Aramo: its label, no price, toggle, buy or manage.
+  it('a plan arranged with Aramo reads "Standard · arranged with Aramo" with no price or billing controls', () => {
+    const arranged = account({
+      subscription: { plan_key: 'standard', plan_name: 'Standard', source: 'MANUAL', status: 'ACTIVE', ended_at: null, arranged: true, list_price: null } as never,
+      store_purchase_eligible: false,
+      store_purchase_block_reason: 'billing_managed_elsewhere',
+    });
+    render(<PlansView {...props({ account: arranged })} />);
+    expect(screen.getByTestId('plan-name').props.children).toBe('Standard');
+    expect(screen.getByTestId('plan-current')).toBeTruthy();
+    expect(screen.getByTestId('plan-arranged').props.children).toBe('Standard · arranged with Aramo');
+    expect(screen.queryByTestId('plan-price')).toBeNull();
+    expect(screen.queryByTestId('plan-interval-MONTH')).toBeNull();
+    expect(screen.queryByTestId('plan-continue')).toBeNull();
+    expect(screen.queryByTestId('plans-manage')).toBeNull();
+    expect(screen.queryByText(/billed on the web/)).toBeNull();
+    fireEvent.press(screen.getByTestId('plan-tab-free'));
+    expect(screen.queryByTestId('plan-arranged')).toBeNull();
+  });
+
   // PO 2026-11-13 — Business plans are per user: the admin finishes users, roles and access and
   // chooses the plan on the web; the app shows no price, no buy and no store note for Business.
   const businessPlans = [

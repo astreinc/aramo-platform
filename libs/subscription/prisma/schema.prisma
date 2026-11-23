@@ -259,6 +259,10 @@ model TenantSubscription {
   // MONTHLY | ANNUAL_COMMIT). NULL = legacy (every row opened before migration 20261115100000, and
   // MANUAL / DEVELOPMENT / FREE rows): its commitment columns stand as written.
   term                               String?
+  // CCP-PERSONAL-ARRANGED-1 P-2 — a governed (MANUAL) row arranged by Aramo outside the store and the web
+  // billing provider (CHECK: COMP | AGREED). COMP = no charge: no commitment, never revenue. AGREED = a price
+  // agreed outside the store and the web billing provider. NULL = not arranged. Migration 20261124100000.
+  arrangement                        String?
   plan                               Plan        @relation(fields: [plan_id], references: [id])
   plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
   // Sign Feature Parity A3 D3 — the subscription's billable add-on events and period reconciliations.

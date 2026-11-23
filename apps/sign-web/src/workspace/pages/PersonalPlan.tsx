@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { allowanceTermsLine, planFacts, storageLabel } from '@aramo/sign-client';
+import { ApiError } from '@aramo/fe-foundation';
+import { allowanceTermsLine, arrangedPlanLabel, arrangedPurchaseRefusal, isArrangedPlan, planFacts, storageLabel } from '@aramo/sign-client';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog } from '../api';
 import { FREE_PERSONAL_PLAN_KEY, STANDARD_PERSONAL_PLAN_KEY, checkoutPageText, formatMinor, initialTerm, termDisclosureText, termLabel, type TermCode } from '../catalog';
@@ -26,6 +27,12 @@ import { BUSINESS_SIGNUP_URL, UsageRows } from './PersonalAllowance';
 // mandate disclosure before the redirect (Razorpay's page carries no Aramo renewal text). A
 // Razorpay-billed plan has no provider portal: an Aramo "Manage subscription" section (cancel at the end of
 // the period) replaces the portal button.
+//
+// CCP-PERSONAL-ARRANGED-1 P-7 (PO ruling D-8: the copy is @aramo/sign-client's) — a plan arranged with
+// Aramo (the server's `subscription.arranged`) shows "<plan> · arranged with Aramo" with its allowance,
+// and no price, commitment, term or manage / cancel controls; a purchase refused for it says so.
+// PO ruling D-7 — after a CONVERSION TO_SELF_SERVICE release of the arranged row the server sends the
+// normal upgrade offer again (`upgrade` non-null), and the page shows it.
 
 const UNAVAILABLE_REASON: Readonly<Record<string, string>> = {
   not_available_in_country: 'Standard isn’t available in your country yet.',
@@ -54,7 +61,8 @@ function useAccount(waitForUpgrade: boolean, intervalMs: number, maxTries: numbe
   }, []);
   useEffect(load, [load]);
   const planKey = account?.subscription?.plan_key ?? (account?.allowance.subscribed === true ? account.allowance.plan_key : null);
-  const upgraded = planKey !== null && planKey !== FREE_PERSONAL_PLAN_KEY;
+  // An arranged plan is not the upgrade a checkout waits for (the conversion opens the paid plan).
+  const upgraded = planKey !== null && planKey !== FREE_PERSONAL_PLAN_KEY && !isArrangedPlan(account);
   useEffect(() => {
     if (!waitForUpgrade || upgraded || tries >= maxTries) return;
     const t = setTimeout(() => {
@@ -85,15 +93,19 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
     fn()
       .then((r) => go(r.url))
       .catch((e: unknown) => {
-        setActionError(errorMessage(e));
+        // P-7 — a purchase refused because the plan is arranged with Aramo says so (the one copy).
+        const reason = e instanceof ApiError ? e.details?.['reason'] : undefined;
+        setActionError(arrangedPurchaseRefusal(account, typeof reason === 'string' ? reason : null) ?? errorMessage(e));
         setBusy(false);
       });
   };
 
-  const onFree = planKey === null || planKey === FREE_PERSONAL_PLAN_KEY;
+  const arranged = isArrangedPlan(account);
+  const onFree = !arranged && (planKey === null || planKey === FREE_PERSONAL_PLAN_KEY);
   // An older backend has no `upgrade` field: the offer is shown and checkout is the authority.
   const offer = account?.upgrade;
-  const showUpgrade = account !== null && onFree && offer !== null;
+  // D-7 — on an arranged plan the offer shows only when the server sends one (after a release).
+  const showUpgrade = account !== null && offer !== null && (onFree || (arranged && offer !== undefined));
   const upgradeOpen = offer === undefined || offer?.available === true;
   useEffect(() => {
     if (account === null || terms !== undefined) return;
@@ -158,15 +170,21 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
         <div className="sg-card__head">Current plan</div>
         <div className="sg-card__body sg-grid" style={{ gap: 10 }}>
           <div>
-            <strong>{onFree ? 'Free' : (sub?.plan_name ?? 'Standard')}</strong>
-            <span className="sg-muted">{onFree ? ' · $0' : currentPrice != null ? ` · ${formatMinor(currentPrice.amount_minor, currentPrice.currency)}/month` : ''}</span>
+            {arranged ? (
+              <strong data-testid="personal-plan-arranged">{arrangedPlanLabel(sub?.plan_name)}</strong>
+            ) : (
+              <>
+                <strong>{onFree ? 'Free' : (sub?.plan_name ?? 'Standard')}</strong>
+                <span className="sg-muted">{onFree ? ' · $0' : currentPrice != null ? ` · ${formatMinor(currentPrice.amount_minor, currentPrice.currency)}/month` : ''}</span>
+              </>
+            )}
           </div>
-          {onFree && freeTerms !== '' ? (
-            <div className="sg-muted" data-testid="personal-plan-free-terms">
+          {(onFree || arranged) && freeTerms !== '' ? (
+            <div className="sg-muted" data-testid={arranged ? 'personal-plan-arranged-terms' : 'personal-plan-free-terms'}>
               {freeTerms}
             </div>
           ) : null}
-          {!onFree && sub?.commitment_end != null ? (
+          {arranged ? null : !onFree && sub?.commitment_end != null ? (
             <div className="sg-muted" data-testid="personal-plan-commitment">
               {sub.commitment_months != null ? `${sub.commitment_months}-month commitment, billed monthly · commitment ends` : 'Commitment ends'} {fmtDate(sub.commitment_end)}
             </div>
@@ -178,12 +196,12 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
           {allowance !== null && allowance.limit !== null ? (
             <UsageRows used={allowance.used} limit={allowance.limit} periodEnd={allowance.period_end} daily={allowance.daily ?? null} />
           ) : null}
-          {!onFree && sub?.cancel_at_period_end === true && sub.current_period_end !== null ? (
+          {!onFree && !arranged && sub?.cancel_at_period_end === true && sub.current_period_end !== null ? (
             <div className="sg-note" data-testid="personal-plan-cancel">
               Cancellation requested; Standard ends on {fmtDate(sub.current_period_end)} and your account then returns to the Free plan.
             </div>
           ) : null}
-          {!onFree && sub?.billing_managed === true && !managedByRazorpay ? (
+          {!onFree && !arranged && sub?.billing_managed === true && !managedByRazorpay ? (
             <div>
               <Btn disabled={busy} onClick={() => act(billingApi.portal)} data-testid="personal-plan-manage">
                 Manage billing or cancel
@@ -191,13 +209,13 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
               <p className="sg-help">Update your payment method, download invoices or cancel on the secure billing page.</p>
             </div>
           ) : null}
-          {!onFree && sub?.billing_managed === true && managedByRazorpay ? (
+          {!onFree && !arranged && sub?.billing_managed === true && managedByRazorpay ? (
             <div data-testid="personal-plan-manage-razorpay">
               <strong>Manage subscription</strong>
               <p className="sg-help">Your plan is paid by auto-pay through Razorpay. You can cancel it here; it then ends at the end of the current billing period.</p>
             </div>
           ) : null}
-          {!onFree && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
+          {!onFree && !arranged && sub?.billing_managed === true && sub.source === 'SELF_SERVICE' ? (
             <CancelSubscription personal busy={busy} onKeep={managedByRazorpay ? undefined : () => act(billingApi.portal)} onChanged={reload} />
           ) : null}
         </div>

@@ -211,6 +211,9 @@ export function chainName(r: Pick<ChangeRequest, 'action_type' | 'required_chain
   // CCP-UI-V12 (AM-8; TD-MERGE-31 open item): an escalated support extension (not a removal)
   // carries the "Extension outside policy bounds" chain (Finance; maker Support admin).
   if (isEscalatedExtension(r)) return 'Extension outside policy bounds';
+  // CCP Amendment A3 AC-COMP-1 / AC-COMP-3: a SUBSCRIPTION_OPEN arranged at no charge (COMP) is on
+  // Finance → Owner because it gives the service away, not because of an amount threshold.
+  if (r.action_type === 'SUBSCRIPTION_OPEN' && r.payload?.['arrangement'] === 'COMP') return 'Arranged — no charge';
   if (rule === 'FINANCE_THEN_OWNER') return 'Above threshold';
   return 'Below threshold';
 }

@@ -91,6 +91,7 @@ const REPORT: RevenueReport = {
     excluded: 6,
     excluded_by_reason: { STORE_TEST_PURCHASE: 0, STATUS_NOT_REVENUE_BEARING: 1, PLAN_VERSION_INTEGRITY: 0, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 1, NON_MONTHLY_INTERVAL: 1 },
     not_commercial_by_source: { DEVELOPMENT: 1 },
+    arranged_no_charge: 0,
   },
   renewal_pipeline: { months: 2, from_month: '2026-10', through_month: '2026-11', lapsed: bucket('LAPSED', LAPSED_MRR), by_month: [bucket('2026-10', BUCKET_MRR), bucket('2026-11', 0)] },
 };

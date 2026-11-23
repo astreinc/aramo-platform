@@ -244,6 +244,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
           <ProductCard
             key={p.product_key}
             product={p}
+            tenantKind={state.value.tenant.kind}
             tenantName={tenantName}
             sign={p.product_key === 'sign' ? sign : null}
             support={p.product_key === 'sign' ? support : null}
@@ -274,6 +275,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
           kind={dialog.kind}
           tenantId={tenantId}
           tenantName={tenantName}
+          tenantKind={state.value.tenant.kind}
           product={dialog.product}
           flag={dialog.flag ?? null}
           policy={support?.policy ?? null}
@@ -315,6 +317,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
 
 interface ProductCardProps {
   readonly product: ProductCommercial;
+  readonly tenantKind: string;
   readonly tenantName: string;
   readonly sign: PlatformTenantSign | null;
   readonly support: SupportExtensionList | null;
@@ -339,7 +342,7 @@ function ProductCard(props: ProductCardProps) {
   const ent = ENTITLEMENT_PILL[p.entitlement.state];
   const badge = s ? sourceBadge(s, true) : null;
   const prov = provenanceText(p.entitlement);
-  const actions = tenantActions({ product: p, canSubscription: props.canSubscription, canEntitlement: props.canEntitlement, canSupport: props.canSupport, human: props.human, now, ...(props.refund ? { refund: props.refund } : {}) });
+  const actions = tenantActions({ product: p, tenantKind: props.tenantKind, canSubscription: props.canSubscription, canEntitlement: props.canEntitlement, canSupport: props.canSupport, human: props.human, now, ...(props.refund ? { refund: props.refund } : {}) });
   const reasons = actions.filter((a) => a.domain !== '');
   // Counts only (A1-4a). An ended row (or a tenant with no sending account) has no current
   // allowance: the designed empty state of the same bar (R-13; DV-B3-7).

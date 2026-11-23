@@ -10,7 +10,11 @@
 //     shows the plan and usage and "Manage your plan at sign.aramo.ai", with no price and
 //     no link;
 //   - a refusal reason maps to copy ("Ask your admin", "Manage your plan at sign.aramo.ai").
-import { planFacts, storageLabel } from '@aramo/sign-client';
+//   - CCP-PERSONAL-ARRANGED-1 P-7 (PO ruling D-8: the copy is @aramo/sign-client's) — a plan arranged
+//     with Aramo (the server's `subscription.arranged`) reads "<plan> · arranged with Aramo", with no
+//     price or billing controls; a purchase refused for it says it is arranged with Aramo (never
+//     "billed on the web").
+import { ARRANGED_PURCHASE_BLOCKED, arrangedPlanLabel, arrangedPurchaseRefusal, isArrangedPlan, planFacts, storageLabel } from '@aramo/sign-client';
 import type {
   BillingAccountStoreFields,
   BillingPlanStoreFields,
@@ -59,6 +63,7 @@ export const PLANS_COPY = {
   current: 'Current plan',
   priceUnavailable: 'Price unavailable',
   signingFree: 'Signing is always free. Upgrade when you need to send more.',
+  arranged: ARRANGED_PURCHASE_BLOCKED,
 } as const;
 
 /** The store renewal disclosure (prototype storeNote), per platform. */
@@ -69,6 +74,9 @@ export const STORE_NOTE: Record<StorePlatform, string> = {
 };
 
 export function blockCopy(reason: StorePurchaseBlockReason | string | null | undefined, account?: Account | null): string | null {
+  // P-7 — a managed-plan refusal on an arranged plan (the one rule, @aramo/sign-client).
+  const arranged = arrangedPurchaseRefusal(account, reason);
+  if (arranged !== null) return arranged;
   switch (reason) {
     case null:
     case undefined:
@@ -235,10 +243,16 @@ export function perInterval(i: StoreInterval, plan?: object | null): string {
   return isSeatPriced(plan) ? `/ user / ${per}` : `/ ${per}`;
 }
 
-/** Account › Plan: the current plan's name, else "See plans". */
+/** Account › Plan: the current plan's name ("<plan> · arranged with Aramo" when arranged), else "See plans". */
 export function planRowLabel(account: Account | null | undefined): string {
   const sub = account?.subscription;
+  if (isArrangedPlan(account)) return arrangedPlanLabel(sub?.plan_name);
   return sub?.plan_name ?? 'See plans';
+}
+
+/** P-7 — the current plan is arranged with Aramo: its label, else null. */
+export function arrangedLabel(plan: Plan, account: Account | null | undefined): string | null {
+  return isCurrent(plan, account) && isArrangedPlan(account) ? arrangedPlanLabel(account?.subscription?.plan_name ?? plan.name) : null;
 }
 
 export interface PlanAction {

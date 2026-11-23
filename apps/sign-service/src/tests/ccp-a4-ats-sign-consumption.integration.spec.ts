@@ -36,6 +36,8 @@ const M_A12_STORE = resolve(SUB_DIR, '20261104100000_sign_store_billing', 'migra
 const PER_SEAT_SCHEMA = resolve(SUB_DIR, '20261108100000_sign_business_per_seat', 'migration.sql');
 // Sign billing terms — the `term` columns the subscription Prisma client reads (the migration is applied whole).
 const BILLING_TERMS = resolve(SUB_DIR, '20261115100000_sign_billing_terms', 'migration.sql');
+// CCP-PERSONAL-ARRANGED-1 — TenantSubscription.arrangement (read by the Prisma client on every query).
+const ARRANGEMENT = resolve(SUB_DIR, '20261124100000_ccp_personal_arranged_1_arrangement', 'migration.sql');
 // A plan created after A5 needs its v1 (DRAFT, then PUBLISHED) before a subscription can pin it.
 const PUBLISH_V1 = `
   INSERT INTO subscription."PlanVersion" (id, plan_id, version_number, status, content, content_checksum, created_by, created_at)
@@ -105,6 +107,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
       await pg.query(readFileSync(M_A12_STORE, 'utf8'));
       await pg.query(readFileSync(PER_SEAT_SCHEMA, 'utf8'));
       await pg.query(readFileSync(BILLING_TERMS, 'utf8'));
+      await pg.query(readFileSync(ARRANGEMENT, 'utf8'));
     }
     prisma = new SubscriptionPrismaService(container.getConnectionUri());
     await prisma.$connect();

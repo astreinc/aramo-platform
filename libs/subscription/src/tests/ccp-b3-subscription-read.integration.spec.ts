@@ -236,6 +236,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B3 commercial
       current_period_end: null,
       grace_until: null,
       commitment_end: null,
+      // CCP-PERSONAL-ARRANGED-1 P-2 / P-3 — the additive `arrangement` member (null: not arranged by Aramo).
+      arrangement: null,
       contract: { id: F['A_contract'], contract_ref: 'CT-B3-0001' },
       provider_linked: false,
       open_flags: ['governed_subscription_open'],

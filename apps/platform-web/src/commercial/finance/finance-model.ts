@@ -95,6 +95,8 @@ const UNPRICED: Readonly<Record<string, WithheldPriceReason>> = {
  * DV-V12-W1). A row the catalog cannot price keeps v1.1's WithheldPrice with its reason.
  */
 export function listPriceCell(p: PriceFigure): PriceCell {
+  // CCP-PERSONAL-ARRANGED-1 P-3: a COMP row is priced at $0 by its arrangement, never the list price.
+  if (p.price_source === 'ARRANGEMENT_COMP') return { kind: 'price', text: 'Comp ($0)', sub: 'Arranged by Aramo · no charge' };
   if (p.list_price !== null) {
     const per = p.list_price.billing_interval === 'MONTH' ? ' / month' : p.list_price.billing_interval === 'YEAR' ? ' / year' : '';
     return { kind: 'price', text: `${usd(p.list_price.amount_minor)}${per}`, sub: `List price · ${p.list_price.currency}` };
@@ -226,7 +228,7 @@ export function mismatchRows(
         tenantId: s.tenant_id,
         tenant: s.tenant_name ?? shortRef(s.tenant_id),
         product: productName(s.product_key),
-        subscription: `${s.product_key === 'sign' ? 'Sign' : productName(s.product_key)} ${planName(s.plan_key, undefined)} · ${subscriptionStatus(s.status, undefined, now)}`,
+        subscription: `${s.product_key === 'sign' ? 'Sign' : productName(s.product_key)} ${planName(s.plan_key, undefined)}${s.arrangement === 'COMP' ? ' · Comp ($0)' : s.arrangement === 'AGREED' ? ' · Arranged (agreed price)' : ''} · ${subscriptionStatus(s.status, undefined, now)}`,
         version: `v${s.version_number} · ${s.version_status === 'RETIRED' ? 'retired (grandfathered)' : s.version_status === 'PUBLISHED' ? 'published' : s.version_status.toLowerCase()}`,
         entitlement: code === 'ENTITLEMENT_MISSING' ? 'Not active' : 'Active',
         flag: d.flag,

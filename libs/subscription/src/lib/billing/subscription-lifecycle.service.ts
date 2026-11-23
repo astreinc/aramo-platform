@@ -6,6 +6,7 @@ import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
+import { releaseConsumable } from '../commercial/commercial-conversion.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import {
@@ -470,6 +471,9 @@ export interface SubscriptionView {
   cancel_at_period_end: boolean;
   grace_until: Date | null;
   billing_managed: boolean;
+  // CCP-PERSONAL-ARRANGED-1 P-7 — the plan is arranged with Aramo (a governed row with an arrangement, COMP or
+  // AGREED): no price, commitment or term is derived from the plan version for it (those fields are null).
+  arranged: boolean;
   // A1 — the commitment term and its cancellation flag (separate from the
   // monthly invoice period), and the plan-eligibility state.
   commitment_months: number | null;
@@ -768,6 +772,9 @@ export class SubscriptionLifecycleService {
     const features = content === null ? [] : content.features;
     // Billing terms — the row's term price (a legacy row: the version's list price, as before).
     const termPrice = row === null || content === null ? null : subscriptionTermPrice(row, content);
+    // CCP-PERSONAL-ARRANGED-1 P-7 — an arranged row derives no price, commitment or term from its version.
+    const arranged = row !== null && row.arrangement !== null;
+    const derived = content !== null && !arranged ? content : null;
     return {
       subscription:
         row === null
@@ -784,15 +791,16 @@ export class SubscriptionLifecycleService {
               cancel_at_period_end: row.cancel_at_period_end,
               grace_until: row.grace_until,
               billing_managed: row.billing_account_ref !== null || isStoreBillingProvider(row.billing_provider),
+              arranged,
               // M-A12 A1-1 — a monthly store subscription carries no commitment. Billing terms — a row sold on
               // a term is held to that term's commitment.
-              commitment_months: content === null ? null : subscriptionCommitmentMonths(row, content),
-              term: content === null ? null : subscriptionTerm(row, content),
+              commitment_months: derived === null ? null : subscriptionCommitmentMonths(row, derived),
+              term: derived === null ? null : subscriptionTerm(row, derived),
               commitment_end: row.commitment_end,
               cancel_requested_within_commitment: row.cancel_requested_within_commitment,
               eligibility_state: row.eligibility_state,
               list_price:
-                terms !== null && termPrice !== null && terms.currency !== null
+                !arranged && terms !== null && termPrice !== null && terms.currency !== null
                   ? { amount_minor: termPrice, currency: terms.currency, interval: terms.billing_interval }
                   : null,
               features: features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
@@ -804,6 +812,28 @@ export class SubscriptionLifecycleService {
       tax: taxAvailability(),
       price_unit: row === null ? null : priceUnitOf(planVersionTerms(row.plan_version)),
     };
+  }
+
+  /**
+   * CCP-PERSONAL-ARRANGED-1 PO ruling D-7 — the plan key an approved CONVERSION TO_SELF_SERVICE release of
+   * the tenant's OPEN ARRANGED row lets the user buy (unconsumed and unexpired at `at`; not a held-activation
+   * adoption), else null. While it is non-null the normal upgrade offer shows again; the checkout itself is
+   * admitted by the same release (releaseForCheckout). Reads only.
+   */
+  async arrangedReleasePlanKey(tenant_id: string, product_key: ProductKey, at: Date = new Date()): Promise<string | null> {
+    const key = assertProductKey(product_key);
+    const open = await this.prisma.tenantSubscription.findFirst({
+      where: openBaseSubscription(tenant_id, key),
+      select: { id: true, source: true, ended_at: true, arrangement: true },
+    });
+    if (open === null || open.arrangement === null || !isGovernedSubscription(open)) return null;
+    const release = await this.prisma.commercialConversionRelease.findFirst({
+      where: { tenant_id, product_key: key, state: 'RELEASED', held_subscription_ref: null, governed_subscription_id: open.id },
+      select: { plan_id: true, state: true, expires_at: true },
+    });
+    if (release === null || !releaseConsumable(release, at)) return null;
+    const plan = await this.prisma.plan.findUnique({ where: { id: release.plan_id }, select: { key: true } });
+    return plan?.key ?? null;
   }
 
   /**

@@ -41,4 +41,9 @@ describe('billingSettingsLink', () => {
     expect(billingSettingsLink(account({}, { billing_managed: false, source: 'FREE' }))).toBeNull();
     expect(billingSettingsLink(account({}, { ended_at: '2026-11-15T00:00:00Z' }))).toBeNull();
   });
+
+  it('CCP-PERSONAL-ARRANGED-1 P-7 — nothing to manage or cancel on a plan arranged with Aramo', () => {
+    expect(billingSettingsLink(account({ tenant_kind: 'PERSONAL' }, { source: 'MANUAL', arranged: true }))).toBeNull();
+    expect(billingSettingsLink(account({ tenant_kind: 'PERSONAL' }, { arranged: false }))).toBe(PERSONAL_BILLING_SETTINGS_URL);
+  });
 });

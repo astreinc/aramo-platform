@@ -119,6 +119,7 @@ function summaryDto(s: WorkbenchSubscription): CommercialSubscriptionSummaryDto 
     current_period_end: iso(s.current_period_end),
     grace_until: iso(s.grace_until),
     commitment_end: iso(s.commitment_end),
+    arrangement: s.arrangement === 'COMP' || s.arrangement === 'AGREED' ? s.arrangement : null,
     contract: s.contract === null ? null : { id: s.contract.id, contract_ref: s.contract.contract_ref },
     provider_linked: s.provider_linked,
     open_flags: [...s.open_flags],

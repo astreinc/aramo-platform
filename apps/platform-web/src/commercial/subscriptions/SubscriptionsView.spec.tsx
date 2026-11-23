@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../../App';
 
-import { NON_READERS, NOW, READERS, STRIPE_ROW, T_NORTHWIND, installFetch, row, world, writes } from './subscriptions-test-data';
+import { FREE_ROW, NON_READERS, NOW, READERS, STRIPE_ROW, T_NORTHWIND, installFetch, row, world, writes } from './subscriptions-test-data';
 
 // CCP-B3 (PBD §5.3 B3 row; CCP-UI v1.0 handoff §5.3) — Commercial › Subscriptions through the
 // real App (router, shell, B1's commercialGate) with the platform-admin routes answered by a
@@ -89,6 +89,26 @@ describe('CCP-B3 Subscriptions workbench — rows and filters (handoff §5.3)', 
     expect(within(northwind!).getByText('No commitment')).toBeInTheDocument();
     expect(screen.getByTestId('commercial-subscriptions').textContent).not.toMatch(/\$|USD|€/);
     expect(screen.getByTestId('subscriptions-count')).toHaveTextContent('2 of 2');
+  });
+
+  it('CPA-W-1 (CCP-PERSONAL-ARRANGED-1) an arranged row reads "Sign Standard · Arranged (comp)", MANUAL · arranged, no commitment; still no money', async () => {
+    const comp = row({
+      ...FREE_ROW(),
+      subscription_id: '0190b300-0000-7000-8000-0000000b3520',
+      plan: { id: '0190b300-0000-7000-8000-0000000b3611', key: 'aramo-sign-standard-personal-v1', name: 'Standard', sales_model: 'SELF_SERVICE' },
+      source: 'MANUAL',
+      arrangement: 'COMP',
+      tenant: { id: T_NORTHWIND, name: 'Rowan Ellis', slug: null },
+    });
+    const agreed = row({ ...comp, subscription_id: '0190b300-0000-7000-8000-0000000b3521', arrangement: 'AGREED', tenant: { id: T_NORTHWIND, name: 'Sam Ortiz', slug: null } });
+    installFetch(world({ workbench: [comp, agreed] }), 'finance_admin');
+    renderAt();
+    const t = await table();
+    const [c, a] = within(t).getAllByRole('row').slice(1);
+    expect(within(c!).getByText('Sign Standard · Arranged (comp)')).toBeInTheDocument();
+    expect(within(c!).getByText('MANUAL · arranged')).toBeInTheDocument();
+    expect(within(a!).getByText('Sign Standard · Arranged (agreed price)')).toBeInTheDocument();
+    expect(screen.getByTestId('commercial-subscriptions').textContent).not.toMatch(/\$|USD|€/);
   });
 
   it('B3-W-2 status segment and reconciliation-flag filter; the empty state clears the filters', async () => {

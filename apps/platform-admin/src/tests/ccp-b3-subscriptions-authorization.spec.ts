@@ -78,6 +78,7 @@ const SUB: WorkbenchSubscription = {
   current_period_end: null,
   grace_until: null,
   commitment_end: D('2027-09-01T00:00:00.000Z'),
+  arrangement: null,
   contract: { id: '0190d1d5-0000-7000-8000-0000000000aa', contract_ref: 'CT-2026-0001' },
   provider_linked: false,
   open_flags: ['governed_subscription_open'],

@@ -47,8 +47,11 @@ export interface PriceFigure {
   /** null when not derivable from the version (see unpriced_reason). */
   readonly list_price: ListPrice | null;
   readonly unpriced_reason: UnpricedReason | null;
-  /** Where the figure comes from (always a plan version row). */
-  readonly price_source: 'PINNED_PLAN_VERSION' | 'CURRENT_PUBLISHED_PLAN_VERSION';
+  /**
+   * Where the figure comes from: a plan version row, or (CCP-PERSONAL-ARRANGED-1 P-3) ARRANGEMENT_COMP —
+   * a row arranged by Aramo at no charge, shown as "Comp ($0)" (amount 0, never the plan's list price).
+   */
+  readonly price_source: 'PINNED_PLAN_VERSION' | 'CURRENT_PUBLISHED_PLAN_VERSION' | 'ARRANGEMENT_COMP';
   readonly plan_version_id: string | null;
 }
 
@@ -146,6 +149,8 @@ export interface ReconciledSubscription extends PriceFigure {
   readonly open_flag_reasons: string[];
   readonly unconfirmed_command_ids: string[];
   readonly discrepancies: DiscrepancyCode[];
+  /** CCP-PERSONAL-ARRANGED-1 — COMP | AGREED for a row arranged by Aramo; null otherwise. */
+  readonly arrangement: string | null;
 }
 
 export interface EntitledWithoutSubscription {
@@ -257,6 +262,7 @@ interface SubscriptionRow {
   content: unknown;
   content_checksum: string;
   provider_price_ref: string | null;
+  arrangement: string | null;
 }
 
 type Tx = Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>;
@@ -280,6 +286,17 @@ export function priceFigure(terms: PlanVersionContent | null, plan_version_id: s
   if (p.currency !== FINANCE_CURRENCY) return { list_price: null, unpriced_reason: 'NON_USD_CURRENCY', price_source, plan_version_id };
   return { list_price: { amount_minor: p.list_price_minor, currency: FINANCE_CURRENCY, billing_interval: p.billing_interval }, unpriced_reason: null, price_source, plan_version_id };
 }
+
+/**
+ * CCP-PERSONAL-ARRANGED-1 P-3 — the figure of a COMP row (arranged by Aramo at no charge): "Comp ($0)", the
+ * amount 0 in the version's billing interval, never the plan's list price.
+ */
+export function compPriceFigure(terms: PlanVersionContent | null, plan_version_id: string | null): PriceFigure {
+  return { list_price: { amount_minor: 0, currency: FINANCE_CURRENCY, billing_interval: terms?.plan.billing_interval ?? null }, unpriced_reason: null, price_source: 'ARRANGEMENT_COMP', plan_version_id };
+}
+
+/** CCP-PERSONAL-ARRANGED-1 P-3 — a COMP row is never a renewal or an outstanding-payment item. */
+const NOT_COMP = ` AND ts.arrangement IS DISTINCT FROM 'COMP'`;
 
 /** Whole days from `from` to `to`, rounded up (0 for an instant already reached today). */
 export function daysUntil(from: Date, to: Date): number {
@@ -334,7 +351,7 @@ export class BillingFinanceReportService {
     return tx.$queryRawUnsafe<SubscriptionRow[]>(
       `SELECT ts.id::text AS subscription_id, ts.tenant_id::text AS tenant_id, t.name AS tenant_name, ts.product_key, ts.source, ts.status,
               ts.current_period_end, ts.cancel_at_period_end, ts.grace_until, ts.commitment_end, ts.cancel_requested_within_commitment,
-              ts.billing_subscription_ref, ts.billing_provider, ts.provider_state_at,
+              ts.billing_subscription_ref, ts.billing_provider, ts.provider_state_at, ts.arrangement,
               p.key AS plan_key, p.name AS plan_name,
               v.id::text AS plan_version_id, v.version_number, v.status AS version_status, v.content, v.content_checksum,
               (SELECT pr.provider_price_ref FROM subscription."PlanVersionPrice" pr WHERE pr.plan_version_id = v.id AND pr.provider = 'STRIPE') AS provider_price_ref
@@ -354,7 +371,7 @@ export class BillingFinanceReportService {
     const within_days = opts.within_days ?? RENEWAL_HORIZON_DEFAULT_DAYS;
     if (!Number.isInteger(within_days) || within_days < 1 || within_days > RENEWAL_HORIZON_MAX_DAYS) throw new RangeError(`within_days must be 1..${RENEWAL_HORIZON_MAX_DAYS}`);
     const horizon = new Date(as_of.getTime() + within_days * DAY_MS);
-    const rows = await this.readOnly((tx) => this.openSubscriptions(tx, opts, ` AND ts.source IN ('MANUAL', 'SELF_SERVICE')`));
+    const rows = await this.readOnly((tx) => this.openSubscriptions(tx, opts, ` AND ts.source IN ('MANUAL', 'SELF_SERVICE')${NOT_COMP}`));
     const items: RenewalItem[] = [];
     for (const r of rows) {
       const terms = verifiedTerms(r);
@@ -404,7 +421,7 @@ export class BillingFinanceReportService {
   /** Outstanding payments: open commercial rows in PAST_DUE or INCOMPLETE, with their grace state. */
   async outstandingPayments(opts: FinanceFilter & { as_of?: Date } = {}): Promise<OutstandingReport> {
     const as_of = opts.as_of ?? new Date();
-    const rows = await this.readOnly((tx) => this.openSubscriptions(tx, opts, ` AND ts.source IN ('MANUAL', 'SELF_SERVICE') AND ts.status IN ('PAST_DUE', 'INCOMPLETE')`));
+    const rows = await this.readOnly((tx) => this.openSubscriptions(tx, opts, ` AND ts.source IN ('MANUAL', 'SELF_SERVICE') AND ts.status IN ('PAST_DUE', 'INCOMPLETE')${NOT_COMP}`));
     const items: OutstandingItem[] = rows.map((r) => ({
       subscription_id: r.subscription_id,
       tenant_id: r.tenant_id,
@@ -520,7 +537,9 @@ export class BillingFinanceReportService {
 
     const subscriptions: ReconciledSubscription[] = data.subs.map((r) => {
       const terms = verifiedTerms(r);
-      const price = priceFigure(terms, r.plan_version_id, 'PINNED_PLAN_VERSION');
+      // CCP-PERSONAL-ARRANGED-1 P-3 — a COMP row is shown as "Comp ($0)"; the integrity and currency checks still read the version.
+      const listed = priceFigure(terms, r.plan_version_id, 'PINNED_PLAN_VERSION');
+      const price = r.arrangement === 'COMP' && terms !== null ? compPriceFigure(terms, r.plan_version_id) : listed;
       const expected = isProductKey(r.product_key) ? [...PRODUCT_CAPABILITIES[r.product_key]].sort() : [];
       const have = capsOf.get(r.tenant_id) ?? new Set<string>();
       const present = expected.filter((c) => have.has(c));
@@ -529,7 +548,7 @@ export class BillingFinanceReportService {
       if (missing.length > 0) discrepancies.push('ENTITLEMENT_MISSING');
       if (terms === null) discrepancies.push('PLAN_VERSION_INTEGRITY');
       if (r.version_status !== 'PUBLISHED' && r.version_status !== 'RETIRED') discrepancies.push('PLAN_VERSION_NOT_PINNABLE');
-      if (price.unpriced_reason === 'NON_USD_CURRENCY') discrepancies.push('PRICE_NOT_USD');
+      if (listed.unpriced_reason === 'NON_USD_CURRENCY' && r.arrangement !== 'COMP') discrepancies.push('PRICE_NOT_USD');
       if (r.source === 'SELF_SERVICE' && r.billing_subscription_ref === null) discrepancies.push('SELF_SERVICE_WITHOUT_PROVIDER_LINK');
       if (r.source === 'MANUAL' && r.billing_subscription_ref !== null) discrepancies.push('MANUAL_PROVIDER_LINKED');
       return {
@@ -550,6 +569,7 @@ export class BillingFinanceReportService {
         open_flag_reasons: [...(flagsOf.get(r.tenant_id) ?? [])].sort(),
         unconfirmed_command_ids: data.commands.filter((c) => c.tenant_id === r.tenant_id).map((c) => c.id),
         discrepancies,
+        arrangement: r.arrangement,
         ...price,
       };
     });

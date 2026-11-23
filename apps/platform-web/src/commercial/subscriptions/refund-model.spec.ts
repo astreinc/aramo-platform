@@ -84,7 +84,7 @@ describe('refund-model', () => {
   });
 
   it('tenantActions: "Request refund…" only on an open self-service row, for a refund requester, with a policy ref', () => {
-    const base = { canSubscription: false, canEntitlement: false, canSupport: false, human: true, now: NOW };
+    const base = { tenantKind: 'BUSINESS', canSubscription: false, canEntitlement: false, canSupport: false, human: true, now: NOW };
     const self = product({ subscription: STRIPE_ROW() });
     const keys = (refund?: { canRequest: boolean; policyRef: string | null }, p = self) => tenantActions({ ...base, product: p, ...(refund ? { refund } : {}) }).map((a) => a.key);
     expect(keys({ canRequest: true, policyRef: REF })).toContain('refund');

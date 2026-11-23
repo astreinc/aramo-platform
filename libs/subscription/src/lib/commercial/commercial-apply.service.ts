@@ -5,11 +5,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { addMonthsClamped, billingPeriodAt } from '../billing-period.js';
 import { isGovernedSubscription, takeBillingLock } from '../billing/governed-subscription.js';
 import { PIN_REASON_CHANGE_REQUEST, type PlanVersionContent, planVersionTerms } from '../plan-version.js';
+import { FreePersonalPlanKey, openFreePersonalInTx, personalSignupMode } from '../free-personal-subscription.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type ApplyServiceAction, isApplyServiceAction, validatePayload } from './commercial-change-request.js';
+import { type ApplyServiceAction, isApplyServiceAction, isSubscriptionArrangement, validatePayload } from './commercial-change-request.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -136,7 +137,7 @@ export type CommercialApplyFailureCode =
   | 'TARGET_STALE' // the open row is not the one the approved payload names (or it has ended)
   | 'TARGET_NOT_FOUND' // the named subscription does not exist for this tenant × product
   | 'TARGET_NOT_GOVERNED' // the named row is not a governed (MANUAL) BASE row
-  | 'TARGET_NOT_REPLACEABLE' // the prior open row is FREE (Personal Free v1.1 governs it)
+  | 'TARGET_NOT_REPLACEABLE' // the prior open row is FREE and the open is not an arranged PERSONAL plan for a PERSONAL tenant (CCP-PERSONAL-ARRANGED-1 P-1)
   | 'PLAN_NOT_FOUND' // no plan with the key for this product
   | 'PLAN_VERSION_MISMATCH' // the version is not a version of that plan
   | 'PLAN_VERSION_NOT_PUBLISHED' // G3: only a PUBLISHED version is pinned
@@ -266,6 +267,35 @@ export function changedTerms(from: PlanVersionContent, to: PlanVersionContent): 
     if (v === undefined || w.limit_quantity < v.limit_quantity) out.push({ kind: 'window', key: w.allowance_key, window_kind: w.window_kind, change: 'lowered', new_limit: w.limit_quantity });
   }
   return out;
+}
+
+/**
+ * CCP-PERSONAL-ARRANGED-1 P-1 — which 'undefined' terms of a same-period change are refused outright, and
+ * which are admissible only on ZERO usage in the current billing period (the caller counts RESERVED +
+ * CONSUMED under the allowance key's advisory lock).
+ *
+ * Typed divergence (CI on PR #1147): recon §2.2 assumed the Free → Standard usage check passes; the
+ * published Free Personal version carries `sign.forms` (5 MONTHLY), which the Personal Standard version
+ * does not (forms are not built: NOT_AVAILABLE in feature-availability.ts, so no usage of it exists). A
+ * dropped allowance therefore has a defined treatment ONLY when the replaced row is FREE (the P-1 FREE
+ * replacement) and nothing was used: nothing is stranded. A changed period kind, and every drop on any
+ * other replacement (MANUAL, DEVELOPMENT, …), stays USAGE_TREATMENT_UNDEFINED exactly as before.
+ */
+export function undefinedTermTreatment(
+  changes: readonly TermChange[],
+  to: PlanVersionContent,
+  replacedSource: string | null,
+): { refused: TermChange[]; zeroUsageRequired: TermChange[] } {
+  const refused: TermChange[] = [];
+  const zeroUsageRequired: TermChange[] = [];
+  for (const c of changes) {
+    if (c.change !== 'undefined') continue;
+    const dropped = c.kind === 'allowance' && !to.allowances.some((x) => x.allowance_key === c.key);
+    if (replacedSource === 'FREE' && dropped) zeroUsageRequired.push(c);
+    else refused.push(c);
+  }
+  zeroUsageRequired.sort((a, b) => a.key.localeCompare(b.key));
+  return { refused, zeroUsageRequired };
 }
 
 /** The day window used by the short-window caps (AllowanceService DAY_WINDOW_MS). */
@@ -556,14 +586,19 @@ export class CommercialApplyService {
         }
       }
       case 'SUBSCRIPTION_OPEN': {
-        const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
+        const { plan, version, tenant_kind } = await this.pinnedVersion(tx, tenant_id, product_key, p);
         const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
         if (open !== null) this.assertNotStripeOwned(open);
         // G2 — the approved payload names the row it replaces; anything else is stale.
         if ((open?.id ?? null) !== (p['replaces_subscription_id'] ?? null)) {
           throw new ApplyFailure('TARGET_STALE', { expected: p['replaces_subscription_id'] ?? null, open_subscription_id: open?.id ?? null });
         }
-        if (open !== null && open.source === 'FREE') throw new ApplyFailure('TARGET_NOT_REPLACEABLE', { subscription_id: open.id, source: open.source });
+        // CCP-PERSONAL-ARRANGED-1 P-1 (ruling R-1, the Conversion Rule's O-4) — a FREE row is replaced only for
+        // a PERSONAL tenant, by a PERSONAL plan, with an arrangement (re-checked here: NC-5); it is ended below
+        // and recorded as replaced (COMMERCIAL_SUBSCRIPTION_ENDED, source FREE). Anything else is refused.
+        if (open !== null && open.source === 'FREE' && !(tenant_kind === 'PERSONAL' && plan.tenant_kind === 'PERSONAL' && isSubscriptionArrangement(p['arrangement']))) {
+          throw new ApplyFailure('TARGET_NOT_REPLACEABLE', { subscription_id: open.id, source: open.source, tenant_kind, plan_tenant_kind: plan.tenant_kind, arrangement: p['arrangement'] ?? null });
+        }
         // T6 / T8 — the effective date is the apply instant; the billing period is defined by the
         // anchor. Replacing a row keeps its anchor (same period, upgrade only); a fresh open may name
         // a past anchor, never a future one, and never one that strands usage of the current period.
@@ -577,7 +612,8 @@ export class CommercialApplyService {
             throw new ApplyFailure('USAGE_CROSS_PERIOD', { period_anchor: requested.toISOString(), current_period_anchor: open.period_anchor.toISOString() });
           }
           anchor = open.period_anchor;
-          await this.assertUsageFits(tx, tenant_id, product_key, open.plan_version_id, version, open.period_anchor, now);
+          // P-1: the replaced row's source decides the dropped-allowance treatment (FREE only; undefinedTermTreatment).
+          await this.assertUsageFits(tx, tenant_id, product_key, open.plan_version_id, version, open.period_anchor, now, open.source);
         } else {
           anchor = requested ?? now;
           await this.assertNoStrandedUsage(tx, tenant_id, product_key, anchor, now);
@@ -586,6 +622,8 @@ export class CommercialApplyService {
           await tx.tenantSubscription.update({ where: { id: open.id }, data: { ended_at: now, status: open.status === 'ACTIVE' ? 'CANCELED' : open.status } });
         }
         const terms = planVersionTerms(version).plan;
+        const arrangement = isSubscriptionArrangement(p['arrangement']) ? p['arrangement'] : null;
+        const commitmentMonths = arrangement === 'COMP' ? null : terms.commitment_months;
         const id = uuidv7();
         await tx.tenantSubscription.create({
           data: {
@@ -599,8 +637,12 @@ export class CommercialApplyService {
             source: 'MANUAL',
             created_by: req.requested_by,
             status: 'ACTIVE',
-            commitment_start: terms.commitment_months !== null ? anchor : null,
-            commitment_end: terms.commitment_months !== null ? addMonthsClamped(anchor, terms.commitment_months) : null,
+            // CCP-PERSONAL-ARRANGED-1 P-3 (ruling R-3) — a COMP row carries no commitment; AGREED is held to the
+            // version's commitment like any other managed row.
+            commitment_start: commitmentMonths !== null ? anchor : null,
+            commitment_end: commitmentMonths !== null ? addMonthsClamped(anchor, commitmentMonths) : null,
+            // CCP-PERSONAL-ARRANGED-1 P-2 — the approved arrangement (null: not arranged).
+            arrangement,
           },
         });
         return {
@@ -627,6 +669,7 @@ export class CommercialApplyService {
                 period_anchor: anchor.toISOString(),
                 effective_at: now.toISOString(),
                 replaced_subscription_id: open?.id ?? null,
+                arrangement,
               },
             },
           ],
@@ -642,7 +685,8 @@ export class CommercialApplyService {
         if (sameVersion && !changeCarriesContract(p)) throw new ApplyFailure('NO_CHANGE', { plan_version_id: version.id });
         if (!sameVersion) {
           // T8 / DR-A6-1 / DR-A6-3 — immediately effective, same period (the anchor is kept).
-          await this.assertUsageFits(tx, tenant_id, product_key, row.plan_version_id, version, row.period_anchor, now);
+          // A change of a governed row is never a FREE replacement: every dropped allowance stays refused.
+          await this.assertUsageFits(tx, tenant_id, product_key, row.plan_version_id, version, row.period_anchor, now, null);
           // TD-A5-9 — the re-pin names its reason; the DB trigger records SubscriptionVersionPinEvent.
           await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_CHANGE_REQUEST}, true), set_config('aramo.subscription_pin_price_ref', '', true)`;
           await tx.tenantSubscription.update({ where: { id: row.id }, data: { plan_id: plan.id, plan_version_id: version.id } });
@@ -677,6 +721,14 @@ export class CommercialApplyService {
         await tx.tenantSubscription.update({ where: { id: row.id }, data: { ended_at: now, status: row.status === 'ACTIVE' ? 'CANCELED' : row.status } });
         // The capability is NOT revoked here: a governed revoke is CCP-A7 (and C-20: the Sign
         // capability is also what lets the owner reach billing). Sending stops with the row.
+        const events: DomainEffect['events'] = [
+          { event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${row.id}`, payload: { subscription_id: row.id, source: row.source, from_plan_version_id: row.plan_version_id, effective_at: now.toISOString() } },
+        ];
+        // CCP-PERSONAL-ARRANGED-1 P-8 (ruling R-7) — ending an arranged row reopens the Free plan in THIS
+        // transaction (a new period anchor), recorded as an event (the application's replaced_subscription_id
+        // is for an open only). PO ruling D-5: when Free cannot be opened (Personal signup mode off, tenant not
+        // ACTIVE …) the END still proceeds and the event records that Free was not reopened, and why.
+        if (row.arrangement !== null) events.push(await this.reopenFreeAfterArrangedEnd(tx, tenant_id, product_key, row.id, now));
         return {
           subscription_id: row.id,
           replaced_subscription_id: null,
@@ -684,7 +736,7 @@ export class CommercialApplyService {
           to_plan_version_id: null,
           capabilities: [],
           revoke: [],
-          events: [{ event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${row.id}`, payload: { subscription_id: row.id, source: row.source, from_plan_version_id: row.plan_version_id, effective_at: now.toISOString() } }],
+          events,
         };
       }
       case 'ENTITLEMENT_GRANT': {
@@ -894,7 +946,8 @@ export class CommercialApplyService {
    * limit (every valid reservation is preserved and stays counted). Each checked key is read under
    * the same advisory lock AllowanceService.reserve / CapacityService.reserve take, so no concurrent
    * reservation can slip past the check. A dropped allowance or a changed period kind has no
-   * defined treatment.
+   * defined treatment — except (CCP-PERSONAL-ARRANGED-1 P-1) an allowance dropped by the replacement
+   * of a FREE row with zero usage of it in the current period (undefinedTermTreatment).
    */
   private async assertUsageFits(
     tx: Tx,
@@ -904,16 +957,40 @@ export class CommercialApplyService {
     to: { id: string; content: unknown; content_checksum: string },
     anchor: Date,
     now: Date,
+    replacedSource: string | null,
   ): Promise<void> {
     const from = await tx.planVersion.findUniqueOrThrow({ where: { id: from_version_id } });
-    const changes = changedTerms(planVersionTerms(from), planVersionTerms(to));
-    const undefinedTerms = changes.filter((c) => c.change === 'undefined');
-    if (undefinedTerms.length > 0) {
-      throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { terms: undefinedTerms.map((c) => `${c.kind}:${c.key}`), from_plan_version_id: from.id, to_plan_version_id: to.id });
+    const toTerms = planVersionTerms(to);
+    const changes = changedTerms(planVersionTerms(from), toTerms);
+    // CCP-PERSONAL-ARRANGED-1 P-1 — see undefinedTermTreatment (typed divergence: recon §2.2 assumed the
+    // Free → Standard usage check passes; prod Free carries sign.forms, not built, zero usage).
+    const { refused, zeroUsageRequired } = undefinedTermTreatment(changes, toTerms, replacedSource);
+    if (refused.length > 0) {
+      throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { terms: refused.map((c) => `${c.kind}:${c.key}`), from_plan_version_id: from.id, to_plan_version_id: to.id });
     }
     const period = billingPeriodAt(anchor, now);
+    if (zeroUsageRequired.length > 0) {
+      // A FREE row's dropped allowance: admissible only on zero RESERVED + CONSUMED usage of the key in the
+      // current period, read under the same advisory lock AllowanceService.reserve takes (no concurrent
+      // reservation can slip past). Any usage keeps the refusal: no treatment is defined for it.
+      const used: Array<Record<string, unknown>> = [];
+      for (const c of zeroUsageRequired) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant_id}:${c.key}`}, 0))`;
+        const n = await tx.allowanceUsage.count({ where: { tenant_id, allowance_key: c.key, period_start: period.start, state: { in: ['RESERVED', 'CONSUMED'] } } });
+        if (n > 0) used.push({ term: `allowance:${c.key}`, used: n });
+      }
+      if (used.length > 0) {
+        throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', {
+          terms: used.map((u) => u['term']),
+          used,
+          period_start: period.start.toISOString(),
+          from_plan_version_id: from.id,
+          to_plan_version_id: to.id,
+        });
+      }
+    }
     const exceeded: Array<Record<string, unknown>> = [];
-    for (const c of [...changes].sort((a, b) => `${a.kind}:${a.key}`.localeCompare(`${b.kind}:${b.key}`))) {
+    for (const c of [...changes].filter((x) => x.change !== 'undefined').sort((a, b) => `${a.kind}:${a.key}`.localeCompare(`${b.kind}:${b.key}`))) {
       if (c.kind === 'capacity') {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`capacity:${tenant_id}:${c.key}`}, 0))`;
         const agg = await tx.capacityUsage.aggregate({ where: { tenant_id, capacity_key: c.key, state: 'ACTIVE' }, _sum: { quantity: true } });
@@ -947,6 +1024,25 @@ export class CommercialApplyService {
     if (consumed > 0) throw new ApplyFailure('USAGE_CROSS_PERIOD', { usage_rows: consumed, period_start: period.start.toISOString() });
   }
 
+  /** P-8 / D-5 — the Free reopen after an arranged END, as its audit event (reopened, or not and why). */
+  private async reopenFreeAfterArrangedEnd(tx: Tx, tenant_id: string, product_key: ProductKey, ended_id: string, now: Date): Promise<DomainEffect['events'][number]> {
+    const tenant = await tx.$queryRawUnsafe<Array<{ kind: string | null; status: string | null }>>(`SELECT kind::text AS kind, status::text AS status FROM identity."Tenant" WHERE id = $1::uuid`, tenant_id);
+    const r = await openFreePersonalInTx(tx, { tenant_id, product_key, tenant_kind: tenant[0]?.kind ?? null, tenant_status: tenant[0]?.status ?? null, mode: personalSignupMode(), at: now });
+    if (r.ok && r.opened) {
+      return {
+        event_type: 'COMMERCIAL_FREE_SUBSCRIPTION_REOPENED',
+        subject: `tenant_subscription:${r.subscription_id}`,
+        payload: { subscription_id: r.subscription_id, source: r.source, plan_key: FreePersonalPlanKey, period_anchor: now.toISOString(), after_subscription_id: ended_id, effective_at: now.toISOString() },
+      };
+    }
+    const reason = r.ok ? 'open_subscription_exists' : r.reason;
+    return {
+      event_type: 'COMMERCIAL_FREE_SUBSCRIPTION_NOT_REOPENED',
+      subject: `tenant_subscription:${ended_id}`,
+      payload: { after_subscription_id: ended_id, reason, ...(r.ok ? { open_subscription_id: r.subscription_id } : {}), effective_at: now.toISOString() },
+    };
+  }
+
   /** G1 — a provider-owned row is changed only by a durable provider command (C-22), never here. */
   private assertNotStripeOwned(row: { id: string; source: string; billing_subscription_ref: string | null }): void {
     if (row.billing_subscription_ref !== null || row.source === 'SELF_SERVICE') {
@@ -977,6 +1073,6 @@ export class CommercialApplyService {
     if (plan.tenant_kind !== null && tenant[0]?.kind !== plan.tenant_kind) {
       throw new ApplyFailure('PLAN_TENANT_KIND_MISMATCH', { plan_key: plan.key, plan_tenant_kind: plan.tenant_kind, tenant_kind: tenant[0]?.kind ?? null });
     }
-    return { plan, version };
+    return { plan, version, tenant_kind: tenant[0]?.kind ?? null };
   }
 }

@@ -8742,6 +8742,13 @@ components:
               format: date-time
             billing_managed:
               type: boolean
+            arranged:
+              type: boolean
+              description: >-
+                CCP-PERSONAL-ARRANGED-1 — always sent by the server; true when the plan is arranged with Aramo (a governed plan with no store or web
+                billing; at no charge or at a price agreed outside them). The client shows it as arranged with
+                Aramo, with no price, commitment or billing controls; list_price, commitment_months and term are
+                null for it. A purchase while it is open is refused, as for any plan managed by Aramo.
             commitment_months:
               type: [integer, 'null']
             term:

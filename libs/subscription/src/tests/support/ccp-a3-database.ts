@@ -111,7 +111,13 @@ export async function seedCcpCatalog(pg: Client): Promise<void> {
  */
 // Amendment A3/A4 — the catalog read lists the add-on (metered) units, so the catalog schema carries the
 // metering migration too (it depends only on A5's PlanVersion / pin events and TenantSubscription).
-export const CCP_CATALOG_MIGRATIONS: readonly string[] = [SUB('20261025140000_ccp_a4_product_dimension'), SUB('20261025160000_ccp_a5_plan_version'), SUB('20261101300000_sign_usage_metering')];
+/**
+ * CCP-A4 — the product dimension (Plan.product_key, TenantSubscription.product_key / composition_role). Exported for
+ * a spec on the A3 schema that creates a SUBSCRIPTION_OPEN: the CCP-PERSONAL-ARRANGED-1 P-4 creation check reads
+ * the named plan's product_key and tenant_kind (every deployed database has A4).
+ */
+export const CCP_A4_MIGRATION = SUB('20261025140000_ccp_a4_product_dimension');
+export const CCP_CATALOG_MIGRATIONS: readonly string[] = [CCP_A4_MIGRATION, SUB('20261025160000_ccp_a5_plan_version'), SUB('20261101300000_sign_usage_metering')];
 export async function applyCcpCatalogSchema(pg: Client): Promise<void> {
   await applyCcpA3Schema(pg);
   for (const f of CCP_CATALOG_MIGRATIONS) await pg.query(readFileSync(f, 'utf8'));

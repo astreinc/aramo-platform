@@ -21,6 +21,8 @@ import type { SenderContextService } from '../app/sender/sender-context.service.
 //         unavailable with not_available_in_country, plans not purchasable, checkout 409
 //         personal_paid_us_only — the provider is never reached
 //   PP-8  Personal checkout / portal return to /personal/settings/billing; Business unchanged
+//   PP-9  CCP-PERSONAL-ARRANGED-1 PO ruling D-7 — an open arranged plan gets the offer only while a
+//         CONVERSION TO_SELF_SERVICE release of it is open (the released plan); none otherwise
 
 const STANDARD = 'aramo-sign-standard-personal-v1';
 const FREE = 'aramo-sign-free-personal-v1';
@@ -37,18 +39,19 @@ const catalogPlan = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(o: { kind?: 'PERSONAL' | 'BUSINESS'; personalOpen?: boolean; plan_key?: string | null; purchasable?: boolean; residence?: string | null; unbound?: boolean } = {}) {
+function setup(o: { kind?: 'PERSONAL' | 'BUSINESS'; personalOpen?: boolean; plan_key?: string | null; purchasable?: boolean; residence?: string | null; unbound?: boolean; arranged?: boolean; released?: string | null } = {}) {
   const kind = o.kind ?? 'PERSONAL';
   const open = kind === 'PERSONAL' && o.personalOpen !== false;
   const plan_key = o.plan_key === undefined ? FREE : o.plan_key;
   const lifecycle = {
     account: vi.fn(async () => ({
-      subscription: plan_key === null ? null : { plan_key, plan_name: plan_key === FREE ? 'Free Personal' : 'Standard', ended_at: null },
+      subscription: plan_key === null ? null : { plan_key, plan_name: plan_key === FREE ? 'Free Personal' : 'Standard', ended_at: null, arranged: o.arranged === true },
       allowance: plan_key === FREE ? { subscribed: true, limit: 5, daily: { window: 'DAY', limit: 2 } } : { subscribed: true, limit: 25 },
       billing_available: true,
       tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
     })),
     sendingOwner: vi.fn(async () => null),
+    arrangedReleasePlanKey: vi.fn(async () => o.released ?? null),
     tenantActivationState: vi.fn(async () => null),
     catalog: vi.fn(async () => [catalogPlan({ purchasable: o.purchasable ?? true }), { ...catalogPlan({ key: FREE, price: null, purchasable: false }) }]),
     startCheckout: vi.fn(async () => ({ url: 'https://checkout.stripe.test/x' })),
@@ -121,6 +124,28 @@ describe('Sign Catalog v2 — Personal paid billing (sign-service)', () => {
     expect(onStandard['upgrade']).toBeNull();
     expect(onStandard['allowance']).toEqual({ subscribed: true, limit: 25 });
     expect(((await setup({ kind: 'BUSINESS', plan_key: null }).controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
+  });
+
+  it('PP-9 (D-7) an arranged plan: no offer without a release; after a CONVERSION TO_SELF_SERVICE release the normal offer shows again', async () => {
+    const held = setup({ plan_key: STANDARD, arranged: true });
+    expect(((await held.controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
+    expect(held.lifecycle.arrangedReleasePlanKey).toHaveBeenCalledWith('t-1', 'sign');
+
+    const released = setup({ plan_key: STANDARD, arranged: true, released: STANDARD });
+    expect(((await released.controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toEqual({
+      available: true, reason: null, plan_key: STANDARD, price_minor: 1000, commitment_months: 12, currency: 'USD', billing_gateway: 'STRIPE', billing_terms: [],
+    });
+    // A non-owner sees it but cannot take it (unchanged rule).
+    expect(((await released.controller.account(auth(['sign:envelope:read'], 'u-x'), 'r')) as Record<string, unknown>)['upgrade']).toMatchObject({ available: false, reason: 'billing_manage_required' });
+    // A release naming a plan the catalog does not sell here offers nothing.
+    expect(((await setup({ plan_key: STANDARD, arranged: true, released: 'aramo-sign-other-personal-v1' }).controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
+    // A plan that is not arranged never reads a release (unchanged: no offer on Standard).
+    const paid = setup({ plan_key: STANDARD, released: STANDARD });
+    expect(((await paid.controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
+    expect(paid.lifecycle.arrangedReleasePlanKey).not.toHaveBeenCalled();
+    // Dark (SIGN_PERSONAL_PAID_CHECKOUT_ENABLED unset): still no offer.
+    delete process.env['SIGN_PERSONAL_PAID_CHECKOUT_ENABLED'];
+    expect(((await setup({ plan_key: STANDARD, arranged: true, released: STANDARD }).controller.account(auth(OWNER), 'r')) as Record<string, unknown>)['upgrade']).toBeNull();
   });
 
   it('PP-5 GET plans: the catalog is evaluated for the tenant kind and carries the Personal Terms (until ToS v2.0 takes effect, then v2.0)', async () => {

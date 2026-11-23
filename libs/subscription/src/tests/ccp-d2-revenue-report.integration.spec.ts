@@ -169,6 +169,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
              EXISTS (SELECT 1 FROM subscription."Contract" k WHERE k.tenant_subscription_id = ts.id) AS contracted
         FROM subscription."TenantSubscription" ts JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id
        WHERE ts.ended_at IS NULL AND ts.composition_role = 'BASE' AND ts.source IN ('MANUAL', 'SELF_SERVICE')
+         -- CCP-PERSONAL-ARRANGED-1 P-3: a COMP row is counted on its own line, never classified.
+         AND ts.arrangement IS DISTINCT FROM 'COMP'
     )
     SELECT subscription_id, product_key, commitment_end, period_end,
            CASE WHEN store_environment = 'Sandbox' THEN 'STORE_TEST_PURCHASE'
@@ -212,17 +214,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
         GROUP BY h.month ORDER BY h.month = 'LAPSED' DESC, h.month`,
       [as_of, months],
     );
+    const comp = await pg.query(
+      `SELECT count(*)::int AS n FROM subscription."TenantSubscription" WHERE ended_at IS NULL AND composition_role = 'BASE' AND source IN ('MANUAL', 'SELF_SERVICE') AND arrangement = 'COMP'`,
+    );
     const t = totals.rows[0];
     const [lapsed, ...by_month] = pipeline.rows.map((r) => ({ ...r }));
     return {
       mrr_minor: Number(t.mrr),
       arr_minor: Number(t.arr),
       counts: {
-        open_commercial_subscriptions: t.open_commercial as number,
+        open_commercial_subscriptions: (t.open_commercial as number) + (comp.rows[0].n as number),
         included: t.included as number,
         excluded: t.excluded as number,
         excluded_by_reason: Object.fromEntries(REVENUE_EXCLUSION_REASONS.map((k) => [k, (reasons.rows.find((r) => r.reason === k)?.n as number | undefined) ?? 0])),
         not_commercial_by_source: Object.fromEntries(notCommercial.rows.map((r) => [r.source, r.n])),
+        arranged_no_charge: comp.rows[0].n as number,
       },
       rows: rows.rows.map((r) => ({ subscription_id: r.subscription_id as string, reason: (r.reason as string | null) ?? null })),
       pipeline: { lapsed, by_month },
@@ -273,6 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
       excluded: 6,
       excluded_by_reason: { STORE_TEST_PURCHASE: 0, STATUS_NOT_REVENUE_BEARING: 1, PLAN_VERSION_INTEGRITY: 0, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 1, NON_MONTHLY_INTERVAL: 1 },
       not_commercial_by_source: { DEVELOPMENT: 1 },
+      arranged_no_charge: 0,
     });
     // K's pinned version carries a USD list price (1500), yet a contract-linked row is never revenue at list price.
     const k = await pg.query(`SELECT (v.content->'plan'->>'list_price_minor')::int AS p FROM subscription."TenantSubscription" ts JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id WHERE ts.id = $1`, [S['K']]);

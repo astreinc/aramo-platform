@@ -200,6 +200,10 @@ const GOV_MEMBERSHIP_ID = 'e6a60000-0000-7000-8000-000000000003';
 const GOV_ROLE_ID = 'e6a60000-0000-7000-8000-000000000004';
 const GOV_SCOPE_ID = 'e6a60000-0000-7000-8000-000000000011';
 const GOV_INTENT_ID = 'e6a60000-0000-7000-8000-000000000021';
+// CCP-PERSONAL-ARRANGED-1 P-7 — the same billing owner on the native app (sign-mobile): a PLACEHOLDER bearer the
+// requestFilter swaps for a native token of the governed tenant's billing owner. MUST match
+// pact/consumers/sign-mobile/src/sign-service.consumer.test.ts.
+const GOV_NATIVE_BEARER = 'Bearer pact-native-sign-access-token-billing-owner';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
 const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
 // Per-fixture child ids derive from the envelope id's last two hex chars:
@@ -260,6 +264,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let senderJwt = '';
     let billingOwnerJwt = '';
+    let billingOwnerNativeJwt = '';
     let nativeJwt = '';
     // Aramo Sign W2 — per-user tokens: [native bearer, browser cookie].
     const w2Tokens = new Map<string, string>();
@@ -377,7 +382,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     // CCP-A6 — the governed-subscription billing owner (real RBAC: a role granting
     // sign:billing:manage; the tenant entitled core + sign) and an open MANUAL Sign subscription.
-    async function seedGovernedBillingOwner(): Promise<void> {
+    /** `arrangement` (CCP-PERSONAL-ARRANGED-1): set on the governed row by EVERY call, so each state is deterministic. */
+    async function seedGovernedBillingOwner(arrangement: 'COMP' | 'AGREED' | null = null): Promise<void> {
       await db.query(
         `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at)
          VALUES ($1,'Pact Governed Co','pact-governed','BUSINESS','ACTIVE',true, now()) ON CONFLICT (id) DO NOTHING`,
@@ -427,6 +433,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
            FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
          ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [GOV_TENANT_ID],
+      );
+      await db.query(
+        `UPDATE subscription."TenantSubscription" SET arrangement = $2 WHERE tenant_id = $1::uuid AND product_key = 'sign' AND composition_role = 'BASE' AND ended_at IS NULL`,
+        [GOV_TENANT_ID, arrangement],
       );
     }
     // Billing must be configured for checkout to reach the governed-subscription decision (no
@@ -1199,6 +1209,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setIssuedAt(now)
         .setExpirationTime(now + 15 * 60)
         .sign(kp.privateKey);
+      // CCP-PERSONAL-ARRANGED-1 — the governed tenant's billing owner on the native app.
+      billingOwnerNativeJwt = await new SignJWT({ sub: GOV_USER_ID, actor_kind: 'user', consumer_type: 'sign', tenant_id: GOV_TENANT_ID, authz_version: 1, client: 'native', dsid: SIGN_MOBILE_DSID })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(AUTH_ISSUER)
+        .setAudience(AUTH_AUDIENCE)
+        .setSubject(GOV_USER_ID)
+        .setIssuedAt(now)
+        .setExpirationTime(now + 15 * 60)
+        .sign(kp.privateKey);
 
       // Aramo Sign W2 — the recipient users' native and browser tokens.
       for (const u of [W2_DISCOVERED, W2_UPCOMING, W2_AWAITING_SENDER]) {
@@ -1265,6 +1284,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${billingOwnerJwt}`;
           } else if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
+          }
+          // CCP-PERSONAL-ARRANGED-1 — the billing owner's native placeholder bearer → a native token.
+          if (req.headers['authorization'] === GOV_NATIVE_BEARER) {
+            req.headers['authorization'] = `Bearer ${billingOwnerNativeJwt}`;
           }
           // Aramo Sign Mobile — the sign-mobile placeholder bearer → a native token.
           if (req.headers['authorization'] === SIGN_MOBILE_BEARER) {
@@ -1440,6 +1463,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // StateFuncWithSetup), but the Verifier options type intersects it with the bare function
           // signature, so the object literal is cast; no behaviour change.
           } as never,
+          // CCP-PERSONAL-ARRANGED-1 P-7 — the governed row is arranged with Aramo: the account read says so.
+          'a business tenant holds an Aramo-arranged Sign subscription': async () => {
+            await seedGovernedBillingOwner('AGREED');
+            return undefined;
+          },
           // CCP-A6-R — Conversion Rule C-8: the tenant-facing pending state of a held activation.
           'a business tenant with a governed subscription has a held self-service activation': async () => {
             await seedGovernedBillingOwner();

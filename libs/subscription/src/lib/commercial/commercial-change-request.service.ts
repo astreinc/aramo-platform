@@ -41,6 +41,7 @@ import {
   payloadChecksum,
   resolveRequiredChain,
   subjectUserOf,
+  subscriptionOpenRefusal,
   validatePayload,
 } from './commercial-change-request.js';
 import { approvalExpiresAt } from './commercial-policy-boundaries.js';
@@ -435,6 +436,8 @@ export class CommercialChangeRequestService {
           if (open !== null) {
             throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'an open change request already exists for this tenant and product', { open_request_id: open.id, open_state: open.state });
           }
+          // CCP-PERSONAL-ARRANGED-1 (P-4) — fail early, at creation, under the tenant lock.
+          if (input.action_type === 'SUBSCRIPTION_OPEN') await this.assertSubscriptionOpenAdmissible(tx, tenant_id as string, product_key as string, payload);
         }
         if (refundPicture !== null) {
           // CCP-C4-P (RF-3…RF-5) — under the tenant's billing lock: binding + remainder (outstanding
@@ -580,6 +583,41 @@ export class CommercialChangeRequestService {
       if (e instanceof PaymentRecordRefusedError) return e;
       throw e;
     }
+  }
+
+  /**
+   * CCP-PERSONAL-ARRANGED-1 (P-4) — a SUBSCRIPTION_OPEN that the apply would refuse for the tenant's kind,
+   * or a FREE replacement that is not for a PERSONAL tenant or names no arrangement, is refused at creation
+   * (details.reason, subscriptionOpenRefusal). Read-only; the apply re-checks every condition (NC-5).
+   */
+  private async assertSubscriptionOpenAdmissible(tx: Tx, tenant_id: string, product_key: string, payload: Record<string, unknown>): Promise<void> {
+    const tenant = await tx.$queryRawUnsafe<Array<{ kind: string | null }>>(`SELECT kind::text AS kind FROM identity."Tenant" WHERE id = $1::uuid`, tenant_id);
+    const tenant_kind = tenant[0]?.kind ?? null;
+    const plan = await tx.plan.findUnique({ where: { key: String(payload['plan_key']) }, select: { tenant_kind: true, product_key: true } });
+    const replaces = payload['replaces_subscription_id'];
+    const replaced =
+      typeof replaces === 'string'
+        ? await tx.tenantSubscription.findFirst({ where: { id: replaces, tenant_id, product_key }, select: { source: true } })
+        : null;
+    const reason = subscriptionOpenRefusal({
+      tenant_kind,
+      plan_tenant_kind: plan === null || plan.product_key !== product_key ? undefined : plan.tenant_kind,
+      replaced_source: replaced?.source ?? null,
+      arrangement: payload['arrangement'],
+    });
+    if (reason === null) return;
+    const messages: Record<typeof reason, string> = {
+      plan_tenant_kind_mismatch: 'the plan is for a different kind of organization',
+      free_replacement_not_personal: 'a Free subscription is replaced only for a Personal account',
+      arrangement_required: 'replacing a Free subscription requires an arrangement (COMP or AGREED)',
+      comp_not_personal: 'a no-charge (COMP) arrangement is for a Personal account only',
+    };
+    throw new CommercialChangeRequestError('INVALID_INPUT', messages[reason], {
+      reason,
+      tenant_kind,
+      plan_tenant_kind: plan?.tenant_kind ?? null,
+      replaced_source: replaced?.source ?? null,
+    });
   }
 
   /** CCP PLAN_CREATE (PC-6) — the create-time duplicate-key refusal, inside the create transaction. */

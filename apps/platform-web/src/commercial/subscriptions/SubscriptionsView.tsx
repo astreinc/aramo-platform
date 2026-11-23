@@ -4,7 +4,6 @@ import { ApiError, Button, Checkbox, Select } from '@aramo/fe-foundation';
 
 import { Pill, SkeletonPanel } from '../../components';
 import { catalogApi, type Catalog } from '../catalog/catalog-api';
-import { planTitle } from '../catalog/catalog-model';
 
 import { PRODUCT_KEYS_SHOWN, subscriptionsApi, type Workbench, type WorkbenchRow } from './subscriptions-api';
 import {
@@ -16,6 +15,7 @@ import {
   productLabel,
   rowFlags,
   segmentCounts,
+  planLine,
   sourceBadge,
   statusView,
   catalogVersionOptions,
@@ -189,7 +189,7 @@ export function SubscriptionsView({ now = () => new Date() }: SubscriptionsViewP
                       </td>
                       <td>
                         {productLabel(r.product_key)}
-                        <div className="cs-plan">{planTitle(r.plan)}</div>
+                        <div className="cs-plan">{planLine(r)}</div>
                       </td>
                       <td className="cs-mono12">{versionText(r)}</td>
                       <td className="pc-nowrap">

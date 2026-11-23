@@ -51,6 +51,8 @@ export interface FinanceRevenueResponseDto {
     excluded: number;
     excluded_by_reason: Record<string, number>;
     not_commercial_by_source: Record<string, number>;
+    // CCP-PERSONAL-ARRANGED-1 P-3 — open rows arranged by Aramo at no charge (COMP): never revenue, not an exclusion.
+    arranged_no_charge: number;
   };
   renewal_pipeline: {
     months: number;

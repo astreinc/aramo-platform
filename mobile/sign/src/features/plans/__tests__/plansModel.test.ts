@@ -7,7 +7,9 @@ import {
   intervals,
   isSeatPriced,
   MANAGE_ON_WEB,
+  arrangedLabel,
   perInterval,
+  planRowLabel,
   planAction,
   ORG_PLAN_COPY,
   PLANS_COPY,
@@ -19,6 +21,14 @@ import {
   visiblePlans,
 } from '../plansModel';
 import { account, plan } from './plansFixtures';
+
+// CCP-PERSONAL-ARRANGED-1 P-7 — the server's account of a plan arranged with Aramo (no price or term).
+const ARRANGED = account({
+  subscription: { plan_key: 'standard', plan_name: 'Standard', source: 'MANUAL', status: 'ACTIVE', ended_at: null, arranged: true, list_price: null, commitment_months: null, term: null } as never,
+  store_purchase_eligible: false,
+  store_purchase_block_reason: 'billing_managed_elsewhere',
+  allowance: { limit: 25, used: 4, remaining: 21, period_end: '2026-12-24T00:00:00.000Z' } as never,
+});
 
 describe('plans', () => {
   it('shows only active self-service and free plans, never contact-sales or operator', () => {
@@ -68,6 +78,11 @@ describe('refusals and actions', () => {
     expect(blockCopy('store_purchase_seats_unsupported')).not.toMatch(/sign\.aramo\.ai|web/i);
     expect(PLANS_COPY.askAdmin).toBe(ORG_PLAN_COPY);
     expect(blockCopy('billing_managed_elsewhere')).toBe(PLANS_COPY.billedOnWeb);
+    // CCP-PERSONAL-ARRANGED-1 P-7 — on a plan arranged with Aramo it is never "billed on the web".
+    expect(blockCopy('billing_managed_elsewhere', ARRANGED)).toBe(PLANS_COPY.arranged);
+    expect(PLANS_COPY.arranged).toBe('Your plan is arranged with Aramo. Contact support to change it.');
+    expect(blockCopy('billing_managed_elsewhere', ARRANGED)).not.toMatch(/web/);
+    expect(blockCopy('not_billing_manager', ARRANGED)).toBe(PLANS_COPY.askAdmin);
     expect(blockCopy('billing_managed_elsewhere', account({ price_unit: 'SEAT' }))).toBe(ORG_PLAN_COPY);
     expect(blockCopy('billing_managed_elsewhere', account({ managed_by: 'GOOGLE_PLAY' }))).toBe(PLANS_COPY.billedInOtherStore);
     expect(blockCopy('store_billing_disabled')).toMatch(MANAGE_ON_WEB);
@@ -106,5 +121,20 @@ describe('per-seat price unit', () => {
     expect(perInterval('YEAR')).toBe('/ year');
     expect(isSeatPriced(null)).toBe(false);
     expect(isSeatPriced({ price_unit: 'seat' })).toBe(false);
+  });
+});
+
+// CCP-PERSONAL-ARRANGED-1 P-7 (copy from @aramo/sign-client, PO ruling D-8).
+describe('a plan arranged with Aramo', () => {
+  it('the current plan reads "Standard · arranged with Aramo"; other plans are blocked with the arranged copy', () => {
+    expect(planRowLabel(ARRANGED)).toBe('Standard · arranged with Aramo');
+    expect(planRowLabel(account())).toBe('Free');
+    expect(arrangedLabel(plan('standard'), ARRANGED)).toBe('Standard · arranged with Aramo');
+    expect(arrangedLabel(plan('free'), ARRANGED)).toBeNull();
+    expect(arrangedLabel(plan('standard'), account())).toBeNull();
+    const p = plan('standard');
+    expect(planAction({ plan: p, account: ARRANGED, storeOn: true, product: productFor(p, 'ios', 'YEAR'), priced: true })).toEqual({ kind: 'current', message: null });
+    const other = plan('plus');
+    expect(planAction({ plan: other, account: ARRANGED, storeOn: true, product: productFor(other, 'ios', 'YEAR'), priced: true })).toEqual({ kind: 'blocked', message: PLANS_COPY.arranged });
   });
 });

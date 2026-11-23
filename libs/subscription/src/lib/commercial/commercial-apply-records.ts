@@ -40,7 +40,7 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   TARGET_STALE: 'The subscription named in the request is no longer the current one (it changed or ended after approval).',
   TARGET_NOT_FOUND: 'The subscription named in the request does not exist for this tenant and product.',
   TARGET_NOT_GOVERNED: 'The subscription named in the request is not an Aramo-managed (MANUAL) subscription.',
-  TARGET_NOT_REPLACEABLE: 'The open subscription is a Free Personal subscription and cannot be replaced by this request.',
+  TARGET_NOT_REPLACEABLE: 'The open subscription is a Free Personal subscription; it is replaced only for a Personal account, by a Personal plan arranged with Aramo (COMP or AGREED).',
   PLAN_NOT_FOUND: 'No plan with this key exists for this product.',
   PLAN_VERSION_MISMATCH: 'The plan version does not belong to the named plan.',
   PLAN_VERSION_NOT_PUBLISHED: 'Only a published plan version can be assigned.',

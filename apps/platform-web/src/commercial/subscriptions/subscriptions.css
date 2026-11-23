@@ -315,6 +315,26 @@
   font-size: var(--pw-fs-12);
 }
 
+/* CCP-PERSONAL-ARRANGED-1 P-5 — the arrangement choice (radio + label + help) and a field error line. */
+.cs-dlg-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+.cs-dlg-choice input {
+  margin-top: 3px;
+}
+.cs-dlg-choice__label {
+  display: block;
+  cursor: pointer;
+  color: var(--pw-ink);
+  font-size: var(--pw-fs-13-5);
+}
+.cs-dlg-help--error {
+  color: var(--pw-danger);
+}
+
 /* CCP-UI-V12 (v1.2 §17.2) — the Payment / Amount due facts' pill row (design: margin-top 3px). */
 .cs-fact__due {
   margin-top: 3px;

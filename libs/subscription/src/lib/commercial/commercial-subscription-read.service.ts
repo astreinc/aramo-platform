@@ -44,6 +44,8 @@ export interface WorkbenchSubscription {
   readonly current_period_end: Date | null;
   readonly grace_until: Date | null;
   readonly commitment_end: Date | null;
+  /** CCP-PERSONAL-ARRANGED-1 — COMP | AGREED for a row arranged by Aramo; null otherwise. */
+  readonly arrangement: string | null;
   readonly contract: { readonly id: string; readonly contract_ref: string } | null;
   /** A provider subscription is linked (the ref itself is not exposed here). */
   readonly provider_linked: boolean;
@@ -135,6 +137,7 @@ interface LatestRow {
   current_period_end: Date | null;
   grace_until: Date | null;
   commitment_end: Date | null;
+  arrangement: string | null;
   contract_id: string | null;
   contract_ref: string | null;
   provider_linked: boolean;
@@ -162,7 +165,7 @@ const LATEST_SQL = (where: string) => `
          ts.product_key, p.id::text AS plan_id, p.key AS plan_key, p.name AS plan_name, p.sales_model,
          v.id::text AS plan_version_id, v.version_number, v.status AS version_status,
          ts.source, ts.status, ts.started_at, ts.ended_at, ts.period_anchor,
-         ts.current_period_end, ts.grace_until, ts.commitment_end,
+         ts.current_period_end, ts.grace_until, ts.commitment_end, ts.arrangement,
          c.id::text AS contract_id, c.contract_ref,
          (ts.billing_subscription_ref IS NOT NULL) AS provider_linked,
          (SELECT count(*)::int FROM subscription."SupportExtension" se
@@ -210,6 +213,7 @@ function toSubscription(r: LatestRow, as_of: Date, open_flags: string[]): Workbe
     current_period_end: r.current_period_end,
     grace_until: r.grace_until,
     commitment_end: r.commitment_end,
+    arrangement: r.arrangement,
     contract: r.contract_id === null || r.contract_ref === null ? null : { id: r.contract_id, contract_ref: r.contract_ref },
     provider_linked: r.provider_linked,
     open_flags,

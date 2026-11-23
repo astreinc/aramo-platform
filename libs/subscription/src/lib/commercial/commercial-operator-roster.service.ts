@@ -28,8 +28,10 @@ export type CommercialChainKey = 'ABOVE_THRESHOLD' | 'BELOW_THRESHOLD' | 'CATALO
 
 /** The handoff §3 chains, each represented by a real action whose chain it is. */
 export const COMMERCIAL_CHAIN_PANEL: ReadonlyArray<{ key: CommercialChainKey; actions: readonly CommercialActionType[]; sample: (p: CommercialPolicyContent) => Record<string, unknown> }> = [
-  { key: 'ABOVE_THRESHOLD', actions: ['CREDIT', 'DISCOUNT'], sample: (p) => ({ amount_minor: p.credit_escalation_threshold_minor, currency: p.currency }) },
-  { key: 'BELOW_THRESHOLD', actions: ['SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION'], sample: () => ({}) },
+  // CCP Amendment A3 AC-COMP-3 — SUBSCRIPTION_OPEN is on both chains: F → O for a COMP open (AC-COMP-1, the
+  // same Finance → Owner chain as an escalated credit), F otherwise. The chain is resolved from the group's first action.
+  { key: 'ABOVE_THRESHOLD', actions: ['CREDIT', 'DISCOUNT', 'SUBSCRIPTION_OPEN'], sample: (p) => ({ amount_minor: p.credit_escalation_threshold_minor, currency: p.currency }) },
+  { key: 'BELOW_THRESHOLD', actions: ['SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION', 'SUBSCRIPTION_OPEN'], sample: () => ({}) },
   { key: 'CATALOG_PUBLISH', actions: ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'PLAN_CREATE'], sample: () => ({}) }, // + CCP PLAN_CREATE (PC-2: the same chain)
   { key: 'ROLE_CHANGE', actions: ['ROLE_GRANT', 'ROLE_REVOKE'], sample: () => ({ subject_user_id: '00000000-0000-7000-8000-000000000000', role_key: 'read_only_auditor' }) },
   { key: 'POLICY_CHANGE', actions: ['POLICY_ACTIVATE'], sample: () => ({ policy_version_id: '00000000-0000-7000-8000-000000000000' }) },
