@@ -2226,7 +2226,8 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
         const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('commercial_ops'));
         expect(res.status).toBe(200);
         expect(res.body['amount_withheld']).toBe(WITHHELD);
-        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr/);
+        // No mrr / arr figure (the counts' "arranged_no_charge" is a count, not an amount).
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr(?!anged_no_charge")/);
       });
   });
 
