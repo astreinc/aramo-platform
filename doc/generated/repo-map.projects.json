@@ -2867,6 +2867,7 @@
       "sessionIssueRefusal",
       "shownFields",
       "signDatePreview",
+      "signerClearRefusal",
       "signerFieldCaption",
       "signerFieldPlaceholder",
       "signerFieldTooltip",
@@ -10682,6 +10683,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/field-parity-2-executed-output.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
