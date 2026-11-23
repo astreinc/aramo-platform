@@ -60,6 +60,7 @@ export const FIELD_IMPORT_WARNING_CODES = [
   'text_tag_label_not_applicable',
   'text_tag_rotated_page',
   'text_tags_unreadable',
+  'text_tag_text_not_removed',
   'text_tag_role_missing',
   'text_tag_role_unknown',
   'field_assigned_to_first_recipient',
@@ -528,9 +529,33 @@ export function tagCoverRect(box: FieldBox, page: PageSize): FieldBox {
   return { page_number: box.page_number, x: r2(x), y: r2(y), width: r2(Math.max(0, right - x)), height: r2(Math.max(0, top - y)) };
 }
 
+/**
+ * A tag that became a field: the rectangle that covers it and its text (FIELD-PARITY-2 A-6,
+ * ruling C-8: the text is removed from the page, the rectangle is painted as a fallback).
+ */
+export interface TextTagCover extends FieldBox {
+  /** The tag as drawn, braces included. */
+  readonly text: string;
+  /** The tag without braces (the field's `name`). */
+  readonly name: string;
+}
+
 export interface TextTagPlan extends FieldImportPlan {
-  /** The rectangles to cover on the stored PDF (one per tag that became a field). */
-  readonly covers: FieldBox[];
+  /** The tags to remove and cover on the stored PDF (one per tag that became a field). */
+  readonly covers: TextTagCover[];
+}
+
+/**
+ * FIELD-PARITY-2 A-6 — the import summary's warning for each tag whose text could not be removed
+ * from the PDF (it is still covered with white, but its text stays searchable). `notRemoved`
+ * holds indexes into `covers`.
+ */
+export function tagTextNotRemovedWarnings(covers: readonly TextTagCover[], notRemoved: readonly number[]): FieldImportWarning[] {
+  return notRemoved.flatMap((i) => {
+    const c = covers[i];
+    if (c === undefined) return [];
+    return [{ code: 'text_tag_text_not_removed' as const, message: `{{${c.name}}}: tag text could not be removed; it is covered with white, but its text is still in the PDF.`, name: c.name, page_number: c.page_number }];
+  });
 }
 
 /**
@@ -542,7 +567,7 @@ export interface TextTagPlan extends FieldImportPlan {
 export function planTextTags(pages: readonly TagTextPage[], frames: readonly TagPageFrame[], surface: FieldSurface): TextTagPlan {
   const fields: ImportedField[] = [];
   const warnings: FieldImportWarning[] = [];
-  const covers: FieldBox[] = [];
+  const covers: TextTagCover[] = [];
   for (const p of pages) {
     const index = p.page - 1;
     const frame = frames[index];
@@ -577,7 +602,7 @@ export function planTextTags(pages: readonly TagTextPage[], frames: readonly Tag
         group_rule: null,
         options: null,
       });
-      covers.push(tagCoverRect(box, frame));
+      covers.push({ ...tagCoverRect(box, frame), text: `{{${t.inner}}}`, name });
     }
   }
   return { fields, warnings, covers };

@@ -1,4 +1,5 @@
 import type { AuthContextType } from '@aramo/auth';
+import { extractTextLayer } from '@aramo/documents-rendering';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFString, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -197,6 +198,12 @@ describe('FIELD-PARITY-1 P2-6 — apply_text_tags on a Sign upload', () => {
     ]);
     expect(out.field_import.warnings.map((w) => w.code).sort()).toEqual(['field_assigned_to_first_recipient', 'text_tag_role_unknown', 'text_tag_type_not_allowed']);
     expect(Buffer.from(h.stored[0] ?? []).equals(Buffer.from(bytes))).toBe(false);
+    // FIELD-PARITY-2 A-6 (ruling C-8) — the used tags' text is removed from the stored PDF; the
+    // refused tag and the ordinary text stay.
+    const text = (await extractTextLayer(h.stored[0] ?? new Uint8Array()))[0]?.words.map((w) => w.t).join(' ') ?? '';
+    expect(text).not.toMatch(/signature:seller|initials:BO|date:Chair|company:Pat/);
+    expect(text).toContain('{{payment:Pat');
+    expect(text).toMatch(/Seller.*Buyer.*Chair.*Co.*Bad/);
   });
 });
 

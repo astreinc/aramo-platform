@@ -18,6 +18,7 @@ import {
   tagBoxToPdf,
   tagCoverRect,
   tagFieldRect,
+  tagTextNotRemovedWarnings,
   textTagTypeOf,
   type PdfFormWidget,
   type TagPageFrame,
@@ -293,7 +294,22 @@ describe('P2-6 tag finder and geometry', () => {
       ['SIGNATURE', 'Seller', true],
     ]);
     expect(plan.covers).toHaveLength(2);
+    // FIELD-PARITY-2 A-6 — each cover carries the tag as drawn (to remove its text) and its name.
+    expect(plan.covers.map((c) => [c.text, c.name])).toEqual([
+      ['{{text}}', 'text'],
+      ['{{signature:Seller}}', 'signature:Seller'],
+    ]);
     expect(plan.warnings.map((w) => w.code).sort()).toEqual(['text_tag_role_missing', 'text_tag_rotated_page', 'text_tag_type_unknown']);
+    // A tag whose text could not be removed is reported by name and page ("tag text could not be removed").
+    expect(tagTextNotRemovedWarnings(plan.covers, [1, 7])).toEqual([
+      {
+        code: 'text_tag_text_not_removed',
+        message: '{{signature:Seller}}: tag text could not be removed; it is covered with white, but its text is still in the PDF.',
+        name: 'signature:Seller',
+        page_number: 0,
+      },
+    ]);
+    expect(tagTextNotRemovedWarnings(plan.covers, [])).toEqual([]);
   });
 
   it('matches a role case-insensitively against any name of an option', () => {

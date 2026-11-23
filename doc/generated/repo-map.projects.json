@@ -936,6 +936,7 @@
       "layoutTextInBox",
       "manifestProjection",
       "readPageFrames",
+      "removeAndCoverTextTags",
       "sanitizeWinAnsi",
       "stampTextInBox",
       "stampTextUnbounded",
@@ -2960,6 +2961,7 @@
       "tagBoxToPdf",
       "tagCoverRect",
       "tagFieldRect",
+      "tagTextNotRemovedWarnings",
       "templateNameModeOf",
       "templateSettingsOf",
       "textTagTypeOf"
@@ -10657,6 +10659,12 @@
         "status": "excluded"
       },
       { "project": "sign", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/field-parity-p2-upload-import.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",

@@ -1,6 +1,6 @@
 import { AramoError } from '@aramo/common';
-import { PdfFormImportError, coverPdfBoxes, extractTextLayer, importPdfForm, readPageFrames } from '@aramo/documents-rendering';
-import { matchTagRole, planPdfFormFields, planTextTags, type FieldImportWarning, type FieldOptions, type ImportedField } from '@aramo/sign-fields';
+import { PdfFormImportError, extractTextLayer, importPdfForm, readPageFrames, removeAndCoverTextTags } from '@aramo/documents-rendering';
+import { matchTagRole, planPdfFormFields, planTextTags, tagTextNotRemovedWarnings, type FieldImportWarning, type FieldOptions, type ImportedField } from '@aramo/sign-fields';
 
 // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §5 P2-5 /
 // P2-6 — the Sign envelope document upload's opt-in field import (POST
@@ -11,9 +11,11 @@ import { matchTagRole, planPdfFormFields, planTextTags, type FieldImportWarning,
 //                    @aramo/sign-fields planPdfFormFields), the form's active content is
 //                    stripped and the form flattened BEFORE the safe-upload gate decides
 //                    (@aramo/documents-rendering importPdfForm). An XFA-only form is refused.
-//   apply_text_tags  {{type:role…}} tags in the text layer become fields sized to the tag, and
-//                    each tag is covered with white on the stored PDF (ruling R-5). Read on the
-//                    gated bytes; the covered PDF passes the gate again.
+//   apply_text_tags  {{type:role…}} tags in the text layer become fields sized to the tag; each
+//                    tag's text is removed from the page and covered with white (FIELD-PARITY-2
+//                    A-6, ruling C-8; a tag whose text cannot be removed is only covered and
+//                    reported as text_tag_text_not_removed). Read on the gated bytes; the
+//                    changed PDF passes the gate again.
 //
 // Binding: an envelope field always belongs to a recipient (the sender API rule). A tag's role
 // is matched case-insensitively to a signing recipient's name, email or template role; a form
@@ -89,7 +91,11 @@ export async function importUploadFields(
       const plan = planTextTags(pages, await readPageFrames(work), UPLOAD_SURFACE);
       fields.push(...plan.fields);
       warnings.push(...plan.warnings);
-      if (plan.covers.length > 0) work = await accept(await coverPdfBoxes(work, plan.covers));
+      if (plan.covers.length > 0) {
+        const removed = await removeAndCoverTextTags(work, plan.covers);
+        warnings.push(...tagTextNotRemovedWarnings(plan.covers, removed.not_removed));
+        work = await accept(removed.bytes);
+      }
     }
   }
   return { bytes: work, fields, warnings, stripped };

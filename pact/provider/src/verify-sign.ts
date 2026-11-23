@@ -68,6 +68,9 @@ const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json'
 // FIELD-PARITY-2 A-5 — SenderImportedField (inside `field_import`) gains `options` (a PDF
 // dropdown's choices) and FieldImportWarning two codes; still only on an opted-in upload, which
 // no recorded interaction sends. No migration (options is an existing FIELD-PARITY-1 P3 column).
+// FIELD-PARITY-2 A-6 (ruling C-8) — an apply_text_tags upload removes the used tags' text from the
+// stored PDF (and still covers it); FieldImportWarning gains text_tag_text_not_removed. No
+// recorded interaction sends the flag; no migration.
 // FIELD-PARITY-1 P2-4 — GET …/documents/{documentId}/field-suggestions gains the opt-in query
 // `detect=all` (more types, reason / confidence, skipped_pages; openapi/sign.yaml
 // DocumentFieldSuggestions). No migration; without the query the answer is the M-A14 one, so no

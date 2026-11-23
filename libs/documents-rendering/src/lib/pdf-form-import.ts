@@ -22,7 +22,8 @@ import {
 // the PDF half of P2-5 (fillable-PDF import) and P2-6 (covering text tags, ruling R-5). The
 // catalog half (which form field becomes which catalog field; the tag syntax) is
 // @aramo/sign-fields field-import.ts. pdf-lib use in this lib is confined to the rendering
-// adapter, the safe-upload pipeline and THIS file (deliberately extended for P2-5 / P2-6).
+// adapter, the safe-upload pipeline, THIS file (deliberately extended for P2-5 / P2-6) and
+// pdf-tag-text.ts (FIELD-PARITY-2 A-6: removing a tag's text, ruling C-8).
 //
 // importPdfForm — opt-in only (the hosts' `import_fields` flag). Nothing in the PDF is ever
 // executed: the file is parsed as data, never rendered or scripted.
@@ -298,7 +299,7 @@ function isJavaScriptAction(ctx: PDFContext, o: PDFObject | undefined): boolean 
 }
 
 /** Deletes every indirect object not reachable from the trailer (Root, Info). */
-function dropUnreachable(ctx: PDFContext): void {
+export function dropUnreachable(ctx: PDFContext): void {
   const reachable = new Set<string>();
   const stack: PDFObject[] = [];
   if (ctx.trailerInfo.Root !== undefined) stack.push(ctx.trailerInfo.Root);
@@ -480,13 +481,19 @@ export async function coverPdfBoxes(bytes: Uint8Array, boxes: readonly PdfCoverB
   const usable = boxes.filter((b) => b.width > 0 && b.height > 0);
   if (usable.length === 0) return bytes;
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  coverPagesWithBoxes(doc, usable);
+  return doc.save({ useObjectStreams: false });
+}
+
+/** Paints each box white on top of its page (the drawing half of coverPdfBoxes, on a loaded document). */
+export function coverPagesWithBoxes(doc: PDFDocument, boxes: readonly PdfCoverBox[]): void {
   const pages = doc.getPages();
   const isolated = new Set<PDFPage>();
-  for (const b of usable) {
+  for (const b of boxes) {
+    if (!(b.width > 0 && b.height > 0)) continue;
     const page = pages[b.page_number];
     if (page === undefined) continue;
     isolateContent(doc, page, isolated);
     page.drawRectangle({ x: b.x, y: b.y, width: b.width, height: b.height, color: rgb(1, 1, 1), borderWidth: 0 });
   }
-  return doc.save({ useObjectStreams: false });
 }

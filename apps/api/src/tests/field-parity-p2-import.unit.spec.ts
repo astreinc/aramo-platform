@@ -17,8 +17,8 @@ import { FixedFormService } from '../documents/fixed-form.service.js';
 //   import_fields: a fillable PDF with field / document JavaScript (refused without the flag)
 //     is stripped, flattened and stored; its fields become template_fixed_form catalog fields;
 //     an XFA-only form is refused (xfa_only_form);
-//   apply_text_tags: {{…}} tags become fields, refused tags are reported, every used tag is
-//     covered with white on the stored PDF.
+//   apply_text_tags: {{…}} tags become fields, refused tags are reported, every used tag's text
+//     is removed from the stored PDF and covered with white (FIELD-PARITY-2 A-6).
 
 const ACTOR = '01900000-0000-7000-8000-0000000007a2';
 const TEMPLATE = '01900000-0000-7000-8000-0000000007b1';
@@ -176,6 +176,12 @@ describe('FIELD-PARITY-1 P2-5 / P2-6 — prepareFixedFormPdf', () => {
     expect(tagWord).toBeDefined();
     const sigField = out.fields[0];
     expect(sigField?.x).toBeCloseTo((tagWord?.x ?? 0) * 612, 0);
+    // FIELD-PARITY-2 A-6 (ruling C-8) — the used tags' text is gone from the stored PDF; the
+    // refused tag ({{stamp:…}}) and the ordinary text stay.
+    const stored = (await extractTextLayer(out.bytes))[0]?.words.map((w) => w.t).join(' ') ?? '';
+    expect(stored).not.toMatch(/signature:Employee|name:employee|date:Chair|title:Employee|checkbox:Employee/);
+    expect(stored).toContain('{{stamp:Employee}}');
+    expect(out.warnings.map((w) => w.code)).not.toContain('text_tag_text_not_removed');
   });
 });
 

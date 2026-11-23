@@ -49,6 +49,8 @@ export {
   type PdfFormWidgetRead,
   type PdfCoverBox,
 } from './lib/pdf-form-import.js';
+// FIELD-PARITY-2 A-6 (ruling C-8) — a text tag's text is removed from the page, then covered.
+export { removeAndCoverTextTags, type PdfTextTagBox, type PdfTextTagRemoval } from './lib/pdf-tag-text.js';
 export {
   extractTextLayer,
   wordsOfRun,

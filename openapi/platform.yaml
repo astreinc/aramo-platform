@@ -5037,8 +5037,9 @@ paths:
         actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened
         before the gate above decides; an XFA-only form is refused 422 details.reason `xfa_only_form`.
         `apply_text_tags` — `{{type:role[:required|optional][:label=…]}}` tags become fields sized to the
-        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag is
-        covered with white on the stored PDF (doc/sign/text-tags.md). The response then carries
+        tag, bound to the signer role whose key or label matches (case-insensitive), and each used tag's
+        text is removed from the stored PDF and covered with white (FIELD-PARITY-2 A-6; a tag whose text
+        cannot be removed is only covered, warning `text_tag_text_not_removed`; doc/sign/text-tags.md). The response then carries
         `field_import` (the fields added after any existing ones, and named warnings). A non-boolean flag
         is refused 400 details.reason `import_flag_invalid`.
       security:
@@ -7331,6 +7332,7 @@ components:
             - text_tag_label_not_applicable
             - text_tag_rotated_page
             - text_tags_unreadable
+            - text_tag_text_not_removed
             - text_tag_role_missing
             - text_tag_role_unknown
             - field_assigned_to_first_recipient

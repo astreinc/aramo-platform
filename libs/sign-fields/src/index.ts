@@ -129,6 +129,7 @@ export {
   tagFieldRect,
   tagCoverRect,
   planTextTags,
+  tagTextNotRemovedWarnings,
   matchTagRole,
   type ImportedField,
   type FieldImportWarning,
@@ -145,6 +146,7 @@ export {
   type TagPageFrame,
   type TagTextPage,
   type TextTagPlan,
+  type TextTagCover,
 } from './lib/field-import.js';
 
 // FIELD-PARITY-1 P2-4 — the deterministic field detector (labels, underscore lines, empty boxes
