@@ -37,6 +37,7 @@ const { like, uuid } = MatchersV3;
 //   8. POST /v1/sign/signing/disclosure            200 { accepted: true }  (hosted session, with attested_name)
 //   9. POST /v1/sign/signing/fields/{id}/fill      200 — a check box unchecked with 'false' (M-A6 §2.3)
 //   10. POST /v1/sign/signing/document              200 — field configuration + the server-filled name (M-A6 §2.4)
+//   11. POST /v1/sign/signing/document              200 — each field's field_key + condition (FIELD-PARITY-2 B-6)
 
 const provider = new PactV4({
   consumer: 'sign-web',
@@ -69,6 +70,12 @@ const UNCHECK_FIELD_ID = '7a000000-0000-7000-8000-000000000a04';
 const TOKEN_VIEW = 'sign-web-pact-token-view';
 const VIEW_NAME_FIELD_ID = '7a000000-0000-7000-8000-000000000b04';
 const VIEW_BOX_FIELD_ID = '7a000000-0000-7000-8000-000000000b07';
+// FIELD-PARITY-2 B-6 — the conditional-field view. The provider derives every id from the
+// envelope_id param (last digit: 2 document, 4 trigger box, 5 dependent field) and seeds the
+// session for the token param.
+const COND_ENVELOPE_ID = '7a0000f2-0000-7000-8000-000000000001';
+const condChild = (n: number): string => `${COND_ENVELOPE_ID.slice(0, -1)}${String(n)}`;
+const TOKEN_CONDITIONAL = 'sign-web-pact-token-conditional';
 
 describe('sign-web → POST /v1/sign/signing/exchange', () => {
   it('exchanges a capability token for a signer session', async () => {
@@ -360,6 +367,58 @@ describe('sign-web → POST /v1/sign/signing/document (M-A6 field configuration)
         const body = (await res.json()) as { fields: { server_filled: boolean; value: string | null }[] };
         expect(body.fields[0]?.server_filled).toBe(true);
         expect(body.fields[0]?.value).toBe('Jane Doe');
+      });
+  });
+});
+
+// FIELD-PARITY-2 (Aramo-Sign-Field-Placement-Conditional-Fields-Directive-v1_0-LOCKED) §4.2 B-6 —
+// every signer-view field carries its field_key and its condition ("show only when"; null =
+// always shown), which the page feeds to the one visibility rule (@aramo/sign-client).
+describe('sign-web → POST /v1/sign/signing/document (FIELD-PARITY-2 conditional fields)', () => {
+  it('returns each field’s field_key and condition', async () => {
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a conditional field', { envelope_id: COND_ENVELOPE_ID, token: TOKEN_CONDITIONAL })
+      .uponReceiving('a document view with a conditional field from the Sign Web client')
+      .withRequest('POST', '/v1/sign/signing/document', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_CONDITIONAL });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          documents: [{ document_id: uuid(condChild(2)), title: like('offer.pdf'), ordinal: like(1) }],
+          fields: [
+            {
+              field_id: uuid(condChild(4)),
+              field_type: 'CHECKBOX',
+              required: false,
+              filled: false,
+              value: null,
+              field_key: like('co'),
+              condition: null,
+            },
+            {
+              field_id: uuid(condChild(5)),
+              field_type: 'TEXT',
+              required: true,
+              filled: false,
+              value: null,
+              field_key: like('co_name'),
+              condition: { trigger_key: like('co'), when: like('checked') },
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_CONDITIONAL }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fields: { field_key: string | null; condition: { trigger_key: string; when: string } | null }[] };
+        expect(body.fields[0]?.condition).toBeNull();
+        expect(body.fields[1]?.condition?.trigger_key).toBe(body.fields[0]?.field_key);
+        expect(body.fields[1]?.condition?.when).toBe('checked');
       });
   });
 });

@@ -799,7 +799,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       fieldId?: string;
       secondSignerId?: string;
       // M-A6 §2 — configured fields (Name / Checkbox) for this signer.
-      configured?: Array<{ id: string; field_type: string; y: number; label?: string; name_mode?: string }>;
+      // FIELD-PARITY-2 B-1 / B-2 — a configured field may carry a key and a condition, and be optional.
+      configured?: Array<{
+        id: string;
+        field_type: string;
+        y: number;
+        label?: string;
+        name_mode?: string;
+        required?: boolean;
+        field_key?: string;
+        condition?: { trigger_key: string; when: string; values?: string[] };
+      }>;
     }): Promise<void> {
       await db.query(
         `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by)
@@ -849,9 +859,21 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
       for (const c of f.configured ?? []) {
         await db.query(
-          `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, name_mode)
-           VALUES ($1,$2,$3,$4,$5,0,72,$6,200,14,true,$7,$8)`,
-          [c.id, TENANT_ID, f.envDocId, f.signerId, c.field_type, c.y, c.label ?? null, c.name_mode ?? null],
+          `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, name_mode, field_key, condition)
+           VALUES ($1,$2,$3,$4,$5,0,72,$6,200,14,$9,$7,$8,$10,$11::jsonb)`,
+          [
+            c.id,
+            TENANT_ID,
+            f.envDocId,
+            f.signerId,
+            c.field_type,
+            c.y,
+            c.label ?? null,
+            c.name_mode ?? null,
+            c.required ?? true,
+            c.field_key ?? null,
+            c.condition === undefined ? null : JSON.stringify(c.condition),
+          ],
         );
       }
     }
@@ -1319,6 +1341,28 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 { id: V_BOX_FIELD_ID, field_type: 'CHECKBOX', y: 40, label: 'I agree to the terms' },
               ],
             });
+          },
+          // FIELD-PARITY-2 B-6 — the signer view carries each field's key and condition: an
+          // optional check box (key co) and a text field shown only when it is checked. Ids
+          // derive from the envelope_id param and the session token is the token param, so the
+          // sign-web and sign-mobile interactions each seed their own fixture.
+          'a signer session has accepted disclosure with a conditional field': async (params?: unknown) => {
+            const envelopeId = envelopeParam(params);
+            const token = (params as { token?: unknown } | undefined)?.token;
+            if (typeof token !== 'string') throw new Error('provider state requires a token param');
+            await seedSignerFixture({
+              envelopeId,
+              envDocId: childId(envelopeId, 2),
+              signerId: childId(envelopeId, 3),
+              sessionId: childId(envelopeId, 6),
+              token,
+              disclosure: true,
+              configured: [
+                { id: childId(envelopeId, 4), field_type: 'CHECKBOX', y: 10, label: 'Add a co-applicant', required: false, field_key: 'co' },
+                { id: childId(envelopeId, 5), field_type: 'TEXT', y: 40, label: 'Co-applicant name', field_key: 'co_name', condition: { trigger_key: 'co', when: 'checked' } },
+              ],
+            });
+            return undefined;
           },
           'a signer session is ready to complete with another pending signer': async () => {
             await seedSignerFixture({ envelopeId: C_ENVELOPE_ID, envDocId: C_ENV_DOC_ID, signerId: C_SIGNER_ID, sessionId: C_SESSION_ID, token: TOKEN_COMPLETE, disclosure: true, secondSignerId: C_SIGNER2_ID });

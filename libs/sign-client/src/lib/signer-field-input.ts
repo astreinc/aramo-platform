@@ -234,6 +234,9 @@ export const SIGNER_FIELD_VALUE_COPY: Readonly<Record<string, string>> = {
   field_read_only: 'The sender filled in this field. It can’t be changed.',
   signer_profile_name_server_filled: 'Your name is filled in from the signing request.',
   payment_field_server_filled: 'This field is completed when you pay.',
+  // FIELD-PARITY-2 B-5 / B-6 — the fill was refused because the signer's answers hide this field
+  // (its "show only when" rule is not met); the server is the authority.
+  field_hidden: 'This field isn’t needed for your answers, so it’s hidden now.',
 };
 
 export const SIGNER_FIELD_VALUE_FALLBACK = 'This value can’t be used here. Check it and try again.';
