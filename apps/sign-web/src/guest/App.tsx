@@ -15,6 +15,7 @@ import {
   isValidDelegate,
   normalizeSignerInput,
   numberPrefixOf,
+  radioChoiceClearable,
   signDatePreview,
   signerFieldCaption,
   signerFieldTooltip,
@@ -1358,10 +1359,14 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     } else setTextFor(f);
   };
   // FIELD-PARITY-1 P3 T-5 — choosing a radio button: the server clears the group's other
-  // options, so the page shows them cleared once the choice is saved. A chosen option stays
-  // chosen (choose another option to change it).
+  // options, so the page shows them cleared once the choice is saved. FIELD-PARITY-2 A-2 —
+  // tapping the chosen option of an OPTIONAL set clears it ('false'); a required set keeps its
+  // choice (choose another option to change it). The shared rule decides (radioChoiceClearable).
   const choose = async (f: SignField) => {
-    if (isChecked(filled[f.field_id])) return;
+    if (isChecked(filled[f.field_id])) {
+      if (radioChoiceClearable(f, fields)) await fill(f, 'false');
+      return;
+    }
     if (!(await fill(f, 'true'))) return;
     const others = selectOneSiblings(fields, f);
     setFilled((m) => {

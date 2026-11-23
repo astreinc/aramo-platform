@@ -104,6 +104,20 @@ describe('T-5 RADIO', () => {
     expect(fillsToSubmit(s)).toEqual([{ fieldId: 'r2', value: 'true' }]);
   });
 
+  it('FIELD-PARITY-2 A-2: tapping the chosen option of an optional set clears it', () => {
+    let s = initialState([opt('r1', { required: false }), opt('r2', { required: false })]);
+    s = tapField(s, 'r1', ctx).state;
+    expect(isChecked(s, 'r1')).toBe(true);
+    s = tapField(s, 'r1', ctx).state;
+    expect(isChecked(s, 'r1')).toBe(false);
+    expect(fillsToSubmit(s)).toEqual([]);
+    expect(canFinish(s)).toBe(true);
+    // A choice the server holds is cleared with an explicit 'false'.
+    let stored = initialState([opt('r1', { required: false, filled: true, value: 'true' }), opt('r2', { required: false })]);
+    stored = tapField(stored, 'r1', ctx).state;
+    expect(fillsToSubmit(stored)).toEqual([{ fieldId: 'r1', value: 'false' }]);
+  });
+
   it('a stored choice is cleared with an explicit false when another is chosen', () => {
     let s = initialState([opt('r1', { filled: true, value: 'true' }), opt('r2')]);
     s = tapField(s, 'r2', ctx).state;

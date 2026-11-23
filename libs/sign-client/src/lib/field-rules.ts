@@ -115,6 +115,20 @@ export function checkboxGroupOf(f: Pick<SignerFieldLike, 'field_type' | 'group_k
 }
 
 /**
+ * FIELD-PARITY-2 A-2 (G-5) — may the signer clear this chosen radio option (tapping it again)?
+ * Yes only in an OPTIONAL set: no option of its group (or the lone option, ungrouped) is
+ * required. Clearing sends 'false' (the server accepts it). A required set keeps its choice;
+ * choose another option to change it, and its rule is still enforced at completion. ONE copy
+ * for the sign-web guest page and the Aramo Sign app.
+ */
+export function radioChoiceClearable<T extends Pick<SignerFieldLike, 'field_type' | 'group_key' | 'required'>>(option: T, fields: readonly T[]): boolean {
+  if (option.field_type !== 'RADIO') return false;
+  const g = checkboxGroupOf(option);
+  const set = g === null ? [option] : fields.filter((f) => f.field_type === 'RADIO' && checkboxGroupOf(f) === g);
+  return !set.some((f) => f.required);
+}
+
+/**
  * Every unit, in field order then group order. `filled(f)`: the field has a value;
  * `checked(f)`: a check box holds 'true'.
  */

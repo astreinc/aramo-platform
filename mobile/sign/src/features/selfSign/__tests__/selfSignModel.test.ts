@@ -175,6 +175,11 @@ describe('FIELD-PARITY-2 A-1 — the Phase 3 types in Sign a document', () => {
     const e1 = chooseRadio([yes, no], yes, {});
     expect(e1).toEqual({ y: 'true', o: 'false' });
     expect(chooseRadio([yes, no], no, e1)).toEqual({ y: 'false', o: 'true' });
+    // A-2 — the chosen option of a required set stays chosen; of an optional set it clears.
+    expect(chooseRadio([yes, no], yes, e1)).toEqual(e1);
+    const a = { ...yes, required: false };
+    const b = { ...no, required: false };
+    expect(chooseRadio([a, b], a, e1)).toEqual({ y: 'false', o: 'false' });
   });
 
   it('Finish follows the shared completion rule (required values, acknowledgement, radio group)', () => {

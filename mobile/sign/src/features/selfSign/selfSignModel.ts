@@ -6,6 +6,7 @@ import {
   checkboxGroupOf,
   fieldValueDisplay,
   isSignerLocked,
+  radioChoiceClearable,
   signerFieldUnits,
   type FieldOptions,
   type SignerFieldLike,
@@ -183,11 +184,16 @@ export function asSigningField(f: EditorField): SigningField {
 }
 
 /**
- * Choose a radio option: it is on and the other options of its group are off. Tapping the
- * chosen option leaves it chosen (A-2's rule decides when it may be cleared).
+ * Choose a radio option: it is on and the other options of its group are off. FIELD-PARITY-2
+ * A-2 — tapping the chosen option clears it in an optional set (the shared rule,
+ * radioChoiceClearable); in a required set it stays chosen.
  */
 export function chooseRadio(fields: readonly EditorField[], f: EditorField, edits: SelfEdits): SelfEdits {
   const g = checkboxGroupOf({ field_type: f.type, group_key: f.groupKey ?? null });
+  if (isChecked(f, edits)) {
+    const row = (x: EditorField) => ({ field_type: x.type, group_key: x.groupKey ?? null, required: x.required });
+    return radioChoiceClearable(row(f), fields.map(row)) ? { ...edits, [f.key]: 'false' } : edits;
+  }
   const next: Record<string, string> = { ...edits };
   for (const o of fields)
     if (o.key !== f.key && g !== null && checkboxGroupOf({ field_type: o.type, group_key: o.groupKey ?? null }) === g)
