@@ -8,7 +8,7 @@
 // never edited by a tenant (§7.3). Field geometry is PDF-native, exactly what Sign places:
 // page_number 0-based, points, origin bottom-left, (x, y) the box's lower-left corner.
 
-import { checkboxGroupIssues, fieldTypesFor, isFieldTypeOn, type FieldTypeOn } from '@aramo/sign-fields';
+import { checkboxGroupIssues, fieldConditionIssues, fieldTypesFor, isFieldTypeOn, type FieldCondition, type FieldTypeOn } from '@aramo/sign-fields';
 
 /** field_schema.render_schema_version of a fixed-form version. */
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
@@ -202,7 +202,8 @@ export function fixedFormIssues(input: {
     }
   }
   for (const role_key of signerKeys) {
-    if (!input.fields.some((f) => f.signer_role === role_key && f.field_type === 'SIGNATURE')) {
+    // FIELD-PARITY-2 C-6 — a signature field that is always shown (a conditional one may never be).
+    if (!input.fields.some((f) => f.signer_role === role_key && f.field_type === 'SIGNATURE' && (f.condition === undefined || f.condition === null))) {
       out.push({ code: 'role_without_signature', message: `Signer role ${role_key} has no signature field.`, role_key });
     }
   }
@@ -223,5 +224,30 @@ export function fixedFormIssues(input: {
     const first = grouped.find((f) => f.group_key === g.group_key);
     out.push({ code: g.reason, message: g.message, ...(first !== undefined ? { field_key: first.field_key } : {}) });
   }
+  // FIELD-PARITY-2 B-3 — the one cross-field condition rule (duplicate keys are reported above;
+  // the unconditional-SIGNATURE rule is role_without_signature above).
+  for (const c of fixedFormConditionIssues(input.fields, { requireUnconditionalSignature: false })) {
+    if (c.reason === 'field_key_duplicate') continue;
+    out.push({ code: c.reason, message: `Field ${c.field_key ?? ''}: ${c.message}.`, ...(c.field_key !== null ? { field_key: c.field_key } : {}) });
+  }
   return out;
+}
+
+/**
+ * FIELD-PARITY-2 B-3 — a fixed form's fields through the one cross-field condition rule
+ * (@aramo/sign-fields fieldConditionIssues): a field's signer is its signer role (a prefilled
+ * field has none). Used by the publish issues above and by the console save routes.
+ */
+export function fixedFormConditionIssues(fields: readonly FixedFormField[], opts: { readonly requireUnconditionalSignature?: boolean } = {}) {
+  return fieldConditionIssues(
+    fields.map((f) => ({
+      field_key: f.field_key,
+      field_type: f.field_type,
+      signer: f.signer_role,
+      condition: (f.condition ?? null) as FieldCondition | null,
+      options: (f.options ?? null) as { choices?: { value: string }[] } | null,
+      sender_filled: f.sender_filled === true,
+    })),
+    opts,
+  );
 }

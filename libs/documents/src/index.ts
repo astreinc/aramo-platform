@@ -183,6 +183,7 @@ export {
   PLATFORM_TEMPLATE_ASSET_PREFIX,
   emptyFixedFormContent,
   fixedFormIssues,
+  fixedFormConditionIssues,
   fixedFormPdfOf,
   isFixedFormFieldType,
   type FixedFormContent,

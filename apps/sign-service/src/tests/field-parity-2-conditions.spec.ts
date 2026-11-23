@@ -82,3 +82,42 @@ describe('FIELD-PARITY-2 B-1 — the field key on PUT …/fields', () => {
     expect(repo.replaceDraftFields).not.toHaveBeenCalled();
   });
 });
+
+describe('FIELD-PARITY-2 B-2 / B-3 — conditions on PUT …/fields (the one cross-field rule)', () => {
+  const box = { ...at, field_type: 'CHECKBOX', width: 14, height: 14, field_key: 'agree' };
+  const dependent = (condition: unknown, extra: Record<string, unknown> = {}) => ({ ...at, y: 200, field_type: 'TEXT', field_key: 'detail', condition, ...extra });
+
+  it('stores a condition with its trigger key', async () => {
+    const { svc, stored, ready } = setup();
+    await ready();
+    await svc.replaceFields(AUTH, 'e1', { fields: [{ ...sig, field_key: 'sig' }, box, dependent({ trigger_key: 'agree', when: 'checked' })] }, 'r');
+    expect(stored()[2]).toMatchObject({ field_key: 'detail', condition: { trigger_key: 'agree', when: 'checked' } });
+    expect(stored()[1]).toMatchObject({ field_key: 'agree', condition: null });
+  });
+
+  it('refuses each cross-field problem with its named reason (§4.3), before any write', async () => {
+    const { svc, repo, ready } = setup();
+    await ready();
+    const cases: Array<[Array<Record<string, unknown>>, string]> = [
+      [[sig, box, dependent({ trigger_key: 'gone', when: 'checked' })], 'condition_trigger_unknown'],
+      [[sig, box, dependent({ trigger_key: 'agree', when: 'one_of', values: ['a'] })], 'condition_trigger_type_invalid'],
+      [[sig, box, dependent({ trigger_key: 'agree', when: 'checked' }, { signer_id: 's2' })], 'condition_cross_signer'],
+      [[sig, { ...at, field_type: 'DROPDOWN', field_key: 'plan', options: { choices: ['a'] } }, dependent({ trigger_key: 'plan', when: 'one_of', values: ['z'] })], 'condition_values_invalid'],
+      [[sig, { ...box, condition: { trigger_key: 'agree2', when: 'checked' } }, { ...box, y: 300, field_key: 'agree2', condition: { trigger_key: 'agree', when: 'checked' } }], 'condition_cycle'],
+      [[{ ...sig, condition: { trigger_key: 'agree', when: 'checked' } }, box], 'condition_no_unconditional_signature'],
+      [[sig, box, dependent({ trigger_key: 'agree' })], 'condition_invalid'],
+    ];
+    for (const [fields, reason] of cases) {
+      await expect(svc.replaceFields(AUTH, 'e1', { fields }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason } } });
+    }
+    expect(repo.replaceDraftFields).not.toHaveBeenCalled();
+  });
+
+  it('C-6 — readiness counts only signature fields that are always shown', () => {
+    const { svc } = setup();
+    const base = { documents: [{}], recipients: [{ id: 's1', name: 'Alex' }] };
+    const cond = { signer_id: 's1', field_type: 'SIGNATURE', required: true, condition: { trigger_key: 'agree', when: 'checked' } };
+    expect(svc.readiness({ ...base, fields: [cond] } as never)).toEqual({ ok: false, problems: ['Alex needs a signature field'] });
+    expect(svc.readiness({ ...base, fields: [cond, { signer_id: 's1', field_type: 'SIGNATURE', required: true, condition: null }] } as never)).toEqual({ ok: true, problems: [] });
+  });
+});

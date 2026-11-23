@@ -65,7 +65,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { checkboxGroupIssues, duplicateFieldKeys, fieldTypesFor, fieldValueRefusal, isFieldKey, parseFieldSettings, senderFilledFieldsEnabled, FIELD_KEY_MAX, type FieldImportWarning } from '@aramo/sign-fields';
+import { checkboxGroupIssues, fieldConditionIssues, fieldTypesFor, fieldValueRefusal, isFieldKey, parseFieldSettings, senderFilledFieldsEnabled, FIELD_KEY_MAX, type FieldCondition, type FieldImportWarning } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -1444,12 +1444,9 @@ export class SenderEnvelopeService {
     });
     checkboxGroups(fields, requestId);
     onePaymentPerSigner(fields, requestId);
-    // FIELD-PARITY-2 B-1 — a key names one field of the envelope.
-    const [dupKey] = duplicateFieldKeys(fields);
-    if (dupKey !== undefined) {
-      const index = fields.findIndex((f, j) => f.field_key === dupKey && fields.findIndex((g) => g.field_key === dupKey) !== j);
-      throw bad(requestId, `field ${index + 1}: the field key ${dupKey} is used twice`, { index, field: 'field_key', reason: 'field_key_duplicate' });
-    }
+    // FIELD-PARITY-2 B-1 / B-3 — a key names one field of the envelope, and every condition holds
+    // the one cross-field rule (@aramo/sign-fields fieldConditionIssues).
+    fieldConditions(fields, requestId);
     // (FIELD-PARITY-1 P3 S-5 — sender values were checked per field by fieldConfig.)
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.
@@ -1501,7 +1498,10 @@ export class SenderEnvelopeService {
         if (d.fields.some((f) => f.signer_id === r.id)) problems.push(`${r.name} receives a copy and cannot have fields`);
         continue;
       }
-      if (!d.fields.some((f) => f.signer_id === r.id && f.field_type === 'SIGNATURE')) problems.push(`${r.name} needs a signature field`);
+      // FIELD-PARITY-2 C-6 (amends 2.1-8) — a signature field that is always shown: a conditional
+      // SIGNATURE may never be shown, so it does not count.
+      const always = (f: { condition?: unknown }): boolean => f.condition === undefined || f.condition === null;
+      if (!d.fields.some((f) => f.signer_id === r.id && f.field_type === 'SIGNATURE' && always(f as { condition?: unknown }))) problems.push(`${r.name} needs a signature field`);
     }
     // FIELD-PARITY-1 P3 S-5 — a required field the sender fills needs the sender's value (a
     // radio group: one chosen option) before the envelope can be sent.
@@ -1815,6 +1815,25 @@ function paymentConfig(o: Record<string, unknown>, field_type: string, i: number
   if (currency !== 'USD') throw refuse('payment_currency', 'payment_currency_invalid', 'payments are collected in USD only');
   if (o['required'] === false) throw refuse('required', 'payment_field_required', 'a payment field is always required');
   return { payment_amount_minor: amount, payment_currency: 'USD' };
+}
+
+// FIELD-PARITY-2 B-1 / B-3 — the one cross-field rule over the whole field list (the trigger
+// exists by key, has a type the rule reads, is the same recipient's, the values are its choices,
+// no cycle, depth ≤ 3, each recipient keeps an unconditional SIGNATURE; a key is used once). The
+// first problem is refused with its named reason (§4.3).
+function fieldConditions(fields: ReadonlyArray<SenderFieldInput>, requestId: string): void {
+  const [issue] = fieldConditionIssues(
+    fields.map((f) => ({
+      field_key: f.field_key ?? null,
+      field_type: f.field_type,
+      signer: f.signer_id,
+      condition: (f.condition ?? null) as FieldCondition | null,
+      options: (f.options ?? null) as { choices?: { value: string }[] } | null,
+      sender_filled: f.sender_filled === true,
+    })),
+  );
+  if (issue === undefined) return;
+  throw bad(requestId, `field ${issue.index + 1}: ${issue.message}`, { index: issue.index, field: issue.reason === 'field_key_duplicate' ? 'field_key' : 'condition', reason: issue.reason });
 }
 
 // Sign 1.14 — one PAYMENT field per signer (each signer pays at most one amount).

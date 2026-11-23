@@ -18,7 +18,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
-import { RETIRED_FIELD_TYPES, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled } from '@aramo/sign-fields';
+import { RETIRED_FIELD_TYPES, fieldConditionIssues, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled, type FieldCondition } from '@aramo/sign-fields';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
@@ -723,6 +723,29 @@ export class DocumentTemplatesController {
         requestId,
         details: { field: parsed.refusal.setting, reason: parsed.refusal.reason },
       });
+    }
+    // FIELD-PARITY-2 B-3 — the one cross-field rule over the version's fields with the new one
+    // (the trigger exists by key, the same signer role, the rule fits its type, the values are its
+    // choices, no cycle, depth ≤ 3). The unconditional-SIGNATURE rule (C-6) needs the whole set,
+    // including a drawn signature block, so it is checked when the template is carried (B-9).
+    if (parsed.settings.condition !== null) {
+      let existing: Awaited<ReturnType<TemplatesRepository['listFields']>>;
+      try {
+        existing = await this.repo.listFields(auth.tenant_id, versionId);
+      } catch (e) {
+        throw toHttp(e, requestId);
+      }
+      const all = [
+        ...existing.map((f) => ({ field_key: f.field_key, field_type: f.field_type, signer: f.signer_role, condition: (f.condition ?? null) as FieldCondition | null, options: (f.options ?? null) as { choices?: { value: string }[] } | null, sender_filled: f.sender_filled })),
+        { field_key: body.field_key, field_type: body.field_type, signer: body.signer_role ?? null, condition: parsed.settings.condition, options: parsed.settings.options, sender_filled: parsed.settings.sender_filled },
+      ];
+      const [issue] = fieldConditionIssues(all, { requireUnconditionalSignature: false });
+      if (issue !== undefined) {
+        throw new AramoError('VALIDATION_ERROR', issue.message, 400, {
+          requestId,
+          details: { field: issue.reason === 'field_key_duplicate' ? 'field_key' : 'condition', reason: issue.reason },
+        });
+      }
     }
     try {
       return await this.repo.addField({ tenant_id: auth.tenant_id, template_version_id: versionId, ...body, ...parsed.settings });

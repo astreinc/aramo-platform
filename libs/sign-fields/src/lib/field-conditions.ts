@@ -102,3 +102,156 @@ export function parseFieldCondition(raw: unknown): FieldConditionParse {
   }
   return { ok: true, condition: { trigger_key: raw['trigger_key'], when: 'one_of', values: [...seen] } };
 }
+
+// ---- B-3 — the ONE cross-field rule (every save path; the web editor shows the same refusals).
+
+/** Every reason the cross-field rule refuses a field list (stable; §4.3 of the directive). */
+export const FIELD_CONDITION_REFUSAL_REASONS = [
+  'condition_invalid',
+  'condition_trigger_unknown',
+  'condition_trigger_type_invalid',
+  'condition_cross_signer',
+  'condition_values_invalid',
+  'condition_cycle',
+  'condition_depth_exceeded',
+  'condition_no_unconditional_signature',
+  'field_key_duplicate',
+] as const;
+export type FieldConditionRefusalReason = (typeof FIELD_CONDITION_REFUSAL_REASONS)[number];
+
+/** One field as the cross-field rule sees it. */
+export interface ConditionalFieldLike {
+  /** The field's key (NULL / absent: none; such a field cannot be a trigger). */
+  readonly field_key?: string | null;
+  readonly field_type: string;
+  /**
+   * Who fills it: the envelope signer id (Sign) or the template signer role (templates). NULL:
+   * nobody (template data), which can be neither conditional nor a trigger.
+   */
+  readonly signer: string | null;
+  readonly condition?: FieldCondition | null;
+  /** A DROPDOWN trigger's choices (a one_of condition's values are among them). */
+  readonly options?: { readonly choices?: readonly { readonly value: string }[] } | null;
+  readonly sender_filled?: boolean | null;
+}
+
+export interface FieldConditionIssue {
+  /** The position of the refused field in the list. */
+  readonly index: number;
+  readonly field_key: string | null;
+  readonly reason: FieldConditionRefusalReason;
+  readonly message: string;
+}
+
+export interface FieldConditionCheckOptions {
+  /**
+   * Ruling C-6: every signer keeps at least one unconditional SIGNATURE when any of its
+   * SIGNATURE fields is conditional (default true). A list that is not the signer's whole set
+   * (the documents template route adds one field at a time beside a drawn signature block) passes
+   * false; the template → envelope carry checks the whole set.
+   */
+  readonly requireUnconditionalSignature?: boolean;
+}
+
+/**
+ * The cross-field problems of a field list (empty = none), at most one per field, in field order
+ * (a key used twice is reported on its second use). Checks: the trigger exists (by key), has a type
+ * the rule reads (CONDITION_TRIGGER_TYPES), belongs to the same signer, a one_of condition's values
+ * are the dropdown's choice values, no cycle, a chain at most CONDITION_DEPTH_MAX deep, and (C-6)
+ * each signer keeps an unconditional SIGNATURE. The shape of each condition is parseFieldCondition's
+ * (the settings rule); a shape it would refuse is condition_invalid here too.
+ */
+export function fieldConditionIssues(fields: readonly ConditionalFieldLike[], opts: FieldConditionCheckOptions = {}): FieldConditionIssue[] {
+  const issues = new Map<number, FieldConditionIssue>();
+  const add = (index: number, reason: FieldConditionRefusalReason, message: string): void => {
+    if (!issues.has(index)) issues.set(index, { index, field_key: fields[index]?.field_key ?? null, reason, message });
+  };
+  const byKey = new Map<string, number>();
+  for (const [i, f] of fields.entries()) {
+    const k = f.field_key;
+    if (k === undefined || k === null) continue;
+    if (byKey.has(k)) add(i, 'field_key_duplicate', `the field key ${k} is used twice`);
+    else byKey.set(k, i);
+  }
+  const conditionOf = (f: ConditionalFieldLike | undefined): FieldCondition | null => {
+    if (f?.condition === undefined || f.condition === null) return null;
+    const parsed = parseFieldCondition(f.condition);
+    return parsed.ok ? parsed.condition : null;
+  };
+
+  for (const [i, f] of fields.entries()) {
+    if (f.condition === undefined || f.condition === null) continue;
+    const c = conditionOf(f);
+    if (c === null) {
+      add(i, 'condition_invalid', 'the condition is not { trigger_key, when, values? }');
+      continue;
+    }
+    if (f.sender_filled === true) {
+      add(i, 'condition_invalid', 'a sender-filled field cannot be conditional');
+      continue;
+    }
+    const t = byKey.get(c.trigger_key);
+    const trigger = t === undefined ? undefined : fields[t];
+    if (trigger === undefined) {
+      add(i, 'condition_trigger_unknown', `no field has the key ${c.trigger_key}`);
+      continue;
+    }
+    if (t === i) {
+      add(i, 'condition_cycle', 'a field cannot be its own trigger');
+      continue;
+    }
+    if (!CONDITION_TRIGGER_TYPES[c.when].includes(trigger.field_type)) {
+      add(i, 'condition_trigger_type_invalid', `"${c.when}" reads a ${CONDITION_TRIGGER_TYPES[c.when].join(' or ')} field, not a ${trigger.field_type}`);
+      continue;
+    }
+    if (f.signer === null || trigger.signer !== f.signer) {
+      add(i, 'condition_cross_signer', 'the trigger belongs to another signer (a condition reads only the same signer\'s answers)');
+      continue;
+    }
+    if (c.when === 'one_of') {
+      const choices = new Set((trigger.options?.choices ?? []).map((ch) => ch.value));
+      const stray = (c.values ?? []).find((v) => !choices.has(v));
+      if (stray !== undefined) {
+        add(i, 'condition_values_invalid', `${stray} is not a choice of the dropdown ${c.trigger_key}`);
+        continue;
+      }
+    }
+  }
+
+  // Cycles and depth, along each chain (a field with an earlier problem is reported once).
+  for (const [i, f] of fields.entries()) {
+    if (issues.has(i) || conditionOf(f) === null) continue;
+    const seen = new Set<number>([i]);
+    let depth = 0;
+    let cur: number | undefined = i;
+    while (cur !== undefined) {
+      const c = conditionOf(fields[cur]);
+      if (c === null) break;
+      depth += 1;
+      const next = byKey.get(c.trigger_key);
+      if (next !== undefined && seen.has(next)) {
+        add(i, 'condition_cycle', 'the conditions form a loop (a field shows only when it is shown)');
+        break;
+      }
+      if (depth > CONDITION_DEPTH_MAX) {
+        add(i, 'condition_depth_exceeded', `a chain of conditions is at most ${CONDITION_DEPTH_MAX} deep`);
+        break;
+      }
+      if (next !== undefined) seen.add(next);
+      cur = next;
+    }
+  }
+
+  // Ruling C-6 — a conditional SIGNATURE needs an unconditional one beside it (the same signer).
+  if (opts.requireUnconditionalSignature !== false) {
+    const signers = new Set(fields.filter((f) => f.field_type === 'SIGNATURE' && f.signer !== null).map((f) => f.signer as string));
+    for (const s of signers) {
+      const sigs = [...fields.entries()].filter(([, f]) => f.field_type === 'SIGNATURE' && f.signer === s);
+      const conditional = sigs.filter(([, f]) => f.condition !== undefined && f.condition !== null);
+      if (conditional.length === 0 || conditional.length < sigs.length) continue;
+      const [first] = conditional;
+      if (first !== undefined) add(first[0], 'condition_no_unconditional_signature', 'each signer needs at least one signature field that is always shown');
+    }
+  }
+  return [...issues.values()].sort((a, b) => a.index - b.index);
+}

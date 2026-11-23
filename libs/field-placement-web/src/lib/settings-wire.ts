@@ -10,12 +10,15 @@ import {
   DEFAULT_SIGNER_NAME_MODE,
   VALIDATIONS_BY_TYPE,
   fieldSettingsOf,
+  fieldConditionIssues,
   isFieldTypeKey,
   parseFieldCondition,
   parseFieldSettings,
   type DropdownChoice,
   type FieldOptions,
   type FieldSetting,
+  type FieldConditionCheckOptions,
+  type FieldConditionIssue,
   type FieldSettingRefusal,
   type FieldValidation,
 } from '@aramo/sign-fields';
@@ -179,6 +182,25 @@ export function settingsIssue(type: string, s: PlacementSettings, opts: { readon
   if (!isFieldTypeKey(type)) return null;
   const parsed = parseFieldSettings(settingsToWire(type, s), type, { sender_filled_enabled: opts.senderFilledEnabled === true });
   return parsed.ok ? null : parsed.refusal;
+}
+
+/**
+ * FIELD-PARITY-2 B-3 — the cross-field condition problems the server would refuse for this field
+ * list (the ONE rule, @aramo/sign-fields fieldConditionIssues), keyed by field id. A field's key is
+ * its id and its signer is its assignee. `requireUnconditionalSignature`: false where the host's
+ * server checks C-6 elsewhere (none today: sign-web Prepare and the console Studio save whole lists).
+ */
+export function conditionIssues(fields: readonly Pick<PlacedField, 'id' | 'type' | 'assignee' | 'settings'>[], opts: FieldConditionCheckOptions = {}): Map<string, FieldConditionIssue> {
+  const issues = fieldConditionIssues(
+    fields.map((f) => ({ field_key: f.id, field_type: f.type, signer: f.assignee, condition: f.settings.condition, options: f.settings.options, sender_filled: f.settings.senderFilled })),
+    opts,
+  );
+  const out = new Map<string, FieldConditionIssue>();
+  for (const i of issues) {
+    const id = fields[i.index]?.id;
+    if (id !== undefined && !out.has(id)) out.set(id, i);
+  }
+  return out;
 }
 
 /** A RADIO's next option text: "Option N", N one more than the options in its group. */

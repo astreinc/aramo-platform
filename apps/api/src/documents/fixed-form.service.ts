@@ -25,6 +25,7 @@ import {
   TemplateVariablesRepository,
   emptyFixedFormContent,
   fixedFormIssues,
+  fixedFormConditionIssues,
   fixedFormPdfOf,
   isFixedFormFieldType,
   type DocumentStoragePort,
@@ -458,6 +459,10 @@ export class FixedFormService {
         if (keys.has(f.field_key)) throw invalid(`${f.field_key} is placed twice`, input.requestId, { reason: 'field_key_duplicate', index });
         keys.add(f.field_key);
       }
+      // FIELD-PARITY-2 B-3 — the one cross-field condition rule over the whole list (C-6 too:
+      // a fixed form's signatures are all placed fields).
+      const [issue] = fixedFormConditionIssues(fields);
+      if (issue !== undefined) throw invalid(`field ${issue.index + 1}: ${issue.message}`, input.requestId, { reason: issue.reason, index: issue.index, field: 'condition' });
     }
     return this.forms.writePlatformDraft({
       version_id: version.id,
@@ -478,6 +483,12 @@ export class FixedFormService {
       throw invalid(`${field.field_key} is already placed`, input.requestId, { reason: 'field_key_duplicate' });
     }
     if (existing.length >= 200) throw invalid('at most 200 fields', input.requestId, { reason: 'too_many_fields' });
+    // FIELD-PARITY-2 B-3 — the cross-field condition rule with the new field (one field at a time:
+    // the unconditional-SIGNATURE rule is a publish issue, role_without_signature).
+    if (field.condition !== null && field.condition !== undefined) {
+      const [issue] = fixedFormConditionIssues([...existing, field], { requireUnconditionalSignature: false });
+      if (issue !== undefined) throw invalid(issue.message, input.requestId, { reason: issue.reason, field: 'condition' });
+    }
     return this.forms.addPlatformDraftField({ version_id: version.id, field });
   }
 

@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-
+// Runs under vitest and mobile Jest (globals only).
 import {
   CONDITION_VALUES_MAX,
   FIELD_KEY_MAX,
