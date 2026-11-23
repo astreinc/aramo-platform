@@ -2,7 +2,7 @@
 // Pure: every action is deterministic (ids come in the action), so it is unit-tested
 // without a renderer. Boxes are in the EDITOR frame (PDF points, top-left origin);
 // geometry.ts converts to and from the wire and the screen.
-import { fieldSettingsOf, isFieldTypeKey, pendingSuggestions, type FieldCondition } from '@aramo/sign-client';
+import { fieldSettingsOf, isFieldTypeKey, orphanedConditionIndexes, pendingSuggestions, type FieldCondition } from '@aramo/sign-client';
 
 import { NEW_DROPDOWN_CHOICES, isGroupedType, type EditorFieldSettings } from './fieldSettings';
 
@@ -81,6 +81,11 @@ export interface EditorState {
   /** P2-4 — the loaded suggestions (none until "Suggest" runs) and the dismissed keys. */
   readonly suggestions: readonly EditorSuggestion[];
   readonly dismissed: readonly string[];
+  /**
+   * FIELD-PARITY-2 B-7 — how many fields the last delete (or recipient removal) left without their
+   * trigger: their conditions were cleared in the same undo step and the editor warns (0: no warning).
+   */
+  readonly conditionsCleared: number;
 }
 
 export type EditorAction =
@@ -179,13 +184,20 @@ export type EditorAction =
    */
   | { readonly type: 'acceptSuggestions'; readonly keys: readonly string[]; readonly fieldKeys: readonly string[] }
   /** P2-4 — hide these suggestions (not an edit: nothing to undo). */
-  | { readonly type: 'dismissSuggestions'; readonly keys: readonly string[] };
+  | { readonly type: 'dismissSuggestions'; readonly keys: readonly string[] }
+  /**
+   * FIELD-PARITY-2 B-7 — "Show only when…" (null: always shown). Refused on a field the sender
+   * fills (D-4). One undo step.
+   */
+  | { readonly type: 'setCondition'; readonly key: string; readonly condition: FieldCondition | null }
+  /** B-7 — the warning about cleared conditions was read. */
+  | { readonly type: 'dismissConditionNotice' };
 
 export function initialEditorState(
   fields: readonly EditorField[] = [],
   activeRecipient: string | null = null,
 ): EditorState {
-  return { fields, selected: null, tool: null, activeRecipient, undo: [], suggestions: [], dismissed: [] };
+  return { fields, selected: null, tool: null, activeRecipient, undo: [], suggestions: [], dismissed: [], conditionsCleared: 0 };
 }
 
 /**
@@ -299,6 +311,17 @@ function mapGroup(
   const members = new Set(groupMembers(fields, f.groupKey).map((m) => m.key));
   members.add(key);
   return fields.map((x) => (members.has(x.key) ? fn(x) : x));
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — clear the conditions left without a trigger to read (deleted, retyped or
+ * gone with its recipient): the shared rule (orphanedConditionIndexes; an editor key is the field's
+ * field_key). Returns the fields and how many were cleared.
+ */
+export function clearOrphanedConditions(fields: readonly EditorField[]): { fields: readonly EditorField[]; cleared: number } {
+  const orphans = new Set(orphanedConditionIndexes(fields.map((f) => ({ field_key: f.key, field_type: f.type, condition: f.condition ?? null }))));
+  if (orphans.size === 0) return { fields, cleared: 0 };
+  return { fields: fields.map((f, i) => (orphans.has(i) ? { ...f, condition: null } : f)), cleared: orphans.size };
 }
 
 /** After a box leaves a group, the group's minimum never exceeds its size. */
@@ -504,6 +527,8 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       let next: EditorField = { ...f, ...patch };
       // S-4 — read-only only with sender-filled; a field no longer sender-filled loses its value.
       if (next.senderFilled !== true) next = { ...next, readOnly: false, senderValue: null };
+      // FIELD-PARITY-2 D-4 — a field the sender fills is always shown (no condition).
+      else if (next.condition) next = { ...next, condition: null };
       const changed = (Object.keys(next) as (keyof EditorField)[]).some((k) => JSON.stringify(next[k]) !== JSON.stringify(f[k]));
       if (!changed) return s;
       const shared = patch.readOnly !== undefined || patch.senderFilled !== undefined;
@@ -518,6 +543,7 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
           if (shared) {
             y = { ...y, readOnly: next.readOnly === true, senderFilled: next.senderFilled === true };
             if (next.senderFilled !== true) y = { ...y, senderValue: null };
+            else if (y.condition) y = { ...y, condition: null };
           }
           if (radioChosen && y.senderValue === 'true') y = { ...y, senderValue: 'false' };
           return y;
@@ -542,29 +568,37 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
     case 'delete': {
       const f = s.fields.find((x) => x.key === a.key);
       if (!f) return s;
+      // B-7 — the fields that showed only for an answer to this one are always shown from now on
+      // (same undo step; the editor warns).
+      const { fields, cleared } = clearOrphanedConditions(clampGroupMin(s.fields.filter((x) => x.key !== a.key), f.groupKey));
       return {
-        ...commit(
-          s,
-          clampGroupMin(
-            s.fields.filter((x) => x.key !== a.key),
-            f.groupKey,
-          ),
-        ),
+        ...commit(s, fields),
         selected: s.selected === a.key ? null : s.selected,
+        conditionsCleared: cleared,
       };
     }
+    case 'setCondition': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || (a.condition !== null && f.senderFilled === true)) return s;
+      if (JSON.stringify(f.condition ?? null) === JSON.stringify(a.condition)) return s;
+      return commit(s, mapField(s.fields, a.key, (x) => ({ ...x, condition: a.condition })));
+    }
+    case 'dismissConditionNotice':
+      return s.conditionsCleared === 0 ? s : { ...s, conditionsCleared: 0 };
     case 'undo': {
       const prev = s.undo[s.undo.length - 1];
       if (prev === undefined) return s;
       const selected =
         s.selected !== null && prev.some((f) => f.key === s.selected) ? s.selected : null;
-      return { ...s, fields: prev, undo: s.undo.slice(0, -1), selected };
+      return { ...s, fields: prev, undo: s.undo.slice(0, -1), selected, conditionsCleared: 0 };
     }
     case 'recipientsChanged': {
       const keep = new Set(a.recipientKeys);
       const filtered = s.fields.filter((f) => keep.has(f.recipientKey));
       const removed = filtered.length !== s.fields.length;
-      const fields = removed ? filtered : s.fields;
+      // B-7 — a removed recipient's triggers go with them: their dependents' conditions clear.
+      const orphans = removed ? clearOrphanedConditions(filtered) : { fields: s.fields, cleared: 0 };
+      const fields = orphans.fields;
       const active =
         s.activeRecipient !== null && keep.has(s.activeRecipient)
           ? s.activeRecipient
@@ -572,7 +606,7 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       const selected =
         s.selected !== null && fields.some((f) => f.key === s.selected) ? s.selected : null;
       // Undo snapshots may reference removed recipients, so they go with them.
-      return { ...s, fields, activeRecipient: active, selected, undo: removed ? [] : s.undo };
+      return { ...s, fields, activeRecipient: active, selected, undo: removed ? [] : s.undo, ...(orphans.cleared > 0 ? { conditionsCleared: orphans.cleared } : {}) };
     }
   }
 }
