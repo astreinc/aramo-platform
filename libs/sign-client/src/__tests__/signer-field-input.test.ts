@@ -171,6 +171,10 @@ describe('refusal wording', () => {
       expect(refusalMessage({ code: 'VALIDATION_ERROR', reason: r, status: 400 })).toBe(SIGNER_FIELD_VALUE_COPY[r]);
     }
     expect(isFieldValueRefusalReason('something_else')).toBe(false);
+    // FIELD-PARITY-2 B-6 — a fill refused because the signer's answers hide the field.
+    expect(isFieldValueRefusalReason('field_hidden')).toBe(true);
+    expect(fieldValueRefusalText('field_hidden')).toBe('This field isn’t needed for your answers, so it’s hidden now.');
+    expect(refusalMessage({ code: 'VALIDATION_ERROR', reason: 'field_hidden', status: 400 })).toBe(SIGNER_FIELD_VALUE_COPY['field_hidden']);
     expect(fieldValueRefusalText('something_else')).toBe(SIGNER_FIELD_VALUE_FALLBACK);
   });
 

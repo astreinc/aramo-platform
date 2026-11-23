@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { completionProblem, incompleteMessage, isLocked, isRadio, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import {
+  FILLED_MARK,
+  completionProblem,
+  incompleteMessage,
+  isLocked,
+  isRadio,
+  isServerName,
+  nextFieldToDo,
+  requirements,
+  selectOneSiblings,
+  shownSignFields,
+  withoutHiddenAnswers,
+} from './field-rules.js';
 import type { SignField } from './sign-api.js';
 
 // M-A6 §2.3 — the signer page mirrors the server's completion rules.
@@ -98,5 +110,55 @@ describe('FIELD-PARITY-1 P3 completion rules', () => {
 
   it('the server’s radio refusal at Finish', () => {
     expect(incompleteMessage('radio_group_select_one')).toBe('Choose exactly one option in each set of choices.');
+  });
+});
+
+// FIELD-PARITY-2 B-6 — the signer page applies the one visibility rule (@aramo/sign-client).
+describe('conditional fields (B-6)', () => {
+  const box = f('box', { field_key: 'box', required: false });
+  const dep = f('dep', { field_key: 'dep', condition: { trigger_key: 'box', when: 'checked' } });
+  const deeper = f('deeper', { field_type: 'TEXT', field_key: 'deeper', condition: { trigger_key: 'dep', when: 'unchecked' } });
+  const dd = f('dd', { field_type: 'DROPDOWN', field_key: 'dd', required: false, options: { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] } });
+  const ddDep = f('ddDep', { field_type: 'TEXT', field_key: 'ddDep', condition: { trigger_key: 'dd', when: 'one_of', values: ['b'] } });
+  const sig = f('sig', { field_type: 'SIGNATURE' });
+  const ids = (xs: readonly SignField[]) => xs.map((x) => x.field_id);
+
+  it('shows a dependent only when its trigger is met, along a chain', () => {
+    const all = [box, dep, deeper, sig];
+    expect(ids(shownSignFields(all, {}))).toEqual(['box', 'sig']);
+    expect(ids(shownSignFields(all, { box: 'false' }))).toEqual(['box', 'sig']);
+    expect(ids(shownSignFields(all, { box: 'true' }))).toEqual(['box', 'dep', 'deeper', 'sig']);
+    // A box restored without its value (FILLED_MARK) reads as checked.
+    expect(ids(shownSignFields(all, { box: FILLED_MARK }))).toEqual(['box', 'dep', 'deeper', 'sig']);
+  });
+
+  it('a dropdown trigger reads its value (one_of)', () => {
+    expect(ids(shownSignFields([dd, ddDep], { dd: 'a' }))).toEqual(['dd']);
+    expect(ids(shownSignFields([dd, ddDep], { dd: 'b' }))).toEqual(['dd', 'ddDep']);
+  });
+
+  it('progress counts only shown required fields', () => {
+    const all = [box, dep, sig];
+    expect(requirements(all, {}).map((r) => r.key)).toEqual(['sig']);
+    expect(requirements(all, { box: 'true' }).map((r) => r.key)).toEqual(['dep', 'sig']);
+    expect(requirements([dd, ddDep, sig], { dd: 'b' }).map((r) => r.key)).toEqual(['ddDep', 'sig']);
+    // A hidden required field never blocks Finish.
+    expect(completionProblem(all, { sig: 'data:image/png;base64,x' })).toBeNull();
+    expect(completionProblem(all, { box: 'true', sig: 'data:image/png;base64,x' })).not.toBeNull();
+  });
+
+  it('Next skips hidden fields', () => {
+    const all = [box, dep, sig];
+    expect(nextFieldToDo(all, {})?.field_id).toBe('sig');
+    expect(nextFieldToDo(all, { box: 'true' })?.field_id).toBe('dep');
+    expect(nextFieldToDo(all, { box: 'true', dep: 'true', sig: 'y' })).toBeNull();
+  });
+
+  it('an answer that hides fields clears their answers (C-3, as the server does), along the chain', () => {
+    const all = [box, dep, deeper, sig];
+    expect(withoutHiddenAnswers(all, { box: 'false', dep: 'false', deeper: 'y', sig: 'z' })).toEqual({ box: 'false', sig: 'z' });
+    expect(withoutHiddenAnswers(all, { box: 'true', dep: 'false', deeper: 'y' })).toEqual({ box: 'true', dep: 'false', deeper: 'y' });
+    // Checking dep hides deeper (unchecked rule): its answer goes, dep's stays.
+    expect(withoutHiddenAnswers(all, { box: 'true', dep: 'true', deeper: 'y' })).toEqual({ box: 'true', dep: 'true' });
   });
 });

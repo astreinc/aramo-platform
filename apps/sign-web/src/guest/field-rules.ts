@@ -2,8 +2,10 @@ import {
   CHECK_FIELD_TYPES,
   PAYMENT_FIELD_TYPE,
   checkboxGroupOf,
+  hiddenFilledFields,
   incompleteReasonMessage,
   isSignerLocked,
+  shownFields,
   signerFieldUnits,
   signerUnitMessage,
   type SignerFieldLike,
@@ -66,6 +68,7 @@ export function requirements(fields: readonly SignField[], filled: Readonly<Reco
   const units = signerFieldUnits(fields as readonly (SignField & SignerFieldLike)[], {
     filled: (f) => filled[f.field_id] !== undefined,
     checked: (f) => isChecked(filled[f.field_id]),
+    value: answerOf(filled),
   });
   return units.map((u) => {
     const first = u.fields[0] as SignField;
@@ -86,4 +89,53 @@ export function completionProblem(fields: readonly SignField[], filled: Readonly
 // The server's 409 SIGNATURE_FIELD_INCOMPLETE reasons, in plain language (@aramo/sign-client).
 export function incompleteMessage(reason: string | undefined): string {
   return incompleteReasonMessage(reason);
+}
+
+// FIELD-PARITY-2 B-6 — conditional fields on the signer page. Which fields are shown is the ONE
+// visibility rule (@aramo/sign-client shownFields, the server's own); this page keeps no copy.
+// Every helper takes ALL of this signer's fields (a hidden trigger must stay in the list so its
+// dependents read as hidden), and `filled` is the page's current answers.
+
+// A field's current answer as the rule reads it: a box restored from an earlier visit without
+// its value (FILLED_MARK) reads as checked; anything else as entered.
+export function answerOf(filled: Readonly<Record<string, string>>): (f: SignField) => string | null {
+  return (f) => {
+    const v = filled[f.field_id];
+    if (v === undefined) return null;
+    return v === FILLED_MARK && isBox(f) ? 'true' : v;
+  };
+}
+
+// The fields shown for these answers, in field order (the list, the page overlays, the review).
+export function shownSignFields(fields: readonly SignField[], filled: Readonly<Record<string, string>>): SignField[] {
+  const shown = shownFields(fields, answerOf(filled));
+  return fields.filter((f) => shown.has(f));
+}
+
+// Ruling C-3 — the server clears a field's value at once when an answer hides it. The page
+// mirrors that on its own answers (the server stays the authority): every hidden answer goes.
+export function withoutHiddenAnswers(fields: readonly SignField[], filled: Readonly<Record<string, string>>): Record<string, string> {
+  const hidden = hiddenFilledFields(fields, answerOf(filled), (f) => filled[f.field_id] !== undefined);
+  if (hidden.length === 0) return { ...filled };
+  const next = { ...filled };
+  for (const f of hidden) delete next[f.field_id];
+  return next;
+}
+
+// Whether a field still waits for the signer (the list's status; never the required rule):
+// an unchecked box, or an empty field the signer fills. A server-filled name and the sender's
+// value never wait.
+export function awaitsSigner(f: SignField, filled: Readonly<Record<string, string>>): boolean {
+  if (isServerName(f) || isLocked(f)) return false;
+  return isBox(f) ? !isChecked(filled[f.field_id]) : filled[f.field_id] === undefined;
+}
+
+// Start / Next field: the first SHOWN field of the first unmet requirement (the shared rule's
+// units, in field order), else the first shown optional field still empty, else null. A hidden
+// field is never offered.
+export function nextFieldToDo(fields: readonly SignField[], filled: Readonly<Record<string, string>>): SignField | null {
+  const shown = shownSignFields(fields, filled);
+  const unmet = new Set(requirements(fields, filled).filter((r) => !r.done).map((r) => r.key));
+  const inUnmet = (f: SignField) => unmet.has(f.field_id) || (typeof f.group_key === 'string' && unmet.has(`group:${f.group_key}`));
+  return shown.find((f) => awaitsSigner(f, filled) && inUnmet(f)) ?? shown.find((f) => awaitsSigner(f, filled) && !isBox(f)) ?? null;
 }
