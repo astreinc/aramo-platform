@@ -31,6 +31,8 @@ import { BUSINESS_SIGNUP_URL, UsageRows } from './PersonalAllowance';
 // CCP-PERSONAL-ARRANGED-1 P-7 (PO ruling D-8: the copy is @aramo/sign-client's) — a plan arranged with
 // Aramo (the server's `subscription.arranged`) shows "<plan> · arranged with Aramo" with its allowance,
 // and no price, commitment, term or manage / cancel controls; a purchase refused for it says so.
+// PO ruling D-7 — after a CONVERSION TO_SELF_SERVICE release of the arranged row the server sends the
+// normal upgrade offer again (`upgrade` non-null), and the page shows it.
 
 const UNAVAILABLE_REASON: Readonly<Record<string, string>> = {
   not_available_in_country: 'Standard isn’t available in your country yet.',
@@ -102,7 +104,8 @@ export function PersonalPlanPanel({ pollMs = 3000, maxTries = 20 }: { pollMs?: n
   const onFree = !arranged && (planKey === null || planKey === FREE_PERSONAL_PLAN_KEY);
   // An older backend has no `upgrade` field: the offer is shown and checkout is the authority.
   const offer = account?.upgrade;
-  const showUpgrade = account !== null && onFree && offer !== null;
+  // D-7 — on an arranged plan the offer shows only when the server sends one (after a release).
+  const showUpgrade = account !== null && offer !== null && (onFree || (arranged && offer !== undefined));
   const upgradeOpen = offer === undefined || offer?.available === true;
   useEffect(() => {
     if (account === null || terms !== undefined) return;

@@ -275,7 +275,7 @@ describe('PersonalPlanPanel — Monthly and Annual billing terms', () => {
   });
 });
 
-// CCP-PERSONAL-ARRANGED-1 P-7 (copy from @aramo/sign-client, PO ruling D-8).
+// CCP-PERSONAL-ARRANGED-1 P-7 (copy from @aramo/sign-client, PO ruling D-8) and PO ruling D-7.
 describe('PersonalPlanPanel — a plan arranged with Aramo', () => {
   const assign = vi.fn();
   beforeEach(() => {
@@ -299,6 +299,8 @@ describe('PersonalPlanPanel — a plan arranged with Aramo', () => {
       allowance: { subscribed: true, plan_key: STANDARD_KEY, allowance_key: 'sign.envelopes', limit: 25, used: 4, remaining: 21, period_start: '2026-11-24T00:00:00Z', period_end: '2026-12-24T00:00:00Z', threshold: 'OK', daily: null },
       upgrade,
     });
+  const refusal = (status: number, code: string, reason: string) => json({ error: { code, message: 'refused', details: { reason } } }, status);
+  const RELEASED_OFFER = { available: true, plan_key: STANDARD_KEY, price_minor: 1000, commitment_months: 12 };
 
   it('COMP: "Standard · arranged with Aramo" with the Standard allowance; no price, commitment, term, billing text, manage or cancel; no offer', async () => {
     vi.stubGlobal('fetch', stub([arranged()], plans));
@@ -326,5 +328,28 @@ describe('PersonalPlanPanel — a plan arranged with Aramo', () => {
     expect(screen.queryByTestId('billing-cancel-open')).toBeNull();
     expect(screen.queryByTestId('billing-cancel-unavailable')).toBeNull();
     expect(screen.getByTestId('personal-plan-current')).not.toHaveTextContent(/commitment|Cancel/);
+  });
+
+  it('D-7: after a release the server sends the offer again and the page shows it; a refused checkout says the plan is arranged', async () => {
+    const fetch = stub([arranged({}, RELEASED_OFFER)], (url) =>
+      url.endsWith('/v1/sign/billing/checkout') ? refusal(409, 'ESIGN_BILLING_CONFLICT', 'governed_subscription_open') : plans(url),
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(<PersonalPlanPanel />);
+    expect(await screen.findByTestId('personal-plan-upgrade')).toHaveTextContent('Upgrade to Standard');
+    expect(screen.getByTestId('personal-plan-arranged')).toHaveTextContent('Standard · arranged with Aramo');
+    fireEvent.click(await screen.findByTestId('personal-plan-terms-agree'));
+    fireEvent.click(screen.getByTestId('personal-plan-upgrade-btn'));
+    expect(await screen.findByText('Your plan is arranged with Aramo. Contact support to change it.')).toBeInTheDocument();
+    expect(assign).not.toHaveBeenCalled();
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/checkout'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ plan_key: STANDARD_KEY, accept_terms: true });
+  });
+
+  it('a checkout return on an arranged plan keeps waiting until the backend reports the paid plan', async () => {
+    vi.stubGlobal('location', { ...window.location, search: '?checkout=success', assign });
+    vi.stubGlobal('fetch', stub([arranged({}, RELEASED_OFFER)], plans));
+    render(<PersonalPlanPanel pollMs={10} maxTries={1} />);
+    expect(await screen.findByTestId('personal-plan-confirming')).toHaveTextContent('Confirming your upgrade with Aramo');
   });
 });
