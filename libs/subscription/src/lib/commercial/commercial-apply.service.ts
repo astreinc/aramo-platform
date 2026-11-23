@@ -136,7 +136,7 @@ export type CommercialApplyFailureCode =
   | 'TARGET_STALE' // the open row is not the one the approved payload names (or it has ended)
   | 'TARGET_NOT_FOUND' // the named subscription does not exist for this tenant × product
   | 'TARGET_NOT_GOVERNED' // the named row is not a governed (MANUAL) BASE row
-  | 'TARGET_NOT_REPLACEABLE' // the prior open row is FREE (Personal Free v1.1 governs it)
+  | 'TARGET_NOT_REPLACEABLE' // the prior open row is FREE and the open is not an arranged PERSONAL plan for a PERSONAL tenant (CCP-PERSONAL-ARRANGED-1 P-1)
   | 'PLAN_NOT_FOUND' // no plan with the key for this product
   | 'PLAN_VERSION_MISMATCH' // the version is not a version of that plan
   | 'PLAN_VERSION_NOT_PUBLISHED' // G3: only a PUBLISHED version is pinned
@@ -556,14 +556,19 @@ export class CommercialApplyService {
         }
       }
       case 'SUBSCRIPTION_OPEN': {
-        const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
+        const { plan, version, tenant_kind } = await this.pinnedVersion(tx, tenant_id, product_key, p);
         const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
         if (open !== null) this.assertNotStripeOwned(open);
         // G2 — the approved payload names the row it replaces; anything else is stale.
         if ((open?.id ?? null) !== (p['replaces_subscription_id'] ?? null)) {
           throw new ApplyFailure('TARGET_STALE', { expected: p['replaces_subscription_id'] ?? null, open_subscription_id: open?.id ?? null });
         }
-        if (open !== null && open.source === 'FREE') throw new ApplyFailure('TARGET_NOT_REPLACEABLE', { subscription_id: open.id, source: open.source });
+        // CCP-PERSONAL-ARRANGED-1 P-1 (ruling R-1, the Conversion Rule's O-4) — a FREE row is replaced only for
+        // a PERSONAL tenant, by a PERSONAL plan, with an arrangement (re-checked here: NC-5); it is ended below
+        // and recorded as replaced (COMMERCIAL_SUBSCRIPTION_ENDED, source FREE). Anything else is refused.
+        if (open !== null && open.source === 'FREE' && !(tenant_kind === 'PERSONAL' && plan.tenant_kind === 'PERSONAL' && isSubscriptionArrangement(p['arrangement']))) {
+          throw new ApplyFailure('TARGET_NOT_REPLACEABLE', { subscription_id: open.id, source: open.source, tenant_kind, plan_tenant_kind: plan.tenant_kind, arrangement: p['arrangement'] ?? null });
+        }
         // T6 / T8 — the effective date is the apply instant; the billing period is defined by the
         // anchor. Replacing a row keeps its anchor (same period, upgrade only); a fresh open may name
         // a past anchor, never a future one, and never one that strands usage of the current period.
@@ -981,6 +986,6 @@ export class CommercialApplyService {
     if (plan.tenant_kind !== null && tenant[0]?.kind !== plan.tenant_kind) {
       throw new ApplyFailure('PLAN_TENANT_KIND_MISMATCH', { plan_key: plan.key, plan_tenant_kind: plan.tenant_kind, tenant_kind: tenant[0]?.kind ?? null });
     }
-    return { plan, version };
+    return { plan, version, tenant_kind: tenant[0]?.kind ?? null };
   }
 }
