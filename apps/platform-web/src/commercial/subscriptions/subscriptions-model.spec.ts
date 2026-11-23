@@ -172,10 +172,17 @@ describe('CCP-B3 actions — gating and domain reasons (handoff §5.9 "Actions")
 });
 
 describe('CCP-B3 the action-to-change-request trace (payloads; PBD §5.3 B3 acceptance)', () => {
-  const team = planChoices(CATALOG, 'sign').find((c) => c.plan.name === 'Team')!;
+  const team = planChoices(CATALOG, 'sign', 'BUSINESS').find((c) => c.plan.name === 'Team')!;
   it('B3-P-1 plan choices: newest PUBLISHED version of each list-priced plan (contract-priced excluded); price label', () => {
-    expect(planChoices(CATALOG, 'sign').map((c) => `${c.plan.name} v${c.version.version_number}`)).toEqual(['Team v2', 'Scale v1']);
+    expect(planChoices(CATALOG, 'sign', 'BUSINESS').map((c) => `${c.plan.name} v${c.version.version_number}`)).toEqual(['Team v2', 'Scale v1']);
     expect(priceLabel(team.version)).toBe('$59 / month');
+  });
+  it('CPA-P-1 every plan picker filters by tenant kind (CCP-PERSONAL-ARRANGED-1 P-5): a Personal tenant sees Personal plans other than Free', () => {
+    expect(planChoices(CATALOG, 'sign', 'PERSONAL').map((c) => `${c.plan.name} v${c.version.version_number}`)).toEqual(['Standard v1']);
+    expect(planChoices(CATALOG, 'sign', 'BUSINESS').some((c) => c.plan.tenant_kind === 'PERSONAL')).toBe(false);
+    // A plan whose kind the catalog does not state is never offered (fail closed).
+    const unstated = { ...CATALOG, products: CATALOG.products.map((p) => ({ ...p, plans: p.plans.map(({ tenant_kind: _k, ...plan }) => plan) })) };
+    expect(planChoices(unstated, 'sign', 'BUSINESS')).toEqual([]);
   });
   it('B3-P-2 every dialog maps to exactly one A3 / C2 payload', () => {
     const p = product();
@@ -194,7 +201,7 @@ describe('CCP-B3 the action-to-change-request trace (payloads; PBD §5.3 B3 acce
       ['Subscription', 'Active', 'Ended'],
       ['Aramo Sign entitlement', 'Active', 'Active (unchanged)'],
     ]);
-    const plan = diffRows('plan', { product: product(), current: planChoices(CATALOG, 'sign')[1]!.version, next: team, currentPlanName: 'Scale' });
+    const plan = diffRows('plan', { product: product(), current: planChoices(CATALOG, 'sign', 'BUSINESS')[1]!.version, next: team, currentPlanName: 'Scale' });
     expect(plan.map((r) => [r.field, r.before, r.after, r.changed])).toEqual([
       ['Plan', 'Sign Scale', 'Sign Team', true],
       ['Plan version', 'v1', 'v2', true],

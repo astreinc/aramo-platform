@@ -274,6 +274,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
           kind={dialog.kind}
           tenantId={tenantId}
           tenantName={tenantName}
+          tenantKind={state.value.tenant.kind}
           product={dialog.product}
           flag={dialog.flag ?? null}
           policy={support?.policy ?? null}

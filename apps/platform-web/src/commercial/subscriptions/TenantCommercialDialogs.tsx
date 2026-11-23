@@ -30,6 +30,8 @@ export interface TenantDialogProps {
   readonly kind: DialogKind;
   readonly tenantId: string;
   readonly tenantName: string;
+  /** BUSINESS | PERSONAL — the plan pickers offer this kind's plans only. */
+  readonly tenantKind: string;
   readonly product: ProductCommercial;
   /** The flag a reconciliation release names (kind 'recon'). */
   readonly flag?: HeldFlag | null;
@@ -52,12 +54,18 @@ function allowanceLabel(v: Pick<CatalogVersion, 'terms'> | null): string {
   return `${(v.terms.envelopes_per_month ?? 0).toLocaleString('en-US')} envelopes`;
 }
 
-/** The plan versions a plan change may name: the newest PUBLISHED version of each list-priced plan of the product. */
-export function planChoices(catalog: Catalog | null, product: string): { plan: CatalogPlan; version: CatalogVersion }[] {
+/**
+ * The plan versions a request may name: the newest PUBLISHED version of each list-priced plan of
+ * the product, for the tenant's kind only (CCP-PERSONAL-ARRANGED-1 P-5: every console plan picker
+ * filters by tenant kind; a plan for the other kind is refused at creation, `plan_tenant_kind_mismatch`).
+ * A plan whose kind the catalog does not state is never offered (fail closed).
+ */
+export function planChoices(catalog: Catalog | null, product: string, tenantKind: string): { plan: CatalogPlan; version: CatalogVersion }[] {
   const plans = catalog?.products.find((p) => p.product_key === product)?.plans ?? [];
   const out: { plan: CatalogPlan; version: CatalogVersion }[] = [];
   for (const plan of [...plans].sort((a, b) => a.display_order - b.display_order)) {
     if (plan.status !== 'ACTIVE' || plan.sales_model === 'CONTACT_SALES' || plan.sales_model === 'FREE') continue;
+    if (plan.tenant_kind !== tenantKind) continue;
     const version = plan.versions.find((v) => v.status === 'PUBLISHED');
     if (version) out.push({ plan, version });
   }
@@ -172,7 +180,7 @@ export function payloadOf(kind: DialogKind, input: { readonly product: ProductCo
   }
 }
 
-export function TenantRequestDialog({ kind, tenantId, tenantName, product, flag = null, policy, onClose, onDone }: TenantDialogProps) {
+export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, product, flag = null, policy, onClose, onDone }: TenantDialogProps) {
   const spec = specOf(kind, tenantName, product.product_key);
   const needsCatalog = kind === 'plan' || kind === 'convert';
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -196,7 +204,7 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, product, flag 
         setCatalog(c);
         // Design `init: { plan: sub.plan }`: the current plan, at its latest published version.
         const cur = product.subscription;
-        const choices = planChoices(c, product.product_key);
+        const choices = planChoices(c, product.product_key, tenantKind);
         const same = cur ? choices.find((x) => x.plan.id === cur.plan.id) : undefined;
         setPlanVersion((same ?? choices[0])?.version.id ?? '');
       },
@@ -207,9 +215,9 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, product, flag 
     return () => {
       cancelled = true;
     };
-  }, [needsCatalog, product]);
+  }, [needsCatalog, product, tenantKind]);
 
-  const choices = planChoices(catalog, product.product_key);
+  const choices = planChoices(catalog, product.product_key, tenantKind);
   const next = choices.find((x) => x.version.id === planVersion) ?? null;
   const current = product.subscription ? findVersion(catalog, product.product_key, product.subscription.plan_version.id) : null;
   const diff = diffRows(kind, { product, current, next, currentPlanName: product.subscription?.plan.name ?? '' });
