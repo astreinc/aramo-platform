@@ -464,7 +464,12 @@ export {
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
   PLAN_VERSION_ID_REQUIRED,
-  // CCP-PERSONAL-ARRANGED-1 — the arrangement marker.
+  // CCP-PERSONAL-ARRANGED-1 — the arrangement marker and the creation-time refusal reasons (P-4).
+  ARRANGEMENT_REQUIRED_REASON,
+  FREE_REPLACEMENT_NOT_PERSONAL_REASON,
+  PLAN_TENANT_KIND_MISMATCH_REASON,
+  subscriptionOpenRefusal,
+  type SubscriptionOpenRefusalReason,
   SUBSCRIPTION_ARRANGEMENTS,
   EXTERNAL_REF_MAX_LENGTH,
   arrangementPayloadErrors,

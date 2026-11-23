@@ -272,16 +272,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
       [{ plan_key: ENTERPRISE, plan_version_id: draft, replaces_subscription_id: null }, 'FAILED:PLAN_VERSION_NOT_PUBLISHED'],
       [{ plan_key: ENTERPRISE, plan_version_id: await publishedVersion(pg, INCLUDED), replaces_subscription_id: null }, 'FAILED:PLAN_VERSION_MISMATCH'],
       [{ plan_key: 'aramo-sign-no-such-plan', plan_version_id: draft, replaces_subscription_id: null }, 'FAILED:PLAN_NOT_FOUND'],
+      // CCP-PERSONAL-ARRANGED-1 (P-4): the FREE plan is a PERSONAL plan, so its case runs on a PERSONAL tenant
+      // (on a BUSINESS tenant the request is now refused at creation, plan_tenant_kind_mismatch).
       [await openPayload(FREE_PERSONAL), 'FAILED:PLAN_NOT_ASSIGNABLE'],
     ];
     for (const [payload, expected] of cases) {
-      const tc = await newTenant(pg); // one tenant per case (Q14 slot held by APPLY_FAILED)
+      // one tenant per case (Q14 slot held by APPLY_FAILED)
+      const tc = await newTenant(pg, payload['plan_key'] === FREE_PERSONAL ? 'PERSONAL' : 'BUSINESS');
       const id = await approved('SUBSCRIPTION_OPEN', tc, payload);
       expect(await outcome(applyAs(id)), JSON.stringify(payload)).toBe(expected);
       expect(await openRows(tc)).toEqual([]);
     }
+    // CCP-PERSONAL-ARRANGED-1 (P-4): a plan of another tenant kind is refused at CREATION (fail early), no
+    // longer at apply; the apply's PLAN_TENANT_KIND_MISMATCH stays as the NC-5 re-check.
     const personal = await newTenant(pg, 'PERSONAL');
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', personal, await openPayload(ENTERPRISE))))).toBe('FAILED:PLAN_TENANT_KIND_MISMATCH');
+    const refused = await h.changeRequests
+      .create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: personal, product_key: 'sign', payload: await openPayload(ENTERPRISE), reason: 'governed change', idempotency_key: key() }, A6_CTX)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(refused).toBeInstanceOf(CommercialChangeRequestError);
+    expect((refused as CommercialChangeRequestError).code).toBe('INVALID_INPUT');
+    expect((refused as CommercialChangeRequestError).details['reason']).toBe('plan_tenant_kind_mismatch');
+    expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."CommercialChangeRequest" WHERE tenant_id = $1`, [personal])).rows[0].n).toBe(0);
+    expect(await openRows(personal)).toEqual([]);
     expect(await openRows(t)).toEqual([]);
   });
 

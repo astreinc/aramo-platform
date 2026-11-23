@@ -604,6 +604,38 @@ export function arrangementPayloadErrors(p: Record<string, unknown>): string[] {
   return errors;
 }
 
+/**
+ * CCP-PERSONAL-ARRANGED-1 (P-4) — the stable reasons (details.reason) of a SUBSCRIPTION_OPEN refused at
+ * creation: the plan is for another tenant kind; the row it replaces is FREE but the tenant is not PERSONAL;
+ * a FREE replacement names no arrangement.
+ */
+export const PLAN_TENANT_KIND_MISMATCH_REASON = 'plan_tenant_kind_mismatch';
+export const FREE_REPLACEMENT_NOT_PERSONAL_REASON = 'free_replacement_not_personal';
+export const ARRANGEMENT_REQUIRED_REASON = 'arrangement_required';
+export type SubscriptionOpenRefusalReason = typeof PLAN_TENANT_KIND_MISMATCH_REASON | typeof FREE_REPLACEMENT_NOT_PERSONAL_REASON | typeof ARRANGEMENT_REQUIRED_REASON;
+
+/**
+ * P-4 (with P-1, ruling R-1) — the creation-time decision for a SUBSCRIPTION_OPEN, from what the create
+ * transaction reads: the tenant's kind, the named plan (undefined when no such plan: left to the apply's
+ * PLAN_NOT_FOUND) and the source of the row the payload names as replaced (null when it names none, or no
+ * such row of this tenant and product: left to the apply's G2 check). A FREE row is replaced only for a
+ * PERSONAL tenant, by a PERSONAL plan, with an arrangement. null = not refused here.
+ */
+export function subscriptionOpenRefusal(input: {
+  tenant_kind: string | null;
+  plan_tenant_kind: string | null | undefined;
+  replaced_source: string | null;
+  arrangement: unknown;
+}): SubscriptionOpenRefusalReason | null {
+  const planKnown = input.plan_tenant_kind !== undefined;
+  if (planKnown && input.plan_tenant_kind !== null && input.plan_tenant_kind !== input.tenant_kind) return PLAN_TENANT_KIND_MISMATCH_REASON;
+  if (input.replaced_source !== 'FREE') return null;
+  if (input.tenant_kind !== 'PERSONAL') return FREE_REPLACEMENT_NOT_PERSONAL_REASON;
+  if (planKnown && input.plan_tenant_kind !== 'PERSONAL') return PLAN_TENANT_KIND_MISMATCH_REASON;
+  if (!isSubscriptionArrangement(input.arrangement)) return ARRANGEMENT_REQUIRED_REASON;
+  return null;
+}
+
 const MAX_PAYLOAD_BYTES = 65_536;
 
 /**

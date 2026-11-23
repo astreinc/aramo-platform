@@ -7054,7 +7054,13 @@ components:
         cursor (`invalid_cursor`). CCP-R3: a `PLAN_RETIRE` without `plan_version_id`
         (`plan_version_id_required`: PLAN_RETIRE retires one specified plan version; there is no
         whole-plan retire); a SUPPORT_EXTENSION `EXTEND` on the generic create
-        (`support_extension_dedicated_route`).
+        (`support_extension_dedicated_route`). CCP-PERSONAL-ARRANGED-1 (P-4): a
+        `SUBSCRIPTION_OPEN` is refused at creation when its plan is for another tenant kind
+        (`plan_tenant_kind_mismatch`), when the row it replaces is a Free subscription and the
+        tenant is not Personal (`free_replacement_not_personal`), or when it replaces a Free
+        subscription without an `arrangement` (`arrangement_required`). The optional payload
+        members `arrangement` (`COMP` | `AGREED`) and `external_ref` (at most 120 characters)
+        are validated as part of the payload (`invalid_payload`).
       content:
         application/json:
           schema:
