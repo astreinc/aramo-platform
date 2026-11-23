@@ -275,3 +275,57 @@ export function orphanedConditionIndexes(fields: readonly Pick<ConditionalFieldL
   });
   return out;
 }
+
+/** A dropdown choice as an editor holds it (a blank value is saved as its label). */
+interface EditorChoiceLike {
+  readonly value?: string | null;
+  readonly label?: string | null;
+}
+
+/** The value a dropdown choice is saved with: its value, or its label when the value is blank; trimmed. */
+function savedChoiceValue(c: EditorChoiceLike): string {
+  return (c.value ?? '').trim() || (c.label ?? '').trim();
+}
+
+/**
+ * B-7 — the condition a field starts with when `trigger` is picked as its trigger (every editor,
+ * web and app): "is checked" for a check box or acknowledgement, "this option is chosen" for a radio
+ * option, the first choice for a dropdown. Null when the field can't be a trigger (no key, a type
+ * the rule does not read, a dropdown without choices).
+ */
+export function startingCondition(trigger: {
+  readonly field_key?: string | null;
+  readonly field_type: string;
+  readonly options?: { readonly choices?: readonly EditorChoiceLike[] } | null;
+}): FieldCondition | null {
+  if (!isFieldKey(trigger.field_key)) return null;
+  const when = FIELD_CONDITION_WHENS.find((w) => CONDITION_TRIGGER_TYPES[w].includes(trigger.field_type));
+  if (when === undefined) return null;
+  if (when !== 'one_of') return { trigger_key: trigger.field_key, when };
+  const first = (trigger.options?.choices ?? []).map(savedChoiceValue).find((v) => v.length > 0);
+  return first === undefined ? null : { trigger_key: trigger.field_key, when, values: [first] };
+}
+
+/**
+ * B-7 — the fields that may show or hide the field at `index` (positions, in field order): the same
+ * signer (or role), a type the rule reads, not the field itself, never a field the sender fills,
+ * and the cross-field rule accepts the starting condition without any new problem anywhere (no
+ * loop, no chain deeper than CONDITION_DEPTH_MAX). A field the sender fills, or one nobody fills,
+ * takes no trigger. Pass each DROPDOWN's choices as they are saved (a blank value is its label).
+ */
+export function usableTriggerIndexes(fields: readonly ConditionalFieldLike[], index: number): number[] {
+  const dependent = fields[index];
+  if (dependent === undefined || dependent.signer === null || dependent.sender_filled === true) return [];
+  const opts = { requireUnconditionalSignature: false } as const;
+  const withCondition = (condition: FieldCondition | null): ConditionalFieldLike[] => fields.map((f, i) => (i === index ? { ...f, condition } : f));
+  // A loop or a too-deep chain may be reported on another field of the chain.
+  const before = new Set(fieldConditionIssues(withCondition(null), opts).map((x) => x.index));
+  const out: number[] = [];
+  fields.forEach((t, i) => {
+    if (i === index || t.signer !== dependent.signer || t.sender_filled === true) return;
+    const condition = startingCondition(t);
+    if (condition === null) return;
+    if (fieldConditionIssues(withCondition(condition), opts).every((x) => before.has(x.index))) out.push(i);
+  });
+  return out;
+}

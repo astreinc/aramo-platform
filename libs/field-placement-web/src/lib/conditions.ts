@@ -1,16 +1,25 @@
 // FIELD-PARITY-2 (Aramo-Sign-Field-Placement-Conditional-Fields-Directive-v1_0-LOCKED) §4.2 B-7 —
 // authoring "Show only when…" in the shared web placement editor. Pure helpers over the editor's
 // fields; every rule is the shared one:
-//   - which fields may be a trigger: the ONE cross-field rule (@aramo/sign-fields
-//     fieldConditionIssues, through settings-wire conditionIssues) accepts the condition;
+//   - which fields may be a trigger and how a picked one starts: @aramo/sign-fields
+//     usableTriggerIndexes / startingCondition (over the ONE cross-field rule, fieldConditionIssues);
 //   - which fields a preview shows: the ONE visibility rule (@aramo/sign-fields shownFields, the
 //     rule the server and the signer apps use).
 // A field's key is its id (sign-web: the field_key it is saved with; console: the field_key).
 
-import { CONDITION_TRIGGER_TYPES, FIELD_CONDITION_WHENS, orphanedConditionIndexes, shownFields, type FieldCondition, type FieldConditionWhen } from '@aramo/sign-fields';
+import {
+  CONDITION_TRIGGER_TYPES,
+  FIELD_CONDITION_WHENS,
+  orphanedConditionIndexes,
+  shownFields,
+  startingCondition,
+  usableTriggerIndexes,
+  type FieldCondition,
+  type FieldConditionWhen,
+} from '@aramo/sign-fields';
 
 import { type PlacedField } from './model';
-import { cleanChoices, conditionIssues } from './settings-wire';
+import { cleanChoices, conditionRows } from './settings-wire';
 
 /** The types a condition can read (a check box or acknowledgement, a radio option, a dropdown). */
 export const TRIGGER_TYPES: ReadonlySet<string> = new Set(FIELD_CONDITION_WHENS.flatMap((w) => CONDITION_TRIGGER_TYPES[w]));
@@ -36,40 +45,25 @@ export function triggerChoices(trigger: Pick<PlacedField, 'settings'>): { readon
 /**
  * The condition a newly picked trigger starts with: checked (a check box / acknowledgement), this
  * option chosen (a radio option), or the dropdown's first choice. Null when the field can't be a
- * trigger (a dropdown without choices, any other type).
+ * trigger (a dropdown without choices, any other type). The shared rule (startingCondition).
  */
 export function defaultConditionFor(trigger: Pick<PlacedField, 'id' | 'type' | 'settings'>): FieldCondition | null {
-  const when = conditionWhensFor(trigger.type)[0];
-  if (when === undefined) return null;
-  if (when !== 'one_of') return { trigger_key: trigger.id, when };
-  const first = triggerChoices(trigger)[0];
-  return first === undefined ? null : { trigger_key: trigger.id, when, values: [first.value] };
-}
-
-/** Whether a field may be a trigger at all: an editable, placed field the rule reads, with someone to fill it. */
-function triggerShaped(f: PlacedField): boolean {
-  return TRIGGER_TYPES.has(f.type) && f.locked !== true && f.hidden !== true && f.binding === null && f.assignee !== null && !f.settings.senderFilled;
+  return startingCondition({ field_key: trigger.id, field_type: trigger.type, options: trigger.settings.options });
 }
 
 /**
- * The fields that can show or hide `dependentId`: same signer (or role), a type the rule reads,
- * not the field itself, and the shared rule accepts the condition (no loop, the chain at most
- * 3 deep). A field the sender fills, or a locked or prefilled one, never offers a trigger.
+ * The fields that can show or hide `dependentId`: the shared rule (usableTriggerIndexes: same
+ * signer or role, a type the rule reads, no loop, the chain at most 3 deep, never a field the
+ * sender fills), less what this editor can't name as a trigger: a locked field (sent back as
+ * stored), a field without a position, a prefilled one. A locked or prefilled field takes none.
  */
 export function usableTriggers(fields: readonly PlacedField[], dependentId: string): PlacedField[] {
-  const dependent = fields.find((f) => f.id === dependentId);
-  if (dependent === undefined || dependent.locked === true || dependent.binding !== null || dependent.assignee === null || dependent.settings.senderFilled) return [];
-  const opts = { requireUnconditionalSignature: false } as const;
-  const withCondition = (condition: FieldCondition | null) => fields.map((f) => (f.id === dependentId ? { ...f, settings: { ...f.settings, condition } } : f));
-  // A loop or a too-deep chain may be reported on another field of the chain: a trigger is offered
-  // only when it adds no problem anywhere.
-  const before = conditionIssues(withCondition(null), opts);
-  return fields.filter((t) => {
-    if (t.id === dependentId || !triggerShaped(t) || t.assignee !== dependent.assignee) return false;
-    const condition = defaultConditionFor(t);
-    if (condition === null) return false;
-    return [...conditionIssues(withCondition(condition), opts).keys()].every((id) => before.has(id));
-  });
+  const index = fields.findIndex((f) => f.id === dependentId);
+  const dependent = fields[index];
+  if (dependent === undefined || dependent.locked === true || dependent.binding !== null) return [];
+  return usableTriggerIndexes(conditionRows(fields), index)
+    .map((i) => fields[i]!)
+    .filter((t) => t.locked !== true && t.hidden !== true && t.binding === null);
 }
 
 /** The fields whose condition names one of `triggerIds`. */

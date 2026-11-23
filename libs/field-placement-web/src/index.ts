@@ -35,6 +35,7 @@ export {
   settingsToWire,
   settingsIssue,
   conditionIssues,
+  conditionRows,
   optionsToWire,
   cleanChoices,
   nextRadioLabel,

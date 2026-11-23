@@ -17,6 +17,7 @@ import {
   type DropdownChoice,
   type FieldOptions,
   type FieldSetting,
+  type ConditionalFieldLike,
   type FieldConditionCheckOptions,
   type FieldConditionIssue,
   type FieldSettingRefusal,
@@ -191,16 +192,30 @@ export function settingsIssue(type: string, s: PlacementSettings, opts: { readon
  * server checks C-6 elsewhere (none today: sign-web Prepare and the console Studio save whole lists).
  */
 export function conditionIssues(fields: readonly Pick<PlacedField, 'id' | 'type' | 'assignee' | 'settings'>[], opts: FieldConditionCheckOptions = {}): Map<string, FieldConditionIssue> {
-  const issues = fieldConditionIssues(
-    fields.map((f) => ({ field_key: f.id, field_type: f.type, signer: f.assignee, condition: f.settings.condition, options: f.settings.options, sender_filled: f.settings.senderFilled })),
-    opts,
-  );
+  const issues = fieldConditionIssues(conditionRows(fields), opts);
   const out = new Map<string, FieldConditionIssue>();
   for (const i of issues) {
     const id = fields[i.index]?.id;
     if (id !== undefined && !out.has(id)) out.set(id, i);
   }
   return out;
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — the editor's fields as the shared cross-field rule reads them: key = id,
+ * signer = assignee, and a DROPDOWN's choices as they are saved (cleanChoices: a blank value is
+ * its label), so a condition on a choice whose value follows its label is not refused here when
+ * the server would accept it.
+ */
+export function conditionRows(fields: readonly Pick<PlacedField, 'id' | 'type' | 'assignee' | 'settings'>[]): ConditionalFieldLike[] {
+  return fields.map((f) => ({
+    field_key: f.id,
+    field_type: f.type,
+    signer: f.assignee,
+    condition: f.settings.condition,
+    options: f.settings.options === null ? null : { ...f.settings.options, choices: cleanChoices(f.settings.options.choices) },
+    sender_filled: f.settings.senderFilled,
+  }));
 }
 
 /** A RADIO's next option text: "Option N", N one more than the options in its group. */

@@ -108,6 +108,8 @@ export {
   FIELD_CONDITION_REFUSAL_REASONS,
   fieldConditionIssues,
   orphanedConditionIndexes,
+  startingCondition,
+  usableTriggerIndexes,
   type FieldConditionRefusalReason,
   type ConditionalFieldLike,
   type FieldConditionIssue,

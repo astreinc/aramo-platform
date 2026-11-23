@@ -187,3 +187,13 @@ describe('the preview (the ONE visibility rule)', () => {
     expect(['yes', 'no', 'onr1', 'ondd'].map((id) => shown.has(id))).toEqual([false, true, false, false]);
   });
 });
+
+describe('the inline refusal reads choices as they are saved', () => {
+  it('a one_of value naming a choice whose value follows its label is not refused', async () => {
+    const { conditionIssues } = await import('./settings-wire');
+    const dd = field('dd', 'DROPDOWN', { settings: { options: { choices: [{ value: '', label: 'Yes' }, { value: 'n', label: 'No' }] } } });
+    const t = field('t', 'TEXT', { settings: { condition: when('dd', 'one_of', ['Yes']) } });
+    expect(conditionIssues([dd, t]).has('t')).toBe(false);
+    expect(conditionIssues([dd, { ...t, settings: { ...t.settings, condition: when('dd', 'one_of', ['Maybe']) } }]).get('t')?.reason).toBe('condition_values_invalid');
+  });
+});
