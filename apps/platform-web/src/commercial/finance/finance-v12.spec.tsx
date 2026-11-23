@@ -178,7 +178,7 @@ describe('Finance › Revenue (§13.5; §17.2; DV-V12-REV-1)', () => {
     as_of: AS_OF, currency: 'USD', billing_interval: 'MONTH', basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE', billing_provider_mode: 'test', tax: { enabled: false },
     ...(holder ? { mrr_minor: 40000, arr_minor: 480000 } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' as const }),
     by_product: [],
-    counts: { open_commercial_subscriptions: 5, included: 3, excluded: 2, excluded_by_reason: { CONTRACT_PRICED: 1, STATUS_NOT_REVENUE_BEARING: 1 }, not_commercial_by_source: {} },
+    counts: { open_commercial_subscriptions: 5, included: 3, excluded: 2, excluded_by_reason: { CONTRACT_PRICED: 1, STATUS_NOT_REVENUE_BEARING: 1 }, not_commercial_by_source: {}, arranged_no_charge: 1 },
     renewal_pipeline: { months: 6, from_month: '2026-10', through_month: '2027-03', lapsed: bucket('LAPSED', {}), by_month: [bucket('2026-10', holder ? { mrr_minor: 2400 } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' }), bucket('2026-11', { events: 1, priced_events: 0, unpriced_events: 1, ...(holder ? { mrr_minor: 0 } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' }) })] },
   });
 
@@ -191,6 +191,8 @@ describe('Finance › Revenue (§13.5; §17.2; DV-V12-REV-1)', () => {
     expect(screen.queryByText(/^MRR$|^ARR$/)).toBeNull();
     expect(screen.getByText('$24 / month')).toBeInTheDocument();
     expect(screen.getByText(/Bar length shows list value\./)).toBeInTheDocument();
+    // CCP-PERSONAL-ARRANGED-1 P-3: COMP rows on their own line, never valued.
+    expect(screen.getByTestId('revenue-arranged')).toHaveTextContent('Arranged — no charge: 1');
     // Withheld tile: excluded rows other than by status.
     expect(screen.getByText('1 contract-priced')).toBeInTheDocument();
   });

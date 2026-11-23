@@ -2181,6 +2181,8 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
         NON_MONTHLY_INTERVAL: integer(0),
       },
       not_commercial_by_source: like({}),
+      // CCP-PERSONAL-ARRANGED-1 P-3: the console's "Arranged — no charge: N" line.
+      arranged_no_charge: integer(0),
     },
     renewal_pipeline: {
       months: 3,
@@ -2224,7 +2226,8 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
         const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('commercial_ops'));
         expect(res.status).toBe(200);
         expect(res.body['amount_withheld']).toBe(WITHHELD);
-        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr/);
+        // No mrr / arr figure (the counts' "arranged_no_charge" is a count, not an amount).
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr(?!anged_no_charge")/);
       });
   });
 
@@ -2967,6 +2970,8 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/commerci
                 current_period_end: null,
                 grace_until: null,
                 commitment_end: null,
+                // CCP-PERSONAL-ARRANGED-1 P-2: the console shows the arrangement (null on a contract row).
+                arrangement: null,
                 contract: { id: uuid('cca10000-0000-7000-8000-0000000003b6'), contract_ref: like('CT-PACT-0001') },
                 provider_linked: false,
                 open_flags: ['governed_subscription_open'],

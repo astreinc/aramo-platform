@@ -75,6 +75,12 @@ const CHAINS = {
       { step_index: 1, role_key: 'platform_owner', scope_keys: ['platform:catalog:approve', 'platform:catalog:publish'] },
     ],
   },
+  // CCP Amendment A3 AC-COMP-1: a SUBSCRIPTION_OPEN arranged at no charge (COMP) → Finance → Owner.
+  COMP_OPEN: {
+    rule: 'FINANCE_THEN_OWNER',
+    basis: { ruling: 'AC-COMP-1', arrangement: 'COMP', escalates: true },
+    steps: [FIN_SUB, { step_index: 1, role_key: 'platform_owner', scope_keys: ['platform:subscription:approve'] }],
+  },
   POLICY: {
     rule: 'FINANCE_THEN_OWNER',
     basis: {},
@@ -90,6 +96,7 @@ const REQUESTER_SCOPE: Readonly<Record<string, string>> = {
   PLAN_VERSION_PUBLISH: 'platform:catalog:draft',
   PLAN_RETIRE: 'platform:catalog:draft',
   CONVERSION: 'platform:subscription:request',
+  SUBSCRIPTION_OPEN: 'platform:subscription:request',
   SUBSCRIPTION_CHANGE: 'platform:subscription:request',
   SUBSCRIPTION_END: 'platform:subscription:request',
   ENTITLEMENT_GRANT: 'platform:entitlement:request',
@@ -174,7 +181,71 @@ const SX_SUBS: Readonly<Record<string, { id: string; grace_until: string; curren
 };
 
 const OPEN = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLY_FAILED'];
-const APPLY_ACTIONS = new Set(['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'CONVERSION', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION']);
+const APPLY_ACTIONS = new Set(['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'CONVERSION', 'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION']);
+
+// ── CCP-PERSONAL-ARRANGED-1 — a Personal tenant on Free (Personal Free v1.1), moved to an arranged plan ──
+export const ARRANGED_TENANT = 'cca2a000-0000-7000-8000-0000000000a1';
+export const ARRANGED_TENANT_NAME = 'Rowan Ellis';
+export const ARRANGED_FREE_ROW = 'cca2a000-0000-7000-8000-0000000000a2';
+const ARRANGED_NEW_ROW = 'cca2a000-0000-7000-8000-0000000000a3';
+const PERSONAL_PLANS = [
+  { id: 'free-personal', key: 'aramo-sign-free-personal-v1', name: 'Free', sales_model: 'FREE', price: 0, env: 3, order: 1 },
+  { id: 'standard-personal', key: 'aramo-sign-standard-personal-v1', name: 'Standard', sales_model: 'SELF_SERVICE', price: 10, env: 25, order: 2 },
+] as const;
+
+function personalPlan(p: (typeof PERSONAL_PLANS)[number]) {
+  return {
+    id: p.id,
+    key: p.key,
+    product_key: 'sign',
+    name: p.name,
+    status: 'ACTIVE',
+    sales_model: p.sales_model,
+    tenant_kind: 'PERSONAL',
+    sellable: p.sales_model !== 'FREE',
+    display_order: p.order,
+    versions: [
+      {
+        id: `${p.id}-v1`,
+        plan_id: p.id,
+        version_number: 1,
+        status: 'PUBLISHED',
+        content_checksum: 'c'.repeat(64),
+        note: null,
+        created_by: 'lena',
+        created_at: '2026-11-01T12:00:00.000Z',
+        published_at: '2026-11-01T12:00:00.000Z',
+        retired_at: null,
+        terms: { list_price_minor: p.price * 100, currency: 'USD', billing_interval: 'MONTH', sales_model: p.sales_model, contract_priced: false, envelopes_per_month: p.env, envelopes_unlimited: false, envelopes_present: true, storage_bytes: null, storage_unlimited: false, storage_present: false },
+        pinned_subscriptions: 0,
+        open_requests: [],
+      },
+    ],
+  };
+}
+
+function personalRow(o: { id: string; plan: (typeof PERSONAL_PLANS)[number]; source: string; arrangement: 'COMP' | 'AGREED' | null; started: string; ended: string | null }) {
+  return {
+    subscription_id: o.id,
+    product_key: 'sign',
+    plan: { id: o.plan.id, key: o.plan.key, name: o.plan.name, sales_model: o.plan.sales_model },
+    plan_version: { id: `${o.plan.id}-v1`, version_number: 1, status: 'PUBLISHED' },
+    source: o.source,
+    status: o.ended === null ? 'ACTIVE' : 'CANCELED',
+    started_at: o.started,
+    ended_at: o.ended,
+    period_anchor: o.started,
+    current_period: o.ended === null ? { start: '2026-10-15T00:00:00.000Z', end: '2026-11-15T00:00:00.000Z' } : null,
+    current_period_end: null,
+    grace_until: null,
+    commitment_end: null,
+    arrangement: o.arrangement,
+    contract: null,
+    provider_linked: false,
+    open_flags: [],
+    active_extensions: { count: 0, exception: false },
+  };
+}
 
 export class D4World {
   readonly log: string[] = [];
@@ -183,6 +254,8 @@ export class D4World {
   private readonly approvals = new Map<string, Approval[]>();
   private readonly extensions: Extension[] = [];
   private readonly published = new Set<string>();
+  /** CCP-PERSONAL-ARRANGED-1 — the Personal tenant's arranged row once the open is applied. */
+  private personalArranged: { arrangement: 'COMP' | 'AGREED'; at: string } | null = null;
   private seq = 0;
   private clock = 0;
 
@@ -307,7 +380,13 @@ export class D4World {
 
   private create(by: D4Person, b: { action_type: string; tenant_id: string | null; payload: Record<string, unknown>; reason: string; product_key?: string | null }): D4Request {
     const at = this.tick();
-    const chain = b.action_type.startsWith('PLAN_') ? CHAINS.CATALOG : b.action_type === 'POLICY_ACTIVATE' ? CHAINS.POLICY : CHAINS.FINANCE_ONLY;
+    const chain = b.action_type.startsWith('PLAN_')
+      ? CHAINS.CATALOG
+      : b.action_type === 'POLICY_ACTIVATE'
+        ? CHAINS.POLICY
+        : b.action_type === 'SUBSCRIPTION_OPEN' && b.payload['arrangement'] === 'COMP'
+          ? CHAINS.COMP_OPEN
+          : CHAINS.FINANCE_ONLY;
     const r: D4Request = {
       id: this.nextId(),
       action_type: b.action_type,
@@ -370,6 +449,11 @@ export class D4World {
   private applyEffect(by: D4Person, r: D4Request): void {
     Object.assign(r, { state: 'APPLIED', applied_at: this.tick() });
     if (r.action_type === 'PLAN_VERSION_PUBLISH') this.published.add(String(r.payload['plan_version_id']));
+    // CCP-PERSONAL-ARRANGED-1 P-1: the open ends the replaced Free row and opens the arranged row (no commitment for COMP).
+    if (r.action_type === 'SUBSCRIPTION_OPEN' && r.tenant_id === ARRANGED_TENANT && r.payload['replaces_subscription_id'] === ARRANGED_FREE_ROW) {
+      const arrangement = r.payload['arrangement'] === 'AGREED' ? 'AGREED' : 'COMP';
+      this.personalArranged = { arrangement, at: r.applied_at! };
+    }
     if (r.action_type === 'SUPPORT_EXTENSION' && r.tenant_id !== null) {
       this.extensions.push({ id: `0d4ce${String(this.extensions.length)}00-0000-7000-8000-00000000e0d4`, tenant_id: r.tenant_id, days: Number(r.payload['requested_days'] ?? 0), is_exception: false, applied_by: D4_PEOPLE[by].sub, applied_at: r.applied_at!, change_request_id: r.id, roles: [...D4_PEOPLE[by].roles] });
     }
@@ -416,6 +500,88 @@ export class D4World {
         active: true,
         context: { policy_version_number: 1, clause: CLAUSE, counters: { requested_days: e.days, extensions_in_frequency_window: 0, cumulative_days_before: 0, cumulative_days_after: e.days }, roles_at_apply: e.roles },
       }));
+  }
+
+  /** The Personal tenant's Sign row as the reads show it: Free, or the arranged row once applied. */
+  private personalRows() {
+    const free = PERSONAL_PLANS[0];
+    const standard = PERSONAL_PLANS[1];
+    const a = this.personalArranged;
+    return {
+      free: personalRow({ id: ARRANGED_FREE_ROW, plan: free, source: 'FREE', arrangement: null, started: '2026-09-15T00:00:00.000Z', ended: a === null ? null : a.at }),
+      arranged: a === null ? null : personalRow({ id: ARRANGED_NEW_ROW, plan: standard, source: 'MANUAL', arrangement: a.arrangement, started: a.at, ended: null }),
+    };
+  }
+
+  private personalHandlers(can: (scope: string) => boolean, forbid: (scope: string) => Reply): { method?: string; path: RegExp; reply: Handler }[] {
+    const T = ARRANGED_TENANT;
+    const forT = (path: string): boolean => path.includes(T);
+    const current = () => {
+      const r = this.personalRows();
+      return r.arranged ?? r.free;
+    };
+    return [
+      {
+        path: /^\/platform\/commercial\/subscriptions$/,
+        reply: () => {
+          if (!can('platform:subscription:read')) return forbid('platform:subscription:read');
+          const tenant = { id: T, name: ARRANGED_TENANT_NAME, slug: null };
+          return ok({ as_of: D4_NOW, rows: [...(workbenchRows() as object[]), { tenant, ...current() }] });
+        },
+      },
+      {
+        path: /^\/platform\/commercial\/tenants\/[^/]+\/commercial$/,
+        reply: ({ path }) => {
+          if (!forT(path)) return undefined;
+          if (!can('platform:subscription:read')) return forbid('platform:subscription:read');
+          const open = [...this.requests].reverse().find((r) => r.tenant_id === T && OPEN.includes(r.state));
+          const none = (capability: string) => ({ capability, state: 'NONE', granted_source: null, granted_at: null, granted_by: null, change_request_id: null, revoked_at: null, revoked_by: null, revoke_change_request_id: null });
+          return ok({
+            as_of: D4_NOW,
+            tenant: { id: T, name: ARRANGED_TENANT_NAME, slug: null, kind: 'PERSONAL' },
+            products: [
+              {
+                product_key: 'sign',
+                registered: true,
+                entitlement: { ...none('sign'), state: 'ACTIVE', granted_source: 'SIGNUP', granted_at: '2026-09-15T00:00:00.000Z' },
+                subscription: current(),
+                flags: [],
+                open_request: open ? { id: open.id, action_type: open.action_type, kind: open.kind, state: open.state, requested_by: open.requested_by, created_at: open.created_at } : null,
+              },
+              ...['ats', 'portal', 'intelligence'].map((k) => ({ product_key: k, registered: false, entitlement: none(k), subscription: null, flags: [], open_request: null })),
+            ],
+          });
+        },
+      },
+      { path: /^\/platform\/commercial\/tenants\/[^/]+\/billing-status$/, reply: ({ path }) => (forT(path) ? ok({ availability: 'BILLING_UNAVAILABLE', invoices: [] }) : undefined) },
+      { path: /^\/platform\/commercial\/support-extensions$/, reply: ({ query }) => (query.get('tenant_id') === T ? ok({ extensions: [], subscriptions: [], policy: POLICY }) : undefined) },
+      {
+        path: /^\/platform\/tenants\/[^/]+\/sign$/,
+        reply: ({ path }) =>
+          forT(path)
+            ? ok({
+                tenant_id: T,
+                tenant_kind: 'PERSONAL',
+                capabilities: ['core', 'sign'],
+                sign_entitled: true,
+                subscription: null,
+                allowance: { subscribed: true, limit: this.personalArranged ? 25 : 3, used: 1, remaining: this.personalArranged ? 24 : 2, period_start: '2026-10-15T00:00:00.000Z', period_end: '2026-11-15T00:00:00.000Z' },
+                storage: null,
+                billing_available: false,
+                billing_events: [],
+              })
+            : undefined,
+      },
+      { path: /^\/platform\/tenants\/[^/]+\/audit$/, reply: ({ path }) => (forT(path) ? ok({ events: [] }) : undefined) },
+      { path: /^\/platform\/tenants\/[^/]+\/domain$/, reply: ({ path }) => (forT(path) ? ok({ tenant_id: T, domain_claim: null, exceptions: [] }) : undefined) },
+      {
+        path: /^\/platform\/tenants\/[^/]+$/,
+        reply: ({ path }) =>
+          forT(path)
+            ? ok({ tenant: { id: T, name: ARRANGED_TENANT_NAME, kind: 'PERSONAL', slug: null, status: 'ACTIVE', status_reason_code: null, status_changed_at: '2026-09-15T00:00:00.000Z', is_active: true, identity_provider: 'google', created_at: '2026-09-15T00:00:00.000Z', updated_at: '2026-09-15T00:00:00.000Z', activated_at: '2026-09-15T00:00:00.000Z', suspended_at: null } })
+            : undefined,
+      },
+    ];
   }
 
   // ── the mock for one persona ─────────────────────────────────────────────────
@@ -579,6 +745,8 @@ export class D4World {
         path: /^\/platform\/commercial\/catalog$/,
         reply: (ctx) => {
           const base = catalogBase(ctx) as { status?: number; body: { products: { plans: { versions: Record<string, unknown>[] }[] }[] } };
+          // CCP-PERSONAL-ARRANGED-1: the Personal plans (Free, Standard) next to the Business plans.
+          (base.body.products[0]!.plans as unknown[]).push(...PERSONAL_PLANS.map(personalPlan));
           for (const plan of base.body.products[0]!.plans) {
             for (const v of plan.versions) {
               const id = String(v['id']);
@@ -631,7 +799,7 @@ export class D4World {
 
     return {
       clock: D4_NOW,
-      overrides: [...handlers, ...(subs.overrides ?? []), ...contractRoutes, ...policyRoutes],
+      overrides: [...this.personalHandlers(can, forbid), ...handlers, ...(subs.overrides ?? []), ...contractRoutes, ...policyRoutes],
     };
   }
 }

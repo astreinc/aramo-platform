@@ -17,6 +17,7 @@ export const T_MERIDIAN = '0190b300-0000-7000-8000-0000000b3a01';
 export const T_NORTHWIND = '0190b300-0000-7000-8000-0000000b3a02';
 export const SUB_MERIDIAN = '0190b300-0000-7000-8000-0000000b3501';
 export const SUB_NORTHWIND = '0190b300-0000-7000-8000-0000000b3502';
+export const SUB_FREE = '0190b300-0000-7000-8000-0000000b3510';
 export const CONTRACT = '0190b300-0000-7000-8000-0000000b3d01';
 export const FLAG = '0190b300-0000-7000-8000-0000000b3f01';
 export const CR_OPEN = '0190b300-0000-7000-8000-0000000b3e01';
@@ -24,6 +25,8 @@ export const CR_NEW = '0190b300-0000-7000-8000-0000000b3e77';
 export const PV_SCALE_1 = '0190b300-0000-7000-8000-0000000b3701';
 export const PV_TEAM_2 = '0190b300-0000-7000-8000-0000000b3702';
 export const PV_TEAM_1 = '0190b300-0000-7000-8000-0000000b3703';
+export const PV_FREE_1 = '0190b300-0000-7000-8000-0000000b3710';
+export const PV_STANDARD_1 = '0190b300-0000-7000-8000-0000000b3711';
 
 export const ROLE_SCOPES: Readonly<Record<string, readonly string[]>> = {
   platform_owner: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
@@ -57,6 +60,7 @@ export function facts(over: Partial<SubscriptionFacts> = {}): SubscriptionFacts 
     current_period_end: null,
     grace_until: null,
     commitment_end: '2027-03-14T00:00:00.000Z',
+    arrangement: null,
     contract: { id: CONTRACT, contract_ref: 'CT-2025-014' },
     provider_linked: false,
     open_flags: [],
@@ -76,6 +80,20 @@ export const STRIPE_ROW = (over: Partial<SubscriptionFacts> = {}): SubscriptionF
     commitment_end: null,
     contract: null,
     provider_linked: true,
+    ...over,
+  });
+
+/** CCP-PERSONAL-ARRANGED-1 — a Personal tenant's open Free row (Personal Free v1.1). */
+export const FREE_ROW = (over: Partial<SubscriptionFacts> = {}): SubscriptionFacts =>
+  facts({
+    subscription_id: SUB_FREE,
+    plan: { id: '0190b300-0000-7000-8000-0000000b3610', key: 'aramo-sign-free-personal-v1', name: 'Free', sales_model: 'FREE' },
+    plan_version: { id: PV_FREE_1, version_number: 1, status: 'PUBLISHED' },
+    source: 'FREE',
+    period_anchor: '2026-09-01T00:00:00.000Z',
+    current_period: { start: '2026-10-01T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' },
+    commitment_end: null,
+    contract: null,
     ...over,
   });
 
@@ -103,8 +121,8 @@ function other(key: string, state: EntitlementFacts['state'] = 'NONE'): ProductC
   return { product_key: key, registered: false, entitlement: entitlement({ capability: key, state, granted_source: state === 'NONE' ? null : 'PROVISIONING', granted_at: state === 'NONE' ? null : '2025-01-10T00:00:00.000Z' }), subscription: null, flags: [], open_request: null };
 }
 
-export function commercial(sign: Partial<ProductCommercial> = {}, tenant = T_MERIDIAN, name = 'Meridian Partners'): TenantCommercial {
-  return { as_of: NOW.toISOString(), tenant: { id: tenant, name, slug: 'meridian', kind: 'BUSINESS' }, products: [product(sign), other('ats'), other('portal'), other('intelligence')] };
+export function commercial(sign: Partial<ProductCommercial> = {}, tenant = T_MERIDIAN, name = 'Meridian Partners', kind: 'BUSINESS' | 'PERSONAL' = 'BUSINESS'): TenantCommercial {
+  return { as_of: NOW.toISOString(), tenant: { id: tenant, name, slug: 'meridian', kind }, products: [product(sign), other('ats'), other('portal'), other('intelligence')] };
 }
 
 export const SUPPORT: SupportExtensionList = {
@@ -147,9 +165,12 @@ export const CATALOG: Catalog = {
     {
       product_key: 'sign',
       plans: [
-        { id: '0190b300-0000-7000-8000-0000000b3602', key: 'aramo-sign-team-v1', product_key: 'sign', name: 'Team', status: 'ACTIVE', sales_model: 'SELF_SERVICE', sellable: true, display_order: 2, versions: [version(PV_TEAM_2, 'team', 2, 'PUBLISHED', 59, 750), version(PV_TEAM_1, 'team', 1, 'RETIRED', 49, 500)] },
-        { id: '0190b300-0000-7000-8000-0000000b3601', key: 'aramo-sign-scale-v1', product_key: 'sign', name: 'Scale', status: 'ACTIVE', sales_model: 'OPERATOR', sellable: false, display_order: 4, versions: [version(PV_SCALE_1, 'scale', 1, 'PUBLISHED', 299, 10000)] },
-        { id: '0190b300-0000-7000-8000-0000000b3605', key: 'aramo-sign-enterprise-v1', product_key: 'sign', name: 'Enterprise', status: 'ACTIVE', sales_model: 'CONTACT_SALES', sellable: false, display_order: 5, versions: [version('0190b300-0000-7000-8000-0000000b3705', 'enterprise', 1, 'PUBLISHED', null, 25000)] },
+        { id: '0190b300-0000-7000-8000-0000000b3602', key: 'aramo-sign-team-v1', product_key: 'sign', name: 'Team', status: 'ACTIVE', sales_model: 'SELF_SERVICE', tenant_kind: 'BUSINESS', sellable: true, display_order: 2, versions: [version(PV_TEAM_2, 'team', 2, 'PUBLISHED', 59, 750), version(PV_TEAM_1, 'team', 1, 'RETIRED', 49, 500)] },
+        { id: '0190b300-0000-7000-8000-0000000b3601', key: 'aramo-sign-scale-v1', product_key: 'sign', name: 'Scale', status: 'ACTIVE', sales_model: 'OPERATOR', tenant_kind: 'BUSINESS', sellable: false, display_order: 4, versions: [version(PV_SCALE_1, 'scale', 1, 'PUBLISHED', 299, 10000)] },
+        // CCP-PERSONAL-ARRANGED-1 — the Personal plans (Free and Standard; seeded by sign_catalog_v2).
+        { id: '0190b300-0000-7000-8000-0000000b3610', key: 'aramo-sign-free-personal-v1', product_key: 'sign', name: 'Free', status: 'ACTIVE', sales_model: 'FREE', tenant_kind: 'PERSONAL', sellable: false, display_order: 0, versions: [version(PV_FREE_1, 'free', 1, 'PUBLISHED', 0, 3)] },
+        { id: '0190b300-0000-7000-8000-0000000b3611', key: 'aramo-sign-standard-personal-v1', product_key: 'sign', name: 'Standard', status: 'ACTIVE', sales_model: 'SELF_SERVICE', tenant_kind: 'PERSONAL', sellable: true, display_order: 1, versions: [version(PV_STANDARD_1, 'standard', 1, 'PUBLISHED', 10, 25)] },
+        { id: '0190b300-0000-7000-8000-0000000b3605', key: 'aramo-sign-enterprise-v1', product_key: 'sign', name: 'Enterprise', status: 'ACTIVE', sales_model: 'CONTACT_SALES', tenant_kind: 'BUSINESS', sellable: false, display_order: 5, versions: [version('0190b300-0000-7000-8000-0000000b3705', 'enterprise', 1, 'PUBLISHED', null, 25000)] },
       ],
     },
   ],
