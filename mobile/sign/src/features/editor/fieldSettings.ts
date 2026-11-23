@@ -69,7 +69,8 @@ export function isGroupedType(type: string): boolean {
  * and read-only only while the server says they are on, sender_filled_fields_enabled).
  */
 export function editableSettings(type: string, senderFilledEnabled: boolean): readonly FieldSetting[] {
-  return editableFieldSettings(type, senderEditorSettings(senderFilledEnabled));
+  // FIELD-PARITY-2 B-7 — "Show only when…" has its own section (not yet in this sheet).
+  return editableFieldSettings(type, senderEditorSettings(senderFilledEnabled)).filter((k) => k !== 'condition');
 }
 
 /** Whether a type has anything for the settings sheet. */

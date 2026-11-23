@@ -107,6 +107,7 @@ export {
   parseFieldCondition,
   FIELD_CONDITION_REFUSAL_REASONS,
   fieldConditionIssues,
+  orphanedConditionIndexes,
   type FieldConditionRefusalReason,
   type ConditionalFieldLike,
   type FieldConditionIssue,
@@ -115,6 +116,16 @@ export {
   type FieldConditionWhen,
   type FieldConditionParse,
 } from './lib/field-conditions.js';
+// FIELD-PARITY-2 B-4 — the one visibility rule (re-exported by @aramo/sign-client for the server,
+// sign-web and the app; B-7 — the web placement editor's preview uses it from here).
+export {
+  fieldConditionOf,
+  conditionMetBy,
+  shownFields,
+  isFieldShown,
+  hiddenFilledFields,
+  type VisibilityFieldLike,
+} from './lib/field-visibility.js';
 
 // FIELD-PARITY-1 P3 §6 — the value rules (signer fill, sender-filled values) and how a value
 // prints on the executed PDF and the certificate.

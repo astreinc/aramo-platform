@@ -4,7 +4,7 @@
 // scope:shared: imports only React and @aramo/sign-fields (the one field catalog), so both
 // scope:sign and scope:platform may use it. Hosts keep their own chrome and API calls.
 export { PlacementEditor, DEFAULT_PLACEMENT_COPY, type PlacementEditorProps, type PlacementCopy } from './PlacementEditor';
-export { PlacementPages, pageSlotsOf, defaultFace, type PlacementPagesProps, type PageRenderer, type PageSlot, type FieldFace } from './PlacementPages';
+export { PlacementPages, pageSlotsOf, defaultFace, type PlacementPagesProps, type PageRenderer, type PageSlot, type FieldFace, type ConditionLink } from './PlacementPages';
 export {
   DEFAULT_SETTINGS,
   GROUPED_TYPES,
@@ -43,7 +43,22 @@ export {
   type WireSettings,
   type SettingsToWireOptions,
 } from './lib/settings-wire';
-export { FieldSettingsPanel, VALIDATION_LABELS, type FieldSettingsPanelProps } from './FieldSettingsPanel';
+export { FieldSettingsPanel, VALIDATION_LABELS, describeField, type FieldSettingsPanelProps } from './FieldSettingsPanel';
+// FIELD-PARITY-2 B-7 — authoring "Show only when…" (pure; the shared rules underneath).
+export {
+  TRIGGER_TYPES,
+  CONDITION_WHEN_LABELS,
+  conditionWhensFor,
+  triggerChoices,
+  defaultConditionFor,
+  usableTriggers,
+  dependentsOf,
+  staleConditionIds,
+  clearStaleConditions,
+  remapConditions,
+  previewShownIds,
+  setPreviewAnswer,
+} from './lib/conditions';
 export {
   HISTORY_LIMIT,
   editorReducer,

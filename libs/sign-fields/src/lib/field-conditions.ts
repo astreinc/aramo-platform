@@ -255,3 +255,23 @@ export function fieldConditionIssues(fields: readonly ConditionalFieldLike[], op
   }
   return [...issues.values()].sort((a, b) => a.index - b.index);
 }
+
+/**
+ * B-7 — the fields whose condition has no trigger left to read: no field has its trigger_key any
+ * more (the trigger was deleted) or the trigger is no longer a type its rule reads (retyped). Every
+ * editor (web and app) clears these conditions in the same step as the delete or retype, with a
+ * warning: the fields are then always shown. Positions in the list, in field order.
+ */
+export function orphanedConditionIndexes(fields: readonly Pick<ConditionalFieldLike, 'field_key' | 'field_type' | 'condition'>[]): number[] {
+  const byKey = new Map<string, string>();
+  for (const f of fields) if (typeof f.field_key === 'string' && !byKey.has(f.field_key)) byKey.set(f.field_key, f.field_type);
+  const out: number[] = [];
+  fields.forEach((f, i) => {
+    if (f.condition === undefined || f.condition === null) return;
+    const parsed = parseFieldCondition(f.condition);
+    if (!parsed.ok || parsed.condition === null) return;
+    const type = byKey.get(parsed.condition.trigger_key);
+    if (type === undefined || !CONDITION_TRIGGER_TYPES[parsed.condition.when].includes(type)) out.push(i);
+  });
+  return out;
+}

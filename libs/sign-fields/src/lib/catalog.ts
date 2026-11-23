@@ -552,15 +552,20 @@ const SENDER_EDITOR_SETTINGS: readonly FieldSetting[] = [
   'font_size',
   'data_name',
   'options',
+  // FIELD-PARITY-2 B-7 — "Show only when…" (B-10: send_web and send_mobile; never self-sign).
+  'condition',
 ];
 
 /**
  * FIELD-PARITY-2 A-7 — the settings an envelope sender's editor authors (sign-web Prepare and the
  * app's Send flow): every setting but the PAYMENT amount and currency, with sender-filled and
  * read-only only while the server says they are on (sender_filled_fields_enabled, S-5).
+ * B-7 / ruling C-7 — a self-sign editor (the sender is the signer, so there is nothing to branch
+ * for; the server refuses a condition on a SELF envelope) never offers the condition.
  */
-export function senderEditorSettings(senderFilledEnabled: boolean): readonly FieldSetting[] {
-  return senderFilledEnabled ? [...SENDER_EDITOR_SETTINGS, 'read_only', 'sender_filled'] : SENDER_EDITOR_SETTINGS;
+export function senderEditorSettings(senderFilledEnabled: boolean, opts: { readonly selfSign?: boolean } = {}): readonly FieldSetting[] {
+  const base = opts.selfSign === true ? SENDER_EDITOR_SETTINGS.filter((s) => s !== 'condition') : SENDER_EDITOR_SETTINGS;
+  return senderFilledEnabled ? [...base, 'read_only', 'sender_filled'] : base;
 }
 
 /**

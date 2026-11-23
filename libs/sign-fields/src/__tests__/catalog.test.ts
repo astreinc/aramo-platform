@@ -189,10 +189,19 @@ describe('FIELD-PARITY-2 A-7 — the editors\' settings projection (one copy for
 
   it('an envelope sender edits every setting but a payment\'s; sender-filled and read-only only when on', () => {
     for (const type of FIELD_TYPE_KEYS) {
-      // FIELD-PARITY-2 B-2 — condition joins the editors' list with its control (B-7), not before.
-      const all = fieldSettingsOf(type).filter((x) => x !== 'payment_amount_minor' && x !== 'payment_currency' && x !== 'condition');
+      // FIELD-PARITY-2 B-7 — condition is in the editors' list now that its control exists.
+      const all = fieldSettingsOf(type).filter((x) => x !== 'payment_amount_minor' && x !== 'payment_currency');
       expect(editableFieldSettings(type, senderEditorSettings(true))).toEqual(all);
       expect(editableFieldSettings(type, senderEditorSettings(false))).toEqual(all.filter((x) => x !== 'sender_filled' && x !== 'read_only'));
+      // Ruling C-7 — a self-sign editor never offers it.
+      expect(editableFieldSettings(type, senderEditorSettings(true, { selfSign: true }))).toEqual(all.filter((x) => x !== 'condition'));
     }
+  });
+
+  it('B-7 — "Show only when…" is offered on every signer type but a payment (D-5)', () => {
+    const conditional = FIELD_TYPE_KEYS.filter((t) => editableFieldSettings(t, senderEditorSettings(false)).includes('condition'));
+    expect(conditional).toContain('SIGNATURE');
+    expect(conditional).toContain('TEXT');
+    expect(conditional).not.toContain('PAYMENT');
   });
 });

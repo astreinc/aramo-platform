@@ -11,6 +11,7 @@
 import { alignBoxes, clampGroupDelta, distributeBoxes, sameSizeBoxes, snapMove, snapResize, type AlignEdge, type Axis, type Dimension, type SnapOptions } from './arrange';
 import { clampBox, toPdf, toTopLeft, type Box, type PdfPageInfo } from './geometry';
 import { type PageRef, type PlacedField } from './model';
+import { dependentsOf } from './conditions';
 import { applySettings, type SettingsPatch } from './settings';
 
 /** sign-web Prepare's undo depth (PrepareEditor.tsx before P1-5: 20). */
@@ -240,10 +241,21 @@ export function placeField(field: PlacedField, label = 'Add field'): Command {
   return { label, run: (fields) => [...fields, field] };
 }
 
-/** Delete fields (a locked field may be deleted). */
+/**
+ * Delete fields (a locked field may be deleted). FIELD-PARITY-2 B-7 — a field whose condition
+ * named a deleted field loses that condition in the same step (it is always shown from now on;
+ * undo brings the trigger and the conditions back together).
+ */
 export function removeFields(ids: readonly string[], label = 'Delete field'): Command {
   const set = new Set(ids);
-  return { label, run: (fields) => fields.filter((f) => !set.has(f.id)) };
+  return {
+    label,
+    run: (fields) => {
+      const kept = fields.filter((f) => !set.has(f.id));
+      const orphans = new Set(dependentsOf(kept, set));
+      return orphans.size === 0 ? kept : kept.map((f) => (orphans.has(f.id) ? { ...f, settings: { ...f.settings, condition: null } } : f));
+    },
+  };
 }
 
 /**

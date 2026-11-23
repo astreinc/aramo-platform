@@ -1,5 +1,5 @@
 // Runs under vitest and mobile Jest (globals only).
-import { CONDITION_DEPTH_MAX, fieldConditionIssues, type ConditionalFieldLike } from '../index.js';
+import { CONDITION_DEPTH_MAX, fieldConditionIssues, orphanedConditionIndexes, shownFields, type ConditionalFieldLike } from '../index.js';
 
 // FIELD-PARITY-2 §4.2 B-3, §5 test 1 — the one cross-field rule: every refusal, chains and cycles.
 
@@ -79,5 +79,25 @@ describe('FIELD-PARITY-2 B-3 — fieldConditionIssues', () => {
 
   it('a field with no condition is never refused for its key being absent; only keyed fields can be triggers', () => {
     expect(reasons([sig, f(null, 'CHECKBOX'), f(null, 'CHECKBOX'), f('t', 'TEXT', { condition: { trigger_key: 'null', when: 'checked' } })])).toEqual([[3, 'condition_trigger_unknown']]);
+  });
+});
+
+// FIELD-PARITY-2 B-7 — what the editors clear when a trigger is deleted or retyped.
+describe('orphanedConditionIndexes (B-7)', () => {
+  it('a condition whose trigger is gone, or no longer a type its rule reads, is orphaned', () => {
+    const fields = [
+      { field_key: 'cb', field_type: 'TEXT' },
+      { field_key: 't1', field_type: 'TEXT', condition: { trigger_key: 'cb', when: 'checked' as const } },
+      { field_key: 't2', field_type: 'TEXT', condition: { trigger_key: 'gone', when: 'unchecked' as const } },
+      { field_key: 'dd', field_type: 'DROPDOWN' },
+      { field_key: 't3', field_type: 'TEXT', condition: { trigger_key: 'dd', when: 'one_of' as const, values: ['a'] } },
+      { field_key: 't4', field_type: 'TEXT', condition: { trigger_key: 'dd', when: 'chosen' as const } },
+      { field_key: 't5', field_type: 'TEXT', condition: null },
+    ];
+    expect(orphanedConditionIndexes(fields)).toEqual([1, 2, 5]);
+  });
+
+  it('the visibility rule is exported here once (sign-client re-exports this copy)', () => {
+    expect(shownFields([{ field_key: 'a' }], () => null).size).toBe(1);
   });
 });
