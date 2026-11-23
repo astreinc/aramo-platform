@@ -1838,6 +1838,7 @@
     "apps/platform-web/e2e/fixtures/tenants.ts",
     "apps/platform-web/e2e/fixtures/world.ts",
     "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts",
+    "apps/platform-web/e2e/journeys/ccp-personal-arranged-journey.spec.ts",
     "apps/platform-web/e2e/journeys/fixed-form-detect-import.spec.ts",
     "apps/platform-web/e2e/journeys/fixed-form-p3-types.spec.ts",
     "apps/platform-web/e2e/journeys/fixed-form-repeat-align.spec.ts",
