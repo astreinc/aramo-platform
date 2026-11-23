@@ -48,6 +48,7 @@ test('P2-5 / P2-6 · upload with both options: the flags are sent and the import
               variables: [],
               issues: [],
               previewed: false,
+              sender_filled_fields_enabled: false,
               field_import: {
                 fields: [{ field_key: 'signature_employee', field_type: 'SIGNATURE', binding_key: null, signer_role: 'employee', required: true, page_number: 0, x: 72, y: 600, width: 200, height: 40, ordinal: 0, source: 'text_tag', source_name: 'signature:Employee' }],
                 warnings: [{ code: 'text_tag_type_unknown', message: 'unknown', name: 'stamp:Employee', page_number: 0 }],

@@ -489,6 +489,10 @@ export class FixedFormService {
       variables: await this.allowedVariables(template.document_type_id),
       issues: await this.issues({ document_type_id: template.document_type_id, field_schema: version.field_schema, fields, title: template.name }),
       previewed: version.previewed_fingerprint !== null && version.previewed_fingerprint === version.content_fingerprint,
+      // FIELD-PARITY-2 A-4 (ruling C-9) — whether sender-filled fields are switched on (S-5, dark;
+      // the one shared flag reader, @aramo/sign-fields senderFilledFieldsEnabled). The Studio offers
+      // Sender-filled and Read-only only when this is true.
+      sender_filled_fields_enabled: senderFilledFieldsEnabled(process.env),
     };
   }
 

@@ -48,6 +48,7 @@ function view(over: Partial<FixedFormVersionView> = {}): FixedFormVersionView {
     variables: [{ key: 'organization.name', label: 'Organization name', group: 'Org', data_type: 'TEXT', sample_value: null }],
     issues: [{ code: 'fields_required', message: 'Place at least one field.' }],
     previewed: false,
+    sender_filled_fields_enabled: false,
     ...over,
   };
 }
@@ -254,5 +255,24 @@ describe('FixedFormPreview (§7.3)', () => {
     expect(screen.getByText(/Signed by: Employee · Prefilled: Organization name/)).toBeInTheDocument();
     expect(await screen.findByTestId('ffs-field-sig')).not.toHaveAttribute('role');
     expect(screen.getByTestId('ffs-field-org')).toHaveTextContent('Prefilled: Organization name');
+  });
+});
+
+describe('FIELD-PARITY-2 A-4 — the sender-filled toggle follows the view flag', () => {
+  it('is hidden while sender_filled_fields_enabled is false', async () => {
+    render(<FixedFormStudio dataSource={source()} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    await screen.findByTestId('ffs-page-0');
+    fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+    expect(screen.getByTestId('ffs-inspector')).toBeInTheDocument();
+    expect(screen.queryByTestId('ffs-sender-filled')).toBeNull();
+  });
+
+  it('is offered, with read-only, when sender_filled_fields_enabled is true', async () => {
+    const ds = source({ view: vi.fn(async () => view({ sender_filled_fields_enabled: true })) });
+    render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    await screen.findByTestId('ffs-page-0');
+    fireEvent.click(screen.getByTestId('ffs-add-TEXT'));
+    fireEvent.click(await screen.findByTestId('ffs-sender-filled'));
+    expect(screen.getByTestId('ffs-read-only')).toBeInTheDocument();
   });
 });

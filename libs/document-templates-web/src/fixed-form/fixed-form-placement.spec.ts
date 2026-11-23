@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, defaultSettingsFor } from '@aramo/field-placement-web';
 
-import { FIXED_FORM_SETTINGS, fixedFormFieldsToPlaced, fixedFormFieldsToWire } from './fixed-form-placement';
+import { FIXED_FORM_SETTINGS, fixedFormFieldsToPlaced, fixedFormFieldsToWire, fixedFormSettings } from './fixed-form-placement';
 import type { FixedFormField } from './fixed-form-model';
 
 // FIELD-PARITY-1 P1-3 × P1-5 — the console Studio carries the template field settings (label,
@@ -144,5 +144,14 @@ describe('fixed-form placement ↔ template field settings (FIELD-PARITY-1)', ()
     // A stored sender-filled field still reaches the editor (and goes back unchanged, FP3-S-1).
     const [f] = fixedFormFieldsToPlaced([base({ field_key: 'text_1', field_type: 'TEXT', sender_filled: true, read_only: true })]);
     expect(f?.settings).toMatchObject({ senderFilled: true, readOnly: true });
+  });
+
+  it('FP2 A-4 the Studio offers sender-filled / read-only only when the view says the server flag is on', () => {
+    expect(fixedFormSettings({ sender_filled_fields_enabled: false })).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings(null)).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings({})).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings({ sender_filled_fields_enabled: true })).toEqual([
+      'label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'options',
+    ]);
   });
 });

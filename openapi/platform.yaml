@@ -7611,7 +7611,7 @@ components:
     FixedFormVersionView:
       type: object
       additionalProperties: false
-      required: [template_id, version_id, version_number, status, content, fields, variables, issues, previewed]
+      required: [template_id, version_id, version_number, status, content, fields, variables, issues, previewed, sender_filled_fields_enabled]
       properties:
         template_id: { type: string, format: uuid }
         version_id: { type: string, format: uuid }
@@ -7674,6 +7674,13 @@ components:
               field_key: { type: string }
               role_key: { type: string }
         previewed: { type: boolean }
+        sender_filled_fields_enabled:
+          type: boolean
+          description: >-
+            FIELD-PARITY-2 A-4 (ruling C-9) — true when sender-filled fields are switched on
+            (SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark). The Studio offers the Sender-filled
+            and Read-only settings only when this is true; a stored sender-filled field round-trips
+            either way.
         field_import:
           $ref: '#/components/schemas/FixedFormFieldImport'
           description: FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields or apply_text_tags.

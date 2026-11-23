@@ -15,7 +15,7 @@ import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX } from '@aramo/sign-fields';
 import { ProductTagsSelect, templateProductsLine, type TemplateProductKey } from '../template-products';
 import { loadPdf as defaultLoadPdf, type LoadedPdf } from '../pdf';
 
-import { FIXED_FORM_DOC_ID, FIXED_FORM_EDITOR_COPY, FIXED_FORM_PALETTE, FIXED_FORM_SETTINGS, fixedFormFieldsToWire, fixedFormFieldsToPlaced } from './fixed-form-placement';
+import { FIXED_FORM_DOC_ID, FIXED_FORM_EDITOR_COPY, FIXED_FORM_PALETTE, fixedFormFieldsToWire, fixedFormSettings, fixedFormFieldsToPlaced } from './fixed-form-placement';
 import {
   FIXED_FORM_MAX_BYTES,
   base64ToBytes,
@@ -215,6 +215,11 @@ export function FixedFormStudio({
   const renderPage = useCallback((_doc: string, index: number, canvas: HTMLCanvasElement, width: number) => pdf?.render(index, canvas, width) ?? Promise.resolve(), [pdf]);
   const assignees = useMemo(() => roles.filter((r) => r.kind === 'SIGNER').map((r) => ({ id: r.role_key, label: r.label })), [roles]);
   const prefills = useMemo(() => (view?.variables ?? []).map((v) => ({ key: v.key, label: v.label })), [view]);
+  const senderFilledOn = view?.sender_filled_fields_enabled === true;
+  const capabilities = useMemo(
+    () => ({ settings: fixedFormSettings({ sender_filled_fields_enabled: senderFilledOn }), prefillTypes: ['TEXT'], limits: { labelMax: FIELD_LABEL_MAX, groupKeyMax: FIELD_GROUP_KEY_MAX } }),
+    [senderFilledOn],
+  );
   // FIELD-PARITY-1 P2-4 — "Find fields" on a draft with a PDF (the console's fixed-form route).
   const versionId = view?.version_id ?? null;
   const hasPdf = view?.content.pdf != null;
@@ -577,9 +582,10 @@ export function FixedFormStudio({
         allowUnassigned
         prefills={prefills}
         // FIELD-PARITY-1 P1-3 / P3 — the template API stores every field setting (the server's
-        // rule: @aramo/sign-fields parseTemplateFieldSettings); the editor offers them per type
-        // (FIXED_FORM_SETTINGS: all but sender-filled / read-only, which ship dark).
-        capabilities={{ settings: FIXED_FORM_SETTINGS, prefillTypes: ['TEXT'], limits: { labelMax: FIELD_LABEL_MAX, groupKeyMax: FIELD_GROUP_KEY_MAX } }}
+        // rule: @aramo/sign-fields parseTemplateFieldSettings); the editor offers them per type.
+        // FIELD-PARITY-2 A-4 — Sender-filled and Read-only only while the view says the server
+        // flag is on (fixedFormSettings; they ship dark).
+        capabilities={capabilities}
         readOnly={!editable}
         newFieldId={(type, fields) => nextFieldKey(type, fields.map((f) => ({ field_key: f.id })))}
         paletteMode="add"

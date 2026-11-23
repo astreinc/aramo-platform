@@ -49,6 +49,7 @@ describe('DocumentTemplateDetailView → fixed-form mode (§7.2)', () => {
       variables: [],
       issues: [{ code: 'pdf_required', message: 'Upload the official PDF.' }],
       previewed: false,
+      sender_filled_fields_enabled: false,
     });
     const session = platformSession(['platform:tenant:read', 'platform:document_template:read', 'platform:document_template:manage']);
     render(
