@@ -624,6 +624,16 @@ const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql',
 );
+// FIELD-PARITY-2 B-2 (conditional fields) — TemplateFieldDefinition gains `condition` (JSONB,
+// nullable, ADD-not-rename, shape CHECK). Changes the returned shapes: the Sign S2S render
+// field_definitions, the template field rows and the fixed-form field views now carry condition
+// (the regenerated client SELECTs the new column) → registered (CLAUDE.md law); after the P3
+// migration. The Sign SignatureField field_key / condition migrations are picked up by the
+// verify-sign.ts directory scan.
+const DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql',
+);
 // FIELD-PARITY-1 P2-5 / P2-6 (fillable-PDF import, text tags) — NO migration: imported fields are
 // ordinary TemplateFieldDefinition rows (the P1-3 columns above). The only returned-shape change is
 // the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
@@ -632,6 +642,17 @@ const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
 // FIELD-PARITY-1 P2-4 (auto-detect suggestions) — NO migration and no changed shape: one NEW read
 // route, GET …/fixed-form/field-suggestions (openapi/platform.yaml FixedFormFieldSuggestions), which
 // no consumer pact records yet; every existing interaction's response is unchanged.
+// FIELD-PARITY-2 A-4 (ruling C-9) — NO migration: a returned-shape change only. FixedFormVersionView
+// (openapi/platform.yaml) gains the required boolean `sender_filled_fields_enabled`, read from the
+// server flag through the one shared reader (@aramo/sign-fields senderFilledFieldsEnabled). It is
+// returned only by the console /platform/document-templates/…/fixed-form* routes, which no consumer
+// pact records; the sign-source fixed-form render interaction is a different shape and unchanged.
+// FIELD-PARITY-2 A-5 — NO migration: FixedFormImportedField.options (inside the opt-in
+// `field_import`) may now carry a PDF dropdown's choices, and FieldImportWarning gains two codes;
+// no recorded interaction sends import_fields, so none changes.
+// FIELD-PARITY-2 A-6 (ruling C-8) — NO migration: an apply_text_tags upload removes the used tags'
+// text from the stored PDF (and still covers it); FieldImportWarning gains
+// text_tag_text_not_removed. No recorded interaction sends the flag.
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3785,6 +3806,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION,
         DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION,
         DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION,
+        DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,

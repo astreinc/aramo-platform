@@ -11,6 +11,7 @@ import {
   RETIRED_FIELD_TYPES,
   TEMPLATE_TYPE_MAPPING,
   checkboxGroupIssues,
+  fieldConditionIssues,
   fieldTypesFor,
   parseTemplateFieldSettings,
   senderFilledFieldsEnabled,
@@ -400,7 +401,10 @@ export class SenderTemplatesService {
           height: d.height,
           required: d.required,
           // FIELD-PARITY-1 P1-4 — the settings the type takes (the sender rules re-check them).
-          ...senderSettingsOf(d),
+          // FIELD-PARITY-2 B-10 (ruling C-7) — without the condition: self-sign has none, so every
+          // field is shown (and required as authored). The field_key is carried as for a send.
+          ...withoutCondition(senderSettingsOf(d)),
+          field_key: d.field_key,
         });
       }
       if (fields.length > 0) await this.envelopes.replaceFields(auth, env.id, { fields }, requestId);
@@ -473,6 +477,9 @@ export class SenderTemplatesService {
     if (rendered.template_kind === 'FIXED_FORM') assertFixedFormPlaceable(rendered.field_definitions, bound, requestId);
     // FIELD-PARITY-1 P1-4 — every signer field is carried with its settings, or refused here.
     assertTemplateFieldsCarried(rendered.field_definitions, requestId);
+    // FIELD-PARITY-2 B-9 — every condition's trigger is carried too, and the carried set holds the
+    // one cross-field rule (C-6 included: the drawn signature blocks count), or refused here.
+    assertConditionsCarried(rendered.field_definitions, rendered.signature_fields, new Set(bound.filter((r) => r.recipient_kind === 'SIGNER').map((r) => r.role_key)), requestId);
 
     const title = rendered.title.slice(0, MAX_TITLE);
     const env = await this.repo.createDraft({
@@ -527,6 +534,10 @@ export class SenderTemplatesService {
         font_size: carried.settings.font_size,
         data_name: carried.settings.data_name,
         options: carried.settings.options as Readonly<Record<string, unknown>> | null,
+        // FIELD-PARITY-2 B-9 — the template field_key is the envelope field_key (1:1), so a
+        // condition's trigger_key needs no translation (assertConditionsCarried checked it).
+        field_key: d.field_key,
+        condition: carried.settings.condition,
       });
     }
     await this.repo.bindTemplateDraft({
@@ -698,6 +709,59 @@ export function carriedField(d: SignTemplateFieldDefinition): { readonly field_t
   const mapped = TEMPLATE_TYPE_MAPPING[d.field_type];
   if (mapped === undefined) return { field_type: d.field_type, settings: parsed.settings };
   return { field_type: mapped.field_type, settings: { ...parsed.settings, options: (mapped.options ?? parsed.settings.options) as TemplateFieldSettings['options'] } };
+}
+
+// FIELD-PARITY-2 B-10 (ruling C-7) — a self-sign field carries no condition.
+function withoutCondition(settings: Record<string, unknown>): Record<string, unknown> {
+  const { condition: _condition, ...rest } = settings;
+  return rest;
+}
+
+/**
+ * FIELD-PARITY-2 B-9 — the template → envelope carry keeps each field's key 1:1 (template
+ * field_key = envelope field_key), so a condition's trigger_key names the same field on the
+ * envelope. Refused 409 before the envelope is created: a condition whose trigger is not carried
+ * (no position, no bound signing role, or no such field: template_condition_trigger_missing), and
+ * a carried set the one cross-field rule refuses (template_field_setting_unsupported, setting
+ * condition, setting_reason the §4.3 reason; C-6 counts the drawn signature blocks).
+ */
+export function assertConditionsCarried(
+  defs: readonly SignTemplateFieldDefinition[],
+  signatureFields: ReadonlyArray<{ readonly field_type: string; readonly role_key?: string }>,
+  signerKeys: ReadonlySet<string>,
+  requestId: string,
+): void {
+  const carriedDefs = defs.filter(
+    (d) => d.signer_role !== null && signerKeys.has(d.signer_role) && d.page_number !== null && d.x !== null && d.y !== null && d.width !== null && d.height !== null,
+  );
+  const withSettings = carriedDefs.map((d) => ({ d, settings: carriedField(d).settings }));
+  if (!withSettings.some((x) => x.settings.condition !== null)) return;
+  const keys = new Set(carriedDefs.map((d) => d.field_key));
+  for (const { d, settings } of withSettings) {
+    if (settings.condition !== null && !keys.has(settings.condition.trigger_key)) {
+      throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field shown only for an answer Aramo Sign cannot place. Ask your administrator to update the template.', 409, {
+        requestId,
+        details: { reason: 'template_condition_trigger_missing', field_key: d.field_key, trigger_key: settings.condition.trigger_key },
+      });
+    }
+  }
+  const [issue] = fieldConditionIssues([
+    ...signatureFields.filter((f) => f.role_key !== undefined && signerKeys.has(f.role_key)).map((f) => ({ field_key: null, field_type: f.field_type, signer: f.role_key ?? null, condition: null })),
+    ...withSettings.map(({ d, settings }) => ({
+      field_key: d.field_key,
+      field_type: carriedField(d).field_type,
+      signer: d.signer_role,
+      condition: settings.condition,
+      options: settings.options,
+      sender_filled: settings.sender_filled,
+    })),
+  ]);
+  if (issue !== undefined) {
+    throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'This template has a field setting Aramo Sign cannot apply. Ask your administrator to update the template.', 409, {
+      requestId,
+      details: { reason: 'template_field_setting_unsupported', ...(issue.field_key !== null ? { field_key: issue.field_key } : {}), setting: 'condition', setting_reason: issue.reason },
+    });
+  }
 }
 
 // FIELD-PARITY-1 P1-4 / P3 — a template field's settings as sender-API members (PUT …/fields):

@@ -318,6 +318,21 @@ describe('Sign Document: Add Documents (a06, a07)', () => {
 });
 
 describe('Sign Document: Sign screen (a08–a10, b01, b02)', () => {
+  it('FIELD-PARITY-2 A-1: a placed dropdown is filled with the signer\'s field editor and shown on the page', async () => {
+    await toPlaceWithTemplate();
+    fireEvent.press(screen.getByLabelText('Dropdown field'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('self-place-center'));
+    });
+    await waitFor(() => expect(screen.getByTestId('choice-list')).toBeTruthy(), WAIT);
+    expect(screen.queryAllByTestId(/^field-fill-/).filter((n) => /Option 2/.test(String(n.props.children ?? '')))).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('choice-Option 2'));
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('text-field-save'));
+    });
+    await waitFor(() => expect(screen.getAllByTestId(/^field-fill-/).some((n) => /Option 2/.test(JSON.stringify(n.props.children ?? '')))).toBe(true), WAIT);
+  });
+
   it('M-A13 #3: adopting from the Signature tool places the mark at the centre, selected', async () => {
     await toPlaceWithTemplate();
     await adoptSignature();
@@ -325,7 +340,7 @@ describe('Sign Document: Sign screen (a08–a10, b01, b02)', () => {
     expect(screen.getByLabelText('Remove field')).toBeTruthy();
   });
 
-  it('M-A19-A1: one tool row in the DocuSign order; no "More fields"', async () => {
+  it('M-A19-A1: one tool row in the DocuSign order, then the Phase 3 tools (FIELD-PARITY-2 A-1); no "More fields"', async () => {
     renderScreen();
     await toPlace();
     const row = screen.queryAllByTestId(/^self-tool-/).map((n) => n.props.accessibilityLabel);
@@ -341,6 +356,12 @@ describe('Sign Document: Sign screen (a08–a10, b01, b02)', () => {
       'Title field',
       'Textbox field',
       'Checkbox field',
+      'Date picker field',
+      'Dropdown field',
+      'Radio field',
+      'Number field',
+      'Multi-line field',
+      'Acknowledge field',
     ]);
     expect(screen.queryByTestId('editor-more-fields')).toBeNull();
     expect(screen.queryByText('Place at center')).toBeNull();

@@ -4,6 +4,8 @@
 // clients import it from @aramo/sign-client.
 import { FIELD_CATALOG, PROFILE_TEXT_FIELD_TYPES, fieldTypesFor, type ProfileTextFieldType } from '@aramo/sign-fields';
 
+import { shownFields } from './field-visibility.js';
+
 export const SIGNER_NAME_MODES = ['SIGNER_PROFILE', 'SIGNER_ENTERED'] as const;
 export type SignerNameMode = (typeof SIGNER_NAME_MODES)[number];
 export const CHECKBOX_GROUP_RULES = ['SELECT_ONE', 'SELECT_ANY'] as const;
@@ -27,6 +29,9 @@ export interface FieldRuleRow {
   // value: never the signer's to fill, never a completion unit.
   sender_filled?: boolean | null;
   read_only?: boolean | null;
+  // FIELD-PARITY-2 B-1 / B-2 — the field's key and its condition (a hidden field is never a unit).
+  field_key?: string | null;
+  condition?: unknown;
 }
 
 // Sign 1.14 — a PAYMENT field is filled by the server when its payment succeeds
@@ -91,6 +96,10 @@ export interface SignerFieldLike {
   /** FIELD-PARITY-1 P3 S-5 — the sender filled the value before sending (never the signer's). */
   readonly sender_filled?: boolean | null;
   readonly read_only?: boolean | null;
+  /** FIELD-PARITY-2 B-1 — the field's key (a condition names its trigger by it). */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 — "show only when" (NULL = always shown); see field-visibility.ts. */
+  readonly condition?: unknown;
 }
 
 /** FIELD-PARITY-1 P3 S-4 / S-5 — a value the signer may not change (the sender's, shown read-only). */
@@ -115,16 +124,37 @@ export function checkboxGroupOf(f: Pick<SignerFieldLike, 'field_type' | 'group_k
 }
 
 /**
+ * FIELD-PARITY-2 A-2 (G-5) — may the signer clear this chosen radio option (tapping it again)?
+ * Yes only in an OPTIONAL set: no option of its group (or the lone option, ungrouped) is
+ * required. Clearing sends 'false' (the server accepts it). A required set keeps its choice;
+ * choose another option to change it, and its rule is still enforced at completion. ONE copy
+ * for the sign-web guest page and the Aramo Sign app.
+ */
+export function radioChoiceClearable<T extends Pick<SignerFieldLike, 'field_type' | 'group_key' | 'required'>>(option: T, fields: readonly T[]): boolean {
+  if (option.field_type !== 'RADIO') return false;
+  const g = checkboxGroupOf(option);
+  const set = g === null ? [option] : fields.filter((f) => f.field_type === 'RADIO' && checkboxGroupOf(f) === g);
+  return !set.some((f) => f.required);
+}
+
+/**
  * Every unit, in field order then group order. `filled(f)`: the field has a value;
- * `checked(f)`: a check box holds 'true'.
+ * `checked(f)`: a check box holds 'true'. FIELD-PARITY-2 B-4 — only SHOWN fields make units (the
+ * one visibility rule, shownFields): a hidden field is never required and never counted.
+ * `value(f)`: the field's current value, which a condition reads; absent, a check box / radio
+ * trigger reads checked(f) ('true' or nothing), so a one_of condition (a dropdown trigger) needs
+ * `value` — the signer screens pass it.
  */
 export function signerFieldUnits<T extends SignerFieldLike>(
   fields: readonly T[],
-  state: { readonly filled: (f: T) => boolean; readonly checked: (f: T) => boolean },
+  state: { readonly filled: (f: T) => boolean; readonly checked: (f: T) => boolean; readonly value?: (f: T) => string | null | undefined },
 ): SignerFieldUnit<T>[] {
   const units: SignerFieldUnit<T>[] = [];
   const groups = new Map<string, T[]>();
+  const valueOf = state.value ?? ((f: T) => (state.checked(f) ? 'true' : null));
+  const shown = shownFields(fields, valueOf);
   for (const f of fields) {
+    if (!shown.has(f)) continue;
     // Sign 1.14 — a PAYMENT is always a unit (the signer pays; the server then fills it), even
     // though the signer view marks it server_filled.
     if (isPaymentField(f)) {
@@ -169,7 +199,7 @@ export function signerFieldUnits<T extends SignerFieldLike>(
 //   - a required group needs at least min_selected boxes checked (default 1).
 // A group is required when any of its boxes is required.
 export function evaluateSignerFieldRules(fields: readonly FieldRuleRow[]): FieldRuleViolation | null {
-  const open = signerFieldUnits(fields, { filled: (f) => f.filled_at !== null, checked: isChecked }).find((u) => !u.done);
+  const open = signerFieldUnits(fields, { filled: (f) => f.filled_at !== null, checked: isChecked, value: (f) => (f.filled_at === null ? null : f.value) }).find((u) => !u.done);
   if (open === undefined) return null;
   if (open.group_key !== undefined) return { reason: open.reason, group_key: open.group_key };
   return { reason: open.reason, field_id: (open.fields[0] as FieldRuleRow).id };

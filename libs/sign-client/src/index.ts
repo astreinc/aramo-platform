@@ -34,6 +34,7 @@ export {
   evaluateSignerFieldRules,
   signerFieldUnits,
   checkboxGroupOf,
+  radioChoiceClearable,
   isSignerLocked,
   type SignerFieldLike,
   type SignerFieldUnit,
@@ -43,6 +44,15 @@ export {
   type ProfileTextFieldType,
   type FieldRuleViolation,
 } from './lib/field-rules.js';
+// FIELD-PARITY-2 B-4 — the one visibility rule (server, sign-web and the app).
+export {
+  fieldConditionOf,
+  conditionMetBy,
+  shownFields,
+  isFieldShown,
+  hiddenFilledFields,
+  type VisibilityFieldLike,
+} from './lib/field-visibility.js';
 export {
   RECIPIENT_KINDS,
   SIGNING_RECIPIENT_KINDS,
@@ -150,6 +160,25 @@ export {
   isFieldTypeKey,
   isPaymentsGatedOn,
   fieldSettingsOf,
+  // FIELD-PARITY-2 Phase B — the condition shape, the cross-field rule and its reasons (web and app).
+  FIELD_CONDITION_WHENS,
+  CONDITION_TRIGGER_TYPES,
+  CONDITION_DEPTH_MAX,
+  FIELD_CONDITION_REFUSAL_REASONS,
+  parseFieldCondition,
+  fieldConditionIssues,
+  // B-7 — the editors' trigger list, starting rule and delete / retype clear (web and app).
+  startingCondition,
+  usableTriggerIndexes,
+  orphanedConditionIndexes,
+  type FieldCondition,
+  type FieldConditionWhen,
+  type FieldConditionIssue,
+  type FieldConditionRefusalReason,
+  type ConditionalFieldLike,
+  // FIELD-PARITY-2 A-7 — the editors' settings projection (web and app).
+  editableFieldSettings,
+  senderEditorSettings,
   // FIELD-PARITY-1 P3 §6 — the settings rule, the value rules and how a value prints (one copy
   // for the server and both Sign apps).
   isCircleMark,
@@ -304,8 +333,10 @@ export {
   fieldValueRefusalText,
   isFieldValueRefusalReason,
   signerValueProblem,
+  signerClearRefusal,
   signerUnitMessage,
   incompleteReasonMessage,
   type SignerInputField,
   type SignerInputKind,
+  type SignerClearField,
 } from './lib/signer-field-input.js';

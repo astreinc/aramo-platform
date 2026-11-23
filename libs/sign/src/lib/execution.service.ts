@@ -26,7 +26,7 @@ import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from 
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { isWitness, signingRecipients } from './domain/recipients.js';
-import { CHECK_FIELD_TYPES } from './domain/field-rules.js';
+import { CHECK_FIELD_TYPES, shownFields } from './domain/field-rules.js';
 import { ACCESS_CODE_VERIFIED_EVENT } from './domain/access-code.js';
 import { RECIPIENT_OTP_VERIFIED_EVENT } from './messaging/messaging-rules.js';
 import { formatPaymentAmount } from './payments/sign-payment.repository.js';
@@ -175,11 +175,94 @@ const ARTIFACT_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
 
 type EnvelopeFull = Awaited<ReturnType<EsignRepository['getEnvelopeFull']>>;
 
+// Every field of the envelope, in document order (the order the certificate has always read).
+function envelopeFields(full: EnvelopeFull): EnvelopeFull['documents'][number]['fields'] {
+  return full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
+}
+
 type ArtifactTx = LockingTx & Pick<PrismaService, 'executedDocument' | 'executionCertificate'>;
 
 // M-A6 §1 — field types stamped as a vector check box (MARK). FIELD-PARITY-1 P1-2 — the
 // catalog's boolean types (CHECK_FIELD_TYPES, @aramo/sign-client over @aramo/sign-fields).
 const MARK_FIELD_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
+
+/** FIELD-PARITY-2 B-8 — one stored field as the visibility rule reads it at completion. */
+export type VisibilityRow = {
+  id: string;
+  signer_id: string | null;
+  field_key?: string | null;
+  condition?: unknown;
+  value: string | null;
+  filled_at: Date | null;
+};
+
+/**
+ * FIELD-PARITY-2 B-8 (ruling C-4) — the ids of the fields hidden at completion: the one
+ * visibility rule (@aramo/sign-client shownFields) applied per signer over ALL that signer's
+ * fields in the envelope (a trigger may sit on another document of the same envelope), with the
+ * final stored values (the same value reading the server's fill and completion use). Unassigned
+ * fields (signer_id NULL) form their own group. Pure and deterministic: it reads only the stored
+ * rows. An envelope without conditions hides nothing, so its executed PDF and certificate are
+ * exactly as before.
+ */
+export function hiddenFieldIds(rows: ReadonlyArray<VisibilityRow>): ReadonlySet<string> {
+  if (!rows.some((r) => r.condition !== undefined && r.condition !== null)) return new Set();
+  const bySigner = new Map<string | null, VisibilityRow[]>();
+  for (const r of rows) bySigner.set(r.signer_id, [...(bySigner.get(r.signer_id) ?? []), r]);
+  const hidden = new Set<string>();
+  for (const group of bySigner.values()) {
+    const shown = shownFields(group, (f) => (f.filled_at === null ? null : f.value));
+    for (const f of group) if (!shown.has(f)) hidden.add(f.id);
+  }
+  return hidden;
+}
+
+/** FIELD-PARITY-2 B-8 (ruling C-4) — how the certificate marks a field whose condition was not met. */
+export const NOT_SHOWN = 'not shown (its condition was not met)';
+
+/**
+ * FIELD-PARITY-2 B-8 (ruling C-4) — one certificate line per hidden field of a signer, named as
+ * the existing lines name it (a check box as its checkbox line does, a value field by label or
+ * type and page). A radio group whose options are all hidden is listed once, by its group; a
+ * hidden option of a group that is otherwise shown is listed by itself. The other certificate
+ * lines read shownOnly(fields, hidden), so each hidden field appears on this line only.
+ */
+export function hiddenFieldLines(fields: ReadonlyArray<CertificateField>, signer_id: string, hidden: ReadonlySet<string>): string[] {
+  const mine = fields.filter((f) => f.signer_id === signer_id);
+  const isHidden = (f: CertificateField): boolean => f.id !== undefined && hidden.has(f.id);
+  const fullyHiddenGroups = new Set<string>();
+  const groups = new Map<string, CertificateField[]>();
+  for (const f of mine) {
+    if (f.field_type !== 'RADIO' || f.group_key === undefined || f.group_key === null) continue;
+    groups.set(f.group_key, [...(groups.get(f.group_key) ?? []), f]);
+  }
+  for (const [k, boxes] of groups) if (boxes.every(isHidden)) fullyHiddenGroups.add(k);
+  const lines: string[] = [];
+  const listedGroups = new Set<string>();
+  for (const f of mine) {
+    if (!isHidden(f)) continue;
+    if (f.field_type === 'RADIO' && f.group_key !== undefined && f.group_key !== null && fullyHiddenGroups.has(f.group_key)) {
+      if (listedGroups.has(f.group_key)) continue;
+      listedGroups.add(f.group_key);
+      lines.push(`Radio group "${f.group_key}": ${NOT_SHOWN}`);
+      continue;
+    }
+    const name = MARK_FIELD_TYPES.has(f.field_type) && f.field_type !== 'RADIO' ? checkboxName(f) : fieldName(f);
+    lines.push(`${name}: ${NOT_SHOWN}`);
+  }
+  return lines;
+}
+
+/** FIELD-PARITY-2 B-8 — the fields that are not hidden (all of them when nothing is hidden). */
+export function shownOnly<T extends { id?: string }>(fields: ReadonlyArray<T>, hidden: ReadonlySet<string>): T[] {
+  return hidden.size === 0 ? [...fields] : fields.filter((f) => f.id === undefined || !hidden.has(f.id));
+}
+
+function checkboxName(f: CertificateField): string {
+  return f.label !== undefined && f.label !== null && f.label.length > 0
+    ? `${f.field_type === 'ACKNOWLEDGEMENT' ? 'Acknowledgement' : 'Checkbox'} "${f.label}"`
+    : f.field_type === 'ACKNOWLEDGEMENT' ? `Acknowledgement (page ${f.page_number + 1})` : `Checkbox (page ${f.page_number + 1})`;
+}
 
 // M-A6 §2.5 — one certificate line per check box of a signer: its label (or a
 // positional fallback) and its state.
@@ -192,15 +275,15 @@ function checkboxLines(
   return fields
     .filter((f) => f.signer_id === signer_id && MARK_FIELD_TYPES.has(f.field_type) && f.field_type !== 'RADIO')
     .map((f) => {
-      const name = f.label !== undefined && f.label !== null && f.label.length > 0
-        ? `${f.field_type === 'ACKNOWLEDGEMENT' ? 'Acknowledgement' : 'Checkbox'} "${f.label}"`
-        : f.field_type === 'ACKNOWLEDGEMENT' ? `Acknowledgement (page ${f.page_number + 1})` : `Checkbox (page ${f.page_number + 1})`;
+      const name = checkboxName(f);
       return `${name}: ${f.filled_at !== null && f.value === 'true' ? 'checked' : 'not checked'}${f.sender_filled === true ? SENDER_ENTERED : ''}`;
     });
 }
 
 // FIELD-PARITY-1 P3 — the fields the certificate reads.
 type CertificateField = {
+  // FIELD-PARITY-2 B-8 — the row id (matches hiddenFieldIds); absent on older callers.
+  id?: string;
   signer_id: string | null;
   field_type: string;
   label?: string | null;
@@ -407,6 +490,8 @@ export class ExecutionService implements ExecutionProducerPort {
     // Feature-Parity §1.15 — only documents executed by THIS produce are sealed.
     const inserted: string[] = [];
     const { signatureIds, stampFor } = await this.signatureStamps(tenant_id, envelope_id);
+    // FIELD-PARITY-2 B-8 — the fields hidden at completion, per signer across the envelope.
+    const hidden = hiddenFieldIds(envelopeFields(full));
 
     for (const doc of full.documents) {
       // SX-1 item 1 — an executed document is written once. A repeated produce for
@@ -420,7 +505,7 @@ export class ExecutionService implements ExecutionProducerPort {
         continue;
       }
 
-      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null });
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null }, hidden);
 
       const kept = await this.insertExecutedDocument(tenant_id, envelope_id, doc.id, {
         source_sha256,
@@ -509,6 +594,7 @@ export class ExecutionService implements ExecutionProducerPort {
     doc: EnvelopeFull['documents'][number],
     stampFor: (signer_id: string | null) => { label: string; id: string },
     ctx: PlacementContext = {},
+    hidden: ReadonlySet<string> = new Set(),
   ): Promise<{ source_sha256: string; rendered: { bytes: Uint8Array; sha256: string; truncated_field_keys?: string[] } }> {
     const sourcePdf = await this.source.getSourcePdf({
       tenant_id,
@@ -526,6 +612,9 @@ export class ExecutionService implements ExecutionProducerPort {
     });
     const placements: PreparedField[] = [];
     for (const f of fields) {
+      // FIELD-PARITY-2 B-8 (ruling C-4) — a field hidden at completion is not drawn: no empty
+      // box (check-box kinds included) and no value. A shown field is drawn exactly as before.
+      if (hidden.has(f.id)) continue;
       if (MARK_FIELD_TYPES.has(f.field_type)) {
         // M-A6 §1 — a vector check box, never the stored value as text.
         placements.push({
@@ -579,7 +668,11 @@ export class ExecutionService implements ExecutionProducerPort {
     const identityChecks = await this.identityChecks(tenant_id, envelope_id);
     // Sign 1.14 — each signer's payment (status and Stripe reference) on the certificate.
     const payments = await this.prisma.signPayment.findMany({ where: { tenant_id, envelope_id }, orderBy: { created_at: 'asc' } });
-    const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
+    const allFields = envelopeFields(full);
+    // FIELD-PARITY-2 B-8 (ruling C-4) — a hidden field is left out of the check-box, radio and
+    // value lines and listed once instead, as not shown. Without conditions nothing changes.
+    const hidden = hiddenFieldIds(allFields);
+    const boxes = shownOnly(allFields, hidden);
     return (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
       { type: 'TEXT', text: `Subject: ${full.subject}` },
@@ -626,6 +719,7 @@ export class ExecutionService implements ExecutionProducerPort {
         // FIELD-PARITY-1 P3 — the new types' values and radio choices; the sender's marked.
         ...radioGroupLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
         ...fieldValueLines(boxes, s.id, full.signer_date_format ?? null).map((text): RenderBlock => ({ type: 'TEXT', text })),
+        ...hiddenFieldLines(allFields, s.id, hidden).map((text): RenderBlock => ({ type: 'TEXT', text })),
         ...paymentLines(payments, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
       { type: 'HEADING', text: 'Evidence' },
@@ -683,12 +777,14 @@ export class ExecutionService implements ExecutionProducerPort {
     if (affectedDocs.size === 0) return { envelope_id, status: 'not_affected', documents: [], certificate: null };
 
     const { signatureIds, stampFor } = await this.signatureStamps(tenant_id, envelope_id);
+    // FIELD-PARITY-2 B-8 — the corrected copy hides what the original hid (same stored values).
+    const hidden = hiddenFieldIds(envelopeFields(full));
     const byDoc = new Map(originals.map((o) => [o.envelope_document_id, o]));
     const corrected: Array<{ original: (typeof originals)[number]; source_sha256: string; bytes: Uint8Array; sha256: string }> = [];
     for (const doc of full.documents) {
       const original = byDoc.get(doc.id);
       if (original === undefined || !affectedDocs.has(doc.id)) continue;
-      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null });
+      const { source_sha256, rendered } = await this.renderExecutedDocument(tenant_id, doc, stampFor, { date_format: full.signer_date_format ?? null }, hidden);
       // The corrected copy is drawn on the same frozen source as the original.
       if (source_sha256 !== original.source_sha256) throw new ExecutedDocumentReissueRefusedError(envelope_id, 'source_changed');
       if (rendered.sha256 === original.executed_sha256) continue;

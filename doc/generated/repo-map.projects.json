@@ -888,6 +888,7 @@
       "TemplatesRepository",
       "documentTypeKeyFromName",
       "emptyFixedFormContent",
+      "fixedFormConditionIssues",
       "fixedFormIssues",
       "fixedFormPdfOf",
       "isFixedFormFieldType",
@@ -936,6 +937,7 @@
       "layoutTextInBox",
       "manifestProjection",
       "readPageFrames",
+      "removeAndCoverTextTags",
       "sanitizeWinAnsi",
       "stampTextInBox",
       "stampTextUnbounded",
@@ -1137,6 +1139,7 @@
     ],
     "@aramo/field-placement-web": [
       "AUTOSAVE_DELAY_MS",
+      "CONDITION_WHEN_LABELS",
       "DEFAULT_PLACEMENT_COPY",
       "DEFAULT_SETTINGS",
       "DUPLICATE_OFFSET",
@@ -1160,6 +1163,7 @@
       "REPEAT_DEFAULT_GAP",
       "REPEAT_MAX",
       "SNAP_DISTANCE_PX",
+      "TRIGGER_TYPES",
       "UploadFieldOptions",
       "VALIDATION_LABELS",
       "acceptSuggestions",
@@ -1173,11 +1177,18 @@
       "clampBox",
       "clampGroupDelta",
       "cleanChoices",
+      "clearStaleConditions",
       "cloneFields",
+      "conditionIssues",
+      "conditionRows",
+      "conditionWhensFor",
       "configureField",
       "copyable",
+      "defaultConditionFor",
       "defaultFace",
       "defaultSettingsFor",
+      "dependentsOf",
+      "describeField",
       "diffFields",
       "distributeBoxes",
       "distributeFields",
@@ -1206,8 +1217,10 @@
       "pickTargetPage",
       "placeField",
       "placeNewField",
+      "previewShownIds",
       "radioOptionBelow",
       "rectFromPoints",
+      "remapConditions",
       "removeFields",
       "repeatDown",
       "repeatPitchOf",
@@ -1215,16 +1228,20 @@
       "roundGestureBox",
       "sameSizeBoxes",
       "sameSizeFields",
+      "setPreviewAnswer",
       "settingsFromWire",
       "settingsIssue",
       "settingsToWire",
       "snapMove",
       "snapResize",
+      "staleConditionIds",
       "suggestionsFromWire",
       "toPdf",
       "toTopLeft",
+      "triggerChoices",
       "typeLabelOf",
       "uploadFlags",
+      "usableTriggers",
       "useAutosave",
       "visibleArea",
       "visibleRegionInPage"
@@ -2677,6 +2694,8 @@
       "CHECKBOX_GROUP_RULES",
       "CHECKBOX_LABEL_MAX",
       "CHECK_FIELD_TYPES",
+      "CONDITION_DEPTH_MAX",
+      "CONDITION_TRIGGER_TYPES",
       "COPY_DELIVERIES",
       "DEFAULT_MONEY_DECIMALS",
       "DEFAULT_SIGN_DATE_FORMAT",
@@ -2695,6 +2714,7 @@
       "EnvelopeRevisionMismatchError",
       "FALLBACK_MESSAGE",
       "FIELD_CATALOG",
+      "FIELD_CONDITION_REFUSAL_REASONS",
       "FIELD_DATA_NAME_PATTERN",
       "FIELD_DEFAULTS",
       "FIELD_FONT_SIZE_MAX",
@@ -2770,6 +2790,7 @@
       "allowanceTermsLine",
       "checkPickedFile",
       "checkboxGroupOf",
+      "conditionMetBy",
       "convertibleWordName",
       "copyRecipients",
       "currentTurnOf",
@@ -2779,6 +2800,8 @@
       "duplicateWitness",
       "envelopeOpenForSigning",
       "evaluateSignerFieldRules",
+      "fieldConditionIssues",
+      "fieldConditionOf",
       "fieldImportSummary",
       "fieldImportWarningText",
       "fieldInputHint",
@@ -2792,6 +2815,7 @@
       "formatNumberValue",
       "formatSignDate",
       "hasFieldValue",
+      "hiddenFilledFields",
       "hostedSessionRefusal",
       "inboxActionsOf",
       "incompleteReasonMessage",
@@ -2799,6 +2823,7 @@
       "isDailyAllowance",
       "isDraftEditable",
       "isE164",
+      "isFieldShown",
       "isFieldTypeKey",
       "isFieldTypeOn",
       "isFieldValueRefusalReason",
@@ -2834,12 +2859,15 @@
       "normalizeAccessCode",
       "normalizeSignerInput",
       "numberPrefixOf",
+      "orphanedConditionIndexes",
+      "parseFieldCondition",
       "parseFieldSettings",
       "pendingSuggestions",
       "placeableFieldTypes",
       "planFacts",
       "predecessorsOf",
       "profileTextValueRefusal",
+      "radioChoiceClearable",
       "recipientKindOf",
       "refusalMessage",
       "remindableSigners",
@@ -2850,8 +2878,11 @@
       "selfSignTarget",
       "sendFeaturesOf",
       "senderActionsOf",
+      "senderEditorSettings",
       "sessionIssueRefusal",
+      "shownFields",
       "signDatePreview",
+      "signerClearRefusal",
       "signerFieldCaption",
       "signerFieldPlaceholder",
       "signerFieldTooltip",
@@ -2866,6 +2897,7 @@
       "suggestionReasonText",
       "templateAccess",
       "titleFromFilename",
+      "usableTriggerIndexes",
       "voidReasonProblem",
       "witnessReady",
       "witnessTargets",
@@ -2873,6 +2905,10 @@
     ],
     "@aramo/sign-fields": [
       "CHECKBOX_GROUP_RULES",
+      "CONDITION_DEPTH_MAX",
+      "CONDITION_TRIGGER_TYPES",
+      "CONDITION_VALUES_MAX",
+      "CONDITION_VALUE_MAX",
       "DEFAULT_CHECKBOX_GROUP_RULE",
       "DEFAULT_MONEY_CURRENCY",
       "DEFAULT_MONEY_DECIMALS",
@@ -2883,6 +2919,8 @@
       "DROPDOWN_CHOICE_LABEL_MAX",
       "DROPDOWN_CHOICE_VALUE_MAX",
       "FIELD_CATALOG",
+      "FIELD_CONDITION_REFUSAL_REASONS",
+      "FIELD_CONDITION_WHENS",
       "FIELD_DATA_NAME_PATTERN",
       "FIELD_DEFAULTS",
       "FIELD_FONT_SIZE_MAX",
@@ -2890,6 +2928,7 @@
       "FIELD_GROUP_KEY_MAX",
       "FIELD_IMPORT_WARNING_CODES",
       "FIELD_IMPORT_WARNING_COPY",
+      "FIELD_KEY_MAX",
       "FIELD_LABEL_MAX",
       "FIELD_PLACEHOLDER_MAX",
       "FIELD_SETTING_REFUSAL_REASONS",
@@ -2924,7 +2963,12 @@
       "VALIDATIONS_BY_TYPE",
       "WHEN_PAYMENTS_AVAILABLE",
       "checkboxGroupIssues",
+      "conditionMetBy",
       "detectFields",
+      "duplicateFieldKeys",
+      "editableFieldSettings",
+      "fieldConditionIssues",
+      "fieldConditionOf",
       "fieldImportSummary",
       "fieldImportWarningText",
       "fieldSettingsOf",
@@ -2936,32 +2980,43 @@
       "formatChosenDate",
       "formatNumberValue",
       "hasFieldValue",
+      "hiddenFilledFields",
+      "importDropdownOptions",
       "importFieldKey",
       "importGroupKey",
       "isCircleMark",
       "isFieldImportWarningCode",
+      "isFieldKey",
+      "isFieldShown",
       "isFieldTypeKey",
       "isFieldTypeOn",
       "isIsoDate",
       "isPaymentsGatedOn",
       "isSuggestedFieldType",
       "matchTagRole",
+      "orphanedConditionIndexes",
+      "parseFieldCondition",
       "parseFieldSettings",
       "parseTemplateFieldSettings",
       "parseTextTag",
       "pendingSuggestions",
       "planPdfFormFields",
       "planTextTags",
+      "senderEditorSettings",
       "senderFilledFieldsEnabled",
       "setFieldSettings",
+      "shownFields",
+      "startingCondition",
       "suggestSignatureBlock",
       "suggestionReasonText",
       "tagBoxToPdf",
       "tagCoverRect",
       "tagFieldRect",
+      "tagTextNotRemovedWarnings",
       "templateNameModeOf",
       "templateSettingsOf",
-      "textTagTypeOf"
+      "textTagTypeOf",
+      "usableTriggerIndexes"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -5071,6 +5126,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/field-parity-2-conditions.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7750,6 +7811,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/field-parity-2-template-field-condition.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -8975,6 +9042,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/field-parity-2-conditions.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
@@ -10639,6 +10712,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/field-parity-2-executed-output.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/m-a13-executed-reissue.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -10656,6 +10735,12 @@
         "status": "excluded"
       },
       { "project": "sign", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/field-parity-p2-upload-import.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",
@@ -14904,6 +14989,11 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/editor/conditions.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/editor/editorReducer.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -14989,6 +15079,16 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/selfSign/selfSignModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/UploadOptions.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/send/draftModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15009,6 +15109,16 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/send/sendFlowController.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/senderApi.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/send/templates.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15020,6 +15130,11 @@
       },
       {
         "from": "mobile/sign/src/features/signing/SigningFlow.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/__tests__/signingConditional.test.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },

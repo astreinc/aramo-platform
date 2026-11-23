@@ -15,6 +15,7 @@ import {
   isValidDelegate,
   normalizeSignerInput,
   numberPrefixOf,
+  radioChoiceClearable,
   signDatePreview,
   signerFieldCaption,
   signerFieldTooltip,
@@ -29,7 +30,24 @@ import { trimmedSignaturePng, typedSignaturePng } from '../signature-image';
 import { Btn, CheckIn, SelectIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SAVED_MARK_FONT_KEY, SignApiError, signApi, type GuestSavedMark, type GuestSavedMarks, type QesStatus, type SignField, type SignerBranding, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
-import { FILLED_MARK, completionProblem, formatAmount, incompleteMessage, isBox, isChecked, isLocked, isPayment, isRadio, isServerName, requirements, selectOneSiblings } from './field-rules.js';
+import {
+  FILLED_MARK,
+  awaitsSigner,
+  completionProblem,
+  formatAmount,
+  incompleteMessage,
+  isBox,
+  isChecked,
+  isLocked,
+  isPayment,
+  isRadio,
+  isServerName,
+  nextFieldToDo,
+  requirements,
+  selectOneSiblings,
+  shownSignFields,
+  withoutHiddenAnswers,
+} from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -1188,7 +1206,8 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
         }
         if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = typeof f.value === 'string' && f.value.length > 0 ? f.value : FILLED_MARK;
       }
-      return next;
+      // FIELD-PARITY-2 B-6 / C-3 — no answer is kept for a field these answers hide.
+      return withoutHiddenAnswers(v.fields, next);
     });
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
     // B3 — refused while sign.qes is not available: then no qualified signature is asked for.
@@ -1259,12 +1278,13 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const doneRequired = reqs.filter((r) => r.done).length;
   const problem = completionProblem(fields, filled);
   const progress = `${doneRequired} of ${required.length} required fields filled`;
-  const pending = (f: SignField): boolean => !isServerName(f) && !isLocked(f) && (isBox(f) ? !isChecked(filled[f.field_id]) : filled[f.field_id] === undefined);
-  const unmet = new Set(reqs.filter((r) => !r.done).map((r) => r.key));
-  const nextField =
-    fields.find((f) => pending(f) && (unmet.has(f.field_id) || (typeof f.group_key === 'string' && unmet.has(`group:${f.group_key}`)))) ??
-    fields.find((f) => pending(f) && !isBox(f)) ??
-    null;
+  // FIELD-PARITY-2 B-6 — the fields shown for the signer's current answers (the one visibility
+  // rule, @aramo/sign-client): only they are listed, drawn on the page and offered by Next. A
+  // hidden field is not rendered at all, so it is never focusable nor in the reading order. The
+  // rules above take every field (a hidden trigger keeps its dependents hidden).
+  const shownList = useMemo(() => shownSignFields(fields, filled), [fields, filled]);
+  const pending = (f: SignField): boolean => awaitsSigner(f, filled);
+  const nextField = nextFieldToDo(fields, filled);
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
 
   // M-A15 §4.2 / §6 — "Save as my default" (a signed-in signing session). Best effort:
@@ -1293,7 +1313,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     setNotice(null);
     try {
       await signApi.fillField(token, f.field_id, value, method);
-      setFilled((m) => ({ ...m, [f.field_id]: value }));
+      // FIELD-PARITY-2 B-6 / C-3 — when this answer hides fields, the server has cleared them;
+      // the page clears its own copy of those answers to match.
+      setFilled((m) => withoutHiddenAnswers(fields, { ...m, [f.field_id]: value }));
       return { ok: true };
     } catch (e) {
       if (e instanceof SignApiError && isFieldValueRefusalReason(e.reason)) return { ok: false, message: fieldValueRefusalText(e.reason, f, { date_format: view?.date_format ?? null }) };
@@ -1358,16 +1380,20 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     } else setTextFor(f);
   };
   // FIELD-PARITY-1 P3 T-5 — choosing a radio button: the server clears the group's other
-  // options, so the page shows them cleared once the choice is saved. A chosen option stays
-  // chosen (choose another option to change it).
+  // options, so the page shows them cleared once the choice is saved. FIELD-PARITY-2 A-2 —
+  // tapping the chosen option of an OPTIONAL set clears it ('false'); a required set keeps its
+  // choice (choose another option to change it). The shared rule decides (radioChoiceClearable).
   const choose = async (f: SignField) => {
-    if (isChecked(filled[f.field_id])) return;
+    if (isChecked(filled[f.field_id])) {
+      if (radioChoiceClearable(f, shownList)) await fill(f, 'false');
+      return;
+    }
     if (!(await fill(f, 'true'))) return;
-    const others = selectOneSiblings(fields, f);
+    const others = selectOneSiblings(shownList, f);
     setFilled((m) => {
       const next = { ...m };
       for (const o of others) next[o.field_id] = 'false';
-      return next;
+      return withoutHiddenAnswers(fields, next);
     });
   };
   // M-A6 §2.3 — a box toggles: checking sends 'true', unchecking 'false'. In a
@@ -1377,7 +1403,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       await fill(f, 'false');
       return;
     }
-    for (const o of selectOneSiblings(fields, f)) {
+    for (const o of selectOneSiblings(shownList, f)) {
       if (isChecked(filled[o.field_id]) && !(await fill(o, 'false'))) return;
     }
     await fill(f, 'true');
@@ -1784,7 +1810,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
           <div className="sg-card sg-card--wide" data-testid="sg-review">
             <h1>Review &amp; finish</h1>
             <ul className="sg-summary">
-              {fields.map((f) => (
+              {shownList.map((f) => (
                 <li key={f.field_id}>
                   <span>
                     {fieldLabel(f)} · page {f.page_number + 1}
@@ -1862,7 +1888,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                 key={doc.document_id}
                 base64={docB64[doc.document_id] ?? ''}
                 loadTextLayer={() => signApi.textLayer(token, doc.document_id)}
-                fields={fields.filter((f) => f.document_id === doc.document_id)}
+                fields={shownList.filter((f) => f.document_id === doc.document_id)}
                 display={displayOf}
                 activeField={activeField}
                 label={fieldLabel}
@@ -1893,7 +1919,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
               </p>
             ) : null}
             <ul>
-              {fields.map((f) => {
+              {shownList.map((f) => {
                 const done = !pending(f);
                 if (isServerName(f)) {
                   return (

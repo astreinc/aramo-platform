@@ -19,6 +19,7 @@
 // Pure TypeScript ESM, no dependency (scope:shared).
 
 import { fieldSettingsOf, isFieldTypeKey, type FieldSetting } from './catalog.js';
+import { parseFieldCondition, type FieldCondition } from './field-conditions.js';
 
 /** The settings a template field may carry (P1-6: never the PAYMENT settings). */
 export const TEMPLATE_FIELD_SETTINGS = [
@@ -35,6 +36,9 @@ export const TEMPLATE_FIELD_SETTINGS = [
   'font_size',
   'data_name',
   'options',
+  // FIELD-PARITY-2 B-2 — "show only when" (the shape here; the cross-field rule is
+  // fieldConditionIssues, field-conditions.ts).
+  'condition',
 ] as const satisfies readonly FieldSetting[];
 export type TemplateFieldSetting = (typeof TEMPLATE_FIELD_SETTINGS)[number];
 
@@ -126,6 +130,8 @@ export interface TemplateFieldSettings {
   readonly font_size: number | null;
   readonly data_name: string | null;
   readonly options: FieldOptions | null;
+  /** FIELD-PARITY-2 B-2 — NULL = always shown. */
+  readonly condition: FieldCondition | null;
 }
 
 /** The settings any field has, shared by both names. */
@@ -145,6 +151,7 @@ export const NO_TEMPLATE_FIELD_SETTINGS: TemplateFieldSettings = Object.freeze({
   font_size: null,
   data_name: null,
   options: null,
+  condition: null,
 });
 
 /** Every reason a setting is refused (stable; the same reasons on every API). */
@@ -169,6 +176,8 @@ export const FIELD_SETTING_REFUSAL_REASONS = [
   'options_invalid',
   'dropdown_choices_invalid',
   'number_format_invalid',
+  // FIELD-PARITY-2 B-2 — the condition's shape (a sender-filled field cannot be conditional).
+  'condition_invalid',
 ] as const;
 export type FieldSettingRefusalReason = (typeof FIELD_SETTING_REFUSAL_REASONS)[number];
 
@@ -411,7 +420,17 @@ export function parseTemplateFieldSettings(o: Readonly<Record<string, unknown>>,
     options = parsed.options;
   }
 
-  const rest = { name_mode, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options } as const;
+  // FIELD-PARITY-2 B-2 — the condition's shape. A sender-filled value is the sender's, never
+  // hidden and cleared (ruling C-3 would erase it), so a sender-filled field is always shown.
+  let condition: FieldCondition | null = null;
+  if (present('condition')) {
+    const c = parseFieldCondition(o['condition']);
+    if (!c.ok) return refuse('condition', 'condition_invalid', c.message);
+    if (sender_filled) return refuse('condition', 'condition_invalid', 'a sender-filled field cannot be conditional');
+    condition = c.condition;
+  }
+
+  const rest = { name_mode, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, condition } as const;
 
   let group_key: string | null = null;
   if (present('group_key')) {

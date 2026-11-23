@@ -8,6 +8,7 @@
 //     name, validation preset and its parameters, font size auto / fixed, DROPDOWN choices,
 //     NUMBER format, and sender-filled with its value and read-only (only when the server flag
 //     is on: sender_filled_fields_enabled).
+//   ConditionSettings — FIELD-PARITY-2 B-7 "Show only when…" (the Send flow only).
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
 import {
@@ -27,8 +28,9 @@ import {
 import { Button } from '../../components/Button';
 import { useTheme } from '../../theme';
 import { randomId } from '../../util/ids';
+import { conditionFor, conditionIssueOf, conditionWhensFor, dependentsOfKey, describeField, usableTriggers } from './conditions';
 import { groupMembers, type EditorAction, type EditorField } from './editorReducer';
-import { editableSettings, senderValueIssue, settingsIssue, type EditorFieldSettings } from './fieldSettings';
+import { cleanChoices, editableSettings, senderValueIssue, settingsIssue, type EditorFieldSettings } from './fieldSettings';
 import { MAX_LABEL } from './fieldTypes';
 import type { PageSize } from './geometry';
 
@@ -330,6 +332,110 @@ export function GeneralSettings({
           {issue.message}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — "Show only when…": the trigger, picked from the fields the shared rule
+ * accepts (same signer, a check box / acknowledgement / radio option / dropdown, no loop, the chain
+ * at most 3 deep), the rule its type offers, and the server's refusal inline. A field the sender
+ * fills is always shown. The Send flow only (never self-sign).
+ */
+export function ConditionSettings({
+  field,
+  fields,
+  dispatch,
+}: {
+  readonly field: EditorField;
+  readonly fields: readonly EditorField[];
+  readonly dispatch: (a: EditorAction) => void;
+}) {
+  const t = useTheme();
+  const secondary = { color: t.color.textSecondary, fontFamily: t.font.family, fontSize: 14 };
+  const c = field.condition ?? null;
+  const usable = usableTriggers(fields, field.key);
+  const trigger = c === null ? undefined : fields.find((f) => f.key === c.trigger_key);
+  const issue = conditionIssueOf(fields, field.key);
+  const dependents = dependentsOfKey(fields, field.key);
+  const set = (condition: EditorField['condition']) => dispatch({ type: 'setCondition', key: field.key, condition: condition ?? null });
+  return (
+    <View style={styles.body} testID="field-condition">
+      <Text style={[secondary, { fontWeight: '600' }]}>Show only when…</Text>
+      {field.senderFilled === true ? (
+        <Text testID="condition-sender-filled" style={secondary}>
+          A field you fill before sending is always shown.
+        </Text>
+      ) : (
+        <>
+          <View style={styles.row} accessibilityRole="radiogroup">
+            <Chip testID="condition-always" title="Always shown" selected={c === null} onPress={() => set(null)} />
+            {c !== null && !usable.some((f) => f.key === c.trigger_key) ? (
+              <Chip testID="condition-trigger-unusable" title={`${trigger ? describeField(trigger) : 'A deleted field'} (can’t be used)`} selected onPress={() => undefined} />
+            ) : null}
+            {usable.map((f) => (
+              <Chip key={f.key} testID={`condition-trigger-${f.key}`} title={describeField(f)} selected={c?.trigger_key === f.key} onPress={() => set(conditionFor(f))} />
+            ))}
+          </View>
+          {usable.length === 0 && c === null ? (
+            <Text testID="condition-none" style={secondary}>
+              Add a checkbox, radio button or dropdown for the same signer to show this field only for some answers.
+            </Text>
+          ) : null}
+          {c !== null && trigger ? <ConditionRule field={field} trigger={trigger} set={set} /> : null}
+        </>
+      )}
+      {dependents.length > 0 ? (
+        <Text testID="condition-dependents" style={secondary}>
+          {`Shows or hides: ${dependents.map(describeField).join('; ')}.`}
+        </Text>
+      ) : null}
+      {issue !== null ? (
+        <Text testID="condition-issue" accessibilityRole="alert" style={{ color: t.color.destructive, fontFamily: t.font.family, fontSize: 14 }}>
+          {`This condition can’t be saved: ${issue.message}.`}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** The rule of a condition, as its trigger's type offers it. */
+function ConditionRule({ field, trigger, set }: { readonly field: EditorField; readonly trigger: EditorField; readonly set: (c: EditorField['condition']) => void }) {
+  const t = useTheme();
+  const secondary = { color: t.color.textSecondary, fontFamily: t.font.family, fontSize: 14 };
+  const c = field.condition;
+  if (!c) return null;
+  if (c.when === 'chosen') {
+    return (
+      <Text testID="condition-rule" style={secondary}>
+        …when the signer chooses this option.
+      </Text>
+    );
+  }
+  if (c.when === 'one_of') {
+    const values = new Set(c.values ?? []);
+    const choices = cleanChoices(trigger.options?.choices);
+    const toggle = (v: string) => {
+      const on = !values.has(v);
+      const next = choices.map((ch) => ch.value).filter((x) => (x === v ? on : values.has(x)));
+      if (next.length > 0) set({ trigger_key: c.trigger_key, when: 'one_of', values: next });
+    };
+    return (
+      <>
+        <Text style={secondary}>…when the signer picks one of</Text>
+        <View style={styles.row} testID="condition-rule">
+          {choices.map((ch, i) => (
+            <Chip key={ch.value} testID={`condition-value-${i}`} title={ch.label} selected={values.has(ch.value)} onPress={() => toggle(ch.value)} />
+          ))}
+        </View>
+      </>
+    );
+  }
+  return (
+    <View style={styles.row} accessibilityRole="radiogroup" testID="condition-rule">
+      {conditionWhensFor(trigger.type).map((w) => (
+        <Chip key={w} testID={`condition-when-${w}`} title={w === 'checked' ? 'Is checked' : 'Is not checked'} selected={c.when === w} onPress={() => set({ trigger_key: c.trigger_key, when: w })} />
+      ))}
     </View>
   );
 }

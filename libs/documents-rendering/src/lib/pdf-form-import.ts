@@ -22,11 +22,13 @@ import {
 // the PDF half of P2-5 (fillable-PDF import) and P2-6 (covering text tags, ruling R-5). The
 // catalog half (which form field becomes which catalog field; the tag syntax) is
 // @aramo/sign-fields field-import.ts. pdf-lib use in this lib is confined to the rendering
-// adapter, the safe-upload pipeline and THIS file (deliberately extended for P2-5 / P2-6).
+// adapter, the safe-upload pipeline, THIS file (deliberately extended for P2-5 / P2-6) and
+// pdf-tag-text.ts (FIELD-PARITY-2 A-6: removing a tag's text, ruling C-8).
 //
 // importPdfForm — opt-in only (the hosts' `import_fields` flag). Nothing in the PDF is ever
 // executed: the file is parsed as data, never rendered or scripted.
-//   1. Read every terminal form field and its widgets (name, tooltip, kind, flags, box, page).
+//   1. Read every terminal form field and its widgets (name, tooltip, kind, flags, box, page;
+//      a choice field's /Opt list, FIELD-PARITY-2 A-5).
 //   2. Strip the form's active content: the whole /AcroForm (with /XFA, /CO calculation
 //      order, and every field's /A and /AA actions), the catalog's /AA, a JavaScript
 //      /OpenAction, the document JavaScript name tree (/Names /JavaScript) and each page's /AA.
@@ -55,6 +57,13 @@ export interface PdfFormWidgetRead {
   hidden: boolean;
   signed: boolean;
   option: string | null;
+  /**
+   * FIELD-PARITY-2 A-5 — a choice field's (dropdown / list box) /Opt entries in order: the
+   * export value and the display text (ISO 32000-1 §12.7.4.4; a plain string is both). An entry
+   * that is neither a string nor a pair of strings is read as an empty choice, so the planner
+   * sees the list does not fit. [] for a choice field without /Opt; null for any other kind.
+   */
+  choices: Array<{ value: string; label: string }> | null;
   page_number: number | null;
   x: number;
   y: number;
@@ -217,6 +226,26 @@ function exportValueOf(ctx: PDFContext, field: PDFDict, on: string | null): stri
   return text ?? on;
 }
 
+/** FIELD-PARITY-2 A-5 — a choice field's /Opt entries (see PdfFormWidgetRead.choices). */
+function choicesOf(ctx: PDFContext, field: PDFDict): Array<{ value: string; label: string }> {
+  const opt = arrayOf(ctx, inherited(ctx, field, 'Opt'));
+  if (opt === undefined) return [];
+  const out: Array<{ value: string; label: string }> = [];
+  for (let i = 0; i < opt.size(); i += 1) {
+    const raw = opt.get(i);
+    const text = textOf(ctx, raw);
+    if (text !== null) {
+      out.push({ value: text, label: text });
+      continue;
+    }
+    const pair = arrayOf(ctx, raw);
+    const value = pair === undefined ? null : textOf(ctx, pair.get(0));
+    const label = pair === undefined ? null : textOf(ctx, pair.get(1));
+    out.push(value !== null && label !== null ? { value, label } : { value: '', label: '' });
+  }
+  return out;
+}
+
 /** The widget's normal appearance stream ref (the current /AS state of a state dictionary). */
 function appearanceRefOf(ctx: PDFContext, widget: PDFDict): PDFRef | null {
   const ap = dictOf(ctx, widget.get(N('AP')));
@@ -270,7 +299,7 @@ function isJavaScriptAction(ctx: PDFContext, o: PDFObject | undefined): boolean 
 }
 
 /** Deletes every indirect object not reachable from the trailer (Root, Info). */
-function dropUnreachable(ctx: PDFContext): void {
+export function dropUnreachable(ctx: PDFContext): void {
   const reachable = new Set<string>();
   const stack: PDFObject[] = [];
   if (ctx.trailerInfo.Root !== undefined) stack.push(ctx.trailerInfo.Root);
@@ -349,6 +378,7 @@ export async function importPdfForm(bytes: Uint8Array): Promise<PdfFormImport> {
     const ff = numOf(ctx, inherited(ctx, t.field, 'Ff')) ?? 0;
     const tooltip = textOf(ctx, t.field.get(N('TU')));
     const signed = kind === 'signature' && inherited(ctx, t.field, 'V') !== undefined;
+    const choices = kind === 'dropdown' || kind === 'list' ? choicesOf(ctx, t.field) : null;
     for (const w of t.widgets) {
       const rect = nums(ctx, w.get(N('Rect')), 4);
       const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = rect ?? [];
@@ -364,6 +394,7 @@ export async function importPdfForm(bytes: Uint8Array): Promise<PdfFormImport> {
         hidden: (f & (F_HIDDEN | F_NO_VIEW)) !== 0,
         signed,
         option: kind === 'radio' || kind === 'checkbox' ? exportValueOf(ctx, t.field, onValueOf(ctx, w)) : null,
+        choices: choices === null ? null : choices.map((c) => ({ ...c })),
         page_number: rect === null ? null : page_number,
         x: Math.min(x0, x1),
         y: Math.min(y0, y1),
@@ -450,13 +481,19 @@ export async function coverPdfBoxes(bytes: Uint8Array, boxes: readonly PdfCoverB
   const usable = boxes.filter((b) => b.width > 0 && b.height > 0);
   if (usable.length === 0) return bytes;
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  coverPagesWithBoxes(doc, usable);
+  return doc.save({ useObjectStreams: false });
+}
+
+/** Paints each box white on top of its page (the drawing half of coverPdfBoxes, on a loaded document). */
+export function coverPagesWithBoxes(doc: PDFDocument, boxes: readonly PdfCoverBox[]): void {
   const pages = doc.getPages();
   const isolated = new Set<PDFPage>();
-  for (const b of usable) {
+  for (const b of boxes) {
+    if (!(b.width > 0 && b.height > 0)) continue;
     const page = pages[b.page_number];
     if (page === undefined) continue;
     isolateContent(doc, page, isolated);
     page.drawRectangle({ x: b.x, y: b.y, width: b.width, height: b.height, color: rgb(1, 1, 1), borderWidth: 0 });
   }
-  return doc.save({ useObjectStreams: false });
 }

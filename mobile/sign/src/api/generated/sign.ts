@@ -434,7 +434,7 @@ export interface paths {
         put?: never;
         /**
          * Fill one of the signer's own fields.
-         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled. Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the signer's calendar date in time_zone, in the envelope's date_format); the value sent for it is ignored, and completeSigner stamps it again at signing. FIELD-PARITY-1 P3 — a RADIO value is 'true' / 'false' (choosing one clears the others of its group); a DATE value is YYYY-MM-DD; a NUMBER value is a decimal; a DROPDOWN value is one of its options.choices values; a MULTILINE_TEXT value is at most 4000 characters; the validation preset applies. Refusals are 400 with details.reason date_value_invalid, number_value_invalid, number_decimals_exceeded, dropdown_value_invalid, multiline_text_too_long, validation_email_failed, validation_phone_failed, validation_us_zip_failed, validation_max_length_failed, validation_number_range_failed or validation_date_range_failed; a sender-filled or read-only field is refused with field_read_only. Completion refuses an unchosen required radio group with radio_group_select_one.
+         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled. Client Rule Consolidation C0-2 — a SIGN_DATE value is stamped by the server (the signer's calendar date in time_zone, in the envelope's date_format); the value sent for it is ignored, and completeSigner stamps it again at signing. FIELD-PARITY-1 P3 — a RADIO value is 'true' / 'false' (choosing one clears the others of its group); a DATE value is YYYY-MM-DD; a NUMBER value is a decimal; a DROPDOWN value is one of its options.choices values; a MULTILINE_TEXT value is at most 4000 characters; the validation preset applies. Refusals are 400 with details.reason date_value_invalid, number_value_invalid, number_decimals_exceeded, dropdown_value_invalid, multiline_text_too_long, validation_email_failed, validation_phone_failed, validation_us_zip_failed, validation_max_length_failed, validation_number_range_failed or validation_date_range_failed; a sender-filled or read-only field is refused with field_read_only. Completion refuses an unchosen required radio group with radio_group_select_one. FIELD-PARITY-2 B-5 — a field whose condition is not met is refused with field_hidden, and every value change clears the fields it hides. B-6 follow-up — value null CLEARS a value the signer typed or picked (TEXT, the profile types, a typed SIGNER_NAME, DATE, DROPDOWN, NUMBER, MULTILINE_TEXT; required or not, completion still requires a required one): the value and its filled state go back to empty and the fields the old value showed are cleared in the same transaction (a clear is never refused with field_hidden). A box or a radio option is still unchecked with 'false'; clearing a CHECKBOX, ACKNOWLEDGEMENT, RADIO, SIGNATURE, INITIALS or SIGN_DATE is refused with field_clear_not_allowed, a sender-filled or read-only field with field_read_only, a SIGNER_PROFILE name with signer_profile_name_server_filled and a PAYMENT field with payment_field_server_filled.
          */
         post: operations["fillSignerField"];
         delete?: never;
@@ -726,7 +726,7 @@ export interface paths {
         put?: never;
         /**
          * Upload a PDF to a DRAFT envelope (E-Sign-owned source).
-         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write. M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed. With the capability off a Word file keeps the 400 unsupported_file_type refusal. FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the stored bytes and the response are unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text / multi-line / dropdown / list → TEXT, check box → CHECKBOX, radio group → a SELECT_ONE CHECKBOX group, signature → SIGNATURE), and the form's active content (field, widget, page and document actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened before the safe-PDF gate decides; an XFA-only form is refused 400 details.reason xfa_only_form. apply_text_tags: {{type:role[:required|optional][:label=…]}} tags become fields sized to the tag and each used tag is covered with white on the stored PDF (doc/sign/text-tags.md). A tag's role is matched case-insensitively to a signing recipient's name, email or template role; form fields, tags without a role and tags matching nobody go to the first signing recipient (named warnings). With fields to create and no signing recipient the upload is refused 422 details.reason field_import_needs_recipient before anything is stored. A non-boolean flag is refused 400 details.reason import_flag_invalid. The response then carries field_import.
+         * @description Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write. M-A13 R-4 — while the sender context reports word_conversion_enabled, a .docx or .doc file (by filename) is converted to PDF on the server and stored as the PDF source (the Word file is not kept; the title keeps the file name); the response is the same as for a PDF. Refusals carry details.reason: 413 word_too_large (over 20 MB), 422 word_password_protected, 422 word_conversion_failed. With the capability off a Word file keeps the 400 unsupported_file_type refusal. FIELD-PARITY-1 P2-5 / P2-6 — two opt-in flags, both default false (without them the stored bytes and the response are unchanged). import_fields: the PDF's form fields (AcroForm) become envelope fields (text → TEXT, multi-line → MULTILINE_TEXT, dropdown → DROPDOWN with its choices when 1 to 50 fit, otherwise TEXT, list box → TEXT, check box → CHECKBOX, radio group → a RADIO group (one RADIO per option), signature → SIGNATURE; doc/sign/text-tags.md), and the form's active content (field, widget, page and document actions, document JavaScript, a JavaScript open action, XFA) is stripped and the form flattened before the safe-PDF gate decides; an XFA-only form is refused 400 details.reason xfa_only_form. apply_text_tags: {{type:role[:required|optional][:label=…]}} tags become fields sized to the tag and each used tag's text is removed from the stored PDF and covered with white (FIELD-PARITY-2 A-6; a tag whose text cannot be removed is only covered, warning text_tag_text_not_removed; doc/sign/text-tags.md). A tag's role is matched case-insensitively to a signing recipient's name, email or template role; form fields, tags without a role and tags matching nobody go to the first signing recipient (named warnings). With fields to create and no signing recipient the upload is refused 422 details.reason field_import_needs_recipient before anything is stored. A non-boolean flag is refused 400 details.reason import_flag_invalid. The response then carries field_import.
          */
         post: operations["uploadSenderDocument"];
         delete?: never;
@@ -869,7 +869,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the positioned fields of a DRAFT envelope.
-         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. Field types are the SenderFieldInput.field_type enum (12): SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (M-A6 §2), FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE (M-A12), and PAYMENT only while payments are available to the organization (Sign 1.14; 403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); any other type is 400 v1_field_type, except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough). A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label, group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — a recipient who receives a copy has no fields (400 copy_recipient_has_fields). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. Field types are the SenderFieldInput.field_type enum (18): SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (M-A6 §2), FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE (M-A12), ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER and MULTILINE_TEXT (FIELD-PARITY-1 P3), and PAYMENT only while payments are available to the organization (Sign 1.14; 403 ESIGN_FEATURE_NOT_AVAILABLE otherwise); any other type is 400 v1_field_type, except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough). A sender supplies a value only for a sender-filled field while sender-filled fields are switched on (otherwise 400 sender_value_refused). The settings each type takes are the field catalog's (@aramo/sign-fields fieldSettingsOf; for example name_mode on SIGNER_NAME only, and group_key / group_rule on CHECKBOX and RADIO only); a setting the type does not take is 400 field_config_not_applicable; other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — a recipient who receives a copy has no fields (400 copy_recipient_has_fields). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderFields"];
         post?: never;
@@ -5073,6 +5073,8 @@ export interface components {
         SenderEnvelopeField: {
             /** Format: uuid */
             id: string;
+            /** @description FIELD-PARITY-2 B-1 — the field's stable key on this envelope (unique per envelope; null on a legacy field). Set from the template's field_key when a template was carried, and from the editor's id on PUT …/fields; it survives the replace-all PUT (id does not). A condition names its trigger by this key. */
+            field_key?: string | null;
             /** Format: uuid */
             envelope_document_id: string;
             /** Format: uuid */
@@ -5119,6 +5121,8 @@ export interface components {
             data_name?: string | null;
             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
             options?: components["schemas"]["FieldOptions"] | null;
+            /** @description FIELD-PARITY-2 B-2 — "show only when"; null = always shown. */
+            condition?: components["schemas"]["FieldCondition"] | null;
             /** @description FIELD-PARITY-1 P3 S-5 — the sender's own value of a sender-filled field; null for every other field. */
             value?: string | null;
         };
@@ -5148,6 +5152,8 @@ export interface components {
         };
         /** @description PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner. */
         SenderFieldInput: {
+            /** @description FIELD-PARITY-2 B-1 — the editor's id for this field, stored as its stable key (send back the field_key the detail returned, or a new id for a new field). Unique within the request (400 details.reason field_key_duplicate); absent / null = no key (the field cannot be a trigger). 400 details.reason field_key_invalid when it is not 1 to 200 characters. */
+            field_key?: string | null;
             /** Format: uuid */
             envelope_document_id: string;
             /** Format: uuid */
@@ -5205,6 +5211,8 @@ export interface components {
             data_name?: string | null;
             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
             options?: components["schemas"]["FieldOptions"] | null;
+            /** @description FIELD-PARITY-2 B-2 — "show only when"; null = always shown. */
+            condition?: components["schemas"]["FieldCondition"] | null;
             /** @description Refused (400 sender_value_refused) for every field that is not sender_filled. FIELD-PARITY-1 P3 S-5 — a sender_filled field may carry the sender's value (checked by the field's value rule: e.g. date_value_invalid, dropdown_value_invalid, validation_email_failed); it is recorded in the ledger as SENDER_FIELD_VALUES_SET (attributed to the sender) and marked on the certificate. */
             value?: string | null;
         };
@@ -5257,6 +5265,17 @@ export interface components {
             min_selected: null;
             /** @enum {string|null} */
             name_mode: "SIGNER_PROFILE" | null;
+            /** @description FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise. */
+            options: components["schemas"]["FieldOptions"] | null;
+        };
+        /** @description FIELD-PARITY-2 B-2 — "show this field only when the field trigger_key ..." (@aramo/sign-fields FieldCondition). when checked / unchecked: the trigger is a CHECKBOX or ACKNOWLEDGEMENT. chosen: the trigger is one RADIO option field (shown while that option is chosen). one_of: the trigger is a DROPDOWN and values lists 1 to 50 of its choice values. One trigger per field (no AND / OR), the same signer (or template role), chains up to a depth of 3, no cycles; a sender-filled field is never conditional. Refusals (details.reason) condition_invalid, condition_trigger_unknown, condition_trigger_type_invalid, condition_cross_signer, condition_values_invalid, condition_cycle, condition_depth_exceeded, condition_no_unconditional_signature. */
+        FieldCondition: {
+            /** @description The trigger field's field_key. */
+            trigger_key: string;
+            /** @enum {string} */
+            when: "checked" | "unchecked" | "chosen" | "one_of";
+            /** @description one_of only — the dropdown choice values that show the field. */
+            values?: string[];
         };
         /** @description FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN: choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER: format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default 2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or a key the type does not take, is refused (options_invalid). */
         FieldOptions: {
@@ -5280,7 +5299,7 @@ export interface components {
         /** @description FIELD-PARITY-1 P2-5 / P2-6 — why something found in the PDF was not imported, or was imported differently. */
         FieldImportWarning: {
             /** @enum {string} */
-            code: "pdf_field_type_unsupported" | "pdf_field_type_not_allowed" | "pdf_field_read_only" | "pdf_field_hidden" | "pdf_field_signed" | "pdf_field_not_on_page" | "text_tag_invalid" | "text_tag_type_unknown" | "text_tag_type_not_allowed" | "text_tag_option_unknown" | "text_tag_label_not_applicable" | "text_tag_rotated_page" | "text_tags_unreadable" | "text_tag_role_missing" | "text_tag_role_unknown" | "field_assigned_to_first_recipient" | "too_many_fields";
+            code: "pdf_field_type_unsupported" | "pdf_field_list_as_text" | "pdf_field_dropdown_as_text" | "pdf_field_type_not_allowed" | "pdf_field_read_only" | "pdf_field_hidden" | "pdf_field_signed" | "pdf_field_not_on_page" | "text_tag_invalid" | "text_tag_type_unknown" | "text_tag_type_not_allowed" | "text_tag_option_unknown" | "text_tag_label_not_applicable" | "text_tag_rotated_page" | "text_tags_unreadable" | "text_tag_text_not_removed" | "text_tag_role_missing" | "text_tag_role_unknown" | "field_assigned_to_first_recipient" | "too_many_fields";
             message: string;
             /** @description The form field name or the tag (without braces) the warning is about. */
             name?: string;
@@ -6210,6 +6229,10 @@ export interface operations {
                             data_name?: string | null;
                             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
                             options?: components["schemas"]["FieldOptions"] | null;
+                            /** @description FIELD-PARITY-2 B-1 — the field's stable key on the envelope (null on a legacy field). A condition names its trigger by it. */
+                            field_key?: string | null;
+                            /** @description FIELD-PARITY-2 B-2 / B-5 — "show only when" (null = always shown). The trigger is always one of this signer's own fields (ruling C-2). Apply the one visibility rule (@aramo/sign-client shownFields) to these fields and their values: a hidden field is not shown, not required and not counted. Filling a hidden field is refused (400 details.reason field_hidden); when an answer hides fields, the server clears their values at once. */
+                            condition?: components["schemas"]["FieldCondition"] | null;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
@@ -6586,7 +6609,8 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
-                    value: string;
+                    /** @description The value to store, or null to clear the stored value (FIELD-PARITY-2 B-6 follow-up). */
+                    value: string | null;
                     /** @enum {string} */
                     signature_method?: "TYPED" | "DRAWN";
                     /** @description Optional IANA time zone of the signer (for example America/New_York), used for a SIGN_DATE field. Not recognised or absent: UTC (never refused). */
@@ -6595,7 +6619,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The field was filled. */
+            /** @description The field was filled (or, for value null, cleared). */
             200: {
                 headers: {
                     [name: string]: unknown;

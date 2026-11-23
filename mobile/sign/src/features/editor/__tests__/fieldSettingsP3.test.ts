@@ -25,20 +25,25 @@ const place = (s: EditorState, tool: Parameters<typeof editorReducer>[1] extends
   );
 
 describe('the Phase 3 tools (send flow)', () => {
-  it('the send row ends with the Phase 3 tools; Sign a document keeps its row', () => {
+  it('the row ends with the Phase 3 tools; Sign a document places them too (FIELD-PARITY-2 A-1)', () => {
     expect(sendTools(toolFieldTypes()).slice(-6).map((x) => x.type)).toEqual(['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT']);
     expect(PHASE3_TOOLS).toHaveLength(6);
-    expect(isSelfSignFieldType('DROPDOWN')).toBe(false);
-    expect(isSelfSignFieldType('TEXT')).toBe(true);
+    for (const t of ['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT', 'TEXT'])
+      expect(isSelfSignFieldType(t)).toBe(true);
+    expect(isSelfSignFieldType('PAYMENT')).toBe(false);
   });
 });
 
 describe('settings per type (fieldSettingsOf; sender-filled only while the server says so)', () => {
   it('each type shows its catalog settings', () => {
-    expect(editableSettings('DROPDOWN', false)).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options']);
+    // FIELD-PARITY-2 B-7 — "Show only when…" (condition) in the Send flow; never in self-sign (C-7).
+    expect(editableSettings('DROPDOWN', false)).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options', 'condition']);
+    expect(editableSettings('DROPDOWN', false, { selfSign: true })).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options']);
     expect(editableSettings('DROPDOWN', true)).toContain('sender_filled');
-    expect(editableSettings('RADIO', false)).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'data_name']);
-    expect(editableSettings('ACKNOWLEDGEMENT', true)).toEqual(['label', 'tooltip', 'data_name']);
+    expect(editableSettings('RADIO', false)).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'data_name', 'condition']);
+    expect(editableSettings('ACKNOWLEDGEMENT', true)).toEqual(['label', 'tooltip', 'data_name', 'condition']);
+    expect(editableSettings('SIGNATURE', false)).toContain('condition');
+    expect(editableSettings('SIGNATURE', false, { selfSign: true })).not.toContain('condition');
     expect(hasSettings('SIGNATURE', false)).toBe(true);
     expect(hasSettings('PAYMENT', false)).toBe(false);
   });

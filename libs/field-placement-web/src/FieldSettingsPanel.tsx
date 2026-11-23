@@ -17,9 +17,10 @@ import {
   type FieldValidation,
 } from '@aramo/sign-fields';
 
-import { type PlacedField, type PlacementCapabilities } from './lib/model';
+import { CONDITION_WHEN_LABELS, conditionWhensFor, dependentsOf, usableTriggers, triggerChoices } from './lib/conditions';
+import { typeLabelOf, type PlacedField, type PlacementCapabilities } from './lib/model';
 import { groupSize, type SettingsPatch } from './lib/settings';
-import { cleanChoices, optionsToWire, settingsIssue } from './lib/settings-wire';
+import { cleanChoices, conditionIssues, optionsToWire, settingsIssue } from './lib/settings-wire';
 
 // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §6.2 —
 // the inspector's settings controls, the same for every host. A control shows only when the
@@ -49,6 +50,18 @@ export interface FieldSettingsPanelProps {
   readonly onChange: (patch: SettingsPatch) => void;
   /** RADIO — add a sibling option to this field's group. */
   readonly onAddRadioOption?: () => void;
+  /** FIELD-PARITY-2 B-7 — how a field is named in the trigger list (default: its type, label and page). */
+  readonly describe?: (f: PlacedField) => string;
+  /** B-7 — start (or stop) picking this field's trigger by clicking it on the page. */
+  readonly onPickTrigger?: () => void;
+  /** B-7 — picking this field's trigger on the page is in progress. */
+  readonly picking?: boolean;
+}
+
+/** The default name of a field in the trigger list: its type, its label and its page. */
+export function describeField(f: PlacedField): string {
+  const label = f.settings.label.trim();
+  return `${typeLabelOf(f.type)}${label.length > 0 ? ` “${label}”` : ''} · page ${f.page + 1}`;
 }
 
 const numOrUndefined = (v: string): number | undefined => {
@@ -57,7 +70,7 @@ const numOrUndefined = (v: string): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-export function FieldSettingsPanel({ field, fields, shown, capabilities, idPrefix: p, onChange, onAddRadioOption }: FieldSettingsPanelProps) {
+export function FieldSettingsPanel({ field, fields, shown, capabilities, idPrefix: p, onChange, onAddRadioOption, describe = describeField, onPickTrigger, picking = false }: FieldSettingsPanelProps) {
   const s = field.settings;
   const type = field.type;
   const has = (k: FieldSetting): boolean => shown.includes(k);
@@ -358,12 +371,164 @@ export function FieldSettingsPanel({ field, fields, shown, capabilities, idPrefi
           ) : null}
         </>
       ) : null}
+      {has('condition') ? (
+        <ConditionSettings field={field} fields={fields} idPrefix={p} describe={describe} onChange={onChange} {...(onPickTrigger !== undefined ? { onPickTrigger } : {})} picking={picking} />
+      ) : null}
       {issue !== null ? (
         <p className="fpe-note fpe-note--error" role="alert" data-testid={`${p}-settings-issue`}>
           {issue.message}
         </p>
       ) : null}
     </>
+  );
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — "Show only when…": the trigger (from the list of fields the shared rule
+ * accepts, or picked on the page), the rule its type offers, and the shared rule's refusal inline
+ * (conditionIssues: the server's fieldConditionIssues). A field the sender fills is always shown.
+ */
+function ConditionSettings({
+  field,
+  fields,
+  idPrefix: p,
+  describe,
+  onChange,
+  onPickTrigger,
+  picking,
+}: {
+  readonly field: PlacedField;
+  readonly fields: readonly PlacedField[];
+  readonly idPrefix: string;
+  readonly describe: (f: PlacedField) => string;
+  readonly onChange: (patch: SettingsPatch) => void;
+  readonly onPickTrigger?: () => void;
+  readonly picking: boolean;
+}) {
+  const c = field.settings.condition;
+  const usable = usableTriggers(fields, field.id);
+  const trigger = c === null ? undefined : fields.find((f) => f.id === c.trigger_key);
+  const issue = conditionIssues(fields).get(field.id);
+  const dependents = dependentsOf(fields, [field.id]).flatMap((id) => fields.filter((f) => f.id === id));
+  const choose = (id: string): void => {
+    if (id === '') {
+      onChange({ condition: null });
+      return;
+    }
+    const t = usable.find((f) => f.id === id);
+    const when = t === undefined ? undefined : conditionWhensFor(t.type)[0];
+    if (t === undefined || when === undefined) return;
+    if (when !== 'one_of') onChange({ condition: { trigger_key: t.id, when } });
+    else {
+      const first = triggerChoices(t)[0];
+      if (first !== undefined) onChange({ condition: { trigger_key: t.id, when, values: [first.value] } });
+    }
+  };
+  return (
+    <fieldset className="fpe-fieldset" data-testid={`${p}-condition`}>
+      <legend className="fpe-label">Show only when…</legend>
+      {field.settings.senderFilled ? (
+        <p className="fpe-note" data-testid={`${p}-condition-sender-filled`}>
+          A field you fill before sending is always shown.
+        </p>
+      ) : (
+        <>
+          <label className="fpe-row">
+            <span className="fpe-label">This field shows</span>
+            <select className="fpe-select" value={c?.trigger_key ?? ''} onChange={(e) => choose(e.target.value)} data-testid={`${p}-condition-trigger`}>
+              <option value="">Always</option>
+              {c !== null && !usable.some((f) => f.id === c.trigger_key) ? (
+                <option value={c.trigger_key}>When {trigger !== undefined ? describe(trigger) : 'a field that is gone'} (can’t be used)</option>
+              ) : null}
+              {usable.map((f) => (
+                <option key={f.id} value={f.id}>
+                  When {describe(f)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {onPickTrigger !== undefined ? (
+            <button type="button" className={picking ? 'fpe-btn fpe-btn--block is-on' : 'fpe-btn fpe-btn--block'} aria-pressed={picking} onClick={onPickTrigger} disabled={!picking && usable.length === 0} data-testid={`${p}-condition-pick`}>
+              {picking ? 'Cancel picking' : 'Pick the field on the page'}
+            </button>
+          ) : null}
+          {usable.length === 0 && c === null ? (
+            <p className="fpe-faint" data-testid={`${p}-condition-none`}>
+              Add a check box, radio button or dropdown for the same signer to show this field only for some answers.
+            </p>
+          ) : null}
+          {c !== null && trigger !== undefined ? <ConditionRule field={field} trigger={trigger} idPrefix={p} onChange={onChange} /> : null}
+        </>
+      )}
+      {dependents.length > 0 ? (
+        <p className="fpe-note" data-testid={`${p}-condition-dependents`}>
+          Shows or hides: {dependents.map((d) => describe(d)).join('; ')}.
+        </p>
+      ) : null}
+      {issue !== undefined ? (
+        <p className="fpe-note fpe-note--error" role="alert" data-testid={`${p}-condition-issue`}>
+          This condition can’t be saved: {issue.message}.
+        </p>
+      ) : null}
+    </fieldset>
+  );
+}
+
+/** The rule of a condition, as its trigger's type offers it. */
+function ConditionRule({ field, trigger, idPrefix: p, onChange }: { readonly field: PlacedField; readonly trigger: PlacedField; readonly idPrefix: string; readonly onChange: (patch: SettingsPatch) => void }) {
+  const c = field.settings.condition!;
+  const whens = conditionWhensFor(trigger.type);
+  if (c.when === 'chosen' || c.when === 'one_of') {
+    if (c.when === 'chosen') {
+      return (
+        <p className="fpe-note" data-testid={`${p}-condition-rule`}>
+          …when the signer chooses this option.
+        </p>
+      );
+    }
+    const values = new Set(c.values ?? []);
+    const choices = triggerChoices(trigger);
+    const toggle = (v: string, on: boolean): void => {
+      const next = choices.map((ch) => ch.value).filter((x) => (x === v ? on : values.has(x)));
+      if (next.length > 0) onChange({ condition: { trigger_key: c.trigger_key, when: 'one_of', values: next } });
+    };
+    return (
+      <fieldset className="fpe-fieldset" data-testid={`${p}-condition-rule`}>
+        <legend className="fpe-label">…when the signer picks one of</legend>
+        {choices.map((ch, i) => (
+          <label key={ch.value} className="fpe-choicecheck">
+            <input
+              type="checkbox"
+              checked={values.has(ch.value)}
+              disabled={values.has(ch.value) && values.size === 1}
+              onChange={(e) => toggle(ch.value, e.target.checked)}
+              data-testid={`${p}-condition-value-${i}`}
+            />
+            {ch.label}
+          </label>
+        ))}
+      </fieldset>
+    );
+  }
+  return (
+    <label className="fpe-row">
+      <span className="fpe-label">Rule</span>
+      <select
+        className="fpe-select"
+        value={c.when}
+        onChange={(e) => {
+          const when = whens.find((w) => w === e.target.value);
+          if (when !== undefined) onChange({ condition: { trigger_key: c.trigger_key, when } });
+        }}
+        data-testid={`${p}-condition-rule`}
+      >
+        {(whens.includes(c.when) ? whens : [c.when, ...whens]).map((w) => (
+          <option key={w} value={w}>
+            {CONDITION_WHEN_LABELS[w]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -105,6 +105,7 @@ import {
   requiredDone,
   requiredFields,
   setText,
+  shownSigningFields,
   tapField,
   type SigningField,
   type SigningState,
@@ -852,7 +853,9 @@ export function SigningFlow(props: SigningFlowProps) {
     const highlight = marks.length ? (
       <HighlightOverlay key="find" rects={marks} width={layout.width} height={layout.height} />
     ) : null;
-    const onPage = state.fields.filter((f) => f.document_id === documentId && f.page_number === index);
+    // FIELD-PARITY-2 B-6 — only the fields the signer's answers show are drawn (a hidden field is
+    // not rendered, so it is never focusable nor read by VoiceOver / TalkBack).
+    const onPage = shownSigningFields(state).filter((f) => f.document_id === documentId && f.page_number === index);
     // UAT SIG-03 — touch areas never overlap a neighbouring field's.
     const boxes = new Map(onPage.map((f) => [f.field_id, boxOnPage(f, layout, defaultBox(f.field_type))] as const));
     const allBoxes = [...boxes.values()];

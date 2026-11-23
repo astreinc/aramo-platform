@@ -232,6 +232,14 @@ model SignatureField {
   font_size            Int? // S-7: 6..36 points; NULL = auto
   data_name            String? // S-9: lower_snake key
   options              Json? // per-type options (DROPDOWN choices, NUMBER format, validation parameters); a JSON object
+  // FIELD-PARITY-2 B-1 (migration 20261123100000_field_parity_2_field_key) — the field's stable key
+  // on its envelope (1..200; NULL on legacy rows). Unique per document when present (partial unique
+  // index) and per envelope by the shared rule (@aramo/sign-fields fieldConditionIssues).
+  field_key            String?
+  // FIELD-PARITY-2 B-2 (migration 20261123100100_field_parity_2_field_condition) — "show only when":
+  // { trigger_key, when: checked|unchecked|chosen|one_of, values? } (shape CHECK; the cross-field
+  // rule is @aramo/sign-fields fieldConditionIssues). NULL = always shown.
+  condition            Json?
 
   envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
   signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)

@@ -66,6 +66,8 @@ const INBOX_ACTIONS = { sign: boolean(true), download: boolean(false), delete: b
 //  20. GET    /v1/sign/sender/envelopes                 200 awaiting_you + my_inbox_item_id (handle)
 // M-A12 (agent A): self create, sender/signer text layer, profile GET/PUT, settings GET/PUT,
 //   app-issues 202, template favorite PUT/DELETE 204 (see the M-A12 describe at the end).
+// FIELD-PARITY-2 B-6: POST /v1/sign/signing/document 200 — each field's field_key + condition
+//   (the signing link's token in the body; see the FIELD-PARITY-2 describe at the end).
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -984,6 +986,91 @@ describe('sign-mobile → M-A12 self-sign, text layer, profile, settings, app is
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/sign/sender/templates/${TEMPLATE_ID}/favorite`, { method: 'DELETE', headers: AUTH });
         expect(res.status).toBe(204);
+      });
+  });
+});
+
+// FIELD-PARITY-2 (Aramo-Sign-Field-Placement-Conditional-Fields-Directive-v1_0-LOCKED) §4.2 B-6 —
+// the signing view carries each field's field_key and condition ("show only when"; null = always
+// shown); the app feeds them to the one visibility rule (@aramo/sign-client). The guest signing
+// client sends the link's token in the body and no bearer. The provider derives every id from the
+// envelope_id param (last digit: 2 document, 4 trigger box, 5 dependent field).
+const COND_ENVELOPE_ID = 'e6c10000-0000-7000-8000-0000000000c1';
+const COND_TOKEN = 'sign-mobile-pact-token-conditional';
+
+describe('sign-mobile → FIELD-PARITY-2 conditional fields on the signing view', () => {
+  it('returns each field’s field_key and condition', async () => {
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a conditional field', { envelope_id: COND_ENVELOPE_ID, token: COND_TOKEN })
+      .uponReceiving('a native signing document view with a conditional field')
+      .withRequest('POST', '/v1/sign/signing/document', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: COND_TOKEN });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          documents: [{ document_id: uuid(childOf(COND_ENVELOPE_ID, 2)), title: like('offer.pdf'), ordinal: integer(1) }],
+          fields: [
+            {
+              field_id: uuid(childOf(COND_ENVELOPE_ID, 4)),
+              field_type: 'CHECKBOX',
+              required: false,
+              filled: false,
+              value: null,
+              field_key: like('co'),
+              condition: null,
+            },
+            {
+              field_id: uuid(childOf(COND_ENVELOPE_ID, 5)),
+              field_type: 'TEXT',
+              required: true,
+              filled: false,
+              value: null,
+              field_key: like('co_name'),
+              condition: { trigger_key: like('co'), when: like('checked') },
+            },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: COND_TOKEN }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { fields: { field_key: string | null; condition: { trigger_key: string; when: string } | null }[] };
+        expect(body.fields[0]?.condition).toBeNull();
+        expect(body.fields[1]?.condition?.trigger_key).toBe(body.fields[0]?.field_key);
+      });
+  });
+});
+
+// FIELD-PARITY-2 B-6 follow-up — Finish clears a value the server holds that the signer emptied
+// (value null; signingApi submitSigning). The provider derives the field id (last digit 4).
+const CLEAR_ENVELOPE_ID = 'e6c20000-0000-7000-8000-0000000000c1';
+const CLEAR_TOKEN = 'sign-mobile-pact-token-clear';
+
+describe('sign-mobile → FIELD-PARITY-2 clear a stored value', () => {
+  it('clears a stored value with value null', async () => {
+    const fieldId = childOf(CLEAR_ENVELOPE_ID, 4);
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a stored text answer', { envelope_id: CLEAR_ENVELOPE_ID, token: CLEAR_TOKEN })
+      .uponReceiving('a native signing clear of a stored value')
+      .withRequest('POST', `/v1/sign/signing/fields/${fieldId}/fill`, (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: CLEAR_TOKEN, value: null });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ filled: like(true) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/fields/${fieldId}/fill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: CLEAR_TOKEN, value: null }),
+        });
+        expect(res.status).toBe(200);
       });
   });
 });

@@ -3,6 +3,8 @@
 // of the last response; the server answers 428 without it (native) and 412
 // revision_mismatch on a stale one. Idempotency (M-A3 §8): document upload carries one
 // Idempotency-Key per document, reused on every retry.
+import type { FieldCondition } from '@aramo/sign-client';
+
 import { ApiError, isApiError } from '../../api/errors';
 import type { paths } from '../../api/generated/sign';
 import type { HttpResponse } from '../../api/http';
@@ -50,12 +52,25 @@ export interface UploadInput {
   readonly filename: string;
   readonly contentBase64: string;
   readonly idempotencyKey: string;
+  /** FIELD-PARITY-2 A-3 — import the PDF's form fields (sent only when true). */
+  readonly importFields?: boolean;
+  /** FIELD-PARITY-2 A-3 — turn {{…}} text tags into fields (sent only when true). */
+  readonly applyTextTags?: boolean;
+}
+
+/** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload created and why anything was skipped. */
+export interface FieldImportResult {
+  readonly fields: readonly unknown[];
+  readonly warnings: readonly { readonly code: string; readonly message: string }[];
+  readonly stripped: readonly string[];
 }
 
 export interface UploadedDocument {
   readonly id: string;
   readonly title: string;
   readonly pages: PageSize[];
+  /** Present only on an upload sent with an option (FIELD-PARITY-2 A-3). */
+  readonly fieldImport?: FieldImportResult;
 }
 
 /**
@@ -94,6 +109,10 @@ export interface FieldWire {
   readonly options?: Readonly<Record<string, unknown>> | null;
   /** S-5 (ruling R-3, dark) — a sender-filled field's value; any other value is refused. */
   readonly value?: string | null;
+  /** FIELD-PARITY-2 B-1 — the field's stable key (survives the replace-all PUT; the id does not). */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 — "show only when" (the Send flow only; never in self-sign, C-7). */
+  readonly condition?: FieldCondition | null;
 }
 
 type SenderFieldsBody =
@@ -186,16 +205,33 @@ export function createSenderApi(workspace: WorkspaceClient): SenderApi {
     async upload(id, ifMatch, input) {
       const out = await workspace.call('/v1/sign/sender/envelopes/{id}/documents', 'post', {
         path: { id },
-        body: { title: input.title, filename: input.filename, content_base64: input.contentBase64 },
+        body: {
+          title: input.title,
+          filename: input.filename,
+          content_base64: input.contentBase64,
+          // FIELD-PARITY-2 A-3 — a flag goes only when chosen (an unchosen one leaves the upload unchanged).
+          ...(input.importFields ? { import_fields: true } : {}),
+          ...(input.applyTextTags ? { apply_text_tags: true } : {}),
+        },
         ifMatch,
         idempotencyKey: input.idempotencyKey,
       });
+      const fi = out.field_import;
       return {
         id: out.id,
         title: out.title,
         pages: out.pages
           .map((p) => ({ width: p.width ?? 0, height: p.height ?? 0 }))
           .filter((p) => p.width > 0 && p.height > 0),
+        ...(fi
+          ? {
+              fieldImport: {
+                fields: fi.fields,
+                warnings: fi.warnings.map((w) => ({ code: w.code, message: w.message })),
+                stripped: fi.stripped,
+              },
+            }
+          : {}),
       };
     },
     async removeDocument(id, ifMatch, documentId) {

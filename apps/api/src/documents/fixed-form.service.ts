@@ -11,6 +11,7 @@ import {
   parseTemplateFieldSettings,
   senderFilledFieldsEnabled,
   type DetectResult,
+  type FieldCondition,
   type FieldOptions,
   type FieldImportWarning,
 } from '@aramo/sign-fields';
@@ -24,6 +25,7 @@ import {
   TemplateVariablesRepository,
   emptyFixedFormContent,
   fixedFormIssues,
+  fixedFormConditionIssues,
   fixedFormPdfOf,
   isFixedFormFieldType,
   type DocumentStoragePort,
@@ -87,6 +89,8 @@ export interface FixedFormFieldView {
   readonly font_size: number | null;
   readonly data_name: string | null;
   readonly options: FieldOptions | null;
+  // FIELD-PARITY-2 B-2 — "show only when" (NULL = always shown).
+  readonly condition: FieldCondition | null;
 }
 
 /** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload imported (absent without a flag). */
@@ -128,6 +132,7 @@ export function toFieldView(f: {
   font_size?: number | null;
   data_name?: string | null;
   options?: unknown;
+  condition?: unknown;
 }): FixedFormFieldView {
   return {
     field_key: f.field_key,
@@ -154,6 +159,7 @@ export function toFieldView(f: {
     font_size: f.font_size ?? null,
     data_name: f.data_name ?? null,
     options: (f.options ?? null) as FieldOptions | null,
+    condition: (f.condition ?? null) as FieldCondition | null,
   };
 }
 
@@ -382,6 +388,8 @@ export class FixedFormService {
         group_rule: f.group_rule,
         min_selected: null,
         name_mode: null,
+        // FIELD-PARITY-2 A-5 — a PDF dropdown's choices (DROPDOWN only; null otherwise).
+        options: f.options,
       });
       return { view, source: f.source, source_name: f.name };
     });
@@ -451,6 +459,10 @@ export class FixedFormService {
         if (keys.has(f.field_key)) throw invalid(`${f.field_key} is placed twice`, input.requestId, { reason: 'field_key_duplicate', index });
         keys.add(f.field_key);
       }
+      // FIELD-PARITY-2 B-3 — the one cross-field condition rule over the whole list (C-6 too:
+      // a fixed form's signatures are all placed fields).
+      const [issue] = fixedFormConditionIssues(fields);
+      if (issue !== undefined) throw invalid(`field ${issue.index + 1}: ${issue.message}`, input.requestId, { reason: issue.reason, index: issue.index, field: 'condition' });
     }
     return this.forms.writePlatformDraft({
       version_id: version.id,
@@ -471,6 +483,12 @@ export class FixedFormService {
       throw invalid(`${field.field_key} is already placed`, input.requestId, { reason: 'field_key_duplicate' });
     }
     if (existing.length >= 200) throw invalid('at most 200 fields', input.requestId, { reason: 'too_many_fields' });
+    // FIELD-PARITY-2 B-3 — the cross-field condition rule with the new field (one field at a time:
+    // the unconditional-SIGNATURE rule is a publish issue, role_without_signature).
+    if (field.condition !== null && field.condition !== undefined) {
+      const [issue] = fixedFormConditionIssues([...existing, field], { requireUnconditionalSignature: false });
+      if (issue !== undefined) throw invalid(issue.message, input.requestId, { reason: issue.reason, field: 'condition' });
+    }
     return this.forms.addPlatformDraftField({ version_id: version.id, field });
   }
 
@@ -489,6 +507,10 @@ export class FixedFormService {
       variables: await this.allowedVariables(template.document_type_id),
       issues: await this.issues({ document_type_id: template.document_type_id, field_schema: version.field_schema, fields, title: template.name }),
       previewed: version.previewed_fingerprint !== null && version.previewed_fingerprint === version.content_fingerprint,
+      // FIELD-PARITY-2 A-4 (ruling C-9) — whether sender-filled fields are switched on (S-5, dark;
+      // the one shared flag reader, @aramo/sign-fields senderFilledFieldsEnabled). The Studio offers
+      // Sender-filled and Read-only only when this is true.
+      sender_filled_fields_enabled: senderFilledFieldsEnabled(process.env),
     };
   }
 

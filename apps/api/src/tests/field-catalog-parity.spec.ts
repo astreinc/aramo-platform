@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 
 import { SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES } from '@aramo/documents-contracts';
 import {
+  CONDITION_VALUES_MAX,
+  FIELD_CONDITION_WHENS,
   FIELD_IMPORT_WARNING_CODES,
+  FIELD_KEY_MAX,
   FIELD_TYPE_KEYS,
   FIELD_VALIDATIONS,
   OPTION_KEYS_BY_TYPE,
@@ -202,5 +205,86 @@ describe('FIELD-PARITY-1 P3 — settings parity: CHECKs and OpenAPI', () => {
   ] as const)('%s FieldOptions: its keys = every option key of OPTION_KEYS_BY_TYPE', (_w, schemas) => {
     const props = Object.keys(((schemas['FieldOptions'] as { properties: Record<string, unknown> }).properties));
     expect(sorted(props)).toEqual(sorted(new Set(Object.values(OPTION_KEYS_BY_TYPE).flat())));
+  });
+});
+
+// FIELD-PARITY-2 (Aramo-Sign-Field-Placement-Conditional-Fields-Directive-v1_0-LOCKED) §4.2 B-1 / B-2,
+// §5 test 2 — the field key and the condition: both condition migrations stay normalized-identical,
+// their CHECK names exactly the shared rules, and every contract that carries settings carries the
+// condition (one FieldCondition schema per OpenAPI file, equal to the shared shape).
+describe('FIELD-PARITY-2 B-1 / B-2 — field key and condition parity', () => {
+  const SIGN_KEY = read('libs/sign/prisma/migrations/20261123100000_field_parity_2_field_key/migration.sql');
+  const SIGN_COND = read('libs/sign/prisma/migrations/20261123100100_field_parity_2_field_condition/migration.sql');
+  const DOCS_COND = read('libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql');
+  const normalize = (sql: string, table: string): string[] =>
+    sql
+      .split('\n')
+      .filter((l) => !l.startsWith('--'))
+      .join('\n')
+      .replace(/"(?:sign|documents)"\."[A-Za-z]+"/g, 'T')
+      .replaceAll(`${table}_`, 'T_')
+      .split(';')
+      .map((x) => x.replace(/\s+/g, ' ').trim())
+      .filter((x) => x.length > 0);
+
+  it('the two condition migrations add the same column with the same CHECK', () => {
+    expect(normalize(DOCS_COND, 'TemplateFieldDefinition')).toEqual(normalize(SIGN_COND, 'SignatureField'));
+    expect(normalize(SIGN_COND, 'SignatureField').length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['Sign', SIGN_COND],
+    ['documents', DOCS_COND],
+  ] as const)('%s: the condition CHECK names exactly the shared rules, the values limit and the key limit', (_n, sql) => {
+    const whens = /COALESCE\("condition" ->> 'when', ''\) IN \(([^)]*)\)/.exec(sql)?.[1] ?? '';
+    expect(sorted([...whens.matchAll(/'([a-z_]+)'/g)].map((m) => m[1] as string))).toEqual(sorted(FIELD_CONDITION_WHENS));
+    expect(sql).toContain(`BETWEEN 1 AND ${CONDITION_VALUES_MAX}`);
+    expect(sql).toContain(`char_length("condition" ->> 'trigger_key') BETWEEN 1 AND ${FIELD_KEY_MAX}`);
+  });
+
+  it('the Sign field_key CHECK is the shared key limit, and a partial unique index guards a document', () => {
+    expect(SIGN_KEY).toContain(`char_length("field_key") BETWEEN 1 AND ${FIELD_KEY_MAX}`);
+    expect(SIGN_KEY).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS "SignatureField_document_field_key"\s+ON "sign"\."SignatureField" \("envelope_document_id", "field_key"\)\s+WHERE "field_key" IS NOT NULL/);
+  });
+
+  it.each([
+    ['sign.yaml', SIGN],
+    ['documents.yaml', DOCUMENTS],
+    ['platform.yaml', PLATFORM],
+  ] as const)('%s FieldCondition: when = FIELD_CONDITION_WHENS, values ≤ CONDITION_VALUES_MAX, trigger_key ≤ FIELD_KEY_MAX', (_w, schemas) => {
+    const c = schemas['FieldCondition'] as { properties: Record<string, { enum?: string[]; maxItems?: number; maxLength?: number }> };
+    expect(sorted(Object.keys(c.properties))).toEqual(['trigger_key', 'values', 'when']);
+    expect(sorted(c.properties['when']?.enum ?? [])).toEqual(sorted(FIELD_CONDITION_WHENS));
+    expect(c.properties['values']?.maxItems).toBe(CONDITION_VALUES_MAX);
+    expect(c.properties['trigger_key']?.maxLength).toBe(FIELD_KEY_MAX);
+  });
+
+  const propertyAt = (schemas: Schemas, schema: string, path: readonly string[], member: string): unknown => {
+    let node = schemas[schema] as Record<string, unknown> | undefined;
+    for (const step of path) {
+      if (node === undefined) break;
+      node = step === '[]' ? (node['items'] as Record<string, unknown> | undefined) : ((node['properties'] as Record<string, unknown> | undefined)?.[step] as Record<string, unknown> | undefined);
+    }
+    return (node?.['properties'] as Record<string, unknown> | undefined)?.[member];
+  };
+
+  // Every settings-carrying contract (the same list the validation enum is held on, plus the
+  // read views) has condition; the Sign sender contracts also have field_key.
+  it.each([
+    ['sign.yaml', SIGN, 'SenderFieldInput', [] as string[]],
+    ['sign.yaml', SIGN, 'SenderEnvelopeField', []],
+    ['documents.yaml', DOCUMENTS, 'TemplateFieldDefinition', []],
+    ['documents.yaml', DOCUMENTS, 'AddFieldRequest', []],
+    ['documents.yaml', DOCUMENTS, 'SignTemplateRenderResponse', ['field_definitions', '[]']],
+    ['platform.yaml', PLATFORM, 'FixedFormField', []],
+  ] as const)('%s %s carries condition', (_w, schemas, schema, path) => {
+    expect(propertyAt(schemas, schema, path, 'condition')).toBeDefined();
+  });
+
+  it.each([
+    ['SenderFieldInput'],
+    ['SenderEnvelopeField'],
+  ] as const)('sign.yaml %s carries field_key', (schema) => {
+    expect(propertyAt(SIGN, schema, [], 'field_key')).toBeDefined();
   });
 });

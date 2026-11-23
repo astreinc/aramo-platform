@@ -405,6 +405,9 @@ model TemplateFieldDefinition {
   font_size           Int? // S-7: 6..36; NULL = auto
   data_name           String? // S-9: lower_snake
   options             Json? // per-type options (a JSON object)
+  // FIELD-PARITY-2 B-2 (migration 20261123100100_field_parity_2_template_field_condition) — "show
+  // only when": { trigger_key, when, values? }, the same column and CHECK as the Sign field table.
+  condition           Json?
 
   template_version    TemplateVersion @relation(fields: [template_version_id], references: [id], onDelete: Cascade)
 

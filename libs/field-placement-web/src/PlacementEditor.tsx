@@ -40,6 +40,7 @@ import {
   type PlacementPrefill,
 } from './lib/model';
 import { radioOptionBelow } from './lib/settings-wire';
+import { TRIGGER_TYPES, defaultConditionFor, dependentsOf, previewShownIds, setPreviewAnswer, usableTriggers, triggerChoices } from './lib/conditions';
 import { FieldSettingsPanel } from './FieldSettingsPanel';
 import { acceptSuggestions, fieldsFromSuggestions, pendingGhosts, type PlacementSuggestion } from './lib/suggestions';
 import { pickTargetPage, placeNewField, visibleArea, visibleRegionInPage, type ScreenRect } from './lib/viewport';
@@ -71,6 +72,14 @@ import './field-placement.css';
 // by a field) are drawn as dashed ghost fields. Click / Enter accepts one; "Accept all on this
 // page" / "Accept all" accept many as ONE undo step; Delete or × dismisses one, "Dismiss all"
 // the rest. Accepted ghosts become ordinary fields for the assignee being placed for.
+//
+// FIELD-PARITY-2 B-7 (both hosts, while the host lists 'condition') — "Show only when…": the
+// inspector picks a field's trigger from a list or "Pick the field on the page" (then a click on a
+// highlighted field picks it; a click elsewhere or Escape cancels), and the rule. A dashed line
+// links each dependent field to its trigger; a dependent is dimmed while the preview answers hide
+// it ("Preview answers": a click on a check box or radio option sets its answer; a dropdown's
+// answer is chosen in the inspector), by the ONE visibility rule. Deleting a trigger clears its
+// dependents' conditions in the same undo step, with a warning.
 
 export interface PlacementCopy {
   readonly leftLabel: string;
@@ -241,6 +250,9 @@ export function PlacementEditor(props: PlacementEditorProps) {
     dispatch({ type: 'reset', fields: initialFields });
     setSuggestions(null);
     setDismissed(new Set());
+    setPicking(null);
+    setAnswers(new Map());
+    setConditionNotice(null);
     // Only the key decides.
   }, [resetKey]);
 
@@ -279,6 +291,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
   const [suggestions, setSuggestions] = useState<readonly PlacementSuggestion[] | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [finding, setFinding] = useState(false);
+  // B-7 — picking a trigger on the page (the dependent field's id), the preview answers, the warning.
+  const [picking, setPicking] = useState<string | null>(null);
+  const [previewOn, setPreviewOn] = useState(false);
+  const [answers, setAnswers] = useState<ReadonlyMap<string, string>>(new Map());
+  const [conditionNotice, setConditionNotice] = useState<string | null>(null);
   const centerRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const focusField = useRef<string | null>(null);
@@ -429,11 +446,27 @@ export function PlacementEditor(props: PlacementEditorProps) {
     setAnnounce(`${entry.label} field added on page ${slot.page + 1}${assigneeOf(active) !== undefined ? ` for ${assigneeOf(active)!.label}` : ''}.`);
   };
 
+  /**
+   * B-7 — the warning when a delete leaves fields without their trigger: their conditions are
+   * cleared in the same step (they are always shown from now on); Undo brings both back.
+   */
+  const orphanNote = (ids: readonly string[]): string => {
+    const n = dependentsOf(state.fields, ids).length;
+    if (n === 0) {
+      setConditionNotice(null);
+      return '';
+    }
+    const text = `${plural(n, 'field')} that showed only for an answer to ${ids.length === 1 ? 'it' : 'them'} ${n === 1 ? 'is' : 'are'} now always shown. Undo brings the condition back.`;
+    setConditionNotice(text);
+    return ` ${text}`;
+  };
+
   const remove = (f: PlacedField) => {
     focusColumn.current = true;
+    const note = orphanNote([f.id]);
     dispatch({ type: 'exec', command: removeFields([f.id], `Delete ${typeLabel(f.type).toLowerCase()} field`) });
     dispatch({ type: 'select', ids: [] });
-    setAnnounce(`${typeLabel(f.type)} field deleted.`);
+    setAnnounce(`${typeLabel(f.type)} field deleted.${note}`);
   };
 
   /** FIELD-PARITY-1 P3 T-5 — "Add option": a sibling radio button below, in the same group (one undo step). */
@@ -457,9 +490,10 @@ export function PlacementEditor(props: PlacementEditorProps) {
       return;
     }
     focusColumn.current = true;
+    const note = orphanNote(ids);
     dispatch({ type: 'exec', command: removeFields(ids, `Delete ${ids.length} fields`) });
     dispatch({ type: 'select', ids: [] });
-    setAnnounce(`${plural(ids.length, 'field')} deleted.`);
+    setAnnounce(`${plural(ids.length, 'field')} deleted.${note}`);
   };
 
   /** Add copies as one undo step, select them and move focus to the first. */
@@ -632,6 +666,17 @@ export function PlacementEditor(props: PlacementEditorProps) {
     e.stopPropagation();
     e.preventDefault();
     pointerFocus.current = true;
+    // B-7 — picking a trigger: a click on a field the rule accepts sets it; any other cancels.
+    if (picking !== null) {
+      pickTrigger(f);
+      return;
+    }
+    // B-7 — preview answers: a click on a check box or radio option sets its answer.
+    if (previewOn && mode === 'move' && !e.shiftKey && TRIGGER_TYPES.has(f.type) && f.type !== 'DROPDOWN') {
+      setAnswers((a) => setPreviewAnswer(a, state.fields, f));
+      select([f.id]);
+      return;
+    }
     if (mode === 'move' && e.shiftKey) {
       toggle(f);
       return;
@@ -683,6 +728,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
         removeMany(ids);
         return;
       case 'deselect':
+        if (picking !== null) {
+          setPicking(null);
+          setAnnounce('Picking cancelled.');
+          return;
+        }
         select([]);
         return;
       case 'select':
@@ -699,6 +749,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
   // P2-2 — drag-a-box selection on a page's background (Shift adds to the selection).
   const onPagePointer = (slot: PageSlot, point: { x: number; y: number }, e: ReactPointerEvent<HTMLElement>) => {
     setTarget(slot.index);
+    if (picking !== null) {
+      setPicking(null);
+      setAnnounce('Picking cancelled.');
+      return;
+    }
     if (armed !== null) {
       place(armed, slot, point);
       return;
@@ -751,6 +806,44 @@ export function PlacementEditor(props: PlacementEditorProps) {
         : 'Pick a field type on the left; it is added to the page in view. Click a field to edit; drag to move.';
 
   const settingsShown = selected === null ? [] : editableSettingsOf(selected.type, capabilities);
+  const describe = (f: PlacedField): string => {
+    const label = f.settings.label.trim();
+    const slot = slots.find((x) => x.docId === f.docId && x.page === f.page);
+    return `${typeLabel(f.type)}${label.length > 0 ? ` “${label}”` : ''} · ${pageName(slot)}`;
+  };
+
+  // ---- B-7 conditions ------------------------------------------------------------------------
+  const conditionsOn = !readOnly && capabilities.settings.includes('condition');
+  const pickable = useMemo(() => (picking === null ? null : new Set(usableTriggers(state.fields, picking).map((f) => f.id))), [picking, state.fields]);
+  /** Set `picking`'s trigger to `t` (an offered trigger), as one undo step. */
+  const pickTrigger = (t: PlacedField) => {
+    const dependent = picking;
+    setPicking(null);
+    if (dependent === null) return;
+    const condition = pickable?.has(t.id) === true ? defaultConditionFor(t) : null;
+    if (condition === null) {
+      setAnnounce('That field can’t show or hide this one. Picking cancelled.');
+      return;
+    }
+    dispatch({ type: 'exec', command: configureField(dependent, { condition }, 'Set when the field is shown') });
+    select([dependent]);
+    setAnnounce(`This field now shows only when ${describe(t)} is answered.`);
+  };
+  const previewShown = useMemo(() => previewShownIds(state.fields, answers), [state.fields, answers]);
+  const dimmed = useMemo(() => new Set(state.fields.filter((f) => f.settings.condition !== null && !previewShown.has(f.id)).map((f) => f.id)), [state.fields, previewShown]);
+  const links = useMemo(
+    () =>
+      state.fields.flatMap((f) => {
+        const c = f.settings.condition;
+        return c === null ? [] : [{ from: f.id, to: c.trigger_key, active: state.selection.includes(f.id) || state.selection.includes(c.trigger_key) }];
+      }),
+    [state.fields, state.selection],
+  );
+  const triggerOnOtherPage = (f: PlacedField): string | null => {
+    const c = f.settings.condition;
+    const t = c === null ? undefined : state.fields.find((x) => x.id === c.trigger_key);
+    return t !== undefined && (t.docId !== f.docId || t.page !== f.page) ? describe(t) : null;
+  };
   const canPrefill = selected !== null && (capabilities.prefillTypes ?? []).includes(selected.type) && prefills.length > 0;
 
   // P2-1 — duplicate, copy and Repeat down for the selection (one field or many).
@@ -1071,11 +1164,41 @@ export function PlacementEditor(props: PlacementEditorProps) {
                 >
                   Grid
                 </button>
+                {conditionsOn ? (
+                  <button
+                    type="button"
+                    className={previewOn ? 'fpe-btn fpe-btn--sm is-on' : 'fpe-btn fpe-btn--sm'}
+                    aria-pressed={previewOn}
+                    onClick={() => {
+                      const on = !previewOn;
+                      setPreviewOn(on);
+                      if (!on) setAnswers(new Map());
+                      setAnnounce(on ? 'Preview answers: click a check box or radio option to answer it; fields hidden by the answers are dimmed.' : 'Preview answers cleared.');
+                    }}
+                    title="Try answers to see which fields show (nothing is saved)"
+                    data-testid={`${p}-preview`}
+                  >
+                    Preview answers
+                  </button>
+                ) : null}
               </>
             )}
             {toolbarEnd}
           </div>
           {status}
+          {conditionNotice !== null ? (
+            <div className="fpe-note fpe-note--warn" role="status" data-testid={`${p}-condition-notice`}>
+              <span>{conditionNotice}</span>
+              <button type="button" className="fpe-btn fpe-btn--sm" onClick={() => setConditionNotice(null)} aria-label="Dismiss" data-testid={`${p}-condition-notice-dismiss`}>
+                ×
+              </button>
+            </div>
+          ) : null}
+          {picking !== null ? (
+            <p className="fpe-note" role="status" data-testid={`${p}-picking`}>
+              Click the field this one depends on (highlighted). Press Escape or click the page to cancel.
+            </p>
+          ) : null}
           {slots.length === 0 ? (
             empty
           ) : (
@@ -1111,6 +1234,9 @@ export function PlacementEditor(props: PlacementEditorProps) {
               ghostLabel={(g) => `Suggested ${typeLabel(g.type).toLowerCase()} field ${suggestionReasonText(g.reason)}`}
               onGhostAccept={(g) => accept([g], 'Suggestion accepted')}
               onGhostDismiss={(g) => dismiss([g.id])}
+              dimmed={dimmed}
+              pickable={pickable}
+              links={links}
             />
           )}
         </main>
@@ -1180,12 +1306,25 @@ export function PlacementEditor(props: PlacementEditorProps) {
                     <FieldSettingsPanel
                       field={selected}
                       fields={state.fields}
-                      shown={settingsShown}
+                      shown={conditionsOn ? settingsShown : settingsShown.filter((k) => k !== 'condition')}
                       capabilities={capabilities}
                       idPrefix={p}
                       onChange={(patch) => dispatch({ type: 'exec', command: configureField(selected.id, patch) })}
                       onAddRadioOption={() => addRadioOption(selected)}
+                      describe={describe}
+                      picking={picking === selected.id}
+                      onPickTrigger={() => {
+                        const on = picking !== selected.id;
+                        setPicking(on ? selected.id : null);
+                        setAnnounce(on ? 'Click the field this one depends on. Escape cancels.' : 'Picking cancelled.');
+                      }}
                     />
+                    {conditionsOn && triggerOnOtherPage(selected) !== null ? (
+                      <p className="fpe-faint" data-testid={`${p}-condition-elsewhere`}>
+                        Its trigger is on another page: {triggerOnOtherPage(selected)}.
+                      </p>
+                    ) : null}
+                    {conditionsOn && previewOn && TRIGGER_TYPES.has(selected.type) ? <PreviewAnswer field={selected} answers={answers} idPrefix={p} onAnswer={(v) => setAnswers((a) => setPreviewAnswer(a, state.fields, selected, v))} /> : null}
                   </>
                 )}
                 {selectionTools}
@@ -1202,5 +1341,31 @@ export function PlacementEditor(props: PlacementEditorProps) {
         {announce}
       </div>
     </div>
+  );
+}
+
+/** B-7 — the preview answer of a trigger field (not saved; it only decides which fields are dimmed). */
+function PreviewAnswer({ field, answers, idPrefix: p, onAnswer }: { readonly field: PlacedField; readonly answers: ReadonlyMap<string, string>; readonly idPrefix: string; readonly onAnswer: (v: string) => void }) {
+  const v = answers.get(field.id) ?? '';
+  if (field.type === 'DROPDOWN') {
+    return (
+      <label className="fpe-row">
+        <span className="fpe-label">Preview answer</span>
+        <select className="fpe-select" value={v} onChange={(e) => onAnswer(e.target.value)} data-testid={`${p}-preview-answer`}>
+          <option value="">No answer</option>
+          {triggerChoices(field).map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  return (
+    <label className="fpe-check">
+      <input type="checkbox" checked={v === 'true'} onChange={(e) => onAnswer(e.target.checked ? 'true' : 'false')} data-testid={`${p}-preview-answer`} />
+      Preview answer: {field.type === 'RADIO' ? 'this option is chosen' : 'checked'}
+    </label>
   );
 }

@@ -18,6 +18,7 @@ import {
   tagBoxToPdf,
   tagCoverRect,
   tagFieldRect,
+  tagTextNotRemovedWarnings,
   textTagTypeOf,
   type PdfFormWidget,
   type TagPageFrame,
@@ -45,12 +46,12 @@ describe('P2-5 AcroForm → catalog mapping', () => {
   it('maps every PDF form kind (push button: none)', () => {
     expect(PDF_FORM_FIELD_MAPPING).toEqual({
       text: 'TEXT',
-      // FIELD-PARITY-1 P3 — multi-line text and radio groups have their own types now; a
-      // dropdown stays TEXT until the reader and hosts carry its choices.
+      // FIELD-PARITY-1 P3 — multi-line text and radio groups have their own types now.
+      // FIELD-PARITY-2 A-5 — a dropdown is a DROPDOWN (with its choices when they fit).
       multiline_text: 'MULTILINE_TEXT',
       checkbox: 'CHECKBOX',
       radio: 'RADIO',
-      dropdown: 'TEXT',
+      dropdown: 'DROPDOWN',
       list: 'TEXT',
       signature: 'SIGNATURE',
       push_button: null,
@@ -74,7 +75,7 @@ describe('P2-5 AcroForm → catalog mapping', () => {
         widget({ kind: 'checkbox', name: 'agree', tooltip: 'I agree', width: 12, height: 12 }),
         widget({ kind: 'radio', name: 'Colour', option: 'Red', x: 50, width: 12, height: 12 }),
         widget({ kind: 'radio', name: 'Colour', option: 'Blue', x: 80, width: 12, height: 12 }),
-        widget({ kind: 'dropdown', name: 'State' }),
+        widget({ kind: 'dropdown', name: 'State', choices: [{ value: 'NY', label: 'New York' }, { value: 'CA', label: 'California' }] }),
         widget({ kind: 'signature', name: 'Sig1', height: 40 }),
       ],
       [LETTER],
@@ -88,10 +89,61 @@ describe('P2-5 AcroForm → catalog mapping', () => {
       ['agree', 'CHECKBOX', 'I agree', null, null],
       ['Colour', 'RADIO', 'Red', 'colour', 'SELECT_ONE'],
       ['Colour', 'RADIO', 'Blue', 'colour', 'SELECT_ONE'],
-      ['State', 'TEXT', null, null, null],
+      ['State', 'DROPDOWN', null, null, null],
       ['Sig1', 'SIGNATURE', null, null, null],
     ]);
-    expect(plan.fields[0]).toMatchObject({ source: 'pdf_form', page_number: 0, x: 100, y: 600, width: 200, height: 20, required: true, role: null });
+    expect(plan.fields[0]).toMatchObject({ source: 'pdf_form', page_number: 0, x: 100, y: 600, width: 200, height: 20, required: true, role: null, options: null });
+    expect(plan.fields[5]?.options).toEqual({ choices: [{ value: 'NY', label: 'New York' }, { value: 'CA', label: 'California' }] });
+  });
+
+  it('FIELD-PARITY-2 A-5 a dropdown keeps 1..50 valid choices; otherwise (and a list box) it is TEXT with a warning', () => {
+    const fifty = Array.from({ length: 50 }, (_, i) => ({ value: `v${i}`, label: '' }));
+    const plan = planPdfFormFields(
+      [
+        widget({ kind: 'dropdown', name: 'One', choices: [{ value: ' only ', label: '' }] }),
+        widget({ kind: 'dropdown', name: 'Fifty', choices: fifty }),
+        widget({ kind: 'dropdown', name: 'TooMany', choices: [...fifty, { value: 'v50', label: '' }] }),
+        widget({ kind: 'dropdown', name: 'None', choices: [] }),
+        widget({ kind: 'dropdown', name: 'Unread' }),
+        widget({ kind: 'dropdown', name: 'Dup', choices: [{ value: 'a', label: 'A' }, { value: 'a', label: 'B' }] }),
+        widget({ kind: 'dropdown', name: 'Empty', choices: [{ value: 'a', label: 'A' }, { value: '', label: '' }] }),
+        widget({ kind: 'dropdown', name: 'Long', choices: [{ value: 'x'.repeat(101), label: 'x' }] }),
+        widget({ kind: 'list', name: 'Fruits', choices: [{ value: 'Apple', label: 'Apple' }] }),
+      ],
+      [LETTER],
+      'send_web',
+      new Set(),
+    );
+    expect(plan.fields.map((f) => [f.name, f.field_type])).toEqual([
+      ['One', 'DROPDOWN'],
+      ['Fifty', 'DROPDOWN'],
+      ['TooMany', 'TEXT'],
+      ['None', 'TEXT'],
+      ['Unread', 'TEXT'],
+      ['Dup', 'TEXT'],
+      ['Empty', 'TEXT'],
+      ['Long', 'TEXT'],
+      ['Fruits', 'TEXT'],
+    ]);
+    // The shared settings rule: values trimmed, an empty label is the value.
+    expect(plan.fields[0]?.options).toEqual({ choices: [{ value: 'only', label: 'only' }] });
+    expect(plan.fields[1]?.options?.choices).toHaveLength(50);
+    expect(plan.fields.slice(2).every((f) => f.options === null)).toBe(true);
+    expect(plan.warnings.map((w) => [w.code, w.name])).toEqual([
+      ['pdf_field_dropdown_as_text', 'TooMany'],
+      ['pdf_field_dropdown_as_text', 'None'],
+      ['pdf_field_dropdown_as_text', 'Unread'],
+      ['pdf_field_dropdown_as_text', 'Dup'],
+      ['pdf_field_dropdown_as_text', 'Empty'],
+      ['pdf_field_dropdown_as_text', 'Long'],
+      ['pdf_field_list_as_text', 'Fruits'],
+    ]);
+  });
+
+  it('FIELD-PARITY-2 A-5 a skipped dropdown is not also reported as imported as text', () => {
+    const plan = planPdfFormFields([widget({ kind: 'dropdown', name: 'Locked', read_only: true, choices: [] })], [LETTER], 'send_web', new Set());
+    expect(plan.fields).toEqual([]);
+    expect(plan.warnings.map((w) => w.code)).toEqual(['pdf_field_read_only']);
   });
 
   it('skips push buttons, read-only, hidden, signed and off-page fields with named warnings', () => {
@@ -242,7 +294,22 @@ describe('P2-6 tag finder and geometry', () => {
       ['SIGNATURE', 'Seller', true],
     ]);
     expect(plan.covers).toHaveLength(2);
+    // FIELD-PARITY-2 A-6 — each cover carries the tag as drawn (to remove its text) and its name.
+    expect(plan.covers.map((c) => [c.text, c.name])).toEqual([
+      ['{{text}}', 'text'],
+      ['{{signature:Seller}}', 'signature:Seller'],
+    ]);
     expect(plan.warnings.map((w) => w.code).sort()).toEqual(['text_tag_role_missing', 'text_tag_rotated_page', 'text_tag_type_unknown']);
+    // A tag whose text could not be removed is reported by name and page ("tag text could not be removed").
+    expect(tagTextNotRemovedWarnings(plan.covers, [1, 7])).toEqual([
+      {
+        code: 'text_tag_text_not_removed',
+        message: '{{signature:Seller}}: tag text could not be removed; it is covered with white, but its text is still in the PDF.',
+        name: 'signature:Seller',
+        page_number: 0,
+      },
+    ]);
+    expect(tagTextNotRemovedWarnings(plan.covers, [])).toEqual([]);
   });
 
   it('matches a role case-insensitively against any name of an option', () => {

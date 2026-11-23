@@ -6,13 +6,13 @@ import {
   PdfFormImportError,
   SafePdfPipeline,
   UnsafePdfError,
-  coverPdfBoxes,
   extractTextLayer,
   importPdfForm,
   readPageFrames,
+  removeAndCoverTextTags,
   stampTextInBox,
 } from '@aramo/documents-rendering';
-import { planPdfFormFields, planTextTags, type FieldImportWarning, type ImportedField } from '@aramo/sign-fields';
+import { planPdfFormFields, planTextTags, tagTextNotRemovedWarnings, type FieldImportWarning, type ImportedField } from '@aramo/sign-fields';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, StandardFonts, type PDFObject } from 'pdf-lib';
 
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.1 — the gate an official PDF
@@ -139,8 +139,10 @@ export interface PreparedFixedFormPdf {
  *                    BEFORE the gate decides; the fields map to the `template_fixed_form`
  *                    catalog types (@aramo/sign-fields planPdfFormFields). An XFA-only form
  *                    is refused (422 details.reason xfa_only_form).
- *   apply_text_tags  P2-6: {{type:role…}} tags on the gated PDF become fields and are covered
- *                    with white (ruling R-5); the covered PDF passes the gate again.
+ *   apply_text_tags  P2-6: {{type:role…}} tags on the gated PDF become fields; their text is
+ *                    removed from the page and covered with white (FIELD-PARITY-2 A-6, ruling
+ *                    C-8; a tag whose text cannot be removed is only covered and reported as
+ *                    text_tag_text_not_removed); the changed PDF passes the gate again.
  * With both false this is acceptFixedFormPdf on the upload, unchanged.
  */
 export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImportOptions, groupKeysTaken: Set<string>, requestId: string): Promise<PreparedFixedFormPdf> {
@@ -180,7 +182,9 @@ export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImpo
       fields.push(...plan.fields);
       warnings.push(...plan.warnings);
       if (plan.covers.length > 0) {
-        work = await coverPdfBoxes(work, plan.covers);
+        const removed = await removeAndCoverTextTags(work, plan.covers);
+        warnings.push(...tagTextNotRemovedWarnings(plan.covers, removed.not_removed));
+        work = removed.bytes;
         accepted = await acceptFixedFormPdf(work, requestId);
       }
     }

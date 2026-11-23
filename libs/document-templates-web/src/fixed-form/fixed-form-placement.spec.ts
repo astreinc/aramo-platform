@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, defaultSettingsFor } from '@aramo/field-placement-web';
 
-import { FIXED_FORM_SETTINGS, fixedFormFieldsToPlaced, fixedFormFieldsToWire } from './fixed-form-placement';
+import { FIXED_FORM_SETTINGS, fixedFormFieldsToPlaced, fixedFormFieldsToWire, fixedFormSettings } from './fixed-form-placement';
 import type { FixedFormField } from './fixed-form-model';
 
 // FIELD-PARITY-1 P1-3 × P1-5 — the console Studio carries the template field settings (label,
@@ -140,9 +140,49 @@ describe('fixed-form placement ↔ template field settings (FIELD-PARITY-1)', ()
   });
 
   it('FP3-S-4 the Studio offers every template setting but sender-filled / read-only (dark; no flag in the view)', () => {
-    expect(FIXED_FORM_SETTINGS).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'validation', 'font_size', 'data_name', 'options']);
+    // FIELD-PARITY-2 B-7 — "Show only when…" (condition) is offered with its control.
+    expect(FIXED_FORM_SETTINGS).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'validation', 'font_size', 'data_name', 'options', 'condition']);
     // A stored sender-filled field still reaches the editor (and goes back unchanged, FP3-S-1).
     const [f] = fixedFormFieldsToPlaced([base({ field_key: 'text_1', field_type: 'TEXT', sender_filled: true, read_only: true })]);
     expect(f?.settings).toMatchObject({ senderFilled: true, readOnly: true });
+  });
+
+  it('FP2 A-4 the Studio offers sender-filled / read-only only when the view says the server flag is on', () => {
+    expect(fixedFormSettings({ sender_filled_fields_enabled: false })).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings(null)).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings({})).toEqual(FIXED_FORM_SETTINGS);
+    expect(fixedFormSettings({ sender_filled_fields_enabled: true })).toEqual([
+      'label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'options', 'condition',
+    ]);
+  });
+});
+
+describe('fixed-form placement ↔ conditions (FIELD-PARITY-2 B-7)', () => {
+  const agree = base({ field_key: 'checkbox_1', field_type: 'CHECKBOX', label: 'Co-applicant' });
+  const coName = base({ field_key: 'text_1', field_type: 'TEXT', ordinal: 1, width: 230, height: 22, condition: { trigger_key: 'checkbox_1', when: 'checked' } });
+
+  it('FP2-B7-1 untouched fields round-trip byte-equal, the condition included', () => {
+    const fields = [agree, coName];
+    expect(roundTrip(fields)).toEqual(fields);
+    expect(fixedFormFieldsToPlaced(fields)[1]!.settings.condition).toEqual({ trigger_key: 'checkbox_1', when: 'checked' });
+  });
+
+  it('FP2-B7-2 a condition set in the editor is sent; another edit keeps it; clearing it sends null', () => {
+    const [, set] = roundTrip([agree, { ...coName, condition: null }], (p) =>
+      p.map((f) => (f.id === 'text_1' ? { ...f, settings: { ...f.settings, condition: { trigger_key: 'checkbox_1', when: 'unchecked' } } } : f)),
+    );
+    expect(set).toMatchObject({ field_key: 'text_1', condition: { trigger_key: 'checkbox_1', when: 'unchecked' } });
+    const [, kept] = roundTrip([agree, coName], (p) => p.map((f) => (f.id === 'text_1' ? { ...f, settings: { ...f.settings, tooltip: 'If any' } } : f)));
+    expect(kept).toMatchObject({ tooltip: 'If any', condition: { trigger_key: 'checkbox_1', when: 'checked' } });
+    const [, cleared] = roundTrip([agree, coName], (p) => p.map((f) => (f.id === 'text_1' ? { ...f, settings: { ...f.settings, condition: null } } : f)));
+    expect(cleared).toMatchObject({ condition: null });
+  });
+
+  it('FP2-B7-3 a new field goes out with its condition (and none when it has none)', () => {
+    const placed = fixedFormFieldsToPlaced([agree]);
+    const fresh = { ...placed[0]!, id: 'text_2', type: 'TEXT', settings: { ...DEFAULT_SETTINGS, condition: { trigger_key: 'checkbox_1', when: 'checked' as const } } };
+    const wire = fixedFormFieldsToWire([...placed, fresh, { ...fresh, id: 'text_3', settings: DEFAULT_SETTINGS }], new Map([[agree.field_key, agree]]));
+    expect(wire[1]).toMatchObject({ field_key: 'text_2', condition: { trigger_key: 'checkbox_1', when: 'checked' } });
+    expect(wire[2]).not.toHaveProperty('condition');
   });
 });

@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerMayStillSign } from '@aramo/sign-client';
-import { fieldValueRefusal, type FieldOptions } from '@aramo/sign-fields';
+import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
+import { fieldValueRefusal, parseFieldCondition, type FieldCondition, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository, type LockingTx } from './esign.repository.js';
@@ -66,7 +66,7 @@ import {
 } from './domain/recipients.js';
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
-import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isPaymentField, isServerFilledName, profileTextValueRefusal } from './domain/field-rules.js';
+import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, hiddenFilledFields, isPaymentField, isServerFilledName, profileTextValueRefusal, shownFields } from './domain/field-rules.js';
 import { assertQesSatisfied } from './regulated/qes-guard.js';
 import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 import { TrustedTimestampService, type TrustedTimestampView } from './trusted-timestamp/trusted-timestamp.service.js';
@@ -167,6 +167,12 @@ export interface SignerFieldView {
   font_size: number | null;
   data_name: string | null;
   options: FieldOptions | null;
+  // FIELD-PARITY-2 B-1 / B-2 / B-5 — the field's key and its condition, so the signer page applies
+  // the one visibility rule (@aramo/sign-client shownFields) to this signer's own fields and values.
+  // A condition's trigger is always the same signer's field (ruling C-2), so no other signer's
+  // answer is needed or disclosed.
+  field_key: string | null;
+  condition: FieldCondition | null;
 }
 
 // Sign 1.14 — the signer's PAYMENT field, checked under the envelope row lock.
@@ -651,7 +657,9 @@ export class EsignService {
   // ── Fill a signature field (requires disclosure accepted). ES-1: under the
   // envelope row lock, with a live session — a signer who has completed, or a
   // signer on a terminal envelope, can no longer alter a field value. ──
-  async fillField(ctx: SessionContext, fieldId: string, input: { value: string; signature_method?: string; time_zone?: string }): Promise<void> {
+  // FIELD-PARITY-2 B-6 follow-up — `value: null` CLEARS a stored value (the shared rule
+  // @aramo/sign-client signerClearRefusal decides which fields may be cleared).
+  async fillField(ctx: SessionContext, fieldId: string, input: { value: string | null; signature_method?: string; time_zone?: string }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
@@ -662,46 +670,81 @@ export class EsignService {
       await assertIdentityVerificationCleared(tx, ctx);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
+      // FIELD-PARITY-2 B-6 follow-up (ruling C-3) — the signer clears a value they typed or picked
+      // (required or not: completion still requires a required one). The value and filled_at go
+      // back to NULL and the fields the old value showed are cleared in this transaction, so the
+      // signer apps and the server agree. No field_hidden check: a clear adds no answer, and a
+      // dependent the server has just cleared may still be cleared again by the app (no-op).
+      // Like a fill, a clear writes no ledger event (the completion records the final values).
+      const value = input.value;
+      if (value === null) {
+        const refusal = signerClearRefusal(field);
+        if (refusal !== null) throw new SignatureFieldValueRefusedError(fieldId, refusal);
+        await tx.signatureField.update({ where: { id: fieldId }, data: { value: null, signature_method: null, filled_at: null } });
+        await this.clearHiddenValues(tx, ctx);
+        return;
+      }
       // M-A6 §2.2 — a SIGNER_PROFILE name is the server's to fill; any client
       // value is refused. §2.3 — check boxes take 'true' or 'false' (unchecking).
       if (isServerFilledName(field)) throw new SignatureFieldValueRefusedError(fieldId, 'signer_profile_name_server_filled');
       // Sign 1.14 — a PAYMENT field is filled only by a succeeded payment.
       if (isPaymentField(field)) throw new SignatureFieldValueRefusedError(fieldId, 'payment_field_server_filled');
-      if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
+      if (CHECK_FIELD_TYPES.has(field.field_type) && value !== 'true' && value !== 'false') {
         throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
       }
       // FIELD-PARITY-1 P3 S-4 / S-5 — a sender-filled (or read-only) value is the sender's.
       if (field.sender_filled === true || field.read_only === true) throw new SignatureFieldValueRefusedError(fieldId, 'field_read_only');
+      // FIELD-PARITY-2 B-5 — a field whose condition is not met (the one visibility rule over this
+      // signer's own fields and values) cannot be filled.
+      const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+      const shown = shownFields(mine, currentValue);
+      if (!shown.has(mine.find((f) => f.id === fieldId) ?? field)) throw new SignatureFieldValueRefusedError(fieldId, 'field_hidden');
       // M-A12 W1-C.4 — FIRST_NAME / LAST_NAME / EMAIL / COMPANY / TITLE are text (at most
       // 200 characters); an EMAIL field holds an email address.
-      const profileRefusal = profileTextValueRefusal(field.field_type, input.value);
+      const profileRefusal = profileTextValueRefusal(field.field_type, value);
       if (profileRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, profileRefusal);
       // FIELD-PARITY-1 P3 §6 — the new types' formats (DATE, NUMBER, DROPDOWN, MULTILINE_TEXT)
       // and the validation presets (the one rule, @aramo/sign-fields fieldValueRefusal).
-      const valueRefusal = fieldValueRefusal({ field_type: field.field_type, validation: field.validation ?? null, options: (field.options ?? null) as FieldOptions | null }, input.value);
+      const valueRefusal = fieldValueRefusal({ field_type: field.field_type, validation: field.validation ?? null, options: (field.options ?? null) as FieldOptions | null }, value);
       if (valueRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, valueRefusal);
       // Client Rule Consolidation C0-2 — SIGN_DATE is the server's to stamp: the client's
       // value is ignored (its tap only marks the field as filled for the signer), and
       // completeSigner stamps it again at signing.
       const now = new Date();
       if (field.field_type === SIGN_DATE_FIELD) {
-        const value = await this.signDateFor(tx, ctx, now, input.time_zone);
-        await tx.signatureField.update({ where: { id: fieldId }, data: { value, signature_method: null, filled_at: now } });
+        const stamped = await this.signDateFor(tx, ctx, now, input.time_zone);
+        await tx.signatureField.update({ where: { id: fieldId }, data: { value: stamped, signature_method: null, filled_at: now } });
         return;
       }
       await tx.signatureField.update({
         where: { id: fieldId },
-        data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: now },
+        data: { value, signature_method: input.signature_method ?? null, filled_at: now },
       });
       // FIELD-PARITY-1 P3 T-5 — choosing one radio button clears the others of its group (the
       // same signer), so a radio group never holds two choices.
-      if (field.field_type === 'RADIO' && input.value === 'true' && field.group_key !== null) {
+      if (field.field_type === 'RADIO' && value === 'true' && field.group_key !== null) {
         await tx.signatureField.updateMany({
           where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, field_type: 'RADIO', group_key: field.group_key, id: { not: fieldId } },
           data: { value: 'false', signature_method: null, filled_at: now },
         });
       }
+      // FIELD-PARITY-2 B-5 (ruling C-3) — a trigger change (this value, or the radio options it
+      // cleared) may hide dependent fields: their values are cleared now, in this transaction,
+      // along each chain.
+      await this.clearHiddenValues(tx, ctx);
     });
+  }
+
+  // FIELD-PARITY-2 B-5 (ruling C-3) — clear every hidden field of this signer that still holds a
+  // value (a hidden trigger hides its own dependents, so one pass reaches the end of each chain).
+  // Returns the signer's fields as they are after the clear.
+  private async clearHiddenValues(tx: Pick<LockingTx, 'signatureField'>, ctx: SessionContext) {
+    const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+    const hidden = hiddenFilledFields(mine, currentValue, (f) => f.filled_at !== null || f.value !== null);
+    if (hidden.length === 0) return mine;
+    const ids = new Set(hidden.map((f) => f.id));
+    await tx.signatureField.updateMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, id: { in: [...ids] } }, data: { value: null, signature_method: null, filled_at: null } });
+    return mine.map((f) => (ids.has(f.id) ? { ...f, value: null, signature_method: null, filled_at: null } : f));
   }
 
   // Client Rule Consolidation C0-2 — the SIGN_DATE value: the signer's calendar date at
@@ -770,6 +813,8 @@ export class EsignService {
           font_size: f.font_size ?? null,
           data_name: f.data_name ?? null,
           options: (f.options ?? null) as FieldOptions | null,
+          field_key: f.field_key ?? null,
+          condition: conditionOrNull(f.condition),
           };
         }),
     );
@@ -850,19 +895,23 @@ export class EsignService {
       await assertIdentityVerificationCleared(tx, ctx);
       // M-A6 §2.3 — required fields filled, required check boxes checked, and the
       // check-box group rules (SELECT_ONE, min_selected) hold.
-      let mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+      // FIELD-PARITY-2 B-5 (ruling C-3) — a hidden field never carries a value (cleared here too,
+      // whatever path left one), and the server stamps / fills only SHOWN fields.
+      let mine = await this.clearHiddenValues(tx, ctx);
+      const shownNow = shownFields(mine, currentValue);
+      const isShown = (id: string): boolean => [...shownNow].some((f) => f.id === id);
       // Client Rule Consolidation C0-2 — the server stamps every SIGN_DATE of this signer
       // now, in this completing transaction (whatever a client sent is overwritten). A
       // signer who already signed never reaches here, so a signed document is never
       // re-stamped.
       const signedAt = new Date();
-      const dateFields = mine.filter((f) => f.field_type === SIGN_DATE_FIELD);
+      const dateFields = mine.filter((f) => f.field_type === SIGN_DATE_FIELD && isShown(f.id));
       if (dateFields.length > 0) {
         const value = await this.signDateFor(tx, ctx, signedAt, opts.time_zone);
         for (const f of dateFields) {
           await tx.signatureField.update({ where: { id: f.id }, data: { value, signature_method: null, filled_at: signedAt } });
         }
-        mine = mine.map((f) => (f.field_type === SIGN_DATE_FIELD ? { ...f, value, signature_method: null, filled_at: signedAt } : f));
+        mine = mine.map((f) => (f.field_type === SIGN_DATE_FIELD && isShown(f.id) ? { ...f, value, signature_method: null, filled_at: signedAt } : f));
       }
       const violation = evaluateSignerFieldRules(mine);
       if (violation !== null) throw new SignatureFieldIncompleteError(ctx.signer_id, violation.reason, violation.group_key);
@@ -871,7 +920,7 @@ export class EsignService {
       await assertQesSatisfied(tx, ctx.tenant_id, ctx.signer_id);
       // M-A6 §2.2 — the server fills every SIGNER_PROFILE name of this signer, in
       // the completing transaction (the value the executed PDF then prints).
-      const names = mine.filter(isServerFilledName);
+      const names = mine.filter((f) => isServerFilledName(f) && isShown(f.id));
       if (names.length > 0) {
         const signer = await tx.signer.findFirstOrThrow({ where: { id: ctx.signer_id, tenant_id: ctx.tenant_id }, select: { name: true } });
         const name = await this.profileNameFor(ctx, signer.name);
@@ -1424,4 +1473,16 @@ function normalizeAttestedName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const name = raw.trim().replace(/\s+/g, ' ');
   return name.length > 0 && name.length <= 200 ? name : null;
+}
+
+// FIELD-PARITY-2 B-4 / B-5 — a stored field's value as a condition reads it (empty = none).
+function currentValue(f: { value: string | null; filled_at: Date | null }): string | null {
+  return f.filled_at === null ? null : f.value;
+}
+
+// FIELD-PARITY-2 B-5 — a stored condition for the signer view (a shape the CHECK would refuse
+// reads as none).
+function conditionOrNull(raw: unknown): FieldCondition | null {
+  const parsed = parseFieldCondition(raw);
+  return parsed.ok ? parsed.condition : null;
 }

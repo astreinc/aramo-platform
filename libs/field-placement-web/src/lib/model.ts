@@ -9,10 +9,11 @@
 
 import {
   FIELD_CATALOG,
-  fieldSettingsOf,
+  editableFieldSettings,
   fieldTypesFor,
   isFieldTypeKey,
   type DropdownChoice,
+  type FieldCondition,
   type FieldOptions,
   type FieldSetting,
   type FieldSurface,
@@ -59,6 +60,11 @@ export interface PlacementSettings {
   readonly dataName: string;
   /** The per-type options in the wire shape (DROPDOWN choices, NUMBER format, validation parameters). */
   readonly options: FieldOptions | null;
+  /**
+   * FIELD-PARITY-2 B-2 — "show only when" in the wire shape (null = always shown). Its
+   * trigger_key is another field's id (the host's key: console field_key, sign-web field_key).
+   */
+  readonly condition: FieldCondition | null;
 }
 
 export const DEFAULT_SETTINGS: PlacementSettings = {
@@ -76,6 +82,7 @@ export const DEFAULT_SETTINGS: PlacementSettings = {
   fontSize: null,
   dataName: '',
   options: null,
+  condition: null,
 };
 
 /** FIELD-PARITY-1 P3 — the types whose fields form groups (a check-box group; a radio group). */
@@ -184,11 +191,12 @@ export interface PageRef {
   readonly page: number;
 }
 
-/** The settings controls a field shows: the catalog's list ∩ the host's capabilities. */
+/**
+ * The settings controls a field shows: the catalog's list ∩ the host's capabilities
+ * (FIELD-PARITY-2 A-7 — @aramo/sign-fields editableFieldSettings, the one projection the app uses too).
+ */
 export function editableSettingsOf(type: string, caps: PlacementCapabilities): readonly FieldSetting[] {
-  if (!isFieldTypeKey(type)) return [];
-  const allowed = new Set(caps.settings);
-  return fieldSettingsOf(type).filter((s) => allowed.has(s));
+  return editableFieldSettings(type, caps.settings);
 }
 
 export interface PaletteEntry {

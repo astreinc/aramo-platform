@@ -34,6 +34,8 @@ export function applySettings<T extends ConfigurableField>(fields: readonly T[],
   if (next.settings.groupRule === 'SELECT_ONE') next = { ...next, settings: { ...next.settings, minSelected: null } };
   // S-4 — read-only only together with sender-filled; a field no longer sender-filled loses its value.
   if (!next.settings.senderFilled) next = { ...next, settings: { ...next.settings, readOnly: false, senderValue: '' } };
+  // FIELD-PARITY-2 D-4 — a field the sender fills is always shown (no condition).
+  else if (next.settings.condition !== null) next = { ...next, settings: { ...next.settings, condition: null } };
   const group = isGroupedType(next.type) ? next.settings.groupKey.trim() : '';
   const sameGroup = (f: T): boolean => f.id !== id && f.type === next.type && f.assignee === next.assignee && f.settings.groupKey.trim() === group;
   if (group.length > 0 && patch.groupKey !== undefined && target.settings.groupKey.trim() !== group) {
@@ -52,7 +54,7 @@ export function applySettings<T extends ConfigurableField>(fields: readonly T[],
     let out = f;
     if (shared) {
       const s = Object.fromEntries(GROUP_SHARED.map((k) => [k, next.settings[k]])) as Pick<PlacementSettings, (typeof GROUP_SHARED)[number]>;
-      out = { ...out, required: next.required, settings: { ...out.settings, ...s, ...(s.senderFilled ? {} : { senderValue: '' }) } };
+      out = { ...out, required: next.required, settings: { ...out.settings, ...s, ...(s.senderFilled ? { condition: null } : { senderValue: '' }) } };
     }
     if (radioChosen && out.settings.senderValue === 'true') out = { ...out, settings: { ...out.settings, senderValue: 'false' } };
     return out;

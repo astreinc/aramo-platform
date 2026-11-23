@@ -20,6 +20,8 @@ export {
   isFieldTypeKey,
   isPaymentsGatedOn,
   fieldSettingsOf,
+  editableFieldSettings,
+  senderEditorSettings,
   TEMPLATE_TYPE_MAPPING,
   RETIRED_FIELD_TYPES,
   isCircleMark,
@@ -92,6 +94,41 @@ export {
   type CheckboxGroupIssue,
 } from './lib/field-settings.js';
 
+// FIELD-PARITY-2 Phase B — field keys and conditional fields (B-1..B-3).
+export {
+  FIELD_KEY_MAX,
+  FIELD_CONDITION_WHENS,
+  CONDITION_TRIGGER_TYPES,
+  CONDITION_DEPTH_MAX,
+  CONDITION_VALUES_MAX,
+  CONDITION_VALUE_MAX,
+  isFieldKey,
+  duplicateFieldKeys,
+  parseFieldCondition,
+  FIELD_CONDITION_REFUSAL_REASONS,
+  fieldConditionIssues,
+  orphanedConditionIndexes,
+  startingCondition,
+  usableTriggerIndexes,
+  type FieldConditionRefusalReason,
+  type ConditionalFieldLike,
+  type FieldConditionIssue,
+  type FieldConditionCheckOptions,
+  type FieldCondition,
+  type FieldConditionWhen,
+  type FieldConditionParse,
+} from './lib/field-conditions.js';
+// FIELD-PARITY-2 B-4 — the one visibility rule (re-exported by @aramo/sign-client for the server,
+// sign-web and the app; B-7 — the web placement editor's preview uses it from here).
+export {
+  fieldConditionOf,
+  conditionMetBy,
+  shownFields,
+  isFieldShown,
+  hiddenFilledFields,
+  type VisibilityFieldLike,
+} from './lib/field-visibility.js';
+
 // FIELD-PARITY-1 P3 §6 — the value rules (signer fill, sender-filled values) and how a value
 // prints on the executed PDF and the certificate.
 export {
@@ -121,6 +158,7 @@ export {
   importFieldKey,
   importGroupKey,
   planPdfFormFields,
+  importDropdownOptions,
   textTagTypeOf,
   parseTextTag,
   findTextTags,
@@ -128,6 +166,7 @@ export {
   tagFieldRect,
   tagCoverRect,
   planTextTags,
+  tagTextNotRemovedWarnings,
   matchTagRole,
   type ImportedField,
   type FieldImportWarning,
@@ -144,6 +183,7 @@ export {
   type TagPageFrame,
   type TagTextPage,
   type TextTagPlan,
+  type TextTagCover,
 } from './lib/field-import.js';
 
 // FIELD-PARITY-1 P2-4 — the deterministic field detector (labels, underscore lines, empty boxes

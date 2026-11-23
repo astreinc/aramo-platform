@@ -10,11 +10,16 @@ import {
   DEFAULT_SIGNER_NAME_MODE,
   VALIDATIONS_BY_TYPE,
   fieldSettingsOf,
+  fieldConditionIssues,
   isFieldTypeKey,
+  parseFieldCondition,
   parseFieldSettings,
   type DropdownChoice,
   type FieldOptions,
   type FieldSetting,
+  type ConditionalFieldLike,
+  type FieldConditionCheckOptions,
+  type FieldConditionIssue,
   type FieldSettingRefusal,
   type FieldValidation,
 } from '@aramo/sign-fields';
@@ -36,6 +41,8 @@ export interface WireSettings {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: unknown;
+  /** FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; NULL = always shown). */
+  readonly condition?: unknown;
   /** S-5 — the sender's value of a sender-filled field (the Sign sender API only). */
   readonly value?: string | null;
 }
@@ -61,7 +68,14 @@ export function settingsFromWire(w: WireSettings): PlacementSettings {
     fontSize: typeof w.font_size === 'number' ? w.font_size : null,
     dataName: w.data_name ?? '',
     options: isObject(w.options) ? (w.options as FieldOptions) : null,
+    condition: conditionFromWire(w.condition),
   };
+}
+
+/** FIELD-PARITY-2 B-2 — a stored condition (a shape the server would refuse reads as none). */
+function conditionFromWire(raw: unknown): PlacementSettings['condition'] {
+  const parsed = parseFieldCondition(raw);
+  return parsed.ok ? parsed.condition : null;
 }
 
 /** The settings a type takes (the catalog), as a set. */
@@ -155,6 +169,8 @@ export function settingsToWire(type: string, s: PlacementSettings, opts: Setting
   put('data_name', text(s.dataName), text(s.dataName).length > 0);
   const options = t.has('options') ? optionsToWire(type, validation, s.options) : null;
   put('options', options, options !== null);
+  // FIELD-PARITY-2 B-2 — the condition round-trips as stored (a sender-filled field has none).
+  put('condition', s.condition, s.condition !== null && !s.senderFilled);
   if (opts.senderValues === true && s.senderFilled && s.senderValue !== '') out['value'] = s.senderValue;
   return out;
 }
@@ -167,6 +183,39 @@ export function settingsIssue(type: string, s: PlacementSettings, opts: { readon
   if (!isFieldTypeKey(type)) return null;
   const parsed = parseFieldSettings(settingsToWire(type, s), type, { sender_filled_enabled: opts.senderFilledEnabled === true });
   return parsed.ok ? null : parsed.refusal;
+}
+
+/**
+ * FIELD-PARITY-2 B-3 — the cross-field condition problems the server would refuse for this field
+ * list (the ONE rule, @aramo/sign-fields fieldConditionIssues), keyed by field id. A field's key is
+ * its id and its signer is its assignee. `requireUnconditionalSignature`: false where the host's
+ * server checks C-6 elsewhere (none today: sign-web Prepare and the console Studio save whole lists).
+ */
+export function conditionIssues(fields: readonly Pick<PlacedField, 'id' | 'type' | 'assignee' | 'settings'>[], opts: FieldConditionCheckOptions = {}): Map<string, FieldConditionIssue> {
+  const issues = fieldConditionIssues(conditionRows(fields), opts);
+  const out = new Map<string, FieldConditionIssue>();
+  for (const i of issues) {
+    const id = fields[i.index]?.id;
+    if (id !== undefined && !out.has(id)) out.set(id, i);
+  }
+  return out;
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — the editor's fields as the shared cross-field rule reads them: key = id,
+ * signer = assignee, and a DROPDOWN's choices as they are saved (cleanChoices: a blank value is
+ * its label), so a condition on a choice whose value follows its label is not refused here when
+ * the server would accept it.
+ */
+export function conditionRows(fields: readonly Pick<PlacedField, 'id' | 'type' | 'assignee' | 'settings'>[]): ConditionalFieldLike[] {
+  return fields.map((f) => ({
+    field_key: f.id,
+    field_type: f.type,
+    signer: f.assignee,
+    condition: f.settings.condition,
+    options: f.settings.options === null ? null : { ...f.settings.options, choices: cleanChoices(f.settings.options.choices) },
+    sender_filled: f.settings.senderFilled,
+  }));
 }
 
 /** A RADIO's next option text: "Option N", N one more than the options in its group. */

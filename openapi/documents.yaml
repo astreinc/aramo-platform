@@ -2010,6 +2010,11 @@ components:
                     oneOf:
                       - $ref: '#/components/schemas/FieldOptions'
                       - type: 'null'
+                  condition:
+                    oneOf:
+                      - $ref: '#/components/schemas/FieldCondition'
+                      - type: 'null'
+                    description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
             variables:
               type: array
               items:
@@ -2683,6 +2688,38 @@ components:
           properties:
             available: { type: boolean }
             tenant_name: { type: [string, 'null'] }
+    FieldCondition:
+      type: object
+      additionalProperties: false
+      description: >-
+        FIELD-PARITY-2 B-2 — "show this field only when the field trigger_key ..." (@aramo/sign-fields
+        FieldCondition). when checked / unchecked: the trigger is a CHECKBOX or ACKNOWLEDGEMENT. chosen: the
+        trigger is one RADIO option field (shown while that option is chosen). one_of: the trigger is a
+        DROPDOWN and values lists 1 to 50 of its choice values. One trigger per field (no AND / OR), the same
+        signer (or template role), chains up to a depth of 3, no cycles; a sender-filled field is never
+        conditional. Refusals (details.reason) condition_invalid, condition_trigger_unknown,
+        condition_trigger_type_invalid, condition_cross_signer, condition_values_invalid, condition_cycle,
+        condition_depth_exceeded, condition_no_unconditional_signature.
+      required: [trigger_key, when]
+      properties:
+        trigger_key:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The trigger field's field_key.
+        when:
+          type: string
+          enum: [checked, unchecked, chosen, one_of]
+        values:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: one_of only — the dropdown choice values that show the field.
     FieldOptions:
       type: object
       additionalProperties: false
@@ -2824,6 +2861,11 @@ components:
             - $ref: '#/components/schemas/FieldOptions'
             - type: 'null'
           description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
+          description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
     DocumentRequirement:
       type: object
       description: The generic requirement bridge (R12). Satisfaction is independent of business transitions.
@@ -3055,6 +3097,11 @@ components:
             - $ref: '#/components/schemas/FieldOptions'
             - type: 'null'
           description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
+          description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
     CreateRequirementRequest:
       type: object
       required:
@@ -3385,6 +3432,11 @@ components:
                 oneOf:
                   - $ref: '#/components/schemas/FieldOptions'
                   - type: 'null'
+              condition:
+                oneOf:
+                  - $ref: '#/components/schemas/FieldCondition'
+                  - type: 'null'
+                description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
         template_kind:
           type: string
           enum: [EDITABLE, FIXED_FORM]

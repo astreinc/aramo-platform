@@ -13,5 +13,8 @@ export {
   isPaymentField,
   isServerFilledName,
   evaluateSignerFieldRules,
+  // FIELD-PARITY-2 B-4 / B-5 — the one visibility rule.
+  shownFields,
+  hiddenFilledFields,
 } from '@aramo/sign-client';
 export type { SignerNameMode, CheckboxGroupRule, FieldRuleRow, ProfileTextFieldType, FieldRuleViolation } from '@aramo/sign-client';

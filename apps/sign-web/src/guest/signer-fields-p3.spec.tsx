@@ -224,6 +224,19 @@ describe('T-5 RADIO', () => {
     expect(fills(calls)).toHaveLength(2);
   });
 
+  it('FIELD-PARITY-2 A-2: tapping the chosen option of an optional set clears it', async () => {
+    const calls = transport([opt('r-a', 'Full time', false), opt('r-b', 'Part time', false)]);
+    await toWorkspace();
+    fireEvent.click(fieldsPanel().getByRole('radio', { name: 'Choose: Full time, page 1' }));
+    await waitFor(() => expect(fieldsPanel().getByRole('radio', { name: 'Chosen: Full time, page 1' })).toHaveAttribute('aria-checked', 'true'));
+    fireEvent.click(fieldsPanel().getByRole('radio', { name: 'Chosen: Full time, page 1' }));
+    await waitFor(() => expect(fieldsPanel().getByRole('radio', { name: 'Choose: Full time, page 1' })).toHaveAttribute('aria-checked', 'false'));
+    expect(fills(calls)).toEqual([
+      { id: 'r-a', value: 'true' },
+      { id: 'r-a', value: 'false' },
+    ]);
+  });
+
   it('a refused Finish (radio_group_select_one) is named and announced, and focus moves to it', async () => {
     transport([opt('r-a', 'Full time', false), opt('r-b', 'Part time', false)], {
       complete: () => json({ error: { code: 'SIGNATURE_FIELD_INCOMPLETE', details: { reason: 'radio_group_select_one' } } }, 409),

@@ -52,9 +52,10 @@ export interface PublishedFixedForm {
 type FieldRow = Omit<FixedFormField, 'ordinal'> & { ordinal: number };
 
 // FIELD-PARITY-1 P3 — the row without its JSON options (templateFieldSettingColumns writes them
-// only when set: Prisma refuses a bare null for a JSON column).
-function rowWithoutOptions(f: FieldRow): Omit<FieldRow, 'options'> {
-  const { options: _options, ...rest } = f;
+// only when set: Prisma refuses a bare null for a JSON column). FIELD-PARITY-2 B-2 — nor its
+// JSON condition (the same rule).
+function rowWithoutOptions(f: FieldRow): Omit<FieldRow, 'options' | 'condition'> {
+  const { options: _options, condition: _condition, ...rest } = f;
   return rest;
 }
 

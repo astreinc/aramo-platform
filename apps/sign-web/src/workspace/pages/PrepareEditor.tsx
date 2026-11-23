@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadPdf, type LoadedPdf } from '@aramo/document-templates-web/pdf';
 import { PlacementEditor, suggestionsFromWire, useAutosave, type PlacedField, type PlacementCapabilities, type PlacementDocument, type PlacementSuggestion } from '@aramo/field-placement-web';
-import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes } from '@aramo/sign-client';
+import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes, senderEditorSettings } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
 import { Btn, COLORS, ErrorBox, Icon, Loading } from '../ui';
@@ -57,14 +57,21 @@ const ORDER: readonly FieldType[] = [
   'ACKNOWLEDGEMENT',
 ];
 
-/** FIELD-PARITY-1 P3 §6.2 — the settings Prepare edits (the Sign sender API stores every one). */
-export const PREPARE_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'validation', 'font_size', 'data_name', 'options'] as const;
+/**
+ * FIELD-PARITY-1 P3 §6.2 — the settings Prepare edits (the Sign sender API stores every one).
+ * FIELD-PARITY-2 A-7 — the shared list the app's Send flow uses too (@aramo/sign-client).
+ */
+export const PREPARE_SETTINGS = senderEditorSettings(false);
 
-/** The editor capabilities: sender-filled (and read-only) only while the server says they are on (S-5, dark). */
-export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled'>): PlacementCapabilities {
+/**
+ * The editor capabilities: sender-filled (and read-only) only while the server says they are on
+ * (S-5, dark). FIELD-PARITY-2 B-7 — "Show only when…" on a standard envelope; never on a document
+ * the sender signs alone (ruling C-7: the server refuses a condition on a SELF envelope).
+ */
+export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled' | 'mode'>): PlacementCapabilities {
   const senderFilled = env.sender_filled_fields_enabled === true;
   return {
-    settings: senderFilled ? [...PREPARE_SETTINGS, 'read_only', 'sender_filled'] : PREPARE_SETTINGS,
+    settings: senderEditorSettings(senderFilled, { selfSign: env.mode === 'self' }),
     limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX },
     senderValues: senderFilled,
   };
@@ -86,7 +93,9 @@ const newKey = () => `f${Date.now().toString(36)}${(seq += 1)}`;
  */
 export function toPlaced(f: EnvelopeField): PlacedField {
   return {
-    id: f.id ?? newKey(),
+    // FIELD-PARITY-2 B-1 — the stable key when the field has one (it survives saves; the row id
+    // does not), else the stored id (sent back as the key on the next save).
+    id: f.field_key ?? f.id ?? newKey(),
     type: f.field_type,
     docId: f.envelope_document_id,
     page: f.page_number,
@@ -104,15 +113,16 @@ export function toPlaced(f: EnvelopeField): PlacedField {
 
 /**
  * Editor → the PUT payload, the same shape as before P1-5: a locked field goes back exactly as
- * stored (with its id, so the server keeps it); every other field without an id, with the
- * configuration its type takes.
+ * stored (with its id, so the server keeps it); every other field without an id, with its
+ * field_key (FIELD-PARITY-2 B-1: the editor's id) and the configuration its type takes.
  */
 export function toWire(placed: readonly PlacedField[], stored: ReadonlyMap<string, EnvelopeField>): EnvelopeField[] {
   return placed.flatMap((f) => {
     const orig = stored.get(f.id);
     if (f.locked === true && orig !== undefined) return [orig];
     const type = f.type as FieldType;
-    return [{ envelope_document_id: f.docId, signer_id: f.assignee ?? '', field_type: type, page_number: f.page, x: f.x, y: f.y, width: f.width, height: f.height, required: f.required, ...configToWire(type, f.settings) }];
+    // FIELD-PARITY-2 B-1 — the editor's id is the field's stable key.
+    return [{ field_key: f.id, envelope_document_id: f.docId, signer_id: f.assignee ?? '', field_type: type, page_number: f.page, x: f.x, y: f.y, width: f.width, height: f.height, required: f.required, ...configToWire(type, f.settings) }];
   });
 }
 
@@ -184,7 +194,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     formatError: (e) => errorMessage(e),
   });
   const readiness = useMemo(() => readinessOf(env), [env]);
-  const capabilities = useMemo(() => prepareCapabilities(env), [env.sender_filled_fields_enabled]);
+  const capabilities = useMemo(() => prepareCapabilities(env), [env.sender_filled_fields_enabled, env.mode]);
   // FIELD-PARITY-1 P2-4 — "Find fields": the Sign route's full detector (detect=all) for every
   // document, as ghosts in the editor. A document whose suggestions fail adds none.
   const docIds = env.documents.map((d) => d.id).join(',');

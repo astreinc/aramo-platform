@@ -3,7 +3,14 @@
 // be prepared offline. The server envelope (revision + ETag, M-A3 §6) stays the
 // authority once it exists: a sync only ever writes with If-Match on the revision the
 // draft is based on, and a 412 replaces the local copy with the server's.
-import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, MAX_COPY_RECIPIENTS as SHARED_MAX_COPY, MAX_SIGNERS } from '@aramo/sign-client';
+import {
+  ENVELOPE_MESSAGE_MAX,
+  ENVELOPE_SUBJECT_MAX,
+  MAX_COPY_RECIPIENTS as SHARED_MAX_COPY,
+  MAX_SIGNERS,
+  parseFieldCondition,
+  type FieldCondition,
+} from '@aramo/sign-client';
 
 import type { EditorField } from '../editor/editorReducer';
 import { settingsFromServer } from '../editor/fieldSettings';
@@ -36,7 +43,32 @@ export interface DraftDocument {
    * when the document was added, reused on every retry, M-A3 §8). The bytes wait in the
    * encrypted store (documentBytes.ts).
    */
-  readonly pendingUpload: { readonly idempotencyKey: string } | null;
+  readonly pendingUpload: PendingUpload | null;
+}
+
+/**
+ * A document waiting for upload. FIELD-PARITY-2 A-3 — the upload options chosen when it was
+ * added (sign-web's two choices), kept with it so every retry sends the same request.
+ */
+export interface PendingUpload {
+  readonly idempotencyKey: string;
+  /** Import the PDF's form fields (import_fields). */
+  readonly importFields?: boolean;
+  /** Turn {{…}} text tags into fields (apply_text_tags). */
+  readonly applyTextTags?: boolean;
+}
+
+/** FIELD-PARITY-2 A-3 — the upload options (sign-web's "When uploading" choices). */
+export interface UploadOptions {
+  readonly importFields: boolean;
+  readonly applyTextTags: boolean;
+}
+
+export const NO_UPLOAD_OPTIONS: UploadOptions = { importFields: false, applyTextTags: false };
+
+/** The upload creates fields on the server (and so needs a signing recipient there first). */
+export function uploadMakesFields(u: PendingUpload | null): boolean {
+  return u !== null && (u.importFields === true || u.applyTextTags === true);
 }
 
 /**
@@ -139,6 +171,8 @@ export interface SendDraftPayload {
    * read: the settings sheet offers sender-filled (and read-only) only while it is true.
    */
   readonly senderFilledEnabled?: boolean;
+  /** FIELD-PARITY-2 A-3 — the upload options for documents added from now on (absent: both off). */
+  readonly uploadOptions?: UploadOptions;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -259,6 +293,13 @@ export interface ServerField {
   readonly options?: Readonly<Record<string, unknown>> | null;
   /** S-5 — a sender-filled field's value (the sender's own; null otherwise). */
   readonly value?: string | null;
+  /**
+   * FIELD-PARITY-2 B-1 — the field's stable key (absent / null on a legacy, S2S or imported
+   * field). It survives every replace-all PUT only when it is sent back; the row id does not.
+   */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 — "show only when" (absent / null: always shown). */
+  readonly condition?: FieldCondition | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
@@ -283,6 +324,19 @@ function rec(v: unknown): Record<string, unknown> {
 }
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** FIELD-PARITY-2 B-1 — a stored field key (1..200 characters), else null. */
+export function fieldKeyOf(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 && v.length <= FIELD_KEY_LIMIT ? v : null;
+}
+/** The server's field-key limit (@aramo/sign-fields FIELD_KEY_MAX). */
+const FIELD_KEY_LIMIT = 200;
+
+/** FIELD-PARITY-2 B-2 — a stored condition (none, or a shape the server would refuse: none). */
+function conditionOfWire(v: unknown): FieldCondition | null {
+  const parsed = parseFieldCondition(v);
+  return parsed.ok ? parsed.condition : null;
+}
 
 const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'];
 const DELIVERIES: readonly CopyDelivery[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
@@ -369,13 +423,16 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         ? { options: f['options'] as Record<string, unknown> }
         : {}),
       ...(f['sender_filled'] === true && typeof f['value'] === 'string' ? { value: f['value'] as string } : {}),
+      // FIELD-PARITY-2 B-1 / B-2 — the key and the condition, so a re-save keeps both.
+      ...(fieldKeyOf(f['field_key']) !== null ? { field_key: fieldKeyOf(f['field_key']) } : {}),
+      ...(conditionOfWire(f['condition']) !== null ? { condition: conditionOfWire(f['condition']) } : {}),
     })),
     senderFilledFieldsEnabled: o['sender_filled_fields_enabled'] === true,
   };
 }
 
-/** The editor's configuration for a server field of an authoring type. */
-function configOf(f: ServerField): Partial<EditorField> {
+/** The editor's configuration for a server field of an authoring type (also self-sign's template start). */
+export function configOf(f: ServerField): Partial<EditorField> {
   // FIELD-PARITY-1 P3 §6.2 — the P3 settings of every type, then the M-A6 ones.
   const p3 = settingsFromServer(f);
   if (f.field_type === 'SIGNER_NAME')
@@ -396,6 +453,67 @@ function configOf(f: ServerField): Partial<EditorField> {
     groupRule: f.group_key !== null ? (rule ?? 'SELECT_ANY') : null,
     minSelected: f.group_key !== null ? f.min_selected : null,
   };
+}
+
+/**
+ * Server fields → the editor's fields. A type the editor does not author is kept untouched,
+ * never dropped: the fields PUT replaces every field, so dropping it here would delete it on the
+ * next sync. So is an engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT,
+ * FIELD-PARITY-1 P3): the server passes it through only unchanged, with its id. A field on a
+ * document whose pages are not known yet is left out (`fieldsPending`). Also the sync's adoption
+ * of the fields an upload created (FIELD-PARITY-2 A-3).
+ */
+export function editorFieldsFromServer(
+  serverFields: readonly ServerField[],
+  pagesByDoc: ReadonlyMap<string, readonly PageSize[]>,
+  keyOf: (serverId: string) => string,
+  fieldKey: (f: ServerField, i: number) => string,
+): { fields: EditorField[]; preservedFields: ServerField[]; fieldsPending: boolean; pendingFields: ServerField[] } {
+  const pendingFields: ServerField[] = [];
+  const fields: EditorField[] = [];
+  const preservedFields: ServerField[] = [];
+  // FIELD-PARITY-2 B-1 — an editor field's key IS its field_key (sent back on every PUT), so a
+  // condition's trigger_key keeps naming it. A field without a stored key gets `fieldKey`'s,
+  // kept clear of every stored key (the server refuses a key used twice in an envelope).
+  const stored = new Set(serverFields.map((f) => fieldKeyOf(f.field_key)).filter((k): k is string => k !== null));
+  const used = new Set<string>();
+  const keyFor = (f: ServerField, i: number): string => {
+    const own = fieldKeyOf(f.field_key);
+    if (own !== null && !used.has(own)) return own;
+    let k = fieldKey(f, i);
+    while (stored.has(k) || used.has(k)) k = `${k}-${i}`;
+    return k;
+  };
+  serverFields.forEach((f, i) => {
+    if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
+      preservedFields.push(f);
+      return;
+    }
+    const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
+    if (!page) {
+      pendingFields.push(f);
+      return;
+    }
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width, height: f.height }, page);
+    const key = keyFor(f, i);
+    used.add(key);
+    fields.push({
+      key,
+      docKey: keyOf(f.envelope_document_id),
+      page: f.page_number,
+      recipientKey: keyOf(f.signer_id),
+      type: f.field_type,
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      required: f.required,
+      ...configOf(f),
+      // FIELD-PARITY-2 B-2 — the Send flow keeps the condition (self-sign never has one, C-7).
+      ...(f.condition ? { condition: f.condition } : {}),
+    });
+  });
+  return { fields, preservedFields, fieldsPending: pendingFields.length > 0, pendingFields };
 }
 
 /**
@@ -429,38 +547,7 @@ export function payloadFromServer(
     ...(r.accessCodeSet ? { accessCodeSet: true } : {}),
     ...(r.identityCheck ? { identityCheck: r.identityCheck } : {}),
   }));
-  let fieldsPending = false;
-  const fields: EditorField[] = [];
-  const preservedFields: ServerField[] = [];
-  env.fields.forEach((f, i) => {
-    // A type the editor does not author is kept untouched, never dropped: the fields
-    // PUT replaces every field, so dropping it here would delete it on the next sync. So is an
-    // engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT, FIELD-PARITY-1
-    // P3): the server passes it through only unchanged, with its id.
-    if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
-      preservedFields.push(f);
-      return;
-    }
-    const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
-    if (!page) {
-      fieldsPending = true;
-      return;
-    }
-    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
-    fields.push({
-      key: `srv-${i}`,
-      docKey: keyOf(f.envelope_document_id),
-      page: f.page_number,
-      recipientKey: keyOf(f.signer_id ?? ''),
-      type: f.field_type,
-      x: box.x,
-      y: box.y,
-      width: box.width,
-      height: box.height,
-      required: f.required,
-      ...configOf(f),
-    });
-  });
+  const { fields, preservedFields, fieldsPending } = editorFieldsFromServer(env.fields, pagesByDoc, keyOf, (_f, i) => `srv-${i}`);
   const generated = defaultSubject({ documents, recipients });
   return {
     payload: {

@@ -77,6 +77,20 @@ export interface PlacementPagesProps {
   readonly ghostLabel?: (g: PlacementSuggestion) => string;
   readonly onGhostAccept?: (g: PlacementSuggestion) => void;
   readonly onGhostDismiss?: (g: PlacementSuggestion) => void;
+  /** FIELD-PARITY-2 B-7 — fields drawn dimmed (hidden for the current preview answers). */
+  readonly dimmed?: ReadonlySet<string>;
+  /** B-7 — while picking a trigger on the page: the fields that may be picked (others are muted). */
+  readonly pickable?: ReadonlySet<string> | null;
+  /** B-7 — link lines from a dependent field to its trigger (drawn when both are on one page). */
+  readonly links?: readonly ConditionLink[];
+}
+
+/** B-7 — one "show only when" link: the dependent field and its trigger. */
+export interface ConditionLink {
+  readonly from: string;
+  readonly to: string;
+  /** Drawn stronger (the selected field's own links). */
+  readonly active?: boolean;
 }
 
 function PageCanvas({ render, docId, page, width }: { readonly render: PageRenderer; readonly docId: string; readonly page: number; readonly width: number }) {
@@ -122,8 +136,12 @@ export function PlacementPages({
   ghostLabel = (g) => `Suggested ${g.type.toLowerCase()} field`,
   onGhostAccept,
   onGhostDismiss,
+  dimmed,
+  pickable = null,
+  links = [],
 }: PlacementPagesProps) {
   const slots = pageSlotsOf(documents);
+  const byId = new Map(fields.map((f) => [f.id, f]));
   const many = documents.length > 1;
   return (
     <div className="fpe-pages">
@@ -220,6 +238,7 @@ export function PlacementPages({
                         </div>
                       );
                     })}
+              <ConditionLinks links={links} byId={byId} slot={slot} idPrefix={p} />
               {fields
                 .filter((f) => f.docId === slot.docId && f.page === slot.page && f.hidden !== true)
                 .map((f) => {
@@ -227,7 +246,9 @@ export function PlacementPages({
                   const face = faceOf(f);
                   const sel = selection.includes(f.id);
                   const interactive = !readOnly;
-                  const cls = `fpe-field fpe-field--tone${face.color === undefined ? face.tone : 0}${sel ? ' is-selected' : ''}${interactive && f.locked !== true ? ' is-editable' : ''}${f.locked === true ? ' is-locked' : ''}`;
+                  const dim = dimmed?.has(f.id) === true;
+                  const pick = pickable === null ? '' : pickable.has(f.id) ? ' is-pickable' : ' is-unpickable';
+                  const cls = `fpe-field fpe-field--tone${face.color === undefined ? face.tone : 0}${sel ? ' is-selected' : ''}${interactive && f.locked !== true ? ' is-editable' : ''}${f.locked === true ? ' is-locked' : ''}${dim ? ' is-dimmed' : ''}${pick}`;
                   const colour = face.color === undefined ? {} : { borderColor: face.color, color: face.color, background: `${face.color}14` };
                   return (
                     <div
@@ -240,6 +261,8 @@ export function PlacementPages({
                       aria-pressed={interactive ? sel : undefined}
                       data-testid={`${p}-field-${f.id}`}
                       data-field-id={f.id}
+                      data-dimmed={dim ? 'true' : undefined}
+                      data-conditional={f.settings.condition !== null ? 'true' : undefined}
                       onPointerDown={interactive ? (e) => onFieldPointerDown?.(f, 'move', e, slot) : undefined}
                       onPointerMove={interactive ? onFieldPointerMove : undefined}
                       onPointerUp={interactive ? onFieldPointerUp : undefined}
@@ -270,6 +293,35 @@ export function PlacementPages({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * FIELD-PARITY-2 B-7 — the "show only when" link lines on one page: from the centre of each
+ * dependent field to the centre of its trigger, when both are on this page (a link across pages
+ * is named in the inspector instead). Never takes the pointer.
+ */
+function ConditionLinks({ links, byId, slot, idPrefix: p }: { readonly links: readonly ConditionLink[]; readonly byId: ReadonlyMap<string, PlacedField>; readonly slot: PageSlot; readonly idPrefix: string }) {
+  const { size } = slot;
+  const onPage = links.flatMap((l) => {
+    const a = byId.get(l.from);
+    const b = byId.get(l.to);
+    if (a === undefined || b === undefined || a.hidden === true || b.hidden === true) return [];
+    if (a.docId !== slot.docId || a.page !== slot.page || b.docId !== slot.docId || b.page !== slot.page) return [];
+    const ca = toTopLeft({ x: a.x, y: a.y, width: a.width, height: a.height }, size.height);
+    const cb = toTopLeft({ x: b.x, y: b.y, width: b.width, height: b.height }, size.height);
+    return [{ ...l, x1: ca.x + ca.width / 2, y1: ca.y + ca.height / 2, x2: cb.x + cb.width / 2, y2: cb.y + cb.height / 2 }];
+  });
+  if (onPage.length === 0) return null;
+  return (
+    <svg className="fpe-links" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" aria-hidden="true" data-testid={`${p}-links-${slot.index}`}>
+      {onPage.map((l) => (
+        <g key={`${l.from}>${l.to}`} className={l.active === true ? 'fpe-link is-active' : 'fpe-link'} data-testid={`${p}-link-${l.from}`}>
+          <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} vectorEffect="non-scaling-stroke" />
+          <circle cx={l.x2} cy={l.y2} r={3} />
+        </g>
+      ))}
+    </svg>
   );
 }
 

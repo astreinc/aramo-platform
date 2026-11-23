@@ -123,6 +123,8 @@ export interface FixedFormField {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: unknown;
+  // FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; NULL = always shown).
+  readonly condition?: unknown;
 }
 
 export interface FixedFormVariable {
@@ -151,6 +153,8 @@ export interface FixedFormVersionView {
   readonly variables: readonly FixedFormVariable[];
   readonly issues: readonly FixedFormIssue[];
   readonly previewed: boolean;
+  /** FIELD-PARITY-2 A-4 — sender-filled fields are switched on (server flag; they ship dark). */
+  readonly sender_filled_fields_enabled: boolean;
   /** FIELD-PARITY-1 P2-5 / P2-6 — present only on an upload sent with import_fields / apply_text_tags. */
   readonly field_import?: FixedFormFieldImport;
 }

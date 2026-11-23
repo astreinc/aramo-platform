@@ -6,7 +6,8 @@ import { P3_PENDING_WEB_TYPES, PREPARE_SETTINGS, V1_TYPES, prepareCapabilities, 
 
 // FIELD-PARITY-1 P1-5 — Prepare on the shared editor sends the same PUT payload as before:
 // PDF-native boxes unchanged, a field's configuration only for its type, no id on an authored
-// field, and an engine-only field sent back exactly as stored.
+// field, and an engine-only field sent back exactly as stored. FIELD-PARITY-2 B-1 — an authored
+// field carries its field_key (the editor's id: the stored key, else the stored id).
 
 const stored: EnvelopeField[] = [
   { id: 'f1', envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72.5, y: 100, width: 230, height: 50, required: true },
@@ -23,13 +24,22 @@ describe('Prepare wire mapping', () => {
     expect(placed.slice(0, 3).every((f) => f.locked !== true)).toBe(true);
     const wire = toWire(placed, new Map(stored.map((f, i) => [placed[i]!.id, f])));
     expect(wire).toEqual([
-      { envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72.5, y: 100, width: 230, height: 50, required: true },
-      { envelope_document_id: 'd1', signer_id: 's1', field_type: 'CHECKBOX', page_number: 1, x: 10, y: 20, width: 18, height: 18, required: false, label: 'Yes', group_key: 'g', group_rule: 'SELECT_ONE' },
-      { envelope_document_id: 'd1', signer_id: 's2', field_type: 'SIGNER_NAME', page_number: 0, x: 1, y: 2, width: 200, height: 22, required: true, name_mode: 'SIGNER_ENTERED' },
+      { field_key: 'f1', envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72.5, y: 100, width: 230, height: 50, required: true },
+      { field_key: 'f2', envelope_document_id: 'd1', signer_id: 's1', field_type: 'CHECKBOX', page_number: 1, x: 10, y: 20, width: 18, height: 18, required: false, label: 'Yes', group_key: 'g', group_rule: 'SELECT_ONE' },
+      { field_key: 'f3', envelope_document_id: 'd1', signer_id: 's2', field_type: 'SIGNER_NAME', page_number: 0, x: 1, y: 2, width: 200, height: 22, required: true, name_mode: 'SIGNER_ENTERED' },
       stored[3],
     ]);
-    // Key order is the pre-P1-5 literal's.
-    expect(Object.keys(wire[0]!)).toEqual(['envelope_document_id', 'signer_id', 'field_type', 'page_number', 'x', 'y', 'width', 'height', 'required']);
+    // Key order is the pre-P1-5 literal's, after the B-1 key.
+    expect(Object.keys(wire[0]!)).toEqual(['field_key', 'envelope_document_id', 'signer_id', 'field_type', 'page_number', 'x', 'y', 'width', 'height', 'required']);
+  });
+
+  it('FIELD-PARITY-2 B-1 — a stored field_key is the editor id and survives the save (the row id does not)', () => {
+    const keyed: EnvelopeField = { ...stored[0]!, id: 'row-1', field_key: 'sig_main' };
+    const placed = [keyed].map(toPlaced);
+    expect(placed[0]!.id).toBe('sig_main');
+    const wire = toWire(placed, new Map([[placed[0]!.id, keyed]]));
+    expect(wire[0]).toMatchObject({ field_key: 'sig_main' });
+    expect(wire[0]).not.toHaveProperty('id');
   });
 });
 
@@ -50,7 +60,7 @@ describe('Prepare — Phase 3 types and settings on the wire', () => {
   it('a stored ACKNOWLEDGEMENT with a recipient is authorable (sent without id); one without stays locked', () => {
     const { placed, wire } = roundTrip([at({ id: 'a1', field_type: 'ACKNOWLEDGEMENT', label: 'I agree', width: 400, height: 26, required: true })]);
     expect(placed[0]!.locked).toBeUndefined();
-    expect(wire[0]).toEqual({ envelope_document_id: 'd1', signer_id: 's1', field_type: 'ACKNOWLEDGEMENT', page_number: 0, x: 10, y: 20, width: 400, height: 26, required: true, label: 'I agree' });
+    expect(wire[0]).toEqual({ field_key: 'a1', envelope_document_id: 'd1', signer_id: 's1', field_type: 'ACKNOWLEDGEMENT', page_number: 0, x: 10, y: 20, width: 400, height: 26, required: true, label: 'I agree' });
   });
 
   it('every setting of the new types round-trips unchanged', () => {
@@ -63,7 +73,7 @@ describe('Prepare — Phase 3 types and settings on the wire', () => {
       at({ id: 't', field_type: 'TEXT', validation: 'email', placeholder: 'you@example.com' }),
     ];
     const { wire } = roundTrip(fields);
-    const strip = ({ id: _id, group_rule, ...rest }: EnvelopeField) => (rest.field_type === 'RADIO' ? rest : { ...rest, ...(group_rule != null ? { group_rule } : {}) });
+    const strip = ({ id, group_rule, ...rest }: EnvelopeField) => ({ field_key: id, ...(rest.field_type === 'RADIO' ? rest : { ...rest, ...(group_rule != null ? { group_rule } : {}) }) });
     expect(wire).toEqual(fields.map(strip));
   });
 
@@ -76,6 +86,25 @@ describe('Prepare — Phase 3 types and settings on the wire', () => {
     expect(prepareCapabilities({ sender_filled_fields_enabled: true }).senderValues).toBe(true);
   });
 
+  it('FIELD-PARITY-2 B-7 — a condition round-trips with its field; a new one goes out on the field', () => {
+    const fields: EnvelopeField[] = [
+      at({ id: 'row-1', field_key: 'agree', field_type: 'CHECKBOX', label: 'Co-applicant', width: 18, height: 18 }),
+      at({ id: 'row-2', field_key: 'co_name', field_type: 'TEXT', condition: { trigger_key: 'agree', when: 'checked' } }),
+    ];
+    const { placed, wire } = roundTrip(fields);
+    expect(placed[1]!.settings.condition).toEqual({ trigger_key: 'agree', when: 'checked' });
+    expect(wire[1]).toMatchObject({ field_key: 'co_name', condition: { trigger_key: 'agree', when: 'checked' } });
+    const added = toWire([{ ...placed[1]!, id: 'new1', settings: { ...placed[1]!.settings, condition: { trigger_key: 'agree', when: 'unchecked' } } }], new Map());
+    expect(added[0]).toMatchObject({ field_key: 'new1', condition: { trigger_key: 'agree', when: 'unchecked' } });
+  });
+
+  it('FIELD-PARITY-2 B-7 / C-7 — "Show only when…" is offered on a standard envelope, never on a self-sign one', () => {
+    expect(prepareCapabilities({}).settings).toContain('condition');
+    expect(prepareCapabilities({ mode: 'standard', sender_filled_fields_enabled: true }).settings).toContain('condition');
+    expect(prepareCapabilities({ mode: 'self' }).settings).not.toContain('condition');
+    expect(prepareCapabilities({ mode: 'self', sender_filled_fields_enabled: true }).settings).not.toContain('condition');
+  });
+
   it('a new RADIO / DROPDOWN placed by the editor goes out with its group / choices', () => {
     const wire = toWire(
       [
@@ -83,6 +112,6 @@ describe('Prepare — Phase 3 types and settings on the wire', () => {
       ],
       new Map(),
     );
-    expect(wire[0]).toEqual({ envelope_document_id: 'd1', signer_id: 's1', field_type: 'RADIO', page_number: 0, x: 1, y: 2, width: 18, height: 18, required: true, label: 'Option 1', group_key: 'radio_1' });
+    expect(wire[0]).toEqual({ field_key: 'x', envelope_document_id: 'd1', signer_id: 's1', field_type: 'RADIO', page_number: 0, x: 1, y: 2, width: 18, height: 18, required: true, label: 'Option 1', group_key: 'radio_1' });
   });
 });

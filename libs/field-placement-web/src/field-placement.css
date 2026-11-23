@@ -355,3 +355,17 @@
 .fpe-choice .fpe-input { width: 100%; box-sizing: border-box; min-width: 0; }
 .fpe-choice__tools { display: flex; gap: 2px; }
 .fpe-note--error { color: var(--fpe-danger); }
+
+/* FIELD-PARITY-2 B-7 — "Show only when…": the link line from a dependent field to its trigger,
+ * dependent fields dimmed for the preview answers, and the fields offered while picking a trigger. */
+.fpe-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.fpe-link line { stroke: var(--fpe-faint); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.fpe-link circle { fill: var(--fpe-faint); }
+.fpe-link.is-active line { stroke: var(--fpe-brand); stroke-width: 2; }
+.fpe-link.is-active circle { fill: var(--fpe-brand); }
+.fpe-field.is-dimmed { opacity: 0.4; }
+.fpe-field.is-pickable { outline: 2px dashed var(--fpe-brand); outline-offset: 2px; cursor: pointer; }
+.fpe-field.is-unpickable { opacity: 0.35; }
+.fpe-field.is-dimmed.is-selected, .fpe-field.is-unpickable.is-selected { opacity: 0.75; }
+.fpe-note--warn { color: var(--fpe-ink); background: var(--fpe-brand-soft); border-radius: var(--fpe-radius); padding: 6px 8px; display: flex; gap: 8px; align-items: flex-start; }
+.fpe-choicecheck { display: flex; gap: 6px; align-items: center; font-size: 13px; }

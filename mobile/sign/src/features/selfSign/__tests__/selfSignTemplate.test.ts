@@ -46,10 +46,11 @@ describe('Templates as a source (self-sign)', () => {
     expect(fetchSource).toHaveBeenCalledWith('env-t', 'doc-t');
     expect(r.progress).toMatchObject({ envelopeId: 'env-t', signerId: 'r-self', sent: false, etag: '"env-t.2"' });
     expect(r.docs).toEqual([expect.objectContaining({ serverId: 'doc-t', title: 'Lease', pages: [{ width: 612, height: 792 }] })]);
-    // Authoring types only (engine-only ACKNOWLEDGEMENT is not editable); boxes in the editor frame.
+    // FIELD-PARITY-2 A-1 — every template field is placed (the Phase 3 types too); boxes in the editor frame.
     expect(r.fields.map((f) => [f.type, f.recipientKey, f.y, f.required])).toEqual([
       ['SIGNATURE', SELF_KEY, 792 - 642 - 50, true],
       ['COMPANY', SELF_KEY, 792 - 400 - 22, false],
+      ['ACKNOWLEDGEMENT', SELF_KEY, 792 - 10 - 20, true],
     ]);
   });
 

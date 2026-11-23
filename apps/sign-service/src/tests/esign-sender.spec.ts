@@ -304,6 +304,28 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
       });
     });
 
+    // FIELD-PARITY-2 A-7 — the sender uses the shared group rule (checkboxGroupIssues) with its own
+    // messages and details unchanged, refusing the first group (in field order) that has a problem.
+    it('A-7 the shared group rule keeps the sender refusals: message, details and order', async () => {
+      const { svc } = await setup();
+      const err = (fields: Array<Record<string, unknown>>) => svc.replaceFields(AUTH, 'e1', { fields }, 'r').then(() => null, (e: { message: string; statusCode: number; context: { details: Record<string, unknown> } }) => e);
+      const inconsistent = await err([{ ...box, group_key: 'g' }, { ...box, y: 100, group_key: 'g', signer_id: 's2' }]);
+      expect(inconsistent?.statusCode).toBe(400);
+      expect(inconsistent?.message).toBe('check-box group g: every box needs the same recipient, type, rule, minimum, required, read-only and sender-filled setting');
+      expect(inconsistent?.context.details).toEqual({ group_key: 'g', reason: 'checkbox_group_inconsistent' });
+      const tooFew = await err([{ ...box, group_key: 'm', min_selected: 3 }, { ...box, y: 100, group_key: 'm', min_selected: 3 }]);
+      expect(tooFew?.message).toBe('check-box group m: min_selected is more than the boxes in the group');
+      expect(tooFew?.context.details).toEqual({ group_key: 'm', reason: 'checkbox_group_min_exceeds_size' });
+      // Two bad groups: the one whose boxes come first is refused.
+      const first = await err([
+        { ...box, group_key: 'm', min_selected: 3 },
+        { ...box, y: 100, group_key: 'g' },
+        { ...box, y: 120, group_key: 'm', min_selected: 3 },
+        { ...box, y: 140, group_key: 'g', required: false },
+      ]);
+      expect(first?.context.details).toEqual({ group_key: 'm', reason: 'checkbox_group_min_exceeds_size' });
+    });
+
     // FIELD-PARITY-1 P3 §6 — the new types and settings, through the one settings rule.
     describe('FIELD-PARITY-1 P3 — new types and settings', () => {
       const at = { envelope_document_id: 'd1', signer_id: 's1', page_number: 0, x: 72, y: 72, width: 150, height: 22 };

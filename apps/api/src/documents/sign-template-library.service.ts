@@ -533,6 +533,8 @@ export class SignTemplateLibraryService {
           font_size: f.font_size ?? null,
           data_name: f.data_name ?? null,
           options: (f.options ?? null) as Readonly<Record<string, unknown>> | null,
+          // FIELD-PARITY-2 B-2 — the condition travels too (the carry translates its trigger, B-9).
+          condition: (f.condition ?? null) as SignTemplateFieldDefinition['condition'],
         }),
       ),
       signing,

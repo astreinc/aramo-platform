@@ -1,4 +1,5 @@
 import type { AuthContextType } from '@aramo/auth';
+import { extractTextLayer } from '@aramo/documents-rendering';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFString, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -152,6 +153,36 @@ describe('FIELD-PARITY-1 P2-5 — import_fields on a Sign upload', () => {
   });
 });
 
+describe('FIELD-PARITY-2 A-5 — a PDF dropdown on a Sign upload', () => {
+  it('imports a dropdown as DROPDOWN with its choices (stored and answered); a list box as TEXT with a warning', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([612, 792]);
+    const form = doc.getForm();
+    const state = form.createDropdown('state');
+    state.setOptions(['NY', 'CA']);
+    state.addToPage(page, { x: 50, y: 600, width: 100, height: 20 });
+    const fruits = form.createOptionList('fruits');
+    fruits.setOptions(['Apple', 'Pear']);
+    fruits.addToPage(page, { x: 200, y: 560, width: 100, height: 40 });
+    const bytes = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
+    const h = harness([SELLER]);
+    const out = (await h.svc.upload(AUTH, 'e1', { filename: 'a.pdf', content_base64: b64(bytes), import_fields: true }, 'r')) as {
+      field_import: { fields: Array<Record<string, unknown>>; warnings: Array<{ code: string; name?: string }> };
+    };
+    const choices = { choices: [{ value: 'NY', label: 'NY' }, { value: 'CA', label: 'CA' }] };
+    expect(out.field_import.fields.map((f) => [f['source_name'], f['field_type'], f['options']])).toEqual([
+      ['state', 'DROPDOWN', choices],
+      ['fruits', 'TEXT', null],
+    ]);
+    expect(out.field_import.warnings.map((w) => [w.code, w.name])).toEqual([
+      ['pdf_field_list_as_text', 'fruits'],
+      ['field_assigned_to_first_recipient', undefined],
+    ]);
+    const rows = (h.repo.addDraftDocument.mock.calls[0]?.[0] as { fields: Array<Record<string, unknown>> }).fields;
+    expect(rows.map((r) => r['options'])).toEqual([choices, null]);
+  });
+});
+
 describe('FIELD-PARITY-1 P2-6 — apply_text_tags on a Sign upload', () => {
   it('binds tags to recipients, reports refused tags and unknown roles, and covers the used tags', async () => {
     const h = harness();
@@ -167,12 +198,18 @@ describe('FIELD-PARITY-1 P2-6 — apply_text_tags on a Sign upload', () => {
     ]);
     expect(out.field_import.warnings.map((w) => w.code).sort()).toEqual(['field_assigned_to_first_recipient', 'text_tag_role_unknown', 'text_tag_type_not_allowed']);
     expect(Buffer.from(h.stored[0] ?? []).equals(Buffer.from(bytes))).toBe(false);
+    // FIELD-PARITY-2 A-6 (ruling C-8) — the used tags' text is removed from the stored PDF; the
+    // refused tag and the ordinary text stay.
+    const text = (await extractTextLayer(h.stored[0] ?? new Uint8Array()))[0]?.words.map((w) => w.t).join(' ') ?? '';
+    expect(text).not.toMatch(/signature:seller|initials:BO|date:Chair|company:Pat/);
+    expect(text).toContain('{{payment:Pat');
+    expect(text).toMatch(/Seller.*Buyer.*Chair.*Co.*Bad/);
   });
 });
 
 describe('bindImportedFields', () => {
   it('SIGNER_NAME gets the sender default name mode; every row names a recipient', () => {
-    const f = { source: 'text_tag' as const, name: 'name:Bo Buyer', field_type: 'SIGNER_NAME' as const, page_number: 0, x: 1, y: 1, width: 50, height: 10, required: true, role: 'bo buyer', label: null, group_key: null, group_rule: null };
+    const f = { source: 'text_tag' as const, name: 'name:Bo Buyer', field_type: 'SIGNER_NAME' as const, page_number: 0, x: 1, y: 1, width: 50, height: 10, required: true, role: 'bo buyer', label: null, group_key: null, group_rule: null, options: null };
     const out = bindImportedFields([f], [SELLER, BUYER], 'r');
     expect(out.rows[0]).toMatchObject({ signer_id: 's2', name_mode: 'SIGNER_PROFILE' });
     expect(out.warnings).toEqual([]);

@@ -173,6 +173,10 @@ export interface SignTemplateFieldDefinition {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: Readonly<Record<string, unknown>> | null;
+  // FIELD-PARITY-2 B-2 — "show only when": { trigger_key, when, values? } (see @aramo/sign-fields
+  // FieldCondition); trigger_key is another field's field_key of the same signer role. Same rule:
+  // absent = NULL = always shown.
+  readonly condition?: { readonly trigger_key: string; readonly when: string; readonly values?: readonly string[] } | null;
 }
 
 export interface SignTemplateRenderResponse {

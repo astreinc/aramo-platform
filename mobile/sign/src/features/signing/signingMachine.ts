@@ -1,8 +1,11 @@
 // The signing page state machine (handoff §4.4; directive §6, §9). Pure and synchronous.
 //
-//   - Values are LOCAL until Finish: the server has no un-fill, so tapping a filled field
-//     clears it on the device only, and Finish submits the final values with the existing
-//     fill-then-complete calls. A failed submit keeps every value (offline included).
+//   - Values are LOCAL until Finish: tapping a filled field clears it on the device, and Finish
+//     submits the final values with the existing fill-then-complete calls. A failed submit keeps
+//     every value (offline included). FIELD-PARITY-2 B-6 follow-up: a value the server holds that
+//     the signer emptied (a dropdown back to empty, a text emptied) is sent as a clear (value
+//     null) when the shared rule allows it (@aramo/sign-client signerClearRefusal), in the same
+//     trigger-first order as the fills, so the server and the app agree on what is shown.
 //   - Every engine field type is completed as received (FIELD-PARITY-1 P1-2: the catalog's
 //     `engine_passthrough` projection — SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT,
 //     CHECKBOX, ACKNOWLEDGEMENT and the M-A12 profile types). PAYMENT is paid, not filled.
@@ -19,22 +22,34 @@
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 //   - FIELD-PARITY-1 P3 §6: DATE, DROPDOWN, NUMBER and MULTILINE_TEXT open the field editor
 //     (never cleared by a tap); a RADIO option is chosen (its group's other options cleared,
-//     a chosen option stays chosen); a field's label setting names it; a read-only /
+//     a chosen option of a required set stays chosen; FIELD-PARITY-2 A-2: one of an optional
+//     set is cleared by tapping it again); a field's label setting names it; a read-only /
 //     sender-filled field shows the sender's value, is never tapped, sent or required; a
 //     value is checked with the server's own rule (@aramo/sign-client signerValueProblem)
 //     before it is kept.
+//   - FIELD-PARITY-2 B-6: a field with a condition ("show only when") is shown only while the
+//     signer's answers meet it — the ONE visibility rule (@aramo/sign-client shownFields, the
+//     server's own; no copy here). A hidden field is not drawn, not tappable, not required,
+//     not counted and never sent; an answer that hides fields clears their local values (the
+//     server clears its own at once, ruling C-3), and Finish sends triggers before the fields
+//     they show.
 
 import {
   CHECK_FIELD_TYPES,
   FIELD_CATALOG,
   PROFILE_TEXT_FIELD_TYPES,
   checkboxGroupOf,
+  fieldConditionOf,
   fieldTypesFor,
   fieldValueDisplay,
+  hiddenFilledFields,
   isFieldTypeKey,
   isSignerEditorKind,
   isSignerLocked,
   normalizeSignerInput,
+  radioChoiceClearable,
+  shownFields,
+  signerClearRefusal,
   signDatePreview,
   signerFieldCaption,
   signerFieldUnits,
@@ -83,6 +98,14 @@ export interface SigningField {
   readonly sender_filled?: boolean;
   readonly validation?: string | null;
   readonly options?: FieldOptions | null;
+  /** FIELD-PARITY-2 B-1 — the field's key (a condition names its trigger by it). */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 / B-5 — "show only when" (null = always shown; absent: an older server). */
+  readonly condition?: {
+    readonly trigger_key: string;
+    readonly when: string;
+    readonly values?: readonly string[];
+  } | null;
 }
 
 export interface SigningDocument {
@@ -128,6 +151,11 @@ export interface SigningState {
   readonly values: Readonly<Record<string, FieldValue>>;
   readonly currentId: string | null;
   readonly adopted: { readonly SIGNATURE?: AdoptedMark; readonly INITIALS?: AdoptedMark };
+  /**
+   * FIELD-PARITY-2 B-6 follow-up — the fields whose value the server holds (stored on an earlier
+   * visit, or sent by this Finish). Emptying one sends a clear. Absent: none.
+   */
+  readonly held?: Readonly<Record<string, true>>;
 }
 
 /** What a tap asks the UI to do next. */
@@ -185,12 +213,14 @@ export function initialState(
 ): SigningState {
   const ordered = orderFields(fields, documents);
   const values: Record<string, FieldValue> = {};
+  const held: Record<string, true> = {};
   for (const f of ordered) {
+    if (f.filled === true) held[f.field_id] = true;
     // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value is shown as it is (stored: never sent).
     if ((f.filled || isLocked(f)) && typeof f.value === 'string' && f.value.length > 0)
       values[f.field_id] = { value: f.value, fromServer: true };
   }
-  return { dateFormat, fields: ordered, values, currentId: null, adopted: {} };
+  return { dateFormat, fields: ordered, values, currentId: null, adopted: {}, held };
 }
 
 const CHECK_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
@@ -249,7 +279,39 @@ function requiredUnits(s: SigningState): readonly SignerFieldUnit<SigningField>[
   return signerFieldUnits(s.fields as readonly (SigningField & SignerFieldLike)[], {
     filled: (f) => isFilled(s, f.field_id),
     checked: (f) => isChecked(s, f.field_id),
+    value: answerOf(s),
   });
+}
+
+/** FIELD-PARITY-2 B-6 — a field's current answer as the visibility rule reads it. */
+function answerOf(s: SigningState): (f: SigningField) => string | null {
+  return (f) => s.values[f.field_id]?.value ?? null;
+}
+
+/**
+ * FIELD-PARITY-2 B-6 — the fields the signer's answers show, in reading order: the only ones
+ * drawn, tapped, focused or sent (the one visibility rule, @aramo/sign-client shownFields).
+ */
+export function shownSigningFields(s: SigningState): SigningField[] {
+  const shown = shownFields(s.fields, answerOf(s));
+  return s.fields.filter((f) => shown.has(f));
+}
+
+/** FIELD-PARITY-2 B-6 — whether one field is shown for the signer's answers. */
+export function isShown(s: SigningState, id: string): boolean {
+  return shownSigningFields(s).some((f) => f.field_id === id);
+}
+
+/**
+ * FIELD-PARITY-2 B-6 / ruling C-3 — after an answer changes, the values of every field it hides
+ * are cleared (the server clears its own in the same step; it stays the authority).
+ */
+function withoutHiddenValues(s: SigningState): SigningState {
+  const hidden = hiddenFilledFields(s.fields, answerOf(s), (f) => s.values[f.field_id] !== undefined);
+  if (hidden.length === 0) return s;
+  const values = { ...s.values };
+  for (const f of hidden) delete values[f.field_id];
+  return { ...s, values, currentId: hidden.some((f) => f.field_id === s.currentId) ? null : s.currentId };
 }
 
 /** One representative field per required unit (a group counts once). */
@@ -393,7 +455,7 @@ function withValue(s: SigningState, id: string, v: FieldValue | null): SigningSt
   const values = { ...s.values };
   if (v === null) delete values[id];
   else values[id] = v;
-  const next: SigningState = { ...s, values };
+  const next: SigningState = withoutHiddenValues({ ...s, values });
   // After a fill, the current field moves to the next empty required field.
   if (v !== null) return { ...next, currentId: nextEmptyRequired(next, id)?.field_id ?? null };
   return { ...next, currentId: id };
@@ -419,7 +481,8 @@ export function tapField(
   ctx: TapContext,
 ): { state: SigningState; effect: TapEffect } {
   const f = s.fields.find((x) => x.field_id === fieldId);
-  if (!f) return { state: s, effect: { kind: 'none' } };
+  // FIELD-PARITY-2 B-6 — a hidden field cannot be tapped.
+  if (!f || !isShown(s, fieldId)) return { state: s, effect: { kind: 'none' } };
   const focused = { ...s, currentId: fieldId };
   // M-A6 §2.2 — the server fills this name; the signer cannot change it.
   if (isServerFilled(f)) return { state: focused, effect: { kind: 'none' } };
@@ -483,8 +546,13 @@ export function toggleCheck(s: SigningState, f: SigningField): SigningState {
     s.values[id]?.fromServer || s.fields.find((x) => x.field_id === id)?.filled === true
       ? { value: 'false' }
       : null;
-  // FIELD-PARITY-1 P3 T-5 — a chosen radio option stays chosen (choose another to change it).
-  if (isChecked(s, f.field_id)) return isRadio(f) ? { ...s, currentId: f.field_id } : withValue(s, f.field_id, off(f.field_id));
+  // FIELD-PARITY-1 P3 T-5 — a chosen radio option of a required set stays chosen (choose another
+  // to change it). FIELD-PARITY-2 A-2 — one of an OPTIONAL set is cleared (the shared rule,
+  // radioChoiceClearable); a stored choice is cleared with 'false'.
+  if (isChecked(s, f.field_id)) {
+    if (!isRadio(f)) return withValue(s, f.field_id, off(f.field_id));
+    return radioChoiceClearable(f, s.fields) ? withValue(s, f.field_id, off(f.field_id)) : { ...s, currentId: f.field_id };
+  }
   let next = s;
   const g = groupOf(f);
   if (g !== null && (f.group_rule === 'SELECT_ONE' || isRadio(f))) {
@@ -546,14 +614,30 @@ export function attemptFinish(
   return { blocked: true, state: n ? { ...s, currentId: n.field_id } : s };
 }
 
-/** The fill calls Finish makes: every filled field, except unchanged server-held values. */
-export function fillsToSubmit(
-  s: SigningState,
-): { fieldId: string; value: string; method?: SignatureMethod }[] {
-  const out: { fieldId: string; value: string; method?: SignatureMethod }[] = [];
-  for (const f of s.fields) {
+/** One fill call of Finish: a value to store, or null to clear the stored one. */
+export interface FillToSubmit {
+  readonly fieldId: string;
+  readonly value: string | null;
+  readonly method?: SignatureMethod;
+}
+
+/**
+ * The fill calls Finish makes: every filled field, except unchanged server-held values, and a
+ * clear (value null) for a server-held value the signer emptied (FIELD-PARITY-2 B-6 follow-up;
+ * only where the shared rule allows a clear: a box or a choice is unchecked with 'false').
+ */
+export function fillsToSubmit(s: SigningState): FillToSubmit[] {
+  const out: FillToSubmit[] = [];
+  // FIELD-PARITY-2 B-6 — only shown fields are sent (the server refuses a hidden one with
+  // field_hidden), and a trigger before the fields it shows: by the depth of each field's
+  // chain, then reading order, so every fill finds its trigger already answered.
+  for (const f of submitOrder(s)) {
     const v = s.values[f.field_id];
-    if (!v || v.fromServer || isServerFilled(f) || isLocked(f)) continue;
+    if (!v) {
+      if (s.held?.[f.field_id] === true && signerClearRefusal(f) === null) out.push({ fieldId: f.field_id, value: null });
+      continue;
+    }
+    if (v.fromServer || isServerFilled(f) || isLocked(f)) continue;
     out.push(
       v.method
         ? { fieldId: f.field_id, value: v.value, method: v.method }
@@ -563,9 +647,40 @@ export function fillsToSubmit(
   return out;
 }
 
+/** The shown fields, triggers first (chain depth), else in reading order. */
+function submitOrder(s: SigningState): SigningField[] {
+  const byKey = new Map<string, SigningField>();
+  for (const f of s.fields) if (typeof f.field_key === 'string' && !byKey.has(f.field_key)) byKey.set(f.field_key, f);
+  const depth = (f: SigningField): number => {
+    let d = 0;
+    const seen = new Set<SigningField>([f]);
+    for (let c = fieldConditionOf(f); c !== null; ) {
+      const t = byKey.get(c.trigger_key);
+      if (t === undefined || seen.has(t)) break;
+      seen.add(t);
+      d += 1;
+      c = fieldConditionOf(t);
+    }
+    return d;
+  };
+  const shown = shownSigningFields(s);
+  return shown
+    .map((f, i) => ({ f, i, d: depth(f) }))
+    .sort((a, b) => a.d - b.d || a.i - b.i)
+    .map((x) => x.f);
+}
+
 /** After a successful fill call, keep the value but mark it stored (retry won't resend). */
 export function markStored(s: SigningState, fieldId: string): SigningState {
   const v = s.values[fieldId];
   if (!v) return s;
-  return { ...s, values: { ...s.values, [fieldId]: { ...v, fromServer: true } } };
+  return { ...s, values: { ...s.values, [fieldId]: { ...v, fromServer: true } }, held: { ...s.held, [fieldId]: true } };
+}
+
+/** FIELD-PARITY-2 B-6 follow-up — after a successful clear, the server holds no value (retry won't resend). */
+export function markCleared(s: SigningState, fieldId: string): SigningState {
+  if (s.held?.[fieldId] !== true) return s;
+  const held = { ...s.held };
+  delete held[fieldId];
+  return { ...s, held };
 }
