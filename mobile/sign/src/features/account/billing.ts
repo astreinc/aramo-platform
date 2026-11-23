@@ -2,6 +2,8 @@
 // settings. Cancelling a subscription is done on the web (Settings → Billing → "Cancel
 // subscription"); the app only links there. Shown to someone who may manage billing, while the
 // account has a provider-billed plan. No purchase is offered or linked from the app.
+import { isArrangedPlan } from '@aramo/sign-client';
+
 import type { BillingAccount } from '../inbox/types';
 import { PRODUCTION_API_BASE_URL } from '../../config/env';
 
@@ -15,6 +17,8 @@ export function billingSettingsLink(account: BillingAccount | null | undefined):
   // M-A12 W1-G — a store-billed plan is managed in the store (Plans › Manage subscription).
   const managedBy = (account as { managed_by?: string | null }).managed_by;
   if (managedBy === 'APP_STORE' || managedBy === 'GOOGLE_PLAY') return null;
+  // CCP-PERSONAL-ARRANGED-1 P-7 — a plan arranged with Aramo has no billing to manage or cancel.
+  if (isArrangedPlan(account)) return null;
   const sub = account.subscription;
   if (sub == null || !sub.billing_managed || sub.ended_at != null) return null;
   return account.tenant_kind === 'PERSONAL' ? PERSONAL_BILLING_SETTINGS_URL : BILLING_SETTINGS_URL;

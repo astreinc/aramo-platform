@@ -57,9 +57,11 @@ export type PurchaseOutcome =
   | { readonly kind: 'refused'; readonly message: string }
   | { readonly kind: 'failed'; readonly message: string };
 
-function refusal(e: unknown, fallback: string): PurchaseOutcome {
+// CCP-PERSONAL-ARRANGED-1 P-7 — `account` (the screen's billing account) lets a refusal on a plan
+// arranged with Aramo say so.
+function refusal(e: unknown, fallback: string, account: Account | null = null): PurchaseOutcome {
   if (isApiError(e) && !e.isNetwork && (e.status === 403 || e.status === 409 || e.status === 422)) {
-    return { kind: 'refused', message: blockCopy(e.reason || e.code, null) ?? fallback };
+    return { kind: 'refused', message: blockCopy(e.reason || e.code, account) ?? fallback };
   }
   return { kind: 'failed', message: fallback };
 }
@@ -69,7 +71,7 @@ function proof(platform: StorePlatform, p: StorePurchase): Pick<StoreVerifyReque
 }
 
 export async function buy(
-  deps: { readonly store: StorePort; readonly api: StoreBillingApi },
+  deps: { readonly store: StorePort; readonly api: StoreBillingApi; readonly account?: Account | null },
   product: StoreProductInfo,
 ): Promise<PurchaseOutcome> {
   const platform = deps.store.platform;
@@ -77,7 +79,7 @@ export async function buy(
   try {
     intent = await deps.api.intent({ platform, product_id: product.productId });
   } catch (e) {
-    return refusal(e, PLANS_COPY.unavailable);
+    return refusal(e, PLANS_COPY.unavailable, deps.account ?? null);
   }
   const r = await deps.store.purchase(product, intent.app_account_token);
   if (r.kind === 'cancelled') return { kind: 'cancelled' };
@@ -94,7 +96,7 @@ export async function buy(
   } catch (e) {
     // Not finished: the store keeps the transaction, so Restore (or the next launch)
     // can carry it to the server again.
-    return refusal(e, PLANS_COPY.verifyFailed);
+    return refusal(e, PLANS_COPY.verifyFailed, deps.account ?? null);
   }
   await deps.store.finish(r.purchase).catch(() => undefined);
   return { kind: 'purchased', account };
@@ -106,7 +108,7 @@ export type RestoreOutcome =
   | { readonly kind: 'refused'; readonly message: string }
   | { readonly kind: 'failed'; readonly message: string };
 
-export async function restore(deps: { readonly store: StorePort; readonly api: StoreBillingApi }): Promise<RestoreOutcome> {
+export async function restore(deps: { readonly store: StorePort; readonly api: StoreBillingApi; readonly account?: Account | null }): Promise<RestoreOutcome> {
   const platform = deps.store.platform;
   let purchases: StorePurchase[];
   try {
@@ -122,7 +124,7 @@ export async function restore(deps: { readonly store: StorePort; readonly api: S
       platform === 'ios' ? { platform, signed_transactions: tokens } : { platform, purchase_tokens: tokens },
     );
   } catch (e) {
-    const r = refusal(e, PLANS_COPY.verifyFailed);
+    const r = refusal(e, PLANS_COPY.verifyFailed, deps.account ?? null);
     return r.kind === 'refused' ? r : { kind: 'failed', message: PLANS_COPY.verifyFailed };
   }
   for (const p of purchases) await deps.store.finish(p).catch(() => undefined);

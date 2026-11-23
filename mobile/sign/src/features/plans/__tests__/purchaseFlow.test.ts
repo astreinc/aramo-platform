@@ -110,6 +110,29 @@ describe('buy', () => {
   });
 });
 
+// CCP-PERSONAL-ARRANGED-1 P-7 — a store purchase refused on a plan arranged with Aramo says so.
+describe('a plan arranged with Aramo', () => {
+  const ARRANGED = { tenant_kind: 'PERSONAL', managed_by: null, subscription: { plan_key: 'standard', plan_name: 'Standard', arranged: true, ended_at: null } } as unknown as Account;
+  const managed = () => {
+    throw new ApiError({ status: 409, code: 'ESIGN_BILLING_CONFLICT', reason: 'billing_managed_elsewhere', details: {} });
+  };
+
+  it('an intent refusal shows the arranged copy, not "billed on the web"', async () => {
+    const store = fakeStore('ios', { kind: 'purchased', purchase: PURCHASE });
+    const api = fakeApi({ intent: jest.fn(async () => managed()) });
+    expect(await buy({ store, api, account: ARRANGED }, PRODUCT)).toEqual({ kind: 'refused', message: PLANS_COPY.arranged });
+    expect(await buy({ store, api }, PRODUCT)).toEqual({ kind: 'refused', message: PLANS_COPY.billedOnWeb });
+    expect(store.purchase).not.toHaveBeenCalled();
+  });
+
+  it('a refused restore shows the arranged copy and finishes nothing', async () => {
+    const store = fakeStore('ios', { kind: 'cancelled' }, [PURCHASE]);
+    const api = fakeApi({ restore: jest.fn(async () => managed()) });
+    expect(await restore({ store, api, account: ARRANGED })).toEqual({ kind: 'refused', message: PLANS_COPY.arranged });
+    expect(store.finish).not.toHaveBeenCalled();
+  });
+});
+
 describe('restore', () => {
   it('sends the store subscriptions, then finishes them', async () => {
     const store = fakeStore('ios', { kind: 'cancelled' }, [PURCHASE]);

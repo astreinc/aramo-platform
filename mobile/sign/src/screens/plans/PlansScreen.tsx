@@ -21,6 +21,7 @@ import { allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import { signKeys, useBillingAccount, useOnline } from '../../features/inbox/queries';
 import { Segments } from '../../features/inbox/ui';
 import {
+  arrangedLabel,
   businessWebLinks,
   featureLines,
   initialPlanKey,
@@ -95,7 +96,7 @@ export function PlansScreen() {
     if (!store) return;
     setBusy('buy');
     setMessage(null);
-    const r = await buy({ store, api }, product);
+    const r = await buy({ store, api, account }, product);
     setBusy(null);
     if (r.kind === 'purchased') {
       qc.setQueryData(signKeys.billing, r.account);
@@ -110,7 +111,7 @@ export function PlansScreen() {
     setBusy('restore');
     setMessage(null);
     await store.connect();
-    const r = await restore({ store, api });
+    const r = await restore({ store, api, account });
     setBusy(null);
     if (r.kind === 'restored') {
       qc.setQueryData(signKeys.billing, r.account);
@@ -187,6 +188,8 @@ export function PlansView({
     ? planAction({ plan, account, storeOn, product, priced: info !== null })
     : { kind: 'none' as const, message: null };
   const limit = limitBanner(allowanceModel(account));
+  // CCP-PERSONAL-ARRANGED-1 P-7 — the current plan arranged with Aramo: its label, and no price.
+  const arranged = plan ? arrangedLabel(plan, account) : null;
   const personal = account?.tenant_kind === 'PERSONAL';
   // PO 2026-11-13 — a Business admin finishes users, roles and access and chooses the plan on the web.
   const businessWeb = businessWebLinks(account);
@@ -233,11 +236,16 @@ export function PlansView({
             </Text>
           ) : null}
         </View>
+        {arranged ? (
+          <Text testID="plan-arranged" style={[secondary, { fontSize: 15 }]}>
+            {arranged}
+          </Text>
+        ) : null}
         {plan.description ? <Text style={[secondary, { fontSize: 15 }]}>{plan.description}</Text> : null}
         {featureLines(plan).map((line) => (
           <Text key={line} style={[text, { fontSize: 15 }]}>{`✓  ${line}`}</Text>
         ))}
-        {storeOn && platform && showIntervalToggle(plan, platform) ? (
+        {storeOn && platform && !arranged && showIntervalToggle(plan, platform) ? (
           <Segments
             items={avail.map((i) => ({ key: i, label: intervalLabel(i) }))}
             value={chosen}
@@ -245,7 +253,7 @@ export function PlansView({
             testIDPrefix="plan-interval"
           />
         ) : null}
-        {storeOn && info ? (
+        {storeOn && info && !arranged ? (
           <View style={styles.price}>
             <Text testID="plan-price" style={[text, { fontSize: 30, fontWeight: '700' }]}>
               {info.displayPrice}
