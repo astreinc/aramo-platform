@@ -166,7 +166,7 @@
     "eslint-config-prettier": "~10.1.0",
     "eslint-plugin-import-x": "~4.16.2",
     "geist": "~1.7.2",
-    "globals": "~16.4.0",
+    "globals": "~17.14.0",
     "jsdom": "~29.1.1",
     "nx": "~22.7.5",
     "prettier": "~3.8.3",
