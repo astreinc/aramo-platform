@@ -10,7 +10,7 @@ const AT = new Date('2026-11-24T12:00:00.000Z');
 const T = '0190dddd-0000-7000-8000-00000000f001';
 
 function fakeDb(o: { open?: { id: string; source: string } | null; plan?: { id: string; product_key: string } | null; version?: { id: string } | null } = {}) {
-  const create = vi.fn(async () => ({}));
+  const create = vi.fn(async (_args: unknown) => ({}));
   const db = {
     tenantSubscription: { findFirst: vi.fn(async () => o.open ?? null), create },
     plan: { findUnique: vi.fn(async () => (o.plan === undefined ? { id: 'plan-free', product_key: 'sign' } : o.plan)) },
