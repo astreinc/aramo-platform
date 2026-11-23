@@ -273,6 +273,9 @@ export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set<string>(placeable
 
 export interface EnvelopeField {
   id?: string;
+  // FIELD-PARITY-2 B-1 — the field's stable key on the envelope (the editor's id; null on a legacy
+  // field). Sent back on PUT …/fields so it survives the replace-all save.
+  field_key?: string | null;
   envelope_document_id: string;
   signer_id: string;
   field_type: FieldType;

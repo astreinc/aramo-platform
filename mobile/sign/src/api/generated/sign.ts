@@ -5073,6 +5073,8 @@ export interface components {
         SenderEnvelopeField: {
             /** Format: uuid */
             id: string;
+            /** @description FIELD-PARITY-2 B-1 — the field's stable key on this envelope (unique per envelope; null on a legacy field). Set from the template's field_key when a template was carried, and from the editor's id on PUT …/fields; it survives the replace-all PUT (id does not). A condition names its trigger by this key. */
+            field_key?: string | null;
             /** Format: uuid */
             envelope_document_id: string;
             /** Format: uuid */
@@ -5148,6 +5150,8 @@ export interface components {
         };
         /** @description PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner. */
         SenderFieldInput: {
+            /** @description FIELD-PARITY-2 B-1 — the editor's id for this field, stored as its stable key (send back the field_key the detail returned, or a new id for a new field). Unique within the request (400 details.reason field_key_duplicate); absent / null = no key (the field cannot be a trigger). 400 details.reason field_key_invalid when it is not 1 to 200 characters. */
+            field_key?: string | null;
             /** Format: uuid */
             envelope_document_id: string;
             /** Format: uuid */

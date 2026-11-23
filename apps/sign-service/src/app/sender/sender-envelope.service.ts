@@ -65,7 +65,7 @@ import {
   VOID_REASON_MAX,
 } from '@aramo/sign-client';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
-import { checkboxGroupIssues, fieldTypesFor, fieldValueRefusal, parseFieldSettings, senderFilledFieldsEnabled, type FieldImportWarning } from '@aramo/sign-fields';
+import { checkboxGroupIssues, duplicateFieldKeys, fieldTypesFor, fieldValueRefusal, isFieldKey, parseFieldSettings, senderFilledFieldsEnabled, FIELD_KEY_MAX, type FieldImportWarning } from '@aramo/sign-fields';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
@@ -624,6 +624,8 @@ export class SenderEnvelopeService {
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
           id: f.id,
+          // FIELD-PARITY-2 B-1 — the field's stable key (null on a legacy field): the editor's id.
+          field_key: f.field_key ?? null,
           envelope_document_id: d.id,
           signer_id: f.signer_id,
           field_type: f.field_type,
@@ -1418,8 +1420,15 @@ export class SenderEnvelopeService {
       const height = num('height');
       if (x < 0 || y < 0 || width <= 0 || height <= 0) throw bad(requestId, `field ${i + 1}: position and size must be positive`, { index: i });
       const config = { ...fieldConfig(o, field_type, i, requestId), ...paymentConfig(o, field_type, i, requestId) };
+      // FIELD-PARITY-2 B-1 — the editor's id as the field's stable key (absent / NULL: none).
+      let field_key: string | null = null;
+      if (o['field_key'] !== undefined && o['field_key'] !== null) {
+        if (!isFieldKey(o['field_key'])) throw bad(requestId, `field ${i + 1}: field_key is 1 to ${FIELD_KEY_MAX} characters`, { index: i, field: 'field_key', reason: 'field_key_invalid' });
+        field_key = o['field_key'];
+      }
       return {
         ...config,
+        field_key,
         envelope_document_id: o['envelope_document_id'] as string,
         signer_id: o['signer_id'] as string,
         field_type,
@@ -1433,6 +1442,12 @@ export class SenderEnvelopeService {
     });
     checkboxGroups(fields, requestId);
     onePaymentPerSigner(fields, requestId);
+    // FIELD-PARITY-2 B-1 — a key names one field of the envelope.
+    const [dupKey] = duplicateFieldKeys(fields);
+    if (dupKey !== undefined) {
+      const index = fields.findIndex((f, j) => f.field_key === dupKey && fields.findIndex((g) => g.field_key === dupKey) !== j);
+      throw bad(requestId, `field ${index + 1}: the field key ${dupKey} is used twice`, { index, field: 'field_key', reason: 'field_key_duplicate' });
+    }
     // (FIELD-PARITY-1 P3 S-5 — sender values were checked per field by fieldConfig.)
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.

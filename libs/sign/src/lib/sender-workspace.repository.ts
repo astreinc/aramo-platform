@@ -92,6 +92,9 @@ export interface SenderFieldInput {
   // M-A6 §2 (coordinator ruling) — an engine-only field passed back unchanged: the
   // id of the stored field it must be identical to. The stored row is kept as is.
   passthrough_id?: string;
+  // FIELD-PARITY-2 B-1 — the field's stable key on the envelope (the editor's id; absent ⇒
+  // NULL). Kept across the replace-all PUT: the row is re-created with this key.
+  field_key?: string | null;
   // M-A6 §2 — Name and Checkbox configuration (absent ⇒ NULL).
   label?: string | null;
   group_key?: string | null;
@@ -183,6 +186,9 @@ export interface TemplateFieldInput {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // FIELD-PARITY-2 B-1 / B-9 — the template field's field_key, carried 1:1 as the envelope
+  // field's key (NULL for a drawn signature block, which has none).
+  field_key?: string | null;
   // FIELD-PARITY-1 P3 §6.2 — the template field's other settings, carried unchanged.
   tooltip?: string | null;
   placeholder?: string | null;
@@ -490,6 +496,8 @@ export class EsignSenderRepository {
             group_rule: f.group_rule ?? null,
             min_selected: f.min_selected ?? null,
             name_mode: f.field_type === 'SIGNER_NAME' ? (f.name_mode ?? 'SIGNER_PROFILE') : null,
+            // FIELD-PARITY-2 B-1 — the template field's key, 1:1.
+            field_key: f.field_key ?? null,
             // FIELD-PARITY-1 P3 — the other settings, unchanged.
             ...fieldSettingColumns(f),
           },
@@ -913,6 +921,8 @@ export class EsignSenderRepository {
             name_mode: f.name_mode ?? null,
             payment_amount_minor: f.payment_amount_minor ?? null,
             payment_currency: f.payment_currency ?? null,
+            // FIELD-PARITY-2 B-1 — the key survives the re-create (the input carries it).
+            field_key: f.field_key ?? null,
             ...fieldSettingColumns(f),
             ...(senderValue !== null ? { value: senderValue, filled_at: now } : {}),
           },

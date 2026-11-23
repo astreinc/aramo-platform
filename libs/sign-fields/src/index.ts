@@ -94,6 +94,9 @@ export {
   type CheckboxGroupIssue,
 } from './lib/field-settings.js';
 
+// FIELD-PARITY-2 Phase B — field keys and conditional fields (B-1..B-3).
+export { FIELD_KEY_MAX, isFieldKey, duplicateFieldKeys } from './lib/field-conditions.js';
+
 // FIELD-PARITY-1 P3 §6 — the value rules (signer fill, sender-filled values) and how a value
 // prints on the executed PDF and the certificate.
 export {
