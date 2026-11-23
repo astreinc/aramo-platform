@@ -2936,6 +2936,7 @@
       "formatChosenDate",
       "formatNumberValue",
       "hasFieldValue",
+      "importDropdownOptions",
       "importFieldKey",
       "importGroupKey",
       "isCircleMark",

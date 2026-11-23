@@ -1114,6 +1114,7 @@ export class SenderEnvelopeService {
           group_rule: f.group_rule,
           min_selected: f.min_selected,
           name_mode: f.name_mode,
+          options: f.options,
         })),
         warnings: imported.warnings,
         stripped: imported.stripped,

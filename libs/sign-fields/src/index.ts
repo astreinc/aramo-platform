@@ -121,6 +121,7 @@ export {
   importFieldKey,
   importGroupKey,
   planPdfFormFields,
+  importDropdownOptions,
   textTagTypeOf,
   parseTextTag,
   findTextTags,

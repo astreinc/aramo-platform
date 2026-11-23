@@ -637,6 +637,9 @@ const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
 // server flag through the one shared reader (@aramo/sign-fields senderFilledFieldsEnabled). It is
 // returned only by the console /platform/document-templates/…/fixed-form* routes, which no consumer
 // pact records; the sign-source fixed-form render interaction is a different shape and unchanged.
+// FIELD-PARITY-2 A-5 — NO migration: FixedFormImportedField.options (inside the opt-in
+// `field_import`) may now carry a PDF dropdown's choices, and FieldImportWarning gains two codes;
+// no recorded interaction sends import_fields, so none changes.
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(

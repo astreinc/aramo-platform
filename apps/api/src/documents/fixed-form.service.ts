@@ -382,6 +382,8 @@ export class FixedFormService {
         group_rule: f.group_rule,
         min_selected: null,
         name_mode: null,
+        // FIELD-PARITY-2 A-5 — a PDF dropdown's choices (DROPDOWN only; null otherwise).
+        options: f.options,
       });
       return { view, source: f.source, source_name: f.name };
     });

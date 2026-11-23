@@ -12,7 +12,7 @@
 // Pure TypeScript ESM, no dependency (scope:shared).
 
 import { FIELD_DEFAULTS, isFieldTypeKey, isFieldTypeOn, fieldSettingsOf, type FieldSurface, type FieldTypeKey } from './catalog.js';
-import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX } from './field-settings.js';
+import { FIELD_GROUP_KEY_MAX, FIELD_LABEL_MAX, parseTemplateFieldSettings, type FieldOptions } from './field-settings.js';
 
 // ── Shared ─────────────────────────────────────────────────────────────────────
 
@@ -40,10 +40,14 @@ export interface ImportedField {
   /** RADIO only: a radio group's buttons share one group (SELECT_ONE). */
   readonly group_key: string | null;
   readonly group_rule: 'SELECT_ONE' | null;
+  /** FIELD-PARITY-2 A-5 — DROPDOWN only: the PDF dropdown's choices ({ choices }); null otherwise. */
+  readonly options: FieldOptions | null;
 }
 
 export const FIELD_IMPORT_WARNING_CODES = [
   'pdf_field_type_unsupported',
+  'pdf_field_list_as_text',
+  'pdf_field_dropdown_as_text',
   'pdf_field_type_not_allowed',
   'pdf_field_read_only',
   'pdf_field_hidden',
@@ -142,16 +146,18 @@ export type PdfFormFieldKind = (typeof PDF_FORM_FIELD_KINDS)[number];
  * P2-5 — the catalog type each PDF form field kind becomes (null: not imported).
  * FIELD-PARITY-1 P3 — a radio group becomes a RADIO group (T-5: each radio button one RADIO
  * option of a SELECT_ONE group, labelled with its option) and a multi-line text field a
- * MULTILINE_TEXT field (T-7). A dropdown / list box still becomes TEXT: a DROPDOWN needs its
- * choices (options.choices), and neither the form reader nor the upload hosts carry a form
- * field's options yet. A push button has no catalog equivalent.
+ * MULTILINE_TEXT field (T-7). FIELD-PARITY-2 A-5 — a dropdown becomes a DROPDOWN with its
+ * choices (options.choices) when they fit the catalog's rule (1 to 50 distinct choices; the
+ * shared settings parser decides); otherwise it is imported as TEXT with the warning
+ * pdf_field_dropdown_as_text. A list box (several may be chosen) becomes TEXT with the warning
+ * pdf_field_list_as_text. A push button has no catalog equivalent.
  */
 export const PDF_FORM_FIELD_MAPPING: Readonly<Record<PdfFormFieldKind, FieldTypeKey | null>> = {
   text: 'TEXT',
   multiline_text: 'MULTILINE_TEXT',
   checkbox: 'CHECKBOX',
   radio: 'RADIO',
-  dropdown: 'TEXT',
+  dropdown: 'DROPDOWN',
   list: 'TEXT',
   signature: 'SIGNATURE',
   push_button: null,
@@ -172,6 +178,11 @@ export interface PdfFormWidget {
   readonly signed: boolean;
   /** A radio button's (or check box's) on-state value; null when it has none. */
   readonly option: string | null;
+  /**
+   * FIELD-PARITY-2 A-5 — a dropdown's / list box's choices (the PDF /Opt: export value and
+   * display text); absent or null for any other kind.
+   */
+  readonly choices?: ReadonlyArray<{ readonly value: string; readonly label: string }> | null;
   /** null: the widget is on no page. */
   readonly page_number: number | null;
   readonly x: number;
@@ -183,6 +194,17 @@ export interface PdfFormWidget {
 export interface FieldImportPlan {
   readonly fields: ImportedField[];
   readonly warnings: FieldImportWarning[];
+}
+
+/**
+ * FIELD-PARITY-2 A-5 — a PDF dropdown's choices as DROPDOWN options for `surface`, or null when
+ * the surface takes no DROPDOWN or the choices do not fit the catalog's rule (the shared
+ * settings parser, the same rule every field write passes).
+ */
+export function importDropdownOptions(choices: PdfFormWidget['choices'], surface: FieldSurface): FieldOptions | null {
+  if (!acceptedOn(surface, 'DROPDOWN') || choices === undefined || choices === null) return null;
+  const parsed = parseTemplateFieldSettings({ options: { choices: choices.map((c) => ({ value: c.value, label: c.label })) } }, 'DROPDOWN');
+  return parsed.ok && parsed.settings.options !== null && parsed.settings.options !== undefined ? parsed.settings.options : null;
 }
 
 /**
@@ -205,7 +227,24 @@ export function planPdfFormFields(widgets: readonly PdfFormWidget[], pages: read
   };
   const radioGroups = new Map<string, string>();
   for (const w of widgets) {
-    const type = PDF_FORM_FIELD_MAPPING[w.kind];
+    let type = PDF_FORM_FIELD_MAPPING[w.kind];
+    // FIELD-PARITY-2 A-5 — a dropdown keeps its choices when they fit; otherwise (and for a
+    // list box) it is imported as TEXT, with a warning saying so.
+    let options: FieldOptions | null = null;
+    let asText: FieldImportWarning | null = null;
+    if (type === 'DROPDOWN') {
+      options = importDropdownOptions(w.choices, surface);
+      if (options === null) {
+        type = 'TEXT';
+        asText = {
+          code: 'pdf_field_dropdown_as_text',
+          message: `"${w.name}" is a dropdown whose choices don't fit a dropdown field (1 to 50 distinct choices, each 1 to 100 characters); it was imported as a text field.`,
+          name: w.name,
+        };
+      }
+    } else if (w.kind === 'list') {
+      asText = { code: 'pdf_field_list_as_text', message: `"${w.name}" is a list box; it was imported as a text field.`, name: w.name };
+    }
     if (type === null) {
       warnOnce({ code: 'pdf_field_type_unsupported', message: `"${w.name}" is a push button; there is no field type for it.`, name: w.name });
       continue;
@@ -243,7 +282,8 @@ export function planPdfFormFields(widgets: readonly PdfFormWidget[], pages: read
     } else if (type === 'CHECKBOX') {
       label = clampText((w.tooltip ?? w.name).trim(), FIELD_LABEL_MAX) || null;
     }
-    fields.push({ source: 'pdf_form', name: w.name, field_type: type, ...box, required: w.required, role: null, label, group_key, group_rule });
+    if (asText !== null) warnOnce(asText);
+    fields.push({ source: 'pdf_form', name: w.name, field_type: type, ...box, required: w.required, role: null, label, group_key, group_rule, options });
   }
   return { fields, warnings };
 }
@@ -535,6 +575,7 @@ export function planTextTags(pages: readonly TagTextPage[], frames: readonly Tag
         label: tag.label,
         group_key: null,
         group_rule: null,
+        options: null,
       });
       covers.push(tagCoverRect(box, frame));
     }

@@ -7317,6 +7317,8 @@ components:
           type: string
           enum:
             - pdf_field_type_unsupported
+            - pdf_field_list_as_text
+            - pdf_field_dropdown_as_text
             - pdf_field_type_not_allowed
             - pdf_field_read_only
             - pdf_field_hidden
@@ -7381,7 +7383,8 @@ components:
         group_rule: { type: [string, 'null'], enum: [SELECT_ONE, null] }
         min_selected: { type: 'null' }
         name_mode: { type: 'null' }
-        # FIELD-PARITY-1 P3 — an imported field carries no P3 setting (null / false).
+        # FIELD-PARITY-1 P3 — an imported field carries no P3 setting (null / false), except a
+        # dropdown's choices (FIELD-PARITY-2 A-5).
         tooltip: { type: 'null' }
         placeholder: { type: 'null' }
         read_only: { type: boolean, enum: [false] }
@@ -7389,7 +7392,11 @@ components:
         validation: { type: 'null' }
         font_size: { type: 'null' }
         data_name: { type: 'null' }
-        options: { type: 'null' }
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise.
         source: { type: string, enum: [pdf_form, text_tag] }
         source_name: { type: string, description: 'The PDF form field name, or the tag without braces.' }
     FixedFormPdfContent:

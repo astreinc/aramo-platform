@@ -1,6 +1,6 @@
 import { AramoError } from '@aramo/common';
 import { PdfFormImportError, coverPdfBoxes, extractTextLayer, importPdfForm, readPageFrames } from '@aramo/documents-rendering';
-import { matchTagRole, planPdfFormFields, planTextTags, type FieldImportWarning, type ImportedField } from '@aramo/sign-fields';
+import { matchTagRole, planPdfFormFields, planTextTags, type FieldImportWarning, type FieldOptions, type ImportedField } from '@aramo/sign-fields';
 
 // FIELD-PARITY-1 (Aramo-Sign-Field-Placement-Enterprise-Parity-Directive-v1_0-LOCKED) §5 P2-5 /
 // P2-6 — the Sign envelope document upload's opt-in field import (POST
@@ -145,6 +145,8 @@ export function bindImportedFields(
       min_selected: null,
       // M-A6 §2.2 — the sender default for a name field.
       name_mode: f.field_type === 'SIGNER_NAME' ? 'SIGNER_PROFILE' : null,
+      // FIELD-PARITY-2 A-5 — a PDF dropdown's choices (DROPDOWN only).
+      options: f.options,
     };
   });
   if (toFirst > 0) {
@@ -171,10 +173,12 @@ export interface BoundImportedField {
   readonly group_rule: string | null;
   readonly min_selected: number | null;
   readonly name_mode: string | null;
+  /** FIELD-PARITY-2 A-5 — DROPDOWN: { choices } from the PDF; null otherwise. */
+  readonly options: FieldOptions | null;
 }
 
 /** The stored row of a bound field (the repository's field input; no import metadata). */
-export function fieldRowOf(f: BoundImportedField): Omit<BoundImportedField, 'source' | 'name'> {
+export function fieldRowOf(f: BoundImportedField): Omit<BoundImportedField, 'source' | 'name' | 'options'> & { readonly options: Readonly<Record<string, unknown>> | null } {
   return {
     signer_id: f.signer_id,
     field_type: f.field_type,
@@ -189,5 +193,6 @@ export function fieldRowOf(f: BoundImportedField): Omit<BoundImportedField, 'sou
     group_rule: f.group_rule,
     min_selected: f.min_selected,
     name_mode: f.name_mode,
+    options: f.options === null ? null : { ...f.options },
   };
 }

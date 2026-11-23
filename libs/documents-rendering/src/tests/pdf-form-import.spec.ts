@@ -131,6 +131,48 @@ describe('P2-5 importPdfForm — read', () => {
     expect(byName('already')[0]?.signed).toBe(true);
   });
 
+  it('FIELD-PARITY-2 A-5 reads a choice field\'s /Opt (export value and display text); other kinds carry none', async () => {
+    const out = await importPdfForm(await formPdf());
+    const byName = (n: string) => out.widgets.filter((w) => w.name === n);
+    expect(byName('state')[0]?.choices).toEqual([
+      { value: 'NY', label: 'NY' },
+      { value: 'CA', label: 'CA' },
+    ]);
+    expect(byName('fruits')[0]?.choices).toEqual([
+      { value: 'Apple', label: 'Apple' },
+      { value: 'Pear', label: 'Pear' },
+    ]);
+    expect(byName('applicant.name')[0]?.choices).toBeNull();
+    expect(byName('colour')[0]?.choices).toBeNull();
+  });
+
+  it('FIELD-PARITY-2 A-5 reads [export, display] pairs, an empty /Opt as [] and a malformed entry as an empty choice', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([612, 792]);
+    const form = doc.getForm();
+    const pairs = form.createDropdown('country');
+    pairs.addToPage(page, { x: 50, y: 600, width: 100, height: 20 });
+    const ctx = doc.context;
+    pairs.acroField.dict.set(N('Opt'), ctx.obj([ctx.obj([PDFString.of('us'), PDFString.of('United States')]), PDFString.of('Other')]));
+    const none = form.createDropdown('empty');
+    none.addToPage(page, { x: 50, y: 560, width: 100, height: 20 });
+    none.acroField.dict.delete(N('Opt'));
+    const bad = form.createDropdown('broken');
+    bad.addToPage(page, { x: 50, y: 520, width: 100, height: 20 });
+    bad.acroField.dict.set(N('Opt'), ctx.obj([PDFString.of('ok'), 7]));
+    const out = await importPdfForm(await doc.save({ useObjectStreams: false, updateFieldAppearances: false }));
+    const byName = (n: string) => out.widgets.find((w) => w.name === n);
+    expect(byName('country')?.choices).toEqual([
+      { value: 'us', label: 'United States' },
+      { value: 'Other', label: 'Other' },
+    ]);
+    expect(byName('empty')?.choices).toEqual([]);
+    expect(byName('broken')?.choices).toEqual([
+      { value: 'ok', label: 'ok' },
+      { value: '', label: '' },
+    ]);
+  });
+
   it('returns a PDF without a form unchanged (same bytes)', async () => {
     const bytes = await plainPdf('No form here');
     const out = await importPdfForm(bytes);

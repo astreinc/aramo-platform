@@ -10817,7 +10817,7 @@ components:
       type: object
       additionalProperties: false
       description: FIELD-PARITY-1 P2-5 / P2-6 — an envelope field created from the upload (the same field GET …/envelopes/{id} lists).
-      required: [id, source, source_name, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, group_key, group_rule, min_selected, name_mode]
+      required: [id, source, source_name, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, group_key, group_rule, min_selected, name_mode, options]
       properties:
         id:
           type: [string, 'null']
@@ -10864,6 +10864,11 @@ components:
         name_mode:
           type: [string, 'null']
           enum: [SIGNER_PROFILE, null]
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+          description: FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise.
     FieldOptions:
       type: object
       additionalProperties: false
@@ -10927,6 +10932,8 @@ components:
           type: string
           enum:
             - pdf_field_type_unsupported
+            - pdf_field_list_as_text
+            - pdf_field_dropdown_as_text
             - pdf_field_type_not_allowed
             - pdf_field_read_only
             - pdf_field_hidden

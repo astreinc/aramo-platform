@@ -21,7 +21,9 @@ export const UPLOAD_OPTION_COPY = {
 
 /** The plain-language copy of every warning code (the server's `message` adds the specifics). */
 export const FIELD_IMPORT_WARNING_COPY: Readonly<Record<FieldImportWarningCode, string>> = {
-  pdf_field_type_unsupported: 'A form field of a kind we can’t import (for example a list or a button) was skipped.',
+  pdf_field_type_unsupported: 'A form field of a kind we can’t import (for example a button) was skipped.',
+  pdf_field_list_as_text: 'A list box was imported as a text field (only a dropdown keeps its choices).',
+  pdf_field_dropdown_as_text: 'A dropdown whose choices don’t fit (1 to 50 distinct choices) was imported as a text field.',
   pdf_field_type_not_allowed: 'A form field of a type this document can’t hold was skipped.',
   pdf_field_read_only: 'A read-only form field was skipped.',
   pdf_field_hidden: 'A hidden form field was skipped.',

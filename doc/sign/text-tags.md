@@ -110,8 +110,8 @@ appearance is drawn into the page, and the form and its widgets are removed.
 | Multi-line text | MULTILINE_TEXT (FIELD-PARITY-1 Phase 3) |
 | Check box | CHECKBOX (label = tooltip, else name) |
 | Radio group | one RADIO per option, in one radio group (always select-one; group key = the radio name, made unique on the document; label = the option). Before Phase 3 this was a SELECT_ONE check-box group. |
-| Dropdown (combo box) | TEXT. A DROPDOWN needs its choices, and neither the form reader nor the upload routes carry a form field's options yet (a follow-up). |
-| List box | TEXT (same reason) |
+| Dropdown (combo box) | DROPDOWN with its choices (`options.choices`: each `/Opt` entry's export value and display text), when it has 1 to 50 distinct choices that fit the dropdown rule (FIELD-PARITY-2 A-5). Otherwise TEXT, reported as `pdf_field_dropdown_as_text`. |
+| List box | TEXT, reported as `pdf_field_list_as_text` (a list box lets several be chosen; a DROPDOWN holds one) |
 | Signature (unsigned) | SIGNATURE |
 | Signature already signed | not imported (`pdf_field_signed`) |
 | Push button | not imported (`pdf_field_type_unsupported`) |
