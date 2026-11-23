@@ -1045,3 +1045,32 @@ describe('sign-mobile → FIELD-PARITY-2 conditional fields on the signing view'
       });
   });
 });
+
+// FIELD-PARITY-2 B-6 follow-up — Finish clears a value the server holds that the signer emptied
+// (value null; signingApi submitSigning). The provider derives the field id (last digit 4).
+const CLEAR_ENVELOPE_ID = 'e6c20000-0000-7000-8000-0000000000c1';
+const CLEAR_TOKEN = 'sign-mobile-pact-token-clear';
+
+describe('sign-mobile → FIELD-PARITY-2 clear a stored value', () => {
+  it('clears a stored value with value null', async () => {
+    const fieldId = childOf(CLEAR_ENVELOPE_ID, 4);
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a stored text answer', { envelope_id: CLEAR_ENVELOPE_ID, token: CLEAR_TOKEN })
+      .uponReceiving('a native signing clear of a stored value')
+      .withRequest('POST', `/v1/sign/signing/fields/${fieldId}/fill`, (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: CLEAR_TOKEN, value: null });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ filled: like(true) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/fields/${fieldId}/fill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: CLEAR_TOKEN, value: null }),
+        });
+        expect(res.status).toBe(200);
+      });
+  });
+});
