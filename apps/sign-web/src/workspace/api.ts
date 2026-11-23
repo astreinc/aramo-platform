@@ -655,6 +655,9 @@ export interface BillingAccount {
     cancel_at_period_end: boolean;
     grace_until: string | null;
     billing_managed: boolean;
+    // CCP-PERSONAL-ARRANGED-1 P-7 — the plan is arranged with Aramo (no price, commitment, term or
+    // billing controls are shown for it). Absent on older backends.
+    arranged?: boolean;
     commitment_months?: number | null;
     // Billing terms — the term the subscription is on (absent on older backends).
     term?: BillingTerm | null;

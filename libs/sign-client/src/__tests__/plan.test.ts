@@ -1,6 +1,19 @@
 // Client Rule Consolidation C3 — runs under vitest and mobile Jest (globals only).
 // Audit rows 14–17: templates access once; per-recipient options; plan facts only from the server; "documents".
-import { allowanceTermsLine, isDailyAllowance, limitReachedCopy, messagingOffered, planFacts, sendFeaturesOf, storageLabel, templateAccess } from '../index.js';
+import {
+  ARRANGED_PURCHASE_BLOCKED,
+  allowanceTermsLine,
+  arrangedPlanLabel,
+  arrangedPurchaseRefusal,
+  isArrangedPlan,
+  isDailyAllowance,
+  limitReachedCopy,
+  messagingOffered,
+  planFacts,
+  sendFeaturesOf,
+  storageLabel,
+  templateAccess,
+} from '../index.js';
 
 const ctx = (o: Record<string, unknown> = {}) => ({
   features: { templates: true },
@@ -105,5 +118,39 @@ describe('limit reached says "documents" (row 17, Appendix A)', () => {
     [null, false],
   ])('isDailyAllowance %j', (d, daily) => {
     expect(isDailyAllowance(d)).toBe(daily);
+  });
+});
+
+// CCP-PERSONAL-ARRANGED-1 P-7 / D-8 — one copy for a plan arranged with Aramo (web and the app).
+describe('a plan arranged with Aramo (P-7)', () => {
+  const acct = (sub: Record<string, unknown> | null) => ({ subscription: sub });
+
+  it('the label carries the plan name', () => {
+    expect(arrangedPlanLabel('Standard')).toBe('Standard · arranged with Aramo');
+    expect(arrangedPlanLabel(' Standard ')).toBe('Standard · arranged with Aramo');
+    expect(arrangedPlanLabel(null)).toBe('Arranged with Aramo');
+    expect(arrangedPlanLabel('')).toBe('Arranged with Aramo');
+  });
+
+  it.each([
+    ['arranged, open', acct({ arranged: true, ended_at: null }), true],
+    ['arranged, ended_at absent', acct({ arranged: true }), true],
+    ['arranged, ended', acct({ arranged: true, ended_at: '2026-11-24T00:00:00.000Z' }), false],
+    ['not arranged', acct({ arranged: false, ended_at: null }), false],
+    ['older server (no flag)', acct({ ended_at: null }), false],
+    ['no subscription', acct(null), false],
+    ['no account', null, false],
+  ])('isArrangedPlan: %s', (_n, a, out) => {
+    expect(isArrangedPlan(a)).toBe(out);
+  });
+
+  it('a managed-plan purchase refusal on an arranged plan says it is arranged with Aramo', () => {
+    const arranged = acct({ arranged: true, ended_at: null });
+    expect(ARRANGED_PURCHASE_BLOCKED).toBe('Your plan is arranged with Aramo. Contact support to change it.');
+    expect(arrangedPurchaseRefusal(arranged, 'billing_managed_elsewhere')).toBe(ARRANGED_PURCHASE_BLOCKED);
+    expect(arrangedPurchaseRefusal(arranged, 'governed_subscription_open')).toBe(ARRANGED_PURCHASE_BLOCKED);
+    expect(arrangedPurchaseRefusal(arranged, 'not_billing_manager')).toBeNull();
+    expect(arrangedPurchaseRefusal(arranged, null)).toBeNull();
+    expect(arrangedPurchaseRefusal(acct({ arranged: false, ended_at: null }), 'billing_managed_elsewhere')).toBeNull();
   });
 });

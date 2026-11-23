@@ -585,10 +585,13 @@ export class EsignBillingController {
   /**
    * Sign Catalog v2 §4.3 — the Free → Standard offer for a PERSONAL tenant: non-null only while the
    * tenant is on the Free plan (or has no plan); `available` when its owner may buy it now.
+   * CCP-PERSONAL-ARRANGED-1 PO ruling D-7 — also on an open plan arranged with Aramo while an approved
+   * CONVERSION TO_SELF_SERVICE release of that row is open: the offer is then the released plan (the
+   * release is treated like Free for the offer only; the checkout is admitted by the same release).
    */
   private async personalUpgrade(
     tenant_id: string,
-    subscription: { plan_key: string; ended_at: Date | null } | null,
+    subscription: { plan_key: string; ended_at: Date | null; arranged?: boolean } | null,
     may_buy: boolean,
   ): Promise<{
     available: boolean;
@@ -602,12 +605,17 @@ export class EsignBillingController {
   } | null> {
     // Dark: no offer at all.
     if (!personalPaidCheckoutEnabled()) return null;
-    if (subscription !== null && subscription.ended_at === null && subscription.plan_key !== FreePersonalPlanKey) return null;
+    let released: string | null = null;
+    if (subscription !== null && subscription.ended_at === null && subscription.plan_key !== FreePersonalPlanKey) {
+      if (subscription.arranged !== true) return null;
+      released = await this.lifecycle.arrangedReleasePlanKey(tenant_id, SIGN_PRODUCT_KEY);
+      if (released === null) return null;
+    }
     // India Billing §4.4 — the residence's region routes the catalog (its gateway's price pins).
     const region = await this.callerRegion(tenant_id, 'PERSONAL');
     const gateway = EsignBillingController.gatewayOf(region);
     const plan = (await this.lifecycle.catalog(SIGN_PRODUCT_KEY, tenant_id, 'PERSONAL', gateway)).find(
-      (p) => p.tenant_kind === 'PERSONAL' && p.sales_model === 'SELF_SERVICE' && p.key !== FreePersonalPlanKey && p.price !== null,
+      (p) => p.tenant_kind === 'PERSONAL' && p.sales_model === 'SELF_SERVICE' && p.key !== FreePersonalPlanKey && p.price !== null && (released === null || p.key === released),
     );
     if (plan === undefined) return null;
     const reason: PersonalUpgradeReason | null = !region.open

@@ -22,7 +22,8 @@ import { type C2Harness, c2Harness } from './support/ccp-c2.js';
 //   ARR-I-REF-*   P-4 — the creation-time refusals;
 //   ARR-I-RPT-*   P-3 — the finance and revenue reports with COMP and AGREED rows;
 //   ARR-I-END-*   P-8 / D-5 — ending an arranged row reopens Free in the same transaction (or records why not);
-//   ARR-I-CONV-*  P-9 — CONVERSION TO_SELF_SERVICE releases an arranged Personal row (the only release).
+//   ARR-I-CONV-*  P-9 — CONVERSION TO_SELF_SERVICE releases an arranged Personal row (the only release);
+//                 PO ruling D-7 — while that release is open the normal upgrade offer applies again.
 
 const T0 = new Date('2026-11-24T12:00:00.000Z');
 const STANDARD_PERSONAL = 'aramo-sign-standard-personal-v1';
@@ -346,6 +347,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
   it('ARR-I-CONV-1 CONVERSION TO_SELF_SERVICE accepts an arranged Personal row: the release names it; the arranged row is untouched until the provider-confirmed activation', async () => {
     const { tenant, comp } = await personalOnComp();
     const before = (await pg.query(`SELECT row_to_json(s)::text AS j FROM subscription."TenantSubscription" s WHERE id = $1`, [comp])).rows[0].j as string;
+    // D-7 — no release yet: the arranged row offers nothing.
+    expect(await h.lifecycle.arrangedReleasePlanKey(tenant, 'sign', T0)).toBeNull();
     const payload = {
       direction: 'TO_SELF_SERVICE',
       governed_subscription_id: comp,
@@ -357,5 +360,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     const out = await h.conversions.apply(as(OPS, 'commercial_ops'), id, A6_CTX);
     expect(out).toMatchObject({ direction: 'TO_SELF_SERVICE', status: 'RELEASED', request: { state: 'APPLIED' }, release: { state: 'RELEASED', governed_subscription_id: comp } });
     expect((await pg.query(`SELECT row_to_json(s)::text AS j FROM subscription."TenantSubscription" s WHERE id = $1`, [comp])).rows[0].j).toBe(before);
+    // D-7 — the open release of the arranged row names the plan the normal upgrade offer shows again;
+    // past its expiry (half-open) it no longer does.
+    expect(await h.lifecycle.arrangedReleasePlanKey(tenant, 'sign', T0)).toBe(STANDARD_PERSONAL);
+    expect(await h.lifecycle.arrangedReleasePlanKey(tenant, 'sign', new Date(T0.getTime() + 24 * 3_600_000))).toBeNull();
   });
 });

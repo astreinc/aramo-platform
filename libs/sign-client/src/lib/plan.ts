@@ -165,3 +165,39 @@ export function isDailyAllowance(details: Readonly<Record<string, unknown>> | nu
   const tag = [d['reason'], d['window'], d['period']].filter((v): v is string => typeof v === 'string').join(' ').toUpperCase();
   return /DAY|DAILY/.test(tag);
 }
+
+// ── a plan arranged with Aramo (CCP-PERSONAL-ARRANGED-1 P-7; PO ruling D-8) ─────────────────
+// The server decides (GET /v1/sign/billing/account `subscription.arranged`, sent with no price,
+// commitment or term); sign-web and the app render it with this one copy.
+
+/** The refusal copy for a store or web purchase while the plan is arranged with Aramo. */
+export const ARRANGED_PURCHASE_BLOCKED = 'Your plan is arranged with Aramo. Contact support to change it.';
+
+/**
+ * The purchase refusals a plan arranged with Aramo answers with: `billing_managed_elsewhere`
+ * (store intent / verify / restore and the account's store block) and
+ * `governed_subscription_open` (web checkout).
+ */
+export const ARRANGED_PURCHASE_REFUSALS: readonly string[] = ['billing_managed_elsewhere', 'governed_subscription_open'];
+
+/** The account's open plan is arranged with Aramo (the server's `subscription.arranged`). */
+export function isArrangedPlan(account: unknown): boolean {
+  const sub = rec(rec(account)['subscription']);
+  return sub['arranged'] === true && (sub['ended_at'] === null || sub['ended_at'] === undefined);
+}
+
+/** "Standard · arranged with Aramo" — the plan's own name (the server's plan_name). */
+export function arrangedPlanLabel(planName: string | null | undefined): string {
+  const name = typeof planName === 'string' ? planName.trim() : '';
+  return name === '' ? 'Arranged with Aramo' : `${name} · arranged with Aramo`;
+}
+
+/**
+ * The copy for a purchase refusal on an account whose plan is arranged with Aramo; null when the
+ * plan is not arranged or the refusal is not one a managed plan answers with (the caller then
+ * shows its usual copy).
+ */
+export function arrangedPurchaseRefusal(account: unknown, reason: string | null | undefined): string | null {
+  if (!isArrangedPlan(account) || typeof reason !== 'string') return null;
+  return ARRANGED_PURCHASE_REFUSALS.includes(reason) ? ARRANGED_PURCHASE_BLOCKED : null;
+}

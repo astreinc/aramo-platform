@@ -6,6 +6,7 @@ import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
+import { releaseConsumable } from '../commercial/commercial-conversion.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, effectiveLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import {
@@ -811,6 +812,28 @@ export class SubscriptionLifecycleService {
       tax: taxAvailability(),
       price_unit: row === null ? null : priceUnitOf(planVersionTerms(row.plan_version)),
     };
+  }
+
+  /**
+   * CCP-PERSONAL-ARRANGED-1 PO ruling D-7 — the plan key an approved CONVERSION TO_SELF_SERVICE release of
+   * the tenant's OPEN ARRANGED row lets the user buy (unconsumed and unexpired at `at`; not a held-activation
+   * adoption), else null. While it is non-null the normal upgrade offer shows again; the checkout itself is
+   * admitted by the same release (releaseForCheckout). Reads only.
+   */
+  async arrangedReleasePlanKey(tenant_id: string, product_key: ProductKey, at: Date = new Date()): Promise<string | null> {
+    const key = assertProductKey(product_key);
+    const open = await this.prisma.tenantSubscription.findFirst({
+      where: openBaseSubscription(tenant_id, key),
+      select: { id: true, source: true, ended_at: true, arrangement: true },
+    });
+    if (open === null || open.arrangement === null || !isGovernedSubscription(open)) return null;
+    const release = await this.prisma.commercialConversionRelease.findFirst({
+      where: { tenant_id, product_key: key, state: 'RELEASED', held_subscription_ref: null, governed_subscription_id: open.id },
+      select: { plan_id: true, state: true, expires_at: true },
+    });
+    if (release === null || !releaseConsumable(release, at)) return null;
+    const plan = await this.prisma.plan.findUnique({ where: { id: release.plan_id }, select: { key: true } });
+    return plan?.key ?? null;
   }
 
   /**
