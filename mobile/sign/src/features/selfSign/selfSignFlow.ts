@@ -18,13 +18,13 @@ import { newIdempotencyKey, type WorkspaceClient } from '../../api/workspaceClie
 import type { EditorField } from '../editor/editorReducer';
 import { editorToWire, wireToEditor } from '../editor/geometry';
 import { isSelfSignFieldType } from '../editor/fieldTypes';
-import { parseEnvelope } from '../send/draftModel';
+import { configOf, parseEnvelope, type ServerField } from '../send/draftModel';
 import { etagFor } from '../../api/workspaceClient';
 import { refusalMessage } from '../../api/refusalMessages';
 import { randomId } from '../../util/ids';
 import { readPdfPageSizes } from '../editor/pdfPageSizes';
 import { revisionMismatch, type FieldWire, type SenderApi } from '../send/senderApi';
-import { uploadWithRetry } from '../send/syncDraft';
+import { configWire, preservedFieldWire, storedFieldWire, uploadWithRetry } from '../send/syncDraft';
 import { base64Decode, base64Encode } from '../../util/bytes';
 import {
   acceptAndLoad,
@@ -32,6 +32,7 @@ import {
   type Disclosure,
   type SignerView,
 } from '../signing/signingApi';
+import type { SigningField } from '../signing/signingMachine';
 import {
   fillValue,
   matchServerFields,
@@ -67,6 +68,24 @@ export interface SelfProgress {
   readonly sent: boolean;
   /** Upload keys by document key, reused on every retry. */
   readonly uploadKeys: Readonly<Record<string, string>>;
+  /**
+   * FIELD-PARITY-2 A-1 — the fields a template start carried (absent for picked documents):
+   * the fields-PUT sends them back so none is lost.
+   */
+  readonly template?: SelfTemplateFields;
+}
+
+/**
+ * FIELD-PARITY-2 A-1 (fail-closed) — a template's fields on the self envelope. The fields PUT
+ * replaces the whole list, so every template field goes back: a placed field the user has not
+ * changed goes back exactly as stored (byte-equal), and a field the editor cannot place goes
+ * back untouched with its id (the Send flow's preserved fields).
+ */
+export interface SelfTemplateFields {
+  /** By placed-field key: the field as placed from the template, and its stored members. */
+  readonly untouched: Readonly<Record<string, { readonly placed: EditorField; readonly wire: FieldWire }>>;
+  /** Stored fields the editor does not place, sent back unchanged. */
+  readonly preserved: readonly ServerField[];
 }
 
 export const NO_PROGRESS: SelfProgress = {
@@ -168,16 +187,24 @@ function revisionOf(etag: string | null): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** The PUT …/fields body: every placed field assigned to the self recipient. */
+/**
+ * The PUT …/fields body: every placed field assigned to the self recipient, with every setting
+ * it carries (the Send flow's configWire), then the template's fields the editor does not place
+ * (FIELD-PARITY-2 A-1: the replace-all PUT never loses one). A template field the user did not
+ * change goes back exactly as stored.
+ */
 export function selfFieldsWire(
   fields: readonly EditorField[],
   docs: readonly SelfDoc[],
   signerId: string,
+  template?: SelfTemplateFields,
 ): FieldWire[] {
-  return fields.map((f) => {
+  const placed = fields.map((f): FieldWire => {
     const d = docs.find((x) => x.key === f.docKey);
     const size = d?.pages?.[f.page];
     if (!d?.serverId || !size) throw new SelfSignMismatch();
+    const kept = template?.untouched[f.key];
+    if (kept && sameField(kept.placed, f)) return kept.wire;
     const b = editorToWire(f, size);
     return {
       envelope_document_id: d.serverId,
@@ -189,12 +216,19 @@ export function selfFieldsWire(
       width: b.width,
       height: b.height,
       required: f.required,
-      ...(f.type === 'SIGNER_NAME' ? { name_mode: f.nameMode ?? 'SIGNER_PROFILE' } : {}),
-      ...(f.type === 'CHECKBOX'
-        ? { label: f.label ?? null, group_key: null, group_rule: null, min_selected: null }
-        : {}),
+      ...configWire(f),
     };
   });
+  const onEnvelope = new Set(docs.map((d) => d.serverId).filter((x): x is string => !!x));
+  const preserved = (template?.preserved ?? [])
+    .filter((f) => onEnvelope.has(f.envelope_document_id))
+    .map(preservedFieldWire);
+  return [...placed, ...preserved];
+}
+
+/** The placed field is still exactly as the template placed it. */
+function sameField(a: EditorField, b: EditorField): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
@@ -213,7 +247,11 @@ export async function sendAndOpen(
   const envelopeId = p.envelopeId;
   if (!envelopeId || !p.signerId) throw new Error('the envelope is not ready');
   if (!p.sent) {
-    const placed = await deps.api.putFields(envelopeId, p.etag as string, selfFieldsWire(fields, docs, p.signerId));
+    const placed = await deps.api.putFields(
+      envelopeId,
+      p.etag as string,
+      selfFieldsWire(fields, docs, p.signerId, p.template),
+    );
     const sent = await deps.api.send(envelopeId, placed.etag, subject);
     p = { ...p, etag: sent.etag, sent: true };
     onProgress(p);
@@ -233,6 +271,21 @@ export class SelfSignMismatch extends Error {
 
 const FILL_PATH = '/v1/sign/signing/fields/{fieldId}/fill';
 
+/** A server field that is one of the carried template fields (same place and type); it is used up. */
+function takeCarried(pool: ServerField[], s: SigningField): boolean {
+  const i = pool.findIndex(
+    (p) =>
+      p.envelope_document_id === s.document_id &&
+      p.page_number === s.page_number &&
+      p.field_type === s.field_type &&
+      Math.abs(p.x - s.x) < 0.01 &&
+      Math.abs(p.y - s.y) < 0.01,
+  );
+  if (i < 0) return false;
+  pool.splice(i, 1);
+  return true;
+}
+
 /**
  * Steps 6–8: accept the exact disclosure shown, fill every field with the value the
  * user saw while placing, then complete. Returns the envelope status.
@@ -246,10 +299,15 @@ export async function acceptFillComplete(
   edits: SelfEdits,
   stored: ReadonlySet<string> = new Set(),
   onStored: (serverFieldId: string) => void = () => undefined,
+  template?: SelfTemplateFields,
 ): Promise<{ envelopeStatus: string; view: SignerView }> {
   const view = await acceptAndLoad(session, disclosure);
+  // FIELD-PARITY-2 A-1 — a carried template field the editor does not place stays unfilled here
+  // (the server's completion rule decides); any other unmatched field is a mismatch.
+  const carried = (template?.preserved ?? []).filter((f) => docs.some((d) => d.serverId === f.envelope_document_id));
   const pairs = matchServerFields(view.fields, placedOnServer(fields, docs));
-  if (pairs.some((x) => x.field === null && x.server.server_filled !== true))
+  const isCarried = (s: SigningField) => takeCarried(carried, s);
+  if (pairs.some((x) => x.field === null && x.server.server_filled !== true && !isCarried(x.server)))
     throw new SelfSignMismatch();
   for (const { server, field } of pairs) {
     if (!field || server.server_filled === true || stored.has(server.field_id)) continue;
@@ -334,15 +392,20 @@ export async function startFromTemplate(
     docs.push({ key: randomId(), title: d.title, filename: `${d.title}.pdf`, base64, pages: pagesOf(base64), serverId: d.id });
   }
   const fields: EditorField[] = [];
+  const untouched: Record<string, { placed: EditorField; wire: FieldWire }> = {};
+  const preserved: ServerField[] = [];
   for (const f of v.env.fields) {
-    // FIELD-PARITY-1 P3 — Sign a document places and fills the types it has tools for (not the
-    // Phase 3 types, whose values its fill sheet does not take yet).
-    if (!isSelfSignFieldType(f.field_type)) continue;
+    // FIELD-PARITY-2 A-1 (fail-closed) — no template field is ever dropped. One this screen
+    // places becomes a placed field with every setting; any other (a type it does not place, a
+    // field with no recipient or size, a page it cannot read) goes back unchanged on the PUT.
     const doc = docs.find((x) => x.serverId === f.envelope_document_id);
     const page = doc?.pages?.[f.page_number];
-    if (!doc || !page) continue;
-    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
-    fields.push({
+    if (!doc || !page || !isSelfSignFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
+      preserved.push(f);
+      continue;
+    }
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width, height: f.height }, page);
+    const placed: EditorField = {
       key: randomId(),
       docKey: doc.key,
       page: f.page_number,
@@ -350,19 +413,24 @@ export async function startFromTemplate(
       type: f.field_type,
       ...box,
       required: f.required,
-      ...(f.field_type === 'SIGNER_NAME'
-        ? { nameMode: f.name_mode === 'SIGNER_ENTERED' ? ('SIGNER_ENTERED' as const) : ('SIGNER_PROFILE' as const) }
-        : {}),
-      ...(f.field_type === 'CHECKBOX' ? { label: f.label, groupKey: null, groupRule: null, minSelected: null } : {}),
-    });
+      ...configOf(f),
+    };
+    fields.push(placed);
+    untouched[placed.key] = { placed, wire: storedFieldWire(f) };
   }
+  const signerId = v.env.recipients[0]?.id ?? null;
   return {
-    progress: { ...NO_PROGRESS, envelopeId: v.env.id, etag: v.etag, signerId: v.env.recipients[0]?.id ?? null },
+    progress: {
+      ...NO_PROGRESS,
+      envelopeId: v.env.id,
+      etag: v.etag,
+      signerId,
+      template: { untouched, preserved },
+    },
     docs,
     fields,
   };
 }
-
 const SELF_REFUSAL: Record<string, string> = {
   self_sign_email_unverified: 'Verify your account email to sign documents here.',
   self_sign_single_recipient: 'This template needs more than one signer, so it can’t be signed by you alone.',

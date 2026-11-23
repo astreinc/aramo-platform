@@ -8,6 +8,7 @@ import {
   isProfileTextField,
   isServerFilledName,
   profileTextValueRefusal,
+  radioChoiceClearable,
   signerFieldUnits,
   type FieldRuleRow,
   type FieldRuleViolation,
@@ -141,5 +142,28 @@ describe('signerFieldUnits (row 38: one rule for web, mobile and the server)', (
     ['an empty group key is no group', [{ id: 'a', field_type: 'CHECKBOX', required: true, group_key: '', v: 'true' }], [['a', true, 'checkbox_required_unchecked']]],
   ])('%s', (_n, fields, units) => {
     expect(u(fields)).toEqual(units);
+  });
+});
+
+describe('FIELD-PARITY-2 A-2 — clearing a chosen radio option', () => {
+  const r = (id: string, required: boolean, group_key: string | null = 'g') => ({ id, field_type: 'RADIO', required, group_key });
+  it('an optional set may be cleared; a required set keeps its choice', () => {
+    const a = r('a', false);
+    expect(radioChoiceClearable(a, [a, r('b', false)])).toBe(true);
+    expect(radioChoiceClearable(a, [a, r('b', true)])).toBe(false);
+  });
+  it('only the option\'s own group counts; a lone option follows its own flag', () => {
+    const a = r('a', false, 'g1');
+    expect(radioChoiceClearable(a, [a, r('b', true, 'g2')])).toBe(true);
+    expect(radioChoiceClearable(r('x', false, null), [])).toBe(true);
+    expect(radioChoiceClearable(r('y', true, null), [])).toBe(false);
+  });
+  it('is never true for a check box (a box toggles by its own rule)', () => {
+    expect(radioChoiceClearable({ field_type: 'CHECKBOX', required: false, group_key: 'g' }, [])).toBe(false);
+  });
+  it('a cleared optional set passes the completion rule; a required one does not', () => {
+    const off = { value: 'false', filled_at: at };
+    expect(evaluateSignerFieldRules([f('a', { field_type: 'RADIO', required: false, group_key: 'g', ...off })])).toBeNull();
+    expect(evaluateSignerFieldRules([f('a', { field_type: 'RADIO', required: true, group_key: 'g', ...off })])?.reason).toBe('radio_group_select_one');
   });
 });

@@ -9,7 +9,7 @@
 
 import {
   FIELD_CATALOG,
-  fieldSettingsOf,
+  editableFieldSettings,
   fieldTypesFor,
   isFieldTypeKey,
   type DropdownChoice,
@@ -184,11 +184,12 @@ export interface PageRef {
   readonly page: number;
 }
 
-/** The settings controls a field shows: the catalog's list ∩ the host's capabilities. */
+/**
+ * The settings controls a field shows: the catalog's list ∩ the host's capabilities
+ * (FIELD-PARITY-2 A-7 — @aramo/sign-fields editableFieldSettings, the one projection the app uses too).
+ */
 export function editableSettingsOf(type: string, caps: PlacementCapabilities): readonly FieldSetting[] {
-  if (!isFieldTypeKey(type)) return [];
-  const allowed = new Set(caps.settings);
-  return fieldSettingsOf(type).filter((s) => allowed.has(s));
+  return editableFieldSettings(type, caps.settings);
 }
 
 export interface PaletteEntry {

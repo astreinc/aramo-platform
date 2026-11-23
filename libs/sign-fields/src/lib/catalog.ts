@@ -521,6 +521,41 @@ export function fieldSettingsOf(type: FieldTypeKey): readonly FieldSetting[] {
 }
 
 /**
+ * FIELD-PARITY-2 A-7 — the settings controls an editor shows for a field: the catalog's list for
+ * its type ∩ the settings the host authors (in the catalog's order). ONE projection for the web
+ * editor (@aramo/field-placement-web) and the app's settings sheet. An unknown type shows none.
+ */
+export function editableFieldSettings(type: string, hostSettings: readonly FieldSetting[]): readonly FieldSetting[] {
+  if (!isFieldTypeKey(type)) return [];
+  const allowed = new Set(hostSettings);
+  return fieldSettingsOf(type).filter((s) => allowed.has(s));
+}
+
+/** The settings an envelope sender's editor authors besides sender-filled and read-only (never a payment's). */
+const SENDER_EDITOR_SETTINGS: readonly FieldSetting[] = [
+  'label',
+  'group_key',
+  'group_rule',
+  'min_selected',
+  'name_mode',
+  'tooltip',
+  'placeholder',
+  'validation',
+  'font_size',
+  'data_name',
+  'options',
+];
+
+/**
+ * FIELD-PARITY-2 A-7 — the settings an envelope sender's editor authors (sign-web Prepare and the
+ * app's Send flow): every setting but the PAYMENT amount and currency, with sender-filled and
+ * read-only only while the server says they are on (sender_filled_fields_enabled, S-5).
+ */
+export function senderEditorSettings(senderFilledEnabled: boolean): readonly FieldSetting[] {
+  return senderFilledEnabled ? [...SENDER_EDITOR_SETTINGS, 'read_only', 'sender_filled'] : SENDER_EDITOR_SETTINGS;
+}
+
+/**
  * FIELD-PARITY-1 P3 (ruling R-9) — a documents-family template type carried onto an envelope
  * as a Sign type: CURRENCY becomes NUMBER with the money format, SIGNER_EMAIL becomes EMAIL.
  * The mapped field keeps its geometry, role, required setting and its other settings.

@@ -19,7 +19,8 @@
 //     text sheet (TapContext.prefill) and the signer may edit it before saving.
 //   - FIELD-PARITY-1 P3 §6: DATE, DROPDOWN, NUMBER and MULTILINE_TEXT open the field editor
 //     (never cleared by a tap); a RADIO option is chosen (its group's other options cleared,
-//     a chosen option stays chosen); a field's label setting names it; a read-only /
+//     a chosen option of a required set stays chosen; FIELD-PARITY-2 A-2: one of an optional
+//     set is cleared by tapping it again); a field's label setting names it; a read-only /
 //     sender-filled field shows the sender's value, is never tapped, sent or required; a
 //     value is checked with the server's own rule (@aramo/sign-client signerValueProblem)
 //     before it is kept.
@@ -35,6 +36,7 @@ import {
   isSignerEditorKind,
   isSignerLocked,
   normalizeSignerInput,
+  radioChoiceClearable,
   signDatePreview,
   signerFieldCaption,
   signerFieldUnits,
@@ -483,8 +485,13 @@ export function toggleCheck(s: SigningState, f: SigningField): SigningState {
     s.values[id]?.fromServer || s.fields.find((x) => x.field_id === id)?.filled === true
       ? { value: 'false' }
       : null;
-  // FIELD-PARITY-1 P3 T-5 — a chosen radio option stays chosen (choose another to change it).
-  if (isChecked(s, f.field_id)) return isRadio(f) ? { ...s, currentId: f.field_id } : withValue(s, f.field_id, off(f.field_id));
+  // FIELD-PARITY-1 P3 T-5 — a chosen radio option of a required set stays chosen (choose another
+  // to change it). FIELD-PARITY-2 A-2 — one of an OPTIONAL set is cleared (the shared rule,
+  // radioChoiceClearable); a stored choice is cleared with 'false'.
+  if (isChecked(s, f.field_id)) {
+    if (!isRadio(f)) return withValue(s, f.field_id, off(f.field_id));
+    return radioChoiceClearable(f, s.fields) ? withValue(s, f.field_id, off(f.field_id)) : { ...s, currentId: f.field_id };
+  }
   let next = s;
   const g = groupOf(f);
   if (g !== null && (f.group_rule === 'SELECT_ONE' || isRadio(f))) {

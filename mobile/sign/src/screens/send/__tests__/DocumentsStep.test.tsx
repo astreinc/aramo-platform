@@ -195,3 +195,21 @@ describe('Preview a document', () => {
     expect(c.snapshot.draft!.payload.documents.map((d) => d.title)).toEqual(['Lease']);
   });
 });
+
+describe('FIELD-PARITY-2 A-3 — the upload options in the sheet', () => {
+  it('offers sign-web’s two choices (both off) in the shared words; a tick is kept on the draft', async () => {
+    const c = controller();
+    await c.open();
+    renderStep(c);
+    const imp = screen.getByTestId('upload-opt-import_fields');
+    const tags = screen.getByTestId('upload-opt-apply_text_tags');
+    expect(imp.props.accessibilityLabel).toBe('Import fields from a fillable PDF');
+    expect(tags.props.accessibilityLabel).toBe('Apply text tags ({{…}})');
+    expect(imp.props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.queryByTestId('upload-tag-help')).toBeNull();
+    act(() => fireEvent.press(tags));
+    await waitFor(() => expect(screen.getByTestId('upload-opt-apply_text_tags').props.accessibilityState).toMatchObject({ checked: true }));
+    expect(screen.getByTestId('upload-tag-help')).toBeTruthy();
+    expect(c.uploadOptions).toEqual({ importFields: false, applyTextTags: true });
+  });
+});

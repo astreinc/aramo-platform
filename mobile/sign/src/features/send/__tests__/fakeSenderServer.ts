@@ -175,12 +175,68 @@ export function fakeSenderServer(
       if (opts.refuseWord && /\.(docx|doc)$/i.test(String(r.body?.['filename'] ?? ''))) {
         return refuse(opts.refuseWord.status, opts.refuseWord.reason);
       }
+      // FIELD-PARITY-2 A-3 — an opted-in upload creates fields for the first signing recipient
+      // (a form's text field and a text tag's signature), refused before anything is stored when
+      // there is none.
+      const opted = r.body?.['import_fields'] === true || r.body?.['apply_text_tags'] === true;
+      const firstSigner = env.recipients.find((x) => x.recipient_kind !== 'RECEIVES_COPY');
+      if (opted && !firstSigner) return refuse(422, 'field_import_needs_recipient');
+      const docId = `doc-${++seq}`;
+      const made: Record<string, unknown>[] = opted
+        ? [
+            {
+              id: `fld-${++seq}`,
+              envelope_document_id: docId,
+              signer_id: firstSigner!.id,
+              field_type: 'TEXT',
+              page_number: 0,
+              x: 100,
+              y: 500,
+              width: 200,
+              height: 22,
+              required: true,
+              name_mode: null,
+              label: 'Full name',
+              group_key: null,
+              group_rule: null,
+              min_selected: null,
+              tooltip: 'As on your ID',
+            },
+            {
+              id: `fld-${++seq}`,
+              envelope_document_id: docId,
+              signer_id: firstSigner!.id,
+              field_type: 'SIGNATURE',
+              page_number: 0,
+              x: 100,
+              y: 200,
+              width: 230,
+              height: 50,
+              required: true,
+              name_mode: null,
+              label: null,
+              group_key: null,
+              group_rule: null,
+              min_selected: null,
+            },
+          ]
+        : [];
       const doc = {
-        id: `doc-${++seq}`,
+        id: docId,
         title: String(r.body?.['title']),
         page_count: 1,
         pages: [{ width: 612, height: 792 }],
+        ...(opted
+          ? {
+              field_import: {
+                fields: made.map((f) => ({ ...f, source: 'pdf_form', source_name: 'f' })),
+                warnings: [{ code: 'pdf_field_hidden', message: 'hidden' }],
+                stripped: ['/AcroForm'],
+              },
+            }
+          : {}),
       };
+      env.fields.push(...made);
       env.documents.push({ id: doc.id, title: doc.title });
       env.revision += 1;
       if (key) uploads.set(key, doc);

@@ -25,11 +25,12 @@ const place = (s: EditorState, tool: Parameters<typeof editorReducer>[1] extends
   );
 
 describe('the Phase 3 tools (send flow)', () => {
-  it('the send row ends with the Phase 3 tools; Sign a document keeps its row', () => {
+  it('the row ends with the Phase 3 tools; Sign a document places them too (FIELD-PARITY-2 A-1)', () => {
     expect(sendTools(toolFieldTypes()).slice(-6).map((x) => x.type)).toEqual(['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT']);
     expect(PHASE3_TOOLS).toHaveLength(6);
-    expect(isSelfSignFieldType('DROPDOWN')).toBe(false);
-    expect(isSelfSignFieldType('TEXT')).toBe(true);
+    for (const t of ['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT', 'TEXT'])
+      expect(isSelfSignFieldType(t)).toBe(true);
+    expect(isSelfSignFieldType('PAYMENT')).toBe(false);
   });
 });
 

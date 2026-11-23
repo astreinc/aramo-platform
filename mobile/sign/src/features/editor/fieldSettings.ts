@@ -5,7 +5,9 @@
 // the settings sheet shows the server's refusal before the draft syncs. Pure: unit-tested.
 import {
   VALIDATIONS_BY_TYPE,
+  editableFieldSettings,
   fieldSettingsOf,
+  senderEditorSettings,
   fieldValueRefusal,
   isFieldTypeKey,
   parseFieldSettings,
@@ -61,18 +63,13 @@ export function isGroupedType(type: string): boolean {
 }
 
 /**
- * The settings a field's sheet shows: the catalog's list for its type (never the PAYMENT amount,
- * which this editor does not author), with sender-filled and read-only only while the server
- * says they are on (sender_filled_fields_enabled).
+ * The settings a field's sheet shows. FIELD-PARITY-2 A-7 — the shared projection the web editor
+ * uses too (@aramo/sign-client editableFieldSettings): the catalog's list for its type ∩ what an
+ * envelope sender's editor authors (senderEditorSettings: never the PAYMENT amount; sender-filled
+ * and read-only only while the server says they are on, sender_filled_fields_enabled).
  */
 export function editableSettings(type: string, senderFilledEnabled: boolean): readonly FieldSetting[] {
-  if (!isFieldTypeKey(type)) return [];
-  return fieldSettingsOf(type).filter(
-    (s) =>
-      s !== 'payment_amount_minor' &&
-      s !== 'payment_currency' &&
-      (senderFilledEnabled || (s !== 'sender_filled' && s !== 'read_only')),
-  );
+  return editableFieldSettings(type, senderEditorSettings(senderFilledEnabled));
 }
 
 /** Whether a type has anything for the settings sheet. */

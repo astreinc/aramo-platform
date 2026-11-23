@@ -34,6 +34,7 @@ export {
   evaluateSignerFieldRules,
   signerFieldUnits,
   checkboxGroupOf,
+  radioChoiceClearable,
   isSignerLocked,
   type SignerFieldLike,
   type SignerFieldUnit,
@@ -150,6 +151,9 @@ export {
   isFieldTypeKey,
   isPaymentsGatedOn,
   fieldSettingsOf,
+  // FIELD-PARITY-2 A-7 — the editors' settings projection (web and app).
+  editableFieldSettings,
+  senderEditorSettings,
   // FIELD-PARITY-1 P3 §6 — the settings rule, the value rules and how a value prints (one copy
   // for the server and both Sign apps).
   isCircleMark,

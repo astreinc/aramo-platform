@@ -2840,6 +2840,7 @@
       "planFacts",
       "predecessorsOf",
       "profileTextValueRefusal",
+      "radioChoiceClearable",
       "recipientKindOf",
       "refusalMessage",
       "remindableSigners",
@@ -2850,6 +2851,7 @@
       "selfSignTarget",
       "sendFeaturesOf",
       "senderActionsOf",
+      "senderEditorSettings",
       "sessionIssueRefusal",
       "signDatePreview",
       "signerFieldCaption",
@@ -2925,6 +2927,7 @@
       "WHEN_PAYMENTS_AVAILABLE",
       "checkboxGroupIssues",
       "detectFields",
+      "editableFieldSettings",
       "fieldImportSummary",
       "fieldImportWarningText",
       "fieldSettingsOf",
@@ -2952,6 +2955,7 @@
       "pendingSuggestions",
       "planPdfFormFields",
       "planTextTags",
+      "senderEditorSettings",
       "senderFilledFieldsEnabled",
       "setFieldSettings",
       "suggestSignatureBlock",
@@ -14989,6 +14993,16 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/selfSign/selfSignModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/UploadOptions.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/send/draftModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15005,6 +15019,11 @@
       },
       {
         "from": "mobile/sign/src/features/send/sendFeatures.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/send/sendFlowController.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },

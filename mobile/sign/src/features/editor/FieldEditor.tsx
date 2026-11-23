@@ -821,7 +821,8 @@ function SelfSignLayout({
 }) {
   const t = useTheme();
   const font = { fontFamily: t.font.family };
-  const tools = selfSignTools();
+  // FIELD-PARITY-2 A-1 — Sign a document offers the Phase 3 tools too (the same row as Send).
+  const tools = sendTools(toolFieldTypes());
   const armed = tools.find((x) => x.type === tool) ?? null;
   // Keyboard-aware Find sheet (M-A13 #5): lifted by whatever of the keyboard is not
   // already absorbed by a resized window or covered by the tool sheet.

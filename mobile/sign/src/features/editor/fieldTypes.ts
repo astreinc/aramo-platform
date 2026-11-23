@@ -20,7 +20,8 @@ import { FEATURES } from '../../config/features';
 export const BASE_FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT'] as const;
 export const EXTRA_FIELD_TYPES = ['SIGNER_NAME', 'CHECKBOX'] as const;
 // FIELD-PARITY-1 P3 §6.1 — the new types (T-3..T-7) and ACKNOWLEDGEMENT (T-2, ruling R-2), shown
-// while FEATURES.phase3FieldTypes is on, in the Send flow editor (Sign a document keeps its row).
+// while FEATURES.phase3FieldTypes is on, in the Send flow editor and (FIELD-PARITY-2 A-1) Sign a
+// document.
 export const PHASE3_FIELD_TYPES = ['DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT', 'ACKNOWLEDGEMENT'] as const;
 // FIELD-PARITY-1 P1-2 — the catalog's profile prefill types (@aramo/sign-client over
 // @aramo/sign-fields). The three tiers together are the catalog's `send_mobile` surface
@@ -72,13 +73,13 @@ export function toolFieldTypes(
   ];
 }
 
-const PHASE3_SET: ReadonlySet<string> = new Set(PHASE3_FIELD_TYPES);
 /**
- * The types "Sign a document" (self-signing) places and fills: every authoring type but the
- * Phase 3 ones, whose values it does not fill yet (its fill sheet is the signer's side).
+ * The types "Sign a document" (self-signing) places and fills. FIELD-PARITY-2 A-1 — every
+ * authoring type, the Phase 3 ones included (the signer's field editor fills them), so a
+ * template's fields are all placed and none is lost.
  */
 export function isSelfSignFieldType(v: unknown): v is AuthoringFieldType {
-  return isAuthoringFieldType(v) && !PHASE3_SET.has(v);
+  return isAuthoringFieldType(v);
 }
 
 /** M-A13 #11 (R-5) — the base zoom is "Fit" (fit to width); larger levels keep their %. */
@@ -184,7 +185,7 @@ export function selfSignTools(
   return SELF_SIGN_TOOLS.filter((x) => available.includes(x.type));
 }
 
-/** FIELD-PARITY-1 P3 — the Phase 3 tools, after the M-A19 row in the Send flow editor. */
+/** FIELD-PARITY-1 P3 — the Phase 3 tools, after the M-A19 row (Send flow and, FIELD-PARITY-2 A-1, Sign a document). */
 export const PHASE3_TOOLS: typeof SELF_SIGN_TOOLS = [
   { type: 'DATE', label: 'Date picker', icon: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M9 15l2 2 4-4' },
   { type: 'DROPDOWN', label: 'Dropdown', icon: 'M4 6h16v12H4zM14 11l2 2 2-2' },
@@ -194,7 +195,7 @@ export const PHASE3_TOOLS: typeof SELF_SIGN_TOOLS = [
   { type: 'ACKNOWLEDGEMENT', label: 'Acknowledge', icon: 'M5 5h14v14H5zM8.5 12l2.5 2.5 4.5-5M3 22h18' },
 ];
 
-/** The Send flow editor's tool row: the M-A19 row, then the Phase 3 tools this build offers. */
+/** The editors' tool row: the M-A19 row, then the Phase 3 tools this build offers (both editors). */
 export function sendTools(
   available: readonly AuthoringFieldType[] = toolFieldTypes(),
 ): typeof SELF_SIGN_TOOLS {

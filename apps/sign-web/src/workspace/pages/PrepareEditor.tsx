@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadPdf, type LoadedPdf } from '@aramo/document-templates-web/pdf';
 import { PlacementEditor, suggestionsFromWire, useAutosave, type PlacedField, type PlacementCapabilities, type PlacementDocument, type PlacementSuggestion } from '@aramo/field-placement-web';
-import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes } from '@aramo/sign-client';
+import { CHECKBOX_GROUP_KEY_MAX, CHECKBOX_LABEL_MAX, FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, placeableFieldTypes, senderEditorSettings } from '@aramo/sign-client';
 
 import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
 import { Btn, COLORS, ErrorBox, Icon, Loading } from '../ui';
@@ -57,14 +57,17 @@ const ORDER: readonly FieldType[] = [
   'ACKNOWLEDGEMENT',
 ];
 
-/** FIELD-PARITY-1 P3 §6.2 — the settings Prepare edits (the Sign sender API stores every one). */
-export const PREPARE_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'name_mode', 'tooltip', 'placeholder', 'validation', 'font_size', 'data_name', 'options'] as const;
+/**
+ * FIELD-PARITY-1 P3 §6.2 — the settings Prepare edits (the Sign sender API stores every one).
+ * FIELD-PARITY-2 A-7 — the shared list the app's Send flow uses too (@aramo/sign-client).
+ */
+export const PREPARE_SETTINGS = senderEditorSettings(false);
 
 /** The editor capabilities: sender-filled (and read-only) only while the server says they are on (S-5, dark). */
 export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled'>): PlacementCapabilities {
   const senderFilled = env.sender_filled_fields_enabled === true;
   return {
-    settings: senderFilled ? [...PREPARE_SETTINGS, 'read_only', 'sender_filled'] : PREPARE_SETTINGS,
+    settings: senderEditorSettings(senderFilled),
     limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX },
     senderValues: senderFilled,
   };
