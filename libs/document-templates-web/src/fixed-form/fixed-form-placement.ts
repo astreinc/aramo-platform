@@ -61,15 +61,13 @@ function settingsFromStored(f: FixedFormField): PlacedField['settings'] {
  * FIELD-PARITY-1 P3 §6.2 — the settings the Studio edits while sender-filled fields are off:
  * every template setting except sender-filled and read-only (the server flag
  * SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark). A stored one is kept (round-trips) and
- * still shown on the field.
+ * still shown on the field. FIELD-PARITY-2 B-7 — "Show only when…" (condition) included: its
+ * trigger is another field's field_key for the same signer role.
  */
-export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only' && k !== 'condition');
+export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only');
 
-/**
- * FIELD-PARITY-2 B-2 — every template setting but condition: the Studio offers "Show only when…"
- * with its own control (B-7). A stored condition round-trips unchanged meanwhile.
- */
-const STUDIO_SETTINGS_ALL: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'condition');
+/** Every template setting (the server flag is on), "Show only when…" included (B-7). */
+const STUDIO_SETTINGS_ALL: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS;
 
 /**
  * FIELD-PARITY-2 A-4 (ruling C-9) — the settings the Studio offers, from the view's

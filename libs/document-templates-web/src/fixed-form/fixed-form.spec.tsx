@@ -276,3 +276,26 @@ describe('FIELD-PARITY-2 A-4 — the sender-filled toggle follows the view flag'
     expect(screen.getByTestId('ffs-read-only')).toBeInTheDocument();
   });
 });
+
+describe('FIELD-PARITY-2 B-7 — "Show only when…" in the console Studio', () => {
+  const field = (o: Record<string, unknown>) => ({ binding_key: null, signer_role: 'employee', required: false, page_number: 0, x: 72, y: 600, width: 18, height: 18, ordinal: 0, ...o });
+
+  it('sets a field’s trigger (a same-role check box) and saves it with the layout', async () => {
+    const fields = [
+      field({ field_key: 'checkbox_1', field_type: 'CHECKBOX', label: 'Co-applicant' }),
+      field({ field_key: 'text_1', field_type: 'TEXT', ordinal: 1, y: 560, width: 230, height: 22 }),
+      field({ field_key: 'signature_1', field_type: 'SIGNATURE', ordinal: 2, y: 100, width: 230, height: 50, required: true }),
+    ];
+    const ds = source({ view: vi.fn(async () => view({ fields: fields as FixedFormVersionView['fields'] })) });
+    render(<FixedFormStudio dataSource={ds} templateId="t1" canManage loadPdfFn={fakeLoad} />);
+    fireEvent.pointerDown(await screen.findByTestId('ffs-field-text_1'));
+    const trigger = screen.getByTestId('ffs-condition-trigger') as HTMLSelectElement;
+    expect(Array.from(trigger.options).map((o) => o.value)).toEqual(['', 'checkbox_1']);
+    fireEvent.change(trigger, { target: { value: 'checkbox_1' } });
+    await waitFor(() => expect(ds.saveLayout).toHaveBeenCalled(), { timeout: 3000 });
+    const body = (ds.saveLayout as ReturnType<typeof vi.fn>).mock.calls.at(-1)![1] as { fields: Record<string, unknown>[] };
+    expect(body.fields.find((f) => f['field_key'] === 'text_1')).toMatchObject({ condition: { trigger_key: 'checkbox_1', when: 'checked' } });
+    // The untouched trigger goes back exactly as it came.
+    expect(body.fields.find((f) => f['field_key'] === 'checkbox_1')).toEqual(fields[0]);
+  });
+});
