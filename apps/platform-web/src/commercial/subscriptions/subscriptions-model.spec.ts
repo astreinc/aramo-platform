@@ -291,6 +291,17 @@ describe('CCP-B3 the action-to-change-request trace (payloads; PBD §5.3 B3 acce
 });
 
 describe('CCP-B3 refusal lines', () => {
+  it('CPA-R-1 the SUBSCRIPTION_OPEN creation refusals (P-4, and comp_not_personal) read in plain words', () => {
+    const v = (details: Record<string, unknown>) => refusalLine(new ApiError(400, 'invalid', 'VALIDATION_ERROR', details));
+    expect(v({ reason: 'plan_tenant_kind_mismatch', tenant_kind: 'PERSONAL', plan_tenant_kind: 'BUSINESS' })).toBe(
+      'Refused: This plan is for a different kind of account than this tenant. Choose a plan for this tenant’s kind. (tenant: Personal; plan: Business) (400 VALIDATION_ERROR · plan_tenant_kind_mismatch)',
+    );
+    expect(v({ reason: 'free_replacement_not_personal', tenant_kind: 'BUSINESS', replaced_source: 'FREE' })).toBe(
+      'Refused: Only a Personal account’s Free plan can be replaced by an arranged plan. (400 VALIDATION_ERROR · free_replacement_not_personal)',
+    );
+    expect(v({ reason: 'arrangement_required' })).toBe('Refused: Moving off the Free plan needs an arrangement: no charge (comp) or an agreed price. (400 VALIDATION_ERROR · arrangement_required)');
+    expect(v({ reason: 'comp_not_personal', tenant_kind: 'BUSINESS' })).toBe('Refused: A no-charge (comp) plan is only for Personal accounts. (400 VALIDATION_ERROR · comp_not_personal)');
+  });
   it('B3-R-1 DR-C2-1: the conversion apply refused FINANCIAL_TREATMENT_UNDEFINED is named and explained', () => {
     const err = new ApiError(409, 'conversion failed', 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_failed', failure: 'FINANCIAL_TREATMENT_UNDEFINED', attempt: 1, request_state: 'APPLY_FAILED' });
     const line = refusalLine(err);

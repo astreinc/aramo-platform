@@ -506,6 +506,26 @@ describe('CCP-PERSONAL-ARRANGED-1 Tenant › Commercial — move a Free Personal
     expect(writes(w).every((x) => GOVERNED.test(x))).toBe(true);
   });
 
+  it('CPA-T-4 a creation refusal is shown in the dialog in plain words, and nothing is submitted', async () => {
+    const w = personal();
+    const d = await openArranged(w);
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if ((init?.method ?? 'GET').toUpperCase() === 'POST' && url.endsWith('/platform/commercial/change-requests')) {
+        return new Response(JSON.stringify({ error: { code: 'VALIDATION_ERROR', message: 'invalid', details: { reason: 'arrangement_required' } } }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+      return base(input, init);
+    });
+    await within(d).findByLabelText('Personal plan');
+    fireEvent.click(within(d).getByLabelText('No charge (comp)'));
+    fireEvent.change(within(d).getByLabelText('Reason'), { target: { value: 'Internal user' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Submit for approval' }));
+    expect(await within(d).findByText(/Moving off the Free plan needs an arrangement/)).toBeInTheDocument();
+    expect(w.calls.filter((c) => c.path.endsWith('/submit'))).toHaveLength(0);
+  });
+
   it('CPA-T-3 the reason over 500 characters or a multi-line reference keeps Submit disabled', async () => {
     const d = await openArranged(personal());
     await within(d).findByLabelText('Personal plan');

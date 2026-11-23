@@ -458,6 +458,19 @@ export const REFUND_REFUSAL_TEXT: Readonly<Record<string, string>> = {
   REFUND_POLICY_NOT_APPROVED: 'The active commercial policy doesn’t enable refunds.',
 };
 
+/**
+ * CCP-PERSONAL-ARRANGED-1 P-4 — a SUBSCRIPTION_OPEN refused at creation (400 VALIDATION_ERROR,
+ * `details.reason`), in plain words. `comp_not_personal`: PO ruling 2026-11-23 (server 6f774ce3).
+ */
+export const OPEN_REFUSAL_TEXT: Readonly<Record<string, string>> = {
+  plan_tenant_kind_mismatch: 'This plan is for a different kind of account than this tenant. Choose a plan for this tenant’s kind.',
+  free_replacement_not_personal: 'Only a Personal account’s Free plan can be replaced by an arranged plan.',
+  arrangement_required: 'Moving off the Free plan needs an arrangement: no charge (comp) or an agreed price.',
+  comp_not_personal: 'A no-charge (comp) plan is only for Personal accounts.',
+};
+
+const KIND_LABEL: Readonly<Record<string, string>> = { PERSONAL: 'Personal', BUSINESS: 'Business' };
+
 /** The refusal line for a failed create, apply or convert. */
 export function refusalLine(err: unknown): string {
   if (!(err instanceof ApiError)) return 'Something went wrong. Try again in a minute.';
@@ -471,6 +484,12 @@ export function refusalLine(err: unknown): string {
   if (reason === 'apply_expired') return `Refused: ${FAILURE_TEXT['APPLY_EXPIRED']} (${code})`;
   if (refusal && REFUND_REFUSAL_TEXT[refusal]) return `Refused: ${REFUND_REFUSAL_TEXT[refusal]} (${code})`;
   if (reason === 'apply_refused' && refusal) return `Refused: ${refusal}. ${explanation ?? 'Nothing changed.'} (${code})`;
+  if (reason !== null && OPEN_REFUSAL_TEXT[reason]) {
+    const tk = typeof d['tenant_kind'] === 'string' ? (KIND_LABEL[d['tenant_kind']] ?? d['tenant_kind']) : null;
+    const pk = typeof d['plan_tenant_kind'] === 'string' ? (KIND_LABEL[d['plan_tenant_kind']] ?? d['plan_tenant_kind']) : null;
+    const kinds = reason === 'plan_tenant_kind_mismatch' && tk && pk ? ` (tenant: ${tk}; plan: ${pk})` : '';
+    return `Refused: ${OPEN_REFUSAL_TEXT[reason]}${kinds} (${code})`;
+  }
   if (reason === 'open_request_exists') return `Refused: another request on this product is open. It must close first. (${code})`;
   if (reason === 'not_requester') return `Refused: only the person who made the request can apply it. (${code})`;
   if (err.status === 403) return `Refused: your account doesn’t hold the permission for this. (${code})`;
