@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 
+import { readFileSync } from 'node:fs';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { APP_FILTER } from '@nestjs/core';
@@ -29,7 +31,7 @@ import {
 
 import { PlatformCommercialChangeRequestController } from '../app/platform/platform-commercial-change-request.controller.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the libs/subscription A3 spec
-import { CCP_BUNDLES, TENANT_1, TENANT_2, addOperator, applyCcpA3Schema, revokeAttestation } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+import { CCP_A4_MIGRATION, CCP_BUNDLES, TENANT_1, TENANT_2, addOperator, applyCcpA3Schema, revokeAttestation } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
@@ -145,6 +147,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
   }, 120_000);
 
   it('A3-RI-CREATE per role: SUBSCRIPTION_OPEN only commercial_ops (201); catalog publish only catalog_manager; escalated extension only support_admin; POLICY_ACTIVATE only finance_admin (CCP-A9, TD-A3-5); super_admin refused at the gate', async () => {
+    // CCP-PERSONAL-ARRANGED-1 P-4 — a SUBSCRIPTION_OPEN is now checked at creation against the named plan's
+    // product_key and tenant_kind; the A3-era schema has no Plan.product_key (CCP-A4), so the read failed (500)
+    // before the role matrix could be observed. The A4 migration (whole file) gives the plan its product; the
+    // included plan has no tenant_kind, so the open is admissible and the matrix proves what it proved.
+    await pg.query(readFileSync(CCP_A4_MIGRATION, 'utf8'));
     const sub = { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: { plan_key: 'aramo-sign-included-v1', plan_version_id: '019a0000-0000-7000-8000-00000000a601', replaces_subscription_id: null } }; // CCP-A6 payload schema
     const out: Record<string, unknown[]> = {};
     for (const role of [...ROLES, 'super_admin']) out[role] = refusalOf(await createAs(role, sub));
