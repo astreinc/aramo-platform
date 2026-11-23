@@ -29,3 +29,10 @@ export const INDIA_BILLING_ACCOUNT_KEY_FIXTURE = resolve(__dirname, './india-bil
  * (PlanVersion, PlanVersionPrice, CheckoutIntent, TenantSubscription), so the migration itself is applied whole.
  */
 export const SIGN_BILLING_TERMS_MIGRATION = resolve(__dirname, '../../../prisma/migrations/20261115100000_sign_billing_terms/migration.sql');
+
+/**
+ * CCP-PERSONAL-ARRANGED-1 (P-2) — TenantSubscription.arrangement is read by the Prisma client on every query,
+ * so each fixed set applies this migration right after the billing-terms one. It adds one nullable column
+ * to a table those sets already have, so it is applied whole.
+ */
+export const CCP_PERSONAL_ARRANGED_MIGRATION = resolve(__dirname, '../../../prisma/migrations/20261124100000_ccp_personal_arranged_1_arrangement/migration.sql');

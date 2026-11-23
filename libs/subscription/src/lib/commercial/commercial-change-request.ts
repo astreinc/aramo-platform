@@ -578,6 +578,32 @@ export class CommercialPayloadError extends Error {
 /** CCP-R3 (TD-B2-1) — PLAN_RETIRE names no plan version: refused; there is no whole-plan retire. */
 export const PLAN_VERSION_ID_REQUIRED = 'plan_version_id_required';
 
+/**
+ * CCP-PERSONAL-ARRANGED-1 (P-2) — how a governed subscription is arranged by Aramo outside the store and
+ * the web billing provider. COMP: no charge (internal or courtesy). AGREED: a price agreed outside them.
+ */
+export const SUBSCRIPTION_ARRANGEMENTS = ['COMP', 'AGREED'] as const;
+export type SubscriptionArrangement = (typeof SUBSCRIPTION_ARRANGEMENTS)[number];
+export const isSubscriptionArrangement = (v: unknown): v is SubscriptionArrangement => typeof v === 'string' && (SUBSCRIPTION_ARRANGEMENTS as readonly string[]).includes(v);
+/** PO ruling D-6 — the optional internal reference a SUBSCRIPTION_OPEN may carry (stored on the request). */
+export const EXTERNAL_REF_MAX_LENGTH = 120;
+const SUBSCRIPTION_OPEN_ARRANGEMENT_KEYS = ['arrangement', 'external_ref'] as const;
+
+const hasControlCharacter = (v: string): boolean => [...v].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
+
+/** P-2 / D-6 — the `arrangement` and `external_ref` members of a SUBSCRIPTION_OPEN payload (both optional). */
+export function arrangementPayloadErrors(p: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  if (p['arrangement'] !== undefined && !isSubscriptionArrangement(p['arrangement'])) errors.push(`arrangement must be one of ${SUBSCRIPTION_ARRANGEMENTS.join(', ')}`);
+  const ref = p['external_ref'];
+  if (ref !== undefined) {
+    if (typeof ref !== 'string' || ref.trim().length === 0 || ref.length > EXTERNAL_REF_MAX_LENGTH || hasControlCharacter(ref)) {
+      errors.push(`external_ref must be a non-empty single-line string of at most ${EXTERNAL_REF_MAX_LENGTH} characters`);
+    }
+  }
+  return errors;
+}
+
 const MAX_PAYLOAD_BYTES = 65_536;
 
 /**
@@ -743,13 +769,17 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // the change acts on or replaces (G2), so a stale request is refused at apply.
     case 'SUBSCRIPTION_OPEN':
       // CCP-B4: an optional `contract` block records an enterprise contract with the open.
-      closedKeys(p, ['plan_key', 'plan_version_id', 'replaces_subscription_id', 'period_anchor', ...CONTRACT_PAYLOAD_KEYS.SUBSCRIPTION_OPEN], errors);
+      // CCP-PERSONAL-ARRANGED-1 (P-2, PO ruling D-6): an optional `arrangement` (COMP | AGREED) marks the
+      // row as arranged by Aramo, and an optional `external_ref` (an internal reference, at most 120
+      // characters) is recorded with the request; both are bound by the payload checksum.
+      closedKeys(p, ['plan_key', 'plan_version_id', 'replaces_subscription_id', 'period_anchor', ...SUBSCRIPTION_OPEN_ARRANGEMENT_KEYS, ...CONTRACT_PAYLOAD_KEYS.SUBSCRIPTION_OPEN], errors);
       validateContractBlocks('SUBSCRIPTION_OPEN', p, errors);
       planRef(p, errors);
       if (p['replaces_subscription_id'] !== null && !(typeof p['replaces_subscription_id'] === 'string' && UUID.test(p['replaces_subscription_id']))) {
         errors.push('replaces_subscription_id must be a uuid or null (null: the tenant holds no open subscription of the product)');
       }
       if (p['period_anchor'] !== undefined && !isIsoInstant(p['period_anchor'])) errors.push('period_anchor must be an ISO-8601 UTC instant');
+      errors.push(...arrangementPayloadErrors(p));
       break;
     case 'SUBSCRIPTION_CHANGE':
       // CCP-B4: an optional `contract` (record) or `contract_amendment` block; with either, the

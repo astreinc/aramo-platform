@@ -464,6 +464,12 @@ export {
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
   PLAN_VERSION_ID_REQUIRED,
+  // CCP-PERSONAL-ARRANGED-1 — the arrangement marker.
+  SUBSCRIPTION_ARRANGEMENTS,
+  EXTERNAL_REF_MAX_LENGTH,
+  arrangementPayloadErrors,
+  isSubscriptionArrangement,
+  type SubscriptionArrangement,
   canTransition,
   canTransitionFor,
   isA6Applicable,

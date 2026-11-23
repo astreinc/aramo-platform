@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type ApplyServiceAction, isApplyServiceAction, validatePayload } from './commercial-change-request.js';
+import { type ApplyServiceAction, isApplyServiceAction, isSubscriptionArrangement, validatePayload } from './commercial-change-request.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -586,6 +586,7 @@ export class CommercialApplyService {
           await tx.tenantSubscription.update({ where: { id: open.id }, data: { ended_at: now, status: open.status === 'ACTIVE' ? 'CANCELED' : open.status } });
         }
         const terms = planVersionTerms(version).plan;
+        const arrangement = isSubscriptionArrangement(p['arrangement']) ? p['arrangement'] : null;
         const id = uuidv7();
         await tx.tenantSubscription.create({
           data: {
@@ -601,6 +602,8 @@ export class CommercialApplyService {
             status: 'ACTIVE',
             commitment_start: terms.commitment_months !== null ? anchor : null,
             commitment_end: terms.commitment_months !== null ? addMonthsClamped(anchor, terms.commitment_months) : null,
+            // CCP-PERSONAL-ARRANGED-1 P-2 — the approved arrangement (null: not arranged).
+            arrangement,
           },
         });
         return {
@@ -627,6 +630,7 @@ export class CommercialApplyService {
                 period_anchor: anchor.toISOString(),
                 effective_at: now.toISOString(),
                 replaced_subscription_id: open?.id ?? null,
+                arrangement,
               },
             },
           ],
