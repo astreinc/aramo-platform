@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BillingFinanceReportService } from '../lib/billing/billing-finance-report.service.js';
 import { BillingRevenueReportService } from '../lib/billing/billing-revenue-report.service.js';
 import { CommercialApplyFailedError } from '../lib/commercial/commercial-apply.service.js';
+import { CommercialApplyRefusedError } from '../lib/commercial/commercial-approval-eligibility.js';
 import { type CommercialActionType } from '../lib/commercial/commercial-change-request.js';
 import { CommercialChangeRequestError } from '../lib/commercial/commercial-change-request.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -16,6 +17,7 @@ import { A6_CTX, BUSINESS, FREE_PERSONAL, a6Harness, as, newTenant, publishedVer
 // CCP-PERSONAL-ARRANGED-1 (Aramo-CCP-Personal-Arranged-Plan-Directive-v1_0-LOCKED §5.2) on real Postgres 17,
 // every subscription migration applied whole-file (the shared A6 harness):
 //   ARR-I-OPEN-*  P-1 / P-2 / P-3 — a FREE Personal row replaced by an arranged Personal Standard row;
+//   ARR-I-CHAIN-* P-6 — Amendment A3 (LOCKED) AC-COMP-1, the COMP chain;
 //   ARR-I-REF-*   P-4 — the creation-time refusals;
 //   ARR-I-RPT-*   P-3 — the finance and revenue reports with COMP and AGREED rows.
 
@@ -29,6 +31,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
   let h: A6Harness;
   let OPS: string;
   let FA: string;
+  let PO: string;
   let keyN = 0;
   // Set by ARR-I-OPEN-1 / -2, read by the report tests.
   const arranged: { comp?: { tenant: string; sub: string }; agreed?: { tenant: string; sub: string } } = {};
@@ -45,6 +48,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     h = a6Harness(prisma, () => T0);
     OPS = await addOperator(pg, ['commercial_ops']);
     FA = await addOperator(pg, ['finance_admin']);
+    PO = await addOperator(pg, ['platform_owner']);
   }, 300_000);
 
   afterAll(async () => {
@@ -55,11 +59,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
 
   const create = (action_type: CommercialActionType, tenant_id: string, payload: Record<string, unknown>) =>
     h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type, tenant_id, product_key: 'sign', payload, reason: 'arranged by Aramo', idempotency_key: key() }, A6_CTX);
-  /** Create (commercial_ops) → submit → approve (finance_admin; SUBSCRIPTION_OPEN stays Finance only, D-1 unruled). */
+  /**
+   * Create (commercial_ops) → submit → approve: finance_admin, then (Amendment A3 AC-COMP-1: a COMP open) a
+   * distinct platform_owner. AGREED and other opens stay Finance only.
+   */
   async function approved(action_type: CommercialActionType, tenant_id: string, payload: Record<string, unknown>): Promise<string> {
     const r = await create(action_type, tenant_id, payload);
     await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
-    const a = await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    let a = await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    if (a.request.state === 'PENDING_APPROVAL') a = await h.changeRequests.approve(as(PO, 'platform_owner'), r.request.id, { step_index: 1 }, A6_CTX);
     expect(a.request.state).toBe('APPROVED');
     return r.request.id;
   }
@@ -132,6 +140,33 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     const months = (await pg.query(`SELECT (v.content->'plan'->>'commitment_months')::int AS m FROM subscription."PlanVersion" v WHERE v.id = $1`, [fresh.plan_version_id])).rows[0].m as number | null;
     if (months === null) expect(fresh.commitment_end).toBeNull();
     else expect(fresh.commitment_end).not.toBeNull();
+  });
+
+  // ---- P-6 — Amendment A3 (LOCKED) AC-COMP-1: the COMP chain -------------------------------
+
+  it('ARR-I-CHAIN-1 a COMP open resolves Finance → Owner: not applicable after Finance alone; applies after Finance and a distinct Owner', async () => {
+    const { tenant, free } = await personalOnFree();
+    const r = await create('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'COMP' }));
+    expect(r.request.required_chain).toMatchObject({ rule: 'FINANCE_THEN_OWNER', basis: { ruling: 'AC-COMP-1' } });
+    await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
+    const afterFinance = await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    expect(afterFinance.request.state).toBe('PENDING_APPROVAL');
+    const early = await applyAs(r.request.id).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(early instanceof CommercialApplyRefusedError || early instanceof CommercialChangeRequestError).toBe(true);
+    expect(await openRows(tenant)).toEqual([expect.objectContaining({ id: free, source: 'FREE' })]);
+    const done = await h.changeRequests.approve(as(PO, 'platform_owner'), r.request.id, { step_index: 1 }, A6_CTX);
+    expect(done.request.state).toBe('APPROVED');
+    expect((await applyAs(r.request.id)).request.state).toBe('APPLIED');
+    expect(await openRows(tenant)).toEqual([expect.objectContaining({ source: 'MANUAL', arrangement: 'COMP' })]);
+  });
+
+  it('ARR-I-CHAIN-2 an AGREED open stays Finance only (A1 row 1)', async () => {
+    const { tenant, free } = await personalOnFree();
+    const r = await create('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'AGREED' }));
+    expect(r.request.required_chain).toMatchObject({ rule: 'FINANCE_ONLY' });
   });
 
   // ---- P-4 — refused at creation ----------------------------------------------------------

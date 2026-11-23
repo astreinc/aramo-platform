@@ -11,6 +11,7 @@ import {
   subscriptionOpenRefusal,
   validatePayload,
 } from '../lib/commercial/commercial-change-request.js';
+import { COMMERCIAL_CHAIN_PANEL } from '../lib/commercial/commercial-operator-roster.service.js';
 
 // CCP-PERSONAL-ARRANGED-1 (P-2, PO ruling D-6) — the optional `arrangement` and `external_ref` members of a
 // SUBSCRIPTION_OPEN payload (pure schema), and the P-4 creation-time decision.
@@ -103,5 +104,13 @@ describe('CCP-PERSONAL-ARRANGED-1 SUBSCRIPTION_OPEN creation-time refusals', () 
     expect(at({ plan_tenant_kind: undefined })).toBeNull();
     expect(at({ plan_tenant_kind: undefined, arrangement: undefined })).toBe('arrangement_required');
     expect(at({ replaced_source: null, plan_tenant_kind: undefined, tenant_kind: 'BUSINESS', arrangement: undefined })).toBeNull();
+  });
+});
+
+// CCP Amendment A3 AC-COMP-3 — the operator chain panel shows SUBSCRIPTION_OPEN as F, and F → O for COMP.
+describe('CCP Amendment A3 chain panel', () => {
+  it('AC-COMP-3 SUBSCRIPTION_OPEN is on the below-threshold (F) and above-threshold (F → O) chains', () => {
+    const groups = COMMERCIAL_CHAIN_PANEL.filter((g) => g.actions.includes('SUBSCRIPTION_OPEN')).map((g) => g.key);
+    expect(groups).toEqual(['ABOVE_THRESHOLD', 'BELOW_THRESHOLD']);
   });
 });

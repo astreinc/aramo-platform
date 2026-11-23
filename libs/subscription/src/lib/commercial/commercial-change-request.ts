@@ -496,6 +496,15 @@ export function resolveRequiredChain(
     }
     case 'REFUND':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'TD-C4-2 refund (no policy threshold; escalated chain)' });
+    case 'SUBSCRIPTION_OPEN': {
+      // CCP Amendment A3 AC-COMP-1 (CCP-PERSONAL-ARRANGED-1 P-6, ruling R-4) — a payload rule, resolved once at
+      // creation like CREDIT / DISCOUNT: an open arranged at no charge (arrangement COMP) needs Finance then
+      // the Owner; every other open (AGREED, or no arrangement) stays Finance only (A1 row 1). No money threshold.
+      const comp = payload['arrangement'] === 'COMP';
+      return comp
+        ? chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'AC-COMP-1', arrangement: 'COMP', escalates: true })
+        : chainOf('FINANCE_ONLY', def.domain, { ruling: 'D6 below threshold' });
+    }
     case 'PAYMENT_RECORD':
       // CCP-C8-PR PR-3: CORRECT → Finance → Owner (any requester). RECORD → Finance; the requester-dependent
       // part (a finance_admin requester's Platform Owner exception) is resolved ONCE at creation, inside the
