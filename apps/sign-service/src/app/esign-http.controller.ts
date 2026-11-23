@@ -529,11 +529,12 @@ export class EsignSignerController {
   @HttpCode(HttpStatus.OK)
   async fill(
     @Param('fieldId') fieldId: string,
-    @Body() body: { token: string; value: string; signature_method?: string; time_zone?: unknown },
+    @Body() body: { token: string; value: string | null; signature_method?: string; time_zone?: unknown },
     @RequestId() requestId: string,
   ) {
     validate(typeof body?.token === 'string', 'token is required', requestId);
-    validate(typeof body?.value === 'string', 'value is required', requestId);
+    // FIELD-PARITY-2 B-6 follow-up — value null clears the stored value (absent is still refused).
+    validate(typeof body?.value === 'string' || body?.value === null, 'value is required (a string, or null to clear)', requestId);
     try {
       const ctx = await this.verifiedSession(body.token, requestId);
       // Client Rule Consolidation C0-2 — optional IANA time zone (the server stamps SIGN_DATE;

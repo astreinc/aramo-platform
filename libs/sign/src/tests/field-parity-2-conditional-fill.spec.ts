@@ -126,3 +126,63 @@ describe('FIELD-PARITY-2 B-5 — complete', () => {
     await expect(svc.completeSigner(ctx)).rejects.toBeInstanceOf(SignatureFieldIncompleteError);
   });
 });
+
+// FIELD-PARITY-2 B-6 follow-up (ruling C-3) — value null clears a value the signer typed or
+// picked, and the fields the old value showed are cleared with it (the shared rule
+// @aramo/sign-client signerClearRefusal decides which fields may be cleared).
+describe('FIELD-PARITY-2 B-6 follow-up — clear a stored value', () => {
+  it('clears a stored text value (value and filled_at back to NULL)', async () => {
+    const { svc, byId } = engine([sig, { id: 't', field_type: 'TEXT', value: 'typed', filled_at: now, signature_method: 'TYPED' }]);
+    await svc.fillField(ctx, 't', { value: null });
+    expect(byId('t')).toMatchObject({ value: null, filled_at: null, signature_method: null });
+  });
+
+  it('clearing a dropdown trigger clears its dependents along the chain', async () => {
+    const { svc, byId } = engine([
+      sig,
+      { id: 'dd', field_type: 'DROPDOWN', field_key: 'plan', value: 'gold', filled_at: now, options: { choices: [{ value: 'gold', label: 'Gold' }] } },
+      { id: 'box', field_type: 'CHECKBOX', field_key: 'extra', value: 'true', filled_at: now, condition: { trigger_key: 'plan', when: 'one_of', values: ['gold'] } },
+      { id: 'note', field_type: 'TEXT', field_key: 'note', value: 'why', filled_at: now, condition: { trigger_key: 'extra', when: 'checked' } },
+      { id: 'other', field_type: 'TEXT', value: 'kept', filled_at: now },
+    ]);
+    await svc.fillField(ctx, 'dd', { value: null });
+    expect(byId('dd')).toMatchObject({ value: null, filled_at: null });
+    expect(byId('box')).toMatchObject({ value: null, filled_at: null });
+    expect(byId('note')).toMatchObject({ value: null, filled_at: null });
+    expect(byId('other')).toMatchObject({ value: 'kept' });
+  });
+
+  it('a required value may be cleared; completion then requires it again', async () => {
+    const { svc, byId } = engine([sig, { id: 'n', field_type: 'NUMBER', required: true, value: '4', filled_at: now }]);
+    await svc.fillField(ctx, 'n', { value: null });
+    expect(byId('n')).toMatchObject({ value: null, filled_at: null });
+    await expect(svc.completeSigner(ctx)).rejects.toBeInstanceOf(SignatureFieldIncompleteError);
+  });
+
+  it('a hidden field may be cleared (never field_hidden): a no-op the apps may send after the server cleared it', async () => {
+    const { svc, byId } = engine([
+      sig,
+      { id: 'box', field_type: 'CHECKBOX', field_key: 'agree' },
+      { id: 'dep', field_type: 'TEXT', condition: { trigger_key: 'agree', when: 'checked' } },
+    ]);
+    await svc.fillField(ctx, 'dep', { value: null });
+    expect(byId('dep')).toMatchObject({ value: null, filled_at: null });
+  });
+
+  it.each([
+    ['CHECKBOX', {}, 'field_clear_not_allowed'],
+    ['ACKNOWLEDGEMENT', {}, 'field_clear_not_allowed'],
+    ['RADIO', { group_key: 'g' }, 'field_clear_not_allowed'],
+    ['SIGNATURE', {}, 'field_clear_not_allowed'],
+    ['INITIALS', {}, 'field_clear_not_allowed'],
+    ['SIGN_DATE', {}, 'field_clear_not_allowed'],
+    ['PAYMENT', {}, 'payment_field_server_filled'],
+    ['SIGNER_NAME', { name_mode: 'SIGNER_PROFILE' }, 'signer_profile_name_server_filled'],
+    ['TEXT', { sender_filled: true }, 'field_read_only'],
+    ['TEXT', { read_only: true }, 'field_read_only'],
+  ])('refuses clearing a %s %o with %s, and keeps the value', async (field_type, over, reason) => {
+    const { svc, byId } = engine([sig, { id: 'x', field_type, value: 'v', filled_at: now, ...over }]);
+    await expect(svc.fillField(ctx, 'x', { value: null })).rejects.toMatchObject({ reason });
+    expect(byId('x')).toMatchObject({ value: 'v', filled_at: now });
+  });
+});
