@@ -83,6 +83,12 @@ describe('chains (handoff §3)', () => {
     expect(chainSummary(request({ id: 'a', required_chain: TWO_STEP_CHAIN }))).toBe('Above threshold: Finance → Owner');
   });
 
+  it('CPA-C-1 (Amendment A3 AC-COMP-3) a COMP open is named for its arrangement, an AGREED open stays below threshold', () => {
+    const comp = request({ id: 'a', action_type: 'SUBSCRIPTION_OPEN', payload: { arrangement: 'COMP' }, required_chain: TWO_STEP_CHAIN });
+    expect(chainSummary(comp)).toBe('Arranged — no charge: Finance → Owner');
+    expect(chainName(request({ id: 'a', action_type: 'SUBSCRIPTION_OPEN', payload: { arrangement: 'AGREED' } }))).toBe('Below threshold');
+  });
+
   it('chain progress: signed steps from the detail, else from the state', () => {
     const r = request({ id: 'a', required_chain: TWO_STEP_CHAIN });
     expect(chainMarks(r, detail(r, { signed: 1 }))).toEqual([

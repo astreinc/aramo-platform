@@ -21,8 +21,10 @@ import { grantCapabilities, productLabel, refusalLine, revokeCapabilities } from
 // Commercial Control Plane v1.0.dc.html `dlgPlan` / `dlgSimple` :700-720). Each one CREATES A
 // CHANGE REQUEST (CCP-A3 create, then submit unless saved as a draft): nothing is applied until
 // its chain is signed and the requester applies it (PLATFORM-UX-1 Amendment A1-2; PBD §5.3 B3
-// HALT "Any direct edit path"). The chain the server resolves for every action here is the
-// Finance-only chain (PO ruling TD-A3-2), shown in the chain strip.
+// HALT "Any direct edit path"). The chain the server resolves is the Finance-only chain (PO ruling
+// TD-A3-2) for every action here EXCEPT an arranged no-charge open: CCP Amendment A3 AC-COMP-1
+// resolves a SUBSCRIPTION_OPEN with arrangement COMP to Finance → Owner. The chain strip shows
+// the chain this request will get (AC-COMP-3, `chainPreviewOf`).
 
 export type DialogKind = 'plan' | 'cancel' | 'arranged' | 'grant' | 'revoke' | 'recon' | 'convert';
 
@@ -37,6 +39,18 @@ export const ARRANGEMENT_CHOICES: readonly { readonly value: Arrangement; readon
   { value: 'COMP', label: 'No charge (comp)', help: 'For an internal user or a courtesy. No price and no commitment.' },
   { value: 'AGREED', label: 'Agreed price, billed outside the store', help: 'At list price unless a contract says otherwise.' },
 ];
+
+/**
+ * The chain strip of a dialog (CCP Amendment A3 AC-COMP-3): F → O for a COMP open (AC-COMP-1),
+ * F for every other request here (AGREED, no arrangement yet, and A1's Finance-only actions).
+ */
+export function chainPreviewOf(kind: DialogKind, arrangement: Arrangement | null): { readonly label: string; readonly steps: readonly string[] } {
+  if (kind === 'arranged' && arrangement === 'COMP') return { label: ARRANGED_COMP_CHAIN, steps: ['Finance', 'Owner'] };
+  return { label: 'Below threshold', steps: ['Finance'] };
+}
+
+/** The chain name of a COMP open (the strip here and the approvals drawer, `chainName`). */
+export const ARRANGED_COMP_CHAIN = 'Arranged — no charge';
 
 /** The console's own reason limit for this dialog (P-5; the server accepts up to 2000). */
 export const ARRANGED_REASON_MAX = 500;
@@ -323,6 +337,7 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
   };
 
   const typedOk = spec.typed === null || typed === spec.typed;
+  const chain = chainPreviewOf(kind, arrangement);
 
   return (
     <CommercialRequestDialog
@@ -333,7 +348,7 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
       title={spec.title}
       sub={spec.sub}
       diff={diff}
-      chain={<ChainPreview label="Below threshold" steps={['Finance']} policy={policy ? `v${policy.version_number}` : '—'} window={policy ? `${policy.approval_expiry_hours} h` : '—'} />}
+      chain={<ChainPreview label={chain.label} steps={[...chain.steps]} policy={policy ? `v${policy.version_number}` : '—'} window={policy ? `${policy.approval_expiry_hours} h` : '—'} />}
       typed={spec.typed === null ? null : { token: spec.typed, value: typed, onChange: setTyped }}
       alert={alert ?? catalogError}
       commitLabel="Submit for approval"

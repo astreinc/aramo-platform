@@ -483,6 +483,12 @@ describe('CCP-PERSONAL-ARRANGED-1 Tenant › Commercial — move a Free Personal
     expect(submit).toBeDisabled(); // no arrangement chosen yet
     fireEvent.click(within(d).getByLabelText('No charge (comp)'));
     fireEvent.change(within(d).getByLabelText('Internal reference (optional)'), { target: { value: 'HR-2026-0042' } });
+    expect(within(d).getByTestId('chain-preview')).toHaveTextContent('Arranged — no charge');
+    expect(within(d).getByTestId('chain-preview')).toHaveTextContent('Finance → Owner');
+    fireEvent.click(within(d).getByLabelText('Agreed price, billed outside the store'));
+    expect(within(d).getByTestId('chain-preview')).toHaveTextContent('Below threshold');
+    expect(within(d).getByTestId('chain-preview')).not.toHaveTextContent('Owner');
+    fireEvent.click(within(d).getByLabelText('No charge (comp)'));
     expect(within(d).queryByLabelText('Evidence')).toBeNull();
     expect(submit).toBeEnabled();
     fireEvent.click(submit);

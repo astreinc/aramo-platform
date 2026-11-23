@@ -1,7 +1,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { describe, expect, it } from 'vitest';
 
-import { ARRANGED_REASON_MAX, ARRANGED_REF_MAX, arrangedFieldErrors, diffRows, payloadOf, planChoices, priceLabel } from './TenantCommercialDialogs';
+import { ARRANGED_REASON_MAX, ARRANGED_REF_MAX, arrangedFieldErrors, chainPreviewOf, diffRows, payloadOf, planChoices, priceLabel } from './TenantCommercialDialogs';
 import {
   NO_FILTER,
   allowanceBar,
@@ -233,6 +233,12 @@ describe('CCP-PERSONAL-ARRANGED-1 P-5 — the arranged-plan dialog (payload, row
     expect(rows('AGREED')[2]).toEqual(['Arranged by Aramo', 'No', 'Agreed price, billed outside the store']);
     expect(rows('AGREED')[3]).toEqual(['Price', 'Free', '$10 / month, billed outside the store']);
     expect(rows(null)[2]).toEqual(['Arranged by Aramo', 'No', '—']);
+  });
+  it('CPA-D-5 (Amendment A3 AC-COMP-3) the chain strip: Finance → Owner for COMP, Finance for AGREED and for every other dialog', () => {
+    expect(chainPreviewOf('arranged', 'COMP')).toEqual({ label: 'Arranged — no charge', steps: ['Finance', 'Owner'] });
+    expect(chainPreviewOf('arranged', 'AGREED')).toEqual({ label: 'Below threshold', steps: ['Finance'] });
+    expect(chainPreviewOf('arranged', null)).toEqual({ label: 'Below threshold', steps: ['Finance'] });
+    for (const k of ['plan', 'cancel', 'grant', 'revoke', 'recon', 'convert'] as const) expect(chainPreviewOf(k, 'COMP').steps).toEqual(['Finance']);
   });
   it('CPA-D-4 the reason is limited to 500 characters and the internal reference to one line of 120', () => {
     expect(arrangedFieldErrors('Internal user', '')).toEqual({ reason: null, externalRef: null });
