@@ -117,6 +117,8 @@ const FIELD_VALUE_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
   validation_date_range_failed: 'Enter a date in the allowed range',
   // FIELD-PARITY-2 B-5 — the field's condition is not met for this signer's answers.
   field_hidden: 'This field is not shown for your answers',
+  // FIELD-PARITY-2 B-6 follow-up — only a value typed or picked in the field editor is cleared.
+  field_clear_not_allowed: 'This field cannot be cleared; uncheck a box or choice with false, or replace the value',
 };
 
 export class SignatureFieldValueRefusedError extends Error {

@@ -19,6 +19,7 @@ import {
   signerFieldPlaceholder,
   signerFieldTooltip,
   signerInputKind,
+  signerClearRefusal,
   signerUnitMessage,
   signerValueProblem,
 } from '../index.js';
@@ -201,5 +202,30 @@ describe('refusal wording', () => {
     expect(signerUnitMessage('required_field_unfilled')).toBe('Some required fields still need your input.');
     expect(incompleteReasonMessage('radio_group_select_one')).toBe('Choose exactly one option in each set of choices.');
     expect(incompleteReasonMessage(undefined)).toMatch(/required fields/);
+  });
+});
+
+// FIELD-PARITY-2 B-6 follow-up — which stored values a signer may clear (value null): the one
+// rule the server refuses with and both signer apps follow.
+describe('signerClearRefusal', () => {
+  it.each(['TEXT', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'SIGNER_NAME', 'DATE', 'DROPDOWN', 'NUMBER', 'MULTILINE_TEXT'])('%s may be cleared', (field_type) => {
+    expect(signerClearRefusal({ field_type })).toBeNull();
+  });
+
+  it.each(['CHECKBOX', 'ACKNOWLEDGEMENT', 'RADIO', 'SIGNATURE', 'INITIALS', 'SIGN_DATE'])('%s is not cleared (field_clear_not_allowed)', (field_type) => {
+    expect(signerClearRefusal({ field_type })).toBe('field_clear_not_allowed');
+  });
+
+  it('the server’s and the sender’s values keep their own reasons', () => {
+    expect(signerClearRefusal({ field_type: 'PAYMENT' })).toBe('payment_field_server_filled');
+    expect(signerClearRefusal({ field_type: 'SIGNER_NAME', name_mode: 'SIGNER_PROFILE' })).toBe('signer_profile_name_server_filled');
+    expect(signerClearRefusal({ field_type: 'SIGNER_NAME', server_filled: true })).toBe('signer_profile_name_server_filled');
+    expect(signerClearRefusal({ field_type: 'TEXT', sender_filled: true })).toBe('field_read_only');
+    expect(signerClearRefusal({ field_type: 'DROPDOWN', read_only: true })).toBe('field_read_only');
+  });
+
+  it('every refusal is worded for the signer', () => {
+    expect(SIGNER_FIELD_VALUE_COPY['field_clear_not_allowed']).toBeDefined();
+    expect(isFieldValueRefusalReason('field_clear_not_allowed')).toBe(true);
   });
 });

@@ -1,8 +1,11 @@
 // The signing page state machine (handoff §4.4; directive §6, §9). Pure and synchronous.
 //
-//   - Values are LOCAL until Finish: the server has no un-fill, so tapping a filled field
-//     clears it on the device only, and Finish submits the final values with the existing
-//     fill-then-complete calls. A failed submit keeps every value (offline included).
+//   - Values are LOCAL until Finish: tapping a filled field clears it on the device, and Finish
+//     submits the final values with the existing fill-then-complete calls. A failed submit keeps
+//     every value (offline included). FIELD-PARITY-2 B-6 follow-up: a value the server holds that
+//     the signer emptied (a dropdown back to empty, a text emptied) is sent as a clear (value
+//     null) when the shared rule allows it (@aramo/sign-client signerClearRefusal), in the same
+//     trigger-first order as the fills, so the server and the app agree on what is shown.
 //   - Every engine field type is completed as received (FIELD-PARITY-1 P1-2: the catalog's
 //     `engine_passthrough` projection — SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT,
 //     CHECKBOX, ACKNOWLEDGEMENT and the M-A12 profile types). PAYMENT is paid, not filled.
@@ -46,6 +49,7 @@ import {
   normalizeSignerInput,
   radioChoiceClearable,
   shownFields,
+  signerClearRefusal,
   signDatePreview,
   signerFieldCaption,
   signerFieldUnits,
@@ -147,6 +151,11 @@ export interface SigningState {
   readonly values: Readonly<Record<string, FieldValue>>;
   readonly currentId: string | null;
   readonly adopted: { readonly SIGNATURE?: AdoptedMark; readonly INITIALS?: AdoptedMark };
+  /**
+   * FIELD-PARITY-2 B-6 follow-up — the fields whose value the server holds (stored on an earlier
+   * visit, or sent by this Finish). Emptying one sends a clear. Absent: none.
+   */
+  readonly held?: Readonly<Record<string, true>>;
 }
 
 /** What a tap asks the UI to do next. */
@@ -204,12 +213,14 @@ export function initialState(
 ): SigningState {
   const ordered = orderFields(fields, documents);
   const values: Record<string, FieldValue> = {};
+  const held: Record<string, true> = {};
   for (const f of ordered) {
+    if (f.filled === true) held[f.field_id] = true;
     // FIELD-PARITY-1 P3 S-4 / S-5 — the sender's value is shown as it is (stored: never sent).
     if ((f.filled || isLocked(f)) && typeof f.value === 'string' && f.value.length > 0)
       values[f.field_id] = { value: f.value, fromServer: true };
   }
-  return { dateFormat, fields: ordered, values, currentId: null, adopted: {} };
+  return { dateFormat, fields: ordered, values, currentId: null, adopted: {}, held };
 }
 
 const CHECK_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
@@ -603,17 +614,30 @@ export function attemptFinish(
   return { blocked: true, state: n ? { ...s, currentId: n.field_id } : s };
 }
 
-/** The fill calls Finish makes: every filled field, except unchanged server-held values. */
-export function fillsToSubmit(
-  s: SigningState,
-): { fieldId: string; value: string; method?: SignatureMethod }[] {
-  const out: { fieldId: string; value: string; method?: SignatureMethod }[] = [];
+/** One fill call of Finish: a value to store, or null to clear the stored one. */
+export interface FillToSubmit {
+  readonly fieldId: string;
+  readonly value: string | null;
+  readonly method?: SignatureMethod;
+}
+
+/**
+ * The fill calls Finish makes: every filled field, except unchanged server-held values, and a
+ * clear (value null) for a server-held value the signer emptied (FIELD-PARITY-2 B-6 follow-up;
+ * only where the shared rule allows a clear: a box or a choice is unchecked with 'false').
+ */
+export function fillsToSubmit(s: SigningState): FillToSubmit[] {
+  const out: FillToSubmit[] = [];
   // FIELD-PARITY-2 B-6 — only shown fields are sent (the server refuses a hidden one with
   // field_hidden), and a trigger before the fields it shows: by the depth of each field's
   // chain, then reading order, so every fill finds its trigger already answered.
   for (const f of submitOrder(s)) {
     const v = s.values[f.field_id];
-    if (!v || v.fromServer || isServerFilled(f) || isLocked(f)) continue;
+    if (!v) {
+      if (s.held?.[f.field_id] === true && signerClearRefusal(f) === null) out.push({ fieldId: f.field_id, value: null });
+      continue;
+    }
+    if (v.fromServer || isServerFilled(f) || isLocked(f)) continue;
     out.push(
       v.method
         ? { fieldId: f.field_id, value: v.value, method: v.method }
@@ -650,5 +674,13 @@ function submitOrder(s: SigningState): SigningField[] {
 export function markStored(s: SigningState, fieldId: string): SigningState {
   const v = s.values[fieldId];
   if (!v) return s;
-  return { ...s, values: { ...s.values, [fieldId]: { ...v, fromServer: true } } };
+  return { ...s, values: { ...s.values, [fieldId]: { ...v, fromServer: true } }, held: { ...s.held, [fieldId]: true } };
+}
+
+/** FIELD-PARITY-2 B-6 follow-up — after a successful clear, the server holds no value (retry won't resend). */
+export function markCleared(s: SigningState, fieldId: string): SigningState {
+  if (s.held?.[fieldId] !== true) return s;
+  const held = { ...s.held };
+  delete held[fieldId];
+  return { ...s, held };
 }

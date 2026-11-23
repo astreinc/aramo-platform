@@ -38,6 +38,7 @@ const { like, uuid } = MatchersV3;
 //   9. POST /v1/sign/signing/fields/{id}/fill      200 — a check box unchecked with 'false' (M-A6 §2.3)
 //   10. POST /v1/sign/signing/document              200 — field configuration + the server-filled name (M-A6 §2.4)
 //   11. POST /v1/sign/signing/document              200 — each field's field_key + condition (FIELD-PARITY-2 B-6)
+//   12. POST /v1/sign/signing/fields/{id}/fill      200 — value null clears a stored value (FIELD-PARITY-2 B-6 follow-up)
 
 const provider = new PactV4({
   consumer: 'sign-web',
@@ -76,6 +77,11 @@ const VIEW_BOX_FIELD_ID = '7a000000-0000-7000-8000-000000000b07';
 const COND_ENVELOPE_ID = '7a0000f2-0000-7000-8000-000000000001';
 const condChild = (n: number): string => `${COND_ENVELOPE_ID.slice(0, -1)}${String(n)}`;
 const TOKEN_CONDITIONAL = 'sign-web-pact-token-conditional';
+// FIELD-PARITY-2 B-6 follow-up — a stored text answer cleared (the provider derives the field id:
+// last digit 4).
+const CLEAR_ENVELOPE_ID = '7a0000f3-0000-7000-8000-000000000001';
+const CLEAR_FIELD_ID = `${CLEAR_ENVELOPE_ID.slice(0, -1)}4`;
+const TOKEN_CLEAR = 'sign-web-pact-token-clear';
 
 describe('sign-web → POST /v1/sign/signing/exchange', () => {
   it('exchanges a capability token for a signer session', async () => {
@@ -419,6 +425,30 @@ describe('sign-web → POST /v1/sign/signing/document (FIELD-PARITY-2 conditiona
         expect(body.fields[0]?.condition).toBeNull();
         expect(body.fields[1]?.condition?.trigger_key).toBe(body.fields[0]?.field_key);
         expect(body.fields[1]?.condition?.when).toBe('checked');
+      });
+  });
+});
+
+// FIELD-PARITY-2 B-6 follow-up — value null clears a value the server holds (sign-api.ts fillField).
+describe('sign-web → POST /v1/sign/signing/fields/{id}/fill (FIELD-PARITY-2 clear)', () => {
+  it('clears a stored value with value null', async () => {
+    await provider
+      .addInteraction()
+      .given('a signer session has accepted disclosure with a stored text answer', { envelope_id: CLEAR_ENVELOPE_ID, token: TOKEN_CLEAR })
+      .uponReceiving('a stored value cleared from the Sign Web client')
+      .withRequest('POST', `/v1/sign/signing/fields/${CLEAR_FIELD_ID}/fill`, (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_CLEAR, value: null });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ filled: like(true) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/fields/${CLEAR_FIELD_ID}/fill`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_CLEAR, value: null }),
+        });
+        expect(res.status).toBe(200);
       });
   });
 });

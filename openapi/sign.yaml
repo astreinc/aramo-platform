@@ -944,6 +944,16 @@ paths:
         validation_date_range_failed; a sender-filled or read-only field is refused with
         field_read_only. Completion refuses an unchosen required radio group with
         radio_group_select_one.
+        FIELD-PARITY-2 B-5 — a field whose condition is not met is refused with field_hidden, and
+        every value change clears the fields it hides. B-6 follow-up — value null CLEARS a value
+        the signer typed or picked (TEXT, the profile types, a typed SIGNER_NAME, DATE, DROPDOWN,
+        NUMBER, MULTILINE_TEXT; required or not, completion still requires a required one): the
+        value and its filled state go back to empty and the fields the old value showed are
+        cleared in the same transaction (a clear is never refused with field_hidden). A box or a
+        radio option is still unchecked with 'false'; clearing a CHECKBOX, ACKNOWLEDGEMENT, RADIO,
+        SIGNATURE, INITIALS or SIGN_DATE is refused with field_clear_not_allowed, a sender-filled
+        or read-only field with field_read_only, a SIGNER_PROFILE name with
+        signer_profile_name_server_filled and a PAYMENT field with payment_field_server_filled.
       parameters:
         - name: fieldId
           in: path
@@ -960,7 +970,9 @@ paths:
               required: [token, value]
               properties:
                 token: { type: string }
-                value: { type: string }
+                value:
+                  type: [string, 'null']
+                  description: The value to store, or null to clear the stored value (FIELD-PARITY-2 B-6 follow-up).
                 signature_method:
                   type: string
                   enum: [TYPED, DRAWN]
@@ -972,7 +984,7 @@ paths:
                     for a SIGN_DATE field. Not recognised or absent: UTC (never refused).
       responses:
         '200':
-          description: The field was filled.
+          description: The field was filled (or, for value null, cleared).
           content:
             application/json:
               schema:

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerMayStillSign } from '@aramo/sign-client';
+import { DELEGATE_NAME_MAX, DELEGATE_REASON_MAX, hostedSessionRefusal, isValidEmail, remindableSigners, selfSignTarget, sessionIssueRefusal, signingRecipients as sharedSigningRecipients, signerClearRefusal, signerMayStillSign } from '@aramo/sign-client';
 import { fieldValueRefusal, parseFieldCondition, type FieldCondition, type FieldOptions } from '@aramo/sign-fields';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -657,7 +657,9 @@ export class EsignService {
   // ── Fill a signature field (requires disclosure accepted). ES-1: under the
   // envelope row lock, with a live session — a signer who has completed, or a
   // signer on a terminal envelope, can no longer alter a field value. ──
-  async fillField(ctx: SessionContext, fieldId: string, input: { value: string; signature_method?: string; time_zone?: string }): Promise<void> {
+  // FIELD-PARITY-2 B-6 follow-up — `value: null` CLEARS a stored value (the shared rule
+  // @aramo/sign-client signerClearRefusal decides which fields may be cleared).
+  async fillField(ctx: SessionContext, fieldId: string, input: { value: string | null; signature_method?: string; time_zone?: string }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
@@ -668,12 +670,26 @@ export class EsignService {
       await assertIdentityVerificationCleared(tx, ctx);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
+      // FIELD-PARITY-2 B-6 follow-up (ruling C-3) — the signer clears a value they typed or picked
+      // (required or not: completion still requires a required one). The value and filled_at go
+      // back to NULL and the fields the old value showed are cleared in this transaction, so the
+      // signer apps and the server agree. No field_hidden check: a clear adds no answer, and a
+      // dependent the server has just cleared may still be cleared again by the app (no-op).
+      // Like a fill, a clear writes no ledger event (the completion records the final values).
+      const value = input.value;
+      if (value === null) {
+        const refusal = signerClearRefusal(field);
+        if (refusal !== null) throw new SignatureFieldValueRefusedError(fieldId, refusal);
+        await tx.signatureField.update({ where: { id: fieldId }, data: { value: null, signature_method: null, filled_at: null } });
+        await this.clearHiddenValues(tx, ctx);
+        return;
+      }
       // M-A6 §2.2 — a SIGNER_PROFILE name is the server's to fill; any client
       // value is refused. §2.3 — check boxes take 'true' or 'false' (unchecking).
       if (isServerFilledName(field)) throw new SignatureFieldValueRefusedError(fieldId, 'signer_profile_name_server_filled');
       // Sign 1.14 — a PAYMENT field is filled only by a succeeded payment.
       if (isPaymentField(field)) throw new SignatureFieldValueRefusedError(fieldId, 'payment_field_server_filled');
-      if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
+      if (CHECK_FIELD_TYPES.has(field.field_type) && value !== 'true' && value !== 'false') {
         throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
       }
       // FIELD-PARITY-1 P3 S-4 / S-5 — a sender-filled (or read-only) value is the sender's.
@@ -685,28 +701,28 @@ export class EsignService {
       if (!shown.has(mine.find((f) => f.id === fieldId) ?? field)) throw new SignatureFieldValueRefusedError(fieldId, 'field_hidden');
       // M-A12 W1-C.4 — FIRST_NAME / LAST_NAME / EMAIL / COMPANY / TITLE are text (at most
       // 200 characters); an EMAIL field holds an email address.
-      const profileRefusal = profileTextValueRefusal(field.field_type, input.value);
+      const profileRefusal = profileTextValueRefusal(field.field_type, value);
       if (profileRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, profileRefusal);
       // FIELD-PARITY-1 P3 §6 — the new types' formats (DATE, NUMBER, DROPDOWN, MULTILINE_TEXT)
       // and the validation presets (the one rule, @aramo/sign-fields fieldValueRefusal).
-      const valueRefusal = fieldValueRefusal({ field_type: field.field_type, validation: field.validation ?? null, options: (field.options ?? null) as FieldOptions | null }, input.value);
+      const valueRefusal = fieldValueRefusal({ field_type: field.field_type, validation: field.validation ?? null, options: (field.options ?? null) as FieldOptions | null }, value);
       if (valueRefusal !== null) throw new SignatureFieldValueRefusedError(fieldId, valueRefusal);
       // Client Rule Consolidation C0-2 — SIGN_DATE is the server's to stamp: the client's
       // value is ignored (its tap only marks the field as filled for the signer), and
       // completeSigner stamps it again at signing.
       const now = new Date();
       if (field.field_type === SIGN_DATE_FIELD) {
-        const value = await this.signDateFor(tx, ctx, now, input.time_zone);
-        await tx.signatureField.update({ where: { id: fieldId }, data: { value, signature_method: null, filled_at: now } });
+        const stamped = await this.signDateFor(tx, ctx, now, input.time_zone);
+        await tx.signatureField.update({ where: { id: fieldId }, data: { value: stamped, signature_method: null, filled_at: now } });
         return;
       }
       await tx.signatureField.update({
         where: { id: fieldId },
-        data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: now },
+        data: { value, signature_method: input.signature_method ?? null, filled_at: now },
       });
       // FIELD-PARITY-1 P3 T-5 — choosing one radio button clears the others of its group (the
       // same signer), so a radio group never holds two choices.
-      if (field.field_type === 'RADIO' && input.value === 'true' && field.group_key !== null) {
+      if (field.field_type === 'RADIO' && value === 'true' && field.group_key !== null) {
         await tx.signatureField.updateMany({
           where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, field_type: 'RADIO', group_key: field.group_key, id: { not: fieldId } },
           data: { value: 'false', signature_method: null, filled_at: now },

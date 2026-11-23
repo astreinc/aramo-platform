@@ -6,13 +6,17 @@
 import { fieldValueRefusalText } from '@aramo/sign-client';
 
 import { errorFromBody } from '../../../api/errors';
-import { classifySigningError, fieldRefusalOf } from '../signingApi';
+import { createGuestSigningClient } from '../../../api/guestSigningClient';
+import { recordingFetch, SIGNING_TOKEN } from '../../../testing/fakes';
+import { classifySigningError, fieldRefusalOf, submitSigning } from '../signingApi';
 import {
   advance,
   canFinish,
   fillsToSubmit,
   initialState,
   isShown,
+  markCleared,
+  markStored,
   nextEmptyRequired,
   requiredDone,
   requiredFields,
@@ -154,5 +158,72 @@ describe('B-6 — field_hidden', () => {
     expect(classifySigningError(e)).toBe('value_refused');
     expect(fieldRefusalOf(e)).toEqual({ fieldId: 'f2', reason: 'field_hidden' });
     expect(fieldValueRefusalText('field_hidden')).toBe('This field isn’t needed for your answers, so it’s hidden now.');
+  });
+});
+
+// FIELD-PARITY-2 B-6 follow-up — a value the server holds that the signer empties is sent as a
+// clear (value null), trigger first, so the server hides (and clears) what the app hides.
+describe('B-6 follow-up — emptying a stored value sends a clear', () => {
+  const stored = [
+    { ...f4, filled: true, value: 'b' },
+    { ...f5, filled: true, value: 'Details' },
+    { ...f6, filled: true, value: '11/22/2026' },
+  ];
+
+  it('emptying a stored dropdown trigger sends its clear; the hidden dependent is not sent (the server clears it)', () => {
+    let s = initialState(stored);
+    s = setText(s, 'f4', '');
+    expect(isShown(s, 'f5')).toBe(false);
+    expect(s.values['f5']).toBeUndefined();
+    expect(fillsToSubmit(s)).toEqual([{ fieldId: 'f4', value: null }]);
+  });
+
+  it('clears are ordered like fills: a trigger before the fields it shows', () => {
+    // The dependent sits above its trigger (reading order puts it first).
+    const dep = field('f5', 'TEXT', { y: 760, required: false, filled: true, value: 'Details', condition: { trigger_key: 'f4', when: 'one_of', values: ['b'] } });
+    let s = initialState([dep, { ...f4, filled: true, value: 'b' }, stored[2]!]);
+    expect(ids(s.fields)).toEqual(['f5', 'f4', 'f6']);
+    s = setText(s, 'f4', 'a');
+    s = setText(s, 'f4', 'b');
+    s = setText(s, 'f5', '');
+    expect(fillsToSubmit(s)).toEqual([
+      { fieldId: 'f4', value: 'b' },
+      { fieldId: 'f5', value: null },
+    ]);
+  });
+
+  it('a value never stored is not cleared; a cleared value is not sent again', () => {
+    let s = initialState([f4, f5, f6]);
+    s = setText(s, 'f4', 'a');
+    s = setText(s, 'f4', '');
+    expect(fillsToSubmit(s)).toEqual([]);
+    s = initialState(stored);
+    s = setText(s, 'f4', '');
+    s = markCleared(s, 'f4');
+    expect(fillsToSubmit(s)).toEqual([]);
+    // A value stored during this Finish, then emptied before a retry, is cleared.
+    s = markStored(setText(s, 'f4', 'a'), 'f4');
+    s = setText(s, 'f4', '');
+    expect(fillsToSubmit(s)).toEqual([{ fieldId: 'f4', value: null }]);
+  });
+
+  it('a field the shared rule does not clear is never sent as a clear (a date signed, a signature)', () => {
+    const sig = field('f7', 'SIGNATURE', { filled: true, value: 'Jo Signer' });
+    let s = initialState([stored[2]!, sig]);
+    s = tapField(s, 'f6', ctx).state;
+    s = tapField(s, 'f7', ctx).state;
+    expect(s.values['f6']).toBeUndefined();
+    expect(s.values['f7']).toBeUndefined();
+    expect(fillsToSubmit(s)).toEqual([]);
+  });
+
+  it('Finish sends the clear as value null, then completes; a retry does not resend it', async () => {
+    const net = recordingFetch(() => ({ status: 200, body: {} }));
+    const session = createGuestSigningClient({ baseUrl: 'https://sign.aramo.ai', fetch: net.fetch }).open(SIGNING_TOKEN);
+    let latest = setText(initialState(stored), 'f4', '');
+    await submitSigning(session, latest, (next) => (latest = next));
+    expect(net.calls.map((c) => c.url.replace('https://sign.aramo.ai', ''))).toEqual(['/v1/sign/signing/fields/f4/fill', '/v1/sign/signing/complete']);
+    expect(net.calls[0]!.body).toMatchObject({ token: SIGNING_TOKEN, value: null });
+    expect(fillsToSubmit(latest)).toEqual([]);
   });
 });

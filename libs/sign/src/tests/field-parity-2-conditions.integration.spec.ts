@@ -232,6 +232,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('FIELD-PARITY-2 Ph
     expect(await row(ids.get('why')!)).toMatchObject({ value: null, filled_at: null });
   });
 
+  it('clear (value null): a stored dropdown trigger is cleared with its chain; a box or signature is refused (B-6 follow-up)', async () => {
+    const { ctx, ids } = await signer([
+      { key: 'plan', field_type: 'DROPDOWN', required: false, data: { options: { choices: [{ value: 'gold', label: 'Gold' }, { value: 'basic', label: 'Basic' }] } } },
+      { key: 'extra', field_type: 'TEXT', required: true, data: { condition: { trigger_key: 'plan', when: 'one_of', values: ['gold'] } } },
+      { key: 'agree', field_type: 'CHECKBOX', required: false },
+      { key: 'typed', field_type: 'TEXT' },
+    ]);
+    await service.fillField(ctx, ids.get('typed')!, { value: 'typed' });
+    await service.fillField(ctx, ids.get('plan')!, { value: 'gold' });
+    await service.fillField(ctx, ids.get('extra')!, { value: 'more' });
+    await service.fillField(ctx, ids.get('agree')!, { value: 'true' });
+    await service.fillField(ctx, ids.get('plan')!, { value: null });
+    expect(await row(ids.get('plan')!)).toMatchObject({ value: null, filled_at: null });
+    expect(await row(ids.get('extra')!)).toMatchObject({ value: null, filled_at: null });
+    // A repeated clear of the now-hidden dependent is a no-op, never field_hidden.
+    expect(await reasonOf(service.fillField(ctx, ids.get('extra')!, { value: null }))).toBeUndefined();
+    expect(await reasonOf(service.fillField(ctx, ids.get('agree')!, { value: null }))).toBe('field_clear_not_allowed');
+    expect(await row(ids.get('agree')!)).toMatchObject({ value: 'true' });
+    // The hidden required dependent no longer blocks; the server and the app agree.
+    await service.completeSigner(ctx);
+  });
+
   it('completion: a hidden required field never blocks; a hidden SIGN_DATE is not stamped; shown, it is required', async () => {
     const { ctx, ids } = await signer([
       { key: 'agree', field_type: 'CHECKBOX', required: false },

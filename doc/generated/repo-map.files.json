@@ -6539,6 +6539,7 @@
     "libs/sign/src/tests/execution-stamping.integration.spec.ts",
     "libs/sign/src/tests/field-parity-2-conditional-fill.spec.ts",
     "libs/sign/src/tests/field-parity-2-conditions.integration.spec.ts",
+    "libs/sign/src/tests/field-parity-2-executed-output.spec.ts",
     "libs/sign/src/tests/field-parity-p3-execution.spec.ts",
     "libs/sign/src/tests/field-parity-p3.integration.spec.ts",
     "libs/sign/src/tests/field-rules.spec.ts",

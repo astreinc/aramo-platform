@@ -809,6 +809,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         required?: boolean;
         field_key?: string;
         condition?: { trigger_key: string; when: string; values?: string[] };
+        // FIELD-PARITY-2 B-6 follow-up — a value the server already holds (filled_at now()).
+        value?: string;
       }>;
     }): Promise<void> {
       await db.query(
@@ -875,6 +877,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             c.condition === undefined ? null : JSON.stringify(c.condition),
           ],
         );
+        if (c.value !== undefined) {
+          await db.query(`UPDATE "sign"."SignatureField" SET value = $2, filled_at = now() WHERE id = $1`, [c.id, c.value]);
+        }
       }
     }
 
@@ -1361,6 +1366,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                 { id: childId(envelopeId, 4), field_type: 'CHECKBOX', y: 10, label: 'Add a co-applicant', required: false, field_key: 'co' },
                 { id: childId(envelopeId, 5), field_type: 'TEXT', y: 40, label: 'Co-applicant name', field_key: 'co_name', condition: { trigger_key: 'co', when: 'checked' } },
               ],
+            });
+            return undefined;
+          },
+          // FIELD-PARITY-2 B-6 follow-up — an optional text answer the server already holds, for a
+          // clear (value null). Ids derive from the envelope_id param (4 = the text field) and the
+          // session token is the token param (sign-web and sign-mobile each seed their own).
+          'a signer session has accepted disclosure with a stored text answer': async (params?: unknown) => {
+            const envelopeId = envelopeParam(params);
+            const token = (params as { token?: unknown } | undefined)?.token;
+            if (typeof token !== 'string') throw new Error('provider state requires a token param');
+            await seedSignerFixture({
+              envelopeId,
+              envDocId: childId(envelopeId, 2),
+              signerId: childId(envelopeId, 3),
+              sessionId: childId(envelopeId, 6),
+              token,
+              disclosure: true,
+              configured: [{ id: childId(envelopeId, 4), field_type: 'TEXT', y: 10, label: 'Notes', required: false, field_key: 'notes', value: 'Call after 5' }],
             });
             return undefined;
           },

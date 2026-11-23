@@ -333,8 +333,10 @@ export {
   fieldValueRefusalText,
   isFieldValueRefusalReason,
   signerValueProblem,
+  signerClearRefusal,
   signerUnitMessage,
   incompleteReasonMessage,
   type SignerInputField,
   type SignerInputKind,
+  type SignerClearField,
 } from './lib/signer-field-input.js';

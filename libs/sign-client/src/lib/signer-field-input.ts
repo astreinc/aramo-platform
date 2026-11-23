@@ -237,6 +237,9 @@ export const SIGNER_FIELD_VALUE_COPY: Readonly<Record<string, string>> = {
   // FIELD-PARITY-2 B-5 / B-6 — the fill was refused because the signer's answers hide this field
   // (its "show only when" rule is not met); the server is the authority.
   field_hidden: 'This field isn’t needed for your answers, so it’s hidden now.',
+  // FIELD-PARITY-2 B-6 follow-up — a stored value of this kind is not emptied (a box or a choice
+  // is unchecked with 'false'; a signature, initials or date signed is replaced, not emptied).
+  field_clear_not_allowed: 'This field can’t be emptied. Change it instead.',
 };
 
 export const SIGNER_FIELD_VALUE_FALLBACK = 'This value can’t be used here. Check it and try again.';
@@ -279,6 +282,34 @@ export function signerValueProblem(f: SignerInputField, value: string): string |
   const profile = profileTextValueRefusal(f.field_type, value);
   if (profile !== null) return profile;
   return fieldValueRefusal({ field_type: f.field_type, validation: f.validation ?? null, options: f.options ?? null }, value);
+}
+
+/** The parts of a field the clear rule reads (the stored row and the signer view both have them). */
+export interface SignerClearField {
+  readonly field_type: string;
+  readonly name_mode?: string | null;
+  readonly server_filled?: boolean | null;
+  readonly read_only?: boolean | null;
+  readonly sender_filled?: boolean | null;
+}
+
+/**
+ * FIELD-PARITY-2 B-6 follow-up (ruling C-3) — the reason the signer may NOT clear a stored value
+ * (the fill call with value null), or null when they may. ONE rule: the server refuses with it,
+ * and the signer apps send a clear only when it is null.
+ *   - Only a value the signer types or picks in the field editor is cleared: text, the profile
+ *     types, a typed name, DATE, DROPDOWN, NUMBER, MULTILINE_TEXT — required or not (completion
+ *     still requires a required one).
+ *   - A box or a radio option is unchecked with 'false' as before; a SIGNATURE, INITIALS or
+ *     SIGN_DATE is replaced, never emptied: field_clear_not_allowed.
+ *   - The server's or the sender's values keep their own reasons (signer_profile_name_server_filled,
+ *     payment_field_server_filled, field_read_only).
+ */
+export function signerClearRefusal(f: SignerClearField): string | null {
+  if (f.field_type === 'PAYMENT') return 'payment_field_server_filled';
+  if ((f.field_type === 'SIGNER_NAME' && f.name_mode === 'SIGNER_PROFILE') || f.server_filled === true) return 'signer_profile_name_server_filled';
+  if (isSignerLocked(f)) return 'field_read_only';
+  return isSignerEditorKind(signerInputKind(f.field_type)) ? null : 'field_clear_not_allowed';
 }
 
 /** One completion rule a signer has not met yet, in plain language. */
