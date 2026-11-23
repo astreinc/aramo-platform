@@ -6229,6 +6229,10 @@ export interface operations {
                             data_name?: string | null;
                             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
                             options?: components["schemas"]["FieldOptions"] | null;
+                            /** @description FIELD-PARITY-2 B-1 — the field's stable key on the envelope (null on a legacy field). A condition names its trigger by it. */
+                            field_key?: string | null;
+                            /** @description FIELD-PARITY-2 B-2 / B-5 — "show only when" (null = always shown). The trigger is always one of this signer's own fields (ruling C-2). Apply the one visibility rule (@aramo/sign-client shownFields) to these fields and their values: a hidden field is not shown, not required and not counted. Filling a hidden field is refused (400 details.reason field_hidden); when an answer hides fields, the server clears their values at once. */
+                            condition?: components["schemas"]["FieldCondition"] | null;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;

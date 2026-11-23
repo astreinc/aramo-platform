@@ -59,6 +59,10 @@ export interface SignField {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptions | null;
+  // FIELD-PARITY-2 B-5 — the field's key and "show only when" (null = always shown); apply
+  // @aramo/sign-client shownFields to this signer's fields (B-6).
+  field_key?: string | null;
+  condition?: { readonly trigger_key: string; readonly when: string; readonly values?: readonly string[] } | null;
 }
 
 // Sign 1.14 — starting a payment: Stripe's hosted page, or already paid.

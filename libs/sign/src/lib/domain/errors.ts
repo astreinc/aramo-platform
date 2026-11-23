@@ -115,6 +115,8 @@ const FIELD_VALUE_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
   validation_max_length_failed: 'Enter fewer characters',
   validation_number_range_failed: 'Enter a number in the allowed range',
   validation_date_range_failed: 'Enter a date in the allowed range',
+  // FIELD-PARITY-2 B-5 — the field's condition is not met for this signer's answers.
+  field_hidden: 'This field is not shown for your answers',
 };
 
 export class SignatureFieldValueRefusedError extends Error {
