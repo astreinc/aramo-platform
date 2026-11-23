@@ -224,6 +224,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     expect(await openRows(tenant)).toEqual([expect.objectContaining({ id: free, source: 'FREE' })]);
   });
 
+  // ---- P-1 — the dropped allowance (typed divergence from recon §2.2) ----------------------
+  // The migration-published Free Personal version carries sign.forms (as production's Free Personal v2);
+  // the Personal Standard version does not. The FREE replacement admits the drop only on zero usage of
+  // sign.forms in the current period (the FREE row's anchor 2026-10-01 → period 2026-11-01 at T0).
+
+  async function useForms(tenant: string, period_start: string): Promise<void> {
+    await pg.query(
+      `INSERT INTO subscription."AllowanceUsage" (id, tenant_id, allowance_key, send_key, period_start, state, reserved_at, reserved_until, finalized_at)
+       VALUES (gen_random_uuid(), $1, 'sign.forms', $2, $3, 'CONSUMED', $3, $3::timestamptz + interval '1 day', $3)`,
+      [tenant, `form-${keyN}-${tenant.slice(0, 8)}`, period_start],
+    );
+  }
+
+  it('ARR-I-USE-1 a FREE replacement with sign.forms usage in the current period is refused (USAGE_TREATMENT_UNDEFINED); the FREE row stays open', async () => {
+    const forms = (await pg.query(
+      `SELECT count(*)::int AS n FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id, jsonb_array_elements(v.content->'allowances') a
+        WHERE p.key = $1 AND v.status = 'PUBLISHED' AND a->>'allowance_key' = 'sign.forms'`,
+      [FREE_PERSONAL],
+    )).rows[0].n as number;
+    expect(forms).toBe(1); // the fixture mirrors production: Free carries sign.forms
+    const { tenant, free } = await personalOnFree();
+    await useForms(tenant, '2026-11-01T00:00:00.000Z');
+    const id = await approved('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'COMP' }));
+    expect(await refusalOf(applyAs(id))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED');
+    expect(await openRows(tenant)).toEqual([expect.objectContaining({ id: free, source: 'FREE' })]);
+  });
+
+  it('ARR-I-USE-2 sign.forms usage in an earlier period does not block the FREE replacement (current period only)', async () => {
+    const { tenant, free } = await personalOnFree();
+    await useForms(tenant, '2026-10-01T00:00:00.000Z');
+    const id = await approved('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'AGREED' }));
+    expect((await applyAs(id)).request.state).toBe('APPLIED');
+    expect(await openRows(tenant)).toEqual([expect.objectContaining({ source: 'MANUAL', arrangement: 'AGREED' })]);
+  });
+
   // ---- P-3 — the reports ------------------------------------------------------------------
 
   it('ARR-I-RPT-1 finance: a COMP row is "Comp ($0)" (amount 0, ARRANGEMENT_COMP) and never a renewal or an outstanding item; an AGREED row keeps its list price and renewal', async () => {

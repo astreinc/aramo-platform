@@ -269,6 +269,35 @@ export function changedTerms(from: PlanVersionContent, to: PlanVersionContent): 
   return out;
 }
 
+/**
+ * CCP-PERSONAL-ARRANGED-1 P-1 — which 'undefined' terms of a same-period change are refused outright, and
+ * which are admissible only on ZERO usage in the current billing period (the caller counts RESERVED +
+ * CONSUMED under the allowance key's advisory lock).
+ *
+ * Typed divergence (CI on PR #1147): recon §2.2 assumed the Free → Standard usage check passes; the
+ * published Free Personal version carries `sign.forms` (5 MONTHLY), which the Personal Standard version
+ * does not (forms are not built: NOT_AVAILABLE in feature-availability.ts, so no usage of it exists). A
+ * dropped allowance therefore has a defined treatment ONLY when the replaced row is FREE (the P-1 FREE
+ * replacement) and nothing was used: nothing is stranded. A changed period kind, and every drop on any
+ * other replacement (MANUAL, DEVELOPMENT, …), stays USAGE_TREATMENT_UNDEFINED exactly as before.
+ */
+export function undefinedTermTreatment(
+  changes: readonly TermChange[],
+  to: PlanVersionContent,
+  replacedSource: string | null,
+): { refused: TermChange[]; zeroUsageRequired: TermChange[] } {
+  const refused: TermChange[] = [];
+  const zeroUsageRequired: TermChange[] = [];
+  for (const c of changes) {
+    if (c.change !== 'undefined') continue;
+    const dropped = c.kind === 'allowance' && !to.allowances.some((x) => x.allowance_key === c.key);
+    if (replacedSource === 'FREE' && dropped) zeroUsageRequired.push(c);
+    else refused.push(c);
+  }
+  zeroUsageRequired.sort((a, b) => a.key.localeCompare(b.key));
+  return { refused, zeroUsageRequired };
+}
+
 /** The day window used by the short-window caps (AllowanceService DAY_WINDOW_MS). */
 const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -583,7 +612,8 @@ export class CommercialApplyService {
             throw new ApplyFailure('USAGE_CROSS_PERIOD', { period_anchor: requested.toISOString(), current_period_anchor: open.period_anchor.toISOString() });
           }
           anchor = open.period_anchor;
-          await this.assertUsageFits(tx, tenant_id, product_key, open.plan_version_id, version, open.period_anchor, now);
+          // P-1: the replaced row's source decides the dropped-allowance treatment (FREE only; undefinedTermTreatment).
+          await this.assertUsageFits(tx, tenant_id, product_key, open.plan_version_id, version, open.period_anchor, now, open.source);
         } else {
           anchor = requested ?? now;
           await this.assertNoStrandedUsage(tx, tenant_id, product_key, anchor, now);
@@ -655,7 +685,8 @@ export class CommercialApplyService {
         if (sameVersion && !changeCarriesContract(p)) throw new ApplyFailure('NO_CHANGE', { plan_version_id: version.id });
         if (!sameVersion) {
           // T8 / DR-A6-1 / DR-A6-3 — immediately effective, same period (the anchor is kept).
-          await this.assertUsageFits(tx, tenant_id, product_key, row.plan_version_id, version, row.period_anchor, now);
+          // A change of a governed row is never a FREE replacement: every dropped allowance stays refused.
+          await this.assertUsageFits(tx, tenant_id, product_key, row.plan_version_id, version, row.period_anchor, now, null);
           // TD-A5-9 — the re-pin names its reason; the DB trigger records SubscriptionVersionPinEvent.
           await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_CHANGE_REQUEST}, true), set_config('aramo.subscription_pin_price_ref', '', true)`;
           await tx.tenantSubscription.update({ where: { id: row.id }, data: { plan_id: plan.id, plan_version_id: version.id } });
@@ -915,7 +946,8 @@ export class CommercialApplyService {
    * limit (every valid reservation is preserved and stays counted). Each checked key is read under
    * the same advisory lock AllowanceService.reserve / CapacityService.reserve take, so no concurrent
    * reservation can slip past the check. A dropped allowance or a changed period kind has no
-   * defined treatment.
+   * defined treatment — except (CCP-PERSONAL-ARRANGED-1 P-1) an allowance dropped by the replacement
+   * of a FREE row with zero usage of it in the current period (undefinedTermTreatment).
    */
   private async assertUsageFits(
     tx: Tx,
@@ -925,16 +957,40 @@ export class CommercialApplyService {
     to: { id: string; content: unknown; content_checksum: string },
     anchor: Date,
     now: Date,
+    replacedSource: string | null,
   ): Promise<void> {
     const from = await tx.planVersion.findUniqueOrThrow({ where: { id: from_version_id } });
-    const changes = changedTerms(planVersionTerms(from), planVersionTerms(to));
-    const undefinedTerms = changes.filter((c) => c.change === 'undefined');
-    if (undefinedTerms.length > 0) {
-      throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { terms: undefinedTerms.map((c) => `${c.kind}:${c.key}`), from_plan_version_id: from.id, to_plan_version_id: to.id });
+    const toTerms = planVersionTerms(to);
+    const changes = changedTerms(planVersionTerms(from), toTerms);
+    // CCP-PERSONAL-ARRANGED-1 P-1 — see undefinedTermTreatment (typed divergence: recon §2.2 assumed the
+    // Free → Standard usage check passes; prod Free carries sign.forms, not built, zero usage).
+    const { refused, zeroUsageRequired } = undefinedTermTreatment(changes, toTerms, replacedSource);
+    if (refused.length > 0) {
+      throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { terms: refused.map((c) => `${c.kind}:${c.key}`), from_plan_version_id: from.id, to_plan_version_id: to.id });
     }
     const period = billingPeriodAt(anchor, now);
+    if (zeroUsageRequired.length > 0) {
+      // A FREE row's dropped allowance: admissible only on zero RESERVED + CONSUMED usage of the key in the
+      // current period, read under the same advisory lock AllowanceService.reserve takes (no concurrent
+      // reservation can slip past). Any usage keeps the refusal: no treatment is defined for it.
+      const used: Array<Record<string, unknown>> = [];
+      for (const c of zeroUsageRequired) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant_id}:${c.key}`}, 0))`;
+        const n = await tx.allowanceUsage.count({ where: { tenant_id, allowance_key: c.key, period_start: period.start, state: { in: ['RESERVED', 'CONSUMED'] } } });
+        if (n > 0) used.push({ term: `allowance:${c.key}`, used: n });
+      }
+      if (used.length > 0) {
+        throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', {
+          terms: used.map((u) => u['term']),
+          used,
+          period_start: period.start.toISOString(),
+          from_plan_version_id: from.id,
+          to_plan_version_id: to.id,
+        });
+      }
+    }
     const exceeded: Array<Record<string, unknown>> = [];
-    for (const c of [...changes].sort((a, b) => `${a.kind}:${a.key}`.localeCompare(`${b.kind}:${b.key}`))) {
+    for (const c of [...changes].filter((x) => x.change !== 'undefined').sort((a, b) => `${a.kind}:${a.key}`.localeCompare(`${b.kind}:${b.key}`))) {
       if (c.kind === 'capacity') {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`capacity:${tenant_id}:${c.key}`}, 0))`;
         const agg = await tx.capacityUsage.aggregate({ where: { tenant_id, capacity_key: c.key, state: 'ACTIVE' }, _sum: { quantity: true } });
