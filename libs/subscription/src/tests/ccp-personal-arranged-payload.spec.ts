@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ARRANGEMENT_REQUIRED_REASON,
+  COMP_NOT_PERSONAL_REASON,
   CommercialPayloadError,
   EXTERNAL_REF_MAX_LENGTH,
   FREE_REPLACEMENT_NOT_PERSONAL_REASON,
@@ -98,6 +99,15 @@ describe('CCP-PERSONAL-ARRANGED-1 SUBSCRIPTION_OPEN creation-time refusals', () 
     expect(at({ replaced_source: null, arrangement: undefined })).toBeNull();
     expect(at({ replaced_source: 'MANUAL', arrangement: undefined })).toBeNull();
     expect(at({ replaced_source: 'DEVELOPMENT', arrangement: undefined })).toBeNull();
+  });
+
+  it('ARR-C-7 a COMP arrangement is for a PERSONAL tenant only (PO 2026-11-23); AGREED is not limited', () => {
+    expect(COMP_NOT_PERSONAL_REASON).toBe('comp_not_personal');
+    expect(at({ tenant_kind: 'BUSINESS', plan_tenant_kind: 'BUSINESS', replaced_source: null })).toBe('comp_not_personal');
+    expect(at({ tenant_kind: 'BUSINESS', plan_tenant_kind: null, replaced_source: 'MANUAL' })).toBe('comp_not_personal');
+    expect(at({ tenant_kind: null, plan_tenant_kind: undefined, replaced_source: null })).toBe('comp_not_personal');
+    expect(at({ tenant_kind: 'BUSINESS', plan_tenant_kind: 'BUSINESS', replaced_source: null, arrangement: 'AGREED' })).toBeNull();
+    expect(at({ replaced_source: null })).toBeNull();
   });
 
   it('ARR-C-6 an unknown plan or replaced row is left to the apply (PLAN_NOT_FOUND / G2)', () => {

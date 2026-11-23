@@ -610,6 +610,7 @@ export class CommercialChangeRequestService {
       plan_tenant_kind_mismatch: 'the plan is for a different kind of organization',
       free_replacement_not_personal: 'a Free subscription is replaced only for a Personal account',
       arrangement_required: 'replacing a Free subscription requires an arrangement (COMP or AGREED)',
+      comp_not_personal: 'a no-charge (COMP) arrangement is for a Personal account only',
     };
     throw new CommercialChangeRequestError('INVALID_INPUT', messages[reason], {
       reason,

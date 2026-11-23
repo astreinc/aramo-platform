@@ -201,6 +201,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     );
   });
 
+  it('ARR-I-REF-4 (PO 2026-11-23) a COMP arrangement for a BUSINESS tenant is refused at creation (comp_not_personal); AGREED is accepted', async () => {
+    const business = await newTenant(pg, 'BUSINESS');
+    const plan = { plan_key: BUSINESS, plan_version_id: await publishedVersion(pg, BUSINESS), replaces_subscription_id: null };
+    expect(await refusalOf(create('SUBSCRIPTION_OPEN', business, { ...plan, arrangement: 'COMP' }))).toBe('INVALID_INPUT:comp_not_personal');
+    expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."CommercialChangeRequest" WHERE tenant_id = $1`, [business])).rows[0].n).toBe(0);
+    const agreed = await create('SUBSCRIPTION_OPEN', business, { ...plan, arrangement: 'AGREED' });
+    expect(agreed.request.action_type).toBe('SUBSCRIPTION_OPEN');
+  });
+
   it('ARR-I-REF-3 the apply re-checks the tenant kind (NC-5): an approved FREE replacement whose tenant is no longer PERSONAL fails; the FREE row stays open', async () => {
     const { tenant, free } = await personalOnFree();
     const id = await approved('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'COMP' }));
