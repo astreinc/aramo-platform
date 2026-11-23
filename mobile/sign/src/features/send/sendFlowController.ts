@@ -9,6 +9,8 @@
 //   - A 412 (revision_mismatch) reloads the envelope from the server, shows "This
 //     envelope changed elsewhere", and never overwrites it.
 //   - Send is an explicit user action, online only. Nothing is ever sent silently.
+import { fieldImportSummary, fieldImportWarningText } from '@aramo/sign-client';
+
 import { ApiError, isApiError } from '../../api/errors';
 import { WORD_COPY } from '../../api/refusalMessages';
 import { newIdempotencyKey } from '../../api/workspaceClient';
@@ -28,8 +30,10 @@ import {
   emptyPayload,
   furthestStep,
   isDirty,
+  NO_UPLOAD_OPTIONS,
   payloadFromServer,
   withMessaging,
+  type UploadOptions,
   type CopyDelivery,
   type IdentityCheck,
   type MessagingBySigner,
@@ -56,7 +60,7 @@ import {
   type AddCheck,
 } from './recipientRoles';
 import { isRevisionMismatch, type SenderApi, type Versioned } from './senderApi';
-import { syncDraft, SendFlowError } from './syncDraft';
+import { syncDraft, SendFlowError, type SyncImport } from './syncDraft';
 
 export const CHANGED_ELSEWHERE = 'This envelope changed elsewhere. Showing the latest version.';
 
@@ -410,6 +414,8 @@ export class SendFlowController {
     readonly filename: string;
     readonly bytes: Uint8Array;
     readonly pages?: readonly PageSize[];
+    /** FIELD-PARITY-2 A-3 — the upload options for this document (default: the draft's). */
+    readonly options?: UploadOptions;
   }): Promise<string | null> {
     this.set({ busy: 'adding', error: null });
     try {
@@ -435,7 +441,7 @@ export class SendFlowController {
             title: input.title.slice(0, SUBJECT_MAX),
             filename: input.filename,
             pages,
-            pendingUpload: { idempotencyKey: newIdempotencyKey() },
+            pendingUpload: { idempotencyKey: newIdempotencyKey(), ...uploadFlags(input.options ?? this.uploadOptions) },
           },
         ],
       }));
@@ -463,7 +469,11 @@ export class SendFlowController {
       this.set({ error: WORD_NEEDS_CONNECTION });
       return;
     }
-    const key = await this.addDocument(input);
+    // FIELD-PARITY-2 A-3 — a Word file is uploaded at once, so its options apply only when the
+    // draft already has a signing recipient (the fields they create need one); otherwise it is
+    // uploaded plain rather than left waiting.
+    const signer = this.payload.recipients.some((r) => r.kind !== 'RECEIVES_COPY');
+    const key = await this.addDocument({ ...input, options: signer ? this.uploadOptions : NO_UPLOAD_OPTIONS });
     if (key === null) return;
     // Never render the Word bytes: the asset comes from the server once uploaded.
     this.assets.delete(key);
@@ -475,6 +485,25 @@ export class SendFlowController {
     this.set({
       error: synced || error === null || error === OFFLINE_SAVED ? WORD_NEEDS_CONNECTION : error,
     });
+  }
+
+  /** FIELD-PARITY-2 A-3 — the upload options (sign-web's two choices) for documents added from now on. */
+  get uploadOptions(): UploadOptions {
+    return this.state.draft?.payload.uploadOptions ?? NO_UPLOAD_OPTIONS;
+  }
+
+  /**
+   * FIELD-PARITY-2 A-3 — choose the upload options. They apply to documents added from now on
+   * and to the documents still waiting for upload (an uploaded one keeps what it was sent with).
+   */
+  setUploadOptions(options: UploadOptions): void {
+    this.update((p) => ({
+      ...p,
+      uploadOptions: options,
+      documents: p.documents.map((d) =>
+        d.pendingUpload === null ? d : { ...d, pendingUpload: { idempotencyKey: d.pendingUpload.idempotencyKey, ...uploadFlags(options) } },
+      ),
+    }));
   }
 
   /** Remove a document and its fields. An uploaded one is removed on the server (If-Match). */
@@ -752,7 +781,7 @@ export class SendFlowController {
     }
     this.set({ busy: 'syncing', error: null });
     try {
-      const { draft, server } = await syncDraft(
+      const result = await syncDraft(
         {
           api: this.deps.api,
           bytes: this.deps.bytes,
@@ -769,7 +798,9 @@ export class SendFlowController {
         },
         { ...d, step: this.state.step },
       );
-      this.set({ draft, ...(server ? { server } : {}) });
+      const { draft, server } = result;
+      const imported = importNotice(result.imports);
+      this.set({ draft, ...(server ? { server } : {}), ...(imported ? { notice: imported } : {}) });
       return true;
     } catch (e) {
       if (isRevisionMismatch(e)) {
@@ -905,4 +936,20 @@ export class SendFlowController {
   get hasServerEnvelope(): boolean {
     return Boolean(this.state.draft?.envelopeId);
   }
+}
+
+/** FIELD-PARITY-2 A-3 — the upload flags a pending upload carries (only the chosen ones). */
+function uploadFlags(o: UploadOptions): { importFields?: true; applyTextTags?: true } {
+  return { ...(o.importFields ? { importFields: true as const } : {}), ...(o.applyTextTags ? { applyTextTags: true as const } : {}) };
+}
+
+/**
+ * FIELD-PARITY-1 P2-5 / P2-6 — the result of each opted-in upload in plain language (the shared
+ * copy): "Lease: 3 fields added · 1 warning", then each warning. Null when nothing was opted in.
+ */
+export function importNotice(imports: readonly SyncImport[]): string | null {
+  if (imports.length === 0) return null;
+  return imports
+    .flatMap((i) => [`${i.title}: ${fieldImportSummary(i.result)}`, ...i.result.warnings.map((w) => fieldImportWarningText(w.code))])
+    .join('\n');
 }

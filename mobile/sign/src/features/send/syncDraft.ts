@@ -13,7 +13,9 @@ import { editorToWire } from '../editor/geometry';
 import type { DocumentBytesStore } from './documentBytes';
 import {
   CLEAN,
+  editorFieldsFromServer,
   effectiveSubject,
+  uploadMakesFields,
   type DraftDocument,
   type SendDraft,
   type SendDraftPayload,
@@ -26,6 +28,7 @@ import {
   revisionMismatch,
   type FieldWire,
   type SenderApi,
+  type FieldImportResult,
   type UploadedDocument,
 } from './senderApi';
 
@@ -51,6 +54,20 @@ export interface SyncResult {
   readonly draft: SendDraft;
   /** The envelope as of the last write (null when nothing needed writing). */
   readonly server: ServerEnvelope | null;
+  /** FIELD-PARITY-2 A-3 — what each opted-in upload of this sync created (empty when none). */
+  readonly imports: readonly SyncImport[];
+}
+
+/** FIELD-PARITY-2 A-3 — the result of one opted-in upload, for the import summary. */
+export interface SyncImport {
+  readonly docKey: string;
+  readonly title: string;
+  readonly result: FieldImportResult;
+}
+
+/** The envelope has a signing recipient on the server (an opted-in upload needs one). */
+function hasServerSigner(p: SendDraftPayload): boolean {
+  return p.recipients.some((r) => r.serverId !== null && r.kind !== 'RECEIVES_COPY');
 }
 
 export const UPLOAD_ATTEMPTS = 3;
@@ -183,6 +200,37 @@ export function configWire(f: EditorField): Partial<FieldWire> {
   };
 }
 
+/**
+ * FIELD-PARITY-2 A-3 — the fields an upload created on its document (imported form fields, text
+ * tags), adopted into the local draft: the server's list is the base for that document, and the
+ * user's later edits apply to it. A field this editor can't hold (an unknown recipient, unknown
+ * pages, an engine type) is kept exactly as stored, so a replace-all PUT never removes it.
+ */
+export function adoptUploadFields(
+  p: SendDraftPayload,
+  env: ServerEnvelope,
+  doc: DraftDocument,
+): Pick<SendDraftPayload, 'fields' | 'preservedFields'> | Record<string, never> {
+  const made = env.fields.filter((f) => f.envelope_document_id === doc.serverId);
+  if (made.length === 0) return {};
+  const local = new Map(p.recipients.filter((r) => r.serverId !== null).map((r) => [r.serverId as string, r.key]));
+  const known = made.filter((f) => f.signer_id === null || local.has(f.signer_id));
+  const keyOf = (id: string) => (id === doc.serverId ? doc.key : (local.get(id) ?? id));
+  const pages = new Map([[doc.serverId as string, doc.pages ?? []]]);
+  const taken = new Set(p.fields.map((f) => f.key));
+  const { fields, preservedFields, pendingFields } = editorFieldsFromServer(known, pages, keyOf, (f, i) => {
+    let k = `imp-${f.id || `${doc.key}-${i}`}`;
+    while (taken.has(k)) k = `${k}-${i}`;
+    taken.add(k);
+    return k;
+  });
+  const kept = [...preservedFields, ...pendingFields, ...made.filter((f) => !known.includes(f))];
+  return {
+    fields: [...p.fields, ...fields],
+    ...(kept.length > 0 || p.preservedFields ? { preservedFields: [...(p.preservedFields ?? []), ...kept] } : {}),
+  };
+}
+
 export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncResult> {
   const { api, bytes } = deps;
   const now = deps.now ?? (() => new Date());
@@ -202,86 +250,10 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
     await deps.onProgress?.(draft);
   };
 
-  // 1. The envelope.
-  if (draft.envelopeId === null) {
-    const { id } = await api.create(effectiveSubject(p));
-    const v = await api.detail(id);
-    server = v.env;
-    // A new envelope still needs the routing mode and message.
-    await save({ etag: v.etag, dirty: { ...p.dirty, meta: true } }, id);
-  }
-  const envelopeId = draft.envelopeId as string;
-  if (p.etag === null) {
-    // A server id without a version can only come from an interrupted create.
-    const v = await api.detail(envelopeId);
-    server = v.env;
-    await save({ etag: v.etag });
-  }
-
-  // 2. Documents waiting for upload.
-  for (const doc of p.documents) {
-    if (doc.pendingUpload === null) continue;
-    const content = await bytes.get(doc.key);
-    if (content === null) throw new SendFlowError('document_bytes_missing');
-    const before = revisionOf(p.etag);
-    const ifMatch = p.etag as string;
-    const up = await uploadWithRetry(
-      () =>
-        api.upload(envelopeId, ifMatch, {
-          title: doc.title,
-          filename: doc.filename,
-          contentBase64: content,
-          idempotencyKey: doc.pendingUpload!.idempotencyKey,
-        }),
-      deps.sleep,
-    );
-    // The upload answers without a version: read it, and require that exactly this
-    // upload happened since our version (anything more is a change made elsewhere).
-    const v = await api.detail(envelopeId);
-    if (before !== null && v.env.revision !== null && v.env.revision !== before + 1) {
-      throw revisionMismatch(v.env.revision);
-    }
-    server = v.env;
-    const uploaded: DraftDocument = {
-      ...doc,
-      serverId: up.id,
-      pages: up.pages.length > 0 ? up.pages : doc.pages,
-      pendingUpload: null,
-    };
-    await save({
-      etag: v.etag,
-      documents: p.documents.map((d) => (d.key === doc.key ? uploaded : d)),
-    });
-    await bytes.remove(doc.key);
-  }
-
-  // 3. Subject, routing and message (PATCH, M-A3 §3).
-  if (p.dirty.meta) {
-    const subject = effectiveSubject(p).trim();
-    const message = p.message.trim();
-    // Feature-Parity §1.17 — allow_delegation goes only when it changed here.
-    const delegation =
-      p.allowDelegation !== undefined && p.allowDelegation !== (p.serverAllowDelegation ?? false)
-        ? { allow_delegation: p.allowDelegation }
-        : {};
-    const v = await api.update(envelopeId, p.etag as string, {
-      ...(subject ? { subject } : {}),
-      routing_mode: p.routingMode,
-      message: message.length > 0 ? message : null,
-      ...delegation,
-    });
-    server = v.env;
-    await save({
-      etag: v.etag,
-      serverAllowDelegation: v.env.allowDelegation,
-      dirty: { ...p.dirty, meta: false },
-    });
-  }
-
   // 4. Recipients: the signing recipients in signing order (list position), then the
   // copy recipients, which never take part in the order (M-A5 §1.6). The PUT replaces
   // the list, so every item carries its kind, copy timing and Assign to me again.
-  if (p.dirty.recipients) {
+  const syncRecipients = async () => {
     const ordered = wireOrder(p.recipients);
     const v = await api.putRecipients(envelopeId, p.etag as string, recipientsToWire(p.recipients));
     const sent = v.env.recipients;
@@ -310,7 +282,102 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
       }),
       dirty: { ...p.dirty, recipients: false, fields: true },
     });
+  };
+
+  // 1. The envelope.
+  if (draft.envelopeId === null) {
+    const { id } = await api.create(effectiveSubject(p));
+    const v = await api.detail(id);
+    server = v.env;
+    // A new envelope still needs the routing mode and message.
+    await save({ etag: v.etag, dirty: { ...p.dirty, meta: true } }, id);
   }
+  const envelopeId = draft.envelopeId as string;
+  if (p.etag === null) {
+    // A server id without a version can only come from an interrupted create.
+    const v = await api.detail(envelopeId);
+    server = v.env;
+    await save({ etag: v.etag });
+  }
+
+  // 2. Documents waiting for upload. FIELD-PARITY-2 A-3 — an upload with an option creates
+  // fields for a signing recipient, so the recipients go first; with no signing recipient yet it
+  // waits (and so do the fields). The fields it created are adopted into the local draft, so the
+  // replace-all fields PUT keeps every one the user did not delete.
+  const imports: SyncImport[] = [];
+  if (p.dirty.recipients && p.documents.some((d) => uploadMakesFields(d.pendingUpload))) await syncRecipients();
+  let deferred = false;
+  for (const doc of p.documents) {
+    if (doc.pendingUpload === null) continue;
+    const pending = doc.pendingUpload;
+    if (uploadMakesFields(pending) && !hasServerSigner(p)) {
+      deferred = true;
+      continue;
+    }
+    const content = await bytes.get(doc.key);
+    if (content === null) throw new SendFlowError('document_bytes_missing');
+    const before = revisionOf(p.etag);
+    const ifMatch = p.etag as string;
+    const up = await uploadWithRetry(
+      () =>
+        api.upload(envelopeId, ifMatch, {
+          title: doc.title,
+          filename: doc.filename,
+          contentBase64: content,
+          idempotencyKey: pending.idempotencyKey,
+          ...(pending.importFields ? { importFields: true } : {}),
+          ...(pending.applyTextTags ? { applyTextTags: true } : {}),
+        }),
+      deps.sleep,
+    );
+    // The upload answers without a version: read it, and require that exactly this
+    // upload happened since our version (anything more is a change made elsewhere).
+    const v = await api.detail(envelopeId);
+    if (before !== null && v.env.revision !== null && v.env.revision !== before + 1) {
+      throw revisionMismatch(v.env.revision);
+    }
+    server = v.env;
+    const uploaded: DraftDocument = {
+      ...doc,
+      serverId: up.id,
+      pages: up.pages.length > 0 ? up.pages : doc.pages,
+      pendingUpload: null,
+    };
+    const adopted = adoptUploadFields(p, v.env, uploaded);
+    await save({
+      etag: v.etag,
+      documents: p.documents.map((d) => (d.key === doc.key ? uploaded : d)),
+      ...adopted,
+    });
+    if (up.fieldImport) imports.push({ docKey: doc.key, title: doc.title, result: up.fieldImport });
+    await bytes.remove(doc.key);
+  }
+
+  // 3. Subject, routing and message (PATCH, M-A3 §3).
+  if (p.dirty.meta) {
+    const subject = effectiveSubject(p).trim();
+    const message = p.message.trim();
+    // Feature-Parity §1.17 — allow_delegation goes only when it changed here.
+    const delegation =
+      p.allowDelegation !== undefined && p.allowDelegation !== (p.serverAllowDelegation ?? false)
+        ? { allow_delegation: p.allowDelegation }
+        : {};
+    const v = await api.update(envelopeId, p.etag as string, {
+      ...(subject ? { subject } : {}),
+      routing_mode: p.routingMode,
+      message: message.length > 0 ? message : null,
+      ...delegation,
+    });
+    server = v.env;
+    await save({
+      etag: v.etag,
+      serverAllowDelegation: v.env.allowDelegation,
+      dirty: { ...p.dirty, meta: false },
+    });
+  }
+
+  // 4. Recipients (unless already sent before an opted-in upload, step 2).
+  if (p.dirty.recipients) await syncRecipients();
 
   // 4b. Text delivery and the SMS code (Feature-Parity §1.7–§1.9): one PUT per changed
   // recipient, after the recipients exist on the server. No If-Match: this route does not
@@ -325,12 +392,12 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
     });
   }
 
-  // 5. Fields (replaced as a whole).
-  if (p.dirty.fields) {
+  // 5. Fields (replaced as a whole). Not while a document waits for its upload (step 2).
+  if (p.dirty.fields && !deferred) {
     const v = await api.putFields(envelopeId, p.etag as string, fieldsToWire(p));
     server = v.env;
     await save({ etag: v.etag, dirty: CLEAN });
   }
 
-  return { draft, server };
+  return { draft, server, imports };
 }

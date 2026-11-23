@@ -36,7 +36,32 @@ export interface DraftDocument {
    * when the document was added, reused on every retry, M-A3 §8). The bytes wait in the
    * encrypted store (documentBytes.ts).
    */
-  readonly pendingUpload: { readonly idempotencyKey: string } | null;
+  readonly pendingUpload: PendingUpload | null;
+}
+
+/**
+ * A document waiting for upload. FIELD-PARITY-2 A-3 — the upload options chosen when it was
+ * added (sign-web's two choices), kept with it so every retry sends the same request.
+ */
+export interface PendingUpload {
+  readonly idempotencyKey: string;
+  /** Import the PDF's form fields (import_fields). */
+  readonly importFields?: boolean;
+  /** Turn {{…}} text tags into fields (apply_text_tags). */
+  readonly applyTextTags?: boolean;
+}
+
+/** FIELD-PARITY-2 A-3 — the upload options (sign-web's "When uploading" choices). */
+export interface UploadOptions {
+  readonly importFields: boolean;
+  readonly applyTextTags: boolean;
+}
+
+export const NO_UPLOAD_OPTIONS: UploadOptions = { importFields: false, applyTextTags: false };
+
+/** The upload creates fields on the server (and so needs a signing recipient there first). */
+export function uploadMakesFields(u: PendingUpload | null): boolean {
+  return u !== null && (u.importFields === true || u.applyTextTags === true);
 }
 
 /**
@@ -139,6 +164,8 @@ export interface SendDraftPayload {
    * read: the settings sheet offers sender-filled (and read-only) only while it is true.
    */
   readonly senderFilledEnabled?: boolean;
+  /** FIELD-PARITY-2 A-3 — the upload options for documents added from now on (absent: both off). */
+  readonly uploadOptions?: UploadOptions;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -399,6 +426,51 @@ export function configOf(f: ServerField): Partial<EditorField> {
 }
 
 /**
+ * Server fields → the editor's fields. A type the editor does not author is kept untouched,
+ * never dropped: the fields PUT replaces every field, so dropping it here would delete it on the
+ * next sync. So is an engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT,
+ * FIELD-PARITY-1 P3): the server passes it through only unchanged, with its id. A field on a
+ * document whose pages are not known yet is left out (`fieldsPending`). Also the sync's adoption
+ * of the fields an upload created (FIELD-PARITY-2 A-3).
+ */
+export function editorFieldsFromServer(
+  serverFields: readonly ServerField[],
+  pagesByDoc: ReadonlyMap<string, readonly PageSize[]>,
+  keyOf: (serverId: string) => string,
+  fieldKey: (f: ServerField, i: number) => string,
+): { fields: EditorField[]; preservedFields: ServerField[]; fieldsPending: boolean; pendingFields: ServerField[] } {
+  const pendingFields: ServerField[] = [];
+  const fields: EditorField[] = [];
+  const preservedFields: ServerField[] = [];
+  serverFields.forEach((f, i) => {
+    if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
+      preservedFields.push(f);
+      return;
+    }
+    const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
+    if (!page) {
+      pendingFields.push(f);
+      return;
+    }
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width, height: f.height }, page);
+    fields.push({
+      key: fieldKey(f, i),
+      docKey: keyOf(f.envelope_document_id),
+      page: f.page_number,
+      recipientKey: keyOf(f.signer_id),
+      type: f.field_type,
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      required: f.required,
+      ...configOf(f),
+    });
+  });
+  return { fields, preservedFields, fieldsPending: pendingFields.length > 0, pendingFields };
+}
+
+/**
  * Build the local payload from the server envelope. Page sizes come from `pagesByDoc`
  * (known locally or read from the source PDF); fields on a document without known
  * pages stay on the server copy only until the pages are known (`fieldsPending`).
@@ -429,38 +501,7 @@ export function payloadFromServer(
     ...(r.accessCodeSet ? { accessCodeSet: true } : {}),
     ...(r.identityCheck ? { identityCheck: r.identityCheck } : {}),
   }));
-  let fieldsPending = false;
-  const fields: EditorField[] = [];
-  const preservedFields: ServerField[] = [];
-  env.fields.forEach((f, i) => {
-    // A type the editor does not author is kept untouched, never dropped: the fields
-    // PUT replaces every field, so dropping it here would delete it on the next sync. So is an
-    // engine row with no recipient or size (an S2S / Sign API ACKNOWLEDGEMENT, FIELD-PARITY-1
-    // P3): the server passes it through only unchanged, with its id.
-    if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
-      preservedFields.push(f);
-      return;
-    }
-    const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
-    if (!page) {
-      fieldsPending = true;
-      return;
-    }
-    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
-    fields.push({
-      key: `srv-${i}`,
-      docKey: keyOf(f.envelope_document_id),
-      page: f.page_number,
-      recipientKey: keyOf(f.signer_id ?? ''),
-      type: f.field_type,
-      x: box.x,
-      y: box.y,
-      width: box.width,
-      height: box.height,
-      required: f.required,
-      ...configOf(f),
-    });
-  });
+  const { fields, preservedFields, fieldsPending } = editorFieldsFromServer(env.fields, pagesByDoc, keyOf, (_f, i) => `srv-${i}`);
   const generated = defaultSubject({ documents, recipients });
   return {
     payload: {
