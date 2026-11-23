@@ -15,6 +15,7 @@ import {
   CLEAN,
   editorFieldsFromServer,
   effectiveSubject,
+  fieldKeyOf,
   uploadMakesFields,
   type DraftDocument,
   type SendDraft,
@@ -102,8 +103,15 @@ function revisionOf(etag: string | null): number | null {
   return parseEtag(etag)?.revision ?? null;
 }
 
-/** The wire fields for the payload. Every document and recipient must be on the server. */
+/**
+ * The wire fields for the payload. Every document and recipient must be on the server.
+ * FIELD-PARITY-2 B-1 / B-2 — each authored field goes with its key as its field_key and with its
+ * condition, so a re-save never blanks a key or drops a condition. A key that is not a valid
+ * field key, or one already used (a preserved field's, an earlier field's), is not sent: the
+ * server would refuse the whole list (field_key_invalid / field_key_duplicate).
+ */
 export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
+  const keys = new Set((p.preservedFields ?? []).map((f) => fieldKeyOf(f.field_key)).filter((k): k is string => k !== null));
   const authored: FieldWire[] = p.fields.map((f) => {
     const doc = p.documents.find((d) => d.key === f.docKey);
     const r = p.recipients.find((x) => x.key === f.recipientKey);
@@ -111,7 +119,11 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
     if (!doc?.serverId || !page) throw new SendFlowError('pages_unknown');
     if (!r?.serverId) throw new SendFlowError('recipients_out_of_sync');
     const b = editorToWire(f, page);
+    const key = fieldKeyOf(f.key);
+    const keyed = key !== null && !keys.has(key);
+    if (keyed) keys.add(key);
     return {
+      ...(keyed ? { field_key: key } : {}),
       envelope_document_id: doc.serverId,
       signer_id: r.serverId,
       field_type: f.type,
@@ -122,6 +134,7 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       height: b.height,
       required: f.required,
       ...configWire(f),
+      ...(f.condition ? { condition: f.condition } : {}),
     };
   });
   // Engine-type fields from the server copy go back exactly as they came (their
@@ -173,6 +186,9 @@ export function storedFieldWire(f: ServerField): FieldWire {
     ...(f.data_name != null ? { data_name: f.data_name } : {}),
     ...(f.options != null ? { options: f.options } : {}),
     ...(f.sender_filled === true && f.value != null ? { value: f.value } : {}),
+    // FIELD-PARITY-2 B-1 / B-2 — the stored key and condition go back as stored.
+    ...(f.field_key != null ? { field_key: f.field_key } : {}),
+    ...(f.condition != null ? { condition: f.condition } : {}),
   };
 }
 

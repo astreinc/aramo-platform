@@ -2,7 +2,7 @@
 // Pure: every action is deterministic (ids come in the action), so it is unit-tested
 // without a renderer. Boxes are in the EDITOR frame (PDF points, top-left origin);
 // geometry.ts converts to and from the wire and the screen.
-import { fieldSettingsOf, isFieldTypeKey, pendingSuggestions } from '@aramo/sign-client';
+import { fieldSettingsOf, isFieldTypeKey, pendingSuggestions, type FieldCondition } from '@aramo/sign-client';
 
 import { NEW_DROPDOWN_CHOICES, isGroupedType, type EditorFieldSettings } from './fieldSettings';
 
@@ -29,7 +29,10 @@ export const UNDO_DEPTH = 30;
 export const RADIO_OPTION_GAP = 8;
 
 export interface EditorField extends Box, EditorFieldSettings {
-  /** Client key (the server re-creates fields on every PUT). */
+  /**
+   * Client key (the server re-creates fields on every PUT). FIELD-PARITY-2 B-1 — also the
+   * field's stable field_key on the wire (1..200 characters, unique in the envelope).
+   */
   readonly key: string;
   /** The draft document's key. */
   readonly docKey: string;
@@ -47,6 +50,11 @@ export interface EditorField extends Box, EditorFieldSettings {
   readonly groupKey?: string | null;
   readonly groupRule?: GroupRule | null;
   readonly minSelected?: number | null;
+  /**
+   * FIELD-PARITY-2 B-2 — "show only when" (absent / null: always shown). Its trigger_key is
+   * another field's `key`: an editor field's key is the field_key it is saved with (B-1).
+   */
+  readonly condition?: FieldCondition | null;
 }
 
 /**
