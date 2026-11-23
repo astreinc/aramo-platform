@@ -374,8 +374,8 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
   };
 }
 
-/** The editor's configuration for a server field of an authoring type. */
-function configOf(f: ServerField): Partial<EditorField> {
+/** The editor's configuration for a server field of an authoring type (also self-sign's template start). */
+export function configOf(f: ServerField): Partial<EditorField> {
   // FIELD-PARITY-1 P3 §6.2 — the P3 settings of every type, then the M-A6 ones.
   const p3 = settingsFromServer(f);
   if (f.field_type === 'SIGNER_NAME')

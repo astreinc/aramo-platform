@@ -118,6 +118,16 @@ describe('W1-A values', () => {
     });
     expect(canFinish([field('s', 'SIGNATURE'), field('t', 'TEXT')], ctx(), { t: 'x' }).ok).toBe(true);
   });
+
+  it('FIELD-PARITY-2 A-1 — a required carried field this screen cannot fill blocks Finish', () => {
+    const placed = [field('s', 'SIGNATURE')];
+    expect(canFinish(placed, ctx(), {}, [{ required: true, signer_id: 'r-self' }])).toMatchObject({
+      ok: false,
+      message: SELF_COPY.cannotFill,
+    });
+    expect(canFinish(placed, ctx(), {}, [{ required: false, signer_id: 'r-self' }]).ok).toBe(true);
+    expect(canFinish(placed, ctx(), {}, [{ required: true, signer_id: null }]).ok).toBe(true);
+  });
 });
 
 describe('matching the server fields to the placed fields', () => {

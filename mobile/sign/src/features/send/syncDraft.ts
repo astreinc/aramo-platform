@@ -18,6 +18,7 @@ import {
   type SendDraft,
   type SendDraftPayload,
   type ServerEnvelope,
+  type ServerField,
 } from './draftModel';
 import { emailKey, recipientsToWire, takesMessaging, wireOrder } from './recipientRoles';
 import {
@@ -113,35 +114,49 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
   // (the server keeps it only when it is identical to the stored row).
   const preserved: FieldWire[] = (p.preservedFields ?? [])
     .filter((f) => f.signer_id === null || signers.has(f.signer_id))
-    .map((f) => ({
-      id: f.id,
-      envelope_document_id: f.envelope_document_id,
-      signer_id: f.signer_id,
-      field_type: f.field_type,
-      page_number: f.page_number,
-      x: f.x,
-      y: f.y,
-      width: f.width,
-      height: f.height,
-      required: f.required,
-      name_mode: f.name_mode,
-      label: f.label,
-      group_key: f.group_key,
-      group_rule: f.group_rule,
-      min_selected: f.min_selected,
-      // FIELD-PARITY-1 P3 — a preserved field keeps every setting it was stored with (a
-      // DROPDOWN without its choices would be refused), only those that are set.
-      ...(f.tooltip != null ? { tooltip: f.tooltip } : {}),
-      ...(f.placeholder != null ? { placeholder: f.placeholder } : {}),
-      ...(f.read_only === true ? { read_only: true } : {}),
-      ...(f.sender_filled === true ? { sender_filled: true } : {}),
-      ...(f.validation != null ? { validation: f.validation } : {}),
-      ...(f.font_size != null ? { font_size: f.font_size } : {}),
-      ...(f.data_name != null ? { data_name: f.data_name } : {}),
-      ...(f.options != null ? { options: f.options } : {}),
-      ...(f.sender_filled === true && f.value != null ? { value: f.value } : {}),
-    }));
+    .map(preservedFieldWire);
   return [...authored, ...preserved];
+}
+
+/**
+ * A stored field sent back exactly as it came: its id and every stored value (the server keeps
+ * an engine-type row only when it is identical; FIELD-PARITY-1 P3 — every setting that is set,
+ * so a DROPDOWN keeps its choices). Also self-sign's carried template fields (FIELD-PARITY-2 A-1).
+ */
+export function preservedFieldWire(f: ServerField): FieldWire {
+  return {
+    id: f.id,
+    ...storedFieldWire(f),
+  };
+}
+
+/** A stored field's members as a PUT …/fields item, without its id (values exactly as stored). */
+export function storedFieldWire(f: ServerField): FieldWire {
+  return {
+    envelope_document_id: f.envelope_document_id,
+    signer_id: f.signer_id,
+    field_type: f.field_type,
+    page_number: f.page_number,
+    x: f.x,
+    y: f.y,
+    width: f.width,
+    height: f.height,
+    required: f.required,
+    name_mode: f.name_mode,
+    label: f.label,
+    group_key: f.group_key,
+    group_rule: f.group_rule,
+    min_selected: f.min_selected,
+    ...(f.tooltip != null ? { tooltip: f.tooltip } : {}),
+    ...(f.placeholder != null ? { placeholder: f.placeholder } : {}),
+    ...(f.read_only === true ? { read_only: true } : {}),
+    ...(f.sender_filled === true ? { sender_filled: true } : {}),
+    ...(f.validation != null ? { validation: f.validation } : {}),
+    ...(f.font_size != null ? { font_size: f.font_size } : {}),
+    ...(f.data_name != null ? { data_name: f.data_name } : {}),
+    ...(f.options != null ? { options: f.options } : {}),
+    ...(f.sender_filled === true && f.value != null ? { value: f.value } : {}),
+  };
 }
 
 /**
@@ -149,7 +164,7 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
  * every P3 setting its type takes and that is set (fieldSettings.ts p3SettingsWire), and the
  * sender's value of a sender-filled field only (S-5; any other value is refused).
  */
-function configWire(f: EditorField): Partial<FieldWire> {
+export function configWire(f: EditorField): Partial<FieldWire> {
   const p3 = p3SettingsWire(f) as Partial<FieldWire>;
   const label = (f.label ?? '').trim();
   if (f.type === 'SIGNER_NAME') return { name_mode: f.nameMode ?? 'SIGNER_PROFILE', ...(label ? { label } : {}), ...p3 };

@@ -15,6 +15,8 @@ export const SELF_KEY = 'self';
 export const SELF_COPY = {
   needSignature: 'Add your signature before you finish',
   needValues: 'Fill in every required field before you finish',
+  /** FIELD-PARITY-2 A-1 — a carried template field this screen does not place is required. */
+  cannotFill: 'This document has a required field you can’t fill here yet.',
   offline: 'You’re offline. Connect to continue.',
   uploadFailed: 'Couldn’t add the documents. Check your connection and try again.',
   finishFailed: 'Couldn’t finish signing. Check your connection and try again.',
@@ -161,8 +163,19 @@ export interface FinishCheck {
   readonly fieldKey: string | null;
 }
 
-/** Finish needs a signature, every adopted mark, and every required text value. */
-export function canFinish(fields: readonly EditorField[], ctx: SelfContext, edits: SelfEdits): FinishCheck {
+/**
+ * Finish needs a signature, every adopted mark, and every required text value. FIELD-PARITY-2
+ * A-1 — a required template field this screen carries but does not place blocks Finish (the
+ * server would refuse the completion).
+ */
+export function canFinish(
+  fields: readonly EditorField[],
+  ctx: SelfContext,
+  edits: SelfEdits,
+  carried: readonly { readonly required: boolean; readonly signer_id: string | null }[] = [],
+): FinishCheck {
+  if (carried.some((f) => f.required && f.signer_id !== null))
+    return { ok: false, message: SELF_COPY.cannotFill, fieldKey: null };
   if (!fields.some((f) => f.type === 'SIGNATURE'))
     return { ok: false, message: SELF_COPY.needSignature, fieldKey: null };
   for (const f of fields) {

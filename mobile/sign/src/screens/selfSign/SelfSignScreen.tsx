@@ -553,7 +553,7 @@ export function SelfSignScreen() {
       setArmRequest((a) => ({ type: 'SIGNATURE', id: (a?.id ?? 0) + 1 }));
       return;
     }
-    const check = canFinish(fields, selfCtx, edits);
+    const check = canFinish(fields, selfCtx, edits, progress.current.template?.preserved);
     if (!check.ok) {
       toast.show(check.message ?? SELF_COPY.needSignature);
       const f = fields.find((x) => x.key === check.fieldKey);
@@ -606,8 +606,16 @@ export function SelfSignScreen() {
     lastDisclosure.current = disclosure;
     setStage({ kind: 'finishing', phase: 'complete', failed: null });
     try {
-      const r = await acceptFillComplete(s, disclosure, fields, docs, selfCtx, edits, stored.current, (id) =>
-        stored.current.add(id),
+      const r = await acceptFillComplete(
+        s,
+        disclosure,
+        fields,
+        docs,
+        selfCtx,
+        edits,
+        stored.current,
+        (id) => stored.current.add(id),
+        progress.current.template,
       );
       s.discard();
       session.current = null;
