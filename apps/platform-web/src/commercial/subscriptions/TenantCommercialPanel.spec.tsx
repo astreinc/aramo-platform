@@ -9,10 +9,13 @@ import {
   CR_NEW,
   CR_OPEN,
   NON_READERS,
+  FREE_ROW,
   NOW,
+  PV_STANDARD_1,
   PV_TEAM_2,
   READERS,
   STRIPE_ROW,
+  SUB_FREE,
   SUB_MERIDIAN,
   T_MERIDIAN,
   commercial,
@@ -442,5 +445,73 @@ describe('Console Refund Request — "Request refund…" on Tenant › Commercia
     renderAt();
     await card();
     expect(within(await card()).queryByRole('button', { name: 'Request refund…' })).toBeNull();
+  });
+});
+
+// CCP-PERSONAL-ARRANGED-1 P-5 / P-6 — "Move to an arranged plan…" on a Personal tenant's Free row.
+describe('CCP-PERSONAL-ARRANGED-1 Tenant › Commercial — move a Free Personal tenant to an arranged plan', () => {
+  beforeEach(setup);
+  afterEach(teardown);
+
+  const personal = () => world({ tenant: commercial({ subscription: FREE_ROW(), entitlement: entitlement({ granted_source: 'SIGNUP' }) }, T_MERIDIAN, 'Rowan Ellis', 'PERSONAL') });
+
+  async function openArranged(w: World) {
+    installFetch(w, 'commercial_ops');
+    renderAt();
+    fireEvent.click(await action('Move to an arranged plan…'));
+    const d = await dialog();
+    expect(within(d).getByRole('heading', { name: 'Move to an arranged plan · Rowan Ellis' })).toBeInTheDocument();
+    return d;
+  }
+
+  it('CPA-T-1 the Free row offers the one action; plan change and cancel are not offered', async () => {
+    installFetch(personal(), 'commercial_ops');
+    renderAt();
+    const c = await card();
+    expect(await action('Move to an arranged plan…')).toBeEnabled();
+    expect(within(c).queryByRole('button', { name: 'Request plan change…' })).toBeNull();
+    expect(within(c).queryByRole('button', { name: 'Request cancel…' })).toBeNull();
+  });
+
+  it('CPA-T-2 only Personal plans other than Free are offered; COMP submits a SUBSCRIPTION_OPEN replacing the Free row', async () => {
+    const w = personal();
+    const d = await openArranged(w);
+    const sel = await within(d).findByLabelText('Personal plan');
+    await waitFor(() => expect(within(sel).getAllByRole('option').map((o) => o.textContent)).toEqual(['Sign Standard v1 · $10 / month']));
+    const submit = within(d).getByRole('button', { name: 'Submit for approval' });
+    fireEvent.change(within(d).getByLabelText('Reason'), { target: { value: 'Internal user on Personal Standard' } });
+    expect(submit).toBeDisabled(); // no arrangement chosen yet
+    fireEvent.click(within(d).getByLabelText('No charge (comp)'));
+    fireEvent.change(within(d).getByLabelText('Internal reference (optional)'), { target: { value: 'HR-2026-0042' } });
+    expect(within(d).queryByLabelText('Evidence')).toBeNull();
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const posts = w.calls.filter((c) => c.method === 'POST');
+    expect(posts[0]!.body).toEqual({
+      action_type: 'SUBSCRIPTION_OPEN',
+      tenant_id: T_MERIDIAN,
+      product_key: 'sign',
+      payload: { plan_key: 'aramo-sign-standard-personal-v1', plan_version_id: PV_STANDARD_1, replaces_subscription_id: SUB_FREE, arrangement: 'COMP', external_ref: 'HR-2026-0042' },
+      reason: 'Internal user on Personal Standard',
+      idempotency_key: expect.stringMatching(/^b3-arranged:/) as unknown as string,
+    });
+    expect(posts).toHaveLength(2);
+    expect(writes(w).every((x) => GOVERNED.test(x))).toBe(true);
+  });
+
+  it('CPA-T-3 the reason over 500 characters or a multi-line reference keeps Submit disabled', async () => {
+    const d = await openArranged(personal());
+    await within(d).findByLabelText('Personal plan');
+    fireEvent.click(within(d).getByLabelText('Agreed price, billed outside the store'));
+    fireEvent.change(within(d).getByLabelText('Reason'), { target: { value: 'x'.repeat(501) } });
+    const submit = within(d).getByRole('button', { name: 'Submit for approval' });
+    expect(submit).toBeDisabled();
+    expect(within(d).getByTestId('arranged-reason-help')).toHaveTextContent('Keep the reason to 500 characters or fewer.');
+    fireEvent.change(within(d).getByLabelText('Reason'), { target: { value: 'Agreed with the account owner' } });
+    expect(submit).toBeEnabled();
+    fireEvent.change(within(d).getByLabelText('Internal reference (optional)'), { target: { value: 'A\tB' } });
+    expect(submit).toBeDisabled();
+    expect(within(d).getByText('The internal reference must be a single line of text.')).toBeInTheDocument();
   });
 });

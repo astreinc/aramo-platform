@@ -1,7 +1,7 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { describe, expect, it } from 'vitest';
 
-import { diffRows, payloadOf, planChoices, priceLabel } from './TenantCommercialDialogs';
+import { ARRANGED_REASON_MAX, ARRANGED_REF_MAX, arrangedFieldErrors, diffRows, payloadOf, planChoices, priceLabel } from './TenantCommercialDialogs';
 import {
   NO_FILTER,
   allowanceBar,
@@ -22,14 +22,14 @@ import {
   versionText,
   type ActionContext,
 } from './subscriptions-model';
-import { CATALOG, CONTRACT, NOW, PV_TEAM_2, STRIPE_ROW, SUB_MERIDIAN, entitlement, facts, heldFlag, openRequest, product, row } from './subscriptions-test-data';
+import { CATALOG, CONTRACT, FREE_ROW, NOW, PV_STANDARD_1, PV_TEAM_2, STRIPE_ROW, SUB_FREE, SUB_MERIDIAN, entitlement, facts, heldFlag, openRequest, product, row } from './subscriptions-test-data';
 
 // CCP-B3 — the pure half of the workbench and the Tenant › Commercial tab (CCP-UI v1.0 handoff
 // §5.3, §5.9): status / grace / suspension, periods, commitment, source badge, flags, filters,
 // provenance, the actions with their gating and domain reasons, the request payloads (the
 // action-to-change-request trace) and the refusal lines.
 
-const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({ product: product(), canSubscription: true, canEntitlement: true, canSupport: false, human: true, now: NOW, ...over });
+const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({ product: product(), tenantKind: 'BUSINESS', canSubscription: true, canEntitlement: true, canSupport: false, human: true, now: NOW, ...over });
 const byKey = (c: ActionContext) => Object.fromEntries(tenantActions(c).map((a) => [a.key, a]));
 
 describe('CCP-B3 status, period, commitment (handoff §5.3)', () => {
@@ -171,6 +171,78 @@ describe('CCP-B3 actions — gating and domain reasons (handoff §5.9 "Actions")
   });
 });
 
+describe('CCP-PERSONAL-ARRANGED-1 P-5 — "Move to an arranged plan…" (action visibility)', () => {
+  const free = (over: Partial<ActionContext> = {}) => byKey(ctx({ tenantKind: 'PERSONAL', product: product({ subscription: FREE_ROW(), entitlement: entitlement({ granted_source: 'SIGNUP' }) }), ...over }));
+  it('CPA-A-1 a Personal tenant on an open Sign Free row gets ONE subscription action; plan change and cancel are not offered', () => {
+    const a = free();
+    expect(a['arranged']).toMatchObject({ label: 'Move to an arranged plan…', disabled: false, domain: '', danger: false });
+    expect(a['plan']).toBeUndefined();
+    expect(a['cancel']).toBeUndefined();
+    expect(a['convert']).toBeUndefined();
+  });
+  it('CPA-A-2 the arranged action needs the Commercial ops role and waits for an open request', () => {
+    expect(free({ canSubscription: false })['arranged']).toMatchObject({ disabled: true, why: 'Needs the Commercial ops role.' });
+    expect(byKey(ctx({ tenantKind: 'PERSONAL', product: product({ subscription: FREE_ROW(), open_request: openRequest({ action_type: 'SUBSCRIPTION_OPEN' }) }) }))['arranged']).toMatchObject({ disabled: true, domain: '' });
+  });
+  it('CPA-A-3 not offered on a Business tenant, an ended Free row, or a governed / self-service row', () => {
+    const biz = byKey(ctx({ tenantKind: 'BUSINESS', product: product({ subscription: FREE_ROW() }) }));
+    expect(biz['arranged']).toBeUndefined();
+    expect(biz['plan']).toBeUndefined();
+    expect(biz['cancel']).toBeUndefined();
+    const ended = free({ product: product({ subscription: FREE_ROW({ ended_at: '2026-10-20T00:00:00.000Z' }) }) });
+    expect(ended['arranged']).toBeUndefined();
+    expect(ended['plan']!.domain).toBe('No open subscription.');
+    expect(free({ product: product() })['arranged']).toBeUndefined();
+    expect(free({ product: product({ subscription: STRIPE_ROW() }) })['arranged']).toBeUndefined();
+  });
+});
+
+describe('CCP-PERSONAL-ARRANGED-1 P-5 — the arranged-plan dialog (payload, rows, validation)', () => {
+  const standard = planChoices(CATALOG, 'sign', 'PERSONAL')[0]!;
+  const p = product({ subscription: FREE_ROW() });
+  it('CPA-D-1 SUBSCRIPTION_OPEN replaces the Free row and names the arrangement; the internal reference is optional (external_ref)', () => {
+    expect(payloadOf('arranged', { product: p, flag: null, next: standard, evidence: '', arrangement: 'COMP', externalRef: '  HR-2026-0042 ' })).toEqual({
+      plan_key: 'aramo-sign-standard-personal-v1',
+      plan_version_id: PV_STANDARD_1,
+      replaces_subscription_id: SUB_FREE,
+      arrangement: 'COMP',
+      external_ref: 'HR-2026-0042',
+    });
+    expect(payloadOf('arranged', { product: p, flag: null, next: standard, evidence: '', arrangement: 'AGREED', externalRef: '   ' })).toEqual({
+      plan_key: 'aramo-sign-standard-personal-v1',
+      plan_version_id: PV_STANDARD_1,
+      replaces_subscription_id: SUB_FREE,
+      arrangement: 'AGREED',
+    });
+  });
+  it('CPA-D-2 no payload without an arrangement, a plan, or an open Free row', () => {
+    expect(payloadOf('arranged', { product: p, flag: null, next: standard, evidence: '', arrangement: null })).toBeNull();
+    expect(payloadOf('arranged', { product: p, flag: null, next: null, evidence: '', arrangement: 'COMP' })).toBeNull();
+    expect(payloadOf('arranged', { product: product(), flag: null, next: standard, evidence: '', arrangement: 'COMP' })).toBeNull();
+    expect(payloadOf('arranged', { product: product({ subscription: FREE_ROW({ ended_at: '2026-10-20T00:00:00.000Z' }) }), flag: null, next: standard, evidence: '', arrangement: 'COMP' })).toBeNull();
+  });
+  it('CPA-D-3 the before → after rows say what the arrangement means', () => {
+    const rows = (a: 'COMP' | 'AGREED' | null) => diffRows('arranged', { product: p, current: null, next: standard, currentPlanName: 'Free', arrangement: a }).map((r) => [r.field, r.before, r.after]);
+    expect(rows('COMP')).toEqual([
+      ['Plan', 'Sign Free', 'Sign Standard'],
+      ['Plan version', 'v1', 'v1'],
+      ['Arranged by Aramo', 'No', 'No charge (comp)'],
+      ['Price', 'Free', 'No charge'],
+      ['Allowance', '—', '25 envelopes'],
+    ]);
+    expect(rows('AGREED')[2]).toEqual(['Arranged by Aramo', 'No', 'Agreed price, billed outside the store']);
+    expect(rows('AGREED')[3]).toEqual(['Price', 'Free', '$10 / month, billed outside the store']);
+    expect(rows(null)[2]).toEqual(['Arranged by Aramo', 'No', '—']);
+  });
+  it('CPA-D-4 the reason is limited to 500 characters and the internal reference to one line of 120', () => {
+    expect(arrangedFieldErrors('Internal user', '')).toEqual({ reason: null, externalRef: null });
+    expect(arrangedFieldErrors('x'.repeat(ARRANGED_REASON_MAX), 'r'.repeat(ARRANGED_REF_MAX))).toEqual({ reason: null, externalRef: null });
+    expect(arrangedFieldErrors('x'.repeat(ARRANGED_REASON_MAX + 1), '').reason).toBe('Keep the reason to 500 characters or fewer.');
+    expect(arrangedFieldErrors('ok', 'r'.repeat(ARRANGED_REF_MAX + 1)).externalRef).toBe('Keep the internal reference to 120 characters or fewer.');
+    expect(arrangedFieldErrors('ok', 'HR-1\nHR-2').externalRef).toBe('The internal reference must be a single line of text.');
+  });
+});
+
 describe('CCP-B3 the action-to-change-request trace (payloads; PBD §5.3 B3 acceptance)', () => {
   const team = planChoices(CATALOG, 'sign', 'BUSINESS').find((c) => c.plan.name === 'Team')!;
   it('B3-P-1 plan choices: newest PUBLISHED version of each list-priced plan (contract-priced excluded); price label', () => {
@@ -181,7 +253,7 @@ describe('CCP-B3 the action-to-change-request trace (payloads; PBD §5.3 B3 acce
     expect(planChoices(CATALOG, 'sign', 'PERSONAL').map((c) => `${c.plan.name} v${c.version.version_number}`)).toEqual(['Standard v1']);
     expect(planChoices(CATALOG, 'sign', 'BUSINESS').some((c) => c.plan.tenant_kind === 'PERSONAL')).toBe(false);
     // A plan whose kind the catalog does not state is never offered (fail closed).
-    const unstated = { ...CATALOG, products: CATALOG.products.map((p) => ({ ...p, plans: p.plans.map(({ tenant_kind: _k, ...plan }) => plan) })) };
+    const unstated = { ...CATALOG, products: CATALOG.products.map((p) => ({ ...p, plans: p.plans.map((plan) => ({ ...plan, tenant_kind: undefined })) })) };
     expect(planChoices(unstated, 'sign', 'BUSINESS')).toEqual([]);
   });
   it('B3-P-2 every dialog maps to exactly one A3 / C2 payload', () => {

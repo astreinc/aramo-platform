@@ -17,6 +17,7 @@ export const T_MERIDIAN = '0190b300-0000-7000-8000-0000000b3a01';
 export const T_NORTHWIND = '0190b300-0000-7000-8000-0000000b3a02';
 export const SUB_MERIDIAN = '0190b300-0000-7000-8000-0000000b3501';
 export const SUB_NORTHWIND = '0190b300-0000-7000-8000-0000000b3502';
+export const SUB_FREE = '0190b300-0000-7000-8000-0000000b3510';
 export const CONTRACT = '0190b300-0000-7000-8000-0000000b3d01';
 export const FLAG = '0190b300-0000-7000-8000-0000000b3f01';
 export const CR_OPEN = '0190b300-0000-7000-8000-0000000b3e01';
@@ -81,6 +82,20 @@ export const STRIPE_ROW = (over: Partial<SubscriptionFacts> = {}): SubscriptionF
     ...over,
   });
 
+/** CCP-PERSONAL-ARRANGED-1 — a Personal tenant's open Free row (Personal Free v1.1). */
+export const FREE_ROW = (over: Partial<SubscriptionFacts> = {}): SubscriptionFacts =>
+  facts({
+    subscription_id: SUB_FREE,
+    plan: { id: '0190b300-0000-7000-8000-0000000b3610', key: 'aramo-sign-free-personal-v1', name: 'Free', sales_model: 'FREE' },
+    plan_version: { id: PV_FREE_1, version_number: 1, status: 'PUBLISHED' },
+    source: 'FREE',
+    period_anchor: '2026-09-01T00:00:00.000Z',
+    current_period: { start: '2026-10-01T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' },
+    commitment_end: null,
+    contract: null,
+    ...over,
+  });
+
 export function row(over: Partial<WorkbenchRow> = {}): WorkbenchRow {
   return { tenant: { id: T_MERIDIAN, name: 'Meridian Partners', slug: 'meridian' }, ...facts(), ...over };
 }
@@ -105,8 +120,8 @@ function other(key: string, state: EntitlementFacts['state'] = 'NONE'): ProductC
   return { product_key: key, registered: false, entitlement: entitlement({ capability: key, state, granted_source: state === 'NONE' ? null : 'PROVISIONING', granted_at: state === 'NONE' ? null : '2025-01-10T00:00:00.000Z' }), subscription: null, flags: [], open_request: null };
 }
 
-export function commercial(sign: Partial<ProductCommercial> = {}, tenant = T_MERIDIAN, name = 'Meridian Partners'): TenantCommercial {
-  return { as_of: NOW.toISOString(), tenant: { id: tenant, name, slug: 'meridian', kind: 'BUSINESS' }, products: [product(sign), other('ats'), other('portal'), other('intelligence')] };
+export function commercial(sign: Partial<ProductCommercial> = {}, tenant = T_MERIDIAN, name = 'Meridian Partners', kind: 'BUSINESS' | 'PERSONAL' = 'BUSINESS'): TenantCommercial {
+  return { as_of: NOW.toISOString(), tenant: { id: tenant, name, slug: 'meridian', kind }, products: [product(sign), other('ats'), other('portal'), other('intelligence')] };
 }
 
 export const SUPPORT: SupportExtensionList = {

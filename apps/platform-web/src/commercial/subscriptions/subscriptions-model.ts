@@ -6,7 +6,7 @@ import type { Catalog } from '../catalog/catalog-api';
 import { planTitle } from '../catalog/catalog-model';
 import { dayLabel, relLabel, shortRef } from '../support-extensions/support-extension-model';
 
-import { PRODUCT_LABEL, type EntitlementFacts, type HeldFlag, type OpenRequestRef, type ProductCommercial, type SubscriptionFacts, type WorkbenchRow } from './subscriptions-api';
+import { PRODUCT_LABEL, SIGN_PRODUCT, type EntitlementFacts, type HeldFlag, type OpenRequestRef, type ProductCommercial, type SubscriptionFacts, type WorkbenchRow } from './subscriptions-api';
 
 // CCP-B3 — the pure half of the Subscriptions workbench and the Tenant › Commercial tab
 // (CCP-UI v1.0 handoff §5.3, §5.9; Commercial Control Plane v1.0.dc.html `sb` :835-856 and the
@@ -322,7 +322,7 @@ export function openRequestText(r: OpenRequestRef, pendingProvider: boolean): st
 
 // ── actions and their reasons (handoff §5.9 "Actions", design `act`) ────────────────────────
 
-export type TenantActionKey = 'plan' | 'cancel' | 'grant' | 'revoke' | 'extension' | 'convert' | 'refund';
+export type TenantActionKey = 'plan' | 'cancel' | 'arranged' | 'grant' | 'revoke' | 'extension' | 'convert' | 'refund';
 
 export interface TenantAction {
   readonly key: TenantActionKey;
@@ -337,6 +337,8 @@ export interface TenantAction {
 
 export interface ActionContext {
   readonly product: ProductCommercial;
+  /** The tenant's kind (BUSINESS | PERSONAL): "Move to an arranged plan…" is a Personal action (CCP-PERSONAL-ARRANGED-1 P-5). */
+  readonly tenantKind: string;
   readonly canSubscription: boolean;
   readonly canEntitlement: boolean;
   readonly canSupport: boolean;
@@ -366,6 +368,13 @@ export function insideCommitment(s: Pick<SubscriptionFacts, 'commitment_end'>, n
   return s.commitment_end !== null && new Date(s.commitment_end).getTime() > now.getTime();
 }
 
+/** The Free row of a Personal tenant (source FREE, Personal Free v1.1). */
+export function isFreeRow(s: Pick<SubscriptionFacts, 'source'>): boolean {
+  return s.source === 'FREE';
+}
+
+export const ARRANGED_LABEL = 'Move to an arranged plan…';
+
 export function tenantActions(ctx: ActionContext): TenantAction[] {
   const { product: p, now } = ctx;
   const s = p.subscription;
@@ -383,16 +392,24 @@ export function tenantActions(ctx: ActionContext): TenantAction[] {
     disabled: domain !== '' || !roleOk || !ctx.human || blocked,
   });
   const noPlans = p.registered ? '' : 'No commercial plans yet.';
-  const out: TenantAction[] = [
-    make(
-      'plan',
-      'Request plan change…',
-      noPlans || (!open ? 'No open subscription.' : self ? 'Managed in Stripe. The tenant changes plans in Stripe checkout.' : contractPriced ? 'Enterprise is contract-priced; record a contract amendment instead.' : ''),
-      ctx.canSubscription,
-      OPS,
-    ),
-    make('cancel', 'Request cancel…', !open ? 'No open subscription.' : self ? 'Managed in Stripe. Cancellation happens in Stripe.' : '', ctx.canSubscription, OPS, true),
-  ];
+  const out: TenantAction[] = [];
+  if (open && isFreeRow(s)) {
+    // CCP-PERSONAL-ARRANGED-1 P-5: a plan change or a cancel always fails on a Free row
+    // (TARGET_NOT_GOVERNED), so neither is offered. A Personal tenant's open Sign Free row is moved
+    // by ONE action: a SUBSCRIPTION_OPEN that replaces it with a Personal plan arranged by Aramo.
+    if (ctx.tenantKind === 'PERSONAL' && p.product_key === SIGN_PRODUCT) out.push(make('arranged', ARRANGED_LABEL, noPlans, ctx.canSubscription, OPS));
+  } else {
+    out.push(
+      make(
+        'plan',
+        'Request plan change…',
+        noPlans || (!open ? 'No open subscription.' : self ? 'Managed in Stripe. The tenant changes plans in Stripe checkout.' : contractPriced ? 'Enterprise is contract-priced; record a contract amendment instead.' : ''),
+        ctx.canSubscription,
+        OPS,
+      ),
+      make('cancel', 'Request cancel…', !open ? 'No open subscription.' : self ? 'Managed in Stripe. Cancellation happens in Stripe.' : '', ctx.canSubscription, OPS, true),
+    );
+  }
   const noGoverned = p.registered ? '' : 'No governed request covers this product yet.';
   if (p.entitlement.state === 'ACTIVE') out.push(make('revoke', 'Revoke product…', noGoverned, ctx.canEntitlement, OPS, true));
   else out.push(make('grant', 'Grant product…', noGoverned, ctx.canEntitlement, OPS));

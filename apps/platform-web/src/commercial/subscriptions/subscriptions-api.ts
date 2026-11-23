@@ -177,14 +177,15 @@ export interface RefundablePayments {
   read_at: string;
 }
 
-/** The action types the tab creates (CCP-A3 closed set). */
-export type TenantActionType = 'SUBSCRIPTION_CHANGE' | 'SUBSCRIPTION_END' | 'ENTITLEMENT_GRANT' | 'ENTITLEMENT_REVOKE' | 'CONVERSION' | 'REFUND';
+/** The action types the tab creates (CCP-A3 closed set; SUBSCRIPTION_OPEN: CCP-PERSONAL-ARRANGED-1 P-5). */
+export type TenantActionType = 'SUBSCRIPTION_OPEN' | 'SUBSCRIPTION_CHANGE' | 'SUBSCRIPTION_END' | 'ENTITLEMENT_GRANT' | 'ENTITLEMENT_REVOKE' | 'CONVERSION' | 'REFUND';
 
 export interface TenantRequestInput {
   readonly action_type: TenantActionType;
   readonly tenant_id: string;
   readonly payload: Record<string, unknown>;
   readonly reason: string;
+  /** "" = none (the arranged-plan dialog asks for a reason and an optional internal reference only). */
   readonly evidence: string;
   /** false = Save as draft (no submit). */
   readonly submit: boolean;
@@ -197,9 +198,9 @@ export function newRequestKey(prefix: string): string {
   return `${prefix}:${rnd}`;
 }
 
-/** Merge train TD-MERGE-10 convention: the evidence travels in the reason. */
+/** Merge train TD-MERGE-10 convention: the evidence travels in the reason (the reason alone when there is none). */
 export function reasonWithEvidence(reason: string, evidence: string): string {
-  return `${reason.trim()}\n\nEvidence: ${evidence.trim()}`;
+  return evidence.trim() === '' ? reason.trim() : `${reason.trim()}\n\nEvidence: ${evidence.trim()}`;
 }
 
 const BASE = '/platform/commercial';

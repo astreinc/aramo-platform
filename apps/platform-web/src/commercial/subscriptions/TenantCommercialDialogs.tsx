@@ -24,7 +24,36 @@ import { grantCapabilities, productLabel, refusalLine, revokeCapabilities } from
 // HALT "Any direct edit path"). The chain the server resolves for every action here is the
 // Finance-only chain (PO ruling TD-A3-2), shown in the chain strip.
 
-export type DialogKind = 'plan' | 'cancel' | 'grant' | 'revoke' | 'recon' | 'convert';
+export type DialogKind = 'plan' | 'cancel' | 'arranged' | 'grant' | 'revoke' | 'recon' | 'convert';
+
+// ── CCP-PERSONAL-ARRANGED-1 P-5: "Move to an arranged plan…" ────────────────────────────────
+// A Personal tenant's open Free row is replaced by a Personal plan (other than Free) arranged by
+// Aramo: a SUBSCRIPTION_OPEN naming the Free row (`replaces_subscription_id`) and an arrangement.
+
+/** COMP = no charge (internal or courtesy); AGREED = a price agreed outside the store and Stripe (P-2). */
+export type Arrangement = 'COMP' | 'AGREED';
+
+export const ARRANGEMENT_CHOICES: readonly { readonly value: Arrangement; readonly label: string; readonly help: string }[] = [
+  { value: 'COMP', label: 'No charge (comp)', help: 'For an internal user or a courtesy. No price and no commitment.' },
+  { value: 'AGREED', label: 'Agreed price, billed outside the store', help: 'At list price unless a contract says otherwise.' },
+];
+
+/** The console's own reason limit for this dialog (P-5; the server accepts up to 2000). */
+export const ARRANGED_REASON_MAX = 500;
+/** `external_ref` (D-6): one line, 1–120 characters, no control characters. */
+export const ARRANGED_REF_MAX = 120;
+// eslint-disable-next-line no-control-regex -- the server's `external_ref` rule names control characters
+const CONTROL = /[\u0000-\u001f\u007f]/;
+
+/** The field errors of the arranged-plan dialog ("" reason = not yet given, not an error line). */
+export function arrangedFieldErrors(reason: string, externalRef: string): { readonly reason: string | null; readonly externalRef: string | null } {
+  const ref = externalRef.trim();
+  return {
+    reason: reason.trim().length > ARRANGED_REASON_MAX ? `Keep the reason to ${String(ARRANGED_REASON_MAX)} characters or fewer.` : null,
+    externalRef:
+      ref.length > ARRANGED_REF_MAX ? `Keep the internal reference to ${String(ARRANGED_REF_MAX)} characters or fewer.` : CONTROL.test(externalRef) ? 'The internal reference must be a single line of text.' : null,
+  };
+}
 
 export interface TenantDialogProps {
   readonly kind: DialogKind;
@@ -93,6 +122,14 @@ function specOf(kind: DialogKind, tenantName: string, product: string): Spec {
   switch (kind) {
     case 'plan':
       return { title: `Request plan change · ${tenantName}`, sub: 'Plans pin a version. The new plan applies at its latest published version once every approval step is signed.', tone: 'terra', typed: null, canDraft: true };
+    case 'arranged':
+      return {
+        title: `Move to an arranged plan · ${tenantName}`,
+        sub: 'Replaces the Free plan with a Personal plan arranged by Aramo: at no charge, or at a price agreed outside the store. Nothing changes until every approval step is signed and you apply it.',
+        tone: 'terra',
+        typed: null,
+        canDraft: true,
+      };
     case 'cancel':
       // DV-B3-6: SUBSCRIPTION_END does not revoke the entitlement (A6 TD-A6-8; A7 TD-A7-5).
       return { title: `Request cancel · ${prod}`, sub: `Ends the MANUAL subscription once approved. The ${prod} entitlement is not revoked by a cancel; request a revoke separately.`, tone: 'danger', typed: tenantName, canDraft: true };
@@ -116,6 +153,7 @@ function specOf(kind: DialogKind, tenantName: string, product: string): Spec {
 const ACTION_OF: Readonly<Record<DialogKind, TenantActionType>> = {
   plan: 'SUBSCRIPTION_CHANGE',
   cancel: 'SUBSCRIPTION_END',
+  arranged: 'SUBSCRIPTION_OPEN',
   grant: 'ENTITLEMENT_GRANT',
   revoke: 'ENTITLEMENT_REVOKE',
   recon: 'CONVERSION',
@@ -125,7 +163,10 @@ const ACTION_OF: Readonly<Record<DialogKind, TenantActionType>> = {
 const row = (field: string, before: string, after: string): CommercialDiffRow => ({ field, before, after, changed: before !== after });
 
 /** The live "Before → after" rows of a dialog. */
-export function diffRows(kind: DialogKind, input: { readonly product: ProductCommercial; readonly current: CatalogVersion | null; readonly next: { plan: CatalogPlan; version: CatalogVersion } | null; readonly currentPlanName: string }): CommercialDiffRow[] {
+export function diffRows(
+  kind: DialogKind,
+  input: { readonly product: ProductCommercial; readonly current: CatalogVersion | null; readonly next: { plan: CatalogPlan; version: CatalogVersion } | null; readonly currentPlanName: string; readonly arrangement?: Arrangement | null },
+): CommercialDiffRow[] {
   const prod = productLabel(input.product.product_key);
   const s = input.product.subscription;
   switch (kind) {
@@ -138,6 +179,19 @@ export function diffRows(kind: DialogKind, input: { readonly product: ProductCom
         row('Price', priceLabel(input.current) ?? 'Negotiated', n ? (priceLabel(n.version) ?? 'Negotiated') : (priceLabel(input.current) ?? 'Negotiated')),
         row('Discount', 'None', 'None'),
         row('Allowance', allowanceLabel(input.current), n ? allowanceLabel(n.version) : allowanceLabel(input.current)),
+      ];
+    }
+    case 'arranged': {
+      if (s === null) return [];
+      const n = input.next;
+      const a = input.arrangement ?? null;
+      const price = a === 'COMP' ? 'No charge' : a === 'AGREED' ? `${n ? (priceLabel(n.version) ?? 'Agreed') : 'Agreed'}, billed outside the store` : '—';
+      return [
+        row('Plan', planTitle({ name: input.currentPlanName }), n ? planTitle(n.plan) : '—'),
+        row('Plan version', `v${s.plan_version.version_number}`, n ? `v${n.version.version_number}` : '—'),
+        row('Arranged by Aramo', 'No', a === null ? '—' : (ARRANGEMENT_CHOICES.find((c) => c.value === a)?.label ?? a)),
+        row('Price', 'Free', price),
+        row('Allowance', allowanceLabel(input.current), n ? allowanceLabel(n.version) : '—'),
       ];
     }
     case 'cancel':
@@ -160,11 +214,34 @@ export function diffRows(kind: DialogKind, input: { readonly product: ProductCom
 }
 
 /** The payload of the change request a dialog creates (CCP-A3 / C2 closed key sets). */
-export function payloadOf(kind: DialogKind, input: { readonly product: ProductCommercial; readonly flag: HeldFlag | null; readonly next: { plan: CatalogPlan; version: CatalogVersion } | null; readonly evidence: string }): Record<string, unknown> | null {
+export function payloadOf(
+  kind: DialogKind,
+  input: {
+    readonly product: ProductCommercial;
+    readonly flag: HeldFlag | null;
+    readonly next: { plan: CatalogPlan; version: CatalogVersion } | null;
+    readonly evidence: string;
+    readonly arrangement?: Arrangement | null;
+    readonly externalRef?: string;
+  },
+): Record<string, unknown> | null {
   const s: SubscriptionFacts | null = input.product.subscription;
   switch (kind) {
     case 'plan':
       return s && input.next ? { subscription_id: s.subscription_id, plan_key: input.next.plan.key, plan_version_id: input.next.version.id } : null;
+    case 'arranged': {
+      // P-5: SUBSCRIPTION_OPEN replacing the open Free row; the arrangement is required (P-4
+      // `arrangement_required`), the internal reference optional (D-6 `external_ref`).
+      if (s === null || s.ended_at !== null || s.source !== 'FREE' || input.next === null || !input.arrangement) return null;
+      const ref = (input.externalRef ?? '').trim();
+      return {
+        plan_key: input.next.plan.key,
+        plan_version_id: input.next.version.id,
+        replaces_subscription_id: s.subscription_id,
+        arrangement: input.arrangement,
+        ...(ref === '' ? {} : { external_ref: ref }),
+      };
+    }
     case 'cancel':
       if (s === null) return null;
       // CCP-B4: a contract-linked row's end names its contract (commercial-contract.ts:49).
@@ -182,17 +259,22 @@ export function payloadOf(kind: DialogKind, input: { readonly product: ProductCo
 
 export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, product, flag = null, policy, onClose, onDone }: TenantDialogProps) {
   const spec = specOf(kind, tenantName, product.product_key);
-  const needsCatalog = kind === 'plan' || kind === 'convert';
+  const needsCatalog = kind === 'plan' || kind === 'convert' || kind === 'arranged';
+  const arranged = kind === 'arranged';
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [planVersion, setPlanVersion] = useState('');
   const [reason, setReason] = useState('');
   const [evidence, setEvidence] = useState('');
+  const [arrangement, setArrangement] = useState<Arrangement | null>(null);
+  const [externalRef, setExternalRef] = useState('');
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [alert, setAlert] = useState<string | null>(null);
   const selectId = useId();
   const discountId = useId();
+  const arrangementId = useId();
+  const refId = useId();
   const key = useMemo(() => newRequestKey(`b3-${kind}`), [kind]);
 
   useEffect(() => {
@@ -205,7 +287,7 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
         // Design `init: { plan: sub.plan }`: the current plan, at its latest published version.
         const cur = product.subscription;
         const choices = planChoices(c, product.product_key, tenantKind);
-        const same = cur ? choices.find((x) => x.plan.id === cur.plan.id) : undefined;
+        const same = cur && kind !== 'arranged' ? choices.find((x) => x.plan.id === cur.plan.id) : undefined;
         setPlanVersion((same ?? choices[0])?.version.id ?? '');
       },
       () => {
@@ -215,22 +297,24 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
     return () => {
       cancelled = true;
     };
-  }, [needsCatalog, product, tenantKind]);
+  }, [needsCatalog, product, tenantKind, kind]);
 
   const choices = planChoices(catalog, product.product_key, tenantKind);
   const next = choices.find((x) => x.version.id === planVersion) ?? null;
   const current = product.subscription ? findVersion(catalog, product.product_key, product.subscription.plan_version.id) : null;
-  const diff = diffRows(kind, { product, current, next, currentPlanName: product.subscription?.plan.name ?? '' });
-  const payload = payloadOf(kind, { product, flag, next, evidence });
+  const diff = diffRows(kind, { product, current, next, currentPlanName: product.subscription?.plan.name ?? '', arrangement });
+  const payload = payloadOf(kind, { product, flag, next, evidence, arrangement, externalRef });
   const unchanged = kind === 'plan' && next !== null && product.subscription !== null && next.version.id === product.subscription.plan_version.id;
-  const valid = payload !== null && !unchanged && reason.trim().length > 0 && evidence.trim().length > 0;
+  const fieldErrors = arranged ? arrangedFieldErrors(reason, externalRef) : { reason: null, externalRef: null };
+  // The arranged-plan dialog asks for a reason (≤ 500) and an optional internal reference, no evidence (P-5).
+  const valid = payload !== null && !unchanged && reason.trim().length > 0 && (arranged ? fieldErrors.reason === null && fieldErrors.externalRef === null : evidence.trim().length > 0);
 
   const commit = async (submit: boolean): Promise<void> => {
     if (payload === null) return;
     setBusy(true);
     setAlert(null);
     try {
-      const request = await subscriptionsApi.request({ action_type: ACTION_OF[kind], tenant_id: tenantId, payload, reason, evidence, submit, idempotency_key: key });
+      const request = await subscriptionsApi.request({ action_type: ACTION_OF[kind], tenant_id: tenantId, payload, reason, evidence: arranged ? '' : evidence, submit, idempotency_key: key });
       onDone(request, submit);
     } catch (err) {
       setAlert(refusalLine(err));
@@ -262,7 +346,7 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
       {needsCatalog ? (
         <div className="pw-crd__field">
           <label className="pw-crd__label" htmlFor={selectId}>
-            New plan
+            {arranged ? 'Personal plan' : 'New plan'}
           </label>
           <Select unstyled id={selectId} className="cs-dlg-select" value={planVersion} onChange={(e) => setPlanVersion(e.target.value)}>
             {choices.map((c) => (
@@ -286,8 +370,45 @@ export function TenantRequestDialog({ kind, tenantId, tenantName, tenantKind, pr
           </span>
         </div>
       ) : null}
+      {arranged ? (
+        <div className="pw-crd__field" role="radiogroup" aria-labelledby={arrangementId}>
+          <span className="pw-crd__label" id={arrangementId}>
+            Arrangement
+          </span>
+          {ARRANGEMENT_CHOICES.map((c) => (
+            <div key={c.value} className="cs-dlg-choice">
+              <Input unstyled type="radio" id={`${arrangementId}-${c.value}`} name={arrangementId} value={c.value} checked={arrangement === c.value} aria-describedby={`${arrangementId}-${c.value}-help`} onChange={() => setArrangement(c.value)} />
+              <span>
+                <label className="cs-dlg-choice__label" htmlFor={`${arrangementId}-${c.value}`}>
+                  {c.label}
+                </label>
+                <span id={`${arrangementId}-${c.value}-help`} className="cs-dlg-help">
+                  {c.help}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <RequestField label="Reason" value={reason} onChange={setReason} placeholder="Why this change is needed" multiline />
-      <RequestField label="Evidence" value={evidence} onChange={setEvidence} placeholder="Document, ticket or call notes reference" />
+      {arranged ? (
+        <>
+          <span className={fieldErrors.reason ? 'cs-dlg-help cs-dlg-help--error' : 'cs-dlg-help'} data-testid="arranged-reason-help">
+            {fieldErrors.reason ?? `Required. Up to ${String(ARRANGED_REASON_MAX)} characters (${String(reason.trim().length)} used).`}
+          </span>
+          <div className="pw-crd__field">
+            <label className="pw-crd__label" htmlFor={refId}>
+              Internal reference (optional)
+            </label>
+            <Input unstyled id={refId} className="pw-crd__input" value={externalRef} placeholder="Ticket or HR reference" aria-describedby={`${refId}-help`} onChange={(e) => setExternalRef(e.target.value)} />
+            <span id={`${refId}-help`} className={fieldErrors.externalRef ? 'cs-dlg-help cs-dlg-help--error' : 'cs-dlg-help'}>
+              {fieldErrors.externalRef ?? `One line, up to ${String(ARRANGED_REF_MAX)} characters. Kept on the request.`}
+            </span>
+          </div>
+        </>
+      ) : (
+        <RequestField label="Evidence" value={evidence} onChange={setEvidence} placeholder="Document, ticket or call notes reference" />
+      )}
     </CommercialRequestDialog>
   );
 }
