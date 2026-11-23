@@ -20,6 +20,8 @@ export {
   isFieldTypeKey,
   isPaymentsGatedOn,
   fieldSettingsOf,
+  editableFieldSettings,
+  senderEditorSettings,
   TEMPLATE_TYPE_MAPPING,
   RETIRED_FIELD_TYPES,
   isCircleMark,

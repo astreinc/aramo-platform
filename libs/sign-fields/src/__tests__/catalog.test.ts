@@ -8,8 +8,10 @@ import {
   FIELD_SURFACES,
   FIELD_TYPE_KEYS,
   PROFILE_TEXT_FIELD_TYPES,
+  editableFieldSettings,
   fieldSettingsOf,
   fieldTypesFor,
+  senderEditorSettings,
   isFieldTypeKey,
   isFieldTypeOn,
   isPaymentsGatedOn,
@@ -173,5 +175,21 @@ describe('PAYMENT is send-only (P1-6)', () => {
 
   it('PAYMENT is the only gated type', () => {
     for (const k of FIELD_TYPE_KEYS) if (k !== 'PAYMENT') for (const s of FIELD_SURFACES) expect(isPaymentsGatedOn(k, s)).toBe(false);
+  });
+});
+
+describe('FIELD-PARITY-2 A-7 — the editors\' settings projection (one copy for web and app)', () => {
+  it('a field shows its catalog settings the host authors, in the catalog\'s order', () => {
+    expect(editableFieldSettings('CHECKBOX', ['min_selected', 'label', 'group_rule', 'group_key'])).toEqual(['label', 'group_key', 'group_rule', 'min_selected']);
+    expect(editableFieldSettings('CHECKBOX', [])).toEqual([]);
+    expect(editableFieldSettings('NOT_A_TYPE', ['label'])).toEqual([]);
+  });
+
+  it('an envelope sender edits every setting but a payment\'s; sender-filled and read-only only when on', () => {
+    for (const type of FIELD_TYPE_KEYS) {
+      const all = fieldSettingsOf(type).filter((x) => x !== 'payment_amount_minor' && x !== 'payment_currency');
+      expect(editableFieldSettings(type, senderEditorSettings(true))).toEqual(all);
+      expect(editableFieldSettings(type, senderEditorSettings(false))).toEqual(all.filter((x) => x !== 'sender_filled' && x !== 'read_only'));
+    }
   });
 });
