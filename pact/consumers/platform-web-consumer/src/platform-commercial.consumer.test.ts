@@ -423,6 +423,75 @@ describe('platform-web → POST /platform/commercial/change-requests (CCP-A3)', 
   });
 });
 
+// CCP-PERSONAL-ARRANGED-1 (P-2, P-4, D-6) and CCP Amendment A3 (AC-COMP-1) — "Move to an arranged plan…": a
+// SUBSCRIPTION_OPEN replacing a Personal tenant's FREE row names an arrangement (COMP | AGREED) and an optional
+// internal reference; a COMP open resolves Finance → Owner. Without an arrangement it is refused at creation.
+// The tenants and FREE rows MUST match the provider state in pact/provider/src/verify-platform-admin.ts.
+const ARRANGED_TENANT = 'cca10000-0000-7000-8000-0000000000a1';
+const ARRANGED_FREE_ROW = 'cca10000-0000-7000-8000-0000000000a2';
+const UNARRANGED_TENANT = 'cca10000-0000-7000-8000-0000000000a3';
+const UNARRANGED_FREE_ROW = 'cca10000-0000-7000-8000-0000000000a4';
+// Creation validates the plan version's shape only (the apply pins it, G3).
+const ARRANGED_VERSION = 'cca10000-0000-7000-8000-0000000000a5';
+const arrangedOpen = (tenant_id: string, free: string, extra: Record<string, unknown>, n: string) => ({
+  action_type: 'SUBSCRIPTION_OPEN',
+  tenant_id,
+  product_key: 'sign',
+  payload: { plan_key: 'aramo-sign-standard-personal-v1', plan_version_id: ARRANGED_VERSION, replaces_subscription_id: free, ...extra },
+  reason: 'Internal user on Personal Standard, arranged by Aramo',
+  idempotency_key: `pact-arranged-open-${n}`,
+});
+
+describe('platform-web → POST /platform/commercial/change-requests (CCP-PERSONAL-ARRANGED-1 arranged open)', () => {
+  it('commercial_ops moves a Free Personal tenant to a COMP Standard plan (201 DRAFT; chain Finance → Owner)', async () => {
+    const body = arrangedOpen(ARRANGED_TENANT, ARRANGED_FREE_ROW, { arrangement: 'COMP', external_ref: 'HR-2026-0042' }, '0001');
+    await provider
+      .addInteraction()
+      .given('a personal tenant on the Free plan exists', { tenant_id: ARRANGED_TENANT, subscription_id: ARRANGED_FREE_ROW })
+      .uponReceiving('an arranged (COMP) subscription open create by commercial_ops')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('commercial_ops')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: {
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUBSCRIPTION_OPEN',
+            state: 'DRAFT',
+            tenant_id: ARRANGED_TENANT,
+            payload: { replaces_subscription_id: ARRANGED_FREE_ROW, arrangement: 'COMP', external_ref: 'HR-2026-0042' },
+            required_chain: { rule: 'FINANCE_THEN_OWNER', steps: [{ step_index: 0, role_key: 'finance_admin' }, { step_index: 1, role_key: 'platform_owner' }] },
+          },
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('commercial_ops'), body);
+        expect(res.status).toBe(201);
+        expect((res.body['request'] as { required_chain: { rule: string } }).required_chain.rule).toBe('FINANCE_THEN_OWNER');
+      });
+  });
+
+  it('a Free replacement without an arrangement is refused at creation (400 arrangement_required)', async () => {
+    const body = arrangedOpen(UNARRANGED_TENANT, UNARRANGED_FREE_ROW, {}, '0002');
+    await provider
+      .addInteraction()
+      .given('a personal tenant on the Free plan exists', { tenant_id: UNARRANGED_TENANT, subscription_id: UNARRANGED_FREE_ROW })
+      .uponReceiving('a subscription open replacing a Free row without an arrangement')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('commercial_ops')).jsonBody(body);
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody(errorBody('VALIDATION_ERROR', { reason: 'arrangement_required' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('commercial_ops'), body);
+        expect(res.status).toBe(400);
+        expect(errCode(res.body)).toBe('VALIDATION_ERROR');
+      });
+  });
+});
+
 describe('platform-web → GET /platform/commercial/change-requests (CCP-A3)', () => {
   it('finance_admin lists the pending requests (200)', async () => {
     await provider

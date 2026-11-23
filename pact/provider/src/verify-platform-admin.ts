@@ -816,6 +816,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await commercialTenant(id);
             return undefined;
           },
+          // CCP-PERSONAL-ARRANGED-1 — a bound (ACTIVE) PERSONAL tenant on its system-opened FREE row.
+          'a personal tenant on the Free plan exists': async (params?: unknown) => {
+            const p = params as { tenant_id?: unknown; subscription_id?: unknown } | undefined;
+            if (typeof p?.tenant_id !== 'string' || typeof p.subscription_id !== 'string') throw new Error('provider state needs { tenant_id, subscription_id }');
+            await db.query(
+              `INSERT INTO identity."Tenant" (id, name, kind, status, updated_at) VALUES ($1, $2, 'PERSONAL', 'ACTIVE', now()) ON CONFLICT (id) DO NOTHING`,
+              [p.tenant_id, `Pact Personal ${p.tenant_id.slice(-4)}`],
+            );
+            await db.query(
+              `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+               SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), 'sign', 'BASE', now(), 'FREE', 'pact-arranged'
+                 FROM subscription."Plan" p WHERE p.key = 'aramo-sign-free-personal-v1'
+               ON CONFLICT DO NOTHING`,
+              [p.subscription_id, p.tenant_id],
+            );
+            return undefined;
+          },
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
           // CCP-A6 — the transactional apply.
           'an approved subscription-open change request exists': async () => ({ requestId: await approvedOpen() }),
