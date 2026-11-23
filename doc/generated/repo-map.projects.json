@@ -2689,6 +2689,8 @@
       "ACCESS_CODE_MAX_LENGTH",
       "ACCESS_CODE_MIN_LENGTH",
       "ALL_FIELD_TYPES",
+      "ARRANGED_PURCHASE_BLOCKED",
+      "ARRANGED_PURCHASE_REFUSALS",
       "AttestedNameRequiredError",
       "CHECKBOX_GROUP_KEY_MAX",
       "CHECKBOX_GROUP_RULES",
@@ -2788,6 +2790,8 @@
       "WORD_COPY",
       "allSigningRecipientsSigned",
       "allowanceTermsLine",
+      "arrangedPlanLabel",
+      "arrangedPurchaseRefusal",
       "checkPickedFile",
       "checkboxGroupOf",
       "conditionMetBy",
@@ -2819,6 +2823,7 @@
       "hostedSessionRefusal",
       "inboxActionsOf",
       "incompleteReasonMessage",
+      "isArrangedPlan",
       "isCopyRecipient",
       "isDailyAllowance",
       "isDraftEditable",
@@ -14979,6 +14984,11 @@
       { "project": "sign", "status": "production" },
       {
         "from": "mobile/sign/src/api/refusalMessages.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/account/billing.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },

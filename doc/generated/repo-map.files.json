@@ -6949,6 +6949,7 @@
     "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged-free-reopen.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged-payload.spec.ts",
+    "libs/subscription/src/tests/ccp-personal-arranged-release-offer.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged.integration.spec.ts",
     "libs/subscription/src/tests/ccp-plan-create.integration.spec.ts",
     "libs/subscription/src/tests/ccp-plan-create.spec.ts",
