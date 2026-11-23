@@ -1,9 +1,10 @@
 // M-A12 W1-A / W1-B — the self-sign document list and the values each placed field shows
 // and sends (pre-filled from the user's own profile, editable).
 import type { EditorField } from '../../editor/editorReducer';
-import type { SigningField } from '../../signing/signingMachine';
+import { ACK_TEXT, RADIO_MARK, type SigningField } from '../../signing/signingMachine';
 import {
   canFinish,
+  chooseRadio,
   displayFill,
   docMenu,
   fillValue,
@@ -121,12 +122,70 @@ describe('W1-A values', () => {
 
   it('FIELD-PARITY-2 A-1 — a required carried field this screen cannot fill blocks Finish', () => {
     const placed = [field('s', 'SIGNATURE')];
-    expect(canFinish(placed, ctx(), {}, [{ required: true, signer_id: 'r-self' }])).toMatchObject({
+    expect(canFinish(placed, ctx(), {}, [{ field_type: 'TEXT', required: true, signer_id: 'r-self' }])).toMatchObject({
       ok: false,
       message: SELF_COPY.cannotFill,
     });
-    expect(canFinish(placed, ctx(), {}, [{ required: false, signer_id: 'r-self' }]).ok).toBe(true);
-    expect(canFinish(placed, ctx(), {}, [{ required: true, signer_id: null }]).ok).toBe(true);
+    expect(canFinish(placed, ctx(), {}, [{ field_type: 'TEXT', required: false, signer_id: 'r-self' }]).ok).toBe(true);
+    expect(canFinish(placed, ctx(), {}, [{ field_type: 'TEXT', required: true, signer_id: null }]).ok).toBe(true);
+  });
+});
+
+describe('FIELD-PARITY-2 A-1 — the Phase 3 types in Sign a document', () => {
+  const sig = field('s', 'SIGNATURE');
+  const drop = field('d', 'DROPDOWN', { options: { choices: [{ value: 'a', label: 'Plan A' }, { value: 'b', label: 'Plan B' }] } });
+  const date = field('t', 'DATE');
+  const num = field('n', 'NUMBER', { options: { format: 'money', currency: 'USD', decimals: 2 } });
+  const ml = field('m', 'MULTILINE_TEXT', { required: false });
+  const ack = field('k', 'ACKNOWLEDGEMENT');
+  const yes = field('y', 'RADIO', { groupKey: 'g', label: 'Yes' });
+  const no = field('o', 'RADIO', { groupKey: 'g', label: 'No' });
+
+  it('shows each value as the executed PDF prints it', () => {
+    const edits = { d: 'b', t: '2026-03-04', n: '1250.5', m: 'line 1\nline 2', k: 'true', y: 'true' };
+    expect(displayFill(drop, ctx(), edits)).toEqual({ kind: 'text', text: 'Plan B' });
+    expect(displayFill(date, ctx(), edits)).toEqual({ kind: 'text', text: '04/03/2026' });
+    expect(displayFill(num, ctx(), edits)).toEqual({ kind: 'text', text: '$1,250.50' });
+    expect(displayFill(ml, ctx(), edits)).toEqual({ kind: 'text', text: 'line 1\nline 2' });
+    expect(displayFill(ack, ctx(), edits)).toEqual({ kind: 'text', text: ACK_TEXT });
+    expect(displayFill(yes, ctx(), edits)).toEqual({ kind: 'text', text: RADIO_MARK });
+    expect(displayFill(no, ctx(), edits)).toBeNull();
+    expect(displayFill(drop, ctx(), {})).toBeNull();
+  });
+
+  it('sends the stored values; an option or acknowledgement only when on', () => {
+    const edits = { d: 'b', t: '2026-03-04', n: '1250.5', y: 'true', o: 'false' };
+    expect(fillValue(drop, ctx(), edits)).toEqual({ value: 'b' });
+    expect(fillValue(date, ctx(), edits)).toEqual({ value: '2026-03-04' });
+    expect(fillValue(num, ctx(), edits)).toEqual({ value: '1250.5' });
+    expect(fillValue(ml, ctx(), edits)).toBeNull();
+    expect(fillValue(ack, ctx(), edits)).toBeNull();
+    expect(fillValue(yes, ctx(), edits)).toEqual({ value: 'true' });
+    expect(fillValue(no, ctx(), edits)).toBeNull();
+  });
+
+  it('a sender-filled template field shows its value and is never sent', () => {
+    const locked = field('l', 'TEXT', { senderFilled: true, readOnly: true, senderValue: 'ACME-42' });
+    expect(displayFill(locked, ctx(), {})).toEqual({ kind: 'text', text: 'ACME-42' });
+    expect(fillValue(locked, ctx(), {})).toBeNull();
+    expect(canFinish([sig, locked], ctx(), {}).ok).toBe(true);
+  });
+
+  it('choosing a radio option clears the others of its group', () => {
+    const e1 = chooseRadio([yes, no], yes, {});
+    expect(e1).toEqual({ y: 'true', o: 'false' });
+    expect(chooseRadio([yes, no], no, e1)).toEqual({ y: 'false', o: 'true' });
+  });
+
+  it('Finish follows the shared completion rule (required values, acknowledgement, radio group)', () => {
+    const all = [sig, drop, date, num, ml, ack, yes, no];
+    const full = { d: 'a', t: '2026-03-04', n: '5', k: 'true', y: 'true' };
+    expect(canFinish(all, ctx(), full).ok).toBe(true);
+    expect(canFinish(all, ctx(), { ...full, d: '' })).toMatchObject({ ok: false, message: SELF_COPY.needValues, fieldKey: 'd' });
+    expect(canFinish(all, ctx(), { ...full, k: 'false' })).toMatchObject({ ok: false, fieldKey: 'k' });
+    expect(canFinish(all, ctx(), { ...full, y: 'false' })).toMatchObject({ ok: false, fieldKey: 'y' });
+    // An optional multi-line field may stay empty; a required check box left unticked blocks.
+    expect(canFinish([sig, field('c', 'CHECKBOX')], ctx(), { c: 'false' })).toMatchObject({ ok: false, fieldKey: 'c' });
   });
 });
 

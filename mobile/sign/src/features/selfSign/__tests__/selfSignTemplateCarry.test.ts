@@ -141,6 +141,14 @@ describe('self-sign from a template (FIELD-PARITY-2 A-1)', () => {
     expect(box).toMatchObject({ x: 50.5, label: 'I agree', group_key: 'terms', group_rule: 'SELECT_ANY', min_selected: 1, tooltip: 'Tick to agree' });
   });
 
+  it('places every template field but the engine row, with its settings', async () => {
+    const r = await start();
+    expect(r.fields.map((f) => f.type)).toEqual(FIELDS.slice(0, -1).map((f) => f.field_type));
+    expect(r.progress.template?.preserved.map((f) => f.id)).toEqual(['f-engine']);
+    expect(r.fields.find((f) => f.type === 'DROPDOWN')).toMatchObject({ tooltip: 'Pick one', dataName: 'plan', options: (FIELDS[2] as { options: unknown }).options });
+    expect(r.fields.filter((f) => f.type === 'RADIO').map((f) => [f.label, f.groupKey])).toEqual([['Yes', 'g1'], ['No', 'g1']]);
+  });
+
   it('a field the user deleted is not sent; every other one is', async () => {
     const r = await start();
     const kept = r.fields.filter((f) => f.type !== 'SIGNATURE');

@@ -2,12 +2,21 @@
 // document list, the values each placed field shows and sends, and the matching of the
 // server's signer fields back to the fields the user placed. No Recipients step: the
 // server creates the single signer (the caller) for a `mode: "self"` envelope.
+import {
+  checkboxGroupOf,
+  fieldValueDisplay,
+  isSignerLocked,
+  signerFieldUnits,
+  type FieldOptions,
+  type SignerFieldLike,
+} from '@aramo/sign-client';
+
 import type { DateFormat, SignProfile } from '../../api/m-a12-contract-types';
 import type { EditorField } from '../editor/editorReducer';
 import { FIELD_TYPE_SPECS, isProfileFieldType } from '../editor/fieldTypes';
 import { editorToWire, type PageSize } from '../editor/geometry';
 import { formatDate, profileValue } from '../profile/signProfile';
-import type { AdoptedMark, SigningField } from '../signing/signingMachine';
+import { ACK_TEXT, RADIO_MARK, type AdoptedMark, type SigningField } from '../signing/signingMachine';
 
 /** The one recipient key the editor uses for the caller. */
 export const SELF_KEY = 'self';
@@ -129,8 +138,62 @@ export function textValue(f: EditorField, ctx: SelfContext, edits: SelfEdits): s
   return profileValue(f.type, profileOrFallback(ctx), ctx.email) ?? '';
 }
 
+/**
+ * A box-kind field is on. A check box starts ticked (the prototype fills fields at once); an
+ * acknowledgement and a radio option start off: the user ticks or chooses them (FIELD-PARITY-2 A-1).
+ */
 export function isChecked(f: EditorField, edits: SelfEdits): boolean {
-  return (edits[f.key] ?? 'true') === 'true';
+  return (edits[f.key] ?? (f.type === 'CHECKBOX' ? 'true' : 'false')) === 'true';
+}
+
+/** FIELD-PARITY-2 A-1 — the Phase 3 types whose value is picked or typed in the signer's field editor. */
+const PICKED_TYPES: ReadonlySet<string> = new Set(['DATE', 'DROPDOWN', 'NUMBER', 'MULTILINE_TEXT']);
+
+/** A field whose value the signer's field editor takes (date, choice, number, multi-line). */
+export function isPickedType(type: string): boolean {
+  return PICKED_TYPES.has(type);
+}
+
+/** The sender's value of a sender-filled (or read-only) template field: shown, never sent. */
+function lockedValue(f: EditorField): string | null {
+  return isSignerLocked({ sender_filled: f.senderFilled, read_only: f.readOnly }) ? (f.senderValue ?? null) : null;
+}
+
+/** The placed field as the signer's field editor reads it (its type, settings and options). */
+export function asSigningField(f: EditorField): SigningField {
+  return {
+    field_id: f.key,
+    document_id: f.docKey,
+    field_type: f.type,
+    page_number: f.page,
+    x: f.x,
+    y: f.y,
+    width: f.width,
+    height: f.height,
+    required: f.required,
+    label: f.label ?? null,
+    group_key: f.groupKey ?? null,
+    tooltip: f.tooltip ?? null,
+    placeholder: f.placeholder ?? null,
+    validation: f.validation ?? null,
+    options: (f.options ?? null) as FieldOptions | null,
+    ...(f.readOnly ? { read_only: true } : {}),
+    ...(f.senderFilled ? { sender_filled: true } : {}),
+  };
+}
+
+/**
+ * Choose a radio option: it is on and the other options of its group are off. Tapping the
+ * chosen option leaves it chosen (A-2's rule decides when it may be cleared).
+ */
+export function chooseRadio(fields: readonly EditorField[], f: EditorField, edits: SelfEdits): SelfEdits {
+  const g = checkboxGroupOf({ field_type: f.type, group_key: f.groupKey ?? null });
+  const next: Record<string, string> = { ...edits };
+  for (const o of fields)
+    if (o.key !== f.key && g !== null && checkboxGroupOf({ field_type: o.type, group_key: o.groupKey ?? null }) === g)
+      next[o.key] = 'false';
+  next[f.key] = 'true';
+  return next;
 }
 
 /** What the box shows on the page while placing (the prototype fills fields at once). */
@@ -149,7 +212,21 @@ export function displayFill(
       return { kind: 'text', text: formatDate(ctx.today, ctx.dateFormat) };
     case 'CHECKBOX':
       return isChecked(f, edits) ? { kind: 'text', text: '✓' } : null;
+    case 'ACKNOWLEDGEMENT':
+      return isChecked(f, edits) ? { kind: 'text', text: ACK_TEXT } : null;
+    case 'RADIO':
+      return isChecked(f, edits) ? { kind: 'text', text: RADIO_MARK } : null;
+    case 'DATE':
+    case 'DROPDOWN':
+    case 'NUMBER':
+    case 'MULTILINE_TEXT': {
+      // FIELD-PARITY-2 A-1 — shown as the executed PDF prints it (the shared catalog's rule).
+      const v = (edits[f.key] ?? lockedValue(f) ?? '').trim();
+      return v ? { kind: 'text', text: fieldValueDisplay(asSigningField(f), v, { date_format: ctx.dateFormat }) } : null;
+    }
     default: {
+      const locked = lockedValue(f);
+      if (locked) return { kind: 'text', text: locked };
       const v = textValue(f, ctx, edits).trim();
       return v ? { kind: 'text', text: v } : null;
     }
@@ -164,27 +241,52 @@ export interface FinishCheck {
 }
 
 /**
- * Finish needs a signature, every adopted mark, and every required text value. FIELD-PARITY-2
- * A-1 — a required template field this screen carries but does not place blocks Finish (the
- * server would refuse the completion).
+ * Finish needs a signature, then every completion unit done: FIELD-PARITY-2 A-1 — the ONE rule
+ * the server's completion check uses (@aramo/sign-client signerFieldUnits: required fields and
+ * boxes, check-box and radio groups, a server-filled name and a sender's value skipped). A
+ * required template field this screen carries but does not place can't be done here.
  */
 export function canFinish(
   fields: readonly EditorField[],
   ctx: SelfContext,
   edits: SelfEdits,
-  carried: readonly { readonly required: boolean; readonly signer_id: string | null }[] = [],
+  carried: readonly CarriedField[] = [],
 ): FinishCheck {
-  if (carried.some((f) => f.required && f.signer_id !== null))
-    return { ok: false, message: SELF_COPY.cannotFill, fieldKey: null };
   if (!fields.some((f) => f.type === 'SIGNATURE'))
     return { ok: false, message: SELF_COPY.needSignature, fieldKey: null };
-  for (const f of fields) {
-    if ((f.type === 'SIGNATURE' || f.type === 'INITIALS') && !ctx.adopted[f.type])
-      return { ok: false, message: SELF_COPY.needSignature, fieldKey: f.key };
-    if (isTextLike(f.type) && f.type !== 'SIGNER_NAME' && f.required && !textValue(f, ctx, edits).trim())
-      return { ok: false, message: SELF_COPY.needValues, fieldKey: f.key };
-  }
-  return { ok: true, message: null, fieldKey: null };
+  type Row = SignerFieldLike & { readonly placed: EditorField | null };
+  const rows: Row[] = [
+    ...fields.map(
+      (f): Row => ({
+        placed: f,
+        field_type: f.type,
+        required: f.required,
+        group_key: f.groupKey ?? null,
+        group_rule: f.type === 'RADIO' ? 'SELECT_ONE' : (f.groupRule ?? null),
+        min_selected: f.minSelected ?? null,
+        name_mode: f.type === 'SIGNER_NAME' ? (f.nameMode ?? 'SIGNER_PROFILE') : null,
+        sender_filled: f.senderFilled === true,
+        read_only: f.readOnly === true,
+      }),
+    ),
+    ...carried
+      .filter((c) => c.signer_id !== null)
+      .map((c): Row => ({ ...c, placed: null })),
+  ];
+  const open = signerFieldUnits(rows, {
+    filled: (r) => r.placed !== null && fillValue(r.placed, ctx, edits) !== null,
+    checked: (r) => r.placed !== null && fillValue(r.placed, ctx, edits)?.value === 'true',
+  }).find((u) => !u.done);
+  if (open === undefined) return { ok: true, message: null, fieldKey: null };
+  const first = open.fields.find((r) => r.placed !== null)?.placed ?? null;
+  if (first === null) return { ok: false, message: SELF_COPY.cannotFill, fieldKey: null };
+  const mark = first.type === 'SIGNATURE' || first.type === 'INITIALS';
+  return { ok: false, message: mark ? SELF_COPY.needSignature : SELF_COPY.needValues, fieldKey: first.key };
+}
+
+/** A template field this screen carries but does not place (its stored members). */
+export interface CarriedField extends SignerFieldLike {
+  readonly signer_id: string | null;
 }
 
 /** The fill-call value for a placed field; null = nothing to send (server-filled or empty). */
@@ -193,6 +295,8 @@ export function fillValue(
   ctx: SelfContext,
   edits: SelfEdits,
 ): { value: string; method?: 'TYPED' | 'DRAWN' } | null {
+  // FIELD-PARITY-1 P3 S-4 / S-5 — a sender's value is the server's already: never sent.
+  if (isSignerLocked({ sender_filled: f.senderFilled, read_only: f.readOnly })) return null;
   switch (f.type) {
     case 'SIGNATURE':
     case 'INITIALS': {
@@ -207,6 +311,18 @@ export function fillValue(
     }
     case 'CHECKBOX':
       return { value: isChecked(f, edits) ? 'true' : 'false' };
+    // FIELD-PARITY-2 A-1 — an acknowledgement or a radio option is sent only when it is on.
+    case 'ACKNOWLEDGEMENT':
+    case 'RADIO':
+      return isChecked(f, edits) ? { value: 'true' } : null;
+    // The field editor already checked and normalised the value (the server's own rule).
+    case 'DATE':
+    case 'DROPDOWN':
+    case 'NUMBER':
+    case 'MULTILINE_TEXT': {
+      const v = (edits[f.key] ?? '').trim();
+      return v ? { value: v } : null;
+    }
     case 'SIGNER_NAME':
       // SIGNER_PROFILE (the default): the server fills it with the signer's name.
       if ((f.nameMode ?? 'SIGNER_PROFILE') === 'SIGNER_PROFILE') return null;

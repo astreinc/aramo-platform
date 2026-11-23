@@ -75,8 +75,11 @@ import {
   type SelfProgress,
 } from '../../features/selfSign/selfSignFlow';
 import {
+  asSigningField,
   canFinish,
+  chooseRadio,
   displayFill,
+  isPickedType,
   docMenu,
   isChecked,
   isTextLike,
@@ -107,6 +110,7 @@ import { templatesAvailable, type SenderTemplate } from '../../features/send/tem
 import { TextField } from '../../features/send/ui';
 import { loadSavedMarks, type AdoptTarget, type SavedMarks } from '../../features/signing/adopt';
 import { AdoptSignatureSheet, type AdoptResult } from '../../features/signing/AdoptSignatureSheet';
+import { FieldEditor as SigningFieldEditor } from '../../features/signing/FieldEditor';
 import { classifySigningError, SIGNING_COPY, type Disclosure } from '../../features/signing/signingApi';
 import type { AdoptedMark } from '../../features/signing/signingMachine';
 import { TemplateRows } from '../../features/templates/TemplateRows';
@@ -508,6 +512,45 @@ export function SelfSignScreen() {
   }
 
   const renderValue = (f: EditorField) => {
+    // FIELD-PARITY-1 P3 S-4 / S-5 — a sender's value (a template's sender-filled field) is shown only.
+    if (f.senderFilled || f.readOnly) return null;
+    // FIELD-PARITY-2 A-1 — an acknowledgement is ticked; a radio option is chosen (its group's
+    // others are cleared).
+    if (f.type === 'ACKNOWLEDGEMENT') {
+      const on = isChecked(f, edits);
+      return (
+        <Button
+          testID="self-toggle-ack"
+          variant="secondary"
+          title={on ? 'Acknowledged ✓' : 'Acknowledge'}
+          onPress={() => setEdits((e) => ({ ...e, [f.key]: on ? 'false' : 'true' }))}
+        />
+      );
+    }
+    if (f.type === 'RADIO') {
+      const on = isChecked(f, edits);
+      return (
+        <Button
+          testID="self-choose-radio"
+          variant="secondary"
+          title={on ? `Chosen ● ${f.label ?? ''}`.trim() : `Choose ${f.label ?? 'this option'}`}
+          onPress={() => setEdits((e) => chooseRadio(fields, f, e))}
+        />
+      );
+    }
+    // DATE, DROPDOWN, NUMBER and MULTILINE_TEXT: the signer's own field editor (the server's
+    // value rule checks the value before it is kept).
+    if (isPickedType(f.type)) {
+      return (
+        <SigningFieldEditor
+          key={f.key}
+          field={asSigningField(f)}
+          initial={edits[f.key] ?? ''}
+          dateFormat={selfCtx.dateFormat}
+          onSave={(v) => setEdits((e) => ({ ...e, [f.key]: v }))}
+        />
+      );
+    }
     if (f.type === 'CHECKBOX') {
       const on = isChecked(f, edits);
       return (
