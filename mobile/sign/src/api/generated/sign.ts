@@ -4051,6 +4051,8 @@ export interface components {
                 /** Format: date-time */
                 grace_until?: string | null;
                 billing_managed: boolean;
+                /** @description CCP-PERSONAL-ARRANGED-1 — always sent by the server; true when the plan is arranged with Aramo (a governed plan with no store or web billing; at no charge or at a price agreed outside them). The client shows it as arranged with Aramo, with no price, commitment or billing controls; list_price, commitment_months and term are null for it. A purchase while it is open is refused, as for any plan managed by Aramo. */
+                arranged?: boolean;
                 commitment_months?: number | null;
                 /**
                  * @description Sign Monthly and Annual-Commitment Pricing v1.0 — the subscription's billing term (a subscription sold before terms reads as its version's one derived term; null for a contract-priced plan).

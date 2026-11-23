@@ -68,6 +68,7 @@ const SENDER_ACTIONS = {
 //  10a. POST /v1/sign/billing/checkout (term not a term)   400 VALIDATION_ERROR details.reason term_invalid
 //      (Sign Monthly and Annual-Commitment Pricing v1.0 §3.3/§3.6: `term` is MONTHLY | ANNUAL_COMMIT)
 //  11. GET  /v1/sign/billing/account (held activation)      200 pending_activation (CCP-A6-R, C-8)
+//      GET  /v1/sign/billing/account (arranged plan)        200 subscription.arranged (CCP-PERSONAL-ARRANGED-1 P-7)
 //      POST /v1/sign/billing/seats (not owner / admin)       403 seat_manage_role_required (per-seat pricing)
 //  12. GET  /v1/sign/billing/self-service                   200 every action unavailable,
 //      reason SELF_SERVICE_TERMS_NOT_APPROVED (CCP-C7: the designed disabled state, PBD §10;
@@ -881,7 +882,8 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({
-          subscription: { plan_key: 'aramo-sign-included-v1', source: 'MANUAL', status: 'ACTIVE' },
+          // CCP-PERSONAL-ARRANGED-1 P-7 — a governed row with no arrangement: arranged false.
+          subscription: { plan_key: 'aramo-sign-included-v1', source: 'MANUAL', status: 'ACTIVE', arranged: false },
           pending_activation: { state: 'PENDING', message: 'Subscription activation pending — contact support' },
           // CCP-C5 — the designed disabled tax state.
           tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
@@ -898,6 +900,33 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
         expect(res.status).toBe(200);
         const body = (await res.json()) as { pending_activation: { state: string } };
         expect(body.pending_activation.state).toBe('PENDING');
+      });
+  });
+});
+
+// CCP-PERSONAL-ARRANGED-1 P-7 — a plan arranged with Aramo: the account read says `arranged: true` and derives
+// no price, commitment or term from the plan version (the client shows "arranged with Aramo").
+describe('sign-workspace → GET /v1/sign/billing/account (plan arranged with Aramo)', () => {
+  it('returns arranged true with no list price, commitment or term', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds an Aramo-arranged Sign subscription')
+      .uponReceiving('a billing account read by the billing owner of a tenant whose plan is arranged with Aramo')
+      .withRequest('GET', '/v1/sign/billing/account', (b) => {
+        b.headers(headers);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          subscription: { source: 'MANUAL', status: 'ACTIVE', arranged: true, list_price: null, commitment_months: null, term: null },
+          tenant_kind: 'BUSINESS',
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/account`, { headers });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { subscription: { arranged: boolean } };
+        expect(body.subscription.arranged).toBe(true);
       });
   });
 });

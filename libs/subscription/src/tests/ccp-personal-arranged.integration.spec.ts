@@ -313,4 +313,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     expect(await openRows(t)).toEqual([]);
     expect((await events(id)).some((e) => e.event_type.startsWith('COMMERCIAL_FREE_SUBSCRIPTION'))).toBe(false);
   });
+
+  // ---- P-7 — the account read --------------------------------------------------------------
+
+  it('ARR-I-ACC-1 the account read of an arranged row says arranged and derives no price, commitment or term; the allowance is the Standard one', async () => {
+    const comp = arranged.comp as { tenant: string; sub: string };
+    const view = await h.lifecycle.account(comp.tenant, 'sign', 'sign.envelopes', T0);
+    expect(view.subscription).toMatchObject({ plan_key: STANDARD_PERSONAL, source: 'MANUAL', arranged: true, list_price: null, commitment_months: null, term: null, commitment_end: null });
+    const included = (await pg.query(
+      `SELECT a.included_quantity AS q FROM subscription."PlanAllowance" a JOIN subscription."Plan" p ON p.id = a.plan_id WHERE p.key = $1 AND a.allowance_key = 'sign.envelopes'`,
+      [STANDARD_PERSONAL],
+    )).rows[0]?.q as number | undefined;
+    if (included !== undefined) expect(view.allowance).toMatchObject({ subscribed: true, limit: included });
+    const agreed = arranged.agreed as { tenant: string; sub: string };
+    expect((await h.lifecycle.account(agreed.tenant, 'sign', 'sign.envelopes', T0)).subscription).toMatchObject({ arranged: true, list_price: null, commitment_months: null, term: null });
+  });
 });

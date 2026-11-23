@@ -79,6 +79,8 @@ const provider = new PactV4({
 // MUST match pact/provider/src/verify-sign.ts.
 const NATIVE_BEARER = 'Bearer pact-native-sign-access-token';
 const AUTH = { Authorization: NATIVE_BEARER, 'X-Aramo-Consumer': 'sign' };
+// CCP-PERSONAL-ARRANGED-1 — the governed tenant's billing owner on the app. MUST match pact/provider/src/verify-sign.ts.
+const GOV_NATIVE_BEARER = 'Bearer pact-native-sign-access-token-billing-owner';
 const JSON_AUTH = { ...AUTH, 'Content-Type': 'application/json' };
 const NOTIFICATION_ID = 'e6000000-0000-7000-8000-000000000011';
 const DETAIL_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000a1';
@@ -737,6 +739,30 @@ describe('sign-mobile → billing and store (M-A12 W1-G)', () => {
         const res = await fetch(`${mock.url}/v1/sign/billing/account`, { headers: AUTH });
         expect(res.status).toBe(200);
         expect(((await res.json()) as { store_purchase_eligible: boolean }).store_purchase_eligible).toBe(false);
+      });
+  });
+
+  // CCP-PERSONAL-ARRANGED-1 P-7 — a plan arranged with Aramo: `arranged: true`, and no price, commitment or term
+  // derived from the plan version (the Plans screen shows "arranged with Aramo", no "billed on the web" copy).
+  it('reads the account of a plan arranged with Aramo', async () => {
+    const auth = { Authorization: GOV_NATIVE_BEARER, 'X-Aramo-Consumer': 'sign' };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds an Aramo-arranged Sign subscription')
+      .uponReceiving('a native billing account read of a plan arranged with Aramo')
+      .withRequest('GET', '/v1/sign/billing/account', (b) => {
+        b.headers(auth);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          subscription: { source: 'MANUAL', arranged: true, list_price: null, commitment_months: null, term: null },
+          tenant_kind: 'BUSINESS',
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/account`, { headers: auth });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { subscription: { arranged: boolean } }).subscription.arranged).toBe(true);
       });
   });
 

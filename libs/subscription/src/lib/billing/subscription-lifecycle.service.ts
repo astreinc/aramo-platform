@@ -470,6 +470,9 @@ export interface SubscriptionView {
   cancel_at_period_end: boolean;
   grace_until: Date | null;
   billing_managed: boolean;
+  // CCP-PERSONAL-ARRANGED-1 P-7 — the plan is arranged with Aramo (a governed row with an arrangement, COMP or
+  // AGREED): no price, commitment or term is derived from the plan version for it (those fields are null).
+  arranged: boolean;
   // A1 — the commitment term and its cancellation flag (separate from the
   // monthly invoice period), and the plan-eligibility state.
   commitment_months: number | null;
@@ -768,6 +771,9 @@ export class SubscriptionLifecycleService {
     const features = content === null ? [] : content.features;
     // Billing terms — the row's term price (a legacy row: the version's list price, as before).
     const termPrice = row === null || content === null ? null : subscriptionTermPrice(row, content);
+    // CCP-PERSONAL-ARRANGED-1 P-7 — an arranged row derives no price, commitment or term from its version.
+    const arranged = row !== null && row.arrangement !== null;
+    const derived = content !== null && !arranged ? content : null;
     return {
       subscription:
         row === null
@@ -784,15 +790,16 @@ export class SubscriptionLifecycleService {
               cancel_at_period_end: row.cancel_at_period_end,
               grace_until: row.grace_until,
               billing_managed: row.billing_account_ref !== null || isStoreBillingProvider(row.billing_provider),
+              arranged,
               // M-A12 A1-1 — a monthly store subscription carries no commitment. Billing terms — a row sold on
               // a term is held to that term's commitment.
-              commitment_months: content === null ? null : subscriptionCommitmentMonths(row, content),
-              term: content === null ? null : subscriptionTerm(row, content),
+              commitment_months: derived === null ? null : subscriptionCommitmentMonths(row, derived),
+              term: derived === null ? null : subscriptionTerm(row, derived),
               commitment_end: row.commitment_end,
               cancel_requested_within_commitment: row.cancel_requested_within_commitment,
               eligibility_state: row.eligibility_state,
               list_price:
-                terms !== null && termPrice !== null && terms.currency !== null
+                !arranged && terms !== null && termPrice !== null && terms.currency !== null
                   ? { amount_minor: termPrice, currency: terms.currency, interval: terms.billing_interval }
                   : null,
               features: features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
