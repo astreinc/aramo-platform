@@ -24,19 +24,28 @@
 //     sender-filled field shows the sender's value, is never tapped, sent or required; a
 //     value is checked with the server's own rule (@aramo/sign-client signerValueProblem)
 //     before it is kept.
+//   - FIELD-PARITY-2 B-6: a field with a condition ("show only when") is shown only while the
+//     signer's answers meet it — the ONE visibility rule (@aramo/sign-client shownFields, the
+//     server's own; no copy here). A hidden field is not drawn, not tappable, not required,
+//     not counted and never sent; an answer that hides fields clears their local values (the
+//     server clears its own at once, ruling C-3), and Finish sends triggers before the fields
+//     they show.
 
 import {
   CHECK_FIELD_TYPES,
   FIELD_CATALOG,
   PROFILE_TEXT_FIELD_TYPES,
   checkboxGroupOf,
+  fieldConditionOf,
   fieldTypesFor,
   fieldValueDisplay,
+  hiddenFilledFields,
   isFieldTypeKey,
   isSignerEditorKind,
   isSignerLocked,
   normalizeSignerInput,
   radioChoiceClearable,
+  shownFields,
   signDatePreview,
   signerFieldCaption,
   signerFieldUnits,
@@ -85,6 +94,14 @@ export interface SigningField {
   readonly sender_filled?: boolean;
   readonly validation?: string | null;
   readonly options?: FieldOptions | null;
+  /** FIELD-PARITY-2 B-1 — the field's key (a condition names its trigger by it). */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 / B-5 — "show only when" (null = always shown; absent: an older server). */
+  readonly condition?: {
+    readonly trigger_key: string;
+    readonly when: string;
+    readonly values?: readonly string[];
+  } | null;
 }
 
 export interface SigningDocument {
@@ -251,7 +268,39 @@ function requiredUnits(s: SigningState): readonly SignerFieldUnit<SigningField>[
   return signerFieldUnits(s.fields as readonly (SigningField & SignerFieldLike)[], {
     filled: (f) => isFilled(s, f.field_id),
     checked: (f) => isChecked(s, f.field_id),
+    value: answerOf(s),
   });
+}
+
+/** FIELD-PARITY-2 B-6 — a field's current answer as the visibility rule reads it. */
+function answerOf(s: SigningState): (f: SigningField) => string | null {
+  return (f) => s.values[f.field_id]?.value ?? null;
+}
+
+/**
+ * FIELD-PARITY-2 B-6 — the fields the signer's answers show, in reading order: the only ones
+ * drawn, tapped, focused or sent (the one visibility rule, @aramo/sign-client shownFields).
+ */
+export function shownSigningFields(s: SigningState): SigningField[] {
+  const shown = shownFields(s.fields, answerOf(s));
+  return s.fields.filter((f) => shown.has(f));
+}
+
+/** FIELD-PARITY-2 B-6 — whether one field is shown for the signer's answers. */
+export function isShown(s: SigningState, id: string): boolean {
+  return shownSigningFields(s).some((f) => f.field_id === id);
+}
+
+/**
+ * FIELD-PARITY-2 B-6 / ruling C-3 — after an answer changes, the values of every field it hides
+ * are cleared (the server clears its own in the same step; it stays the authority).
+ */
+function withoutHiddenValues(s: SigningState): SigningState {
+  const hidden = hiddenFilledFields(s.fields, answerOf(s), (f) => s.values[f.field_id] !== undefined);
+  if (hidden.length === 0) return s;
+  const values = { ...s.values };
+  for (const f of hidden) delete values[f.field_id];
+  return { ...s, values, currentId: hidden.some((f) => f.field_id === s.currentId) ? null : s.currentId };
 }
 
 /** One representative field per required unit (a group counts once). */
@@ -395,7 +444,7 @@ function withValue(s: SigningState, id: string, v: FieldValue | null): SigningSt
   const values = { ...s.values };
   if (v === null) delete values[id];
   else values[id] = v;
-  const next: SigningState = { ...s, values };
+  const next: SigningState = withoutHiddenValues({ ...s, values });
   // After a fill, the current field moves to the next empty required field.
   if (v !== null) return { ...next, currentId: nextEmptyRequired(next, id)?.field_id ?? null };
   return { ...next, currentId: id };
@@ -421,7 +470,8 @@ export function tapField(
   ctx: TapContext,
 ): { state: SigningState; effect: TapEffect } {
   const f = s.fields.find((x) => x.field_id === fieldId);
-  if (!f) return { state: s, effect: { kind: 'none' } };
+  // FIELD-PARITY-2 B-6 — a hidden field cannot be tapped.
+  if (!f || !isShown(s, fieldId)) return { state: s, effect: { kind: 'none' } };
   const focused = { ...s, currentId: fieldId };
   // M-A6 §2.2 — the server fills this name; the signer cannot change it.
   if (isServerFilled(f)) return { state: focused, effect: { kind: 'none' } };
@@ -558,7 +608,10 @@ export function fillsToSubmit(
   s: SigningState,
 ): { fieldId: string; value: string; method?: SignatureMethod }[] {
   const out: { fieldId: string; value: string; method?: SignatureMethod }[] = [];
-  for (const f of s.fields) {
+  // FIELD-PARITY-2 B-6 — only shown fields are sent (the server refuses a hidden one with
+  // field_hidden), and a trigger before the fields it shows: by the depth of each field's
+  // chain, then reading order, so every fill finds its trigger already answered.
+  for (const f of submitOrder(s)) {
     const v = s.values[f.field_id];
     if (!v || v.fromServer || isServerFilled(f) || isLocked(f)) continue;
     out.push(
@@ -568,6 +621,29 @@ export function fillsToSubmit(
     );
   }
   return out;
+}
+
+/** The shown fields, triggers first (chain depth), else in reading order. */
+function submitOrder(s: SigningState): SigningField[] {
+  const byKey = new Map<string, SigningField>();
+  for (const f of s.fields) if (typeof f.field_key === 'string' && !byKey.has(f.field_key)) byKey.set(f.field_key, f);
+  const depth = (f: SigningField): number => {
+    let d = 0;
+    const seen = new Set<SigningField>([f]);
+    for (let c = fieldConditionOf(f); c !== null; ) {
+      const t = byKey.get(c.trigger_key);
+      if (t === undefined || seen.has(t)) break;
+      seen.add(t);
+      d += 1;
+      c = fieldConditionOf(t);
+    }
+    return d;
+  };
+  const shown = shownSigningFields(s);
+  return shown
+    .map((f, i) => ({ f, i, d: depth(f) }))
+    .sort((a, b) => a.d - b.d || a.i - b.i)
+    .map((x) => x.f);
 }
 
 /** After a successful fill call, keep the value but mark it stored (retry won't resend). */
