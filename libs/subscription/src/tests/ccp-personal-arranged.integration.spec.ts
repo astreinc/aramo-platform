@@ -12,7 +12,8 @@ import { CommercialChangeRequestError } from '../lib/commercial/commercial-chang
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { addOperator, applyCcpA6Schema } from './support/ccp-a3-database.js';
-import { A6_CTX, BUSINESS, FREE_PERSONAL, a6Harness, as, newTenant, publishedVersion, rawSubscription, type A6Harness } from './support/ccp-a6.js';
+import { A6_CTX, BUSINESS, FREE_PERSONAL, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
+import { type C2Harness, c2Harness } from './support/ccp-c2.js';
 
 // CCP-PERSONAL-ARRANGED-1 (Aramo-CCP-Personal-Arranged-Plan-Directive-v1_0-LOCKED §5.2) on real Postgres 17,
 // every subscription migration applied whole-file (the shared A6 harness):
@@ -20,7 +21,8 @@ import { A6_CTX, BUSINESS, FREE_PERSONAL, a6Harness, as, newTenant, publishedVer
 //   ARR-I-CHAIN-* P-6 — Amendment A3 (LOCKED) AC-COMP-1, the COMP chain;
 //   ARR-I-REF-*   P-4 — the creation-time refusals;
 //   ARR-I-RPT-*   P-3 — the finance and revenue reports with COMP and AGREED rows;
-//   ARR-I-END-*   P-8 / D-5 — ending an arranged row reopens Free in the same transaction (or records why not).
+//   ARR-I-END-*   P-8 / D-5 — ending an arranged row reopens Free in the same transaction (or records why not);
+//   ARR-I-CONV-*  P-9 — CONVERSION TO_SELF_SERVICE releases an arranged Personal row (the only release).
 
 const T0 = new Date('2026-11-24T12:00:00.000Z');
 const STANDARD_PERSONAL = 'aramo-sign-standard-personal-v1';
@@ -29,7 +31,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
   let container: StartedPostgreSqlContainer;
   let pg: Client;
   let prisma: PrismaService;
-  let h: A6Harness;
+  let h: C2Harness;
   let OPS: string;
   let FA: string;
   let PO: string;
@@ -50,7 +52,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     await applyCcpA6Schema(pg);
     prisma = new PrismaService(url);
     await prisma.$connect();
-    h = a6Harness(prisma, () => T0);
+    // The C2 harness: the A6 services plus the conversion apply (P-9), on one Prisma client.
+    h = c2Harness(prisma, () => T0);
     OPS = await addOperator(pg, ['commercial_ops']);
     FA = await addOperator(pg, ['finance_admin']);
     PO = await addOperator(pg, ['platform_owner']);
@@ -327,5 +330,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     if (included !== undefined) expect(view.allowance).toMatchObject({ subscribed: true, limit: included });
     const agreed = arranged.agreed as { tenant: string; sub: string };
     expect((await h.lifecycle.account(agreed.tenant, 'sign', 'sign.envelopes', T0)).subscription).toMatchObject({ arranged: true, list_price: null, commitment_months: null, term: null });
+  });
+
+  // ---- P-9 — release to the user's own purchase ---------------------------------------------
+
+  it('ARR-I-CONV-1 CONVERSION TO_SELF_SERVICE accepts an arranged Personal row: the release names it; the arranged row is untouched until the provider-confirmed activation', async () => {
+    const { tenant, comp } = await personalOnComp();
+    const before = (await pg.query(`SELECT row_to_json(s)::text AS j FROM subscription."TenantSubscription" s WHERE id = $1`, [comp])).rows[0].j as string;
+    const payload = {
+      direction: 'TO_SELF_SERVICE',
+      governed_subscription_id: comp,
+      plan_key: STANDARD_PERSONAL,
+      plan_version_id: await publishedVersion(pg, STANDARD_PERSONAL),
+      release_expires_at: new Date(T0.getTime() + 24 * 3_600_000).toISOString(),
+    };
+    const id = await approved('CONVERSION', tenant, payload);
+    const out = await h.conversions.apply(as(OPS, 'commercial_ops'), id, A6_CTX);
+    expect(out).toMatchObject({ direction: 'TO_SELF_SERVICE', status: 'RELEASED', request: { state: 'APPLIED' }, release: { state: 'RELEASED', governed_subscription_id: comp } });
+    expect((await pg.query(`SELECT row_to_json(s)::text AS j FROM subscription."TenantSubscription" s WHERE id = $1`, [comp])).rows[0].j).toBe(before);
   });
 });
