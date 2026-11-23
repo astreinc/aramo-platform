@@ -86,6 +86,25 @@ describe('Prepare — Phase 3 types and settings on the wire', () => {
     expect(prepareCapabilities({ sender_filled_fields_enabled: true }).senderValues).toBe(true);
   });
 
+  it('FIELD-PARITY-2 B-7 — a condition round-trips with its field; a new one goes out on the field', () => {
+    const fields: EnvelopeField[] = [
+      at({ id: 'row-1', field_key: 'agree', field_type: 'CHECKBOX', label: 'Co-applicant', width: 18, height: 18 }),
+      at({ id: 'row-2', field_key: 'co_name', field_type: 'TEXT', condition: { trigger_key: 'agree', when: 'checked' } }),
+    ];
+    const { placed, wire } = roundTrip(fields);
+    expect(placed[1]!.settings.condition).toEqual({ trigger_key: 'agree', when: 'checked' });
+    expect(wire[1]).toMatchObject({ field_key: 'co_name', condition: { trigger_key: 'agree', when: 'checked' } });
+    const added = toWire([{ ...placed[1]!, id: 'new1', settings: { ...placed[1]!.settings, condition: { trigger_key: 'agree', when: 'unchecked' } } }], new Map());
+    expect(added[0]).toMatchObject({ field_key: 'new1', condition: { trigger_key: 'agree', when: 'unchecked' } });
+  });
+
+  it('FIELD-PARITY-2 B-7 / C-7 — "Show only when…" is offered on a standard envelope, never on a self-sign one', () => {
+    expect(prepareCapabilities({}).settings).toContain('condition');
+    expect(prepareCapabilities({ mode: 'standard', sender_filled_fields_enabled: true }).settings).toContain('condition');
+    expect(prepareCapabilities({ mode: 'self' }).settings).not.toContain('condition');
+    expect(prepareCapabilities({ mode: 'self', sender_filled_fields_enabled: true }).settings).not.toContain('condition');
+  });
+
   it('a new RADIO / DROPDOWN placed by the editor goes out with its group / choices', () => {
     const wire = toWire(
       [

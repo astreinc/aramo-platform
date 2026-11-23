@@ -36,10 +36,14 @@ describe('the Phase 3 tools (send flow)', () => {
 
 describe('settings per type (fieldSettingsOf; sender-filled only while the server says so)', () => {
   it('each type shows its catalog settings', () => {
-    expect(editableSettings('DROPDOWN', false)).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options']);
+    // FIELD-PARITY-2 B-7 — "Show only when…" (condition) in the Send flow; never in self-sign (C-7).
+    expect(editableSettings('DROPDOWN', false)).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options', 'condition']);
+    expect(editableSettings('DROPDOWN', false, { selfSign: true })).toEqual(['label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'options']);
     expect(editableSettings('DROPDOWN', true)).toContain('sender_filled');
-    expect(editableSettings('RADIO', false)).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'data_name']);
-    expect(editableSettings('ACKNOWLEDGEMENT', true)).toEqual(['label', 'tooltip', 'data_name']);
+    expect(editableSettings('RADIO', false)).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'data_name', 'condition']);
+    expect(editableSettings('ACKNOWLEDGEMENT', true)).toEqual(['label', 'tooltip', 'data_name', 'condition']);
+    expect(editableSettings('SIGNATURE', false)).toContain('condition');
+    expect(editableSettings('SIGNATURE', false, { selfSign: true })).not.toContain('condition');
     expect(hasSettings('SIGNATURE', false)).toBe(true);
     expect(hasSettings('PAYMENT', false)).toBe(false);
   });

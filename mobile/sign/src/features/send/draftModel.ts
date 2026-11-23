@@ -3,7 +3,14 @@
 // be prepared offline. The server envelope (revision + ETag, M-A3 §6) stays the
 // authority once it exists: a sync only ever writes with If-Match on the revision the
 // draft is based on, and a 412 replaces the local copy with the server's.
-import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, MAX_COPY_RECIPIENTS as SHARED_MAX_COPY, MAX_SIGNERS } from '@aramo/sign-client';
+import {
+  ENVELOPE_MESSAGE_MAX,
+  ENVELOPE_SUBJECT_MAX,
+  MAX_COPY_RECIPIENTS as SHARED_MAX_COPY,
+  MAX_SIGNERS,
+  parseFieldCondition,
+  type FieldCondition,
+} from '@aramo/sign-client';
 
 import type { EditorField } from '../editor/editorReducer';
 import { settingsFromServer } from '../editor/fieldSettings';
@@ -286,6 +293,13 @@ export interface ServerField {
   readonly options?: Readonly<Record<string, unknown>> | null;
   /** S-5 — a sender-filled field's value (the sender's own; null otherwise). */
   readonly value?: string | null;
+  /**
+   * FIELD-PARITY-2 B-1 — the field's stable key (absent / null on a legacy, S2S or imported
+   * field). It survives every replace-all PUT only when it is sent back; the row id does not.
+   */
+  readonly field_key?: string | null;
+  /** FIELD-PARITY-2 B-2 — "show only when" (absent / null: always shown). */
+  readonly condition?: FieldCondition | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
@@ -310,6 +324,19 @@ function rec(v: unknown): Record<string, unknown> {
 }
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** FIELD-PARITY-2 B-1 — a stored field key (1..200 characters), else null. */
+export function fieldKeyOf(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 && v.length <= FIELD_KEY_LIMIT ? v : null;
+}
+/** The server's field-key limit (@aramo/sign-fields FIELD_KEY_MAX). */
+const FIELD_KEY_LIMIT = 200;
+
+/** FIELD-PARITY-2 B-2 — a stored condition (none, or a shape the server would refuse: none). */
+function conditionOfWire(v: unknown): FieldCondition | null {
+  const parsed = parseFieldCondition(v);
+  return parsed.ok ? parsed.condition : null;
+}
 
 const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY', 'WITNESS'];
 const DELIVERIES: readonly CopyDelivery[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
@@ -396,6 +423,9 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         ? { options: f['options'] as Record<string, unknown> }
         : {}),
       ...(f['sender_filled'] === true && typeof f['value'] === 'string' ? { value: f['value'] as string } : {}),
+      // FIELD-PARITY-2 B-1 / B-2 — the key and the condition, so a re-save keeps both.
+      ...(fieldKeyOf(f['field_key']) !== null ? { field_key: fieldKeyOf(f['field_key']) } : {}),
+      ...(conditionOfWire(f['condition']) !== null ? { condition: conditionOfWire(f['condition']) } : {}),
     })),
     senderFilledFieldsEnabled: o['sender_filled_fields_enabled'] === true,
   };
@@ -442,6 +472,18 @@ export function editorFieldsFromServer(
   const pendingFields: ServerField[] = [];
   const fields: EditorField[] = [];
   const preservedFields: ServerField[] = [];
+  // FIELD-PARITY-2 B-1 — an editor field's key IS its field_key (sent back on every PUT), so a
+  // condition's trigger_key keeps naming it. A field without a stored key gets `fieldKey`'s,
+  // kept clear of every stored key (the server refuses a key used twice in an envelope).
+  const stored = new Set(serverFields.map((f) => fieldKeyOf(f.field_key)).filter((k): k is string => k !== null));
+  const used = new Set<string>();
+  const keyFor = (f: ServerField, i: number): string => {
+    const own = fieldKeyOf(f.field_key);
+    if (own !== null && !used.has(own)) return own;
+    let k = fieldKey(f, i);
+    while (stored.has(k) || used.has(k)) k = `${k}-${i}`;
+    return k;
+  };
   serverFields.forEach((f, i) => {
     if (!isAuthoringFieldType(f.field_type) || f.signer_id === null || f.width === null || f.height === null) {
       preservedFields.push(f);
@@ -453,8 +495,10 @@ export function editorFieldsFromServer(
       return;
     }
     const box = wireToEditor({ x: f.x, y: f.y, width: f.width, height: f.height }, page);
+    const key = keyFor(f, i);
+    used.add(key);
     fields.push({
-      key: fieldKey(f, i),
+      key,
       docKey: keyOf(f.envelope_document_id),
       page: f.page_number,
       recipientKey: keyOf(f.signer_id),
@@ -465,6 +509,8 @@ export function editorFieldsFromServer(
       height: box.height,
       required: f.required,
       ...configOf(f),
+      // FIELD-PARITY-2 B-2 — the Send flow keeps the condition (self-sign never has one, C-7).
+      ...(f.condition ? { condition: f.condition } : {}),
     });
   });
   return { fields, preservedFields, fieldsPending: pendingFields.length > 0, pendingFields };

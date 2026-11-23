@@ -16,6 +16,7 @@
 
 import { roundGestureBox, type DragPrecision } from './editor-state';
 import { boundsOf } from './arrange';
+import { remapConditions } from './conditions';
 import { clampBox, toTopLeft, type Box, type PdfPageInfo } from './geometry';
 import { groupKeysOf, isGroupedType, type PageRef, type PlacedField } from './model';
 
@@ -55,6 +56,7 @@ export function cloneFields(
   ctx: CloneContext,
 ): PlacedField[] {
   const out: PlacedField[] = [];
+  const ids = new Map<string, string>();
   for (const f of sources.filter(copyable)) {
     const ref = opts.target ?? { docId: f.docId, page: f.page };
     const from = ctx.pageSize({ docId: f.docId, page: f.page });
@@ -62,9 +64,11 @@ export function cloneFields(
     if (from === undefined || to === undefined) continue;
     const tl = tlOf(f, from);
     const id = ctx.newId(f.type, [...all, ...out]);
+    ids.set(f.id, id);
     out.push(placeAt(f, { ...tl, x: tl.x + opts.dx, y: tl.y + opts.dy }, ref, to, ctx.precision, id));
   }
-  return out;
+  // FIELD-PARITY-2 B-7 — a copied field whose trigger was copied too follows the copy.
+  return remapConditions(out, ids);
 }
 
 /** The row height and suggested distance between rows (top to top) for a selection on one page. */
@@ -110,6 +114,8 @@ export function repeatDown(
     if (bounds.y + bounds.height + r * pitch > page.height + 0.001) break;
     rows += 1;
     const keys = new Map<string, string>();
+    const ids = new Map<string, string>();
+    const rowStart = out.length;
     for (const f of row) {
       const g = isGroupedType(f.type) ? f.settings.groupKey.trim() : '';
       let settings = f.settings;
@@ -125,8 +131,11 @@ export function repeatDown(
       }
       const tl = tlOf(f, page);
       const id = ctx.newId(f.type, [...all, ...out]);
+      ids.set(f.id, id);
       out.push(placeAt({ ...f, settings }, { ...tl, y: tl.y + r * pitch }, ref, page, ctx.precision, id));
     }
+    // FIELD-PARITY-2 B-7 — within a new row, a field's condition names that row's trigger.
+    out.splice(rowStart, out.length - rowStart, ...remapConditions(out.slice(rowStart), ids));
   }
   return { ok: true, fields: out, rows, skipped: count - rows };
 }

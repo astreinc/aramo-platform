@@ -68,13 +68,14 @@ export function isGroupedType(type: string): boolean {
  * envelope sender's editor authors (senderEditorSettings: never the PAYMENT amount; sender-filled
  * and read-only only while the server says they are on, sender_filled_fields_enabled).
  */
-export function editableSettings(type: string, senderFilledEnabled: boolean): readonly FieldSetting[] {
-  return editableFieldSettings(type, senderEditorSettings(senderFilledEnabled));
+export function editableSettings(type: string, senderFilledEnabled: boolean, opts: { readonly selfSign?: boolean } = {}): readonly FieldSetting[] {
+  // FIELD-PARITY-2 B-7 — "Show only when…" (condition) in the Send flow; never in self-sign (C-7).
+  return editableFieldSettings(type, senderEditorSettings(senderFilledEnabled, { selfSign: opts.selfSign === true }));
 }
 
 /** Whether a type has anything for the settings sheet. */
-export function hasSettings(type: string, senderFilledEnabled: boolean): boolean {
-  return editableSettings(type, senderFilledEnabled).length > 0;
+export function hasSettings(type: string, senderFilledEnabled: boolean, opts: { readonly selfSign?: boolean } = {}): boolean {
+  return editableSettings(type, senderFilledEnabled, opts).length > 0;
 }
 
 const text = (v: string | null | undefined): string => (v ?? '').trim();

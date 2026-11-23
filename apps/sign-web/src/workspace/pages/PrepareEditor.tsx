@@ -63,11 +63,15 @@ const ORDER: readonly FieldType[] = [
  */
 export const PREPARE_SETTINGS = senderEditorSettings(false);
 
-/** The editor capabilities: sender-filled (and read-only) only while the server says they are on (S-5, dark). */
-export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled'>): PlacementCapabilities {
+/**
+ * The editor capabilities: sender-filled (and read-only) only while the server says they are on
+ * (S-5, dark). FIELD-PARITY-2 B-7 — "Show only when…" on a standard envelope; never on a document
+ * the sender signs alone (ruling C-7: the server refuses a condition on a SELF envelope).
+ */
+export function prepareCapabilities(env: Pick<EnvelopeDetail, 'sender_filled_fields_enabled' | 'mode'>): PlacementCapabilities {
   const senderFilled = env.sender_filled_fields_enabled === true;
   return {
-    settings: senderEditorSettings(senderFilled),
+    settings: senderEditorSettings(senderFilled, { selfSign: env.mode === 'self' }),
     limits: { labelMax: CHECKBOX_LABEL_MAX, groupKeyMax: CHECKBOX_GROUP_KEY_MAX },
     senderValues: senderFilled,
   };
@@ -190,7 +194,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     formatError: (e) => errorMessage(e),
   });
   const readiness = useMemo(() => readinessOf(env), [env]);
-  const capabilities = useMemo(() => prepareCapabilities(env), [env.sender_filled_fields_enabled]);
+  const capabilities = useMemo(() => prepareCapabilities(env), [env.sender_filled_fields_enabled, env.mode]);
   // FIELD-PARITY-1 P2-4 — "Find fields": the Sign route's full detector (detect=all) for every
   // document, as ghosts in the editor. A document whose suggestions fail adds none.
   const docIds = env.documents.map((d) => d.id).join(',');

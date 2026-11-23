@@ -62,8 +62,9 @@ import {
   type EditorSuggestion,
 } from './editorReducer';
 import { toEditorSuggestions, type WireSuggestion } from './senderSuggestions';
-import { hasSettings } from './fieldSettings';
-import { GeneralSettings, RadioSettings } from './FieldSettingsSheet';
+import { conditionsClearedText } from './conditions';
+import { editableSettings, hasSettings } from './fieldSettings';
+import { ConditionSettings, GeneralSettings, RadioSettings } from './FieldSettingsSheet';
 import {
   FIELD_TYPE_SPECS,
   MAX_LABEL,
@@ -713,6 +714,12 @@ export function FieldEditor({
           contentContainerStyle={styles.panelBody}
           keyboardShouldPersistTaps="handled"
         >
+          {state.conditionsCleared > 0 ? (
+            <View testID="condition-notice" accessibilityRole="alert" style={styles.row}>
+              <Text style={[secondary, styles.grow]}>{conditionsClearedText(state.conditionsCleared)}</Text>
+              <Button testID="condition-notice-dismiss" title="OK" variant="text" onPress={() => dispatch({ type: 'dismissConditionNotice' })} />
+            </View>
+          ) : null}
           {selected ? (
             <SelectionPanel
               key={selected.key}
@@ -1085,6 +1092,8 @@ function SelectionPanel({
           {field.type === 'CHECKBOX' ? <CheckboxSettings field={field} fields={fields} dispatch={dispatch} /> : null}
           {field.type === 'RADIO' ? <RadioSettings field={field} fields={fields} pageSize={pageSize} dispatch={dispatch} /> : null}
           <GeneralSettings field={field} senderFilledEnabled={senderFilledEnabled} dispatch={dispatch} />
+          {/* FIELD-PARITY-2 B-7 — the Send flow's editor only (self-sign never shows this panel). */}
+          {editableSettings(field.type, senderFilledEnabled).includes('condition') ? <ConditionSettings field={field} fields={fields} dispatch={dispatch} /> : null}
           <Button title="Done" onPress={() => setSettingsOpen(false)} />
         </Sheet>
       ) : null}

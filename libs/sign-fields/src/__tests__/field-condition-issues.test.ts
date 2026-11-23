@@ -1,5 +1,5 @@
 // Runs under vitest and mobile Jest (globals only).
-import { CONDITION_DEPTH_MAX, fieldConditionIssues, type ConditionalFieldLike } from '../index.js';
+import { CONDITION_DEPTH_MAX, fieldConditionIssues, orphanedConditionIndexes, shownFields, startingCondition, usableTriggerIndexes, type ConditionalFieldLike } from '../index.js';
 
 // FIELD-PARITY-2 §4.2 B-3, §5 test 1 — the one cross-field rule: every refusal, chains and cycles.
 
@@ -79,5 +79,59 @@ describe('FIELD-PARITY-2 B-3 — fieldConditionIssues', () => {
 
   it('a field with no condition is never refused for its key being absent; only keyed fields can be triggers', () => {
     expect(reasons([sig, f(null, 'CHECKBOX'), f(null, 'CHECKBOX'), f('t', 'TEXT', { condition: { trigger_key: 'null', when: 'checked' } })])).toEqual([[3, 'condition_trigger_unknown']]);
+  });
+});
+
+// FIELD-PARITY-2 B-7 — what the editors clear when a trigger is deleted or retyped.
+describe('orphanedConditionIndexes (B-7)', () => {
+  it('a condition whose trigger is gone, or no longer a type its rule reads, is orphaned', () => {
+    const fields = [
+      { field_key: 'cb', field_type: 'TEXT' },
+      { field_key: 't1', field_type: 'TEXT', condition: { trigger_key: 'cb', when: 'checked' as const } },
+      { field_key: 't2', field_type: 'TEXT', condition: { trigger_key: 'gone', when: 'unchecked' as const } },
+      { field_key: 'dd', field_type: 'DROPDOWN' },
+      { field_key: 't3', field_type: 'TEXT', condition: { trigger_key: 'dd', when: 'one_of' as const, values: ['a'] } },
+      { field_key: 't4', field_type: 'TEXT', condition: { trigger_key: 'dd', when: 'chosen' as const } },
+      { field_key: 't5', field_type: 'TEXT', condition: null },
+    ];
+    expect(orphanedConditionIndexes(fields)).toEqual([1, 2, 5]);
+  });
+
+  it('the visibility rule is exported here once (sign-client re-exports this copy)', () => {
+    expect(shownFields([{ field_key: 'a' }], () => null).size).toBe(1);
+  });
+});
+
+// FIELD-PARITY-2 B-7 — how every editor (web and app) offers triggers and starts a condition.
+describe('startingCondition / usableTriggerIndexes (B-7)', () => {
+  it('starts checked / chosen / with the first saved choice value; none without a key or choices', () => {
+    expect(startingCondition({ field_key: 'cb', field_type: 'ACKNOWLEDGEMENT' })).toEqual({ trigger_key: 'cb', when: 'checked' });
+    expect(startingCondition({ field_key: 'r', field_type: 'RADIO' })).toEqual({ trigger_key: 'r', when: 'chosen' });
+    expect(startingCondition({ field_key: 'd', field_type: 'DROPDOWN', options: { choices: [{ value: ' ', label: '' }, { value: '', label: ' Yes ' }] } })).toEqual({ trigger_key: 'd', when: 'one_of', values: ['Yes'] });
+    expect(startingCondition({ field_key: 'd', field_type: 'DROPDOWN', options: { choices: [] } })).toBeNull();
+    expect(startingCondition({ field_key: null, field_type: 'CHECKBOX' })).toBeNull();
+    expect(startingCondition({ field_key: 't', field_type: 'TEXT' })).toBeNull();
+  });
+
+  it('offers same-signer trigger types that add no loop or over-deep chain; never sender-filled ones', () => {
+    const fields: ConditionalFieldLike[] = [
+      f('dep', 'TEXT'),
+      f('a', 'CHECKBOX'),
+      f('b', 'CHECKBOX', { condition: { trigger_key: 'a', when: 'checked' } }),
+      f('c', 'CHECKBOX', { condition: { trigger_key: 'b', when: 'checked' } }),
+      f('d', 'CHECKBOX', { condition: { trigger_key: 'c', when: 'checked' } }),
+      f('other', 'CHECKBOX', { signer: 's2' }),
+      f('mine', 'CHECKBOX', { sender_filled: true }),
+      f(null, 'CHECKBOX'),
+      f('dd', 'DROPDOWN', { options: { choices: [{ value: 'x' }] } }),
+    ];
+    // d is already 3 deep: a field under d would be 4.
+    expect(usableTriggerIndexes(fields, 0)).toEqual([1, 2, 3, 8]);
+    // a under b, c or d would loop; a under dd would make d's chain 4 deep (the problem is d's).
+    expect(usableTriggerIndexes(fields, 1)).toEqual([]);
+    // b may stay under a or move under dd (d → c → b → dd is still 3 deep); never under c or d (a loop).
+    expect(usableTriggerIndexes(fields, 2)).toEqual([1, 8]);
+    expect(usableTriggerIndexes(fields, 6)).toEqual([]);
+    expect(usableTriggerIndexes([f('t', 'TEXT', { signer: null }), f('cb', 'CHECKBOX', { signer: null })], 0)).toEqual([]);
   });
 });

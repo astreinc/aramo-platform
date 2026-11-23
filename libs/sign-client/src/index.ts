@@ -167,6 +167,10 @@ export {
   FIELD_CONDITION_REFUSAL_REASONS,
   parseFieldCondition,
   fieldConditionIssues,
+  // B-7 — the editors' trigger list, starting rule and delete / retype clear (web and app).
+  startingCondition,
+  usableTriggerIndexes,
+  orphanedConditionIndexes,
   type FieldCondition,
   type FieldConditionWhen,
   type FieldConditionIssue,
