@@ -304,6 +304,8 @@ export interface EnvelopeField {
   font_size?: number | null;
   data_name?: string | null;
   options?: Readonly<Record<string, unknown>> | null;
+  // FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; null = always shown).
+  condition?: { readonly trigger_key: string; readonly when: string; readonly values?: readonly string[] } | null;
   // S-5 (ruling R-3, dark) — a sender-filled field's value, the sender's own (null otherwise).
   value?: string | null;
 }

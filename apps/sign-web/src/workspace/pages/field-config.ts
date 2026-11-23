@@ -30,7 +30,7 @@ export { groupSize };
 
 /** The configuration members of a PUT field (and `value`, a sender-filled field's own value). */
 export type FieldConfigWire = Partial<
-  Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'value'>
+  Pick<EnvelopeField, 'name_mode' | 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'condition' | 'value'>
 >;
 
 // Stored field → editor config.

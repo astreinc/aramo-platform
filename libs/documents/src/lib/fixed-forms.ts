@@ -104,6 +104,8 @@ export interface FixedFormField {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: unknown;
+  // FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; NULL = always shown).
+  readonly condition?: unknown;
 }
 
 /** The content a new fixed-form version starts from: no PDF yet, one signer role. */

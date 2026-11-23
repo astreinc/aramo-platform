@@ -63,7 +63,13 @@ function settingsFromStored(f: FixedFormField): PlacedField['settings'] {
  * SIGN_SENDER_FILLED_FIELDS_ENABLED; they ship dark). A stored one is kept (round-trips) and
  * still shown on the field.
  */
-export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only');
+export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'sender_filled' && k !== 'read_only' && k !== 'condition');
+
+/**
+ * FIELD-PARITY-2 B-2 — every template setting but condition: the Studio offers "Show only when…"
+ * with its own control (B-7). A stored condition round-trips unchanged meanwhile.
+ */
+const STUDIO_SETTINGS_ALL: readonly FieldSetting[] = TEMPLATE_FIELD_SETTINGS.filter((k) => k !== 'condition');
 
 /**
  * FIELD-PARITY-2 A-4 (ruling C-9) — the settings the Studio offers, from the view's
@@ -72,7 +78,7 @@ export const FIXED_FORM_SETTINGS: readonly FieldSetting[] = TEMPLATE_FIELD_SETTI
  * sender types it when sending.
  */
 export function fixedFormSettings(view: { readonly sender_filled_fields_enabled?: boolean } | null | undefined): readonly FieldSetting[] {
-  return view?.sender_filled_fields_enabled === true ? TEMPLATE_FIELD_SETTINGS : FIXED_FORM_SETTINGS;
+  return view?.sender_filled_fields_enabled === true ? STUDIO_SETTINGS_ALL : FIXED_FORM_SETTINGS;
 }
 
 /**

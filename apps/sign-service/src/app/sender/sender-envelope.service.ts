@@ -654,6 +654,8 @@ export class SenderEnvelopeService {
           font_size: f.font_size ?? null,
           data_name: f.data_name ?? null,
           options: f.options ?? null,
+          // FIELD-PARITY-2 B-2 — "show only when" (null = always shown).
+          condition: f.condition ?? null,
           // S-5 — the sender's own value of a sender-filled field (null for every other field:
           // a signer's value is never returned here).
           value: f.sender_filled === true ? (f.value ?? null) : null,
@@ -1757,7 +1759,7 @@ function eventDetail(payload: unknown): Record<string, string> | null {
 // (fieldValueRefusal) and recorded as the sender's. Every refusal carries a stable details.reason.
 type FieldConfig = Pick<
   SenderFieldInput,
-  'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'sender_value'
+  'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode' | 'tooltip' | 'placeholder' | 'read_only' | 'sender_filled' | 'validation' | 'font_size' | 'data_name' | 'options' | 'condition' | 'sender_value'
 >;
 function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, requestId: string): FieldConfig {
   const refuse = (field: string, reason: string, message: string): AramoError => bad(requestId, `field ${i + 1}: ${message}`, { index: i, field, reason });
@@ -1784,6 +1786,8 @@ function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, 
     font_size: st.font_size,
     data_name: st.data_name,
     options: st.options as SenderFieldInput['options'],
+    // FIELD-PARITY-2 B-2 — the condition's shape (the cross-field rule runs on the whole list).
+    condition: st.condition,
     ...(st.sender_filled ? { sender_value } : {}),
   };
   if (field_type === 'SIGNER_NAME') return { ...settings, name_mode: st.name_mode ?? 'SIGNER_PROFILE' };

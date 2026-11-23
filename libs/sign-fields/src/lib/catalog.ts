@@ -80,7 +80,12 @@ export type FieldSetting =
   | 'min_selected'
   | 'name_mode'
   | 'payment_amount_minor'
-  | 'payment_currency';
+  | 'payment_currency'
+  /**
+   * FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; field-conditions.ts).
+   * Every signer type takes it (C-6: a SIGNATURE too); never PAYMENT nor a documents-only type.
+   */
+  | 'condition';
 
 export interface FieldCatalogEntry {
   readonly key: string;
@@ -114,9 +119,12 @@ export interface FieldCatalogEntry {
 //                              NUMBER (number_range), DATE (date_range);
 //   font_size (S-7)          — types drawn as text on the executed PDF;
 //   options                  — DROPDOWN (choices), NUMBER (format), and the validation parameters.
+// FIELD-PARITY-2 B-2 — condition ("show only when") is the last setting of every type a signer
+// has (COND); PAYMENT and the documents-only types take none.
 const NAMED = ['label', 'tooltip', 'data_name'] as const;
-const CHECKBOX_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'data_name', 'read_only', 'sender_filled'] as const;
-const PROFILE_SETTINGS = [...NAMED, 'placeholder', 'font_size'] as const;
+const COND = 'condition' as const;
+const CHECKBOX_SETTINGS = ['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'data_name', 'read_only', 'sender_filled', COND] as const;
+const PROFILE_SETTINGS = [...NAMED, 'placeholder', 'font_size', COND] as const;
 
 // The surfaces shared by the six types every family has (the fixed-form intersection).
 const SIX = {
@@ -164,7 +172,7 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'signature_image',
     filled_by: 'signer',
-    settings: NAMED,
+    settings: [...NAMED, COND],
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   SIGN_DATE: {
@@ -177,7 +185,7 @@ export const FIELD_CATALOG = {
     value_kind: 'date',
     // Client Rule Consolidation C0-2 — stamped by the server when the signer completes.
     filled_by: 'server',
-    settings: [...NAMED, 'font_size'],
+    settings: [...NAMED, 'font_size', COND],
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   INITIALS: {
@@ -189,7 +197,7 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'signature_image',
     filled_by: 'signer',
-    settings: NAMED,
+    settings: [...NAMED, COND],
     surfaces: { ...SIX, suggestion: true },
   },
   TEXT: {
@@ -201,7 +209,7 @@ export const FIELD_CATALOG = {
     required: false,
     value_kind: 'text',
     filled_by: 'signer',
-    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options', COND],
     surfaces: { ...SIX, suggestion: true },
   },
   SIGNER_NAME: {
@@ -216,7 +224,7 @@ export const FIELD_CATALOG = {
     // (and a legacy engine field with no name_mode) is typed by the signer.
     filled_by: 'server',
     filled_by_name_mode: { SIGNER_PROFILE: 'server', SIGNER_ENTERED: 'signer' },
-    settings: ['name_mode', ...NAMED, 'placeholder', 'font_size'],
+    settings: ['name_mode', ...NAMED, 'placeholder', 'font_size', COND],
     surfaces: { ...SIX, signature_block: true, suggestion: true },
   },
   CHECKBOX: {
@@ -305,7 +313,7 @@ export const FIELD_CATALOG = {
     required: true,
     value_kind: 'boolean',
     filled_by: 'signer',
-    settings: NAMED,
+    settings: [...NAMED, COND],
     // M-A6 line 33 made it engine-only (S2S / Sign API, sent back unchanged by a sender).
     // FIELD-PARITY-1 P3 T-2 (ruling R-2, amends M-A6 line 33) — authorable in sends and templates.
     surfaces: { ...PHASE3, sign_api_s2s: true },
@@ -338,7 +346,7 @@ export const FIELD_CATALOG = {
     // T-3 — a chosen date (stored YYYY-MM-DD), drawn in the envelope's date format.
     value_kind: 'date',
     filled_by: 'signer',
-    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options', COND],
     surfaces: PHASE3,
   },
   DROPDOWN: {
@@ -351,7 +359,7 @@ export const FIELD_CATALOG = {
     // T-4 — the author's choices (options.choices); the value is the chosen choice's value.
     value_kind: 'option',
     filled_by: 'signer',
-    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'font_size', 'options'],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'font_size', 'options', COND],
     surfaces: PHASE3,
   },
   RADIO: {
@@ -368,7 +376,7 @@ export const FIELD_CATALOG = {
     value_kind: 'boolean',
     mark_shape: 'circle',
     filled_by: 'signer',
-    settings: ['label', 'group_key', 'group_rule', 'tooltip', 'data_name', 'read_only', 'sender_filled'],
+    settings: ['label', 'group_key', 'group_rule', 'tooltip', 'data_name', 'read_only', 'sender_filled', COND],
     surfaces: PHASE3,
   },
   NUMBER: {
@@ -382,7 +390,7 @@ export const FIELD_CATALOG = {
     // in options.currency (replaces the documents-family CURRENCY, ruling R-9).
     value_kind: 'number',
     filled_by: 'signer',
-    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options', COND],
     surfaces: PHASE3,
   },
   MULTILINE_TEXT: {
@@ -395,7 +403,7 @@ export const FIELD_CATALOG = {
     // T-7 — wraps inside its box (the P0-2 stamper); validation max_length caps it.
     value_kind: 'text',
     filled_by: 'signer',
-    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options'],
+    settings: [...NAMED, 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'options', COND],
     surfaces: PHASE3,
   },
   // ---- documents-family only (documents."TemplateFieldDefinition"); the sender's template

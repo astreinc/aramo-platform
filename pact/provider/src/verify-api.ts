@@ -624,6 +624,16 @@ const DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql',
 );
+// FIELD-PARITY-2 B-2 (conditional fields) — TemplateFieldDefinition gains `condition` (JSONB,
+// nullable, ADD-not-rename, shape CHECK). Changes the returned shapes: the Sign S2S render
+// field_definitions, the template field rows and the fixed-form field views now carry condition
+// (the regenerated client SELECTs the new column) → registered (CLAUDE.md law); after the P3
+// migration. The Sign SignatureField field_key / condition migrations are picked up by the
+// verify-sign.ts directory scan.
+const DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql',
+);
 // FIELD-PARITY-1 P2-5 / P2-6 (fillable-PDF import, text tags) — NO migration: imported fields are
 // ordinary TemplateFieldDefinition rows (the P1-3 columns above). The only returned-shape change is
 // the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
@@ -3796,6 +3806,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TP6_TENANT_TEMPLATE_VISIBILITY_MIGRATION,
         DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION,
         DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION,
+        DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,

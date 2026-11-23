@@ -335,6 +335,8 @@ export class SignFixedFormsService {
           font_size: x.font_size ?? null,
           data_name: x.data_name ?? null,
           options: (x.options ?? null) as Readonly<Record<string, unknown>> | null,
+          // FIELD-PARITY-2 B-2 — the condition travels too (the carry translates its trigger, B-9).
+          condition: (x.condition ?? null) as SignTemplateFieldDefinition['condition'],
         }),
       ),
       signing: s === null ? null : { roles: s.roles.map((r) => ({ ...r })), routing_mode: s.routing_mode },

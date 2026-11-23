@@ -11,6 +11,7 @@ import {
   parseTemplateFieldSettings,
   senderFilledFieldsEnabled,
   type DetectResult,
+  type FieldCondition,
   type FieldOptions,
   type FieldImportWarning,
 } from '@aramo/sign-fields';
@@ -87,6 +88,8 @@ export interface FixedFormFieldView {
   readonly font_size: number | null;
   readonly data_name: string | null;
   readonly options: FieldOptions | null;
+  // FIELD-PARITY-2 B-2 — "show only when" (NULL = always shown).
+  readonly condition: FieldCondition | null;
 }
 
 /** FIELD-PARITY-1 P2-5 / P2-6 — what an opted-in upload imported (absent without a flag). */
@@ -128,6 +131,7 @@ export function toFieldView(f: {
   font_size?: number | null;
   data_name?: string | null;
   options?: unknown;
+  condition?: unknown;
 }): FixedFormFieldView {
   return {
     field_key: f.field_key,
@@ -154,6 +158,7 @@ export function toFieldView(f: {
     font_size: f.font_size ?? null,
     data_name: f.data_name ?? null,
     options: (f.options ?? null) as FieldOptions | null,
+    condition: (f.condition ?? null) as FieldCondition | null,
   };
 }
 

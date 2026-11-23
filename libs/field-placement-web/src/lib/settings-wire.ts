@@ -11,6 +11,7 @@ import {
   VALIDATIONS_BY_TYPE,
   fieldSettingsOf,
   isFieldTypeKey,
+  parseFieldCondition,
   parseFieldSettings,
   type DropdownChoice,
   type FieldOptions,
@@ -36,6 +37,8 @@ export interface WireSettings {
   readonly font_size?: number | null;
   readonly data_name?: string | null;
   readonly options?: unknown;
+  /** FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; NULL = always shown). */
+  readonly condition?: unknown;
   /** S-5 — the sender's value of a sender-filled field (the Sign sender API only). */
   readonly value?: string | null;
 }
@@ -61,7 +64,14 @@ export function settingsFromWire(w: WireSettings): PlacementSettings {
     fontSize: typeof w.font_size === 'number' ? w.font_size : null,
     dataName: w.data_name ?? '',
     options: isObject(w.options) ? (w.options as FieldOptions) : null,
+    condition: conditionFromWire(w.condition),
   };
+}
+
+/** FIELD-PARITY-2 B-2 — a stored condition (a shape the server would refuse reads as none). */
+function conditionFromWire(raw: unknown): PlacementSettings['condition'] {
+  const parsed = parseFieldCondition(raw);
+  return parsed.ok ? parsed.condition : null;
 }
 
 /** The settings a type takes (the catalog), as a set. */
@@ -155,6 +165,8 @@ export function settingsToWire(type: string, s: PlacementSettings, opts: Setting
   put('data_name', text(s.dataName), text(s.dataName).length > 0);
   const options = t.has('options') ? optionsToWire(type, validation, s.options) : null;
   put('options', options, options !== null);
+  // FIELD-PARITY-2 B-2 — the condition round-trips as stored (a sender-filled field has none).
+  put('condition', s.condition, s.condition !== null && !s.senderFilled);
   if (opts.senderValues === true && s.senderFilled && s.senderValue !== '') out['value'] = s.senderValue;
   return out;
 }

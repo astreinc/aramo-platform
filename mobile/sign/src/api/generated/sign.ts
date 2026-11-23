@@ -5121,6 +5121,8 @@ export interface components {
             data_name?: string | null;
             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
             options?: components["schemas"]["FieldOptions"] | null;
+            /** @description FIELD-PARITY-2 B-2 — "show only when"; null = always shown. */
+            condition?: components["schemas"]["FieldCondition"] | null;
             /** @description FIELD-PARITY-1 P3 S-5 — the sender's own value of a sender-filled field; null for every other field. */
             value?: string | null;
         };
@@ -5209,6 +5211,8 @@ export interface components {
             data_name?: string | null;
             /** @description FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters). */
             options?: components["schemas"]["FieldOptions"] | null;
+            /** @description FIELD-PARITY-2 B-2 — "show only when"; null = always shown. */
+            condition?: components["schemas"]["FieldCondition"] | null;
             /** @description Refused (400 sender_value_refused) for every field that is not sender_filled. FIELD-PARITY-1 P3 S-5 — a sender_filled field may carry the sender's value (checked by the field's value rule: e.g. date_value_invalid, dropdown_value_invalid, validation_email_failed); it is recorded in the ledger as SENDER_FIELD_VALUES_SET (attributed to the sender) and marked on the certificate. */
             value?: string | null;
         };
@@ -5263,6 +5267,15 @@ export interface components {
             name_mode: "SIGNER_PROFILE" | null;
             /** @description FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise. */
             options: components["schemas"]["FieldOptions"] | null;
+        };
+        /** @description FIELD-PARITY-2 B-2 — "show this field only when the field trigger_key ..." (@aramo/sign-fields FieldCondition). when checked / unchecked: the trigger is a CHECKBOX or ACKNOWLEDGEMENT. chosen: the trigger is one RADIO option field (shown while that option is chosen). one_of: the trigger is a DROPDOWN and values lists 1 to 50 of its choice values. One trigger per field (no AND / OR), the same signer (or template role), chains up to a depth of 3, no cycles; a sender-filled field is never conditional. Refusals (details.reason) condition_invalid, condition_trigger_unknown, condition_trigger_type_invalid, condition_cross_signer, condition_values_invalid, condition_cycle, condition_depth_exceeded, condition_no_unconditional_signature. */
+        FieldCondition: {
+            /** @description The trigger field's field_key. */
+            trigger_key: string;
+            /** @enum {string} */
+            when: "checked" | "unchecked" | "chosen" | "one_of";
+            /** @description one_of only — the dropdown choice values that show the field. */
+            values?: string[];
         };
         /** @description FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN: choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER: format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default 2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or a key the type does not take, is refused (options_invalid). */
         FieldOptions: {

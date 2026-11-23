@@ -114,6 +114,9 @@ export interface SenderFieldInput {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  // FIELD-PARITY-2 B-2 — "show only when" (validated by the caller with @aramo/sign-fields
+  // parseFieldSettings and fieldConditionIssues; the shape CHECK is the backstop).
+  condition?: FieldConditionJson | null;
   // S-5 (ruling R-3, dark) — the value the sender typed for a sender_filled field (validated by
   // the caller with fieldValueRefusal). Absent / NULL: no value yet. Only a sender_filled field
   // may carry one.
@@ -122,6 +125,8 @@ export interface SenderFieldInput {
 
 /** FIELD-PARITY-1 P3 — the per-type options of a field (a JSON object). */
 export type FieldOptionsJson = Readonly<Record<string, unknown>>;
+/** FIELD-PARITY-2 B-2 — a field's condition ({ trigger_key, when, values? }; a JSON object). */
+export type FieldConditionJson = Readonly<{ trigger_key: string; when: string; values?: readonly string[] }>;
 
 /** FIELD-PARITY-1 P3 — the setting columns of a field row (absent → NULL / false). */
 export function fieldSettingColumns(f: {
@@ -133,6 +138,7 @@ export function fieldSettingColumns(f: {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  condition?: FieldConditionJson | null;
 }): {
   tooltip: string | null;
   placeholder: string | null;
@@ -142,6 +148,7 @@ export function fieldSettingColumns(f: {
   font_size: number | null;
   data_name: string | null;
   options?: never;
+  condition?: never;
 } {
   return {
     tooltip: f.tooltip ?? null,
@@ -153,6 +160,8 @@ export function fieldSettingColumns(f: {
     data_name: f.data_name ?? null,
     // A JSON column: absent leaves the column NULL (Prisma refuses a bare null for JSON).
     ...(f.options !== undefined && f.options !== null ? { options: f.options as never } : {}),
+    // FIELD-PARITY-2 B-2 — the same JSON rule.
+    ...(f.condition !== undefined && f.condition !== null ? { condition: f.condition as never } : {}),
   };
 }
 
@@ -198,6 +207,9 @@ export interface TemplateFieldInput {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  // FIELD-PARITY-2 B-2 / B-9 — the template condition; its trigger_key is a template field_key,
+  // which the carry keeps 1:1 as the envelope field_key.
+  condition?: FieldConditionJson | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).

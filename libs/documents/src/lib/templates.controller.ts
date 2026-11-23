@@ -192,6 +192,8 @@ interface AddFieldBody {
   font_size?: number | null;
   data_name?: string | null;
   options?: unknown;
+  // FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }).
+  condition?: unknown;
 }
 
 @Controller('v1/document-templates')
