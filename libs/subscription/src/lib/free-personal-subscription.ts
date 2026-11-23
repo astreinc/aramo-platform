@@ -36,6 +36,46 @@ export type EnsureFreeResult =
   | { readonly ok: true; readonly opened: boolean; readonly subscription_id: string; readonly source: string }
   | { readonly ok: false; readonly reason: FreeSubscriptionRefusal };
 
+type Db = Parameters<Parameters<PrismaService['$transaction']>[0]>[0] | PrismaService;
+
+/**
+ * CCP-PERSONAL-ARRANGED-1 P-8 (PO ruling D-5) — the FREE open as one step of the CALLER's transaction (the
+ * governed END of an arranged Personal row): the same gates and the same row as `ensure`, but no catch-and-
+ * reread (a unique violation aborts the caller's transaction, which then fails and is retryable). The caller
+ * holds the tenant's billing lock. A refusal is returned, never thrown.
+ */
+export async function openFreePersonalInTx(
+  db: Db,
+  input: { tenant_id: string; product_key: ProductKey; tenant_kind: string | null; tenant_status: string | null; mode: PersonalSignupMode; at: Date },
+): Promise<EnsureFreeResult> {
+  if (input.mode === 'off') return { ok: false, reason: 'personal_mode_off' };
+  if (input.tenant_kind !== 'PERSONAL') return { ok: false, reason: 'tenant_not_personal' };
+  if (input.tenant_status !== 'ACTIVE') return { ok: false, reason: 'tenant_not_active' };
+  const product_key = assertProductKey(input.product_key);
+  const open = await db.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
+  if (open !== null) return { ok: true, opened: false, subscription_id: open.id, source: open.source };
+  const plan = await db.plan.findUnique({ where: { key: FreePersonalPlanKey } });
+  if (plan === null || plan.product_key !== product_key) return { ok: false, reason: 'plan_missing' };
+  const version = await currentPublishedVersion(db, plan.id);
+  if (version === null) return { ok: false, reason: 'plan_missing' };
+  const id = uuidv7();
+  await db.tenantSubscription.create({
+    data: {
+      id,
+      tenant_id: input.tenant_id,
+      plan_id: plan.id,
+      plan_version_id: version.id,
+      product_key,
+      composition_role: BASE_COMPOSITION,
+      period_anchor: input.at,
+      source: FREE_SUBSCRIPTION_SOURCE,
+      status: 'ACTIVE',
+      created_by: SYSTEM_ACTOR,
+    },
+  });
+  return { ok: true, opened: true, subscription_id: id, source: FREE_SUBSCRIPTION_SOURCE };
+}
+
 @Injectable()
 export class FreePersonalSubscriptionService {
   constructor(private readonly prisma: PrismaService) {}

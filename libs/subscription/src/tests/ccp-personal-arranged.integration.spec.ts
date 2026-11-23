@@ -19,7 +19,8 @@ import { A6_CTX, BUSINESS, FREE_PERSONAL, a6Harness, as, newTenant, publishedVer
 //   ARR-I-OPEN-*  P-1 / P-2 / P-3 — a FREE Personal row replaced by an arranged Personal Standard row;
 //   ARR-I-CHAIN-* P-6 — Amendment A3 (LOCKED) AC-COMP-1, the COMP chain;
 //   ARR-I-REF-*   P-4 — the creation-time refusals;
-//   ARR-I-RPT-*   P-3 — the finance and revenue reports with COMP and AGREED rows.
+//   ARR-I-RPT-*   P-3 — the finance and revenue reports with COMP and AGREED rows;
+//   ARR-I-END-*   P-8 / D-5 — ending an arranged row reopens Free in the same transaction (or records why not).
 
 const T0 = new Date('2026-11-24T12:00:00.000Z');
 const STANDARD_PERSONAL = 'aramo-sign-standard-personal-v1';
@@ -37,7 +38,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
   const arranged: { comp?: { tenant: string; sub: string }; agreed?: { tenant: string; sub: string } } = {};
   const key = () => `arr-key-${String(++keyN).padStart(6, '0')}`;
 
+  const savedMode = process.env['SIGN_PERSONAL_SIGNUP_MODE'];
+
   beforeAll(async () => {
+    // Personal Free v1.1 §10 — Free opens only while Personal signup is not off.
+    process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'open';
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     const url = container.getConnectionUri();
     pg = new Client({ connectionString: url });
@@ -52,6 +57,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
   }, 300_000);
 
   afterAll(async () => {
+    if (savedMode === undefined) delete process.env['SIGN_PERSONAL_SIGNUP_MODE'];
+    else process.env['SIGN_PERSONAL_SIGNUP_MODE'] = savedMode;
     await prisma?.$disconnect();
     await pg?.end();
     await container?.stop();
@@ -246,5 +253,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-PERSONAL-ARRA
     expect(line).toBeDefined();
     const listPrice = (await pg.query(`SELECT (v.content->'plan'->>'list_price_minor')::int AS p FROM subscription."TenantSubscription" ts JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id WHERE ts.id = $1`, [agreed.sub])).rows[0].p as number;
     expect(line?.monthly_minor).toBe(listPrice);
+  });
+
+  // ---- P-8 / D-5 — the way back -------------------------------------------------------------
+
+  /** A PERSONAL tenant moved from FREE to an applied COMP Standard row. */
+  async function personalOnComp(): Promise<{ tenant: string; free: string; comp: string }> {
+    const { tenant, free } = await personalOnFree();
+    await applyAs(await approved('SUBSCRIPTION_OPEN', tenant, await arrangedPayload(free, { arrangement: 'COMP' })));
+    const [comp] = await openRows(tenant);
+    return { tenant, free, comp: comp.id as string };
+  }
+
+  it('ARR-I-END-1 SUBSCRIPTION_END of an arranged Personal row reopens Free in the same transaction: a new FREE row anchored at the end instant, recorded as an event', async () => {
+    const { tenant, free, comp } = await personalOnComp();
+    const id = await approved('SUBSCRIPTION_END', tenant, { subscription_id: comp });
+    const out = await applyAs(id);
+    expect(out.request.state).toBe('APPLIED');
+    expect((await row(comp)).ended_at?.toISOString()).toBe(T0.toISOString());
+    const open = await openRows(tenant);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ source: 'FREE', status: 'ACTIVE', arrangement: null });
+    expect(open[0].id).not.toBe(free);
+    const reopened = await row(open[0].id as string);
+    expect(reopened.period_anchor.toISOString()).toBe(T0.toISOString());
+    // The application names the ended row only (the CHECK keeps replaced_subscription_id for an open).
+    expect(out.application?.subscription_id).toBe(comp);
+    expect(out.application?.replaced_subscription_id).toBeNull();
+    const ev = await events(id);
+    expect(ev.map((e) => e.event_type)).toEqual(expect.arrayContaining(['COMMERCIAL_SUBSCRIPTION_ENDED', 'COMMERCIAL_FREE_SUBSCRIPTION_REOPENED']));
+    expect(ev.find((e) => e.event_type === 'COMMERCIAL_FREE_SUBSCRIPTION_REOPENED')?.payload).toMatchObject({ subscription_id: open[0].id, after_subscription_id: comp, plan_key: FREE_PERSONAL, period_anchor: T0.toISOString() });
+  });
+
+  it('ARR-I-END-2 (D-5) when Free cannot be reopened the END still proceeds; the event records why (tenant not ACTIVE; Personal signup off)', async () => {
+    const a = await personalOnComp();
+    await pg.query(`UPDATE identity."Tenant" SET status = 'SUSPENDED' WHERE id = $1`, [a.tenant]);
+    const idA = await approved('SUBSCRIPTION_END', a.tenant, { subscription_id: a.comp });
+    expect((await applyAs(idA)).request.state).toBe('APPLIED');
+    expect(await openRows(a.tenant)).toEqual([]);
+    expect((await events(idA)).find((e) => e.event_type === 'COMMERCIAL_FREE_SUBSCRIPTION_NOT_REOPENED')?.payload).toMatchObject({ after_subscription_id: a.comp, reason: 'tenant_not_active' });
+
+    const b = await personalOnComp();
+    const idB = await approved('SUBSCRIPTION_END', b.tenant, { subscription_id: b.comp });
+    process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'off';
+    try {
+      expect((await applyAs(idB)).request.state).toBe('APPLIED');
+    } finally {
+      process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'open';
+    }
+    expect(await openRows(b.tenant)).toEqual([]);
+    expect((await events(idB)).find((e) => e.event_type === 'COMMERCIAL_FREE_SUBSCRIPTION_NOT_REOPENED')?.payload).toMatchObject({ reason: 'personal_mode_off' });
+  });
+
+  it('ARR-I-END-3 ending a governed row that is not arranged reopens nothing (unchanged behaviour)', async () => {
+    const t = await newTenant(pg, 'BUSINESS');
+    const manual = await rawSubscription(pg, t, { source: 'MANUAL' });
+    const id = await approved('SUBSCRIPTION_END', t, { subscription_id: manual });
+    await applyAs(id);
+    expect(await openRows(t)).toEqual([]);
+    expect((await events(id)).some((e) => e.event_type.startsWith('COMMERCIAL_FREE_SUBSCRIPTION'))).toBe(false);
   });
 });

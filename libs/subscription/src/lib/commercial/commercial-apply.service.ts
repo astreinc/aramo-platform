@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { addMonthsClamped, billingPeriodAt } from '../billing-period.js';
 import { isGovernedSubscription, takeBillingLock } from '../billing/governed-subscription.js';
 import { PIN_REASON_CHANGE_REQUEST, type PlanVersionContent, planVersionTerms } from '../plan-version.js';
+import { FreePersonalPlanKey, openFreePersonalInTx, personalSignupMode } from '../free-personal-subscription.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
@@ -689,6 +690,14 @@ export class CommercialApplyService {
         await tx.tenantSubscription.update({ where: { id: row.id }, data: { ended_at: now, status: row.status === 'ACTIVE' ? 'CANCELED' : row.status } });
         // The capability is NOT revoked here: a governed revoke is CCP-A7 (and C-20: the Sign
         // capability is also what lets the owner reach billing). Sending stops with the row.
+        const events: DomainEffect['events'] = [
+          { event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${row.id}`, payload: { subscription_id: row.id, source: row.source, from_plan_version_id: row.plan_version_id, effective_at: now.toISOString() } },
+        ];
+        // CCP-PERSONAL-ARRANGED-1 P-8 (ruling R-7) — ending an arranged row reopens the Free plan in THIS
+        // transaction (a new period anchor), recorded as an event (the application's replaced_subscription_id
+        // is for an open only). PO ruling D-5: when Free cannot be opened (Personal signup mode off, tenant not
+        // ACTIVE …) the END still proceeds and the event records that Free was not reopened, and why.
+        if (row.arrangement !== null) events.push(await this.reopenFreeAfterArrangedEnd(tx, tenant_id, product_key, row.id, now));
         return {
           subscription_id: row.id,
           replaced_subscription_id: null,
@@ -696,7 +705,7 @@ export class CommercialApplyService {
           to_plan_version_id: null,
           capabilities: [],
           revoke: [],
-          events: [{ event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${row.id}`, payload: { subscription_id: row.id, source: row.source, from_plan_version_id: row.plan_version_id, effective_at: now.toISOString() } }],
+          events,
         };
       }
       case 'ENTITLEMENT_GRANT': {
@@ -957,6 +966,25 @@ export class CommercialApplyService {
     if (reserved > 0) throw new ApplyFailure('RESERVATION_CONFLICT', { reserved_rows: reserved, period_start: period.start.toISOString() });
     const consumed = await tx.allowanceUsage.count({ where: { ...where, state: 'CONSUMED' } });
     if (consumed > 0) throw new ApplyFailure('USAGE_CROSS_PERIOD', { usage_rows: consumed, period_start: period.start.toISOString() });
+  }
+
+  /** P-8 / D-5 — the Free reopen after an arranged END, as its audit event (reopened, or not and why). */
+  private async reopenFreeAfterArrangedEnd(tx: Tx, tenant_id: string, product_key: ProductKey, ended_id: string, now: Date): Promise<DomainEffect['events'][number]> {
+    const tenant = await tx.$queryRawUnsafe<Array<{ kind: string | null; status: string | null }>>(`SELECT kind::text AS kind, status::text AS status FROM identity."Tenant" WHERE id = $1::uuid`, tenant_id);
+    const r = await openFreePersonalInTx(tx, { tenant_id, product_key, tenant_kind: tenant[0]?.kind ?? null, tenant_status: tenant[0]?.status ?? null, mode: personalSignupMode(), at: now });
+    if (r.ok && r.opened) {
+      return {
+        event_type: 'COMMERCIAL_FREE_SUBSCRIPTION_REOPENED',
+        subject: `tenant_subscription:${r.subscription_id}`,
+        payload: { subscription_id: r.subscription_id, source: r.source, plan_key: FreePersonalPlanKey, period_anchor: now.toISOString(), after_subscription_id: ended_id, effective_at: now.toISOString() },
+      };
+    }
+    const reason = r.ok ? 'open_subscription_exists' : r.reason;
+    return {
+      event_type: 'COMMERCIAL_FREE_SUBSCRIPTION_NOT_REOPENED',
+      subject: `tenant_subscription:${ended_id}`,
+      payload: { after_subscription_id: ended_id, reason, ...(r.ok ? { open_subscription_id: r.subscription_id } : {}), effective_at: now.toISOString() },
+    };
   }
 
   /** G1 — a provider-owned row is changed only by a durable provider command (C-22), never here. */

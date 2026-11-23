@@ -380,6 +380,7 @@ export {
 export {
   FreePersonalSubscriptionService,
   FreePersonalPlanKey,
+  openFreePersonalInTx,
   FREE_SUBSCRIPTION_SOURCE,
   personalSignupMode,
   type EnsureFreeResult,
