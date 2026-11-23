@@ -18,6 +18,7 @@ import { timeZoneBody } from './signDate';
 import { fillPath, type Operation, type RequestJson, type SuccessJson } from '../../api/types';
 import {
   fillsToSubmit,
+  markCleared,
   markStored,
   type SigningDocument,
   type SigningField,
@@ -341,6 +342,7 @@ export async function submitSigning(
   for (const f of fillsToSubmit(s)) {
     // C0-2 — every fill and the completion carry the device's IANA time zone: the server
     // stamps the stored SIGN_DATE in it (the value sent for a date is only the preview).
+    // FIELD-PARITY-2 B-6 follow-up — value null clears a value the server holds.
     const body: Omit<FillBody, 'token'> = f.method
       ? { value: f.value, signature_method: f.method, ...timeZoneBody() }
       : { value: f.value, ...timeZoneBody() };
@@ -348,7 +350,7 @@ export async function submitSigning(
       fillPath(FILL_PATH, { fieldId: f.fieldId }) as `/v1/sign/signing/${string}`,
       body,
     );
-    s = markStored(s, f.fieldId);
+    s = f.value === null ? markCleared(s, f.fieldId) : markStored(s, f.fieldId);
     onProgress(s);
   }
   const r = await session.post('/v1/sign/signing/complete', timeZoneBody());

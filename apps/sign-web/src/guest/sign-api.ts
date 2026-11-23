@@ -258,7 +258,10 @@ export const signApi = {
   },
   // Client Rule Consolidation C0-2 — every fill and the completion carry the signer's IANA
   // time zone: the server stamps SIGN_DATE in it (the value this page shows is a preview).
-  fillField(token: string, fieldId: string, value: string, signature_method?: string): Promise<void> {
+  // FIELD-PARITY-2 B-6 follow-up — value null clears a stored value (where the shared rule
+  // @aramo/sign-client signerClearRefusal allows it). The page's field editor never empties a
+  // stored value today (Apply needs a value), so the page has no clear to send yet.
+  fillField(token: string, fieldId: string, value: string | null, signature_method?: string): Promise<void> {
     const time_zone = localTimeZone();
     return post<void>(`fields/${encodeURIComponent(fieldId)}/fill`, {
       token,

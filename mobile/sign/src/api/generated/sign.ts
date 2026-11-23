@@ -6619,7 +6619,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The field was filled. */
+            /** @description The field was filled (or, for value null, cleared). */
             200: {
                 headers: {
                     [name: string]: unknown;
