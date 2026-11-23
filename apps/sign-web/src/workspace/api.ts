@@ -273,6 +273,9 @@ export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set<string>(placeable
 
 export interface EnvelopeField {
   id?: string;
+  // FIELD-PARITY-2 B-1 — the field's stable key on the envelope (the editor's id; null on a legacy
+  // field). Sent back on PUT …/fields so it survives the replace-all save.
+  field_key?: string | null;
   envelope_document_id: string;
   signer_id: string;
   field_type: FieldType;
@@ -301,6 +304,8 @@ export interface EnvelopeField {
   font_size?: number | null;
   data_name?: string | null;
   options?: Readonly<Record<string, unknown>> | null;
+  // FIELD-PARITY-2 B-2 — "show only when" ({ trigger_key, when, values? }; null = always shown).
+  condition?: { readonly trigger_key: string; readonly when: string; readonly values?: readonly string[] } | null;
   // S-5 (ruling R-3, dark) — a sender-filled field's value, the sender's own (null otherwise).
   value?: string | null;
 }

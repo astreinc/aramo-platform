@@ -207,3 +207,21 @@ describe('FIELD-PARITY-1 P1-3 — fixed-form field settings', () => {
     expect(fixedFormIssues({ pdf: PDF, roles: ROLES, fields, allowedBindingKeys: ALLOWED }).map((i) => i.code)).toContain('checkbox_group_inconsistent');
   });
 });
+
+// FIELD-PARITY-2 B-3 / C-6 — a fixed form's conditions are publish issues by the one cross-field
+// rule, and a role's only signature may not be conditional.
+describe('FIELD-PARITY-2 — fixed-form conditions', () => {
+  const box = field({ field_key: 'agree', field_type: 'CHECKBOX', width: 14, height: 14, required: false });
+  const issues = (extra: FixedFormField[], base = READY) => fixedFormIssues({ pdf: PDF, roles: ROLES, fields: [...base, ...extra], allowedBindingKeys: ALLOWED }).map((i) => [i.code, i.field_key]);
+
+  it('a condition on a same-role trigger is fine; a stray trigger or another role is an issue', () => {
+    expect(issues([box, field({ field_key: 'detail', field_type: 'TEXT', y: 200, condition: { trigger_key: 'agree', when: 'checked' } })])).toEqual([]);
+    expect(issues([box, field({ field_key: 'detail', field_type: 'TEXT', y: 200, condition: { trigger_key: 'nope', when: 'checked' } })])).toEqual([['condition_trigger_unknown', 'detail']]);
+    expect(issues([box, field({ field_key: 'detail', field_type: 'TEXT', y: 200, signer_role: 'employer', condition: { trigger_key: 'agree', when: 'checked' } })])).toEqual([['condition_cross_signer', 'detail']]);
+  });
+
+  it('C-6 — a role whose only signature is conditional has no signature field', () => {
+    const condSig = field({ condition: { trigger_key: 'agree', when: 'checked' } });
+    expect(issues([box], [condSig, READY[1]!])).toEqual([['role_without_signature', undefined]]);
+  });
+});

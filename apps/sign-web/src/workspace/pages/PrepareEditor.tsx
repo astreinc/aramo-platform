@@ -89,7 +89,9 @@ const newKey = () => `f${Date.now().toString(36)}${(seq += 1)}`;
  */
 export function toPlaced(f: EnvelopeField): PlacedField {
   return {
-    id: f.id ?? newKey(),
+    // FIELD-PARITY-2 B-1 — the stable key when the field has one (it survives saves; the row id
+    // does not), else the stored id (sent back as the key on the next save).
+    id: f.field_key ?? f.id ?? newKey(),
     type: f.field_type,
     docId: f.envelope_document_id,
     page: f.page_number,
@@ -107,15 +109,16 @@ export function toPlaced(f: EnvelopeField): PlacedField {
 
 /**
  * Editor → the PUT payload, the same shape as before P1-5: a locked field goes back exactly as
- * stored (with its id, so the server keeps it); every other field without an id, with the
- * configuration its type takes.
+ * stored (with its id, so the server keeps it); every other field without an id, with its
+ * field_key (FIELD-PARITY-2 B-1: the editor's id) and the configuration its type takes.
  */
 export function toWire(placed: readonly PlacedField[], stored: ReadonlyMap<string, EnvelopeField>): EnvelopeField[] {
   return placed.flatMap((f) => {
     const orig = stored.get(f.id);
     if (f.locked === true && orig !== undefined) return [orig];
     const type = f.type as FieldType;
-    return [{ envelope_document_id: f.docId, signer_id: f.assignee ?? '', field_type: type, page_number: f.page, x: f.x, y: f.y, width: f.width, height: f.height, required: f.required, ...configToWire(type, f.settings) }];
+    // FIELD-PARITY-2 B-1 — the editor's id is the field's stable key.
+    return [{ field_key: f.id, envelope_document_id: f.docId, signer_id: f.assignee ?? '', field_type: type, page_number: f.page, x: f.x, y: f.y, width: f.width, height: f.height, required: f.required, ...configToWire(type, f.settings) }];
   });
 }
 

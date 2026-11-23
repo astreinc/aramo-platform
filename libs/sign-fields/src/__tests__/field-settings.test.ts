@@ -19,11 +19,11 @@ describe('FIELD-PARITY-1 P1-3 — which settings a template field type takes', (
       expect([...templateSettingsOf(t)].sort()).toEqual(fieldSettingsOf(t).filter((s) => (TEMPLATE_FIELD_SETTINGS as readonly string[]).includes(s)).sort());
     }
     // FIELD-PARITY-1 P3 §6.2 — label, tooltip and data_name on every type; the rest per type.
-    expect(templateSettingsOf('SIGNER_NAME')).toEqual(['label', 'name_mode', 'tooltip', 'placeholder', 'font_size', 'data_name']);
-    expect(templateSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'read_only', 'sender_filled', 'data_name']);
-    expect(templateSettingsOf('RADIO')).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'read_only', 'sender_filled', 'data_name']);
+    expect(templateSettingsOf('SIGNER_NAME')).toEqual(['label', 'name_mode', 'tooltip', 'placeholder', 'font_size', 'data_name', 'condition']);
+    expect(templateSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'read_only', 'sender_filled', 'data_name', 'condition']);
+    expect(templateSettingsOf('RADIO')).toEqual(['label', 'group_key', 'group_rule', 'tooltip', 'read_only', 'sender_filled', 'data_name', 'condition']);
     expect(templateSettingsOf('PAYMENT')).toEqual([]);
-    expect(templateSettingsOf('MULTILINE_TEXT')).toEqual(['label', 'tooltip', 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'options']);
+    expect(templateSettingsOf('MULTILINE_TEXT')).toEqual(['label', 'tooltip', 'placeholder', 'read_only', 'sender_filled', 'validation', 'font_size', 'data_name', 'options', 'condition']);
     expect(templateSettingsOf('NOT_A_TYPE')).toEqual([]);
   });
 });

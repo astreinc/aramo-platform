@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SETTINGS, defaultSettingsFor, editableSettingsOf, freeGroupKey, type PlacedField, type PlacementSettings } from './model';
 import { applySettings, groupSize } from './settings';
-import { cleanChoices, nextRadioLabel, optionsToWire, radioOptionBelow, settingsFromWire, settingsIssue, settingsToWire } from './settings-wire';
+import { cleanChoices, conditionIssues, nextRadioLabel, optionsToWire, radioOptionBelow, settingsFromWire, settingsIssue, settingsToWire } from './settings-wire';
 
 // FIELD-PARITY-1 P3 §6.2 — the editor settings ↔ wire members for every setting and type, the ONE
 // settings rule run on the editor's settings, and the radio group rules (T-5).
@@ -43,7 +43,7 @@ describe('settings shown per type (fieldSettingsOf ∩ host capabilities)', () =
 describe('settingsToWire / settingsFromWire', () => {
   it('a field with no settings sends none (set mode); all mode sends NULL for each setting the type takes', () => {
     expect(settingsToWire('TEXT', DEFAULT_SETTINGS)).toEqual({});
-    expect(settingsToWire('SIGNATURE', DEFAULT_SETTINGS, { members: 'all' })).toEqual({ label: null, tooltip: null, data_name: null });
+    expect(settingsToWire('SIGNATURE', DEFAULT_SETTINGS, { members: 'all' })).toEqual({ label: null, tooltip: null, data_name: null, condition: null });
     expect(settingsToWire('TEXT', DEFAULT_SETTINGS, { members: 'all' })).toEqual({
       label: null,
       tooltip: null,
@@ -54,6 +54,7 @@ describe('settingsToWire / settingsFromWire', () => {
       font_size: null,
       data_name: null,
       options: null,
+      condition: null,
     });
   });
 
@@ -193,5 +194,46 @@ describe('defaults and radio groups (T-5)', () => {
     const fields = [field('a'), { ...field('c'), type: 'CHECKBOX', settings: S({ groupKey: 'radio_1' }) }];
     const next = applySettings(fields, 'a', { required: true });
     expect(next[1]!.required).toBe(false);
+  });
+});
+
+// FIELD-PARITY-2 B-2 / B-3 — the condition travels on the wire and the editor sees the server's
+// cross-field refusals.
+describe('FIELD-PARITY-2 — condition on the wire and conditionIssues', () => {
+  const placed = (id: string, type: string, condition: PlacementSettings['condition'] = null, assignee = 's1'): PlacedField => ({
+    id,
+    type,
+    docId: 'd',
+    page: 0,
+    x: 0,
+    y: 0,
+    width: 10,
+    height: 10,
+    required: false,
+    assignee,
+    binding: null,
+    settings: { ...DEFAULT_SETTINGS, condition },
+  });
+
+  it('a stored condition round-trips; a broken one reads as none', () => {
+    const c = { trigger_key: 'agree', when: 'checked' as const };
+    expect(settingsFromWire({ condition: c }).condition).toEqual(c);
+    expect(settingsFromWire({ condition: { when: 'checked' } }).condition).toBeNull();
+    expect(settingsToWire('TEXT', { ...DEFAULT_SETTINGS, condition: c })).toEqual({ condition: c });
+    expect(settingsToWire('TEXT', DEFAULT_SETTINGS, { members: 'all' })).toMatchObject({ condition: null });
+  });
+
+  it('reports the server refusals by field id', () => {
+    const issues = conditionIssues([
+      placed('sig', 'SIGNATURE'),
+      placed('agree', 'CHECKBOX'),
+      placed('t', 'TEXT', { trigger_key: 'agree', when: 'checked' }),
+      placed('u', 'TEXT', { trigger_key: 'agree', when: 'checked' }, 's2'),
+      placed('v', 'TEXT', { trigger_key: 'gone', when: 'checked' }),
+    ]);
+    expect([...issues.entries()].map(([id, i]) => [id, i.reason])).toEqual([
+      ['u', 'condition_cross_signer'],
+      ['v', 'condition_trigger_unknown'],
+    ]);
   });
 });

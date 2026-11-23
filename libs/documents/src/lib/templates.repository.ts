@@ -61,6 +61,8 @@ export interface FingerprintField {
   font_size?: number | null;
   data_name?: string | null;
   options?: unknown;
+  // FIELD-PARITY-2 B-2 — the condition is content too (a JSON object; NULL = left out).
+  condition?: unknown;
 }
 // FIELD-PARITY-1 P1-3 / P3 — the setting columns, in one place for every field write and copy.
 export const TEMPLATE_FIELD_SETTING_COLUMNS = [
@@ -77,6 +79,8 @@ export const TEMPLATE_FIELD_SETTING_COLUMNS = [
   'font_size',
   'data_name',
   'options',
+  // FIELD-PARITY-2 B-2.
+  'condition',
 ] as const;
 type SettingColumn = (typeof TEMPLATE_FIELD_SETTING_COLUMNS)[number];
 export interface TemplateFieldSettingColumns {
@@ -95,6 +99,8 @@ export interface TemplateFieldSettingColumns {
   // A JSON column: present only when set (absent leaves the column NULL; Prisma refuses a bare
   // null for JSON).
   options?: never;
+  // FIELD-PARITY-2 B-2 — a JSON column, the same rule as options.
+  condition?: never;
 }
 /** The setting columns of a field (absent → NULL / false), for a create or a copy. */
 export function templateFieldSettingColumns(f: Partial<Pick<FingerprintField, SettingColumn>>): TemplateFieldSettingColumns {
@@ -112,6 +118,7 @@ export function templateFieldSettingColumns(f: Partial<Pick<FingerprintField, Se
     font_size: f.font_size ?? null,
     data_name: f.data_name ?? null,
     ...(f.options !== undefined && f.options !== null ? { options: f.options as never } : {}),
+    ...(f.condition !== undefined && f.condition !== null ? { condition: f.condition as never } : {}),
   };
 }
 // A setting joins the fingerprint only when it is set (NULL and false left out), so every
@@ -271,6 +278,8 @@ export interface AddFieldInput {
   font_size?: number | null;
   data_name?: string | null;
   options?: unknown;
+  // FIELD-PARITY-2 B-2 — "show only when" (shape and cross-field rule checked by the route).
+  condition?: unknown;
 }
 
 @Injectable()

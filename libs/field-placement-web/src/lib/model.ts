@@ -13,6 +13,7 @@ import {
   fieldTypesFor,
   isFieldTypeKey,
   type DropdownChoice,
+  type FieldCondition,
   type FieldOptions,
   type FieldSetting,
   type FieldSurface,
@@ -59,6 +60,11 @@ export interface PlacementSettings {
   readonly dataName: string;
   /** The per-type options in the wire shape (DROPDOWN choices, NUMBER format, validation parameters). */
   readonly options: FieldOptions | null;
+  /**
+   * FIELD-PARITY-2 B-2 — "show only when" in the wire shape (null = always shown). Its
+   * trigger_key is another field's id (the host's key: console field_key, sign-web field_key).
+   */
+  readonly condition: FieldCondition | null;
 }
 
 export const DEFAULT_SETTINGS: PlacementSettings = {
@@ -76,6 +82,7 @@ export const DEFAULT_SETTINGS: PlacementSettings = {
   fontSize: null,
   dataName: '',
   options: null,
+  condition: null,
 };
 
 /** FIELD-PARITY-1 P3 — the types whose fields form groups (a check-box group; a radio group). */

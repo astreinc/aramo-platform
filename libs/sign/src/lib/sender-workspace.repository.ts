@@ -92,6 +92,9 @@ export interface SenderFieldInput {
   // M-A6 §2 (coordinator ruling) — an engine-only field passed back unchanged: the
   // id of the stored field it must be identical to. The stored row is kept as is.
   passthrough_id?: string;
+  // FIELD-PARITY-2 B-1 — the field's stable key on the envelope (the editor's id; absent ⇒
+  // NULL). Kept across the replace-all PUT: the row is re-created with this key.
+  field_key?: string | null;
   // M-A6 §2 — Name and Checkbox configuration (absent ⇒ NULL).
   label?: string | null;
   group_key?: string | null;
@@ -111,6 +114,9 @@ export interface SenderFieldInput {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  // FIELD-PARITY-2 B-2 — "show only when" (validated by the caller with @aramo/sign-fields
+  // parseFieldSettings and fieldConditionIssues; the shape CHECK is the backstop).
+  condition?: FieldConditionJson | null;
   // S-5 (ruling R-3, dark) — the value the sender typed for a sender_filled field (validated by
   // the caller with fieldValueRefusal). Absent / NULL: no value yet. Only a sender_filled field
   // may carry one.
@@ -119,6 +125,8 @@ export interface SenderFieldInput {
 
 /** FIELD-PARITY-1 P3 — the per-type options of a field (a JSON object). */
 export type FieldOptionsJson = Readonly<Record<string, unknown>>;
+/** FIELD-PARITY-2 B-2 — a field's condition ({ trigger_key, when, values? }; a JSON object). */
+export type FieldConditionJson = Readonly<{ trigger_key: string; when: string; values?: readonly string[] }>;
 
 /** FIELD-PARITY-1 P3 — the setting columns of a field row (absent → NULL / false). */
 export function fieldSettingColumns(f: {
@@ -130,6 +138,7 @@ export function fieldSettingColumns(f: {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  condition?: FieldConditionJson | null;
 }): {
   tooltip: string | null;
   placeholder: string | null;
@@ -139,6 +148,7 @@ export function fieldSettingColumns(f: {
   font_size: number | null;
   data_name: string | null;
   options?: never;
+  condition?: never;
 } {
   return {
     tooltip: f.tooltip ?? null,
@@ -150,6 +160,8 @@ export function fieldSettingColumns(f: {
     data_name: f.data_name ?? null,
     // A JSON column: absent leaves the column NULL (Prisma refuses a bare null for JSON).
     ...(f.options !== undefined && f.options !== null ? { options: f.options as never } : {}),
+    // FIELD-PARITY-2 B-2 — the same JSON rule.
+    ...(f.condition !== undefined && f.condition !== null ? { condition: f.condition as never } : {}),
   };
 }
 
@@ -183,6 +195,9 @@ export interface TemplateFieldInput {
   group_rule?: string | null;
   min_selected?: number | null;
   name_mode?: string | null;
+  // FIELD-PARITY-2 B-1 / B-9 — the template field's field_key, carried 1:1 as the envelope
+  // field's key (NULL for a drawn signature block, which has none).
+  field_key?: string | null;
   // FIELD-PARITY-1 P3 §6.2 — the template field's other settings, carried unchanged.
   tooltip?: string | null;
   placeholder?: string | null;
@@ -192,6 +207,9 @@ export interface TemplateFieldInput {
   font_size?: number | null;
   data_name?: string | null;
   options?: FieldOptionsJson | null;
+  // FIELD-PARITY-2 B-2 / B-9 — the template condition; its trigger_key is a template field_key,
+  // which the carry keeps 1:1 as the envelope field_key.
+  condition?: FieldConditionJson | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
@@ -490,6 +508,8 @@ export class EsignSenderRepository {
             group_rule: f.group_rule ?? null,
             min_selected: f.min_selected ?? null,
             name_mode: f.field_type === 'SIGNER_NAME' ? (f.name_mode ?? 'SIGNER_PROFILE') : null,
+            // FIELD-PARITY-2 B-1 — the template field's key, 1:1.
+            field_key: f.field_key ?? null,
             // FIELD-PARITY-1 P3 — the other settings, unchanged.
             ...fieldSettingColumns(f),
           },
@@ -913,6 +933,8 @@ export class EsignSenderRepository {
             name_mode: f.name_mode ?? null,
             payment_amount_minor: f.payment_amount_minor ?? null,
             payment_currency: f.payment_currency ?? null,
+            // FIELD-PARITY-2 B-1 — the key survives the re-create (the input carries it).
+            field_key: f.field_key ?? null,
             ...fieldSettingColumns(f),
             ...(senderValue !== null ? { value: senderValue, filled_at: now } : {}),
           },

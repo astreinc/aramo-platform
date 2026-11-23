@@ -91,13 +91,15 @@ describe('field catalog (P1-1)', () => {
 
   it('the profile text types and the settings each type accepts (P3 §6.2)', () => {
     expect([...PROFILE_TEXT_FIELD_TYPES]).toEqual(PROFILE);
-    expect(fieldSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'data_name', 'read_only', 'sender_filled']);
-    expect(fieldSettingsOf('SIGNER_NAME')).toEqual(['name_mode', 'label', 'tooltip', 'data_name', 'placeholder', 'font_size']);
+    expect(fieldSettingsOf('CHECKBOX')).toEqual(['label', 'group_key', 'group_rule', 'min_selected', 'tooltip', 'data_name', 'read_only', 'sender_filled', 'condition']);
+    expect(fieldSettingsOf('SIGNER_NAME')).toEqual(['name_mode', 'label', 'tooltip', 'data_name', 'placeholder', 'font_size', 'condition']);
     expect(fieldSettingsOf('PAYMENT')).toEqual(['payment_amount_minor', 'payment_currency']);
     // S-1 / S-9 — label, tooltip and data_name on every type but PAYMENT and the documents-only types.
     for (const k of FIELD_TYPE_KEYS) {
       const named = !['PAYMENT', 'CURRENCY', 'IMAGE', 'SIGNER_EMAIL'].includes(k);
       for (const s of ['label', 'tooltip', 'data_name'] as const) expect(fieldSettingsOf(k).includes(s)).toBe(named);
+      // FIELD-PARITY-2 B-2 — every type a signer has may be conditional (C-6: SIGNATURE too).
+      expect(fieldSettingsOf(k).includes('condition')).toBe(named);
     }
     // S-4 / S-5 — only types whose value a sender can supply.
     const senderFillable = FIELD_TYPE_KEYS.filter((k) => fieldSettingsOf(k).includes('sender_filled'));
@@ -187,7 +189,8 @@ describe('FIELD-PARITY-2 A-7 — the editors\' settings projection (one copy for
 
   it('an envelope sender edits every setting but a payment\'s; sender-filled and read-only only when on', () => {
     for (const type of FIELD_TYPE_KEYS) {
-      const all = fieldSettingsOf(type).filter((x) => x !== 'payment_amount_minor' && x !== 'payment_currency');
+      // FIELD-PARITY-2 B-2 — condition joins the editors' list with its control (B-7), not before.
+      const all = fieldSettingsOf(type).filter((x) => x !== 'payment_amount_minor' && x !== 'payment_currency' && x !== 'condition');
       expect(editableFieldSettings(type, senderEditorSettings(true))).toEqual(all);
       expect(editableFieldSettings(type, senderEditorSettings(false))).toEqual(all.filter((x) => x !== 'sender_filled' && x !== 'read_only'));
     }

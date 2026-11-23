@@ -4492,7 +4492,25 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
       "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
       "to": "libs/sign/prisma/migrations/20261122200000_field_parity_1_p3_field_types_settings/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/prisma/migrations/20261123100000_field_parity_2_field_key/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/field-catalog-parity.spec.ts",
+      "status": "excluded",
+      "to": "libs/sign/prisma/migrations/20261123100100_field_parity_2_field_condition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32517,6 +32535,11 @@
       "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
     },
     {
+      "from": "libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
       "from": "libs/documents/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -32540,6 +32563,12 @@
       "from": "libs/documents/src/lib/templates.controller.ts",
       "status": "production",
       "to": "openapi/documents.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/documents/src/tests/field-parity-2-template-field-condition.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -34589,6 +34618,11 @@
     },
     {
       "from": "libs/sign/prisma/migrations/20261122200000_field_parity_1_p3_field_types_settings/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
+    },
+    {
+      "from": "libs/sign/prisma/migrations/20261123100100_field_parity_2_field_condition/migration.sql",
       "status": "unscoped",
       "to": "apps/api/src/tests/field-catalog-parity.spec.ts"
     },
@@ -36968,6 +37002,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261122200000_field_parity_1_p3_template_field_types_settings/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

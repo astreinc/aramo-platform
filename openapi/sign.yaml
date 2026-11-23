@@ -500,6 +500,21 @@ paths:
                             - $ref: '#/components/schemas/FieldOptions'
                             - type: 'null'
                           description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+                        field_key:
+                          type: [string, 'null']
+                          description: >-
+                            FIELD-PARITY-2 B-1 — the field's stable key on the envelope (null on a legacy field). A condition
+                            names its trigger by it.
+                        condition:
+                          oneOf:
+                            - $ref: '#/components/schemas/FieldCondition'
+                            - type: 'null'
+                          description: >-
+                            FIELD-PARITY-2 B-2 / B-5 — "show only when" (null = always shown). The trigger is always one of this
+                            signer's own fields (ruling C-2). Apply the one visibility rule (@aramo/sign-client shownFields) to
+                            these fields and their values: a hidden field is not shown, not required and not counted. Filling a
+                            hidden field is refused (400 details.reason field_hidden); when an answer hides fields, the server
+                            clears their values at once.
                   message:
                     type: [string, 'null']
                     maxLength: 1000
@@ -10513,6 +10528,14 @@ components:
         id:
           type: string
           format: uuid
+        field_key:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 200
+          description: >-
+            FIELD-PARITY-2 B-1 — the field's stable key on this envelope (unique per envelope; null on a legacy
+            field). Set from the template's field_key when a template was carried, and from the editor's id on
+            PUT …/fields; it survives the replace-all PUT (id does not). A condition names its trigger by this key.
         envelope_document_id:
           type: string
           format: uuid
@@ -10594,6 +10617,11 @@ components:
             - $ref: '#/components/schemas/FieldOptions'
             - type: 'null'
           description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
+          description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
         value:
           type: [string, 'null']
           description: FIELD-PARITY-1 P3 S-5 — the sender's own value of a sender-filled field; null for every other field.
@@ -10649,6 +10677,15 @@ components:
       description: PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner.
       required: [envelope_document_id, signer_id, field_type, page_number, x, y, width, height]
       properties:
+        field_key:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 200
+          description: >-
+            FIELD-PARITY-2 B-1 — the editor's id for this field, stored as its stable key (send back the
+            field_key the detail returned, or a new id for a new field). Unique within the request (400
+            details.reason field_key_duplicate); absent / null = no key (the field cannot be a trigger).
+            400 details.reason field_key_invalid when it is not 1 to 200 characters.
         envelope_document_id:
           type: string
           format: uuid
@@ -10759,6 +10796,11 @@ components:
             - $ref: '#/components/schemas/FieldOptions'
             - type: 'null'
           description: FIELD-PARITY-1 P3 — the per-type options (DROPDOWN choices, NUMBER format, validation parameters).
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
+          description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
         value:
           type: [string, 'null']
           description: >-
@@ -10874,6 +10916,38 @@ components:
             - $ref: '#/components/schemas/FieldOptions'
             - type: 'null'
           description: FIELD-PARITY-2 A-5 — a DROPDOWN imported from a PDF dropdown carries its choices ({ choices }); null otherwise.
+    FieldCondition:
+      type: object
+      additionalProperties: false
+      description: >-
+        FIELD-PARITY-2 B-2 — "show this field only when the field trigger_key ..." (@aramo/sign-fields
+        FieldCondition). when checked / unchecked: the trigger is a CHECKBOX or ACKNOWLEDGEMENT. chosen: the
+        trigger is one RADIO option field (shown while that option is chosen). one_of: the trigger is a
+        DROPDOWN and values lists 1 to 50 of its choice values. One trigger per field (no AND / OR), the same
+        signer (or template role), chains up to a depth of 3, no cycles; a sender-filled field is never
+        conditional. Refusals (details.reason) condition_invalid, condition_trigger_unknown,
+        condition_trigger_type_invalid, condition_cross_signer, condition_values_invalid, condition_cycle,
+        condition_depth_exceeded, condition_no_unconditional_signature.
+      required: [trigger_key, when]
+      properties:
+        trigger_key:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The trigger field's field_key.
+        when:
+          type: string
+          enum: [checked, unchecked, chosen, one_of]
+        values:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: one_of only — the dropdown choice values that show the field.
     FieldOptions:
       type: object
       additionalProperties: false
