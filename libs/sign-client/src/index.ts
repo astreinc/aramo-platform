@@ -44,6 +44,15 @@ export {
   type ProfileTextFieldType,
   type FieldRuleViolation,
 } from './lib/field-rules.js';
+// FIELD-PARITY-2 B-4 — the one visibility rule (server, sign-web and the app).
+export {
+  fieldConditionOf,
+  conditionMetBy,
+  shownFields,
+  isFieldShown,
+  hiddenFilledFields,
+  type VisibilityFieldLike,
+} from './lib/field-visibility.js';
 export {
   RECIPIENT_KINDS,
   SIGNING_RECIPIENT_KINDS,
@@ -151,6 +160,18 @@ export {
   isFieldTypeKey,
   isPaymentsGatedOn,
   fieldSettingsOf,
+  // FIELD-PARITY-2 Phase B — the condition shape, the cross-field rule and its reasons (web and app).
+  FIELD_CONDITION_WHENS,
+  CONDITION_TRIGGER_TYPES,
+  CONDITION_DEPTH_MAX,
+  FIELD_CONDITION_REFUSAL_REASONS,
+  parseFieldCondition,
+  fieldConditionIssues,
+  type FieldCondition,
+  type FieldConditionWhen,
+  type FieldConditionIssue,
+  type FieldConditionRefusalReason,
+  type ConditionalFieldLike,
   // FIELD-PARITY-2 A-7 — the editors' settings projection (web and app).
   editableFieldSettings,
   senderEditorSettings,

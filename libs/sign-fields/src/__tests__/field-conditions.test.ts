@@ -54,7 +54,7 @@ describe('FIELD-PARITY-2 B-2 — the condition shape', () => {
       { trigger_key: 't', when: 'one_of', values: [1] },
       { trigger_key: 't', when: 'checked', and: { trigger_key: 'u', when: 'checked' } },
     ];
-    for (const raw of bad) expect(parseFieldCondition(raw).ok, JSON.stringify(raw)).toBe(false);
+    for (const raw of bad) expect([JSON.stringify(raw), parseFieldCondition(raw).ok]).toEqual([JSON.stringify(raw), false]);
   });
 
   it('is a setting of the one settings rule: condition_invalid, never on PAYMENT or a sender-filled field', () => {
