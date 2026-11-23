@@ -29,7 +29,7 @@ export interface PriceFigure {
   list_price: ListPrice | null;
   /** CONTRACT_PRICED | NO_LIST_PRICE | NON_USD_CURRENCY | PLAN_VERSION_INTEGRITY */
   unpriced_reason: string | null;
-  /** PINNED_PLAN_VERSION | CURRENT_PUBLISHED_PLAN_VERSION */
+  /** PINNED_PLAN_VERSION | CURRENT_PUBLISHED_PLAN_VERSION | ARRANGEMENT_COMP (a COMP row: $0, shown "Comp ($0)") */
   price_source: string;
   plan_version_id: string | null;
 }
@@ -120,6 +120,8 @@ export interface ReconciledSubscription extends PriceFigure {
   open_flag_reasons: string[];
   unconfirmed_command_ids: string[];
   discrepancies: string[];
+  /** CCP-PERSONAL-ARRANGED-1 P-3. */
+  arrangement?: 'COMP' | 'AGREED' | null;
 }
 
 export interface HeldActivation {
@@ -246,6 +248,8 @@ export interface RevenueReport {
     excluded: number;
     excluded_by_reason: Record<string, number>;
     not_commercial_by_source: Record<string, number>;
+    /** CCP-PERSONAL-ARRANGED-1 P-3: open COMP rows — not in the list-price value, not an exclusion. */
+    arranged_no_charge: number;
   };
   renewal_pipeline: { months: number; from_month: string; through_month: string; lapsed: RevenueBucket; by_month: RevenueBucket[] };
 }

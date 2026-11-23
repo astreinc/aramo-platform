@@ -98,6 +98,8 @@ export function RevenueView({ session }: RevenueViewProps) {
               <div className="pf-tile__label">Included</div>
               <div className="pf-tile__n">{r.counts.included}</div>
               <div className="pf-tile__sub">Subscriptions with a USD list price</div>
+              {/* CCP-PERSONAL-ARRANGED-1 P-3: COMP rows are counted on their own line, never valued. */}
+              <div className="pf-tile__sub" data-testid="revenue-arranged">{`Arranged — no charge: ${String(r.counts.arranged_no_charge)}`}</div>
             </div>
             <div className="pf-tile">
               <div className="pf-tile__label">Withheld</div>

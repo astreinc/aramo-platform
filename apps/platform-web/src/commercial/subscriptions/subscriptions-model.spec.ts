@@ -17,6 +17,8 @@ import {
   rowFlags,
   segmentCounts,
   sourceBadge,
+  subscriptionFacts,
+  planLine,
   statusView,
   tenantActions,
   versionText,
@@ -246,6 +248,21 @@ describe('CCP-PERSONAL-ARRANGED-1 P-5 — the arranged-plan dialog (payload, row
     expect(arrangedFieldErrors('x'.repeat(ARRANGED_REASON_MAX + 1), '').reason).toBe('Keep the reason to 500 characters or fewer.');
     expect(arrangedFieldErrors('ok', 'r'.repeat(ARRANGED_REF_MAX + 1)).externalRef).toBe('Keep the internal reference to 120 characters or fewer.');
     expect(arrangedFieldErrors('ok', 'HR-1\nHR-2').externalRef).toBe('The internal reference must be a single line of text.');
+  });
+});
+
+describe('CCP-PERSONAL-ARRANGED-1 the arrangement on a row (workbench and Tenant › Commercial)', () => {
+  const arranged = (a: 'COMP' | 'AGREED' | null) => facts({ plan: { id: 'p', key: 'aramo-sign-standard-personal-v1', name: 'Standard', sales_model: 'SELF_SERVICE' }, contract: null, commitment_end: null, arrangement: a });
+  it('CPA-M-1 plan line, source badge and the Plan / Commitment facts', () => {
+    expect(planLine(arranged('COMP'))).toBe('Sign Standard · Arranged (comp)');
+    expect(planLine(arranged('AGREED'))).toBe('Sign Standard · Arranged (agreed price)');
+    expect(planLine(arranged(null))).toBe('Sign Standard');
+    expect(sourceBadge(arranged('COMP'))).toEqual({ label: 'MANUAL · arranged', stripe: false });
+    expect(sourceBadge(arranged(null))).toEqual({ label: 'MANUAL · contract', stripe: false });
+    const f = Object.fromEntries(subscriptionFacts(arranged('COMP'), NOW).map((x) => [x.k, x]));
+    expect(f['Plan']).toMatchObject({ v: 'Sign Standard', s: 'Arranged by Aramo · no charge (comp)' });
+    expect(f['Commitment end']).toMatchObject({ v: 'None', s: 'Comp, no commitment' });
+    expect(Object.fromEntries(subscriptionFacts(arranged('AGREED'), NOW).map((x) => [x.k, x.s]))['Plan']).toBe('Arranged by Aramo · agreed price, billed outside the store');
   });
 });
 

@@ -128,13 +128,28 @@ export function versionText(s: Pick<SubscriptionFacts, 'plan_version'>): string 
   return `v${s.plan_version.version_number}${s.plan_version.status === 'RETIRED' ? ' · grandfathered' : ''}`;
 }
 
+/** "Arranged (comp)" / "Arranged (agreed price)" — CCP-PERSONAL-ARRANGED-1 P-2; "" when not arranged. */
+export function arrangementLabel(s: Pick<SubscriptionFacts, 'arrangement'>): string {
+  if (s.arrangement === 'COMP') return 'Arranged (comp)';
+  if (s.arrangement === 'AGREED') return 'Arranged (agreed price)';
+  return '';
+}
+
+/** The plan line of a row: "Sign Standard · Arranged (comp)". */
+export function planLine(s: Pick<SubscriptionFacts, 'plan' | 'arrangement'>): string {
+  const a = arrangementLabel(s);
+  return a === '' ? planTitle(s.plan) : `${planTitle(s.plan)} · ${a}`;
+}
+
 export function isStripeOwned(s: Pick<SubscriptionFacts, 'source'>): boolean {
   return s.source === 'SELF_SERVICE';
 }
 
 /** Source badge (handoff §5.3): "Managed in Stripe" for self-service; "MANUAL · {contract}" for a governed row. */
-export function sourceBadge(s: Pick<SubscriptionFacts, 'source' | 'contract'>, generic = false): { readonly label: string; readonly stripe: boolean } {
+export function sourceBadge(s: Pick<SubscriptionFacts, 'source' | 'contract'> & { readonly arrangement?: SubscriptionFacts['arrangement'] }, generic = false): { readonly label: string; readonly stripe: boolean } {
   if (s.source === 'SELF_SERVICE') return { label: 'Managed in Stripe', stripe: true };
+  // An arranged row has no contract; it is MANUAL by arrangement with Aramo (P-2).
+  if (s.source === 'MANUAL' && s.contract === null && s.arrangement) return { label: 'MANUAL · arranged', stripe: false };
   if (s.source === 'MANUAL') return { label: `MANUAL · ${generic || s.contract === null ? 'contract' : s.contract.contract_ref}`, stripe: false };
   return { label: s.source, stripe: false };
 }
@@ -251,14 +266,14 @@ export function subscriptionFacts(s: SubscriptionFacts, now: Date): Fact[] {
   const st = statusView(s, now);
   const contractPriced = s.plan.sales_model === 'CONTACT_SALES';
   return [
-    { k: 'Plan', v: planTitle(s.plan), s: contractPriced ? 'Contract-priced' : '' },
+    { k: 'Plan', v: planTitle(s.plan), s: s.arrangement === 'COMP' ? 'Arranged by Aramo · no charge (comp)' : s.arrangement === 'AGREED' ? 'Arranged by Aramo · agreed price, billed outside the store' : contractPriced ? 'Contract-priced' : '' },
     { k: 'Plan version', v: `v${s.plan_version.version_number} · pinned`, s: s.plan_version.status === 'RETIRED' ? 'Retired — grandfathered' : '' },
     { k: 'Status', v: st.label, s: st.line, tone: st.tone },
     { k: 'Current period', v: periodText(s), s: '' },
     {
       k: 'Commitment end',
       v: s.commitment_end ? dayLabel(s.commitment_end) : 'None',
-      s: s.contract ? `Contract ${s.contract.contract_ref}` : s.source === 'SELF_SERVICE' ? 'Self-service, no commitment' : '',
+      s: s.contract ? `Contract ${s.contract.contract_ref}` : s.source === 'SELF_SERVICE' ? 'Self-service, no commitment' : s.arrangement === 'COMP' ? 'Comp, no commitment' : '',
     },
   ];
 }

@@ -60,6 +60,7 @@ export function facts(over: Partial<SubscriptionFacts> = {}): SubscriptionFacts 
     current_period_end: null,
     grace_until: null,
     commitment_end: '2027-03-14T00:00:00.000Z',
+    arrangement: null,
     contract: { id: CONTRACT, contract_ref: 'CT-2025-014' },
     provider_linked: false,
     open_flags: [],

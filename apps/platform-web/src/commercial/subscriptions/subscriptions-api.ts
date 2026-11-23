@@ -49,6 +49,8 @@ export interface SubscriptionFacts {
   current_period_end: string | null;
   grace_until: string | null;
   commitment_end: string | null;
+  /** CCP-PERSONAL-ARRANGED-1 P-2: arranged by Aramo (COMP = no charge, AGREED = a price agreed outside the store); null otherwise. */
+  arrangement: 'COMP' | 'AGREED' | null;
   contract: { id: string; contract_ref: string } | null;
   provider_linked: boolean;
   open_flags: string[];
