@@ -6948,6 +6948,7 @@
     "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
     "libs/subscription/src/tests/ccp-guard-union.integration.spec.ts",
     "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
+    "libs/subscription/src/tests/ccp-personal-arranged-dropped-allowance.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged-free-reopen.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged-payload.spec.ts",
     "libs/subscription/src/tests/ccp-personal-arranged-release-offer.spec.ts",
