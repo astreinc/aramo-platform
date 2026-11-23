@@ -121,3 +121,17 @@ describe('FIELD-PARITY-2 B-2 / B-3 — conditions on PUT …/fields (the one cro
     expect(svc.readiness({ ...base, fields: [cond, { signer_id: 's1', field_type: 'SIGNATURE', required: true, condition: null }] } as never)).toEqual({ ok: true, problems: [] });
   });
 });
+
+describe('FIELD-PARITY-2 B-10 — no conditions in self-sign (C-7)', () => {
+  it('a SELF envelope refuses a conditional field (condition_invalid); a field without one is fine', async () => {
+    const { svc, repo, ready } = setup('SELF');
+    await ready();
+    const box = { ...at, field_type: 'CHECKBOX', width: 14, height: 14, field_key: 'agree' };
+    await expect(
+      svc.replaceFields(AUTH, 'e1', { fields: [sig, box, { ...at, y: 200, field_type: 'TEXT', condition: { trigger_key: 'agree', when: 'checked' } }] }, 'r'),
+    ).rejects.toMatchObject({ context: { details: { reason: 'condition_invalid', field: 'condition', index: 2 } } });
+    expect(repo.replaceDraftFields).not.toHaveBeenCalled();
+    await svc.replaceFields(AUTH, 'e1', { fields: [sig, box] }, 'r');
+    expect(repo.replaceDraftFields).toHaveBeenCalledTimes(1);
+  });
+});

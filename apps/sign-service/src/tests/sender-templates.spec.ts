@@ -720,3 +720,68 @@ describe('from-template — FIELD-PARITY-1 P1-4: settings carried, no silent dro
     });
   });
 });
+
+// FIELD-PARITY-2 §4.2 B-9 / B-10 — template → envelope: each field key is carried 1:1 (so a
+// condition's trigger_key needs no translation), a condition whose trigger is not carried is
+// refused (template_condition_trigger_missing), the carried set holds the one cross-field rule;
+// self-sign carries no condition (C-7).
+describe('from-template — FIELD-PARITY-2 conditions carried (B-9 / B-10)', () => {
+  const a = auth(SENDER_SCOPES);
+  const recipients = [
+    { role_key: 'agency', name: 'Agency Rep', email: 'agency@x.test' },
+    { role_key: 'client', name: 'Client Signer', email: 'client@x.test' },
+  ];
+  const def = (field_key: string, field_type: string, signer_role: string | null, over: Record<string, unknown> = {}) => ({
+    field_key, field_type, signer_role, required: false, page_number: 0, x: 72, y: 72, width: 160, height: 24, ...over,
+  });
+  const agree = def('agree', 'CHECKBOX', 'client');
+  const detail = def('detail', 'TEXT', 'client', { required: true, condition: { trigger_key: 'agree', when: 'checked' } });
+  const reasonOf = (e: unknown): unknown => (e as { context?: { details?: unknown } }).context?.details;
+  const run = async (defs: unknown[]) => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, signature_fields: ROLE_FIELDS, field_definitions: defs });
+    const e = await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r').catch((x: unknown) => x);
+    return { h, e };
+  };
+
+  it('multi-role: the field key and the condition reach the envelope fields unchanged', async () => {
+    const { h, e } = await run([agree, detail]);
+    expect(e).not.toBeInstanceOf(Error);
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { fields: Array<Record<string, unknown>> };
+    expect(bind.fields.slice(ROLE_FIELDS.length)).toEqual([
+      expect.objectContaining({ field_key: 'agree', condition: null }),
+      expect.objectContaining({ field_key: 'detail', condition: { trigger_key: 'agree', when: 'checked' } }),
+    ]);
+  });
+
+  it('refuses a condition whose trigger is not carried (no position / another role unbound / absent) before the envelope exists', async () => {
+    for (const defs of [[detail], [def('agree', 'CHECKBOX', 'client', { page_number: null, x: null, y: null, width: null, height: null }), detail], [def('agree', 'CHECKBOX', null), detail]]) {
+      const { h, e } = await run(defs);
+      expect(e).toMatchObject({ code: 'TEMPLATE_VERSION_NOT_ACTIVE', statusCode: 409 });
+      expect(reasonOf(e)).toEqual({ reason: 'template_condition_trigger_missing', field_key: 'detail', trigger_key: 'agree' });
+      expect(h.repo.createDraft).not.toHaveBeenCalled();
+    }
+  });
+
+  it('refuses a carried set the cross-field rule refuses (another role\'s trigger)', async () => {
+    const { h, e } = await run([def('agree', 'CHECKBOX', 'agency'), detail]);
+    expect(reasonOf(e)).toEqual({ reason: 'template_field_setting_unsupported', field_key: 'detail', setting: 'condition', setting_reason: 'condition_cross_signer' });
+    expect(h.repo.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('C-6 — a conditional SIGNATURE is fine beside the drawn signature block of its role', async () => {
+    const { e } = await run([agree, def('sig2', 'SIGNATURE', 'client', { condition: { trigger_key: 'agree', when: 'checked' } })]);
+    expect(e).not.toBeInstanceOf(Error);
+  });
+
+  it('self mode carries the field key and drops the condition (C-7: every field shown)', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, signature_fields: [], field_definitions: [def('sig', 'SIGNATURE', 'client'), agree, detail] });
+    Object.assign(h.envelopes, { selfRecipient: vi.fn(async () => ({ name: 'Me', email: 'me@x.test' })) });
+    Object.assign(h.repo, { replaceDraftRecipients: vi.fn(async () => [{ id: 'signer-1' }]) });
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, mode: 'self' }, 'r');
+    const body = (h.envelopes.replaceFields.mock.calls[0] as unknown[])[2] as { fields: Array<Record<string, unknown>> };
+    expect(body.fields.map((f) => f['field_key'])).toEqual(['sig', 'agree', 'detail']);
+    for (const f of body.fields) expect(f).not.toHaveProperty('condition');
+  });
+});

@@ -1378,7 +1378,8 @@ export class SenderEnvelopeService {
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
-    const copyIds = new Set((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).signers.filter(isCopyRecipient).map((s) => s.id));
+    const current = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
+    const copyIds = new Set(current.signers.filter(isCopyRecipient).map((s) => s.id));
     // Sign 1.14 — a PAYMENT field is authorable only while payments are available to this
     // tenant (sign.payments AVAILABLE, Connect configured, plan Professional/Enterprise).
     if (body.fields.some((f: unknown) => ((f ?? {}) as Record<string, unknown>)['field_type'] === PAYMENT_FIELD_TYPE)) {
@@ -1444,6 +1445,12 @@ export class SenderEnvelopeService {
     });
     checkboxGroups(fields, requestId);
     onePaymentPerSigner(fields, requestId);
+    // FIELD-PARITY-2 B-10 (ruling C-7) — no conditions in self-sign: the sender is the signer and
+    // has nothing to branch on. Refused (condition_invalid), never silently dropped.
+    if (envelopeModeOf(current) === 'self') {
+      const index = fields.findIndex((f) => f.condition !== undefined && f.condition !== null);
+      if (index >= 0) throw bad(requestId, `field ${index + 1}: a self-sign field cannot be conditional`, { index, field: 'condition', reason: 'condition_invalid' });
+    }
     // FIELD-PARITY-2 B-1 / B-3 — a key names one field of the envelope, and every condition holds
     // the one cross-field rule (@aramo/sign-fields fieldConditionIssues).
     fieldConditions(fields, requestId);
