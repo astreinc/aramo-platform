@@ -592,6 +592,7 @@ export class CommercialApplyService {
         }
         const terms = planVersionTerms(version).plan;
         const arrangement = isSubscriptionArrangement(p['arrangement']) ? p['arrangement'] : null;
+        const commitmentMonths = arrangement === 'COMP' ? null : terms.commitment_months;
         const id = uuidv7();
         await tx.tenantSubscription.create({
           data: {
@@ -605,8 +606,10 @@ export class CommercialApplyService {
             source: 'MANUAL',
             created_by: req.requested_by,
             status: 'ACTIVE',
-            commitment_start: terms.commitment_months !== null ? anchor : null,
-            commitment_end: terms.commitment_months !== null ? addMonthsClamped(anchor, terms.commitment_months) : null,
+            // CCP-PERSONAL-ARRANGED-1 P-3 (ruling R-3) — a COMP row carries no commitment; AGREED is held to the
+            // version's commitment like any other managed row.
+            commitment_start: commitmentMonths !== null ? anchor : null,
+            commitment_end: commitmentMonths !== null ? addMonthsClamped(anchor, commitmentMonths) : null,
             // CCP-PERSONAL-ARRANGED-1 P-2 — the approved arrangement (null: not arranged).
             arrangement,
           },

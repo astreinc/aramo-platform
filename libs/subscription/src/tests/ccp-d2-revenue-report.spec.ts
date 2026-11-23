@@ -96,7 +96,7 @@ describe('CCP-D2 revenue computation', () => {
     expect(Object.keys(report.counts.excluded_by_reason)).toEqual([...REVENUE_EXCLUSION_REASONS]);
     expect(report.counts.excluded_by_reason).toEqual({ STORE_TEST_PURCHASE: 2, STATUS_NOT_REVENUE_BEARING: 3, PLAN_VERSION_INTEGRITY: 1, CONTRACT_PRICED: 2, NO_LIST_PRICE: 1, NON_USD_CURRENCY: 2, NON_MONTHLY_INTERVAL: 2 });
     expect(Object.values(report.counts.excluded_by_reason).reduce((a, b) => a + b, 0)).toBe(report.counts.excluded);
-    expect(report.counts.open_commercial_subscriptions).toBe(report.counts.included + report.counts.excluded);
+    expect(report.counts.open_commercial_subscriptions).toBe(report.counts.included + report.counts.excluded + report.counts.arranged_no_charge);
     // A non-USD amount is never converted into the figure, and never shown.
     expect(JSON.stringify(report)).not.toContain('EUR');
   });
@@ -139,5 +139,21 @@ describe('CCP-D2 revenue computation', () => {
   it('D2-U-6 monthKey is UTC', () => {
     expect(monthKey(new Date('2026-12-31T23:30:00.000-05:00'))).toBe('2027-01');
     expect(monthKey(new Date('2026-01-01T00:00:00.000Z'))).toBe('2026-01');
+  });
+
+  // CCP-PERSONAL-ARRANGED-1 P-3 — a COMP row is never in the illustrative value and is counted on its own
+  // line ("Arranged — no charge"); an AGREED row behaves like any other managed row.
+  it('ARR-U-REV-1 COMP rows are counted apart (arranged_no_charge), never included, excluded or in the pipeline; AGREED rows are classified as before', () => {
+    const comp = row({ arrangement: 'COMP', plan: { list_price_minor: 1000, tenant_kind: 'PERSONAL' }, commitment_end: new Date('2026-11-10T00:00:00.000Z') });
+    const agreed = row({ arrangement: 'AGREED', plan: { list_price_minor: 1000, tenant_kind: 'PERSONAL' }, commitment_end: new Date('2026-11-10T00:00:00.000Z') });
+    const plain = row({ plan: { list_price_minor: 2000 } });
+    const r = run([comp, agreed, plain]);
+    expect(r.mrr_minor).toBe(3000);
+    expect(r.counts).toMatchObject({ open_commercial_subscriptions: 3, included: 2, excluded: 0, arranged_no_charge: 1 });
+    expect(r.included.map((l) => l.subscription_id).sort()).toEqual([agreed.subscription_id, plain.subscription_id].sort());
+    expect(r.excluded.some((e) => e.subscription_id === comp.subscription_id)).toBe(false);
+    // The COMP row's (fixture) commitment end is not a renewal event; the AGREED one is, priced.
+    expect(r.renewal_pipeline.by_month.find((b) => b.month === '2026-11')).toMatchObject({ commitment_end: 1, events: 1, priced_events: 1, mrr_minor: 1000 });
+    expect(run([]).counts.arranged_no_charge).toBe(0);
   });
 });

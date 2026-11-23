@@ -29,7 +29,7 @@ export interface PriceFigureDto {
   list_price: ListPriceDto | null;
   // CONTRACT_PRICED | NO_LIST_PRICE | NON_USD_CURRENCY | PLAN_VERSION_INTEGRITY
   unpriced_reason: string | null;
-  // PINNED_PLAN_VERSION | CURRENT_PUBLISHED_PLAN_VERSION
+  // PINNED_PLAN_VERSION | CURRENT_PUBLISHED_PLAN_VERSION | ARRANGEMENT_COMP (CCP-PERSONAL-ARRANGED-1: "Comp ($0)")
   price_source: string;
   plan_version_id: string | null;
 }
@@ -120,6 +120,8 @@ export interface ReconciledSubscriptionDto extends PriceFigureDto {
   open_flag_reasons: string[];
   unconfirmed_command_ids: string[];
   discrepancies: string[];
+  // CCP-PERSONAL-ARRANGED-1 — COMP | AGREED for a row arranged by Aramo; null otherwise.
+  arrangement: string | null;
 }
 
 export interface HeldActivationDto {

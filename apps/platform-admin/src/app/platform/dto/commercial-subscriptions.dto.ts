@@ -28,6 +28,8 @@ export interface CommercialSubscriptionSummaryDto {
   current_period_end: string | null;
   grace_until: string | null;
   commitment_end: string | null;
+  // CCP-PERSONAL-ARRANGED-1 — COMP | AGREED for a row arranged by Aramo; null otherwise.
+  arrangement: 'COMP' | 'AGREED' | null;
   contract: { id: string; contract_ref: string } | null;
   provider_linked: boolean;
   open_flags: string[];

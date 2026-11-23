@@ -20,6 +20,9 @@ import { BILLING_PROVIDER_PORT, type BillingProviderPort } from './billing-provi
 //   ARR   = MRR × 12.
 //   Every other open commercial row is EXCLUDED and COUNTED, with exactly one reason (first match,
 //   REVENUE_EXCLUSION_REASONS order). A price is never converted, defaulted or inferred.
+//   CCP-PERSONAL-ARRANGED-1 P-3 — an open COMP row (arranged by Aramo, no charge) is neither included nor
+//   excluded: it is counted on its own line (counts.arranged_no_charge) and has no renewal event. An AGREED
+//   row is classified like any other managed row.
 //   Renewal pipeline: the C6 renewal events (COMMITMENT_END for any commercial row; PERIOD_END for a
 //   provider-linked row), grouped by UTC calendar month from the as_of month; events on or before
 //   as_of form the LAPSED bucket. A bucket's amount is the MRR of the included rows renewing in it.
@@ -75,6 +78,8 @@ export interface RevenueSourceRow {
   readonly term?: string | null;
   /** The app-store environment of a store-billed row ('Sandbox' = a test purchase, M-A12-A2 R-4); null/absent otherwise. */
   readonly store_environment?: string | null;
+  /** CCP-PERSONAL-ARRANGED-1 — COMP | AGREED for a row arranged by Aramo; null/absent otherwise. */
+  readonly arrangement?: string | null;
 }
 
 export interface RevenueLine {
@@ -137,6 +142,8 @@ export interface RevenueReport {
     readonly excluded_by_reason: Record<RevenueExclusionReason, number>;
     /** Open BASE rows of a non-commercial source (FREE, DEVELOPMENT): never revenue, not an exclusion. */
     readonly not_commercial_by_source: Record<string, number>;
+    /** CCP-PERSONAL-ARRANGED-1 P-3 — open commercial rows arranged by Aramo at no charge (COMP): never revenue, not an exclusion. */
+    readonly arranged_no_charge: number;
   };
   readonly renewal_pipeline: {
     readonly months: number;
@@ -157,6 +164,8 @@ type Tx = Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>;
 
 const isCommercialSource = (s: string): boolean => (FINANCE_SOURCES as readonly string[]).includes(s);
 const isRevenueBearing = (s: string): boolean => (REVENUE_BEARING_STATUSES as readonly string[]).includes(s);
+/** CCP-PERSONAL-ARRANGED-1 P-3 — a row arranged by Aramo at no charge (COMP) is never revenue. */
+const isNoCharge = (r: { arrangement?: string | null }): boolean => r.arrangement === 'COMP';
 
 /** UTC calendar month key 'YYYY-MM'. */
 export function monthKey(d: Date): string {
@@ -219,9 +228,14 @@ export function computeRevenue(rows: readonly RevenueSourceRow[], opts: RevenueO
   const excluded: RevenueExclusion[] = [];
   const not_commercial: Record<string, number> = {};
   const monthlyOf = new Map<string, number>();
+  let arranged_no_charge = 0;
   for (const r of scoped) {
     if (!isCommercialSource(r.source)) {
       not_commercial[r.source] = (not_commercial[r.source] ?? 0) + 1;
+      continue;
+    }
+    if (isNoCharge(r)) {
+      arranged_no_charge += 1;
       continue;
     }
     const c = classifyRevenueRow(r);
@@ -249,7 +263,7 @@ export function computeRevenue(rows: readonly RevenueSourceRow[], opts: RevenueO
   for (let i = 0; i < months; i++) buckets.set(addMonths(from_month, i), emptyBucket(addMonths(from_month, i)));
   const lapsed = emptyBucket('LAPSED');
   for (const r of scoped) {
-    if (!isCommercialSource(r.source)) continue;
+    if (!isCommercialSource(r.source) || isNoCharge(r)) continue;
     const events: Array<['commitment_end' | 'period_end', Date | null]> = [
       ['commitment_end', r.commitment_end],
       ['period_end', r.billing_subscription_ref === null ? null : r.current_period_end],
@@ -282,11 +296,12 @@ export function computeRevenue(rows: readonly RevenueSourceRow[], opts: RevenueO
     included: included.sort(byId),
     excluded: excluded.sort(byId),
     counts: {
-      open_commercial_subscriptions: included.length + excluded.length,
+      open_commercial_subscriptions: included.length + excluded.length + arranged_no_charge,
       included: included.length,
       excluded: excluded.length,
       excluded_by_reason,
       not_commercial_by_source: Object.fromEntries(Object.entries(not_commercial).sort(([a], [b]) => (a < b ? -1 : 1))),
+      arranged_no_charge,
     },
     renewal_pipeline: { months, from_month, through_month, lapsed, by_month: [...buckets.values()] },
   };
@@ -324,7 +339,7 @@ export class BillingRevenueReportService {
         `SELECT ts.id::text AS subscription_id, ts.tenant_id::text AS tenant_id, ts.product_key, ts.source, ts.status,
                 p.key AS plan_key, v.id::text AS plan_version_id, v.version_number, v.content, v.content_checksum,
                 (SELECT c.id::text FROM subscription."Contract" c WHERE c.tenant_subscription_id = ts.id) AS contract_id,
-                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref, ts.term, ts.store_environment
+                ts.commitment_end, ts.current_period_end, ts.billing_subscription_ref, ts.term, ts.store_environment, ts.arrangement
            FROM subscription."TenantSubscription" ts
            JOIN subscription."Plan" p ON p.id = ts.plan_id
            JOIN subscription."PlanVersion" v ON v.id = ts.plan_version_id
@@ -349,6 +364,7 @@ export function formatRevenueReport(r: RevenueReport): string[] {
     ...r.by_product.map((p) => `[revenue]   product=${p.product_key} subscriptions=${p.subscriptions} illustrative_list_price_monthly=${usd(p.mrr_minor)} annualized=${usd(p.arr_minor)}`),
     `[revenue] open commercial subscriptions: ${c.open_commercial_subscriptions} included=${c.included} excluded=${c.excluded} ${JSON.stringify(c.excluded_by_reason)}`,
     `[revenue] not commercial (not counted as revenue): ${JSON.stringify(c.not_commercial_by_source)}`,
+    `[revenue] Arranged — no charge: ${c.arranged_no_charge}`,
     `[revenue] renewal pipeline ${r.renewal_pipeline.from_month}..${r.renewal_pipeline.through_month} (${r.renewal_pipeline.months} months)`,
     bucket(r.renewal_pipeline.lapsed),
     ...r.renewal_pipeline.by_month.map(bucket),

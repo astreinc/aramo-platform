@@ -8328,7 +8328,7 @@ components:
       type: object
       additionalProperties: false
       description: CCP-B3 — one latest base subscription (no money; the provider reference is reduced to provider_linked).
-      required: [subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, contract, provider_linked, open_flags, active_extensions]
+      required: [subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, arrangement, contract, provider_linked, open_flags, active_extensions]
       properties:
         subscription_id: { type: string, format: uuid }
         product_key: { type: string }
@@ -8365,6 +8365,10 @@ components:
         current_period_end: { type: [string, 'null'], format: date-time }
         grace_until: { type: [string, 'null'], format: date-time }
         commitment_end: { type: [string, 'null'], format: date-time }
+        arrangement:
+          type: [string, 'null']
+          enum: [COMP, AGREED, null]
+          description: CCP-PERSONAL-ARRANGED-1 — the row is arranged by Aramo (COMP no charge, no commitment; AGREED a price agreed outside the store and the web billing provider); null otherwise.
         contract:
           type: [object, 'null']
           additionalProperties: false
@@ -8392,7 +8396,7 @@ components:
       type: object
       additionalProperties: false
       description: CCP-B3 — one workbench row (CommercialSubscriptionSummary plus the tenant).
-      required: [tenant, subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, contract, provider_linked, open_flags, active_extensions]
+      required: [tenant, subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, arrangement, contract, provider_linked, open_flags, active_extensions]
       properties:
         tenant:
           type: object
@@ -8437,6 +8441,10 @@ components:
         current_period_end: { type: [string, 'null'], format: date-time }
         grace_until: { type: [string, 'null'], format: date-time }
         commitment_end: { type: [string, 'null'], format: date-time }
+        arrangement:
+          type: [string, 'null']
+          enum: [COMP, AGREED, null]
+          description: CCP-PERSONAL-ARRANGED-1 — the row is arranged by Aramo (COMP no charge, no commitment; AGREED a price agreed outside the store and the web billing provider); null otherwise.
         contract:
           type: [object, 'null']
           additionalProperties: false
@@ -9842,7 +9850,7 @@ components:
     FinanceReconciledSubscription:
       type: object
       additionalProperties: false
-      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, version_status, grandfathered, billing_subscription_ref, provider_price_ref, entitlement, open_flag_reasons, unconfirmed_command_ids, discrepancies, list_price, unpriced_reason, price_source, plan_version_id]
+      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, version_status, grandfathered, billing_subscription_ref, provider_price_ref, entitlement, open_flag_reasons, unconfirmed_command_ids, discrepancies, arrangement, list_price, unpriced_reason, price_source, plan_version_id]
       properties:
         subscription_id:
           type: string
@@ -9905,6 +9913,10 @@ components:
           items:
             type: string
             enum: [ENTITLEMENT_MISSING, PLAN_VERSION_INTEGRITY, PLAN_VERSION_NOT_PINNABLE, PRICE_NOT_USD, SELF_SERVICE_WITHOUT_PROVIDER_LINK, MANUAL_PROVIDER_LINKED]
+        arrangement:
+          type: [string, 'null']
+          enum: [COMP, AGREED, null]
+          description: CCP-PERSONAL-ARRANGED-1 — the row is arranged by Aramo (COMP no charge; AGREED a price agreed outside the store and the web billing provider); null otherwise.
         list_price:
           oneOf:
             - $ref: '#/components/schemas/FinanceListPrice'
@@ -9913,6 +9925,7 @@ components:
           type: [string, 'null']
         price_source:
           type: string
+          description: PINNED_PLAN_VERSION, or ARRANGEMENT_COMP for a COMP row (shown as "Comp ($0)"; list_price.amount_minor is 0).
         plan_version_id:
           type: [string, 'null']
           format: uuid
@@ -10206,10 +10219,11 @@ components:
         counts:
           type: object
           additionalProperties: false
-          required: [open_commercial_subscriptions, included, excluded, excluded_by_reason, not_commercial_by_source]
+          required: [open_commercial_subscriptions, included, excluded, excluded_by_reason, not_commercial_by_source, arranged_no_charge]
           properties:
             open_commercial_subscriptions:
               type: integer
+              description: Open MANUAL and SELF_SERVICE base rows (included + excluded + arranged_no_charge).
             included:
               type: integer
             excluded:
@@ -10229,6 +10243,10 @@ components:
               description: Open base rows of a non-commercial source (FREE, DEVELOPMENT); neither revenue nor an exclusion.
               additionalProperties:
                 type: integer
+            arranged_no_charge:
+              type: integer
+              minimum: 0
+              description: CCP-PERSONAL-ARRANGED-1 — open rows arranged by Aramo at no charge (arrangement COMP; "Arranged — no charge"). Never in the illustrative list-price value, never an exclusion, and never in the renewal pipeline.
         renewal_pipeline:
           type: object
           additionalProperties: false

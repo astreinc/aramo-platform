@@ -76,6 +76,7 @@ export function revenueDto(r: RevenueReport, withAmounts: boolean): FinanceReven
       excluded: r.counts.excluded,
       excluded_by_reason: { ...r.counts.excluded_by_reason },
       not_commercial_by_source: { ...r.counts.not_commercial_by_source },
+      arranged_no_charge: r.counts.arranged_no_charge,
     },
     renewal_pipeline: {
       months: r.renewal_pipeline.months,

@@ -118,6 +118,7 @@ function reconciledDto(s: ReconciledSubscription): ReconciledSubscriptionDto {
     open_flag_reasons: [...s.open_flag_reasons],
     unconfirmed_command_ids: [...s.unconfirmed_command_ids],
     discrepancies: [...s.discrepancies],
+    arrangement: s.arrangement,
     ...price(s),
   };
 }
