@@ -2864,6 +2864,8 @@
       "normalizeAccessCode",
       "normalizeSignerInput",
       "numberPrefixOf",
+      "optionalMark",
+      "optionalSuffix",
       "orphanedConditionIndexes",
       "parseFieldCondition",
       "parseFieldSettings",
@@ -2904,6 +2906,7 @@
       "titleFromFilename",
       "usableTriggerIndexes",
       "voidReasonProblem",
+      "withOptionalMark",
       "witnessReady",
       "witnessTargets",
       "wordUploadEnabled"
@@ -15145,6 +15148,11 @@
       },
       {
         "from": "mobile/sign/src/features/send/templates.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/signing/CheckboxField.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },
