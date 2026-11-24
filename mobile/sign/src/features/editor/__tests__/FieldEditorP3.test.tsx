@@ -89,6 +89,44 @@ describe('FieldEditor — Phase 3 tools and settings sheet', () => {
     await waitFor(() => expect(last()[0]).toMatchObject({ senderFilled: true, senderValue: '12.5', readOnly: true }));
   });
 
+  // Field test 2026-11-24 — closing the sheet while still typing lost the edit ("Cheque" saved
+  // as "Option 3", a text field's label never saved): no end-editing / blur event here.
+  it('closing the sheet while typing keeps the label being typed', async () => {
+    const { last } = renderEditor();
+    await act(async () => {});
+    await placeCenter('TEXT');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.changeText(screen.getByTestId('field-label'), 'Co-applicant name');
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await waitFor(() => expect(last()[0]?.label).toBe('Co-applicant name'));
+  });
+
+  it('closing the sheet while typing keeps the dropdown choice being typed', async () => {
+    const { last } = renderEditor();
+    await act(async () => {});
+    await placeCenter('DROPDOWN');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.press(screen.getByTestId('choice-add'));
+    await waitFor(() => expect(last()[0]?.options?.choices).toHaveLength(3));
+    fireEvent.changeText(screen.getByTestId('choice-label-2'), 'Cheque');
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await waitFor(() => expect(last()[0]?.options?.choices?.map((c) => c.label)).toEqual(['Option 1', 'Option 2', 'Cheque']));
+  });
+
+  it('an edit committed on end editing is not committed again when the sheet closes', async () => {
+    const { last, onFieldsChange } = renderEditor();
+    await act(async () => {});
+    await placeCenter('TEXT');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.changeText(screen.getByTestId('field-label'), 'Notes');
+    fireEvent(screen.getByTestId('field-label'), 'endEditing');
+    await waitFor(() => expect(last()[0]?.label).toBe('Notes'));
+    const calls = onFieldsChange.mock.calls.length;
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await act(async () => {});
+    expect(onFieldsChange.mock.calls.length).toBe(calls);
+  });
+
   it('TEXT: a bad data name shows the server rule’s refusal', async () => {
     renderEditor();
     await act(async () => {});

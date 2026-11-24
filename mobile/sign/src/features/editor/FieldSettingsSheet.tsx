@@ -9,7 +9,7 @@
 //     NUMBER format, and sender-filled with its value and read-only (only when the server flag
 //     is on: sender_filled_fields_enabled).
 //   ConditionSettings — FIELD-PARITY-2 B-7 "Show only when…" (the Send flow only).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
 import {
   DEFAULT_MONEY_CURRENCY,
@@ -71,15 +71,32 @@ function CommitInput({
   const t = useTheme();
   const input = useInputStyle();
   const [v, setV] = useState(value);
+  // The last text handed to onCommit (or the field's own value), so blur + end editing + the
+  // unmount below never commit the same edit twice.
+  const committed = useRef(value);
   // A new value from the field (undo, another control) replaces the draft text.
   const [prev, setPrev] = useState(value);
   if (prev !== value) {
     setPrev(value);
     setV(value);
   }
+  useEffect(() => {
+    committed.current = value;
+  }, [value]);
   const commit = () => {
-    if (v !== value) onCommit(v);
+    if (v !== value && v !== committed.current) {
+      committed.current = v;
+      onCommit(v);
+    }
   };
+  // Closing the sheet while typing (Next, swipe down, Back) unmounts the input without a blur or
+  // end-editing event on Android, so the last edit was lost ("Cheque" saved as "Option 3", a
+  // text field's label never saved). The input commits what is typed when it goes away.
+  const latest = useRef(commit);
+  useEffect(() => {
+    latest.current = commit;
+  });
+  useEffect(() => () => latest.current(), []);
   return (
     <>
       <Text style={{ color: t.color.textSecondary, fontFamily: t.font.family, fontSize: 14 }}>{label}</Text>
