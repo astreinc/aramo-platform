@@ -81,3 +81,26 @@ export function useFocusFallback(keyboard: number): {
     onBlur: () => setFocus((f) => ({ id: f.id, on: false })),
   };
 }
+
+/** The least a lifted sheet keeps (points), so a very tall keyboard never collapses it. */
+export const LIFTED_SHEET_MIN_HEIGHT = 120;
+/** The gap kept between a lifted sheet's top and the status bar (points). */
+export const LIFTED_SHEET_TOP_GAP = 8;
+
+/**
+ * Android field test 2026-11-24 — a TALL sheet lifted by the keyboard ran off the top of the
+ * screen: its first inputs (a field's label) were behind the status bar while typing. While
+ * lifted, the sheet is capped to the room between the status bar and the keyboard, so its
+ * content scrolls inside that room instead. Undefined: no cap (the sheet's usual 90%).
+ */
+export function androidSheetMaxHeight(input: {
+  readonly placement: SheetPlacement;
+  /** The root's current height (0 before its first layout). */
+  readonly rootHeight: number;
+  /** The status bar (safe area top) inset. */
+  readonly topInset: number;
+}): number | undefined {
+  if (input.placement.kind !== 'bottom' || input.placement.lift <= 0 || input.rootHeight <= 0) return undefined;
+  const room = input.rootHeight - input.placement.lift - input.topInset - LIFTED_SHEET_TOP_GAP;
+  return Math.max(LIFTED_SHEET_MIN_HEIGHT, Math.floor(room));
+}

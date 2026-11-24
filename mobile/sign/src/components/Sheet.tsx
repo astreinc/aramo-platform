@@ -11,7 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
-import { androidSheetPlacement, useFocusFallback, useKeyboardHeight } from './sheetKeyboard';
+import { androidSheetMaxHeight, androidSheetPlacement, useFocusFallback, useKeyboardHeight } from './sheetKeyboard';
 
 export interface SheetProps {
   readonly visible: boolean;
@@ -81,6 +81,9 @@ export function Sheet({ visible, onClose, title, children, scrollEnabled = true 
     rootHeight: heights.current,
     focusedWithoutEvent: fallback.focusedWithoutEvent,
   });
+  // A lifted sheet fits between the status bar and the keyboard (its content scrolls), so a
+  // tall sheet's first inputs never sit off the top of the screen while typing.
+  const liftedMax = androidSheetMaxHeight({ placement, rootHeight: heights.current, topInset: insets.top });
   return (
     <Modal
       visible={visible}
@@ -110,7 +113,7 @@ export function Sheet({ visible, onClose, title, children, scrollEnabled = true 
             styles.androidSheet,
             placement.kind === 'top'
               ? { top: insets.top + 8, bottom: undefined }
-              : { bottom: placement.lift },
+              : { bottom: placement.lift, ...(liftedMax !== undefined ? { maxHeight: liftedMax } : {}) },
             {
               backgroundColor: t.color.sheet,
               borderTopLeftRadius: t.size.sheetTopRadius,
