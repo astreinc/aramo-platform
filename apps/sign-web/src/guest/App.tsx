@@ -15,12 +15,15 @@ import {
   isValidDelegate,
   normalizeSignerInput,
   numberPrefixOf,
+  optionalMark,
+  optionalSuffix,
   radioChoiceClearable,
   signDatePreview,
   signerFieldCaption,
   signerFieldTooltip,
   signerFieldPlaceholder,
   signerInputKind,
+  signerClearRefusal,
   signerValueProblem,
 } from '@aramo/sign-client';
 
@@ -581,6 +584,7 @@ export function FieldDialog({
   title,
   initial,
   dateFormat,
+  canClear = false,
   onSave,
   onClose,
 }: {
@@ -588,8 +592,14 @@ export function FieldDialog({
   readonly title: string;
   readonly initial: string;
   readonly dateFormat: string | null | undefined;
-  /** Resolves to the refusal message to show, or null when saved. */
-  readonly onSave: (v: string) => Promise<string | null>;
+  /**
+   * FIELD-PARITY-2 B-6 follow-up — the field holds a saved answer the signer may clear (the
+   * shared rule, @aramo/sign-client signerClearRefusal): an emptied box then offers
+   * "Clear answer", which saves null.
+   */
+  readonly canClear?: boolean;
+  /** Resolves to the refusal message to show, or null when saved. null clears the saved answer. */
+  readonly onSave: (v: string | null) => Promise<string | null>;
   readonly onClose: () => void;
 }) {
   const kind = signerInputKind(field.field_type);
@@ -634,13 +644,21 @@ export function FieldDialog({
       input.current?.focus();
     }
   };
+  // An emptied box on a field with a saved answer the signer may clear.
+  const clearing = canClear && v.trim().length === 0;
+  const clearAnswer = async () => {
+    setSaving(true);
+    const refused = await onSave(null);
+    setSaving(false);
+    if (refused !== null) setError(refused);
+  };
   const preview = kind === 'date' && isIsoDate(v) ? formatChosenDate(v, dateFormat) : null;
   return (
     <Dialog title={title} onClose={onClose}>
       <div className="sg-fieldedit">
         <label className="sg-fieldedit__label" htmlFor={id}>
           {title}
-          {field.required ? '' : ' (optional)'}
+          {optionalSuffix(field.required)}
         </label>
         {help !== null ? (
           <p className="sg-fieldedit__help" id={`${id}-help`}>
@@ -651,7 +669,8 @@ export function FieldDialog({
           <TextBox {...common} rows={5} placeholder={placeholder} maxLength={limit ?? undefined} onChange={(e) => change(e.target.value)} />
         ) : kind === 'dropdown' ? (
           <SelectIn {...common} onChange={(e) => change(e.target.value)}>
-            <option value="" disabled>
+            {/* A saved choice the signer may clear: picking the empty entry offers "Clear answer". */}
+            <option value="" disabled={!canClear}>
               {placeholder ?? 'Choose an option'}
             </option>
             {choices.map((c) => (
@@ -706,9 +725,15 @@ export function FieldDialog({
         <Btn variant="secondary" onClick={onClose}>
           Cancel
         </Btn>
-        <Btn disabled={saving || v.trim().length === 0} onClick={() => void apply()}>
-          Apply
-        </Btn>
+        {clearing ? (
+          <Btn disabled={saving} onClick={() => void clearAnswer()} data-testid="sg-field-clear">
+            Clear answer
+          </Btn>
+        ) : (
+          <Btn disabled={saving || v.trim().length === 0} onClick={() => void apply()}>
+            Apply
+          </Btn>
+        )}
       </div>
     </Dialog>
   );
@@ -1308,14 +1333,20 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   // Save one field. FIELD-PARITY-1 P3 — a value the server refuses (VALIDATION_ERROR with a
   // value reason) comes back as its plain-language message (@aramo/sign-client), never the
   // server's text; `message: null` means the page moved to another screen.
-  const save = async (f: SignField, value: string, method?: string): Promise<{ ok: true } | { ok: false; message: string | null }> => {
+  // FIELD-PARITY-2 B-6 follow-up — value null clears a saved answer (the shared clear rule).
+  const save = async (f: SignField, value: string | null, method?: string): Promise<{ ok: true } | { ok: false; message: string | null }> => {
     setBusy(true);
     setNotice(null);
     try {
       await signApi.fillField(token, f.field_id, value, method);
       // FIELD-PARITY-2 B-6 / C-3 — when this answer hides fields, the server has cleared them;
       // the page clears its own copy of those answers to match.
-      setFilled((m) => withoutHiddenAnswers(fields, { ...m, [f.field_id]: value }));
+      setFilled((m) => {
+        const next = { ...m };
+        if (value === null) delete next[f.field_id];
+        else next[f.field_id] = value;
+        return withoutHiddenAnswers(fields, next);
+      });
       return { ok: true };
     } catch (e) {
       if (e instanceof SignApiError && isFieldValueRefusalReason(e.reason)) return { ok: false, message: fieldValueRefusalText(e.reason, f, { date_format: view?.date_format ?? null }) };
@@ -1968,7 +1999,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                         <span className="sg-field__meta">
                           page {f.page_number + 1}
                           {radio || f.group_rule === 'SELECT_ONE' ? ' · choose one' : typeof f.group_key === 'string' && f.group_key.length > 0 ? ' · choose any' : ''}
-                          {f.required ? ' · required' : ' · optional'}
+                          {optionalMark(f.required)}
                         </span>
                         {helpLine}
                       </span>
@@ -1992,7 +2023,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                       <span className="sg-field__name">{fieldLabel(f)}</span>
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
-                        {f.required ? ' · required' : ' · optional'}
+                        {optionalMark(f.required)}
                         {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
                       {helpLine}
@@ -2070,6 +2101,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
           title={fieldLabel(textFor)}
           dateFormat={view?.date_format ?? null}
           initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' && !isServerName(textFor) ? suggestedName : ''}
+          canClear={filled[textFor.field_id] !== undefined && signerClearRefusal(textFor) === null}
           onClose={() => setTextFor(null)}
           onSave={async (v) => {
             const f = textFor;

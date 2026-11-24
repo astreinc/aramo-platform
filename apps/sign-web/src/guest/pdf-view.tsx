@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { withOptionalMark } from '@aramo/sign-client';
 
 import { Btn, TextIn } from './controls.js';
 import { fieldBox, type PageSize } from './field-geometry.js';
@@ -269,7 +270,8 @@ export function PdfDocument({
                     data-testid="sg-onpage-field"
                   >
                     {shown === null ? (
-                      box_ || fixed ? null : <span className="sg-onpage__cta">{actionLabel(f)}</span>
+                      // The one wording for a field the signer may skip (@aramo/sign-client), as in the app.
+                      box_ || fixed ? null : <span className="sg-onpage__cta">{withOptionalMark(actionLabel(f), f.required)}</span>
                     ) : shown.kind === 'image' ? (
                       <img src={shown.value} alt="Your signature" className="sg-onpage__img" />
                     ) : (
@@ -280,7 +282,7 @@ export function PdfDocument({
                       // it toggles this box (UAT SIG-03: a larger target that never overlaps
                       // the box above or below).
                       <span className="sg-onpage__caption" aria-hidden="true" data-testid="sg-onpage-caption">
-                        {f.label}
+                        {withOptionalMark(f.label, f.required)}
                       </span>
                     ) : null}
                   </div>

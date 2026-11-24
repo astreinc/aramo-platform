@@ -60,6 +60,7 @@ import {
   type FieldTypeOn,
   type SignerFieldLike,
   type SignerFieldUnit,
+  withOptionalMark,
 } from '@aramo/sign-client';
 
 import { SIGN_DATE_PREVIEW_NOTE } from './signDate';
@@ -442,13 +443,14 @@ export function emptyCaption(f: SigningField): string {
   // C0-2 — the date is the server's, filled in at signing.
   if (f.field_type === 'SIGN_DATE')
     return `${fieldLabel(f.field_type)} · ${f.required ? '' : 'optional · '}${SIGN_DATE_PREVIEW_NOTE}`;
-  if (f.field_type === 'CHECKBOX' && f.label) return f.required ? f.label : `${f.label} · optional`;
+  // The one wording for a field the signer may skip (@aramo/sign-client), as on the web page.
+  if (f.field_type === 'CHECKBOX' && f.label) return withOptionalMark(f.label, f.required);
   // FIELD-PARITY-1 P3 S-1 / S-2 — the placeholder hint, else the label, else the type's name.
   const name =
     (typeof f.placeholder === 'string' && f.placeholder.length > 0 ? f.placeholder : null) ??
     signerFieldCaption(f) ??
     fieldLabel(f.field_type);
-  return f.required ? name : `${name} · optional`;
+  return withOptionalMark(name, f.required);
 }
 
 function withValue(s: SigningState, id: string, v: FieldValue | null): SigningState {

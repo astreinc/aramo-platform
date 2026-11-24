@@ -1,7 +1,7 @@
 // FIELD-PARITY-1 P3 §6 — the Send flow editor's settings sheet for the new types: the tool row
 // has them; a DROPDOWN's choices, a RADIO's "Add option", a NUMBER's money format, and
 // sender-filled shown only while the server flag is on.
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { FieldEditor } from '../FieldEditor';
@@ -42,6 +42,17 @@ async function placeCenter(type: string) {
 }
 
 describe('FieldEditor — Phase 3 tools and settings sheet', () => {
+  // Android field test 2026-11-24 — the field tools are pinned at the top of the Send panel, not
+  // inside its scrolling part (they were scrolled below the fold on a short screen).
+  it('the field tools are pinned in the panel, outside its scrolling part; hidden while a field is selected', async () => {
+    renderEditor();
+    await act(async () => {});
+    expect(within(screen.getByTestId('editor-panel')).getByTestId('send-tools')).toBeTruthy();
+    expect(within(screen.getByTestId('editor-panel-scroll')).queryByTestId('send-tools')).toBeNull();
+    await placeCenter('TEXT');
+    expect(screen.queryByTestId('send-tools')).toBeNull();
+  });
+
   it('the tool row has the new types and Acknowledgement', async () => {
     renderEditor();
     await act(async () => {});
@@ -87,6 +98,44 @@ describe('FieldEditor — Phase 3 tools and settings sheet', () => {
     fireEvent(screen.getByTestId('sender-value'), 'endEditing');
     fireEvent.press(screen.getByTestId('read-only-on'));
     await waitFor(() => expect(last()[0]).toMatchObject({ senderFilled: true, senderValue: '12.5', readOnly: true }));
+  });
+
+  // Field test 2026-11-24 — closing the sheet while still typing lost the edit ("Cheque" saved
+  // as "Option 3", a text field's label never saved): no end-editing / blur event here.
+  it('closing the sheet while typing keeps the label being typed', async () => {
+    const { last } = renderEditor();
+    await act(async () => {});
+    await placeCenter('TEXT');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.changeText(screen.getByTestId('field-label'), 'Co-applicant name');
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await waitFor(() => expect(last()[0]?.label).toBe('Co-applicant name'));
+  });
+
+  it('closing the sheet while typing keeps the dropdown choice being typed', async () => {
+    const { last } = renderEditor();
+    await act(async () => {});
+    await placeCenter('DROPDOWN');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.press(screen.getByTestId('choice-add'));
+    await waitFor(() => expect(last()[0]?.options?.choices).toHaveLength(3));
+    fireEvent.changeText(screen.getByTestId('choice-label-2'), 'Cheque');
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await waitFor(() => expect(last()[0]?.options?.choices?.map((c) => c.label)).toEqual(['Option 1', 'Option 2', 'Cheque']));
+  });
+
+  it('an edit committed on end editing is not committed again when the sheet closes', async () => {
+    const { last, onFieldsChange } = renderEditor();
+    await act(async () => {});
+    await placeCenter('TEXT');
+    fireEvent.press(screen.getByTestId('field-settings-open'));
+    fireEvent.changeText(screen.getByTestId('field-label'), 'Notes');
+    fireEvent(screen.getByTestId('field-label'), 'endEditing');
+    await waitFor(() => expect(last()[0]?.label).toBe('Notes'));
+    const calls = onFieldsChange.mock.calls.length;
+    fireEvent.press(screen.getAllByText('Done').at(-1)!);
+    await act(async () => {});
+    expect(onFieldsChange.mock.calls.length).toBe(calls);
   });
 
   it('TEXT: a bad data name shows the server rule’s refusal', async () => {

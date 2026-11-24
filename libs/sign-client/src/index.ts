@@ -345,3 +345,5 @@ export {
   type SignerInputKind,
   type SignerClearField,
 } from './lib/signer-field-input.js';
+// One wording for "you may skip this field" (web signing page and the Aramo Sign app).
+export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-mark.js';

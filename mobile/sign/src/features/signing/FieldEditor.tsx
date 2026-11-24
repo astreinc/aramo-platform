@@ -24,6 +24,7 @@ import {
   signerFieldPlaceholder,
   signerFieldTooltip,
   signerInputKind,
+  optionalSuffix,
 } from '@aramo/sign-client';
 
 import { Button } from '../../components/Button';
@@ -98,7 +99,7 @@ export function FieldEditor({ field, initial, dateFormat, onSave, today = new Da
   return (
     <View style={styles.wrap}>
       <Text style={[styles.label, { color: t.color.text }]} testID="field-editor-label">
-        {field.required ? caption : `${caption} (optional)`}
+        {`${caption}${optionalSuffix(field.required)}`}
       </Text>
       {help !== null ? (
         <Text style={[styles.help, { color: t.color.textSecondary }]} testID="field-editor-help">

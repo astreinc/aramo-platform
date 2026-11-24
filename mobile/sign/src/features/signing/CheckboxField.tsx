@@ -5,6 +5,7 @@
 // FIELD-PARITY-1 P3 — the same control draws a RADIO option (`shape="circle"`: a circle, ● when
 // chosen, announced as a radio button), and a read-only / sender-filled box (`locked`: shown, not
 // a target).
+import { withOptionalMark } from '@aramo/sign-client';
 import { Pressable, Text, View, type Insets } from 'react-native';
 
 import { useTheme } from '../../theme';
@@ -102,7 +103,7 @@ export function CheckboxField({
           }}
         >
           <Text numberOfLines={1} style={{ color: t.color.text, fontSize: capSize, lineHeight: capSize * 1.3 }}>
-            {required ? label : `${label} · optional`}
+            {withOptionalMark(label, required)}
           </Text>
         </Pressable>
       ) : null}

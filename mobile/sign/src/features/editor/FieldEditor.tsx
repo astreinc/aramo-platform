@@ -709,7 +709,23 @@ export function FieldEditor({
           },
         ]}
       >
+        {/* Android field test 2026-11-24 — the field tools are pinned at the top of the panel,
+            above the scrolling hint / suggestions / notices, as in Sign a document: on a short
+            screen they were scrolled below the panel's fold and needed a swipe up. */}
+        {selected ? null : (
+          <ToolRow
+            tools={rowTools}
+            tool={state.tool}
+            disabled={recipients.length === 0}
+            testID="send-tools"
+            onPick={(type) => {
+              if (state.tool !== type && onPickTool && !onPickTool(type)) return;
+              dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
+            }}
+          />
+        )}
         <ScrollView
+          testID="editor-panel-scroll"
           style={styles.panelScroll}
           contentContainerStyle={styles.panelBody}
           keyboardShouldPersistTaps="handled"
@@ -754,16 +770,6 @@ export function FieldEditor({
               <Text style={[secondary, styles.hint]} accessibilityLiveRegion="polite">
                 {hint}
               </Text>
-              <ToolRow
-                tools={rowTools}
-                tool={state.tool}
-                disabled={recipients.length === 0}
-                testID="send-tools"
-                onPick={(type) => {
-                  if (state.tool !== type && onPickTool && !onPickTool(type)) return;
-                  dispatch({ type: 'pickTool', tool: state.tool === type ? null : type });
-                }}
-              />
             </>
           )}
         </ScrollView>

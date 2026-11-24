@@ -6,7 +6,7 @@
 // Field geometry is PDF-native — exactly what Aramo Sign places: page_number 0-based, points,
 // origin bottom-left, (x, y) the box's lower-left corner.
 
-import { FIELD_DEFAULTS, fieldTypesFor, type FieldTypeOn } from '@aramo/sign-fields';
+import { FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor, type FieldTypeOn } from '@aramo/sign-fields';
 
 export const FIXED_FORM_SCHEMA_V1 = 'fixed-form-pdf-v1';
 export const FIXED_FORM_MAX_BYTES = 10 * 1024 * 1024;
@@ -27,28 +27,31 @@ export interface FixedFormFieldTypeSpec {
   readonly required: boolean;
 }
 
-// The Studio's own palette label and order. Keyed by the projection's type, so a type the
-// catalog adds to (or removes from) the fixed-form surface fails to compile until it is listed.
-const PALETTE: Readonly<Record<FixedFormFieldType, { readonly label: string; readonly order: number }>> = {
-  SIGNATURE: { label: 'Signature', order: 0 },
-  INITIALS: { label: 'Initials', order: 1 },
-  SIGNER_NAME: { label: 'Name', order: 2 },
-  SIGN_DATE: { label: 'Date', order: 3 },
-  TEXT: { label: 'Text', order: 4 },
-  CHECKBOX: { label: 'Checkbox', order: 5 },
-  // FIELD-PARITY-1 P3 (ruling R-1) — the profile types, ACKNOWLEDGEMENT and the new types. DATE
-  // is the chosen date ("Date" above is the signing date, SIGN_DATE).
-  FIRST_NAME: { label: 'First name', order: 6 },
-  LAST_NAME: { label: 'Last name', order: 7 },
-  EMAIL: { label: 'Email', order: 8 },
-  COMPANY: { label: 'Company', order: 9 },
-  TITLE: { label: 'Title', order: 10 },
-  ACKNOWLEDGEMENT: { label: 'Acknowledgement', order: 11 },
-  DATE: { label: 'Chosen date', order: 12 },
-  DROPDOWN: { label: 'Dropdown', order: 13 },
-  RADIO: { label: 'Radio button', order: 14 },
-  NUMBER: { label: 'Number', order: 15 },
-  MULTILINE_TEXT: { label: 'Multi-line text', order: 16 },
+// The Studio's own palette ORDER. Keyed by the projection's type, so a type the catalog adds to
+// (or removes from) the fixed-form surface fails to compile until it is listed. The LABEL is the
+// catalog's (@aramo/sign-fields FIELD_CATALOG) — the same name Sign's Prepare and the Aramo Sign
+// app show: SIGN_DATE is "Sign date" (stamped when the signer signs), DATE is "Date" (a date the
+// signer picks). The console once named them "Date" and "Chosen date", which read the wrong way
+// round next to Sign.
+const PALETTE_ORDER: Readonly<Record<FixedFormFieldType, number>> = {
+  SIGNATURE: 0,
+  INITIALS: 1,
+  SIGNER_NAME: 2,
+  SIGN_DATE: 3,
+  TEXT: 4,
+  CHECKBOX: 5,
+  // FIELD-PARITY-1 P3 (ruling R-1) — the profile types, ACKNOWLEDGEMENT and the new types.
+  FIRST_NAME: 6,
+  LAST_NAME: 7,
+  EMAIL: 8,
+  COMPANY: 9,
+  TITLE: 10,
+  ACKNOWLEDGEMENT: 11,
+  DATE: 12,
+  DROPDOWN: 13,
+  RADIO: 14,
+  NUMBER: 15,
+  MULTILINE_TEXT: 16,
 };
 
 /**
@@ -57,8 +60,8 @@ const PALETTE: Readonly<Record<FixedFormFieldType, { readonly label: string; rea
  * table Sign's Prepare and the Aramo Sign app use), no longer a console-only table.
  */
 export const FIXED_FORM_FIELD_TYPES: readonly FixedFormFieldTypeSpec[] = fieldTypesFor('template_fixed_form')
-  .map((type) => ({ type, label: PALETTE[type].label, width: FIELD_DEFAULTS[type].width, height: FIELD_DEFAULTS[type].height, required: FIELD_DEFAULTS[type].required }))
-  .sort((a, b) => PALETTE[a.type].order - PALETTE[b.type].order);
+  .map((type) => ({ type, label: FIELD_CATALOG[type].label, width: FIELD_DEFAULTS[type].width, height: FIELD_DEFAULTS[type].height, required: FIELD_DEFAULTS[type].required }))
+  .sort((a, b) => PALETTE_ORDER[a.type] - PALETTE_ORDER[b.type]);
 
 export function fixedFormFieldLabel(type: string): string {
   return FIXED_FORM_FIELD_TYPES.find((t) => t.type === type)?.label ?? type;

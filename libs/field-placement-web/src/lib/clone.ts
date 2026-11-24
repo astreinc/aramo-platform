@@ -82,6 +82,24 @@ export function repeatPitchOf(sources: readonly PlacedField[], pageSize: CloneCo
   return Math.ceil(b.height) + REPEAT_DEFAULT_GAP;
 }
 
+/**
+ * The Copies box as Repeat down reads it: a whole number, at least 1 (more than REPEAT_MAX is
+ * REPEAT_MAX). Null for an empty box or text that is not a number.
+ */
+export function repeatCountOf(text: string): number | null {
+  if (text.trim() === '') return null;
+  const n = Math.floor(Number(text));
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(REPEAT_MAX, n);
+}
+
+/** The Row spacing box as Repeat down reads it: points, more than 0. Null otherwise. */
+export function repeatPitchOfText(text: string): number | null {
+  if (text.trim() === '') return null;
+  const n = Number(text);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export type RepeatResult =
   | { readonly ok: true; readonly fields: PlacedField[]; readonly rows: number; readonly skipped: number }
   | { readonly ok: false; readonly reason: 'nothing' | 'pages' };

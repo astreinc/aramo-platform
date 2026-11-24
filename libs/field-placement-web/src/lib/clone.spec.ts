@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { REPEAT_MAX, cloneFields, nextGroupKey, repeatDown, repeatPitchOf, type CloneContext } from './clone';
+import { REPEAT_MAX, cloneFields, nextGroupKey, repeatCountOf, repeatDown, repeatPitchOf, repeatPitchOfText, type CloneContext } from './clone';
 import { DEFAULT_SETTINGS, type PlacedField } from './model';
 
 // FIELD-PARITY-1 §5 P2-1 — building duplicates, pasted copies and Repeat down rows.
@@ -105,5 +105,19 @@ describe('repeatDown', () => {
   it('group keys: the next free suffix, cut to the host limit', () => {
     expect(nextGroupKey('g', 2, new Set(['g_2']))).toBe('g_3');
     expect(nextGroupKey('abcdefgh', 2, new Set(), 6)).toBe('abcd_2');
+  });
+});
+
+describe('Repeat down boxes (repeatCountOf / repeatPitchOfText)', () => {
+  it('reads a whole number of copies, at least 1, at most REPEAT_MAX', () => {
+    expect(repeatCountOf('5')).toBe(5);
+    expect(repeatCountOf('5.7')).toBe(5);
+    expect(repeatCountOf('500')).toBe(REPEAT_MAX);
+    for (const bad of ['', '  ', '0', '-3', 'abc']) expect(repeatCountOf(bad)).toBeNull();
+  });
+  it('reads a spacing in points, more than 0', () => {
+    expect(repeatPitchOfText('26')).toBe(26);
+    expect(repeatPitchOfText('12.5')).toBe(12.5);
+    for (const bad of ['', '0', '-1', 'x']) expect(repeatPitchOfText(bad)).toBeNull();
   });
 });
