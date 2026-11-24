@@ -149,3 +149,18 @@ describe('clearing a saved answer (web signing page)', () => {
     expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
   });
 });
+
+// One wording for "you may skip this field" (@aramo/sign-client optionalMark), as in the app:
+// only an optional field is marked; a required one shows no "required".
+describe('optional mark on the web signing page', () => {
+  it('the field list marks the optional field only, and its entry window says "(optional)"', async () => {
+    transport([note, sig]);
+    await toWorkspace();
+    const panel = screen.getByRole('complementary', { name: 'Your fields' });
+    expect(panel.textContent).toContain('page 1 · optional');
+    expect(panel.textContent).not.toContain('· required');
+    expect(panel.textContent).toContain('Signaturepage 1Sign');
+    const dialog = await openOnPage('f-note', 'Note');
+    expect(within(dialog).getByText(/Note \(optional\)/)).toBeInTheDocument();
+  });
+});

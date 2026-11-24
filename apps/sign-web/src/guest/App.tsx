@@ -15,6 +15,8 @@ import {
   isValidDelegate,
   normalizeSignerInput,
   numberPrefixOf,
+  optionalMark,
+  optionalSuffix,
   radioChoiceClearable,
   signDatePreview,
   signerFieldCaption,
@@ -656,7 +658,7 @@ export function FieldDialog({
       <div className="sg-fieldedit">
         <label className="sg-fieldedit__label" htmlFor={id}>
           {title}
-          {field.required ? '' : ' (optional)'}
+          {optionalSuffix(field.required)}
         </label>
         {help !== null ? (
           <p className="sg-fieldedit__help" id={`${id}-help`}>
@@ -1997,7 +1999,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                         <span className="sg-field__meta">
                           page {f.page_number + 1}
                           {radio || f.group_rule === 'SELECT_ONE' ? ' · choose one' : typeof f.group_key === 'string' && f.group_key.length > 0 ? ' · choose any' : ''}
-                          {f.required ? ' · required' : ' · optional'}
+                          {optionalMark(f.required)}
                         </span>
                         {helpLine}
                       </span>
@@ -2021,7 +2023,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                       <span className="sg-field__name">{fieldLabel(f)}</span>
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
-                        {f.required ? ' · required' : ' · optional'}
+                        {optionalMark(f.required)}
                         {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
                       {helpLine}
