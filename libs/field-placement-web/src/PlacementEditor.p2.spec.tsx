@@ -184,11 +184,65 @@ describe('P2-1 duplicate, copy / paste, Repeat down', () => {
     const texts = last().filter((f) => f.type === 'TEXT');
     expect(texts.map((f) => f.y)).toEqual([600, 570, 540, 510, 480, 450, 420, 390, 360, 330]);
     expect(new Set(last().filter((f) => f.type === 'CHECKBOX').map((f) => f.settings.groupKey)).size).toBe(10);
-    // The source row and the new rows are selected, ready to align.
-    expect(screen.getByTestId('fpe-selection-count')).toHaveTextContent('20 fields selected');
+    // Only the last new row is selected (so Repeat down again continues the column).
+    expect(screen.getByTestId('fpe-selection-count')).toHaveTextContent('2 fields selected');
     fireEvent.click(screen.getByTestId('fpe-undo'));
     expect(last()).toHaveLength(2);
     expect(announce()).toHaveTextContent('Undone: Repeat down 9 rows.');
+  });
+
+  it('Repeat down twice continues the column at the same spacing (it does not double)', () => {
+    const { last } = setup({ fields: [field('t', { x: 72, y: 600, width: 200, height: 20 })] });
+    fireEvent.focus(screen.getByTestId('fpe-field-t'));
+    fireEvent.change(screen.getByTestId('fpe-repeat-count'), { target: { value: '2' } });
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(last().map((f) => f.y)).toEqual([600, 574, 548]);
+    // Only the last new row is selected.
+    expect(screen.getByTestId(`fpe-field-${last()[2]!.id}`)).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId(`fpe-field-${last()[1]!.id}`)).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('fpe-field-t')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('fpe-repeat-pitch')).toHaveValue(26);
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(last().map((f) => f.y)).toEqual([600, 574, 548, 522, 496]);
+  });
+
+  it('a typed row spacing is kept for the next Repeat down', () => {
+    const { last } = setup({ fields: [field('t', { x: 72, y: 600, width: 200, height: 20 })] });
+    fireEvent.focus(screen.getByTestId('fpe-field-t'));
+    fireEvent.change(screen.getByTestId('fpe-repeat-pitch'), { target: { value: '40' } });
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(screen.getByTestId('fpe-repeat-pitch')).toHaveValue(40);
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(last().map((f) => f.y)).toEqual([600, 560, 520]);
+  });
+
+  it('the Copies box can be cleared and retyped (an empty box is not snapped back to 1)', () => {
+    const { last } = setup({ fields: [field('t', { x: 72, y: 600, width: 200, height: 20 })] });
+    fireEvent.focus(screen.getByTestId('fpe-field-t'));
+    const count = screen.getByTestId('fpe-repeat-count');
+    fireEvent.change(count, { target: { value: '' } });
+    expect(count).toHaveValue(null);
+    // Repeat down with the box empty adds nothing and says why.
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(announce()).toHaveTextContent('Enter how many copies to add (1 to 50).');
+    fireEvent.change(count, { target: { value: '5' } });
+    expect(count).toHaveValue(5);
+    fireEvent.click(screen.getByTestId('fpe-repeat'));
+    expect(last()).toHaveLength(6);
+    // Leaving the box empty puts back 1.
+    fireEvent.change(count, { target: { value: '' } });
+    fireEvent.blur(count);
+    expect(count).toHaveValue(1);
+  });
+
+  it('the Row spacing box can be cleared; left empty it goes back to the suggested spacing', () => {
+    setup({ fields: [field('t', { x: 72, y: 600, width: 200, height: 20 })] });
+    fireEvent.focus(screen.getByTestId('fpe-field-t'));
+    const pitch = screen.getByTestId('fpe-repeat-pitch');
+    fireEvent.change(pitch, { target: { value: '' } });
+    expect(pitch).toHaveValue(null);
+    fireEvent.blur(pitch);
+    expect(pitch).toHaveValue(26);
   });
 
   it('Repeat down near the bottom adds what fits and says how many did not', () => {

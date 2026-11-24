@@ -3,7 +3,7 @@ import { suggestionReasonText, type FieldSurface, type FieldTypeKey } from '@ara
 
 import { PlacementPages, defaultFace, pageSlotsOf, type FieldFace, type PageRenderer, type PageSlot } from './PlacementPages';
 import { GRID_STEP, SNAP_DISTANCE_PX, intersects, rectFromPoints, type AlignEdge, type SnapOptions } from './lib/arrange';
-import { DUPLICATE_OFFSET, REPEAT_MAX, cloneFields, copyable, repeatDown, repeatPitchOf, type CloneContext } from './lib/clone';
+import { DUPLICATE_OFFSET, REPEAT_MAX, cloneFields, copyable, repeatCountOf, repeatDown, repeatPitchOf, repeatPitchOfText, type CloneContext } from './lib/clone';
 import {
   alignFields,
   assignField,
@@ -284,8 +284,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
   // P2-1 — the editor's own clipboard (copies stay inside this editor; the system clipboard is untouched).
   const [clipboard, setClipboard] = useState<readonly PlacedField[]>([]);
   const pasteRound = useRef(0);
-  const [repeatCount, setRepeatCount] = useState(1);
-  const [repeatPitch, setRepeatPitch] = useState<number | null>(null);
+  // P2-1 — the Repeat down boxes hold what the sender types (an empty box while retyping, so
+  // "delete 1, type 5" gives 5); the number is read when Repeat down runs, and tidied on blur.
+  const [repeatCountText, setRepeatCountText] = useState('1');
+  // null: follow the suggested row spacing for the selection.
+  const [repeatPitchText, setRepeatPitchText] = useState<string | null>(null);
   const [marquee, setMarquee] = useState<{ slotIndex: number; rect: Box } | null>(null);
   // P2-4 — the loaded suggestions (null: not asked yet), the dismissed ids, the load state.
   const [suggestions, setSuggestions] = useState<readonly PlacementSuggestion[] | null>(null);
@@ -315,7 +318,16 @@ export function PlacementEditor(props: PlacementEditorProps) {
   const editableSelection = selectedFields.filter(copyable);
   // The Repeat down distance follows the selection until the user sets one.
   const selectionKey = state.selection.join('\u0000');
-  useEffect(() => setRepeatPitch(null), [selectionKey]);
+  // Repeat down moves the selection to its last new row; a spacing the sender typed is kept then,
+  // so Repeat down again continues at that spacing.
+  const keepPitchOnce = useRef(false);
+  useEffect(() => {
+    if (keepPitchOnce.current) {
+      keepPitchOnce.current = false;
+      return;
+    }
+    setRepeatPitchText(null);
+  }, [selectionKey]);
   const assigneeOf = useCallback((id: string | null) => assignees.find((a) => a.id === id), [assignees]);
   const canPlace = !readOnly && slots.length > 0 && (allowUnassigned || active !== null);
   const paletteTypes = useMemo(() => palette.map((t) => t.type as string), [palette]);
@@ -497,11 +509,13 @@ export function PlacementEditor(props: PlacementEditorProps) {
   };
 
   /** Add copies as one undo step, select them and move focus to the first. */
-  const addCopies = (copies: readonly PlacedField[], label: string, keep: readonly string[] = []) => {
+  /** Place `copies` as one undo step; select `only` when given, else `keep` plus every copy. */
+  const addCopies = (copies: readonly PlacedField[], label: string, keep: readonly string[] = [], only?: readonly string[]) => {
     if (copies.length === 0) return;
-    focusField.current = copies[0]!.id;
+    const selection = only ?? [...keep, ...copies.map((f) => f.id)];
+    focusField.current = selection[0] ?? copies[0]!.id;
     dispatch({ type: 'exec', command: placeFields(copies, label) });
-    select([...keep, ...copies.map((f) => f.id)]);
+    select(selection);
   };
 
   /** P2-1 — duplicate the selection, 10pt right and down (Cmd/Ctrl+D). */
@@ -544,9 +558,19 @@ export function PlacementEditor(props: PlacementEditorProps) {
 
   /** P2-1 — Repeat down: N copies of the selected row, each `pitch` points below the last. */
   const defaultPitch = repeatPitchOf(editableSelection, cloneCtx.pageSize);
-  const pitch = repeatPitch ?? defaultPitch ?? 0;
+  const repeatCount = repeatCountOf(repeatCountText);
+  const typedPitch = repeatPitchText === null ? null : repeatPitchOfText(repeatPitchText);
+  const pitch = typedPitch ?? defaultPitch ?? 0;
   const runRepeat = () => {
     if (readOnly) return;
+    if (repeatCount === null) {
+      setAnnounce(`Enter how many copies to add (1 to ${REPEAT_MAX}).`);
+      return;
+    }
+    if (repeatPitchText !== null && typedPitch === null) {
+      setAnnounce('Enter the row spacing in points (more than 0).');
+      return;
+    }
     const r = repeatDown(state.fields, editableSelection, { count: repeatCount, pitch, ...(capabilities.limits?.groupKeyMax !== undefined ? { groupKeyMax: capabilities.limits.groupKeyMax } : {}) }, cloneCtx);
     if (!r.ok) {
       setAnnounce(r.reason === 'pages' ? 'Repeat down works on fields on one page. Select one row.' : 'Select a field or row to repeat.');
@@ -556,7 +580,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
       setAnnounce('No rows added: there is no room below the row on this page.');
       return;
     }
-    addCopies(r.fields, `Repeat down ${plural(r.rows, 'row')}`, editableSelection.map((f) => f.id));
+    // Only the last new row stays selected, so Repeat down again continues the column at the
+    // same spacing (selecting the whole column made the next click repeat the column: 2, 4, 8).
+    const rowSize = r.fields.length / r.rows;
+    keepPitchOnce.current = repeatPitchText !== null;
+    addCopies(r.fields, `Repeat down ${plural(r.rows, 'row')}`, [], r.fields.slice(-rowSize).map((f) => f.id));
     setAnnounce(`${plural(r.rows, 'row')} added.${r.skipped > 0 ? ` ${plural(r.skipped, 'row')} did not fit on the page.` : ''}`);
   };
 
@@ -870,11 +898,9 @@ export function PlacementEditor(props: PlacementEditorProps) {
                   type="number"
                   min={1}
                   max={REPEAT_MAX}
-                  value={repeatCount}
-                  onChange={(e) => {
-                    const n = Math.floor(Number(e.target.value));
-                    if (Number.isFinite(n)) setRepeatCount(Math.max(1, Math.min(REPEAT_MAX, n)));
-                  }}
+                  value={repeatCountText}
+                  onChange={(e) => setRepeatCountText(e.target.value)}
+                  onBlur={() => setRepeatCountText(String(repeatCount ?? 1))}
                   data-testid={`${p}-repeat-count`}
                 />
               </label>
@@ -885,10 +911,11 @@ export function PlacementEditor(props: PlacementEditorProps) {
                   type="number"
                   min={1}
                   step={1}
-                  value={pitch}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (Number.isFinite(n) && n > 0) setRepeatPitch(n);
+                  value={repeatPitchText ?? String(defaultPitch ?? 0)}
+                  onChange={(e) => setRepeatPitchText(e.target.value)}
+                  onBlur={() => {
+                    // A box left empty or not a spacing goes back to the suggested spacing.
+                    if (repeatPitchText !== null && typedPitch === null) setRepeatPitchText(null);
                   }}
                   data-testid={`${p}-repeat-pitch`}
                 />
