@@ -310,6 +310,43 @@ export interface EnvelopeField {
   value?: string | null;
 }
 
+/**
+ * PUT …/fields — one field as the save sends it. The type's configuration travels with the
+ * field; a value never does, except a sender-filled field's own value (FIELD-PARITY-1 P3 S-5,
+ * ruling R-3).
+ */
+export function envelopeFieldToWire({ id, field_key, condition, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, value }: EnvelopeField): Record<string, unknown> {
+  return {
+    // An engine-only type goes back with its stored id, unchanged (the server
+    // keeps it only when identical to the stored row). FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT
+    // is authorable now, but a stored engine row of it keeps its id (the server passes a
+    // row with no recipient or size through unchanged).
+    ...(id != null && (!SENDER_FIELD_TYPES.has(field_type) || field_type === 'ACKNOWLEDGEMENT') ? { id } : {}),
+    // FIELD-PARITY-2 B-1 / B-2 — the field's key and its "show only when" go back too; the
+    // save replaces every field, so a setting left out here is lost (the conditions were).
+    ...(field_key != null ? { field_key } : {}),
+    envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
+    ...(name_mode != null ? { name_mode } : {}),
+    ...(label != null ? { label } : {}),
+    ...(group_key != null ? { group_key } : {}),
+    ...(group_rule != null ? { group_rule } : {}),
+    ...(min_selected != null ? { min_selected } : {}),
+    ...(payment_amount_minor != null ? { payment_amount_minor, payment_currency: payment_currency ?? 'USD' } : {}),
+    // FIELD-PARITY-1 P3 — every setting that is set goes back (a stored DROPDOWN keeps its choices).
+    ...(tooltip != null ? { tooltip } : {}),
+    ...(placeholder != null ? { placeholder } : {}),
+    ...(read_only === true ? { read_only } : {}),
+    ...(sender_filled === true ? { sender_filled } : {}),
+    ...(validation != null ? { validation } : {}),
+    ...(font_size != null ? { font_size } : {}),
+    ...(data_name != null ? { data_name } : {}),
+    ...(options != null ? { options } : {}),
+    ...(condition != null ? { condition } : {}),
+    // S-5 — the sender's value travels only with a sender-filled field.
+    ...(sender_filled === true && value != null ? { value } : {}),
+  };
+}
+
 // Sign 1.14 — the organization's Stripe Connect account (Settings → Payments).
 export interface PaymentAccount {
   available: boolean;
@@ -900,35 +937,7 @@ export const senderApi = {
   setMessaging: (id: string, signerId: string, body: { delivery_channel: DeliveryChannel | null; sms_otp_required: boolean; phone_e164?: string }) =>
     apiClient.put<RecipientMessaging>(`${BASE}/envelopes/${enc(id)}/recipients/${enc(signerId)}/messaging`, body),
   fields: (id: string, fields: EnvelopeField[]) =>
-    apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
-      // M-A6 §2 — the type's configuration travels with the field; a value never does, except a
-      // sender-filled field's own value (FIELD-PARITY-1 P3 S-5, ruling R-3).
-      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected, payment_amount_minor, payment_currency, tooltip, placeholder, read_only, sender_filled, validation, font_size, data_name, options, value }) => ({
-        // An engine-only type goes back with its stored id, unchanged (the server
-        // keeps it only when identical to the stored row). FIELD-PARITY-1 P3 — ACKNOWLEDGEMENT
-        // is authorable now, but a stored engine row of it keeps its id (the server passes a
-        // row with no recipient or size through unchanged).
-        ...(id != null && (!SENDER_FIELD_TYPES.has(field_type) || field_type === 'ACKNOWLEDGEMENT') ? { id } : {}),
-        envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
-        ...(name_mode != null ? { name_mode } : {}),
-        ...(label != null ? { label } : {}),
-        ...(group_key != null ? { group_key } : {}),
-        ...(group_rule != null ? { group_rule } : {}),
-        ...(min_selected != null ? { min_selected } : {}),
-        ...(payment_amount_minor != null ? { payment_amount_minor, payment_currency: payment_currency ?? 'USD' } : {}),
-        // FIELD-PARITY-1 P3 — every setting that is set goes back (a stored DROPDOWN keeps its choices).
-        ...(tooltip != null ? { tooltip } : {}),
-        ...(placeholder != null ? { placeholder } : {}),
-        ...(read_only === true ? { read_only } : {}),
-        ...(sender_filled === true ? { sender_filled } : {}),
-        ...(validation != null ? { validation } : {}),
-        ...(font_size != null ? { font_size } : {}),
-        ...(data_name != null ? { data_name } : {}),
-        ...(options != null ? { options } : {}),
-        // S-5 — the sender's value travels only with a sender-filled field.
-        ...(sender_filled === true && value != null ? { value } : {}),
-      })),
-    }),
+    apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, { fields: fields.map(envelopeFieldToWire) }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),
   // signer_id — remind one signer; omitted, everyone who may sign now.
   remind: (id: string, signer_id?: string) =>
