@@ -1,4 +1,4 @@
-import { FIELD_DEFAULTS, fieldTypesFor } from '@aramo/sign-fields';
+import { FIELD_CATALOG, FIELD_DEFAULTS, fieldTypesFor } from '@aramo/sign-fields';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -88,8 +88,10 @@ describe('FIELD-PARITY-1 P1-0 / P1-2 — the palette is the catalog', () => {
       'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'COMPANY', 'TITLE', 'ACKNOWLEDGEMENT', 'DATE', 'DROPDOWN', 'RADIO', 'NUMBER', 'MULTILINE_TEXT',
     ]);
     expect(FIXED_FORM_FIELD_TYPES.map((t) => t.type).sort()).toEqual([...fieldTypesFor('template_fixed_form')].sort());
-    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label).slice(0, 6)).toEqual(['Signature', 'Initials', 'Name', 'Date', 'Text', 'Checkbox']);
-    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'DATE')?.label).toBe('Chosen date');
+    expect(FIXED_FORM_FIELD_TYPES.map((t) => t.label).slice(0, 6)).toEqual(['Signature', 'Initials', 'Name', 'Sign date', 'Text', 'Checkbox']);
+    expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'DATE')?.label).toBe('Date');
+    // One name per type everywhere: the console palette reads the shared catalog's label.
+    for (const t of FIXED_FORM_FIELD_TYPES) expect(t.label).toBe(FIELD_CATALOG[t.type].label);
     for (const t of FIXED_FORM_FIELD_TYPES) expect({ width: t.width, height: t.height, required: t.required }).toEqual(FIELD_DEFAULTS[t.type]);
     expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'SIGNATURE')).toMatchObject({ width: 230, height: 50, required: true });
     expect(FIXED_FORM_FIELD_TYPES.find((t) => t.type === 'TEXT')).toMatchObject({ width: 230, height: 22, required: false });

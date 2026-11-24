@@ -212,7 +212,7 @@ export interface PaletteEntry {
 export interface PaletteOptions {
   /** P1-6 — PAYMENT joins a send surface only while payments are available AND the host can author it. */
   readonly payments_available?: boolean;
-  /** Host palette labels (e.g. the console calls SIGN_DATE "Date"); default the catalog label. */
+  /** Host palette labels (an override per type); default the catalog label. */
   readonly labels?: Partial<Record<FieldTypeKey, string>>;
   /** Host palette order; types not listed follow in catalog order. */
   readonly order?: readonly FieldTypeKey[];
