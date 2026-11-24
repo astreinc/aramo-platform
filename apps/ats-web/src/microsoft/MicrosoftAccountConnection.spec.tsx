@@ -25,7 +25,7 @@ describe('MicrosoftAccountConnection', () => {
         onNavigate={onNavigate}
       />,
     );
-    expect(await screen.findByTestId('microsoft-account-status')).toHaveTextContent(/not connected/i);
+    await waitFor(() => expect(screen.getByTestId('microsoft-account-status')).toHaveTextContent(/not connected/i));
     fireEvent.click(screen.getByTestId('microsoft-account-connect'));
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith('https://login.microsoftonline.example/x'),
@@ -34,7 +34,7 @@ describe('MicrosoftAccountConnection', () => {
 
   it('connected → shows "Connected" and no connect button', async () => {
     render(<MicrosoftAccountConnection loadStatusFn={vi.fn().mockResolvedValue(bind({}))} />);
-    expect(await screen.findByTestId('microsoft-account-status')).toHaveTextContent(/connected/i);
+    await waitFor(() => expect(screen.getByTestId('microsoft-account-status')).toHaveTextContent(/connected/i));
     expect(screen.queryByTestId('microsoft-account-connect')).toBeNull();
   });
 
@@ -44,7 +44,7 @@ describe('MicrosoftAccountConnection', () => {
         loadStatusFn={vi.fn().mockResolvedValue(bind({ needs_reauthorization: true }))}
       />,
     );
-    expect(await screen.findByTestId('microsoft-account-status')).toHaveTextContent(/reconnect needed/i);
+    await waitFor(() => expect(screen.getByTestId('microsoft-account-status')).toHaveTextContent(/reconnect needed/i));
     expect(screen.getByTestId('microsoft-account-connect')).toHaveTextContent(/reconnect/i);
   });
 
