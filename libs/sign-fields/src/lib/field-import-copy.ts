@@ -19,6 +19,28 @@ export const UPLOAD_OPTION_COPY = {
   },
 } as const;
 
+/**
+ * A PDF the server refused, keyed by details.pdf_problem (the server's one classification,
+ * @aramo/documents-rendering PdfProblem; sent with reason unsafe_pdf, pdf_unsafe or
+ * pdf_invalid). One place for every UI: console form Studio, sign-web and the Sign app.
+ */
+export const PDF_PROBLEM_COPY = {
+  scripts: `This PDF has built-in scripts, which Aramo doesn’t accept. Fillable forms (like the I-9 or W-4) often do. Turn on “${UPLOAD_OPTION_COPY.import_fields.label}” and upload it again: the scripts are removed and its fields come in. Or print it to a new PDF and upload that copy.`,
+  password: 'This PDF is password-protected. Remove the password, then upload it again.',
+  too_large: 'This PDF is too large. Choose a smaller file.',
+  too_many_pages: 'This PDF has too many pages.',
+  not_pdf: 'This file isn’t a PDF. Choose a PDF file.',
+  damaged: 'This PDF couldn’t be read. It may be damaged. Print it to a new PDF and upload that copy.',
+} as const;
+
+/** A refused PDF whose problem the server did not say (an older server). */
+export const PDF_REFUSED_FALLBACK = 'This PDF can’t be used. Try another file.';
+
+/** The copy for a refused PDF from its details.pdf_problem. */
+export function pdfProblemText(problem: unknown): string {
+  return typeof problem === 'string' && problem in PDF_PROBLEM_COPY ? PDF_PROBLEM_COPY[problem as keyof typeof PDF_PROBLEM_COPY] : PDF_REFUSED_FALLBACK;
+}
+
 /** The plain-language copy of every warning code (the server's `message` adds the specifics). */
 export const FIELD_IMPORT_WARNING_COPY: Readonly<Record<FieldImportWarningCode, string>> = {
   pdf_field_type_unsupported: 'A form field of a kind we can’t import (for example a button) was skipped.',

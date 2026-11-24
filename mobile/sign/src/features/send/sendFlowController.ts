@@ -12,7 +12,7 @@
 import { fieldImportSummary, fieldImportWarningText } from '@aramo/sign-client';
 
 import { ApiError, isApiError } from '../../api/errors';
-import { WORD_COPY } from '../../api/refusalMessages';
+import { WORD_COPY, refusalMessage } from '../../api/refusalMessages';
 import { newIdempotencyKey } from '../../api/workspaceClient';
 import type { DraftStore, SendStep } from '../../state/draftStore';
 import { base64Decode, base64Encode } from '../../util/bytes';
@@ -177,7 +177,8 @@ function messageFor(e: unknown): string {
       return 'Word files can’t be sent. Save the document as a PDF, then choose the PDF.';
     // M-A13 R-4 — Word conversion refusals (too large, password-protected, not converted).
     if (e.reason in WORD_COPY) return WORD_COPY[e.reason as keyof typeof WORD_COPY];
-    if (e.reason === 'unsafe_pdf') return 'This PDF can’t be used. Try another file.';
+    // The words for a refused PDF come from the shared map (@aramo/sign-client PDF_PROBLEM_COPY).
+    if (e.reason === 'unsafe_pdf') return refusalMessage(e);
     if (e.reason === 'too_many_signers')
       return `An envelope can have at most ${MAX_RECIPIENTS} signers.`;
     const role = (ROLE_COPY as Record<string, string>)[e.reason];

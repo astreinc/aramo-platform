@@ -368,8 +368,12 @@ export async function importPdfForm(bytes: Uint8Array): Promise<PdfFormImport> {
 
   const widgets: PdfFormWidgetRead[] = [];
   const fieldActions = new Set<string>();
+  // Every field, ancestor field and widget dictionary: their actions are deleted below.
+  const actionHolders = new Set<PDFDict>();
   for (const t of terminals) {
+    for (const w of t.widgets) actionHolders.add(w);
     for (let d: PDFDict | undefined = t.field, i = 0; d !== undefined && i < MAX_DEPTH; d = dictOf(ctx, d.get(N('Parent'))), i += 1) {
+      actionHolders.add(d);
       if (d.get(N('AA')) !== undefined) fieldActions.add('/AA');
       if (d.get(N('A')) !== undefined) fieldActions.add('/A');
     }
@@ -427,6 +431,7 @@ export async function importPdfForm(bytes: Uint8Array): Promise<PdfFormImport> {
         keep.push(raw);
         continue;
       }
+      actionHolders.add(a);
       if (a.get(N('AA')) !== undefined) stripped.add('/AA');
       if (a.get(N('A')) !== undefined) stripped.add('/A');
       const f = numOf(ctx, a.get(N('F'))) ?? 0;
@@ -443,6 +448,15 @@ export async function importPdfForm(bytes: Uint8Array): Promise<PdfFormImport> {
     if (keep.length === 0) page.node.delete(N('Annots'));
     else page.node.set(N('Annots'), ctx.obj(keep));
   });
+
+  // Removing the form and the widget annotations is not enough on a tagged PDF: its structure
+  // tree (/StructTreeRoot … /OBJR /Obj) still points at every field and widget, so they stay
+  // reachable and are written out, scripts included (the USCIS I-9 is one). Delete the
+  // actions themselves.
+  for (const d of actionHolders) {
+    d.delete(N('A'));
+    d.delete(N('AA'));
+  }
 
   // The form and every script that belongs to it.
   catalog.delete(N('AcroForm'));

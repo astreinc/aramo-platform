@@ -289,7 +289,7 @@ export class SignApiService {
         try {
           accepted = await this.safePdf.accept(new Uint8Array(Buffer.from(o['content_base64'], 'base64')));
         } catch (e) {
-          if (e instanceof UnsafePdfError) throw bad(requestId, `document ${i + 1} can't be used: ${e.message}`, { index: i, reason: 'unsafe_pdf' });
+          if (e instanceof UnsafePdfError) throw bad(requestId, `document ${i + 1} can't be used: ${e.message}`, { index: i, reason: 'unsafe_pdf', pdf_problem: e.problem });
           throw e;
         }
         const pdf = await PDFDocument.load(accepted);

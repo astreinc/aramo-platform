@@ -25,7 +25,7 @@ function addSignatureField(doc: PDFDocument, page: PDFPage, name: string, rect: 
 
 const jsAction = (doc: PDFDocument): PDFRef => doc.context.register(doc.context.obj({ S: 'JavaScript', JS: PDFString.of('app.alert("hi")') }));
 
-async function formPdf(opts: { activeContent?: boolean; xfa?: boolean } = {}): Promise<Uint8Array> {
+async function formPdf(opts: { activeContent?: boolean; xfa?: boolean; tagged?: boolean } = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([612, 792]);
   page.drawText('Application form', { x: 50, y: 740, size: 14, font: await doc.embedFont(StandardFonts.Helvetica) });
@@ -63,6 +63,20 @@ async function formPdf(opts: { activeContent?: boolean; xfa?: boolean } = {}): P
     doc.catalog.set(N('AA'), ctx.obj({ WC: jsAction(doc) }));
     doc.catalog.set(N('Names'), ctx.obj({ JavaScript: ctx.obj({ Names: [PDFString.of('init'), jsAction(doc)] }) }));
     page.node.set(N('AA'), ctx.obj({ O: jsAction(doc) }));
+  }
+  if (opts.tagged === true) {
+    // A tagged (accessible) form, like the USCIS I-9: the structure tree points at each field's
+    // widget through an object reference (/OBJR /Obj), so the widget stays reachable after the
+    // import removes it from the page.
+    const kids = [];
+    for (const f of [name, agree]) {
+      for (const w of f.acroField.getWidgets()) {
+        const wRef = ctx.getObjectRef(w.dict);
+        if (wRef === undefined) continue;
+        kids.push(ctx.obj({ Type: 'StructElem', S: 'Form', K: ctx.obj({ Type: 'OBJR', Obj: wRef, Pg: page.ref }) }));
+      }
+    }
+    doc.catalog.set(N('StructTreeRoot'), ctx.register(ctx.obj({ Type: 'StructTreeRoot', K: ctx.obj(kids) })));
   }
   if (opts.xfa === true) {
     const xfa = ctx.register(ctx.stream('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"></xdp:xdp>'));
@@ -199,6 +213,18 @@ describe('P2-5 importPdfForm — strip and flatten', () => {
     const raw = latin1(out.bytes);
     for (const token of ['/AcroForm', '/Widget', '/JavaScript', '/JS', '/AA', '/OpenAction', '/SubmitForm', '/XFA']) {
       expect(raw.includes(`${token} `) || raw.includes(`${token}\n`) || raw.includes(`${token}/`) || raw.includes(`${token}(`) || raw.includes(`${token}<`)).toBe(false);
+    }
+  });
+
+  it('strips the actions of a tagged form whose structure tree still points at the widgets (USCIS I-9)', async () => {
+    const bytes = await formPdf({ activeContent: true, tagged: true });
+    await expect(new SafePdfPipeline().accept(bytes)).rejects.toBeInstanceOf(UnsafePdfError);
+    const out = await importPdfForm(bytes);
+    await expect(new SafePdfPipeline().accept(out.bytes)).resolves.toBe(out.bytes);
+    const doc = await PDFDocument.load(out.bytes);
+    for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+      if (!(obj instanceof PDFDict)) continue;
+      expect([obj.get(N('A')), obj.get(N('AA')), obj.get(N('JS'))].filter((v) => v !== undefined)).toEqual([]);
     }
   });
 

@@ -10,8 +10,15 @@ export class RenderFailedError extends Error {
   }
 }
 
+// What is wrong with a refused PDF, in terms a person can act on. Servers send it as
+// details.pdf_problem so every UI picks its words from the same classification.
+export type PdfProblem = 'scripts' | 'password' | 'too_large' | 'too_many_pages' | 'not_pdf' | 'damaged';
+
 export class UnsafePdfError extends Error {
-  constructor(public readonly reason: string) {
+  constructor(
+    public readonly reason: string,
+    public readonly problem: PdfProblem = 'damaged',
+  ) {
     super(`Uploaded PDF rejected by the safe-upload pipeline: ${reason}`);
     this.name = 'UnsafePdfError';
   }

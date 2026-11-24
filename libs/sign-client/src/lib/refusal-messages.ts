@@ -3,6 +3,8 @@
 // error `code`. The server's own message text is NEVER shown (it can name ids and internal
 // state); an unmapped refusal gets a plain fallback. Where the two former maps disagreed the
 // mobile wording was kept, with any screen it named made neutral ("your plan settings").
+import { pdfProblemText } from '@aramo/sign-fields';
+
 import { WORD_COPY } from './file-rules.js';
 import { isDailyAllowance, limitReachedCopy } from './plan.js';
 import { ACCESS_CODE_MAX_LENGTH, ACCESS_CODE_MIN_LENGTH, PHONE_HINT, SIGNERS_FULL_MESSAGE } from './validation.js';
@@ -208,6 +210,9 @@ export function refusalMessage(e: RefusalInput, fmt: RefusalFormat = {}, fallbac
     return used !== null
       ? `${used} people are using seats, so you need at least ${used} seats. Remove someone’s Aramo Sign access first to go lower.`
       : 'You can’t have fewer seats than the people using them. Remove someone’s Aramo Sign access first to go lower.';
+  }
+  if (reason === 'unsafe_pdf' || reason === 'pdf_unsafe' || reason === 'pdf_invalid') {
+    return pdfProblemText(details['pdf_problem']);
   }
   if (reason !== null && REFUSAL_COPY[reason] !== undefined) return REFUSAL_COPY[reason] as string;
   const feature = str(details['feature_key']);

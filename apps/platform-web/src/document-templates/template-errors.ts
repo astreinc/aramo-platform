@@ -1,4 +1,5 @@
 import { ApiError } from '@aramo/fe-foundation';
+import { pdfProblemText } from '@aramo/sign-fields';
 
 // DOC-TEMPLATE-LIB-1 T-2 — governed template/catalog refusal → operator-legible message.
 export function templateErrorMessage(e: unknown, fallback: string): string {
@@ -28,6 +29,8 @@ export function templateErrorMessage(e: unknown, fallback: string): string {
     if (r === 'not_withdrawn') return 'This default has no pending withdrawal.';
     if (r === 'template_not_published') return 'Only a published default can be withdrawn.';
   }
+  // A refused PDF: the one copy in @aramo/sign-fields (sign-web and the Sign app show the same words).
+  if (e.details?.['pdf_problem'] !== undefined) return pdfProblemText(e.details['pdf_problem']);
   const reason = e.details?.['reason'];
   const reasonSuffix = typeof reason === 'string' && reason.length > 0 ? ` (${reason})` : '';
   return `${e.message}${reasonSuffix}`;

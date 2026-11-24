@@ -6,6 +6,7 @@ import {
   PdfFormImportError,
   SafePdfPipeline,
   UnsafePdfError,
+  type PdfProblem,
   extractTextLayer,
   importPdfForm,
   readPageFrames,
@@ -49,8 +50,10 @@ export interface AcceptedFixedFormPdf {
   readonly pages: readonly FixedFormPage[];
 }
 
-function refuse(reason: 'pdf_too_large' | 'pdf_unsafe' | 'pdf_invalid' | 'xfa_only_form', message: string, requestId: string): AramoError {
-  return new AramoError('VALIDATION_ERROR', message, 422, { requestId, details: { reason } });
+// details.pdf_problem is the classification every UI words from @aramo/sign-fields
+// PDF_PROBLEM_COPY (the same one sign-service sends); the message itself is for logs.
+function refuse(reason: 'pdf_too_large' | 'pdf_unsafe' | 'pdf_invalid' | 'xfa_only_form', message: string, requestId: string, problem?: PdfProblem): AramoError {
+  return new AramoError('VALIDATION_ERROR', message, 422, { requestId, details: { reason, ...(problem !== undefined ? { pdf_problem: problem } : {}) } });
 }
 
 const nameOf = (n: PDFName): string => n.asString().replace(/^\//, '');
@@ -81,14 +84,14 @@ function activeIn(obj: PDFObject | undefined, depth: number, seen: Set<PDFObject
 
 /** §7.1 — accept an official PDF or refuse it (422 VALIDATION_ERROR, details.reason). */
 export async function acceptFixedFormPdf(bytes: Uint8Array, requestId: string): Promise<AcceptedFixedFormPdf> {
-  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId);
-  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId);
+  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId, 'not_pdf');
+  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId, 'too_large');
   try {
     await new SafePdfPipeline().accept(bytes);
   } catch (e) {
     if (e instanceof UnsafePdfError) {
-      const reason = /active content|encrypted/i.test(e.reason) ? 'pdf_unsafe' : 'pdf_invalid';
-      throw refuse(reason, `This PDF can't be used: ${e.reason}`, requestId);
+      const reason = e.problem === 'scripts' || e.problem === 'password' ? 'pdf_unsafe' : e.problem === 'too_large' ? 'pdf_too_large' : 'pdf_invalid';
+      throw refuse(reason, `This PDF can't be used: ${e.reason}`, requestId, e.problem);
     }
     throw e;
   }
@@ -96,17 +99,17 @@ export async function acceptFixedFormPdf(bytes: Uint8Array, requestId: string): 
   try {
     doc = await PDFDocument.load(bytes, { updateMetadata: false });
   } catch (e) {
-    throw refuse('pdf_invalid', `This PDF can't be read: ${e instanceof Error ? e.message : String(e)}`, requestId);
+    throw refuse('pdf_invalid', `This PDF can't be read: ${e instanceof Error ? e.message : String(e)}`, requestId, 'damaged');
   }
   const seen = new Set<PDFObject>();
   for (const [, obj] of doc.context.enumerateIndirectObjects()) {
     const found = activeIn(obj, 0, seen);
-    if (found !== null) throw refuse('pdf_unsafe', `This PDF can't be used: active content not allowed: ${found}`, requestId);
+    if (found !== null) throw refuse('pdf_unsafe', `This PDF can't be used: active content not allowed: ${found}`, requestId, 'scripts');
   }
   const trailerActive = activeIn(doc.catalog, 0, new Set());
-  if (trailerActive !== null) throw refuse('pdf_unsafe', `This PDF can't be used: active content not allowed: ${trailerActive}`, requestId);
+  if (trailerActive !== null) throw refuse('pdf_unsafe', `This PDF can't be used: active content not allowed: ${trailerActive}`, requestId, 'scripts');
   const pages = doc.getPages().map((p) => ({ width: p.getWidth(), height: p.getHeight() }));
-  if (pages.length === 0) throw refuse('pdf_invalid', 'The PDF has no pages.', requestId);
+  if (pages.length === 0) throw refuse('pdf_invalid', 'The PDF has no pages.', requestId, 'damaged');
   return {
     sha256: createHash('sha256').update(bytes).digest('hex'),
     byte_size: bytes.byteLength,
@@ -150,8 +153,8 @@ export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImpo
     return { bytes, accepted: await acceptFixedFormPdf(bytes, requestId), fields: [], warnings: [], stripped: [] };
   }
   // The size limit first: nothing larger than a fixed form is parsed.
-  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId);
-  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId);
+  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId, 'not_pdf');
+  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId, 'too_large');
   let work = bytes;
   const fields: ImportedField[] = [];
   const warnings: FieldImportWarning[] = [];
