@@ -1,7 +1,7 @@
 // FIELD-PARITY-1 P3 §6 — the Send flow editor's settings sheet for the new types: the tool row
 // has them; a DROPDOWN's choices, a RADIO's "Add option", a NUMBER's money format, and
 // sender-filled shown only while the server flag is on.
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { FieldEditor } from '../FieldEditor';
@@ -42,6 +42,17 @@ async function placeCenter(type: string) {
 }
 
 describe('FieldEditor — Phase 3 tools and settings sheet', () => {
+  // Android field test 2026-11-24 — the field tools are pinned at the top of the Send panel, not
+  // inside its scrolling part (they were scrolled below the fold on a short screen).
+  it('the field tools are pinned in the panel, outside its scrolling part; hidden while a field is selected', async () => {
+    renderEditor();
+    await act(async () => {});
+    expect(within(screen.getByTestId('editor-panel')).getByTestId('send-tools')).toBeTruthy();
+    expect(within(screen.getByTestId('editor-panel-scroll')).queryByTestId('send-tools')).toBeNull();
+    await placeCenter('TEXT');
+    expect(screen.queryByTestId('send-tools')).toBeNull();
+  });
+
   it('the tool row has the new types and Acknowledgement', async () => {
     renderEditor();
     await act(async () => {});
