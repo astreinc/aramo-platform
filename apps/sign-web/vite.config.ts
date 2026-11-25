@@ -29,6 +29,9 @@ export default defineConfig({
       // TEMPLATE-PRODUCT-1 §7.2 — the shared PDF geometry/rendering helpers (prepare editor).
       // The SUBPATH only (not the Studio package root); keep it before any root alias.
       '@aramo/document-templates-web/pdf': resolve(root, '../../libs/document-templates-web/src/pdf/index.ts'),
+      // TEMPLATE-SYNC-1 S-11 / S-12 — the shared sync words only (the Business list stays free of
+      // the Studio chunk). The SUBPATH; keep it before the root alias.
+      '@aramo/document-templates-web/sync': resolve(root, '../../libs/document-templates-web/src/template-sync.ts'),
       // TEMPLATE-PRODUCT-1 §8.4 — the shared Template Studio (scope:shared) for the Personal
       // workspace (platform-web precedent). The guest zone never imports it (zones.spec.ts).
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),

@@ -3,10 +3,13 @@ import { templateAccess, type TemplateAccess } from '@aramo/sign-client';
 import { contentPreviewIframeDoc } from '@aramo/template-content';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
+  TEMPLATE_SYNC_COPY,
   TemplateStudio,
   organizationStudioCopy,
   organizationStudioDataSource,
+  templateMasterBadge,
   templateProductsLine,
+  templatesWithNewerMaster,
   type TemplateDefaultPreview,
   type TemplateStudioCopy,
   type TemplateStudioDataSource,
@@ -74,6 +77,11 @@ export function personalStudioDataSource(input: { listHref: string; canEdit: boo
     // The `sign` session carries document_template:read only; the Personal owner's author +
     // approve come from the sender context (template_studio) and are re-checked server-side.
     capabilities: { ...org.capabilities, canEdit: input.canEdit, canApprove: input.canEdit },
+    // TEMPLATE-SYNC-1 S-10 — Compare / Start a draft from the new version, and Keep my version for
+    // the Personal owner (who approves; Documents re-checks the grant).
+    ...(org.sync !== undefined
+      ? { sync: { ...org.sync, ...(input.canEdit ? { keepVersion: (id: string) => SIGN_STUDIO_API.keepVersion(id) } : {}) } }
+      : {}),
     copy: personalStudioCopy(input.listHref),
   };
 }
@@ -177,6 +185,8 @@ function PersonalTemplateList() {
   useEffect(load, [load]);
 
   const mine = useMemo(() => (list?.items ?? []).filter((i) => i.owner_scope === 'TENANT'), [list]);
+  // TEMPLATE-SYNC-1 S-10 — the server's master flag: the banner count and the row badges.
+  const newer = templatesWithNewerMaster(mine);
   const studioHref = (id: string) => `${base}/templates/studio/${id}`;
 
   const adopt = async (item: SignGalleryItem) => {
@@ -212,6 +222,11 @@ function PersonalTemplateList() {
         Adopt an Aramo template, edit it if you need to, and choose “Use this version”. Your letterhead is your name.
       </p>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+      {newer > 0 ? (
+        <div className="sg-note" role="status" data-testid="my-templates-newer" style={{ marginBottom: 12 }}>
+          <b>{TEMPLATE_SYNC_COPY.banner(newer)}.</b> {TEMPLATE_SYNC_COPY.bannerDetail}
+        </div>
+      ) : null}
       {list === null && error === '' ? <Loading /> : null}
       {list !== null ? (
         <section className="sg-card" data-testid="my-templates">
@@ -244,6 +259,11 @@ function PersonalTemplateList() {
                   {STATUS_LABEL[t.status] ?? t.status}
                   {t.current_version_number !== null ? ` · v${t.current_version_number}` : ''} · Updated {fmtDate(t.updated_at)}
                 </div>
+                {templateMasterBadge(t.master) !== null ? (
+                  <span className="sg-tag sg-tag--warn" data-testid={`my-template-master-${t.id}`}>
+                    {templateMasterBadge(t.master)}
+                  </span>
+                ) : null}
               </div>
               <Link className="sg-btn sg-btn--sm" to={studioHref(t.id)} data-testid={`open-studio-${t.id}`}>
                 {t.status === 'ACTIVE' ? 'Open' : 'Edit'}

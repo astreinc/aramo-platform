@@ -69,6 +69,7 @@
       "@aramo/fe-foundation": ["./libs/fe-foundation/src/index.ts"],
       "@aramo/org-admin-web": ["./libs/org-admin-web/src/index.ts"],
       "@aramo/document-templates-web/pdf": ["./libs/document-templates-web/src/pdf/index.ts"],
+      "@aramo/document-templates-web/sync": ["./libs/document-templates-web/src/template-sync.ts"],
       "@aramo/document-templates-web": ["./libs/document-templates-web/src/index.ts"],
       "@aramo/field-masking": ["./libs/field-masking/src/index.ts"],
       "@aramo/examination": ["./libs/examination/src/index.ts"],

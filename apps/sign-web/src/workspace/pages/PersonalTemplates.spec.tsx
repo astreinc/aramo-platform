@@ -226,6 +226,52 @@ describe('TEMPLATE-PRODUCT-1 §8 — Personal templates in Aramo Sign', () => {
   });
 });
 
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-10 — Sign web Personal: the banner and the row badge
+// from the server's master flag; the Personal Studio offers Compare / Start a draft / Keep my
+// version over the Sign Studio routes.
+describe('TEMPLATE-SYNC-1 — a newer master is available (Personal)', () => {
+  beforeEach(() => configureAuthConsumer('sign'));
+  afterEach(() => vi.unstubAllGlobals());
+  const MASTER = { template_id: DEFAULT_ID, name: 'Mutual NDA', current_version_id: 'mv2', current_version_number: 2, based_on_version_number: 1, newer_available: true, withdrawn: null, kept: false };
+
+  it('My templates shows "Aramo updated 1 template you use" and the row badge', async () => {
+    stub(BASE_CTX, (url) => (url.endsWith('/v1/sign/sender/templates/studio') ? json({ ...STUDIO_LIST, items: [{ ...STUDIO_LIST.items[0], master: MASTER }] }) : undefined));
+    renderAt('/personal/templates');
+    expect(await screen.findByTestId('my-templates-newer')).toHaveTextContent('Aramo updated 1 template you use');
+    expect(screen.getByTestId(`my-template-master-${MINE_ID}`)).toHaveTextContent('Newer version available');
+  });
+
+  it('no banner or badge when nothing is newer', async () => {
+    stub(BASE_CTX);
+    renderAt('/personal/templates');
+    await screen.findByTestId(`my-template-${MINE_ID}`);
+    expect(screen.queryByTestId('my-templates-newer')).toBeNull();
+    expect(screen.queryByTestId(`my-template-master-${MINE_ID}`)).toBeNull();
+  });
+
+  it('the Personal Studio source carries compare / start a draft / keep over the Sign routes', async () => {
+    const m = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(`/studio/${MINE_ID}/master`)) return json({ template_id: MINE_ID, master_template_id: DEFAULT_ID, version_id: 'mv2', version_number: 2, render_schema_version: 'rtr-html-v2', title: 'T', html: '<p>x</p>', signing: null });
+      if (url.endsWith(`/studio/${MINE_ID}/draft-from-master`)) return json({ id: 'd2', version_number: 3, status: 'DRAFT', render_schema_version: 'rtr-html-v2', field_schema: {}, created_at: '2026-11-01T00:00:00Z', activated_at: null, content_fingerprint: null, previewed_fingerprint: null }, 201);
+      if (url.endsWith(`/studio/${MINE_ID}/keep-version`)) return json({ id: MINE_ID });
+      return json({});
+    });
+    vi.stubGlobal('fetch', m);
+    const owner = personalStudioDataSource({ listHref: '/personal/templates', canEdit: true });
+    expect(owner.sync?.keepVersion).toBeDefined();
+    await owner.sync?.masterContent(MINE_ID);
+    await owner.sync?.draftFromMaster(MINE_ID);
+    await owner.sync?.keepVersion?.(MINE_ID);
+    const urls = m.mock.calls.map(([u]) => String(u));
+    expect(urls.some((u) => u.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}/master`))).toBe(true);
+    expect(urls.some((u) => u.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}/draft-from-master`))).toBe(true);
+    expect(urls.some((u) => u.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}/keep-version`))).toBe(true);
+    const reader = personalStudioDataSource({ listHref: '/personal/templates', canEdit: false });
+    expect(reader.sync?.keepVersion).toBeUndefined();
+  });
+});
+
 describe('TEMPLATE-PRODUCT-1 §8.2–8.3 — the Personal Studio data source and copy', () => {
   afterEach(() => vi.unstubAllGlobals());
 

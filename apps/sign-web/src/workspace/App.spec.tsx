@@ -210,6 +210,39 @@ describe('Sign workspace App', () => {
     expect(screen.getByTestId('manage-templates-link')).toHaveTextContent('Adopt and edit templates in Org Home');
   });
 
+  // TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-11 — Sign web Business: a badge only, from the
+  // server's master flag ("…your administrator updates it in Org Home"); no compare or update here.
+  it('Templates — an adopted template with a newer Aramo version shows the badge only', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const row = (id: string, master: unknown) => ({
+      template_id: id, name: `Our NDA ${id}`, description: null,
+      document_type: { id: 'dt', key: 'NDA', name: 'NDA' },
+      owner_scope: 'TENANT', resolution: 'AVAILABLE', version_id: `v-${id}`, version_number: 1, updated_at: '2026-10-21T00:00:00Z', variables: [], master,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/v1/sign/sender/templates')) {
+          return json({
+            items: [
+              row('newer', { newer_available: true, withdrawn: null, current_version_number: 2, based_on_version_number: 1 }),
+              row('same', { newer_available: false, withdrawn: null, current_version_number: 2, based_on_version_number: 2 }),
+              row('own', null),
+            ],
+            unavailable: [],
+          });
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates');
+    expect(await screen.findByTestId('template-master-newer')).toHaveTextContent('Newer version available — your administrator updates it in Org Home');
+    expect(screen.queryByTestId('template-master-same')).toBeNull();
+    expect(screen.queryByTestId('template-master-own')).toBeNull();
+    expect(screen.queryByText('Compare with Aramo’s new version')).toBeNull();
+    expect(screen.queryByText('Start a draft from the new version')).toBeNull();
+  });
+
   // Feature-Parity 1.1 (Catalog v2 P-6) — the Free plan never gets templates: the server's plan
   // refusal is shown as a plan message, never as a permission problem.
   it('Templates — available but the Free plan: the plan refusal is explained', async () => {

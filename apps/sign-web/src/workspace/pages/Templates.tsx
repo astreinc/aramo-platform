@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, templateAccess, type TemplateAccess } from '@aramo/sign-client';
 import { contentPreviewIframeDoc } from '@aramo/template-content';
+import { TEMPLATE_SYNC_COPY } from '@aramo/document-templates-web/sync';
 
 import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
 import { Area, Btn, Empty, ErrorBox, Field, Loading, Sel, TextIn, fmtDate } from '../ui';
@@ -172,6 +173,12 @@ function TemplateList() {
                     ) : null}
                   </div>
                   {t.description !== null && t.description.trim() !== '' ? <div className="sg-row__s sg-faint">{t.description}</div> : null}
+                  {/* TEMPLATE-SYNC-1 S-11 — a badge only: the organization updates it in Org Home. */}
+                  {t.master?.newer_available === true ? (
+                    <span className="sg-tag sg-tag--warn" data-testid={`template-master-${t.template_id}`}>
+                      {TEMPLATE_SYNC_COPY.badgeNewerUseOnly}
+                    </span>
+                  ) : null}
                 </div>
                 <Btn size="sm" onClick={() => setPreviewing(previewing === t.template_id ? null : t.template_id)} aria-expanded={previewing === t.template_id}>
                   {previewing === t.template_id ? 'Hide preview' : 'Preview'}
