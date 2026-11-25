@@ -234,6 +234,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DocumentTemplate'
+              # TEMPLATE-SYNC-1 S-3 — each row carries the server-computed `master` object.
   /v1/document-templates/adopt:
     post:
       operationId: adoptDocumentTemplate
@@ -242,8 +243,14 @@ paths:
         ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B). Copies the Aramo (PLATFORM)
         default's current version — content and field definitions — into a new TENANT-owned
         DRAFT template (v1). The new template records `adopted_from_template_id` /
-        `adopted_from_version_id` for audit only: later changes to the Aramo default never
-        reach it. Nothing is used until a `document_template:manage` holder approves it.
+        `adopted_from_version_id` (written once) and the draft records
+        `based_on_platform_version_id` (TEMPLATE-SYNC-1 S-2). TEMPLATE-SYNC-1 §0 (amends ORG-UX-1
+        §5.1): the lineage may be read to tell the organization that a newer master version
+        exists, or that the master was withdrawn (the `master` object), and to start an update
+        the organization asks for; it is never read by resolution or rendering. A master change
+        never propagates into, overwrites or invalidates an adopted copy by itself: every update
+        is a new DRAFT that the organization previews and approves.
+        Nothing is used until a `document_template:manage` holder approves it.
         Requires `document_template:author`. Unknown or non-PLATFORM id → 404; a withdrawn
         or unpublished default → 409 with details.reason `template_not_adoptable`. Writes
         `identity.document_template.adopted`. TEMPLATE-PRODUCT-1 §6: a default whose product
@@ -290,6 +297,11 @@ paths:
         no other live default would be used instead. Lists pending withdrawals and those
         that took effect in the last 30 days. TEMPLATE-PRODUCT-1 §6.3 (superseding ADR-0034
         D9): only defaults whose product tags share an entitled product with the tenant.
+        These legacy items keep their shape (no `master_template_id`). TEMPLATE-SYNC-1 S-4
+        (R-9): the organization's ADOPTED copies whose master has a published withdrawal
+        (PENDING, or IN_EFFECT within the same 30 days) are listed too, with `template_id` = the
+        copy and `master_template_id` = the Aramo default (`relies_on_default` false,
+        `has_own_template` true, `selected_for_client_ids` empty).
         Feeds the Org Home banner. Requires `document_template:read`.
       responses:
         '200':
@@ -518,7 +530,9 @@ paths:
     get:
       operationId: getDocumentTemplate
       summary: Get a document template.
-      description: Requires `document_template:read`.
+      description: |
+        Requires `document_template:read`. TEMPLATE-SYNC-1 S-3 — carries the server-computed
+        `master` object (null unless the template was adopted from an Aramo default).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -621,6 +635,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/{id}/master:
+    get:
+      operationId: getDocumentTemplateMasterContent
+      summary: Compare — the Aramo master's current version content of an adopted template.
+      description: |
+        TEMPLATE-SYNC-1 S-5 (R-6; §0 amends ADR-0034 D3). Returns the stored content of the
+        CURRENT published version of the Aramo default this organization template was adopted
+        from (render_schema_version, title, html, signing roles), for the organization's own
+        adopted template only. Never an earlier master version. The Studio compares it with
+        the copy's current version (and draft); 2-way only, no merge. Requires
+        `document_template:read`. Not the organization's template, or not adopted → 404
+        (details.reason `not_an_adopted_template`); the master no longer exists → 404
+        (details.reason `master_not_available`).
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The master's current version content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMasterContent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/{id}/draft-from-master:
+    post:
+      operationId: createTemplateDraftFromMaster
+      summary: Start a draft from the Aramo master's new version.
+      description: |
+        TEMPLATE-SYNC-1 S-7 (R-2). Creates the template's next DRAFT version with the master's
+        current content and signing roles, the organization's letterhead logo carried over
+        from its current version, the master version's field rows copied (as Adopt does), and
+        `based_on_platform_version_id` = that master version. Normalised by the same rules as
+        a PATCH. It is approved through the normal preview and activate steps; the approved
+        copy is unchanged until then. Writes `identity.document_template.draft_from_master`.
+        Requires `document_template:author`. Refusals (details.reason): not adopted → 404
+        `not_an_adopted_template`; the master was deleted or its withdrawal is in effect →
+        409 `master_not_available`; no newer master version → 409 `already_current`
+        (VALIDATION_ERROR); a draft is already open → 409 `TEMPLATE_DRAFT_ALREADY_EXISTS` with
+        `draft_exists` and the open draft's `version_id`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '201':
+          description: The new DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/{id}/keep-version:
+    post:
+      operationId: keepDocumentTemplateVersion
+      summary: Keep my version for the master's current version.
+      description: |
+        TEMPLATE-SYNC-1 S-8 (R-8). Records `sync_kept_platform_version_id` = the master's current
+        version: the notice hides for that master version only and shows again when Aramo
+        publishes a later one. The organization's template is unchanged. Writes
+        `identity.document_template.master_version_kept`. Requires `document_template:manage`.
+        Refusals (details.reason): not adopted → 404 `not_an_adopted_template`; the master no
+        longer exists → 409 `master_not_available`; no newer master version → 409
+        `already_current`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The template with its updated `master` object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1347,7 +1439,7 @@ paths:
       operationId: listSignStudioTemplates
       summary: A Personal account's templates and the Aramo defaults tagged sign (TEMPLATE-PRODUCT-1 §8.3).
       description: >
-        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). The Org Home library view (TemplateLibraryResponse) narrowed to the tenant's own templates and the defaults tagged sign; each item carries adopted_template_id (defaults) or null.
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). The Org Home library view (TemplateLibraryResponse) narrowed to the tenant's own templates and the defaults tagged sign; each item carries adopted_template_id (defaults) or null. TEMPLATE-SYNC-1 S-3 — each own template carries the server-computed `master` object (null unless adopted).
       parameters:
         - $ref: '#/components/parameters/EsignS2sTenantId'
         - $ref: '#/components/parameters/EsignS2sActorId'
@@ -1571,6 +1663,113 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/master:
+    get:
+      operationId: getSignStudioTemplateMasterContent
+      summary: Compare — the Aramo master's current version content of an adopted Personal template (TEMPLATE-SYNC-1 S-5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Same answer as GET /v1/document-templates/{id}/master (the master's CURRENT version only; 404 not_an_adopted_template / master_not_available).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The master's current version content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMasterContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/draft-from-master:
+    post:
+      operationId: createSignStudioTemplateDraftFromMaster
+      summary: Start a draft from the Aramo master's new version (TEMPLATE-SYNC-1 S-7).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as POST /v1/document-templates/{id}/draft-from-master (refusals not_an_adopted_template, master_not_available, already_current, draft_exists; audited).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '201':
+          description: The new DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/keep-version:
+    post:
+      operationId: keepSignStudioTemplateVersion
+      summary: Keep my version for the master's current version (TEMPLATE-SYNC-1 S-8).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:manage. Same rules as POST /v1/document-templates/{id}/keep-version (refusals not_an_adopted_template, master_not_available, already_current; audited).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '200':
+          description: The template with its updated `master` object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2337,11 +2536,26 @@ components:
         adopted_from_template_id:
           type: [string, 'null']
           format: uuid
-          description: ORG-UX-1 §5.1 — the Aramo default an adopted tenant template was copied from. Audit/provenance only.
+          description: >-
+            ORG-UX-1 §5.1 — the Aramo default an adopted tenant template was copied from (written
+            once). TEMPLATE-SYNC-1 §0: read only to tell the organization that a newer master
+            version exists or that the master was withdrawn, and to start an update it asks for;
+            never read by resolution or rendering.
         adopted_from_version_id:
           type: [string, 'null']
           format: uuid
-          description: ORG-UX-1 §5.1 — the default's version at adoption time. Audit/provenance only.
+          description: ORG-UX-1 §5.1 — the default's version at adoption time (written once; TEMPLATE-SYNC-1 §0 as above).
+        sync_kept_platform_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: TEMPLATE-SYNC-1 S-8 — "Keep my version" was chosen for this master version.
+        master:
+          description: >-
+            TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted template (null when not
+            adopted). Present on the list, GET and keep-version responses.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
+            - type: 'null'
     TemplateWithdrawalNoticesResponse:
       type: object
       required: [notices]
@@ -2400,6 +2614,13 @@ components:
         has_own_template:
           type: boolean
           description: True when the organization has an approved template of its own for the type (the fallback after the effective date). False means a choice is needed.
+        master_template_id:
+          type: string
+          format: uuid
+          description: >-
+            TEMPLATE-SYNC-1 S-4 — present only on an adopted-copy notice: `template_id` is then the
+            organization's adopted copy and this is the withdrawn Aramo default. Absent on the
+            legacy (selection) notices.
     TemplateVersion:
       type: object
       description: An immutable-after-activation template version (DOC-2).
@@ -2437,6 +2658,13 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Admin-only notes for this version (Document Templates slice 1). Never rendered into any document.
+        based_on_platform_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            TEMPLATE-SYNC-1 S-2 — the Aramo (PLATFORM) version this version's content came from
+            (Adopt, Start a draft from the new version, or carried by the organization's own new
+            draft). Server-written.
         field_schema:
           description: |
             The version content. `rtr-generated-v1`: { render_schema_version, title, blocks: [{type: HEADING|TEXT, text}] }.
@@ -2588,7 +2816,7 @@ components:
     TemplateLibraryItem:
       type: object
       description: One gallery entry — an Aramo (PLATFORM) default or one of the tenant's own (TENANT) templates.
-      required: [id, owner_scope, document_type_id, name, description, template_kind, status, client_id, current_version_id, current_version_number, updated_at, products, withdraw_effective_at, configurable]
+      required: [id, owner_scope, document_type_id, name, description, template_kind, status, client_id, current_version_id, current_version_number, updated_at, products, withdraw_effective_at, configurable, master]
       properties:
         id: { type: string, format: uuid }
         owner_scope: { type: string, enum: [PLATFORM, TENANT] }
@@ -2607,6 +2835,55 @@ components:
           items: { type: string }
         withdraw_effective_at: { type: [string, 'null'], format: date-time }
         configurable: { type: boolean }
+        master:
+          description: TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted TENANT template; null for an Aramo default and for a template the organization wrote itself.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
+            - type: 'null'
+    TemplateMaster:
+      type: object
+      description: >-
+        TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-3 — the ONE server rule: whether the Aramo
+        default an organization template was adopted from has a newer published version, or was
+        withdrawn. `newer_available` is true when the master's current version number is greater
+        than the version number the template's current version (else its draft) is based on, and
+        the master's current version is not the kept one. No UI recomputes it.
+      required: [template_id, name, current_version_id, current_version_number, based_on_version_number, newer_available, withdrawn, kept]
+      properties:
+        template_id: { type: string, format: uuid, description: The Aramo default. }
+        name: { type: [string, 'null'], description: Null only when the default no longer exists. }
+        current_version_id: { type: [string, 'null'], format: uuid }
+        current_version_number: { type: [integer, 'null'] }
+        based_on_version_number: { type: [integer, 'null'] }
+        newer_available: { type: boolean }
+        withdrawn:
+          oneOf:
+            - type: object
+              required: [notice_at, effective_at, status]
+              properties:
+                notice_at: { type: string, format: date-time }
+                effective_at: { type: string, format: date-time }
+                status: { type: string, enum: [PENDING, IN_EFFECT] }
+            - type: 'null'
+        kept: { type: boolean, description: '"Keep my version" was chosen for the master''s current version.' }
+    TemplateMasterContent:
+      type: object
+      description: TEMPLATE-SYNC-1 S-5 — the master's CURRENT version stored content (never an earlier version).
+      required: [template_id, master_template_id, version_id, version_number, render_schema_version, title, html, signing]
+      properties:
+        template_id: { type: string, format: uuid, description: The organization's adopted template. }
+        master_template_id: { type: string, format: uuid }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        render_schema_version: { type: string }
+        title: { type: [string, 'null'] }
+        html: { type: [string, 'null'] }
+        signing:
+          description: The master's signing roles (null when it has none).
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: 'null'
     TemplateLibraryResponse:
       type: object
       required: [items, document_types, entitled_products]
@@ -3309,6 +3586,14 @@ components:
           description: The template's signing roles; null for a template without them.
           oneOf:
             - $ref: '#/components/schemas/SignTemplateSigning'
+            - type: 'null'
+        master:
+          description: >-
+            TEMPLATE-SYNC-1 S-3 / S-11 — the server-computed master of a template the organization
+            adopted from an Aramo default (null otherwise; absent on an Aramo fixed form). Sign web
+            Business and the Sign app show a badge from it; they never recompute it.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
             - type: 'null'
     SignTemplateListResponse:
       type: object

@@ -4978,6 +4978,11 @@ paths:
         (409 `TEMPLATE_PREVIEW_REQUIRED` unless the current content was previewed), then
         retires the previous published version. Tenants only ever resolve the current
         version; documents already generated keep their pinned version.
+        TEMPLATE-SYNC-1 S-13 (R-10): publishing a DRAFT writes the GLOBAL audit event
+        `identity.document_template.platform_published` (template, version and version number)
+        after the publish succeeds; a repeated publish of the already published version writes
+        nothing. Organizations that adopted this default are told through the server-computed
+        `master` object on their templates (TEMPLATE-SYNC-1 S-3); their copies never change.
         Requires `platform:document_template:manage`.
       security:
         - BearerAuth: []
