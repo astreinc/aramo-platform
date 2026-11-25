@@ -15,6 +15,7 @@ import {
   studioVariableKeys,
   type StudioLetterheadState,
 } from '../studio-codec';
+import { bytesToBase64 } from '../fixed-form/fixed-form-model';
 
 import {
   DEFAULT_STUDIO_CONTENT_CODEC,
@@ -23,6 +24,7 @@ import {
   studioSigningOf,
   withdrawalStateOf,
   type StudioContentCodec,
+  type StudioImportSummary,
   type StudioSamplePreview as SamplePreview,
   type StudioTemplate as TemplateDetail,
   type StudioVersion as TemplateVersion,
@@ -41,6 +43,7 @@ import { StudioLeftPanel, type LeftTab, type SectionCardModel, type VersionRowMo
 import { StudioPreview, orgNameOf, type PreviewSource } from './StudioPreview';
 import { signerRolesOf } from './StudioRolesPanel';
 import { StudioTopBar, type SaveState, type StudioMode } from './StudioTopBar';
+import { ImportWordDialog, WORD_IMPORT_MAX_FILE_BYTES } from './ImportWordDialog';
 import { CancelWithdrawalDialog, DeleteTemplateDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
 import { useStudioDoc } from './use-studio-doc';
 import { useStudioDrag, type DragPayload, type DropPos } from './use-studio-drag';
@@ -216,6 +219,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [cancelWdOpen, setCancelWdOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // TEMPLATE-IMPORT-1 W-9 — the Word import dialog and its result.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSummary, setImportSummary] = useState<StudioImportSummary | null>(null);
   const [tenantLogo, setTenantLogo] = useState<{ readonly available: boolean; readonly tenant_name: string } | null>(null);
   // S-2 — the read-only Preview's server render of the current version (previewCurrent).
   const [readerPreview, setReaderPreview] = useState<SamplePreview | null>(null);
@@ -364,6 +370,14 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   // published (a published one is only withdrawn); the server re-checks every guard.
   const neverPublished = detail !== null && detail.current_version === null && detail.versions.every((v) => v.status === 'DRAFT');
   const canDeleteTemplate = canManage && ds.deleteTemplate !== undefined && neverPublished;
+  // TEMPLATE-IMPORT-1 W-9 — platform only (the data source offers importWord); an open draft is
+  // discarded first, so it also needs discardDraft.
+  const canImportWord = canManage && ds.importWord !== undefined && (draft === null || ds.discardDraft !== undefined);
+  const openImport = (): void => {
+    setActionError(null);
+    setImportSummary(null);
+    setImportOpen(true);
+  };
   // S-1 (A1) — the server-owned logo reference the letterhead node must agree with: the
   // open draft's, or (no draft yet) the active version's, which POST …/:id/draft copies.
   const logoRef = draft !== null ? (draft.logo ?? null) : (current?.logo ?? null);
@@ -657,6 +671,37 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     }, 'Could not discard the draft.');
   };
 
+  // ── import from Word (platform, TEMPLATE-IMPORT-1 W-9) ──
+  const doImportWord = (file: File): void => {
+    if (file.size > WORD_IMPORT_MAX_FILE_BYTES) {
+      setActionError('The file is larger than 10 MB.');
+      return;
+    }
+    if (!/\.docx$/i.test(file.name)) {
+      setActionError('Choose a Word .docx file.');
+      return;
+    }
+    void runAction(async () => {
+      if (ds.importWord === undefined) throw new Error('import unavailable');
+      const dv = draftRef.current;
+      if (dv !== null) {
+        if (ds.discardDraft === undefined) throw new Error('no discard');
+        await ds.discardDraft(dv.id);
+      }
+      const content_base64 = bytesToBase64(await file.arrayBuffer());
+      const res = await ds.importWord(templateId, { filename: file.name, content_base64 });
+      setImportSummary(res.summary);
+    }, 'Could not import the Word file.');
+  };
+  const finishImport = (): void => {
+    const title = importSummary?.title;
+    setImportOpen(false);
+    setImportSummary(null);
+    setMode('edit');
+    setViewVersionId(null);
+    void reloadDraft().then(() => toast(title !== undefined ? `Imported “${title}” as the draft.` : 'Imported the Word file as the draft.'));
+  };
+
   // ── delete a never-published template (platform, TEMPLATE-PRODUCT-1 §3.4) ──
   const doDeleteTemplate = (): void => {
     void runAction(async () => {
@@ -890,6 +935,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         onToggleAutosave={() => setAutosave((a) => !a)}
         onShortcuts={() => setShortcutsOpen(true)}
         account={renderAccount?.({ notice: dirty ? "You have unsaved changes. They're saved before you sign out." : undefined, beforeLeave: leave })}
+        onImportWord={canImportWord ? openImport : undefined}
         onDiscard={
           canDiscard
             ? () => {
@@ -1064,6 +1110,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               canCopyPublished={current !== null && htmlContentOf(current) !== null}
               onCopyPublished={copyPublished}
               onOpenSections={openSections}
+              {...(canImportWord ? { onImportWord: openImport } : {})}
               onToggleLeft={() => setLeftOpen((o) => !o)}
               onToggleRight={() => setRightOpen((o) => !o)}
               toast={toast}
@@ -1145,6 +1192,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
           busy={actionBusy}
           error={actionError}
           onConfirm={doDiscard}
+        />
+      ) : null}
+      {canImportWord || importSummary !== null ? (
+        <ImportWordDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          draftVersion={draft?.version_number ?? null}
+          busy={actionBusy}
+          error={actionError}
+          summary={importSummary}
+          onFile={doImportWord}
+          onDone={finishImport}
         />
       ) : null}
       {canDeleteTemplate ? (

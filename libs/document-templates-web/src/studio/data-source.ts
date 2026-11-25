@@ -303,6 +303,27 @@ export interface TemplateStudioCopy {
   >;
 }
 
+/** TEMPLATE-IMPORT-1 W-7 — one warning of a Word import (stable code, count, a short example). */
+export interface StudioImportWarning {
+  readonly code: string;
+  readonly count: number;
+  readonly example?: string;
+}
+/** TEMPLATE-IMPORT-1 W-7 — what a Word import produced. */
+export interface StudioImportSummary {
+  readonly title: string;
+  /** Top-level blocks by kind (p, h2, h3, h4, ul, ol, table, page_break). */
+  readonly counts: Readonly<Record<string, number>>;
+  readonly warnings: readonly StudioImportWarning[];
+  /** `{{key}}` text that is not a variable (publishing refuses it until it is resolved). */
+  readonly unknown_placeholders: ReadonlyArray<{ readonly key: string; readonly count: number }>;
+  readonly content_bytes: number;
+}
+export interface StudioImportResult {
+  readonly version: StudioVersion;
+  readonly summary: StudioImportSummary;
+}
+
 export interface TemplateStudioDataSource {
   load(templateId: string): Promise<StudioTemplate>;
   catalog(templateId: string): Promise<StudioCatalogData>;
@@ -310,6 +331,12 @@ export interface TemplateStudioDataSource {
   saveDraft(versionId: string, body: StudioContentBody): Promise<StudioVersion>;
   /** Discard the open draft (organization; platform since TEMPLATE-PRODUCT-1 §3.1). */
   discardDraft?(versionId: string): Promise<void>;
+  /**
+   * TEMPLATE-IMPORT-1 W-9 — import a Word (.docx) file as the template's DRAFT (platform only:
+   * templates are authored at platform level). The server refuses while a draft is open; the
+   * Studio discards it first when the operator confirms.
+   */
+  importWord?(templateId: string, file: { readonly filename: string; readonly content_base64: string }): Promise<StudioImportResult>;
   /**
    * TEMPLATE-PRODUCT-1 §3.2/§3.4 — delete a template that was never published (platform).
    * The ⋯ menu offers it only while no version was ever published; the server re-checks.

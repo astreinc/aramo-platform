@@ -2692,3 +2692,31 @@ body:has(.pws-root) .ts-cd__arrow {
   font-weight: 600;
   text-transform: uppercase;
 }
+
+/* TEMPLATE-IMPORT-1 W-9 — the Word import dialog (help text, then the summary). */
+.pws-imp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pws-imp__note,
+.pws-imp__counts {
+  margin: 0;
+}
+.pws-imp__counts {
+  font-weight: 600;
+}
+.pws-imp__h {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pws-imp__list {
+  margin: 0;
+  padding-left: 18px;
+}
+.pws-imp__ex {
+  color: var(--ts-muted);
+}

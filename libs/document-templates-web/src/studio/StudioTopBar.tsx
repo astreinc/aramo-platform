@@ -53,6 +53,8 @@ export interface StudioTopBarProps {
   readonly showReadiness?: boolean;
   /** Discard the open draft (organization; platform): a ⋯ menu item. */
   readonly onDiscard?: () => void;
+  /** TEMPLATE-IMPORT-1 W-9 — import a Word file as the draft (platform): a ⋯ menu item. */
+  readonly onImportWord?: () => void;
   /** TEMPLATE-PRODUCT-1 §3.4 — delete a never-published template (platform): a ⋯ menu item. */
   readonly onDeleteTemplate?: () => void;
   /** Host actions before the ⋯ menu (the gallery preview's Adopt). */
@@ -191,6 +193,11 @@ export function StudioTopBar(p: StudioTopBarProps) {
               {p.canCancelWithdrawal ? (
                 <Button unstyled role="menuitem" className="pws-more__item pws-more__item--strong" onClick={run(p.onCancelWithdrawal)}>
                   Cancel withdrawal…
+                </Button>
+              ) : null}
+              {p.onImportWord !== undefined ? (
+                <Button unstyled role="menuitem" className="pws-more__item" onClick={run(p.onImportWord)}>
+                  Import from Word…
                 </Button>
               ) : null}
               {p.onDiscard !== undefined ? (

@@ -142,6 +142,8 @@ export interface StudioCanvasProps {
   readonly canCopyPublished: boolean;
   readonly onCopyPublished: () => void;
   readonly onOpenSections: () => void;
+  /** TEMPLATE-IMPORT-1 W-9 — "Import from Word…" on an empty template (platform). */
+  readonly onImportWord?: () => void;
   readonly onToggleLeft: () => void;
   readonly onToggleRight: () => void;
   readonly toast: (message: string) => void;
@@ -873,6 +875,11 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
                 <Button unstyled className="pws-btn34" onClick={props.onOpenSections}>
                   Browse sections
                 </Button>
+                {props.onImportWord !== undefined ? (
+                  <Button unstyled className="pws-btn34" onClick={props.onImportWord}>
+                    Import from Word…
+                  </Button>
+                ) : null}
                 {props.canCopyPublished ? (
                   <Button unstyled className="pws-btn34" onClick={props.onCopyPublished}>
                     Copy published version

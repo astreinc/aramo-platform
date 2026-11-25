@@ -1,5 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
-import type { TemplateProductKey } from '@aramo/document-templates-web';
+import type { StudioImportSummary, TemplateProductKey } from '@aramo/document-templates-web';
 import { CURRENT_HTML_CONTENT_VERSION, isHtmlContentVersion, type HtmlContentVersion } from '@aramo/template-content';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§8.1) — typed client for the platform-tier Aramo default
@@ -170,6 +170,11 @@ export const documentTemplatesApi = {
   },
   createDraft(id: string, body?: { render_schema_version: string; field_schema: unknown }): Promise<TemplateVersion> {
     return apiClient.post(`/platform/document-templates/${id}/versions`, body ?? {});
+  },
+  // TEMPLATE-IMPORT-1 W-1 — a Word (.docx) file, base64, as the template's DRAFT; the response
+  // carries the new version and the import summary.
+  importWord(id: string, file: { filename: string; content_base64: string }): Promise<{ version: TemplateVersion; summary: StudioImportSummary }> {
+    return apiClient.post(`/platform/document-templates/${id}/versions/import`, file);
   },
   // PLATFORM-UX-1 F-9 (directive R-10) — read one version (the "Start from a copy" source).
   getVersion(versionId: string): Promise<TemplateVersion> {

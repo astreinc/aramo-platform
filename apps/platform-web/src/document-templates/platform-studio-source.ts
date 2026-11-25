@@ -30,6 +30,8 @@ export function platformStudioDataSource(session: Session): TemplateStudioDataSo
     ...(canManage
       ? {
           discardDraft: (versionId: string) => documentTemplatesApi.discardDraft(versionId),
+          // TEMPLATE-IMPORT-1 W-9 — import a Word file as the draft.
+          importWord: (id: string, file: { filename: string; content_base64: string }) => documentTemplatesApi.importWord(id, file),
           deleteTemplate: (id: string) => documentTemplatesApi.deleteTemplate(id),
         }
       : {}),
