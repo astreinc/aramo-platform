@@ -182,7 +182,8 @@ describe('sign-service → the Personal Studio', () => {
       .willRespondWith(201, (b) => {
         b.jsonBody({
           template: { id: UUID, owner_scope: 'TENANT', status: 'DRAFT', adopted_from_template_id: DEFAULT_ID },
-          version: { id: UUID, status: 'DRAFT', version_number: 1, render_schema_version: 'rtr-html-v2' },
+          // TEMPLATE-FIELDS-1 F-1 — an adopted draft is written in the current content version (v3).
+          version: { id: UUID, status: 'DRAFT', version_number: 1, render_schema_version: 'rtr-html-v3' },
         });
       })
       .executeTest(async (mock) => {

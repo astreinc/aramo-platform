@@ -58,6 +58,9 @@ const READ = 'platform:document_template:read';
 const TENANT_SCOPES = ['auth:session:read', 'document_template:read', 'document_template:author', 'document_template:manage'];
 const LOGO = { asset_id: '00000000-0000-7000-8000-0000000005d1', sha256: 'a'.repeat(64), mime: 'image/png' };
 const LOGO_NODE = '<div data-asset="tenant.logo"></div>';
+// The master v2's inline field (TEMPLATE-FIELDS-1): a Sign check box for the signer role below.
+const MASTER_SIGNING = { roles: [{ role_key: 'party', label: 'Party', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
+const MASTER_FIELD = { field_key: 'nda_accepted', field_type: 'CHECKBOX', signer_role: 'party', required: false, ordinal: 0, label: 'Accepted' };
 
 interface MasterView {
   template_id: string;
@@ -107,28 +110,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
   const reasonOf = (b: Record<string, unknown>) => ((b['error'] as { details?: { reason?: string } } | undefined)?.details?.reason ?? null);
   const masterOf = async (jwt: string, id: string) => (await get(jwt, `/v1/document-templates/${id}`)).body['master'] as MasterView | null;
 
+  // TEMPLATE-FIELDS-1 â€” a field in a master's text is an inline field: its marker in the html and
+  // its row, saved together through the platform PATCH (rtr-html-v3, with signing roles). A row
+  // without a marker is refused at publish (field_marker_mismatch), so none is inserted directly.
   async function publishMaster(html: string, withField = false): Promise<string> {
-    const draft = await post(operatorJwt, `/platform/document-templates/${masterId}/versions`, {
-      render_schema_version: 'rtr-html-v2',
-      field_schema: { render_schema_version: 'rtr-html-v2', title: 'Mutual NDA', html },
-    });
-    expect(draft.status).toBe(201);
+    const rsv = withField ? 'rtr-html-v3' : 'rtr-html-v2';
+    const body = withField ? html.replace('</p>', ` <span data-sign-field="${MASTER_FIELD.field_key}"></span></p>`) : html;
+    const fs = { render_schema_version: rsv, title: 'Mutual NDA', html: body, ...(withField ? { signing: MASTER_SIGNING } : {}) };
+    const draft = await post(operatorJwt, `/platform/document-templates/${masterId}/versions`, { render_schema_version: rsv, field_schema: fs });
+    expect(draft.status, JSON.stringify(draft.body)).toBe(201);
     const vid = draft.body['id'] as string;
     if (withField) {
-      await db.query(
-        `INSERT INTO documents."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, ordinal) VALUES (gen_random_uuid(), $1, 'company_name', 'TEXT', 0)`,
-        [vid],
-      );
+      const saved = await call('PATCH', operatorJwt, `/platform/document-templates/versions/${vid}`, { render_schema_version: rsv, field_schema: fs, fields: [MASTER_FIELD] });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     }
-    expect((await post(operatorJwt, `/platform/document-templates/versions/${vid}/preview`)).status).toBe(200);
+    const pv = await post(operatorJwt, `/platform/document-templates/versions/${vid}/preview`);
+    expect(pv.status, JSON.stringify(pv.body)).toBe(200);
     const pub = await post(operatorJwt, `/platform/document-templates/versions/${vid}/publish`);
-    expect(pub.status).toBe(200);
+    expect(pub.status, JSON.stringify(pub.body)).toBe(200);
     return vid;
   }
 
   async function adoptAndApprove(jwt: string, withLogo: boolean): Promise<string> {
     const adopted = await post(jwt, '/v1/document-templates/adopt', { library_template_id: masterId });
-    expect(adopted.status).toBe(201);
+    expect(adopted.status, JSON.stringify(adopted.body)).toBe(201);
     const tid = (adopted.body['template'] as { id: string }).id;
     const vid = (adopted.body['version'] as { id: string }).id;
     // The company's own wording (and, for A, its captured letterhead logo â€” server-owned, so set
@@ -137,8 +142,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
       ? { render_schema_version: 'rtr-html-v2', title: 'Our NDA', html: `${LOGO_NODE}<p>Our wording v1</p>`, logo: LOGO }
       : { render_schema_version: 'rtr-html-v2', title: 'Our NDA', html: '<p>Our wording v1</p>' };
     await db.query(`UPDATE documents."TemplateVersion" SET field_schema = $2::jsonb, previewed_fingerprint = NULL WHERE id = $1`, [vid, JSON.stringify(fs)]);
-    expect((await post(jwt, `/v1/document-templates/versions/${vid}/preview`)).status).toBe(200);
-    expect((await post(jwt, `/v1/document-templates/versions/${vid}/activate`)).status).toBe(200);
+    { const r = await post(jwt, `/v1/document-templates/versions/${vid}/preview`); expect(r.status, JSON.stringify(r.body)).toBe(200); }
+    { const r = await post(jwt, `/v1/document-templates/versions/${vid}/activate`); expect(r.status, JSON.stringify(r.body)).toBe(200); }
     return tid;
   }
 
@@ -173,8 +178,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
     port = (server.address() as AddressInfo).port;
 
     // Aramo publishes v1 of a default; companies A (with its logo) and B adopt and approve it.
-    const created = await post(operatorJwt, '/platform/document-templates', { document_type_id: RTR, name: 'Mutual NDA', template_kind: 'GENERATED', products: ['ats'] });
-    expect(created.status).toBe(201);
+    const created = await post(operatorJwt, '/platform/document-templates', { document_type_id: RTR, name: 'Mutual NDA', template_kind: 'GENERATED', products: ['sign'] });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
     masterId = created.body['id'] as string;
     await publishMaster('<p>Master wording v1</p>');
     copyA = await adoptAndApprove(jwtA, true);
@@ -208,36 +213,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
 
   it('compare content returns the v2 stored content only', async () => {
     const res = await get(jwtA, `/v1/document-templates/${copyA}/master`);
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toMatchObject({ template_id: copyA, master_template_id: masterId, version_id: masterV2, version_number: 2, render_schema_version: 'rtr-html-v2', title: 'Mutual NDA', html: '<p>Master wording v2</p>' });
   });
 
   it('not_an_adopted_template: a template the company wrote itself', async () => {
     const own = await post(jwtA, '/v1/document-templates', { document_type_id: RTR, name: 'Own', template_kind: 'GENERATED' });
-    expect(own.status).toBe(201);
+    expect(own.status, JSON.stringify(own.body)).toBe(201);
     const id = own.body['id'] as string;
     const compare = await get(jwtA, `/v1/document-templates/${id}/master`);
-    expect(compare.status).toBe(404);
+    expect(compare.status, JSON.stringify(compare.body)).toBe(404);
     expect(reasonOf(compare.body)).toBe('not_an_adopted_template');
     const draft = await post(jwtA, `/v1/document-templates/${id}/draft-from-master`);
-    expect(draft.status).toBe(404);
+    expect(draft.status, JSON.stringify(draft.body)).toBe(404);
     expect(reasonOf(draft.body)).toBe('not_an_adopted_template');
     expect((await masterOf(jwtA, id))).toBeNull();
     // Another tenant's copy is never reachable.
-    expect((await get(jwtB, `/v1/document-templates/${copyA}/master`)).status).toBe(404);
+    { const r = await get(jwtB, `/v1/document-templates/${copyA}/master`); expect(r.status, JSON.stringify(r.body)).toBe(404); }
   });
 
   it('draft-from-master: vN+1 with the master content, the logo kept, the field rows copied, based_on set', async () => {
     const res = await post(jwtA, `/v1/document-templates/${copyA}/draft-from-master`);
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     draftA = res.body['id'] as string;
     expect(res.body).toMatchObject({ status: 'DRAFT', version_number: 2 });
     const row = (await db.query(`SELECT field_schema, based_on_platform_version_id::text b FROM documents."TemplateVersion" WHERE id = $1`, [draftA])).rows[0];
     expect(row.b).toBe(masterV2);
-    expect(row.field_schema.html).toBe(`${LOGO_NODE}<p>Master wording v2</p>`);
+    expect(row.field_schema.html).toBe(`${LOGO_NODE}<p>Master wording v2 <span data-sign-field="nda_accepted"></span></p>`);
     expect(row.field_schema.logo).toEqual(LOGO);
     const fields = await db.query(`SELECT field_key FROM documents."TemplateFieldDefinition" WHERE template_version_id = $1`, [draftA]);
-    expect(fields.rows.map((f: { field_key: string }) => f.field_key)).toEqual(['company_name']);
+    expect(fields.rows.map((f: { field_key: string }) => f.field_key)).toEqual(['nda_accepted']);
     // The approved copy is untouched until the company approves the draft.
     const current = (await db.query(`SELECT current_version_id::text c FROM documents."DocumentTemplate" WHERE id = $1`, [copyA])).rows[0].c;
     expect(current).not.toBe(draftA);
@@ -245,22 +250,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
 
   it('draft_exists while that draft is open', async () => {
     const res = await post(jwtA, `/v1/document-templates/${copyA}/draft-from-master`);
-    expect(res.status).toBe(409);
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
     expect(reasonOf(res.body)).toBe('draft_exists');
   });
 
   it('preview and approve the draft: the flag clears; then already_current', async () => {
-    expect((await post(jwtA, `/v1/document-templates/versions/${draftA}/preview`)).status).toBe(200);
-    expect((await post(jwtA, `/v1/document-templates/versions/${draftA}/activate`)).status).toBe(200);
+    { const r = await post(jwtA, `/v1/document-templates/versions/${draftA}/preview`); expect(r.status, JSON.stringify(r.body)).toBe(200); }
+    { const r = await post(jwtA, `/v1/document-templates/versions/${draftA}/activate`); expect(r.status, JSON.stringify(r.body)).toBe(200); }
     expect(await masterOf(jwtA, copyA)).toMatchObject({ newer_available: false, based_on_version_number: 2, current_version_number: 2 });
     for (const path of ['draft-from-master', 'keep-version']) {
       const res = await post(jwtA, `/v1/document-templates/${copyA}/${path}`);
-      expect(res.status).toBe(409);
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
       expect(reasonOf(res.body)).toBe('already_current');
     }
     // A's own next edit keeps the master version it was copied from.
     const own = await post(jwtA, `/v1/document-templates/${copyA}/draft`);
-    expect(own.status).toBe(201);
+    expect(own.status, JSON.stringify(own.body)).toBe(201);
     const b = (await db.query(`SELECT based_on_platform_version_id::text b FROM documents."TemplateVersion" WHERE id = $1`, [own.body['id']])).rows[0].b;
     expect(b).toBe(masterV2);
     await call('DELETE', jwtA, `/v1/document-templates/versions/${own.body['id'] as string}`);
@@ -268,7 +273,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
 
   it('keep-version hides the notice for B until Aramo publishes v3', async () => {
     const kept = await post(jwtB, `/v1/document-templates/${copyB}/keep-version`);
-    expect(kept.status).toBe(200);
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
     expect(await masterOf(jwtB, copyB)).toMatchObject({ newer_available: false, kept: true, based_on_version_number: 1 });
     await publishMaster('<p>Master wording v3</p>');
     expect(await masterOf(jwtB, copyB)).toMatchObject({ newer_available: true, kept: false, current_version_number: 3 });
@@ -288,7 +293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
 
   it('withdrawal lists both adopted copies in the notices and on the master flag', async () => {
     const w = await post(operatorJwt, `/platform/document-templates/${masterId}/withdraw`, { notice_days: 30 });
-    expect(w.status).toBe(200);
+    expect(w.status, JSON.stringify(w.body)).toBe(200);
     for (const [jwt, copy] of [[jwtA, copyA], [jwtB, copyB]] as const) {
       const notices = (await get(jwt, '/v1/document-templates/notices')).body['notices'] as Array<Record<string, unknown>>;
       expect(notices.find((n) => n['template_id'] === copy)).toMatchObject({ master_template_id: masterId, status: 'PENDING' });
@@ -338,15 +343,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 S
          VALUES ($1, $2, 'TENANT', $3, 'C', 'GENERATED', 'DRAFT', ARRAY['ats'], $4, now(), $5, $6)`,
         [id, tenant, RTR, SYS, adoptedFrom, adoptedVersion],
       );
-      for (const n of [1, 2]) {
+      // Version 1 ACTIVE, version 2 the open DRAFT (TemplateVersion_one_draft_per_template allows
+      // one DRAFT per template).
+      for (const [n, status] of [[1, 'ACTIVE'], [2, 'DRAFT']] as const) {
         await db.query(
-          `INSERT INTO documents."TemplateVersion" (id, tenant_id, template_id, version_number, status, render_schema_version, field_schema, created_by) VALUES (gen_random_uuid(), $1, $2, $3, 'DRAFT', 'rtr-html-v2', $4::jsonb, $5)`,
-          [tenant, id, n, fs, SYS],
+          `INSERT INTO documents."TemplateVersion" (id, tenant_id, template_id, version_number, status, render_schema_version, field_schema, created_by, activated_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'rtr-html-v2', $5::jsonb, $6, $7)`,
+          [tenant, id, n, status, fs, SYS, status === 'ACTIVE' ? new Date() : null],
         );
       }
     }
-    // Version 1 of the copy is ACTIVE (the immutability trigger freezes content columns only).
-    await db.query(`UPDATE documents."TemplateVersion" SET status = 'ACTIVE', activated_at = now() WHERE template_id = $1 AND version_number = 1`, [copy]);
     await db.query(`DELETE FROM documents."TemplateVersion" WHERE template_id = $1 AND version_number = 2`, [own]);
 
     const sql = readFileSync(resolve(ROOT, 'libs/documents/prisma/migrations', SYNC_MIGRATION, 'migration.sql'), 'utf8');

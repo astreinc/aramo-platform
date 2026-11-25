@@ -271,9 +271,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
       `UPDATE documents."DocumentTemplate" SET withdraw_notice_at = now(), withdraw_effective_at = now() + interval '30 days' WHERE id = $1`,
       [signDefault],
     );
-    const notices = async (tenant: string): Promise<string[]> =>
-      ((await (await fetch(url('/v1/document-templates/notices'), auth(tenant))).json()) as { notices: Array<{ template_id: string }> }).notices.map((n) => n.template_id);
-    expect(await notices(T_SIGN)).toEqual([signDefault]);
+    type Notice = { template_id: string; master_template_id?: string };
+    const notices = async (tenant: string): Promise<Notice[]> =>
+      ((await (await fetch(url('/v1/document-templates/notices'), auth(tenant))).json()) as { notices: Notice[] }).notices;
+    const legacy = (ns: Notice[]) => ns.filter((n) => n.master_template_id === undefined).map((n) => n.template_id);
+    const sign = await notices(T_SIGN);
+    expect(legacy(sign)).toEqual([signDefault]);
+    // TEMPLATE-SYNC-1 S-4 (R-9) — T_SIGN adopted signDefault above, so its copy is listed too
+    // (template_id = the copy, master_template_id = the default).
+    expect(sign.filter((n) => n.master_template_id !== undefined).map((n) => n.master_template_id)).toEqual([signDefault]);
     expect(await notices(T_ATS)).toEqual([]);
   });
 });

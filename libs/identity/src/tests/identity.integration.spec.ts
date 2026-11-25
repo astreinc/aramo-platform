@@ -2382,6 +2382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings D3: +1 tenant_profile.updated (21 -> 22).
       // Settings D4: +3 site.created + site.deactivated + site.updated (22 -> 25).
       // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (25 -> 27).
+      // TEMPLATE-SYNC-1 S-13: +2 document_template.draft_from_master + master_version_kept.
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
         // ROLES-1 PR-2 §5.3 — the reconciliation migration's grant / removal rows.
         'ROLES1_RECONCILE_GRANT',
@@ -2394,9 +2395,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.document_template.adopted',
         'identity.document_template.created',
         'identity.document_template.draft_discarded',
+        // TEMPLATE-SYNC-1 S-13 — a company starts a draft from Aramo's new version / keeps its own.
+        'identity.document_template.draft_from_master',
         // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show.
         'identity.document_template.fixed_form_hidden',
         'identity.document_template.fixed_form_shown',
+        'identity.document_template.master_version_kept',
         'identity.document_template.selection_cleared',
         'identity.document_template.selection_set',
         'identity.document_template.version_activated',

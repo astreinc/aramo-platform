@@ -4123,6 +4123,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
