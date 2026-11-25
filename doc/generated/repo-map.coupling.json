@@ -38677,6 +38677,11 @@
       "status": "unscoped",
       "to": "mobile/sign/.gitignore"
     },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "mobile/sign/assets/fonts/HomemadeApple-LICENSE.txt"
+    },
     { "from": "scripts/verify-vocabulary.sh", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "scripts/verify-vocabulary.sh", "status": "unscoped", "to": "openapi/common.yaml" },
     {
