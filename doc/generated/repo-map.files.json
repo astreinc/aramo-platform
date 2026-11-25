@@ -7381,7 +7381,6 @@
     "mobile/sign/android/gradlew.bat",
     "mobile/sign/android/settings.gradle",
     "mobile/sign/app.config.ts",
-    "mobile/sign/assets/fonts/HomemadeApple-LICENSE.txt",
     "mobile/sign/assets/fonts/HomemadeApple-Regular.ttf",
     "mobile/sign/assets/icon.png",
     "mobile/sign/babel.config.js",

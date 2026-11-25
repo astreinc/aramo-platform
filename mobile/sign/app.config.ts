@@ -126,8 +126,9 @@ const config: ExpoConfig = {
     'expo-web-browser',
     // UAT SIG-03 — the typed-signature face, embedded at build time: the same Homemade Apple
     // file the signed PDF (documents-rendering) and the Sign web page draw it with, so a typed
-    // signature looks the same while signing and in the signed copy. Apache-2.0, see
-    // assets/fonts/HomemadeApple-LICENSE.txt. fontFamily 'HomemadeApple-Regular' on both
+    // signature looks the same while signing and in the signed copy. Apache-2.0: the license
+    // text is kept at apps/sign-web/public/fonts/HomemadeApple-LICENSE.txt (outside mobile/, which
+    // the vocabulary gate never exempts). fontFamily 'HomemadeApple-Regular' on both
     // platforms (the file name on Android, the PostScript name on iOS).
     ['expo-font', { fonts: ['./assets/fonts/HomemadeApple-Regular.ttf'] }],
     [
