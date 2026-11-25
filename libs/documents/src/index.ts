@@ -43,6 +43,7 @@ export {
   type TemplatePlatformWithdrawalAudit,
   // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
   type TemplatePlatformDeletionAudit,
+  type TemplatePlatformImportAudit,
   // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type changes.
   type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';

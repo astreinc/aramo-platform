@@ -4803,6 +4803,55 @@ paths:
         '422':
           $ref: '#/components/responses/PlatformTemplateContentRejected'
 
+  /platform/document-templates/{id}/versions/import:
+    post:
+      operationId: importPlatformTemplateWord
+      tags: [Platform Document Templates]
+      summary: Import a Word (.docx) file as the DRAFT of an editable Aramo default.
+      description: |
+        TEMPLATE-IMPORT-1. The file is checked and converted on the server, then saved through the
+        same rules as a hand-built draft (rtr-html-v2; see documents.yaml RtrHtmlContent): the
+        sanitiser, known `{{key}}` text becomes a variable, the 256 KiB cap. Word Heading 1 / 2 /
+        3–6 become h2 / h3 / h4; a leading Title paragraph becomes the document title (else the
+        file name); tables, two list levels and manual page breaks are kept. What the content
+        cannot hold is dropped, split or flattened and reported as a warning, never refused.
+        Unknown `{{key}}` text stays as text and is listed; publishing refuses it until resolved.
+        Signer roles are not set by the import. One DRAFT per template: an open draft is refused
+        (409, details.reason `draft_exists`, details.draft_version_id). Each import writes a GLOBAL
+        audit event (`identity.document_template.platform_imported`: file name, sha256, size and
+        counts, never the text). Body up to 15 MB (a .docx of up to 10 MB as base64).
+        Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformTemplateWordImportRequest'
+      responses:
+        '201':
+          description: The new DRAFT version and the import summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformTemplateWordImportResponse'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
   /platform/document-templates/versions/{versionId}:
     get:
       operationId: getPlatformTemplateVersion
@@ -13315,6 +13364,59 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Operator note, recorded in the audit event only.
+    PlatformTemplateWordImportRequest:
+      type: object
+      required: [filename, content_base64]
+      properties:
+        filename:
+          type: string
+          maxLength: 255
+          description: The file name; it must end in `.docx`.
+        content_base64:
+          type: string
+          description: |
+            The .docx file, base64. Refused (422 VALIDATION_ERROR, details.reason):
+            `import_file_type` (not a .docx, incl. .doc / .docm / .dotx / .rtf), `import_macros`,
+            `import_encrypted`, `import_too_large` (over 10 MB), `import_too_many_entries` (over 2,000
+            zip entries), `import_unzipped_too_large` (over 50 MB unzipped), `import_timeout` (over
+            20 s), `import_unreadable`, `import_not_editable` (a fixed form or a non-editable
+            document type), `content_too_large` (details.bytes, details.max_bytes).
+    PlatformTemplateWordImportResponse:
+      type: object
+      required: [version, summary]
+      properties:
+        version:
+          $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+        summary:
+          type: object
+          required: [title, counts, warnings, unknown_placeholders, content_bytes]
+          properties:
+            title: { type: string }
+            counts:
+              type: object
+              description: Top-level blocks by kind (p, h2, h3, h4, ul, ol, table, page_break).
+              additionalProperties: { type: integer }
+            warnings:
+              type: array
+              items:
+                type: object
+                required: [code, count]
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      [heading_level_merged, list_level_lifted, table_cells_unmerged, table_flattened, table_split, image_dropped, text_box_dropped, note_dropped, comment_dropped, header_footer_dropped]
+                  count: { type: integer }
+                  example: { type: string, maxLength: 60 }
+            unknown_placeholders:
+              type: array
+              items:
+                type: object
+                required: [key, count]
+                properties:
+                  key: { type: string }
+                  count: { type: integer }
+            content_bytes: { type: integer }
     CreatePlatformTemplateDraftRequest:
       type: object
       properties:

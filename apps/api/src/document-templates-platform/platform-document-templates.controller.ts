@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   Body,
   Controller,
@@ -34,6 +36,11 @@ import {
   isTemplateProductKey,
   type TemplateProductKey,
 } from '@aramo/documents';
+import { CONTENT_MAX_BYTES_V2, CURRENT_HTML_CONTENT_VERSION, placeholderKeysIn } from '@aramo/template-content';
+
+import { convertDocx } from './word-import/docx-to-content.js';
+import { blockCounts } from './word-import/map-word-html.js';
+import { WORD_IMPORT_FILENAME_MAX, WORD_IMPORT_MAX_FILE_BYTES, WordImportRefusedError } from './word-import/word-import.constants.js';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1; ADR-0034 D2/D3/D7/D9, §4 rule 2) — the PLATFORM-tier
 // authoring surface for Aramo default document templates + the Aramo template variable
@@ -176,6 +183,11 @@ function toVariableView(r: TemplateVariableRow): TemplateVariableView {
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
+}
+
+// TEMPLATE-IMPORT-1 §3.1 — a file refusal is 422 VALIDATION_ERROR with a stable details.reason.
+function importRefusal(e: WordImportRefusedError, requestId: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', `Word import refused: ${e.reason}`, 422, { requestId, details: { reason: e.reason, ...e.details } });
 }
 
 function bad(message: string, requestId: string, reason?: string): AramoError {
@@ -529,6 +541,100 @@ export class PlatformDocumentTemplatesController {
         ...(transform !== undefined ? { transform } : {}),
       });
       return this.versionView(v);
+    });
+  }
+
+  // TEMPLATE-IMPORT-1 (Directive v1.1 LOCKED) W-1 … W-8 — import a Word (.docx) file as the
+  // DRAFT of an EDITABLE Aramo default. Body JSON { filename, content_base64 } (main.ts mounts
+  // a 15 MB parser for this route only). The file is checked and converted in-process
+  // (word-import/), then saved through the SAME normaliser + createPlatformVersion path as a
+  // hand-built draft (sanitiser, known `{{key}}` → chip, 256 KiB cap). One DRAFT per template:
+  // an open draft refuses the import (draft_exists; the console offers Discard and import).
+  // The import is audited (file facts and counts, never the text).
+  @Post('document-templates/:id/versions/import')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('platform:document_template:manage')
+  async importWord(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown> | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ) {
+    this.assertPlatform(auth, requestId);
+    const filename = requiredText(body?.['filename'], 'filename', WORD_IMPORT_FILENAME_MAX, requestId);
+    const raw = body?.['content_base64'];
+    if (typeof raw !== 'string' || raw.length === 0) throw bad('content_base64 (the .docx file, base64) is required', requestId, 'content_required');
+    // Refuse an oversized upload before decoding it (base64 is 4/3 of the bytes).
+    if (Math.floor((raw.length * 3) / 4) > WORD_IMPORT_MAX_FILE_BYTES + 3) {
+      throw importRefusal(new WordImportRefusedError('import_too_large', { max_bytes: WORD_IMPORT_MAX_FILE_BYTES }), requestId);
+    }
+    const bytes = new Uint8Array(Buffer.from(raw, 'base64'));
+    const audit = this.requireAudit(requestId, 'Word import');
+    return this.run(requestId, async () => {
+      const t = await this.templates.getPlatformTemplate(id);
+      const caps = this.caps;
+      if (caps === undefined || t.template_kind === 'UPLOADED_PDF' || !(await caps.isConfigurable(t.document_type_id))) {
+        throw importRefusal(new WordImportRefusedError('import_not_editable'), requestId);
+      }
+      const open = (await this.templates.listPlatformVersions(id)).find((v) => v.status === 'DRAFT');
+      if (open !== undefined) {
+        throw new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', 'This template already has a draft; discard it to import', 409, {
+          requestId,
+          details: { reason: 'draft_exists', draft_version_id: open.id },
+        });
+      }
+      let converted: Awaited<ReturnType<typeof convertDocx>>;
+      try {
+        converted = await convertDocx(filename, bytes);
+      } catch (e) {
+        if (e instanceof WordImportRefusedError) throw importRefusal(e, requestId);
+        throw e;
+      }
+      // W-5 — the 256 KiB cap, with the measured size (the normaliser re-checks after sanitising).
+      const mappedBytes = Buffer.byteLength(converted.html, 'utf8');
+      if (mappedBytes > CONTENT_MAX_BYTES_V2) {
+        throw new AramoError('VALIDATION_ERROR', 'The imported document is larger than a template can hold', 422, {
+          requestId,
+          details: { reason: 'content_too_large', bytes: mappedBytes, max_bytes: CONTENT_MAX_BYTES_V2 },
+        });
+      }
+      const render_schema_version = CURRENT_HTML_CONTENT_VERSION;
+      const field_schema = (await caps.normalizeDraftContent({
+        document_type_id: t.document_type_id,
+        render_schema_version,
+        field_schema: { render_schema_version, title: converted.title, html: converted.html },
+        existing_field_schema: null,
+        requestId,
+      })) as { html?: unknown };
+      const html = typeof field_schema.html === 'string' ? field_schema.html : '';
+      const v = await this.templates.createPlatformVersion({ template_id: id, render_schema_version, field_schema, internal_notes: null, created_by: auth.sub });
+      // W-4 — `{{key}}` left as text after the normaliser chipped the known keys (chips are tags,
+      // so only the text is scanned), with how often each occurs.
+      const left = new Map<string, number>();
+      for (const k of placeholderKeysIn(html.replace(/<[^>]*>/g, ' '))) left.set(k, (left.get(k) ?? 0) + 1);
+      const unknown_placeholders = [...left.entries()].map(([key, count]) => ({ key, count }));
+      const counts = blockCounts(html);
+      const content_bytes = Buffer.byteLength(html, 'utf8');
+      await audit.recordPlatformImport({
+        actor_id: auth.sub,
+        template_id: id,
+        version_id: v.id,
+        document_type_id: t.document_type_id,
+        source_filename: filename,
+        source_sha256: createHash('sha256').update(bytes).digest('hex'),
+        source_bytes: bytes.byteLength,
+        content_bytes,
+        counts: {
+          ...counts,
+          ...Object.fromEntries(converted.warnings.map((w) => [`warning:${w.code}`, w.count])),
+          unknown_placeholders: unknown_placeholders.length,
+        },
+        requestId,
+      });
+      return {
+        version: this.versionView(v),
+        summary: { title: converted.title, counts, warnings: converted.warnings, unknown_placeholders, content_bytes },
+      };
     });
   }
 

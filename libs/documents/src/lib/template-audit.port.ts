@@ -91,8 +91,27 @@ export interface TemplateGovernanceAudit {
   readonly requestId: string;
 }
 
+// TEMPLATE-IMPORT-1 (Directive v1.1 LOCKED) W-8 — a platform operator imported a Word file as
+// the DRAFT of an Aramo (PLATFORM) default. GLOBAL (no tenant_id). Written AFTER the draft is
+// created (the version id is its subject) through the non-swallowing writer; never the
+// document text — only the file's name, sha256 and size and the summary counts.
+export interface TemplatePlatformImportAudit {
+  readonly actor_id: string;
+  readonly template_id: string;
+  readonly version_id: string;
+  readonly document_type_id: string;
+  readonly source_filename: string;
+  readonly source_sha256: string;
+  readonly source_bytes: number;
+  readonly content_bytes: number;
+  /** Block counts, warning counts (`warning:<code>`) and the unknown-placeholder count. */
+  readonly counts: Readonly<Record<string, number>>;
+  readonly requestId: string;
+}
+
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
+  recordPlatformImport(event: TemplatePlatformImportAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
   recordPlatformDeletion(event: TemplatePlatformDeletionAudit): Promise<void>;
   recordPlatformDocumentType(event: TemplateDocumentTypeAudit): Promise<void>;

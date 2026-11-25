@@ -210,6 +210,13 @@ server {
     client_max_body_size 15m;
     proxy_pass http://api:3000;
   }
+  # TEMPLATE-IMPORT-1 W-1 — a Word (.docx) file imported as a template draft, JSON
+  # { filename, content_base64 } (up to 10 MB, ~13.4 MB as base64); apps/api WORD_IMPORT_ROUTE
+  # carries the same 15 MB parser limit. Regex location, so it wins over the prefix below.
+  location ~ ^/platform/document-templates/[^/]+/versions/import$ {
+    client_max_body_size 15m;
+    proxy_pass http://api:3000;
+  }
   # TEMPLATE-CONTENT-2 C-7 — template version content may be up to 256 KiB (rtr-html-v2);
   # apps/api parses these two write routes with a 1 MB limit (template-content-upload.constants).
   location ~ ^/platform/document-templates/([^/]+/versions|versions/[^/]+)/?$ {

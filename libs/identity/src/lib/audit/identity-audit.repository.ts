@@ -175,6 +175,11 @@ export const EVENT_TYPES = [
   // non-swallowing repository BEFORE the delete.
   'identity.document_template.platform_draft_discarded',
   'identity.document_template.platform_template_deleted',
+  // TEMPLATE-IMPORT-1 (Directive v1.1 LOCKED) W-8 — a Word file was imported as the DRAFT of
+  // an Aramo (PLATFORM) default. GLOBAL (tenant_id NULL). subject_id = the new TemplateVersion;
+  // payload { template_id, document_type_id, source_filename, source_sha256, source_bytes,
+  // content_bytes, counts } — never the document text. Written AFTER the draft is created.
+  'identity.document_template.platform_imported',
   // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
   // document type. GLOBAL (tenant_id NULL). subject_id = the DocumentType id; payload
   // { key, name, changed_fields? } (field names only). Written BEFORE the change.
