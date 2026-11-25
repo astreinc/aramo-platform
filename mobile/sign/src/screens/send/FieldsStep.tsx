@@ -3,10 +3,12 @@
 // M-A12 W1-C/W1-E: Find searches the documents already uploaded (the server's text
 // layer); a placed field starts at the user's default field size.
 // FIELD-PARITY-1 P2-4: "Find fields" reads the server's detector for the uploaded documents.
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useOnline } from '../../features/inbox/queries';
+import { draftNeedsUpload } from '../../features/send/draftModel';
 import { useServices } from '../../app/ServicesContext';
 import { FieldEditor, type SuggestDoc } from '../../features/editor/FieldEditor';
 import { fetchSenderSuggestions } from '../../features/editor/senderSuggestions';
@@ -44,6 +46,7 @@ export function FieldsStep({
           envelopeId && d.serverId && d.pendingUpload === null
             ? () => senderTextLayer(workspace, envelopeId, d.serverId as string)
             : null,
+        pending: !(envelopeId && d.serverId && d.pendingUpload === null),
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [uploaded, envelopeId, workspace],
@@ -70,6 +73,16 @@ export function FieldsStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [recipientKeys],
   );
+  // Android field test 2026-11-25 — a PDF is uploaded only at Review / Save as draft / Send, so on
+  // this step Find and "Find fields" had no server copy to read ("No searchable text in this
+  // document"). Entering this step (and coming back online) saves the draft, which uploads the
+  // documents; their text and suggestions load as soon as they are on the server.
+  const online = useOnline();
+  const needsUpload = draftNeedsUpload(envelopeId, p?.documents ?? []);
+  useEffect(() => {
+    if (online && needsUpload) void controller.sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
   const loadAsset = useCallback((key: string) => controller.documentAsset(key), [controller]);
   const onFieldsChange = useCallback(
     (fields: readonly EditorField[]) => controller.setFields(fields),

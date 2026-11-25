@@ -583,3 +583,14 @@ export function withMessaging(p: SendDraftPayload, bySigner: MessagingBySigner):
     }),
   };
 }
+
+/**
+ * Whether the draft's documents are not all on the server yet (no envelope, or a document still
+ * waiting to upload): then Find and "Find fields" have nothing to read until the draft is saved.
+ */
+export function draftNeedsUpload(
+  envelopeId: string | null,
+  documents: readonly { readonly serverId: string | null; readonly pendingUpload: unknown }[],
+): boolean {
+  return documents.length > 0 && (envelopeId === null || documents.some((d) => d.pendingUpload !== null || !d.serverId));
+}
