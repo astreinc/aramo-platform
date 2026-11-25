@@ -15121,11 +15121,6 @@
         "status": "unscoped"
       },
       {
-        "from": "mobile/sign/src/features/send/UploadOptions.tsx",
-        "project": "sign-mobile",
-        "status": "unscoped"
-      },
-      {
         "from": "mobile/sign/src/features/send/draftModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"

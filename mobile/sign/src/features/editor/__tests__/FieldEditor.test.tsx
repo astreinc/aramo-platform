@@ -60,6 +60,37 @@ describe('FieldEditor', () => {
     await act(async () => {});
   });
 
+  // Android field test 2026-11-25 — with a large system font (or a short screen) the tool row
+  // was squeezed and the field icons cut in half: the row and "Place at center" never shrink,
+  // and the pages may give up space down to 35% there; at normal sizes they keep 50%.
+  it('the tool row and "Place at center" never shrink; the pages keep 50%, or 35% when compact', async () => {
+    const RN = jest.requireActual('react-native') as typeof import('react-native');
+    const dims = jest.spyOn(RN, 'useWindowDimensions');
+    try {
+      dims.mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+      renderEditor();
+      await act(async () => {});
+      expect(StyleSheet.flatten(screen.getByTestId('send-tools').props.style)).toMatchObject({ flexGrow: 0, flexShrink: 0 });
+      expect(StyleSheet.flatten(screen.getByTestId('editor-canvas').props.style).minHeight).toBe('50%');
+      const center = screen.getByText('Place at center');
+      let host: { props: { style?: unknown }; parent: unknown } | null = center as unknown as { props: { style?: unknown }; parent: unknown };
+      let pinned = false;
+      while (host !== null && !pinned) {
+        const st = StyleSheet.flatten(host.props.style as never) as { flexShrink?: number } | undefined;
+        pinned = st?.flexShrink === 0;
+        host = host.parent as typeof host;
+      }
+      expect(pinned).toBe(true);
+      screen.unmount();
+      dims.mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1.3 });
+      renderEditor();
+      await act(async () => {});
+      expect(StyleSheet.flatten(screen.getByTestId('editor-canvas').props.style).minHeight).toBe('35%');
+    } finally {
+      dims.mockRestore();
+    }
+  });
+
   it('M-A19 — every field type in one horizontal tool row; no grid and no "More fields"', async () => {
     renderEditor();
     await act(async () => {});
