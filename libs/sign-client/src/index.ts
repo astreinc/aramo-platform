@@ -350,3 +350,5 @@ export {
 } from './lib/signer-field-input.js';
 // One wording for "you may skip this field" (web signing page and the Aramo Sign app).
 export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-mark.js';
+// One rule for an envelope's email subject ("Please sign: …") on web, the app and the emails.
+export { SIGN_SUBJECT_PREFIX, subjectDocumentTitle, signatureRequestSubject } from './lib/envelope-subject.js';

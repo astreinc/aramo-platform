@@ -13,6 +13,7 @@ import {
   sendFeaturesOf,
   templateAccess,
   titleFromFilename,
+  SIGN_SUBJECT_PREFIX,
 } from '@aramo/sign-client';
 
 import {
@@ -1308,8 +1309,8 @@ export function signersFullText(everyoneFull: boolean): string {
     : `${SIGNERS_FULL_MESSAGE} Add anyone else as someone who receives a copy.`;
 }
 
-/** PO 2026-11-18 — the default subject's prefix (same as the app's). */
-export const SUBJECT_PREFIX = 'Please sign: ';
+/** PO 2026-11-18 — the default subject's prefix: the one rule's (@aramo/sign-client), also the app's and the emails'. */
+export const SUBJECT_PREFIX = SIGN_SUBJECT_PREFIX;
 
 /** PO 2026-11-18 — open a draft document's PDF in a new tab (the envelope page's Preview). */
 export async function previewDocument(envelopeId: string, documentId: string, onError: (m: string) => void): Promise<void> {

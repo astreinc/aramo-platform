@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import { readableTextOn, type SigningNotification, type SigningNotificationPort, type SigningNotificationResult } from '@aramo/sign';
+import { signatureRequestSubject, subjectDocumentTitle } from '@aramo/sign-client';
 
 import { SignBrandingService, emailLogoUrl, type EffectiveBranding } from './branding/sign-branding.service.js';
 
@@ -52,7 +53,10 @@ export function renderSigningNotification(n: SigningNotification, opts: { report
 }
 
 function renderBase(n: SigningNotification): Rendered {
-  const doc = n.envelope_subject;
+  // The one subject rule (@aramo/sign-client): the editors start a subject as "Please sign: …",
+  // so every line names the document WITHOUT that prefix, and the request email's subject is the
+  // sender's subject as written (the prefix added only when missing). It once doubled it.
+  const doc = subjectDocumentTitle(n.envelope_subject);
   const sender = (n.audience ?? 'SIGNER') === 'SENDER';
   // M-A5 §2 — a copy recipient never signs: copy wording.
   const copy = !sender && n.recipient_role === 'COPY';
@@ -73,7 +77,7 @@ function renderBase(n: SigningNotification): Rendered {
     case 'SIGNATURE_REQUEST': {
       const url = safeUrl(n.signing_url);
       return {
-        subject: `Please sign: ${doc}`,
+        subject: signatureRequestSubject(n.envelope_subject),
         lines: [
           `You've been asked to review and sign "${doc}".`,
           // Sign Mobile M-A3 §3 — the sender's message, as plain text (escaped below).

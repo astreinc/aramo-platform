@@ -10,6 +10,7 @@ import {
   MAX_SIGNERS,
   parseFieldCondition,
   type FieldCondition,
+  SIGN_SUBJECT_PREFIX,
 } from '@aramo/sign-client';
 
 import type { EditorField } from '../editor/editorReducer';
@@ -199,7 +200,7 @@ export function emptyPayload(): SendDraftPayload {
  * them). A document you sign yourself keeps the document's name. The sender can edit it; the
  * limit stays SUBJECT_MAX (200).
  */
-export const SUBJECT_PREFIX = 'Please sign: ';
+export const SUBJECT_PREFIX = SIGN_SUBJECT_PREFIX; // the one rule's (@aramo/sign-client), as web and the emails
 export function defaultSubject(p: Pick<SendDraftPayload, 'documents' | 'recipients'> & { readonly selfSign?: boolean }): string {
   const doc = p.documents[0]?.title ?? '';
   if (doc === '') return '';
