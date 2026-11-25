@@ -904,8 +904,8 @@ export function SigningFlow(props: SigningFlowProps) {
         const filled = isFilled(state, f.field_id);
         const slop = fieldHitSlop(box, allBoxes, t.size.minTouch);
         // UAT SIG-03 retest (web ≡ app) — a check box is the box itself: a plain square with
-        // ✓ when checked, never its caption squeezed inside (it showed "Ye"); the caption sits
-        // beside the box, as on the web, and tapping it toggles that box.
+        // ✓ when checked. PO 2026-11-25 — no label is drawn on the page (inside or beside the
+        // box): the label is its accessible name and its row in the field list, as on the web.
         // FIELD-PARITY-1 P3 T-5 — a radio option is the same control, drawn as a circle.
         if (f.field_type === 'CHECKBOX' || isRadio(f)) {
           return [
@@ -913,9 +913,6 @@ export function SigningFlow(props: SigningFlowProps) {
               key={f.field_id}
               fieldId={f.field_id}
               box={box}
-              pageWidth={layout.width}
-              label={f.label ?? null}
-              required={f.required}
               checked={v?.value === 'true'}
               current={current}
               hitSlop={slop}

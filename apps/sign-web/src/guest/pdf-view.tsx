@@ -250,7 +250,13 @@ export function PdfDocument({
                     tabIndex={fixed ? undefined : 0}
                     className={cls}
                     style={box}
-                    title={typeof f.tooltip === 'string' && f.tooltip.length > 0 ? f.tooltip : undefined}
+                    title={
+                      typeof f.tooltip === 'string' && f.tooltip.length > 0
+                        ? f.tooltip
+                        : box_ && typeof f.label === 'string' && f.label.length > 0
+                          ? withOptionalMark(f.label, f.required)
+                          : undefined
+                    }
                     aria-label={
                       fixed
                         ? `${label(f)}${shown?.kind === 'text' ? `: ${shown.value}` : ''}, filled in by the sender`
@@ -277,14 +283,10 @@ export function PdfDocument({
                     ) : (
                       <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
-                    {box_ && typeof f.label === 'string' && f.label.length > 0 ? (
-                      // M-A6 §2.3 — the box's caption, beside the box. Like a form label, tapping
-                      // it toggles this box (UAT SIG-03: a larger target that never overlaps
-                      // the box above or below).
-                      <span className="sg-onpage__caption" aria-hidden="true" data-testid="sg-onpage-caption">
-                        {withOptionalMark(f.label, f.required)}
-                      </span>
-                    ) : null}
+                    {/* PO 2026-11-25 (UAT SIG-03) — a check box's label is its name, never words on
+                        the page: the document's own text says what the box means, so nothing is
+                        drawn beside the box (it covered or repeated that text). The label stays the
+                        box's accessible name, its hover title and its row in the field list. */}
                   </div>
                 );
               })}

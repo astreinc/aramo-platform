@@ -1,5 +1,6 @@
-// UAT SIG-03 retest (web ≡ app) — the signing page's check box: a plain box (✓ when checked),
-// its caption beside it (never inside), and the caption toggles the same box.
+// UAT SIG-03 retest (web ≡ app) — the signing page's check box: a plain box (✓ when checked).
+// PO 2026-11-25 — no label is drawn on the page, inside or beside the box; the label is the
+// box's accessible name.
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
@@ -13,9 +14,6 @@ function show(over: Partial<Parameters<typeof CheckboxField>[0]> = {}) {
     <CheckboxField
       fieldId="yes"
       box={box}
-      pageWidth={300}
-      label="Yes"
-      required
       checked={false}
       current={false}
       accessibilityLabel="Yes, check box"
@@ -27,36 +25,23 @@ function show(over: Partial<Parameters<typeof CheckboxField>[0]> = {}) {
 }
 
 describe('CheckboxField', () => {
-  it('draws the caption beside the box, not inside it', () => {
+  it('draws no label on the page, inside or beside the box; the label is its accessible name', () => {
     show();
-    const boxEl = screen.getByTestId('field-yes');
-    expect(boxEl).not.toHaveTextContent('Yes');
-    const cap = StyleSheet.flatten(screen.getByTestId('field-caption-yes').props.style);
-    expect(cap.left).toBe(box.left + box.width + 4);
-    expect(screen.getByText('Yes')).toBeTruthy();
+    expect(screen.queryByText(/Yes/)).toBeNull();
+    expect(screen.queryByTestId('field-caption-yes')).toBeNull();
+    expect(screen.getByTestId('field-yes').props.accessibilityLabel).toBe('Yes, check box');
   });
 
-  it('tapping the caption or the box toggles that box', () => {
+  it('tapping the box toggles it', () => {
     const onPress = show();
-    fireEvent.press(screen.getByTestId('field-caption-yes'));
     fireEvent.press(screen.getByTestId('field-yes'));
-    expect(onPress).toHaveBeenCalledTimes(2);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('shows ✓ only when checked, and reports its state', () => {
     show({ checked: true });
     expect(screen.getByTestId('field-check-yes')).toHaveTextContent('✓');
     expect(screen.getByTestId('field-yes').props.accessibilityState).toEqual({ checked: true });
-  });
-
-  it('an optional box says so beside it; no caption without a label', () => {
-    show({ required: false });
-    expect(screen.getByText('Yes · optional')).toBeTruthy();
-  });
-
-  it('no label → no caption', () => {
-    show({ label: null });
-    expect(screen.queryByTestId('field-caption-yes')).toBeNull();
   });
 
   // FIELD-PARITY-1 P3 T-5 / S-4 — a radio option and a sender's (locked) box.
@@ -74,7 +59,6 @@ describe('CheckboxField', () => {
     expect(el.props.accessibilityState).toEqual({ checked: true, disabled: true });
     expect(el.props.accessibilityHint).toBe('Set by the sender');
     fireEvent.press(el);
-    fireEvent.press(screen.getByTestId('field-caption-yes'));
     expect(onPress).not.toHaveBeenCalled();
   });
 });

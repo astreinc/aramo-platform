@@ -71,12 +71,15 @@ describe('on-page check box (UAT SIG-03)', () => {
     expect(signature).not.toHaveClass('sg-onpage--box');
   });
 
-  it('tapping the caption toggles that box, not its neighbour', async () => {
+  it('draws no label beside the box (PO 2026-11-25); the label is its name and hover title', async () => {
     const onField = vi.fn();
     show(onField);
-    const captions = await screen.findAllByTestId('sg-onpage-caption');
-    const no = captions[1];
-    if (no === undefined) throw new Error('no caption');
+    const [yes, no] = await screen.findAllByTestId('sg-onpage-field');
+    expect(screen.queryAllByTestId('sg-onpage-caption')).toHaveLength(0);
+    if (no === undefined || yes === undefined) throw new Error('no boxes');
+    expect(no.textContent).toBe('');
+    expect(no.getAttribute('aria-label')).toMatch(/No/);
+    expect(no.getAttribute('title')).toMatch(/^No/);
     fireEvent.click(no);
     expect(onField).toHaveBeenCalledTimes(1);
     expect(onField).toHaveBeenCalledWith(expect.objectContaining({ field_id: 'no' }));

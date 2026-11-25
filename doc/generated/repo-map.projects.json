@@ -15156,11 +15156,6 @@
         "status": "unscoped"
       },
       {
-        "from": "mobile/sign/src/features/signing/CheckboxField.tsx",
-        "project": "sign-mobile",
-        "status": "unscoped"
-      },
-      {
         "from": "mobile/sign/src/features/signing/FieldEditor.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
