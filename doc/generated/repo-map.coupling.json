@@ -9733,6 +9733,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr14-b2-dossier-wire.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -10973,6 +10979,11 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
@@ -10999,6 +11010,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/pdf/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
     },
     {
       "from": "apps/sign-web/vite.config.ts",
@@ -37062,6 +37078,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261125120000_template_sync_1_master_lineage/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -39043,6 +39064,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/documents-contracts/src/index.ts"
     },
     {
@@ -39277,6 +39303,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/pdf/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
     },
     {
       "from": "vitest.shared.ts",

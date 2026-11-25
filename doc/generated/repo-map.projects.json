@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 90 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 91 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -27,6 +27,7 @@
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
     "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
     "@aramo/document-templates-web/pdf": "./libs/document-templates-web/src/pdf/index.ts",
+    "@aramo/document-templates-web/sync": "./libs/document-templates-web/src/template-sync.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -751,13 +752,16 @@
       "StudioRolesPanel",
       "TEMPLATE_PRODUCT_KEYS",
       "TEMPLATE_PRODUCT_LABELS",
+      "TEMPLATE_SYNC_COPY",
       "TemplateStudio",
+      "VersionDiff",
       "activateTemplateVersion",
       "addRole",
       "adoptTemplate",
       "appendStudioVariable",
       "base64ToBytes",
       "bindingMapFrom",
+      "blockDiff",
       "bytesToBase64",
       "canApproveTemplates",
       "canAuthorTemplates",
@@ -766,8 +770,10 @@
       "contentFromVersion",
       "convertStudioValue",
       "createDraftFromActive",
+      "createDraftFromMaster",
       "createOwnTemplate",
       "createStudioCodec",
+      "diffStats",
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
@@ -780,12 +786,14 @@
       "getDocumentTemplate",
       "getFixedForm",
       "getFixedFormPdf",
+      "getTemplateMasterContent",
       "getTemplateVersion",
       "htmlOf",
       "isCanonicalStudioHtml",
       "isStudioLetterheadBlock",
       "isStudioValueEmpty",
       "isTemplateProductKey",
+      "keepTemplateVersion",
       "listDocumentTemplates",
       "listFixedForms",
       "listTemplateSelections",
@@ -807,6 +815,7 @@
       "serializeStudioBlockDom",
       "setFixedFormHidden",
       "setTemplateSelection",
+      "showsMasterNotice",
       "signerRolesOf",
       "studioActiveMarks",
       "studioBlocksFromHtml",
@@ -825,12 +834,23 @@
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
+      "templateMasterBadge",
       "templateProductLabel",
       "templateProductsLine",
+      "templatesWithNewerMaster",
       "useDocTemplateRoutes",
-      "variableToken"
+      "variableToken",
+      "wordDiff"
     ],
     "@aramo/document-templates-web/pdf": ["clampBox", "loadPdf", "toPdf", "toTopLeft"],
+    "@aramo/document-templates-web/sync": [
+      "TEMPLATE_SYNC_COPY",
+      "TemplateMaster",
+      "TemplateMasterContent",
+      "showsMasterNotice",
+      "templateMasterBadge",
+      "templatesWithNewerMaster"
+    ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_EXECUTION_MODES",
@@ -875,6 +895,7 @@
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
       "TEMPLATE_PRODUCT_KEYS",
+      "TEMPLATE_SYNC_REFUSALS",
       "TEMPLATE_TENANT_LOGO",
       "TEMPLATE_VARIABLE_DATA_TYPES",
       "TemplateDraftAlreadyExistsError",
@@ -896,7 +917,10 @@
       "isFixedFormFieldType",
       "isSystemLockedType",
       "isTemplateProductKey",
+      "masterAvailable",
+      "masterIsNewer",
       "templateErrorToHttp",
+      "templateMasterView",
       "visibleToTenant"
     ],
     "@aramo/documents-contracts": [
@@ -4681,6 +4705,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4838,6 +4868,12 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-sync-1-routes.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -7455,6 +7491,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10332,6 +10374,7 @@
       { "project": "org-admin-web", "status": "production" }
     ],
     "@aramo/document-templates-web/pdf": [],
+    "@aramo/document-templates-web/sync": [],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
