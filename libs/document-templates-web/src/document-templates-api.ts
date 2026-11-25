@@ -13,7 +13,6 @@ import { RTR_HTML_V2 } from '@aramo/template-content';
 import { apiClient } from '@aramo/fe-foundation';
 
 import type { StudioInlineFieldRow } from './studio/inline-fields';
-
 import type { TemplateMaster, TemplateMasterContent } from './template-sync';
 
 const BASE = '/v1/document-templates';
