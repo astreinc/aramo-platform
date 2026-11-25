@@ -271,9 +271,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-PRODUCT-
       `UPDATE documents."DocumentTemplate" SET withdraw_notice_at = now(), withdraw_effective_at = now() + interval '30 days' WHERE id = $1`,
       [signDefault],
     );
-    const notices = async (tenant: string): Promise<string[]> =>
-      ((await (await fetch(url('/v1/document-templates/notices'), auth(tenant))).json()) as { notices: Array<{ template_id: string }> }).notices.map((n) => n.template_id);
-    expect(await notices(T_SIGN)).toEqual([signDefault]);
+    const notices = async (tenant: string) =>
+      ((await (await fetch(url('/v1/document-templates/notices'), auth(tenant))).json()) as { notices: Array<{ template_id: string; master_template_id?: string | null }> }).notices;
+    // The legacy selection's notice, plus (TEMPLATE-SYNC-1 S-4) the notice on the copy T_SIGN
+    // adopted earlier in this file, which names its withdrawn master.
+    const sign = await notices(T_SIGN);
+    expect(sign.map((n) => n.template_id)).toContain(signDefault);
+    expect(sign.filter((n) => n.template_id !== signDefault).map((n) => n.master_template_id)).toEqual([signDefault]);
     expect(await notices(T_ATS)).toEqual([]);
   });
 });

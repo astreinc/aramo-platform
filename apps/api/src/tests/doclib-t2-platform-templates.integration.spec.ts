@@ -95,7 +95,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const templates = new TemplatesRepository(prisma);
       const variables = new TemplateVariablesRepository(prisma);
       caps = new RtrTemplateCapabilities(variables);
-      platform = new PlatformDocumentTemplatesController(templates, variables, caps);
+      // TEMPLATE-SYNC-1 S-13 — publish writes a GLOBAL audit event and refuses without an audit
+      // port; this repository-level spec records the writes in memory.
+      const audit = {
+        recordDraftDiscarded: async () => undefined,
+        recordPlatformImport: async () => undefined,
+        recordPlatformWithdrawal: async () => undefined,
+        recordPlatformDeletion: async () => undefined,
+        recordPlatformDocumentType: async () => undefined,
+        recordPlatformPublished: async () => undefined,
+        recordGovernance: async () => undefined,
+      };
+      platform = new PlatformDocumentTemplatesController(templates, variables, caps, audit as never);
       tenantRoutes = new DocumentTemplatesController(templates, caps);
     }, 180_000);
 

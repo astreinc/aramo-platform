@@ -69,6 +69,11 @@ const FIELDS = [
 ];
 const content = (html: string, title = 'Employee Handbook') => ({ render_schema_version: 'rtr-html-v3', title, html, signing: SIGNING });
 
+// Fails with the response body in the message (the error code and details), not just the status.
+function expectStatus(res: { status: number; body: unknown }, status: number): void {
+  expect(res.status, JSON.stringify(res.body).slice(0, 800)).toBe(status);
+}
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-FIELDS-1 fields in the text — HTTP (real Postgres 17)', () => {
   let container: StartedPostgreSqlContainer;
   let app: INestApplication;
@@ -163,10 +168,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-FIELDS-1
     port = (server.address() as AddressInfo).port;
 
     const created = await call(operatorJwt, 'POST', '/platform/document-templates', { document_type_id: RTR, name: 'Employee Handbook', template_kind: 'GENERATED', products: ['sign'] });
-    expect(created.status).toBe(201);
+    expectStatus(created, 201);
     templateId = created.body['id'] as string;
     const opened = await call(operatorJwt, 'POST', `/platform/document-templates/${templateId}/versions`, { render_schema_version: 'rtr-html-v3', field_schema: content('<p>Draft</p>') });
-    expect(opened.status).toBe(201);
+    expectStatus(opened, 201);
     draftId = opened.body['id'] as string;
   }, 300_000);
 
@@ -200,10 +205,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-FIELDS-1
 
   it('the platform places three fields in the text: content and rows saved together, rows keep NULL geometry', async () => {
     const saved = await call(operatorJwt, 'PATCH', `/platform/document-templates/versions/${draftId}`, { render_schema_version: 'rtr-html-v3', field_schema: content(HANDBOOK), fields: FIELDS });
-    expect(saved.status).toBe(200);
+    expectStatus(saved, 200);
     expect((saved.body['field_schema'] as { html: string }).html).toBe(HANDBOOK);
     const listed = await call(operatorJwt, 'GET', `/platform/document-templates/versions/${draftId}/fields`);
-    expect(listed.status).toBe(200);
+    expectStatus(listed, 200);
     const rows = listed.body['fields'] as Array<Record<string, unknown>>;
     expect(rows.map((r) => [r['field_key'], r['field_type'], r['signer_role'], r['page_number'], r['x']])).toEqual([
       ['employee_initials', 'INITIALS', 'employee', null, null],
@@ -214,49 +219,49 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-FIELDS-1
 
   it('the preview draws labelled boxes; publish succeeds; an ats template refuses publishing', async () => {
     const pv = await call(operatorJwt, 'POST', `/platform/document-templates/versions/${draftId}/preview`);
-    expect(pv.status).toBe(200);
+    expectStatus(pv, 200);
     expect(pv.body['html']).toContain('<span data-sign-field-sample="employee_signature">Signature · Employee</span>');
-    expect((await call(operatorJwt, 'POST', `/platform/document-templates/versions/${draftId}/publish`)).status).toBe(200);
+    expectStatus(await call(operatorJwt, 'POST', `/platform/document-templates/versions/${draftId}/publish`), 200);
 
     const ats = await call(operatorJwt, 'POST', '/platform/document-templates', { document_type_id: RTR, name: 'ATS handbook', template_kind: 'GENERATED', products: ['ats', 'sign'] });
     const atsDraft = await call(operatorJwt, 'POST', `/platform/document-templates/${ats.body['id'] as string}/versions`, { render_schema_version: 'rtr-html-v3', field_schema: content('<p>Draft</p>') });
     const atsId = atsDraft.body['id'] as string;
-    expect((await call(operatorJwt, 'PATCH', `/platform/document-templates/versions/${atsId}`, { render_schema_version: 'rtr-html-v3', field_schema: content(HANDBOOK), fields: FIELDS })).status).toBe(200);
-    expect((await call(operatorJwt, 'POST', `/platform/document-templates/versions/${atsId}/preview`)).status).toBe(200);
+    expectStatus(await call(operatorJwt, 'PATCH', `/platform/document-templates/versions/${atsId}`, { render_schema_version: 'rtr-html-v3', field_schema: content(HANDBOOK), fields: FIELDS }), 200);
+    expectStatus(await call(operatorJwt, 'POST', `/platform/document-templates/versions/${atsId}/preview`), 200);
     const refused = await call(operatorJwt, 'POST', `/platform/document-templates/versions/${atsId}/publish`);
-    expect(refused.status).toBe(422);
+    expectStatus(refused, 422);
     expect(reasonOf(refused.body)).toBe('inline_fields_not_supported_for_ats');
   });
 
   it('a company adopts it (rows copied), edits the wording, cannot remove or add a field, and approves it', async () => {
     const adopted = await call(tenantJwt, 'POST', '/v1/document-templates/adopt', { library_template_id: templateId });
-    expect(adopted.status).toBe(201);
+    expectStatus(adopted, 201);
     copyId = (adopted.body['template'] as { id: string }).id;
     copyVersionId = (adopted.body['version'] as { id: string }).id;
     expect(await rowCount(copyVersionId)).toBe(3);
 
     const reworded = HANDBOOK.replace('I have read the Employee Handbook.', 'I confirm I have read the Acme Employee Handbook.');
     const edited = await call(tenantJwt, 'PATCH', `/v1/document-templates/versions/${copyVersionId}`, { render_schema_version: 'rtr-html-v3', field_schema: content(reworded) });
-    expect(edited.status).toBe(200);
+    expectStatus(edited, 200);
     const removed = await call(tenantJwt, 'PATCH', `/v1/document-templates/versions/${copyVersionId}`, {
       render_schema_version: 'rtr-html-v3',
       field_schema: content(reworded.replace('<span data-sign-field="it_policy"></span>', '')),
     });
-    expect(removed.status).toBe(422);
+    expectStatus(removed, 422);
     expect(reasonOf(removed.body)).toBe('fields_platform_only');
     const added = await call(tenantJwt, 'POST', `/v1/document-templates/versions/${copyVersionId}/fields`, { field_key: 'extra', field_type: 'TEXT', ordinal: 9 });
-    expect(added.status).toBe(422);
+    expectStatus(added, 422);
     expect(reasonOf(added.body)).toBe('fields_platform_only');
     expect(await rowCount(copyVersionId)).toBe(3);
 
-    expect((await call(tenantJwt, 'POST', `/v1/document-templates/versions/${copyVersionId}/preview`)).status).toBe(200);
-    expect((await call(tenantJwt, 'POST', `/v1/document-templates/versions/${copyVersionId}/activate`)).status).toBe(200);
+    expectStatus(await call(tenantJwt, 'POST', `/v1/document-templates/versions/${copyVersionId}/preview`), 200);
+    expectStatus(await call(tenantJwt, 'POST', `/v1/document-templates/versions/${copyVersionId}/activate`), 200);
   });
 
   it('"Use" in Sign returns every field with its render position; the manifest records them; no block for the inline signer', async () => {
     const body = { values: {}, created_by: TENANT_ADMIN, client_id: null };
     const res = await s2sRender(copyId, body, 'tf1-use-0001');
-    expect(res.status).toBe(201);
+    expectStatus(res, 201);
     const defs = res.body['field_definitions'] as Array<{ field_key: string; page_number: number | null; x: number | null; y: number | null; width: number | null }>;
     expect(defs.map((d) => d.field_key)).toEqual(['employee_initials', 'it_policy', 'employee_signature']);
     for (const d of defs) {

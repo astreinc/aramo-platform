@@ -2394,9 +2394,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.document_template.adopted',
         'identity.document_template.created',
         'identity.document_template.draft_discarded',
+        // TEMPLATE-SYNC-1 S-13 — start a draft from Aramo's new version (tenant).
+        'identity.document_template.draft_from_master',
         // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show.
         'identity.document_template.fixed_form_hidden',
         'identity.document_template.fixed_form_shown',
+        // TEMPLATE-SYNC-1 S-13 — keep my version (tenant).
+        'identity.document_template.master_version_kept',
         'identity.document_template.selection_cleared',
         'identity.document_template.selection_set',
         'identity.document_template.version_activated',
