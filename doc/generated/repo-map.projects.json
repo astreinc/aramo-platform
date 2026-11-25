@@ -724,6 +724,7 @@
       "FixedFormPreview",
       "FixedFormStudio",
       "GALLERY_STUDIO_READ_ONLY",
+      "InlineFieldDialog",
       "LETTERHEAD_SAVE_BLOCKED",
       "LETTERHEAD_STUDIO_CONTENT_CODEC",
       "Letterhead",
@@ -782,6 +783,11 @@
       "getFixedFormPdf",
       "getTemplateVersion",
       "htmlOf",
+      "inlineFieldChecks",
+      "inlineFieldChipResolver",
+      "inlineFieldFromRow",
+      "inlineFieldKeysOf",
+      "inlineFieldsToSave",
       "isCanonicalStudioHtml",
       "isStudioLetterheadBlock",
       "isStudioValueEmpty",
@@ -792,6 +798,7 @@
       "listTemplateVersions",
       "makeStudioChip",
       "nextFieldKey",
+      "nextInlineFieldKey",
       "orderedProducts",
       "organizationReadinessLabel",
       "organizationStudioCopy",
@@ -862,6 +869,7 @@
       "FIXED_FORM_MIN_FIELD_SIZE",
       "FIXED_FORM_SCHEMA_V1",
       "FixedFormsRepository",
+      "INLINE_FIELD_TYPES",
       "OFFER_LETTER_TYPE_ID",
       "PLATFORM_TEMPLATE_ASSET_PREFIX",
       "PlatformDocumentTypesRepository",
@@ -893,9 +901,13 @@
       "fixedFormConditionIssues",
       "fixedFormIssues",
       "fixedFormPdfOf",
+      "inlineRowColumns",
+      "inlineRowOf",
       "isFixedFormFieldType",
       "isSystemLockedType",
       "isTemplateProductKey",
+      "parseInlineFieldRows",
+      "sameInlineFieldSet",
       "templateErrorToHttp",
       "visibleToTenant"
     ],
@@ -918,6 +930,7 @@
     ],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
+      "InlineFieldTooWideError",
       "PAGE_GRAPHICS_MAX_OPS",
       "PAGE_GRAPHICS_MAX_RECTS",
       "PdfFormImportError",
@@ -933,6 +946,8 @@
       "extractPageGraphics",
       "extractTextLayer",
       "importPdfForm",
+      "inlineFieldMaxWidth",
+      "isFieldRun",
       "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
@@ -3900,21 +3915,31 @@
       "ASSET_ATTR",
       "BLOCK_KINDS_V1",
       "BLOCK_KINDS_V2",
+      "BLOCK_LIKE_TAGS",
       "CONTENT_KEY_RE",
       "CONTENT_MAX_BYTES_V1",
       "CONTENT_MAX_BYTES_V2",
       "CONTENT_PREVIEW_IFRAME_STYLE",
       "CONTENT_REFUSAL_REASONS",
       "CURRENT_HTML_CONTENT_VERSION",
+      "DROPPED_WITH_CONTENT_TAGS",
       "HEADING_TAGS_V1",
       "HEADING_TAGS_V2",
       "HTML_CONTENT_VERSIONS",
+      "INLINE_FIELD_BLOCKS",
+      "INLINE_FIELD_KEY_RE",
+      "INLINE_FIELD_REFUSAL_REASONS",
+      "INLINE_MARK_TAGS",
       "LIST_MAX_DEPTH_V2",
       "PAGE_BREAK_ATTR",
       "PAGE_BREAK_VALUE",
       "PLACEHOLDER_TOKEN_SOURCE",
       "RTR_HTML_V1",
       "RTR_HTML_V2",
+      "RTR_HTML_V3",
+      "SAMPLE_ATTR",
+      "SIGN_FIELD_ATTR",
+      "SIGN_FIELD_SAMPLE_ATTR",
       "TABLE_MAX_COLUMNS",
       "TABLE_MAX_ROWS",
       "VARIABLE_ATTR",
@@ -3922,12 +3947,18 @@
       "VARIABLE_CATALOG_KEY_RE",
       "allowedAttributesOf",
       "allowedTagsOf",
+      "allowsInlineFields",
       "blockKindsOf",
       "contentMaxBytesOf",
       "contentPreviewIframeDoc",
+      "contentVersionOrdinal",
+      "hasV2Features",
       "headingLevelOf",
+      "inlineFieldAllowedIn",
+      "inlineFieldMarkerHtml",
       "isContentDowngrade",
       "isHtmlContentVersion",
+      "isInlineFieldKey",
       "listMaxDepthOf",
       "placeholderKeysIn",
       "placeholderTokenRe"
@@ -4651,6 +4682,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5354,6 +5391,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7413,6 +7456,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10515,6 +10570,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-import-1-word.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10644,6 +10705,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10704,6 +10771,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10759,6 +10832,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -13688,6 +13767,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -15910,6 +15995,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -16359,10 +16450,23 @@
     ],
     "@aramo/technical-screening": [{ "project": "api", "status": "production" }],
     "@aramo/template-content": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-content.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "aramo-platform-web", "status": "production" },
       { "project": "aramo-sign-web", "status": "production" },
-      { "project": "document-templates-web", "status": "production" }
+      { "project": "document-templates-web", "status": "production" },
+      { "project": "documents", "status": "production" }
     ],
     "@aramo/tenant-reset": [
       {
