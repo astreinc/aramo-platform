@@ -225,4 +225,7 @@ export {
   fieldImportWarningText,
   fieldImportSummary,
   isFieldImportWarningCode,
+  PDF_PROBLEM_COPY,
+  PDF_REFUSED_FALLBACK,
+  pdfProblemText,
 } from './lib/field-import-copy.js';

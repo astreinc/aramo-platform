@@ -108,7 +108,7 @@ export class RegulatedSigningService {
     try {
       accepted = await this.safePdf.accept(polled.pdf);
     } catch (e) {
-      if (e instanceof UnsafePdfError) throw bad(requestId, `The e-stamp certificate can't be used: ${e.message}`, { reason: 'unsafe_pdf' });
+      if (e instanceof UnsafePdfError) throw bad(requestId, `The e-stamp certificate can't be used: ${e.message}`, { reason: 'unsafe_pdf', pdf_problem: e.problem });
       throw e;
     }
     const pdf = await PDFDocument.load(accepted);

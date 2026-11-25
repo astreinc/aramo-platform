@@ -1,6 +1,6 @@
 // Client Rule Consolidation C3 — runs under vitest and mobile Jest (globals only).
 // Audit rows 8 and 29: one refusal → copy map; the server's text is never shown.
-import { ENVELOPE_CHANGED, FALLBACK_MESSAGE, NO_PERMISSION, REFUSAL_COPY, STORAGE_FULL, WORD_COPY, refusalMessage, type RefusalInput } from '../index.js';
+import { ENVELOPE_CHANGED, FALLBACK_MESSAGE, NO_PERMISSION, PDF_PROBLEM_COPY, PDF_REFUSED_FALLBACK, REFUSAL_COPY, UPLOAD_OPTION_COPY, STORAGE_FULL, WORD_COPY, refusalMessage, type RefusalInput } from '../index.js';
 
 const fmt = { time: (iso: string) => `T(${iso})`, date: (iso: string) => `D(${iso})` };
 
@@ -56,5 +56,21 @@ describe('reminder refusals (row 8, one wording)', () => {
     ['self-sign', { code: 'ESIGN_REMINDER_NOT_ALLOWED', status: 409, reason: 'self_sign_no_reminders' }, 'A document you sign yourself has no one to remind.'],
   ])('%s', (_n, e, copy) => {
     expect(refusalMessage(e, fmt)).toBe(copy);
+  });
+});
+
+describe('refused PDF copy (one classification, every UI)', () => {
+  it.each<[string, RefusalInput, string]>([
+    ['scripts (fillable government forms)', { code: 'VALIDATION_ERROR', reason: 'unsafe_pdf', details: { reason: 'unsafe_pdf', pdf_problem: 'scripts' } }, PDF_PROBLEM_COPY.scripts],
+    ['password', { code: 'VALIDATION_ERROR', details: { reason: 'unsafe_pdf', pdf_problem: 'password' } }, PDF_PROBLEM_COPY.password],
+    ['the template upload reasons too', { code: 'VALIDATION_ERROR', details: { reason: 'pdf_invalid', pdf_problem: 'damaged' } }, PDF_PROBLEM_COPY.damaged],
+    ['an older server that does not say why', { code: 'VALIDATION_ERROR', reason: 'unsafe_pdf' }, PDF_REFUSED_FALLBACK],
+    ['an unknown problem', { code: 'VALIDATION_ERROR', details: { reason: 'pdf_unsafe', pdf_problem: 'something_new' } }, PDF_REFUSED_FALLBACK],
+  ])('%s', (_n, e, copy) => {
+    expect(refusalMessage(e, fmt)).toBe(copy);
+  });
+
+  it('points a scripted form at the import option, by its own label', () => {
+    expect(PDF_PROBLEM_COPY.scripts).toContain(UPLOAD_OPTION_COPY.import_fields.label);
   });
 });

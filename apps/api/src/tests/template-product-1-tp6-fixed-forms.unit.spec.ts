@@ -90,6 +90,19 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.1 — the official PDF gate', () => {
     expect(await reason(acceptFixedFormPdf(bytes, 'r'))).toBe('pdf_unsafe');
   });
 
+  it('a refused PDF carries the one classification every UI words from (details.pdf_problem)', async () => {
+    const bytes = await pdfBytes(1, (d) => {
+      d.catalog.set(PDFName.of('OpenAction'), d.context.obj({ S: 'JavaScript', JS: 'app.alert(1)' }));
+    });
+    const err = await acceptFixedFormPdf(bytes, 'r').then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(AramoError);
+    const details = (err as AramoError).context?.details as { reason?: string; pdf_problem?: string };
+    expect(details).toEqual({ reason: 'pdf_unsafe', pdf_problem: 'scripts' });
+  });
+
   it('stamping prints the prefilled values; no stamp leaves the bytes unchanged', async () => {
     const bytes = await pdfBytes(1);
     expect(await stampFixedFormValues(bytes, [])).toBe(bytes);

@@ -1034,7 +1034,7 @@ export class SenderEnvelopeService {
       try {
         return await this.safePdf.accept(b);
       } catch (e) {
-        if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf' });
+        if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf', pdf_problem: e.problem });
         throw e;
       }
     };

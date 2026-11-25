@@ -37,7 +37,7 @@ export {
   type TextBoxLine,
 } from './lib/pdf-lib-document-rendering.adapter.js';
 export { SafePdfPipeline, type SafePdfLimits } from './lib/safe-upload.pipeline.js';
-export { RenderFailedError, UnsafePdfError } from './lib/errors.js';
+export { RenderFailedError, UnsafePdfError, type PdfProblem } from './lib/errors.js';
 // FIELD-PARITY-1 P2-5 / P2-6 — fillable-PDF import (read, strip active content, flatten),
 // covering text tags, and the text layer / page frames (moved from apps/sign-service).
 export {

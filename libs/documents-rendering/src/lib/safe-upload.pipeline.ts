@@ -49,24 +49,24 @@ export class SafePdfPipeline {
   // caller persists the returned bytes as the immutable SOURCE_UPLOAD artifact.
   async accept(bytes: Uint8Array): Promise<Uint8Array> {
     // 1. Size gate.
-    if (bytes.byteLength === 0) throw new UnsafePdfError('empty file');
+    if (bytes.byteLength === 0) throw new UnsafePdfError('empty file', 'not_pdf');
     if (bytes.byteLength > this.limits.maxBytes) {
-      throw new UnsafePdfError(`exceeds max size (${bytes.byteLength} > ${this.limits.maxBytes})`);
+      throw new UnsafePdfError(`exceeds max size (${bytes.byteLength} > ${this.limits.maxBytes})`, 'too_large');
     }
     // 2. Type gate — PDF magic bytes "%PDF-".
     const head = Buffer.from(bytes.slice(0, 5)).toString('latin1');
-    if (head !== '%PDF-') throw new UnsafePdfError('not a PDF (missing %PDF- header)');
+    if (head !== '%PDF-') throw new UnsafePdfError('not a PDF (missing %PDF- header)', 'not_pdf');
 
     const raw = Buffer.from(bytes).toString('latin1');
 
     // 3. Encrypted/password detection — hard reject. NEVER ignoreEncryption.
-    if (/\/Encrypt\b/.test(raw)) throw new UnsafePdfError('encrypted/password-protected PDF');
+    if (/\/Encrypt\b/.test(raw)) throw new UnsafePdfError('encrypted/password-protected PDF', 'password');
 
     // 4. Active-content policy — whole PDF NAME tokens only. A name ends at
     // whitespace or a delimiter, so /AAAAAA+Calibri (a font subset tag) is not the
     // /AA key; a bare substring test rejected ordinary Word/Chrome exports.
     for (const token of ACTIVE_CONTENT_TOKENS) {
-      if (containsPdfName(raw, token)) throw new UnsafePdfError(`active content not allowed: ${token}`);
+      if (containsPdfName(raw, token)) throw new UnsafePdfError(`active content not allowed: ${token}`, 'scripts');
     }
 
     // 5. Structural validity + page/decompression-bomb bound — load with pdf-lib
@@ -77,11 +77,12 @@ export class SafePdfPipeline {
     try {
       doc = await PDFDocument.load(bytes);
     } catch (e) {
-      throw new UnsafePdfError(`malformed or encrypted PDF: ${e instanceof Error ? e.message : String(e)}`);
+      const detail = e instanceof Error ? e.message : String(e);
+      throw new UnsafePdfError(`malformed or encrypted PDF: ${detail}`, /encrypt/i.test(detail) ? 'password' : 'damaged');
     }
     const pages = doc.getPageCount();
     if (pages > this.limits.maxPages) {
-      throw new UnsafePdfError(`too many pages (${pages} > ${this.limits.maxPages})`);
+      throw new UnsafePdfError(`too many pages (${pages} > ${this.limits.maxPages})`, 'too_many_pages');
     }
     return bytes;
   }
