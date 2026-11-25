@@ -20,7 +20,8 @@ const { like, eachLike, regex } = MatchersV3;
 //                             GET  /v1/documents/esign/templates/library
 //                             POST /v1/documents/esign/templates/library/:id/adopt-and-use
 //                             GET  /v1/documents/esign/templates/studio
-//                             POST /v1/documents/esign/templates/studio/adopt)
+//                             POST /v1/documents/esign/templates/studio/adopt
+//                             GET  /v1/documents/esign/templates/studio/:id — TEMPLATE-SYNC-1 S-15)
 // Provider:  aramo-core      (apps/api DocumentsEsignTemplateGalleryController /
 //                             DocumentsEsignTemplateStudioController).
 //
@@ -210,6 +211,53 @@ describe('sign-service → the Personal Studio', () => {
         const url = `${mock.url}${path}?${qs}`;
         const res = await fetch(url, { headers: signed('GET', url) });
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-15 (R-10) — the server-computed `master` object on the
+// Studio response. sign-service is the only consumer of these routes (1); the api provider
+// verifies 8 pact files — the two counts are kept separate. Seeded by the state below
+// (verify-api.ts): the PERSONAL account has an adopted copy of the Aramo default, based on an
+// earlier version (0) than the default's current version (1), so a newer version is available.
+const SYNC_STATE = 'a personal account has an adopted copy of an Aramo template with a newer version';
+const COPY_ID = 'd0c4c000-0000-7000-8000-0000000000f1';
+
+describe('sign-service → the Personal Studio: a newer master is available (TEMPLATE-SYNC-1)', () => {
+  it('GET /studio/{id} carries the master object (newer_available)', async () => {
+    const path = `/v1/documents/esign/templates/studio/${COPY_ID}`;
+    const query = { tenant_id: PERSONAL_TENANT_ID, actor_id: OWNER_ID };
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given(SYNC_STATE)
+      .uponReceiving('a Personal Studio read of an adopted copy whose Aramo template has a newer version')
+      .withRequest('GET', path, (b) => {
+        b.query(query).headers(headerMatchers('GET', `http://core${path}?${qs}`, false));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: COPY_ID,
+          owner_scope: 'TENANT',
+          adopted_from_template_id: DEFAULT_ID,
+          master: {
+            template_id: DEFAULT_ID,
+            name: like('Standard Right to Represent'),
+            current_version_id: DEFAULT_VERSION_ID,
+            current_version_number: 1,
+            based_on_version_number: 0,
+            newer_available: true,
+            withdrawn: null,
+            kept: false,
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?${qs}`;
+        const res = await fetch(url, { headers: signed('GET', url) });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { master: { newer_available: boolean } };
+        expect(body.master.newer_available).toBe(true);
       });
   });
 });
