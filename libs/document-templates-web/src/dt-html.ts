@@ -15,6 +15,7 @@ import {
   PAGE_BREAK_VALUE,
   RTR_HTML_V1,
   RTR_HTML_V2,
+  hasV2Features,
   type BlockKindV2,
   type HtmlContentVersion,
 } from '@aramo/template-content';
@@ -179,7 +180,7 @@ function headingTag(tag: string, v2: boolean): 'h2' | 'h3' | 'h4' {
 // page breaks and lists two levels deep. Returns canonical HTML.
 export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; version?: DocHtmlVersion } = {}): string {
   const allowSample = opts.allowSample === true;
-  const v2 = opts.version === RTR_HTML_V2;
+  const v2 = opts.version !== undefined && hasV2Features(opts.version);
   const out = document.createElement('div');
   let openP: HTMLElement | null = null;
   let openList: HTMLElement | null = null;
