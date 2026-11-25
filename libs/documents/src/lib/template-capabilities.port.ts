@@ -1,3 +1,4 @@
+import { type InlineFieldRowInput } from './inline-fields.js';
 // DOC-TEMPLATE-ADMIN-RTR-1 (§14/§17/§36) — the generic template-content capability
 // seam. The generic Documents template-admin surface (DocumentTemplatesController) owns
 // the ROUTES; the document-type-specific content knowledge (governed binding catalog,
@@ -74,12 +75,17 @@ export interface TemplateCapabilitiesPort {
   // non-configurable type is a no-op (nothing to validate). Authoritative at activation.
   // TEMPLATE-CONTENT-2 C-17 — `unmodified_adopted_copy`: the version's content equals its
   // adopted source version's, so typed placeholders already in the master do not block it.
+  // TEMPLATE-FIELDS-1 — `fields`: the version's field rows (F-3 / F-6 / F-9 are re-checked at
+  // publish / activate); `products`: the template's product tags (F-17: an `ats` template cannot
+  // have inline fields). Both optional: a caller without them validates the content alone.
   validateDraftContent(input: {
     document_type_id: string;
     field_schema: unknown;
     render_schema_version: string;
     requestId: string;
     unmodified_adopted_copy?: boolean;
+    fields?: readonly InlineFieldRowInput[];
+    products?: readonly string[];
   }): Promise<void>;
 
   // Fixed-sample preview (§17) of the CURRENT draft content. Validates first, then
@@ -93,6 +99,9 @@ export interface TemplateCapabilitiesPort {
     render_schema_version: string;
     requestId: string;
     sample_overrides?: Readonly<Record<string, string>>;
+    // TEMPLATE-FIELDS-1 F-13 — the version's field rows: each inline field is previewed as a
+    // labelled box (its type and role).
+    fields?: readonly InlineFieldRowInput[];
   }): Promise<TemplateSamplePreview>;
 
   // A1 §2.2 — authoritative PATCH-time normalisation of DRAFT content. For a sanitised
@@ -100,12 +109,18 @@ export interface TemplateCapabilitiesPort {
   // server-owned keys (the logo reference) are carried over from the EXISTING content,
   // never taken from the client. Throws VALIDATION_ERROR (422, details.reason) on an
   // unknown field / logo position / size violation. Other versions pass through unchanged.
+  // TEMPLATE-FIELDS-1 F-2 / F-3 / F-6 / F-9 / F-15 — `fields`: the field rows the version will
+  // hold after this save (absent ⇒ none). The markers in the content and these rows must agree,
+  // fit and name signing roles. `owner` TENANT: a tenant may not change the field set, so any
+  // disagreement is refused as fields_platform_only (ruling R-5).
   normalizeDraftContent(input: {
     document_type_id: string;
     render_schema_version: string;
     field_schema: unknown;
     existing_field_schema: unknown;
     requestId: string;
+    fields?: readonly InlineFieldRowInput[];
+    owner?: 'PLATFORM' | 'TENANT';
   }): Promise<unknown>;
 
   // A1 §2.1 — the content a NEW DRAFT starts from, given the ACTIVE version's content

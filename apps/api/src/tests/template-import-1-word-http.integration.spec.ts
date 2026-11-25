@@ -160,7 +160,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-IMPORT-1
     expect(res.status).toBe(201);
     const version = res.body['version'] as { id: string; status: string; render_schema_version: string; field_schema: { title: string; html: string } };
     draftId = version.id;
-    expect(version).toMatchObject({ status: 'DRAFT', render_schema_version: 'rtr-html-v2' });
+    expect(version).toMatchObject({ status: 'DRAFT', render_schema_version: 'rtr-html-v3' });
     expect(version.field_schema.title).toBe('Employee Handbook');
     expect(version.field_schema.html).toBe(
       '<h2>Welcome</h2><p>This handbook is for <span data-field="talent.full_name"></span>. Questions go to {{hr_contact}}.</p>' +
@@ -200,7 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-IMPORT-1
     const patched = await fetch(url(`/platform/document-templates/versions/${draftId}`), {
       method: 'PATCH',
       ...auth(operatorJwt),
-      body: JSON.stringify({ render_schema_version: 'rtr-html-v2', field_schema: { render_schema_version: 'rtr-html-v2', title: current.field_schema.title, html } }),
+      body: JSON.stringify({ render_schema_version: 'rtr-html-v3', field_schema: { render_schema_version: 'rtr-html-v3', title: current.field_schema.title, html } }),
     });
     expect(patched.status).toBe(200);
     expect((await post(operatorJwt, `/platform/document-templates/versions/${draftId}/preview`)).status).toBe(200);
@@ -215,7 +215,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-IMPORT-1
     const v = res.body['version'] as { id: string };
     const row = await db.query(`SELECT render_schema_version, field_schema FROM documents."TemplateVersion" WHERE id = $1`, [v.id]);
     const published = await db.query(`SELECT field_schema FROM documents."TemplateVersion" WHERE id = $1`, [draftId]);
-    expect(row.rows[0].render_schema_version).toBe('rtr-html-v2');
+    expect(row.rows[0].render_schema_version).toBe('rtr-html-v3');
     expect(row.rows[0].field_schema.html).toBe(published.rows[0].field_schema.html);
   });
 });

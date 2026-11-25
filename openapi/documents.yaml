@@ -2694,18 +2694,33 @@ components:
           table / tr / th / td (thead and tbody are accepted and unwrapped; a cell holds inline content
           only; no merged cells; at most 8 columns and 200 rows), hr (a divider; `<hr data-break="page">`
           is a page break, the only attribute allowed on hr) and lists nested up to 2 levels. Max 256 KB.
+        - `rtr-html-v3` (TEMPLATE-FIELDS-1; a strict superset of v2, written by the Studio): v2 plus ONE
+          inline marker, `<span data-sign-field="{field_key}"></span>` — a Sign field placed in the text
+          (empty, no other attribute; `field_key` lower snake case, at most 64). A marker may sit only in a
+          paragraph, a list item or a table cell (never in a heading or the title); it is never a variable.
+          The field's type, signing role and settings are the version's field rows (`fields` on the
+          platform PATCH; NULL geometry: positions are computed per render). v1 and v2 readers discard
+          the marker. Downgrade guard: v3 > v2 > v1.
         No other elements or attributes, no style/class, no URLs. The server re-serialises on every write
         (strong→b, em→i, field spans emptied, unknown tags/attributes removed) and returns the sanitised
         html. v1 content is never upgraded or rewritten by the server; it renders as before. Refusal
         reasons (422 VALIDATION_ERROR, details.reason): content_too_large, unsupported_content_version,
         content_version_downgrade, table_too_large, list_too_deep, and unresolved_placeholder (publish /
-        activate only). `logo` is server-owned (set only by POST versions/{versionId}/logo); a
+        activate only). Inline fields (TEMPLATE-FIELDS-1 §3.7, stable; nothing is saved):
+        field_position_not_allowed (a marker outside a paragraph / list item / table cell, details.keys);
+        field_marker_mismatch (markers and rows disagree, details.missing / details.orphans);
+        field_marker_duplicate (a repeated key); signing_roles_required (a template with inline fields
+        needs signing roles; every field names a SIGNER role or is sender-filled); field_too_wide (a box
+        wider than its paragraph, list item or table cell, details.field_key / place / width / max_width);
+        fields_platform_only (a tenant save that changes the field set: fields are placed on the platform
+        only); inline_fields_not_supported_for_ats (publish / activate of an `ats` template). At render,
+        field_not_placed (a field the render did not place). `logo` is server-owned (set only by POST versions/{versionId}/logo); a
         client-supplied value is ignored.
       required: [render_schema_version, title, html]
       properties:
-        render_schema_version: { type: string, enum: [rtr-html-v1, rtr-html-v2] }
+        render_schema_version: { type: string, enum: [rtr-html-v1, rtr-html-v2, rtr-html-v3] }
         title: { type: string }
-        html: { type: string, maxLength: 262144, description: 'Max 65536 for rtr-html-v1; 262144 for rtr-html-v2.' }
+        html: { type: string, maxLength: 262144, description: 'Max 65536 for rtr-html-v1; 262144 for rtr-html-v2 and rtr-html-v3.' }
         logo:
           oneOf:
             - type: object
@@ -2757,6 +2772,56 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Trimmed server-side; blank is stored as null.
+        fields:
+          type: array
+          maxItems: 200
+          description: >
+            TEMPLATE-FIELDS-1 F-14 — the platform Studio only (PATCH /v1/platform/document-templates/versions/{versionId}):
+            the rows of the fields placed in the text (rtr-html-v3 markers), saved with `field_schema` in ONE
+            transaction (replacing the draft's rows). Omitted ⇒ the draft's rows are kept and the content must still
+            match them. On a tenant PATCH the rows are locked: sent back unchanged they are accepted, any change is
+            refused (fields_platform_only).
+          items:
+            $ref: '#/components/schemas/InlineTemplateFieldInput'
+    InlineTemplateFieldInput:
+      type: object
+      additionalProperties: false
+      description: >
+        TEMPLATE-FIELDS-1 — a field placed in the text of editable content: no page position (computed per render).
+        Settings follow the field catalog (a setting the type does not take is refused, details.reason
+        field_config_not_applicable); sender_filled only while sender-filled fields are switched on.
+      required: [field_key, field_type]
+      properties:
+        field_key: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT]
+          description: The `template_inline` catalog surface (TEMPLATE-FIELDS-1 F-5).
+        signer_role:
+          type: [string, 'null']
+          description: A SIGNER role of the content's `signing`; null only for a sender-filled field.
+        required: { type: boolean }
+        ordinal: { type: integer, minimum: 0 }
+        label: { type: [string, 'null'] }
+        group_key: { type: [string, 'null'] }
+        group_rule: { type: [string, 'null'], enum: [SELECT_ONE, SELECT_ANY, null] }
+        min_selected: { type: [integer, 'null'] }
+        name_mode: { type: [string, 'null'], enum: [SIGNER_PROFILE, SIGNER_ENTERED, null] }
+        tooltip: { type: [string, 'null'] }
+        placeholder: { type: [string, 'null'] }
+        read_only: { type: [boolean, 'null'] }
+        sender_filled: { type: [boolean, 'null'] }
+        validation: { type: [string, 'null'], enum: [email, phone, us_zip, number_range, date_range, max_length, null] }
+        font_size: { type: [integer, 'null'] }
+        data_name: { type: [string, 'null'] }
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
     TemplateSamplePreview:
       type: object
       description: A fixed-sample preview (§17) — the draft content with every binding substituted by its safe sample value. Structured resolved blocks; no business document is created.
@@ -2792,7 +2857,10 @@ components:
               value: { type: string }
         html:
           type: string
-          description: rtr-html-v1 only — the content with each field node replaced by `<span data-sample="{key}">{escaped sample}</span>` (line breaks in a sample become `<br>`).
+          description: >-
+            Editable html only — the content with each field node replaced by `<span data-sample="{key}">{escaped sample}</span>`
+            (line breaks in a sample become `<br>`). TEMPLATE-FIELDS-1 F-13 — each inline field marker becomes
+            `<span data-sign-field-sample="{field_key}">{label · role}</span>`, drawn as a labelled box.
         logo:
           description: rtr-html-v1 only — the version's frozen logo asset, or null.
           oneOf:
@@ -3744,6 +3812,27 @@ components:
                   - $ref: '#/components/schemas/FieldCondition'
                   - type: 'null'
                 description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
+          description: >-
+            The version's field rows with their settings. TEMPLATE-FIELDS-1 F-10 — for an editable rtr-html-v3 template the
+            rows of the fields placed in the text carry the positions THIS render recorded (`inline_fields`); a row the
+            render did not place fails the request (422 DOCUMENT_RENDER_FAILED, details.reason field_not_placed).
+        inline_fields:
+          type: array
+          description: >-
+            TEMPLATE-FIELDS-1 F-10 / F-18 — where this render drew each field placed in the text (0-based page, PDF points,
+            bottom-left origin), from the frozen revision's render_manifest.inline_fields (covered by its manifest hash).
+            Absent when the template has none.
+          items:
+            type: object
+            additionalProperties: false
+            required: [field_key, page_number, x, y, width, height]
+            properties:
+              field_key: { type: string }
+              page_number: { type: integer }
+              x: { type: number }
+              y: { type: number }
+              width: { type: number }
+              height: { type: number }
         template_kind:
           type: string
           enum: [EDITABLE, FIXED_FORM]

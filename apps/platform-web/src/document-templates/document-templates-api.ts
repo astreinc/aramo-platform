@@ -1,5 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
-import type { StudioImportSummary, TemplateProductKey } from '@aramo/document-templates-web';
+import type { StudioImportSummary, StudioInlineFieldsData, TemplateProductKey } from '@aramo/document-templates-web';
 import { CURRENT_HTML_CONTENT_VERSION, isHtmlContentVersion, type HtmlContentVersion } from '@aramo/template-content';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§8.1) — typed client for the platform-tier Aramo default
@@ -180,8 +180,13 @@ export const documentTemplatesApi = {
   getVersion(versionId: string): Promise<TemplateVersion> {
     return apiClient.get(`/platform/document-templates/versions/${versionId}`);
   },
-  updateDraft(versionId: string, body: { field_schema?: unknown; render_schema_version?: string; internal_notes?: string | null }): Promise<TemplateVersion> {
+  // TEMPLATE-FIELDS-1 F-14 — `fields`: the inline field rows saved with the content.
+  updateDraft(versionId: string, body: { field_schema?: unknown; render_schema_version?: string; internal_notes?: string | null; fields?: readonly Record<string, unknown>[] }): Promise<TemplateVersion> {
     return apiClient.patch(`/platform/document-templates/versions/${versionId}`, body);
+  },
+  // TEMPLATE-FIELDS-1 — the inline field rows of an editable version (+ the sender-filled switch).
+  listVersionFields(versionId: string): Promise<StudioInlineFieldsData> {
+    return apiClient.get(`/platform/document-templates/versions/${versionId}/fields`);
   },
   preview(versionId: string): Promise<SamplePreview> {
     return apiClient.post(`/platform/document-templates/versions/${versionId}/preview`);

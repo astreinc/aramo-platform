@@ -313,6 +313,73 @@ describe('sign-service → template library (M-A6 multi-role template)', () => {
   });
 });
 
+// TEMPLATE-FIELDS-1 (Aramo-Template-Fields-1-Directive-v1_0-LOCKED) F-19 — an EDITABLE template
+// with fields placed in its text (rtr-html-v3): "Use" returns non-empty field_definitions whose
+// rows carry THIS render's positions, and inline_fields (where each box was drawn). The employee
+// signs inline, so no signature block is appended for that role (R-4): signature_fields is empty.
+// Seeded by 'a tenant template with fields in its text is usable for the tenant' (verify-api.ts)
+// under its own tenant.
+const FIELDS_TENANT_ID = '11111111-1111-7111-8111-1111111111c3';
+const FIELDS_TEMPLATE_ID = 'd0c4c000-0000-7000-8000-0000000000c1';
+const FIELDS_VERSION_ID = 'd0c4c000-0000-7000-8000-0000000000c2';
+const FIELDS_SIGNING = { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
+
+describe('sign-service → template library (TEMPLATE-FIELDS-1 fields in the text)', () => {
+  it('"Use" returns the inline fields with their render positions', async () => {
+    const body = { values: {}, created_by: CREATED_BY, client_id: null };
+    const digest = signTemplateBodyDigest(body);
+    const path = `/v1/documents/esign/templates/${FIELDS_TEMPLATE_ID}/render`;
+    const query = { tenant_id: FIELDS_TENANT_ID, idempotency_key: 'pact-tf1-render-0001', [SIGN_TEMPLATE_BODY_DIGEST_PARAM]: digest };
+    const qs = new URLSearchParams(query).toString();
+    const positioned = (field_key: string, field_type: string, width: number, height: number) => ({
+      field_key,
+      field_type,
+      signer_role: 'employee',
+      required: true,
+      page_number: like(0),
+      x: like(180.5),
+      y: like(640.2),
+      width,
+      height,
+    });
+    await provider
+      .addInteraction()
+      .given('a tenant template with fields in its text is usable for the tenant')
+      .uponReceiving('a render of a template with fields in its text for a new Sign envelope')
+      .withRequest('POST', path, (b) => {
+        b.query(query).headers(headerMatchers('POST', `http://core${path}?${qs}`, true)).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          document_id: like('d0c4c000-0000-7000-8000-0000000000e7'),
+          document_revision_ref: like('d0c4c000-0000-7000-8000-0000000000e8'),
+          source_sha256: regex('^[0-9a-f]{64}$', 'd'.repeat(64)),
+          byte_size: like(1024),
+          title: like('Employee Handbook'),
+          template_id: FIELDS_TEMPLATE_ID,
+          template_version_id: FIELDS_VERSION_ID,
+          version_number: like(1),
+          signature_fields: [],
+          field_definitions: [positioned('employee_initials', 'INITIALS', 60, 30), positioned('employee_signature', 'SIGNATURE', 230, 50)],
+          signing: FIELDS_SIGNING,
+          inline_fields: [
+            { field_key: 'employee_initials', page_number: like(0), x: like(250.3), y: like(660.1), width: 60, height: 30 },
+            { field_key: 'employee_signature', page_number: like(0), x: like(100.2), y: like(600.4), width: 230, height: 50 },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?${qs}`;
+        const res = await fetch(url, { method: 'POST', headers: { ...signed('POST', url), 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        expect(res.status).toBe(201);
+        const out = (await res.json()) as { field_definitions: Array<{ field_key: string; x: number | null }>; inline_fields: Array<{ field_key: string }> };
+        expect(out.field_definitions.map((f) => f.field_key)).toEqual(['employee_initials', 'employee_signature']);
+        expect(out.field_definitions.every((f) => typeof f.x === 'number')).toBe(true);
+        expect(out.inline_fields.map((f) => f.field_key)).toEqual(['employee_initials', 'employee_signature']);
+      });
+  });
+});
+
 // TEMPLATE-PRODUCT-1 (Implementation Directive v1.0 LOCKED) §7.4 — an Aramo fixed legal form in
 // the Sign template list and "Use" (render): template_kind FIXED_FORM (ADD, optional — absent for
 // an editable template), no drawn block (signature_fields empty), the placed signer fields as

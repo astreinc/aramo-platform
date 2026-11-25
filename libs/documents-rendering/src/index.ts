@@ -14,6 +14,10 @@ export {
   type SignatureBlockModel,
   type RichBlock,
   type RichRun,
+  type RichTextRun,
+  type RichFieldRun,
+  type InlineFieldPlacement,
+  isFieldRun,
   type RichListItem,
   type LetterheadModel,
   type SignatureFieldPlacement,
@@ -22,6 +26,8 @@ export {
 export {
   PdfLibDocumentRenderingAdapter,
   layoutRuns,
+  inlineFieldMaxWidth,
+  type InlineFieldPlace,
   layoutRoleSignatureBlock,
   layoutSignatureBlock,
   manifestProjection,
@@ -37,7 +43,7 @@ export {
   type TextBoxLine,
 } from './lib/pdf-lib-document-rendering.adapter.js';
 export { SafePdfPipeline, type SafePdfLimits } from './lib/safe-upload.pipeline.js';
-export { RenderFailedError, UnsafePdfError, type PdfProblem } from './lib/errors.js';
+export { RenderFailedError, InlineFieldTooWideError, UnsafePdfError, type PdfProblem } from './lib/errors.js';
 // FIELD-PARITY-1 P2-5 / P2-6 — fillable-PDF import (read, strip active content, flatten),
 // covering text tags, and the text layer / page frames (moved from apps/sign-service).
 export {

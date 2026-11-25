@@ -98,6 +98,8 @@ describe('FIELD-PARITY-1 P1-2 — catalog parity: OpenAPI enums', () => {
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'TemplateFieldDefinition', path: ['field_type'], surface: 'template_documents_store' },
     // FIELD-PARITY-1 P3 (R-9) — the documents template API accepts the store minus IMAGE.
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'AddFieldRequest', path: ['field_type'], surface: 'template_documents_authoring' },
+    // TEMPLATE-FIELDS-1 F-5 — the fields placed in the text of editable content.
+    { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'InlineTemplateFieldInput', path: ['field_type'], surface: 'template_inline' },
     { where: 'documents.yaml', schemas: DOCUMENTS, schema: 'SignTemplateSignatureField', path: ['field_type'], surface: 'signature_block' },
     { where: 'platform.yaml', schemas: PLATFORM, schema: 'FixedFormField', path: ['field_type'], surface: 'template_fixed_form' },
     // FIELD-PARITY-1 P2-5 / P2-6 — the fields an opted-in upload imports (never PAYMENT: imports are not gated).

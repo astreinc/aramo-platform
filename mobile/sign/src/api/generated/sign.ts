@@ -8902,6 +8902,7 @@ export interface operations {
                             version_number: number;
                         };
                         suggested_fields: components["schemas"]["SenderTemplateSignatureField"][];
+                        /** @description The template's field definitions as rendered. TEMPLATE-FIELDS-1 F-12 — the fields placed in the text of an editable template carry this render's positions and are placed for their signing role (a sender-filled one on the first role); one without a position is refused 409 field_not_placed, and a template with such fields is refused on the single-signer path (422 signing_roles_required: bind recipients to roles). */
                         field_definitions: Record<string, never>[];
                         signing: components["schemas"]["SenderTemplateSigning"] | null;
                         /**

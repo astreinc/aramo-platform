@@ -131,6 +131,7 @@ export {
   type StudioCapabilities,
   type StudioContentCodec,
   type StudioContentBody,
+  type StudioInlineFieldsData,
   type StudioImportResult,
   type StudioImportSummary,
   type StudioImportWarning,
@@ -145,6 +146,19 @@ export {
   type StudioPropertiesPatch,
   type StudioCrumb,
 } from './studio/data-source';
+// TEMPLATE-FIELDS-1 — fields placed inside the text (the Studio model and its dialog).
+export {
+  inlineFieldChecks,
+  inlineFieldChipResolver,
+  inlineFieldFromRow,
+  inlineFieldKeysOf,
+  inlineFieldsToSave,
+  nextInlineFieldKey,
+  type StudioInlineField,
+  type StudioInlineFieldRow,
+  type StudioInlineFieldWire,
+} from './studio/inline-fields';
+export { InlineFieldDialog, type InlineFieldDialogProps } from './studio/InlineFieldDialog';
 export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
 // TEMPLATE-STUDIO-1 S-1 (directive §3) — the organization context: the tenant template
 // data source, its copy table and the static Sections set (additive).

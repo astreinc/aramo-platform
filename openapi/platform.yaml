@@ -5271,9 +5271,11 @@ paths:
     get:
       operationId: listPlatformFixedFormFields
       tags: [Platform Document Templates]
-      summary: The placed fields of a fixed-form version.
+      summary: The placed fields of a fixed-form version, or the fields placed in the text of an editable version.
       description: |
-        Requires `platform:document_template:read`.
+        Requires `platform:document_template:read`. TEMPLATE-FIELDS-1 F-14 — for an EDITABLE template's version the
+        rows of the fields placed in its text (rtr-html-v3 markers), with NULL geometry (positions are computed per
+        render), and whether sender-filled fields are switched on.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -7672,6 +7674,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FixedFormField'
+        sender_filled_fields_enabled:
+          type: boolean
+          description: TEMPLATE-FIELDS-1 — whether sender-filled fields are switched on (the Studio offers "Sender fills it" only then).
     FixedFormLayoutRequest:
       type: object
       additionalProperties: false
