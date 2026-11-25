@@ -8,7 +8,11 @@ import { IdentityRepository, TenantRepository } from '@aramo/identity';
 
 import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
 import { hasV2Features } from '@aramo/template-content';
+import { type InlineFieldRowInput } from '@aramo/documents';
+import { hasInlineFields, inlineFieldBoxes } from './rtr-inline-fields.js';
 import {
+  InlineFieldNotPlacedError,
+  type InlineFieldBox,
   collectFieldKeys,
   htmlWithSamples,
   isHtmlContent,
@@ -60,6 +64,17 @@ export class RtrTemplateBindingService {
   ) {}
 
   async bind(input: RtrBindingInput): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
+    // TEMPLATE-FIELDS-1 F-17 (ruling R-9) — ATS never carries inline fields: content with them is
+    // refused here (publish / activate already refuse them on an `ats` template).
+    if (isHtmlContent(input.content)) {
+      const res = sanitizeRtrHtml(input.content.html, undefined, input.content.render_schema_version);
+      if (!('issue' in res) && hasInlineFields(res.nodes)) {
+        throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'A template with fields in its text cannot be used in ATS', 422, {
+          requestId: input.requestId,
+          details: { reason: 'inline_fields_not_supported_for_ats' },
+        });
+      }
+    }
     return this.bindContent(
       { content: input.content, template_version_id: input.template_version_id, tenant_id: input.tenant_id, letterhead: input.letterhead, requestId: input.requestId },
       (used) => this.resolveValues(used, input),
@@ -78,16 +93,23 @@ export class RtrTemplateBindingService {
     tenant_id: string;
     values: ReadonlyMap<string, string>;
     requestId: string;
+    // TEMPLATE-FIELDS-1 F-8 — the version's inline field rows (their catalog box sizes).
+    inline_fields?: readonly InlineFieldRowInput[];
   }): Promise<RenderModel & { bound_html?: string }> {
     // Amendment M-A6 §3.3 — Sign path: a template with SIGNER roles renders one block per
     // role (the printed name is a SIGNER_NAME placement Sign fills), so talent.full_name
     // is not bound for it. Without `signing` this is exactly the single talent block.
     const roles = isHtmlContent(input.content) ? signerRoles(input.content) : [];
     if (roles.length > 0 && isHtmlContent(input.content)) {
-      const model = await this.bindHtml(input, input.content, async (used) => this.supplied(used, input.values, input.requestId), false);
+      const rows = input.inline_fields ?? [];
+      const model = await this.bindHtml(input, input.content, async (used) => this.supplied(used, input.values, input.requestId), false, inlineFieldBoxes(rows));
       const { signature_block: _single, ...rest } = model;
       void _single;
-      return { ...rest, signature_blocks: roles.map((r) => ({ role_key: r.role_key, label: r.label })) };
+      // TEMPLATE-FIELDS-1 F-6 (ruling R-4) — a role with an inline SIGNATURE does not get the
+      // appended signature block; the other roles keep theirs.
+      const inlineSigners = new Set(rows.filter((r) => r.field_type === 'SIGNATURE' && r.signer_role !== null).map((r) => r.signer_role as string));
+      const blocks = roles.filter((r) => !inlineSigners.has(r.role_key)).map((r) => ({ role_key: r.role_key, label: r.label }));
+      return { ...rest, ...(blocks.length > 0 ? { signature_blocks: blocks } : {}) };
     }
     return this.bindContent(input, async (used) => {
       const out = new Map<string, string>();
@@ -207,6 +229,7 @@ export class RtrTemplateBindingService {
     content: RtrTemplateContentHtml,
     resolve: (used: Set<RtrBindingKey>) => Promise<Map<string, string>>,
     talentBlock = true,
+    box?: InlineFieldBox,
   ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html: string }> {
     const res = sanitizeRtrHtml(content.html, undefined, content.render_schema_version);
     if ('issue' in res) {
@@ -240,7 +263,7 @@ export class RtrTemplateBindingService {
       render_schema_version: 'rich-v1',
       title: this.substitute(content.title, values, input.requestId),
       blocks: [],
-      rich_blocks: toRichBlocks(res.nodes, value),
+      rich_blocks: this.richBlocks(res.nodes, value, box, input.requestId),
       // TEMPLATE-CONTENT-2 C-9 — keep headings with the next block for v2 (and v3, F-1) content only,
       // so v1 content keeps its exact layout.
       ...(hasV2Features(content.render_schema_version) ? { heading_keep_with_next: true } : {}),
@@ -250,6 +273,20 @@ export class RtrTemplateBindingService {
       // REAL value) for the recruiter compose preview. Never rendered by the PDF path.
       bound_html: htmlWithSamples(res.nodes, value),
     };
+  }
+
+  // TEMPLATE-FIELDS-1 F-10 — a marker without a row (no box size) is never dropped silently: the
+  // render fails (field_not_placed).
+  private richBlocks(nodes: Parameters<typeof toRichBlocks>[0], value: (key: string) => string, box: InlineFieldBox | undefined, requestId: string) {
+    try {
+      return toRichBlocks(nodes, value, box);
+    } catch (e) {
+      if (!(e instanceof InlineFieldNotPlacedError)) throw e;
+      throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `the field ${e.field_key} in the text could not be placed`, 422, {
+        requestId,
+        details: { reason: 'field_not_placed', field_key: e.field_key },
+      });
+    }
   }
 
   // Every {{token}} the content uses must be in the closed catalog, else the

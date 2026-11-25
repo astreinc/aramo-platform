@@ -6,12 +6,14 @@ import {
   DocumentsRepository,
   RenderService,
   TemplatesRepository,
+  inlineRowOf,
   type DocumentStoragePort,
   type TemplateCapabilitiesPort,
   type TemplateTenantLogoPort,
 } from '@aramo/documents';
 import {
   type SignTemplateFieldDefinition,
+  type SignTemplateInlineField,
   type SignTemplateListResponse,
   type SignTemplatePreviewResponse,
   type SignTemplateRenderResponse,
@@ -22,7 +24,7 @@ import {
 } from '@aramo/documents-contracts';
 import { type LetterheadModel } from '@aramo/documents-rendering';
 import { type TenantRepository } from '@aramo/identity';
-import { isHtmlContentVersion } from '@aramo/template-content';
+import { allowsInlineFields, isHtmlContentVersion } from '@aramo/template-content';
 
 import { isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
 import { type RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
@@ -251,6 +253,10 @@ export class SignTemplateLibraryService {
           : undefined;
 
     // 3. Bind (closed catalog, supplied values only) → a fully resolved RenderModel.
+    // TEMPLATE-FIELDS-1 F-8 — the version's inline field rows give each marker its box size.
+    const inline_fields = isHtmlContent(resolved.content) && allowsInlineFields(resolved.content.render_schema_version)
+      ? (await this.d.templates.listFieldDefinitionsOwnerAware(input.tenant_id, resolved.template_version_id)).map(inlineRowOf)
+      : [];
     const model = await this.d.binding.bindProvided({
       content: resolved.content,
       template_version_id: resolved.template_version_id,
@@ -258,6 +264,7 @@ export class SignTemplateLibraryService {
       values,
       requestId,
       ...(letterhead !== undefined ? { letterhead } : {}),
+      ...(inline_fields.length > 0 ? { inline_fields } : {}),
     });
     const renderModel = { ...model };
     delete renderModel.bound_html;
@@ -503,6 +510,26 @@ export class SignTemplateLibraryService {
     if (version === null) throw new AramoError('TEMPLATE_VERSION_NOT_FOUND', 'pinned template version not found', 404, { requestId });
     const defs = await this.d.templates.listFieldDefinitionsOwnerAware(tenant_id, version.id);
     const signing = signingOf(version.field_schema);
+    // TEMPLATE-FIELDS-1 F-10 (ruling R-3) — the rows of fields placed in the text (rtr-html-v3)
+    // take their positions from THIS render's manifest (never stored on the frozen version). A
+    // row the renderer did not place fails, never a silent drop (field_not_placed).
+    const inlineVersion = isHtmlContentVersion(version.render_schema_version) && allowsInlineFields(version.render_schema_version);
+    const placed = inlineVersion ? inlinePlacements(rev.render_manifest) : new Map<string, SignTemplateInlineField>();
+    if (inlineVersion) {
+      const unplaced = defs.filter((f) => !placed.has(f.field_key)).map((f) => f.field_key);
+      if (unplaced.length > 0) {
+        throw new AramoError('DOCUMENT_RENDER_FAILED', 'A field in the template text was not placed', 422, {
+          requestId,
+          details: { reason: 'field_not_placed', keys: unplaced },
+        });
+      }
+    }
+    const geometry = (f: { field_key: string; page_number: number | null; x: number | null; y: number | null; width: number | null; height: number | null }) => {
+      const p = placed.get(f.field_key);
+      return p !== undefined
+        ? { page_number: p.page_number, x: p.x, y: p.y, width: p.width, height: p.height }
+        : { page_number: f.page_number, x: f.x, y: f.y, width: f.width, height: f.height };
+    };
     return {
       document_id,
       document_revision_ref: rev.id,
@@ -519,11 +546,7 @@ export class SignTemplateLibraryService {
           field_type: f.field_type,
           signer_role: f.signer_role,
           required: f.required,
-          page_number: f.page_number,
-          x: f.x,
-          y: f.y,
-          width: f.width,
-          height: f.height,
+          ...geometry(f),
           // FIELD-PARITY-1 P1-4 — the settings travel with the field (no silent drop).
           label: f.label ?? null,
           group_key: f.group_key ?? null,
@@ -544,6 +567,7 @@ export class SignTemplateLibraryService {
         }),
       ),
       signing,
+      ...(placed.size > 0 ? { inline_fields: [...placed.values()] } : {}),
     };
   }
 
@@ -575,6 +599,20 @@ export function signatureFields(manifest: unknown, withRoles = false): SignTempl
     } else {
       out.push({ field_type: type, page_number: page, x, y, width, height });
     }
+  }
+  return out;
+}
+
+// TEMPLATE-FIELDS-1 F-10 — the inline field positions a render recorded (render_manifest.inline_fields),
+// by key, in drawing order.
+export function inlinePlacements(manifest: unknown): Map<string, SignTemplateInlineField> {
+  const raw = (manifest as { inline_fields?: unknown } | null)?.inline_fields;
+  const out = new Map<string, SignTemplateInlineField>();
+  if (!Array.isArray(raw)) return out;
+  for (const f of raw as Array<Record<string, unknown>>) {
+    const [key, page, x, y, width, height] = [f['field_key'], f['page_number'], f['x'], f['y'], f['width'], f['height']];
+    if (typeof key !== 'string' || typeof page !== 'number' || typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') continue;
+    if (!out.has(key)) out.set(key, { field_key: key, page_number: page, x, y, width, height });
   }
   return out;
 }

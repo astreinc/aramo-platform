@@ -211,6 +211,20 @@ export interface SignTemplateRenderResponse {
   // M-A6 §3.2 — the pinned version's roles (null without `signing`).
   readonly signing: SignTemplateSigning | null;
   readonly template_kind?: SignTemplateKind;
+  // TEMPLATE-FIELDS-1 F-10 / F-18 — the fields placed INSIDE the text of an editable template:
+  // where this render drew each one (0-based page, PDF points, bottom-left origin). Their
+  // field_definitions carry the same positions. Absent when the template has none.
+  readonly inline_fields?: readonly SignTemplateInlineField[];
+}
+
+// TEMPLATE-FIELDS-1 F-10 — one inline field's render position.
+export interface SignTemplateInlineField {
+  readonly field_key: string;
+  readonly page_number: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 // Deterministic digest of a JSON body: sha256 (hex) over a key-sorted canonical JSON
