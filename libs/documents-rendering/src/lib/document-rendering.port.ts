@@ -37,6 +37,9 @@ export interface RenderModel {
   // numbered lists) INSTEAD of `blocks`. The domain converts its allowlisted content into
   // this shape; the renderer never sees HTML and never fetches anything.
   rich_blocks?: RichBlock[];
+  // TEMPLATE-CONTENT-2 C-9 — keep a heading with the block after it (never alone at a page
+  // bottom). Set only for rtr-html-v2 content; absent ⇒ the v1 layout, byte-identical.
+  heading_keep_with_next?: boolean;
   // A1 §2.4 — optional letterhead: the FROZEN logo bytes (read by the domain from the
   // version's TemplateAsset) + an optional organisation name drawn beside it.
   letterhead?: LetterheadModel;
@@ -57,10 +60,18 @@ export interface RichListItem {
   children: RichBlock[];
 }
 
+// TEMPLATE-CONTENT-2 C-8 (rtr-html-v2) — a heading's `level` is 3 or 4 for h3 / h4 and
+// ABSENT for h2, so rtr-html-v1 content builds exactly the same model (and manifest) as before.
+// A table is rows × cells of runs (no merged cells); `header` marks the first row as the
+// header (drawn bold, repeated on each page the table continues on). `rule` is a divider;
+// `page_break` starts a new page.
 export type RichBlock =
-  | { kind: 'heading'; runs: RichRun[] }
+  | { kind: 'heading'; runs: RichRun[]; level?: 3 | 4 }
   | { kind: 'paragraph'; runs: RichRun[] }
-  | { kind: 'list'; ordered: boolean; items: RichListItem[] };
+  | { kind: 'list'; ordered: boolean; items: RichListItem[] }
+  | { kind: 'table'; header: boolean; rows: RichRun[][][] }
+  | { kind: 'rule' }
+  | { kind: 'page_break' };
 
 export interface LetterheadModel {
   image_bytes: Uint8Array;

@@ -425,6 +425,12 @@ export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth:
 }
 
 const LIST_INDENT = 18;
+// TEMPLATE-CONTENT-2 C-9 — v2 heading levels, table and rule geometry.
+const HEADING_SIZE_H3 = 12.5;
+const HEADING_SIZE_H4 = 11.5;
+const TABLE_CELL_PADDING = 4;
+const TABLE_BORDER = 0.5;
+const RULE_SPACE = BODY_SIZE * LINE_HEIGHT_FACTOR;
 const LIST_ITEM_GAP = 2;
 const LETTERHEAD_TOP = 762;
 
@@ -523,53 +529,152 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
             cursorY = TOP_Y;
           }
         };
-        const drawRuns = (runs: readonly RichRun[], size: number, x0: number, width: number, marker?: { text: string; x: number }) => {
+        // TEMPLATE-CONTENT-2 C-9 — the WinAnsi rule applies on the rich path too: a character the
+        // standard fonts can't encode prints as "?" instead of failing the render (it used to throw
+        // while measuring). Text the fonts can encode is unchanged, so v1 output is byte-identical.
+        const safeRuns = (runs: readonly RichRun[]): RichRun[] => runs.map((r) => ({ ...r, text: sanitizeWinAnsi(r.text, font) }));
+        // One laid-out line at (x0, cursorY): the same draw calls in the same order as before.
+        const drawSegs = (segs: ReturnType<typeof layoutRuns>[number], x0: number, size: number): void => {
+          let x = x0;
+          for (const seg of segs) {
+            const f = fontFor(seg.style);
+            if (seg.space_before) {
+              const sw = f.widthOfTextAtSize(' ', size);
+              if (seg.space_underline) {
+                page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + sw, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+              }
+              x += sw;
+            }
+            const w = f.widthOfTextAtSize(seg.text, size);
+            page.drawText(seg.text, { x, y: cursorY, size, font: f, color: rgb(0, 0, 0) });
+            if (seg.style.underline) {
+              page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + w, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+            }
+            x += w;
+          }
+        };
+        const layout = (runs: readonly RichRun[], size: number, width: number) => {
           const measure: Measure = (t, st) => fontFor(st).widthOfTextAtSize(t, size);
-          const lines = layoutRuns(runs, measure, width);
+          return layoutRuns(safeRuns(runs), measure, width);
+        };
+        const drawRuns = (runs: readonly RichRun[], size: number, x0: number, width: number, marker?: { text: string; x: number }) => {
+          const lines = layout(runs, size, width);
           const lineHeight = size * LINE_HEIGHT_FACTOR;
           lines.forEach((segs, li) => {
             ensureRoom(size);
             if (li === 0 && marker !== undefined) {
               page.drawText(marker.text, { x: marker.x, y: cursorY, size, font, color: rgb(0, 0, 0) });
             }
-            let x = x0;
-            for (const seg of segs) {
-              const f = fontFor(seg.style);
-              if (seg.space_before) {
-                const sw = f.widthOfTextAtSize(' ', size);
-                if (seg.space_underline) {
-                  page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + sw, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
-                }
-                x += sw;
-              }
-              const w = f.widthOfTextAtSize(seg.text, size);
-              page.drawText(seg.text, { x, y: cursorY, size, font: f, color: rgb(0, 0, 0) });
-              if (seg.style.underline) {
-                page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + w, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
-              }
-              x += w;
-            }
+            drawSegs(segs, x0, size);
             cursorY -= lineHeight;
           });
         };
+        const newPage = (): void => {
+          page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          cursorY = TOP_Y;
+        };
+        const headingSize = (level: 3 | 4 | undefined): number => (level === 3 ? HEADING_SIZE_H3 : level === 4 ? HEADING_SIZE_H4 : HEADING_SIZE);
+        // C-9 tables: equal column widths, padded cells wrapped at their width, thin borders. A row
+        // that does not fit starts a new page (the header row repeats there); a row taller than a
+        // page splits between lines.
+        const drawTable = (b: Extract<RichBlock, { kind: 'table' }>): void => {
+          const cols = Math.max(1, ...b.rows.map((r) => r.length));
+          const colW = CONTENT_WIDTH / cols;
+          const lineHeight = BODY_SIZE * LINE_HEIGHT_FACTOR;
+          const laidOut = b.rows.map((row, ri) =>
+            Array.from({ length: cols }, (_v, ci) => {
+              const runs = row[ci] ?? [];
+              return layout(b.header && ri === 0 ? runs.map((r) => ({ ...r, bold: true })) : runs, BODY_SIZE, colW - 2 * TABLE_CELL_PADDING);
+            }),
+          );
+          const rowLines = (ri: number): number => Math.max(1, ...(laidOut[ri] ?? []).map((c) => c.length));
+          const rowHeight = (lines: number): number => lines * lineHeight + 2 * TABLE_CELL_PADDING;
+          const border = (x1: number, y1: number, x2: number, y2: number): void => {
+            page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: TABLE_BORDER, color: rgb(0, 0, 0) });
+          };
+          // Draw lines [from, to) of row `ri` as one bordered band at the cursor.
+          const drawBand = (ri: number, from: number, to: number): void => {
+            const top = cursorY + BODY_SIZE;
+            const h = (to - from) * lineHeight + 2 * TABLE_CELL_PADDING;
+            border(MARGIN_X, top, MARGIN_X + CONTENT_WIDTH, top);
+            border(MARGIN_X, top - h, MARGIN_X + CONTENT_WIDTH, top - h);
+            for (let c = 0; c <= cols; c += 1) border(MARGIN_X + c * colW, top, MARGIN_X + c * colW, top - h);
+            const saved = cursorY;
+            for (let c = 0; c < cols; c += 1) {
+              cursorY = saved - TABLE_CELL_PADDING;
+              const lines = (laidOut[ri] ?? [])[c] ?? [];
+              for (let l = from; l < Math.min(to, lines.length); l += 1) {
+                drawSegs(lines[l] ?? [], MARGIN_X + c * colW + TABLE_CELL_PADDING, BODY_SIZE);
+                cursorY -= lineHeight;
+              }
+            }
+            cursorY = saved - h;
+          };
+          const roomFor = (lines: number): boolean => cursorY + BODY_SIZE - rowHeight(lines) >= BOTTOM_MARGIN;
+          const pageRoom = TOP_Y + BODY_SIZE - BOTTOM_MARGIN;
+          // The header repeats only when it is a modest part of a page (an enormous header row
+          // would leave no room for the rows it heads).
+          const headerRepeats = b.header && b.rows.length > 1 && rowHeight(rowLines(0)) <= pageRoom / 3;
+          const breakPage = (ri: number): void => {
+            newPage();
+            if (ri > 0 && headerRepeats) drawBand(0, 0, rowLines(0));
+          };
+          for (let ri = 0; ri < b.rows.length; ri += 1) {
+            const total = rowLines(ri);
+            const headerH = ri > 0 && headerRepeats ? rowHeight(rowLines(0)) : 0;
+            // A row that fits on a fresh page never splits: it moves there whole.
+            if (!roomFor(total) && rowHeight(total) + headerH <= pageRoom) breakPage(ri);
+            let from = 0;
+            while (from < total) {
+              let fit = total - from;
+              while (fit > 1 && !roomFor(fit)) fit -= 1;
+              // Not even one line fits here: continue on a new page (one line always fits on a
+              // fresh page, so this never loops).
+              if (!roomFor(fit) && cursorY < TOP_Y) {
+                breakPage(ri);
+                continue;
+              }
+              drawBand(ri, from, from + fit);
+              from += fit;
+              if (from < total) breakPage(ri);
+            }
+          }
+          cursorY -= BLOCK_GAP;
+        };
         const drawBlocks = (blocks: readonly RichBlock[], level: number): void => {
-          for (const b of blocks) {
+          for (const [bi, b] of blocks.entries()) {
             if (b.kind === 'heading') {
-              drawRuns(b.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE, MARGIN_X, CONTENT_WIDTH);
+              const size = headingSize(b.level);
+              const runs = b.runs.map((r) => ({ ...r, bold: true }));
+              if (model.heading_keep_with_next === true && bi < blocks.length - 1 && cursorY < TOP_Y) {
+                // C-9 keep-with-next (v2 only): the heading and the first line after it share a page.
+                const needed = layout(runs, size, CONTENT_WIDTH).length * size * LINE_HEIGHT_FACTOR + BLOCK_GAP + BODY_SIZE * LINE_HEIGHT_FACTOR;
+                if (cursorY - needed < BOTTOM_MARGIN) newPage();
+              }
+              drawRuns(runs, size, MARGIN_X, CONTENT_WIDTH);
               cursorY -= BLOCK_GAP;
             } else if (b.kind === 'paragraph') {
               drawRuns(b.runs, BODY_SIZE, MARGIN_X, CONTENT_WIDTH);
               cursorY -= BLOCK_GAP;
-            } else {
+            } else if (b.kind === 'list') {
               const markerX = MARGIN_X + level * LIST_INDENT;
               const textX = markerX + LIST_INDENT;
               b.items.forEach((item, i) => {
-                const marker = b.ordered ? `${i + 1}.` : '\u2022';
+                const marker = b.ordered ? `${i + 1}.` : '•';
                 drawRuns(item.runs, BODY_SIZE, textX, PAGE_WIDTH - MARGIN_X - textX, { text: marker, x: markerX });
                 if (item.children.length > 0) drawBlocks(item.children, level + 1);
                 cursorY -= LIST_ITEM_GAP;
               });
               if (level === 0) cursorY -= BLOCK_GAP;
+            } else if (b.kind === 'table') {
+              drawTable(b);
+            } else if (b.kind === 'rule') {
+              ensureRoom(RULE_SPACE);
+              page.drawLine({ start: { x: MARGIN_X, y: cursorY + BODY_SIZE / 2 }, end: { x: MARGIN_X + CONTENT_WIDTH, y: cursorY + BODY_SIZE / 2 }, thickness: TABLE_BORDER, color: rgb(0, 0, 0) });
+              cursorY -= RULE_SPACE;
+            } else {
+              // page_break: a new page, unless the cursor is already at the top of one.
+              if (cursorY < TOP_Y) newPage();
             }
           }
         };

@@ -722,3 +722,83 @@ describe('SafePdfPipeline (B6 — governed upload safety)', () => {
     await expect(pipeline.accept(new Uint8Array(tampered))).rejects.toThrow(/encrypted/i);
   });
 });
+
+// TEMPLATE-CONTENT-2 C-9 — the rtr-html-v2 blocks on the rich path.
+describe('PdfLibDocumentRenderingAdapter (rich path — rtr-html-v2 blocks, TEMPLATE-CONTENT-2)', () => {
+  const base: RenderModel = {
+    template_version_id: MODEL.template_version_id,
+    render_schema_version: 'rich-v1',
+    title: 'Employee Handbook',
+    blocks: [],
+    rich_blocks: [],
+  };
+  const text = (t: string) => [{ text: t }];
+  const wordsOn = async (bytes: Uint8Array) => {
+    const { extractTextLayer } = await import('../lib/text-layer.js');
+    return (await extractTextLayer(bytes)).map((p) => p.words.map((w) => w.t).join(' '));
+  };
+
+  it('h3 and h4 render at their own sizes (different output from an h2 of the same text)', async () => {
+    const h2 = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'heading', runs: text('2.1 At-will employment') }] });
+    const h3 = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'heading', runs: text('2.1 At-will employment'), level: 3 }] });
+    const h4 = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'heading', runs: text('2.1 At-will employment'), level: 4 }] });
+    expect(new Set([h2.sha256, h3.sha256, h4.sha256]).size).toBe(3);
+  });
+
+  it('a page break starts a new page; a rule draws without adding text', async () => {
+    const two = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'paragraph', runs: text('Page one') }, { kind: 'page_break' }, { kind: 'paragraph', runs: text('Page two') }] });
+    expect(two.page_count).toBe(2);
+    const pages = await wordsOn(two.bytes);
+    expect(pages[1]).toContain('Page two');
+    const withRule = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'paragraph', runs: text('Above') }, { kind: 'rule' }, { kind: 'paragraph', runs: text('Below') }] });
+    expect(withRule.page_count).toBe(1);
+    expect((await wordsOn(withRule.bytes))[0]).toBe((await wordsOn(withRule.bytes))[0]);
+  });
+
+  it('a table draws every cell; the header row repeats on each page the table continues on', async () => {
+    const rows = [[text('Benefit'), text('Eligibility')], ...Array.from({ length: 90 }, (_v, i) => [text(`Row${i}`), text('Full-time employees')])];
+    const out = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'table', header: true, rows }] });
+    expect(out.page_count).toBeGreaterThan(1);
+    const pages = await wordsOn(out.bytes);
+    for (const p of pages) expect(p).toContain('Benefit');
+    const all = pages.join(' ');
+    for (const i of [0, 45, 89]) expect(all).toContain(`Row${i}`);
+  });
+
+  it('a row taller than a page splits between lines and never loops', async () => {
+    const huge = 'Policy text that keeps going. '.repeat(900);
+    const out = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'table', header: false, rows: [[text(huge), text('short')]] }] });
+    expect(out.page_count).toBeGreaterThan(1);
+  });
+
+  it('keep-with-next (v2 only) moves a heading that would sit alone at the page bottom', async () => {
+    const headingPage = (pages: string[]) => pages.findIndex((p) => p.includes('Next section'));
+    const linePage = (pages: string[]) => pages.findIndex((p) => p.includes('Its first line.'));
+    // n one-line paragraphs (about 21 pt each) and r dividers (about 15 pt each) give fine-grained
+    // offsets for where the heading lands.
+    const blocksFor = (n: number, r: number) => [
+      ...Array.from({ length: n }, () => ({ kind: 'paragraph' as const, runs: text('Line.') })),
+      ...Array.from({ length: r }, () => ({ kind: 'rule' as const })),
+      { kind: 'heading' as const, runs: text('Next section') },
+      { kind: 'paragraph' as const, runs: text('Its first line.') },
+    ];
+    // Find filler where the v1 layout strands the heading at a page bottom.
+    let stranded: [number, number] | null = null;
+    for (let n = 28; n <= 34 && stranded === null; n += 1) {
+      for (let r = 0; r <= 4 && stranded === null; r += 1) {
+        const pages = await wordsOn((await adapter.renderGenerated({ ...base, rich_blocks: blocksFor(n, r) })).bytes);
+        if (headingPage(pages) !== linePage(pages)) stranded = [n, r];
+      }
+    }
+    expect(stranded).not.toBeNull();
+    // The same content with keep-with-next keeps them together.
+    const v2 = await wordsOn((await adapter.renderGenerated({ ...base, rich_blocks: blocksFor(...(stranded as [number, number])), heading_keep_with_next: true })).bytes);
+    expect(headingPage(v2)).toBe(linePage(v2));
+  });
+
+  it('a character the standard fonts cannot encode prints as "?" instead of failing', async () => {
+    const out = await adapter.renderGenerated({ ...base, rich_blocks: [{ kind: 'paragraph', runs: text('Name: 漢字 and emoji 😀') }] });
+    expect(out.page_count).toBe(1);
+    expect((await wordsOn(out.bytes))[0]).toContain('Name:');
+  });
+});
