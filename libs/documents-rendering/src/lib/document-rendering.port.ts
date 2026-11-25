@@ -47,11 +47,38 @@ export interface RenderModel {
 
 // A styled text run. `text` may contain '\n' (a <br> or a multi-line field value) — a
 // hard line break inside the block.
-export interface RichRun {
+export interface RichTextRun {
   text: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+}
+
+// TEMPLATE-FIELDS-1 F-8 — an inline Sign field box placed in the text (an rtr-html-v3 marker).
+// The domain supplies the size (the field catalog's default for the field's type), so this lib
+// never imports the catalog. The box is atomic: it never splits across lines or pages, and a line
+// holding one grows to its tallest box. The renderer draws a light outline and records where.
+export interface RichFieldRun {
+  kind: 'field';
+  field_key: string;
+  width: number;
+  height: number;
+}
+
+export type RichRun = RichTextRun | RichFieldRun;
+
+export function isFieldRun(r: RichRun): r is RichFieldRun {
+  return (r as RichFieldRun).kind === 'field';
+}
+
+// F-8 — where the renderer drew an inline field box (PDF points, bottom-left origin, 0-based page).
+export interface InlineFieldPlacement {
+  field_key: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface RichListItem {
@@ -171,6 +198,9 @@ export interface RenderedOutput {
   provenance: RenderProvenance;
   // B2 — present iff the model carried a signature_block (or, M-A6, signature_blocks).
   signature_fields?: SignatureFieldPlacement[];
+  // TEMPLATE-FIELDS-1 F-8 / F-10 — present iff the rich content carried inline field boxes: one
+  // placement per box, in drawing order. Its members join the manifest hash.
+  inline_fields?: InlineFieldPlacement[];
   // FIELD-PARITY-1 P0-2 — prepareFromSource only: the field_key of every boxed text
   // placement whose value did not fit its box even at the smallest size, so only the
   // lines that fit were drawn. Absent when nothing was clipped.
