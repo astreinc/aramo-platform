@@ -105,6 +105,11 @@ server {
     error_log /var/log/nginx/error.log crit;
     proxy_pass http://api:3000;
   }
+  # TEMPLATE-CONTENT-2 C-7 — tenant (Org Home) template version writes, up to 256 KiB of content.
+  location ~ ^/v1/document-templates/([^/]+/versions|versions/[^/]+)/?$ {
+    client_max_body_size 2m;
+    proxy_pass http://api:3000;
+  }
   location /v1/ {
     proxy_pass http://api:3000;
   }
@@ -203,6 +208,12 @@ server {
   # route (apps/api FIXED_FORM_PDF_UPLOAD_ROUTE carries the same 15 MB parser limit).
   location ~ ^/platform/document-templates/versions/[^/]+/fixed-form/pdf$ {
     client_max_body_size 15m;
+    proxy_pass http://api:3000;
+  }
+  # TEMPLATE-CONTENT-2 C-7 — template version content may be up to 256 KiB (rtr-html-v2);
+  # apps/api parses these two write routes with a 1 MB limit (template-content-upload.constants).
+  location ~ ^/platform/document-templates/([^/]+/versions|versions/[^/]+)/?$ {
+    client_max_body_size 2m;
     proxy_pass http://api:3000;
   }
   location /platform/document-templates {
