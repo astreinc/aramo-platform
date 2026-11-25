@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { isHtmlContentVersion } from '@aramo/template-content';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { type DocumentTypeTemplateConfig, type DocumentTypeTemplateKind } from './document-types.js';
@@ -979,10 +980,10 @@ export class TemplatesRepository {
       field_schema: (active?.field_schema ?? undefined) as unknown,
     };
     const start = input.transform !== undefined && active !== null ? input.transform(base) : base;
-    // TEMPLATE-FIELDS-1 F-15 — the ACTIVE version's field rows start the new DRAFT too, so the
-    // fields placed in its text (and adopted copies' locked fields) are kept. A version without
-    // rows starts without rows, exactly as before.
-    const copy_fields = active === null ? [] : await this.fingerprintFields(active.id);
+    // TEMPLATE-FIELDS-1 F-15 — an editable (html) ACTIVE version's field rows start the new DRAFT
+    // too, so the fields placed in its text (and adopted copies' locked fields) are kept. Any
+    // other version (and one without rows) starts without rows, exactly as before.
+    const copy_fields = active === null || !isHtmlContentVersion(start.render_schema_version) ? [] : await this.fingerprintFields(active.id);
     return this.createVersionFor(owner, {
       template_id: input.template_id,
       render_schema_version: start.render_schema_version,
