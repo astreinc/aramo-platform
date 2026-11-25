@@ -5473,6 +5473,72 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
         });
       },
+      // ===== TEMPLATE-FIELDS-1 F-19 — an editable template with fields placed in its text =====
+      // A tenant template (tagged `sign` only: F-17) whose ACTIVE rtr-html-v3 version carries two
+      // inline markers and their TemplateFieldDefinition rows (NULL geometry: positions are computed
+      // per render, F-10). "Use" returns the rows with this render's positions + inline_fields. Its
+      // own tenant, so it never shows in the other lists. Rows are written while the version is a
+      // DRAFT (the M-A6 §3.4 immutability trigger), then it is activated.
+      'a tenant template with fields in its text is usable for the tenant': async () => {
+        await withClient(async (c) => {
+          const FIELDS_TENANT = '11111111-1111-7111-8111-1111111111c3';
+          const TPL = 'd0c4c000-0000-7000-8000-0000000000c1';
+          const VER = 'd0c4c000-0000-7000-8000-0000000000c2';
+          const RTR_TYPE = 'd0c50005-0000-7000-8000-000000000001';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at) VALUES ($1::uuid, 'pact-template-fields-1', 'ACTIVE', true, now()) ON CONFLICT (id) DO NOTHING`,
+            [FIELDS_TENANT],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active","type_class","template_kind","products","category")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true,'TEMPLATE','EDITABLE',ARRAY['ats','sign'],'Recruiting')
+             ON CONFLICT ("id") DO UPDATE SET "type_class" = 'TEMPLATE', "template_kind" = 'EDITABLE', "products" = ARRAY['ats','sign'], "active" = true`,
+            [RTR_TYPE],
+          );
+          await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [FIELDS_TENANT]);
+          const exists = await c.query(`SELECT 1 FROM documents."DocumentTemplate" WHERE "id" = $1::uuid`, [TPL]);
+          if (exists.rowCount === 0) {
+            await c.query(
+              `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+               VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Employee Handbook','Handbook acknowledgement (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['sign'],$4::uuid,now())`,
+              [TPL, FIELDS_TENANT, RTR_TYPE, ACTOR],
+            );
+            await c.query(
+              `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by")
+               VALUES ($1::uuid,$2::uuid,$3::uuid,1,'DRAFT','rtr-html-v3',$4::jsonb,$5::uuid)`,
+              [
+                VER,
+                FIELDS_TENANT,
+                TPL,
+                JSON.stringify({
+                  render_schema_version: 'rtr-html-v3',
+                  title: 'Employee Handbook',
+                  html:
+                    '<p>I have read the Employee Handbook. Initials: <span data-sign-field="employee_initials"></span></p>' +
+                    '<p>Signed: <span data-sign-field="employee_signature"></span></p>',
+                  logo: null,
+                  signing: { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' },
+                }),
+                ACTOR,
+              ],
+            );
+            for (const [key, type, ordinal] of [
+              ['employee_initials', 'INITIALS', 0],
+              ['employee_signature', 'SIGNATURE', 1],
+            ] as const) {
+              await c.query(
+                `INSERT INTO documents."TemplateFieldDefinition" ("id","template_version_id","field_key","field_type","binding_key","required","page_number","x","y","width","height","signer_role","ordinal")
+                 VALUES (gen_random_uuid(),$1::uuid,$2,$3,NULL,true,NULL,NULL,NULL,NULL,NULL,'employee',$4)`,
+                [VER, key, type, ordinal],
+              );
+            }
+            await c.query(`UPDATE documents."TemplateVersion" SET "status" = 'ACTIVE', "activated_at" = now() WHERE "id" = $1::uuid`, [VER]);
+            await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid`, [TPL, VER]);
+          }
+        });
+      },
       // ===== TEMPLATE-PRODUCT-1 §8.3 / §8.5 — sign-service → apps/api Studio + "Use as it is" =====
       // The T-5 Aramo RTR default (tagged {ats,sign}) + a PERSONAL tenant whose owner holds
       // document_template:author + :manage through a live role grant (the Studio reads the
