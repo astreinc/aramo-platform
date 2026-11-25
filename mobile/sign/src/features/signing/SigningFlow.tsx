@@ -78,6 +78,7 @@ import {
   loadSource,
   openSigning,
   SIGNING_COPY,
+  saveAnswers,
   submitSigning,
   waitingForCopy,
   type Disclosure,
@@ -89,6 +90,7 @@ import {
   adopt,
   advance,
   attemptFinish,
+  markSaved,
   blockedMessage,
   canFinish,
   defaultBox,
@@ -227,6 +229,32 @@ export function SigningFlow(props: SigningFlowProps) {
   }, []);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Save as you go (web / app consistency, PO 2026-11-25): each changed answer is sent to the
+  // server, one send at a time (a change during a send is sent right after it). Offline or on a
+  // failure the answers stay on the device and go with the next change or at Finish.
+  const saving = useRef<Promise<void> | null>(null);
+  const saveAgain = useRef(false);
+  const saveNow = useCallback((): Promise<void> => {
+    if (!session) return Promise.resolve();
+    if (saving.current) {
+      saveAgain.current = true;
+      return saving.current;
+    }
+    const run = (async () => {
+      try {
+        do {
+          saveAgain.current = false;
+          await saveAnswers(session, stateRef.current, (f) => commit(markSaved(stateRef.current, f)));
+        } while (saveAgain.current);
+      } catch {
+        // Kept on the device; sent with the next change or at Finish (which reports errors).
+      } finally {
+        saving.current = null;
+      }
+    })();
+    saving.current = run;
+    return run;
+  }, [session, commit]);
   const [adoptFor, setAdoptFor] = useState<{ fieldId: string | null; target: AdoptTarget } | null>(
     null,
   );
@@ -435,6 +463,8 @@ export function SigningFlow(props: SigningFlowProps) {
     setBusy(true);
     setSubmitError(null);
     try {
+      // A save still in flight finishes first, so Finish never sends an answer twice at once.
+      await saving.current;
       const r = await submitSigning(session, stateRef.current, commit);
       setPhase({
         kind: 'signed',
@@ -466,6 +496,10 @@ export function SigningFlow(props: SigningFlowProps) {
   }, [session, online, kv, toast, focusField, fail, commit, deviceConfirm]);
 
   const fieldsPhase = phase.kind === 'fields';
+  // Save as you go: after each change to the answers, while signing and online.
+  useEffect(() => {
+    if (fieldsPhase && online && !busy) void saveNow();
+  }, [state.values, fieldsPhase, online, busy, saveNow]);
   const finishEnabled = fieldsPhase && canFinish(state) && !busy;
   useEffect(() => {
     onHeaderFinish?.(

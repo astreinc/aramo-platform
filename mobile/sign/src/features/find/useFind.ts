@@ -1,6 +1,6 @@
 // M-A12 W1-C.2 — Find state for an open set of documents. Text layers load lazily the
 // first time Find opens, are held in component memory only, and are dropped with it.
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TextLayer } from '../../api/m-a12-contract-types';
 import {
@@ -20,6 +20,8 @@ export interface FindDoc {
   readonly docKey: string;
   /** Loads the document's text layer; null when the document has none to offer yet. */
   readonly load: (() => Promise<TextLayer>) | null;
+  /** The document is not on the server yet (a Send draft still uploading): it has no text to search YET. */
+  readonly pending?: boolean;
 }
 
 export interface FindState {
@@ -74,6 +76,12 @@ export function useFind(docs: readonly FindDoc[]): FindState {
       }),
     [docs, layers],
   );
+  // A document's text can become available while Find is open (a Send draft finishes
+  // uploading): load it then, not only when Find is opened.
+  useEffect(() => {
+    if (open || kept) load();
+  }, [open, kept, load]);
+  const pending = docs.some((d) => d.pending === true && d.load === null);
   const loading = docs.some((d) => layers[d.docKey] === 'loading');
   const failed = docs.some((d) => layers[d.docKey] === 'failed');
   const matches = useMemo(() => findMatches(ready, query), [ready, query]);
@@ -81,13 +89,17 @@ export function useFind(docs: readonly FindDoc[]): FindState {
   const safeIndex = matches.length ? Math.min(index, matches.length - 1) : 0;
   const status = loading
     ? FIND_COPY.loading
-    : !searchable && failed
+    : !searchable && pending
+      ? FIND_COPY.notUploaded
+      : !searchable && failed
       ? FIND_COPY.failed
       : findStatus({ query, matches, index: safeIndex, searchable });
 
   const listStatus = loading
     ? FIND_COPY.loading
-    : !searchable && failed
+    : !searchable && pending
+      ? FIND_COPY.notUploaded
+      : !searchable && failed
       ? FIND_COPY.failed
       : findListStatus({ query, matches, searchable });
 

@@ -269,12 +269,11 @@ export function AccountScreen() {
   const disabledReason = online ? undefined : OFFLINE_ACTION_REASON;
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.color.screen }}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 40 }}
-      >
-        <HomeBackLink />
+    <View style={{ flex: 1, backgroundColor: t.color.screen, paddingTop: insets.top + 8 }}>
+      {/* Field test 2026-11-25 (iOS + Android) — the "‹ Home" link stays put above the scrolling
+          page; it scrolled away with it, so going back meant scrolling to the top first. */}
+      <HomeBackLink />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text
           accessibilityRole="header"
           style={[

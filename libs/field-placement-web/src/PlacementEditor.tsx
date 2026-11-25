@@ -858,6 +858,9 @@ export function PlacementEditor(props: PlacementEditorProps) {
     setAnnounce(`This field now shows only when ${describe(t)} is answered.`);
   };
   const previewShown = useMemo(() => previewShownIds(state.fields, answers), [state.fields, answers]);
+  // Preview answers only means something with a "Show only when" field: without one the button is
+  // not offered (it showed no change at all, field test 2026-11-25).
+  const hasConditions = state.fields.some((f) => f.settings.condition !== null);
   const dimmed = useMemo(() => new Set(state.fields.filter((f) => f.settings.condition !== null && !previewShown.has(f.id)).map((f) => f.id)), [state.fields, previewShown]);
   const links = useMemo(
     () =>
@@ -1191,7 +1194,7 @@ export function PlacementEditor(props: PlacementEditorProps) {
                 >
                   Grid
                 </button>
-                {conditionsOn ? (
+                {conditionsOn && (hasConditions || previewOn) ? (
                   <button
                     type="button"
                     className={previewOn ? 'fpe-btn fpe-btn--sm is-on' : 'fpe-btn fpe-btn--sm'}
@@ -1220,6 +1223,14 @@ export function PlacementEditor(props: PlacementEditorProps) {
                 ×
               </button>
             </div>
+          ) : null}
+          {previewOn ? (
+            // Field test 2026-11-25 — the preview only answered screen readers; the sender saw no
+            // change and did not know what to do. It now says so on screen while it is on.
+            <p className="fpe-note" role="status" data-testid={`${p}-preview-note`}>
+              Preview answers: click a check box or radio option (or pick a dropdown answer in its settings) to see which
+              fields show. Fields hidden by these answers are dimmed. Nothing is saved.
+            </p>
           ) : null}
           {picking !== null ? (
             <p className="fpe-note" role="status" data-testid={`${p}-picking`}>

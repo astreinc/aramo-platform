@@ -129,7 +129,18 @@ export function NotificationsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.color.screen, paddingTop: insets.top }}>
+      {/* Field test 2026-11-25 (iOS + Android) — the "‹ Home" link (and, on iOS, Mark all read)
+          stays put above the list; it scrolled away with it, so going back meant scrolling up. */}
+      {ios ? (
+        <View style={styles.iosTop}>
+          <HomeBackLink />
+          {markAll}
+        </View>
+      ) : (
+        <HomeBackLink />
+      )}
       <SectionList
+        testID="notifications-list"
         sections={data}
         keyExtractor={(i) => i.id}
         stickySectionHeadersEnabled={false}
@@ -137,10 +148,6 @@ export function NotificationsScreen() {
           <View style={{ gap: 8, paddingBottom: 4 }}>
             {ios ? (
               <>
-                <View style={styles.iosTop}>
-                  <HomeBackLink />
-                  {markAll}
-                </View>
                 <Text
                   accessibilityRole="header"
                   style={[styles.pad, { color: t.color.text, ...t.type.largeTitle }]}
@@ -150,7 +157,6 @@ export function NotificationsScreen() {
               </>
             ) : (
               <>
-                <HomeBackLink />
                 <View style={styles.androidBar}>
                   <Text
                     accessibilityRole="header"

@@ -13,6 +13,8 @@ export const MIN_QUERY = 2;
 
 export const FIND_COPY = {
   noText: 'No searchable text in this document',
+  // A document still only on this device (a Send draft not uploaded yet): its text comes from the server.
+  notUploaded: 'Find works once the document is uploaded. Connect to the internet to search it.',
   tooShort: 'Type at least 2 letters',
   none: 'No matches',
   loading: 'Reading the document…',

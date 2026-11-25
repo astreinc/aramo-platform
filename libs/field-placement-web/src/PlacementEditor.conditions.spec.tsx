@@ -108,6 +108,22 @@ describe('PlacementEditor — Show only when… (B-7)', () => {
     expect(screen.getByTestId('fpe-field-co')).toHaveAttribute('data-dimmed', 'true');
   });
 
+  // Field test 2026-11-25 — "Preview answers" showed no change: it now explains itself on screen,
+  // and is offered only when a field has a "Show only when" condition.
+  it('Preview answers shows a note on screen while it is on', () => {
+    setup({ fields: [FIELDS[0]!, FIELDS[1]!, f('co', 'TEXT', { y: 650, settings: { condition: { trigger_key: 'agree', when: 'checked' } } })] });
+    expect(screen.queryByTestId('fpe-preview-note')).toBeNull();
+    fireEvent.click(screen.getByTestId('fpe-preview'));
+    expect(screen.getByTestId('fpe-preview-note')).toHaveTextContent('Nothing is saved');
+    fireEvent.click(screen.getByTestId('fpe-preview'));
+    expect(screen.queryByTestId('fpe-preview-note')).toBeNull();
+  });
+
+  it('Preview answers is not offered when no field has a condition', () => {
+    setup({ fields: [FIELDS[0]!, FIELDS[1]!] });
+    expect(screen.queryByTestId('fpe-preview')).toBeNull();
+  });
+
   it('shows the shared rule’s refusal inline (a trigger of another signer)', () => {
     setup({ fields: [...FIELDS.slice(0, 2), f('co', 'TEXT', { y: 650, settings: { condition: { trigger_key: 'theirs', when: 'checked' } } }), FIELDS[4]!] });
     selectField('co');

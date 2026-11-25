@@ -22,6 +22,7 @@ import {
   markStored,
   type SigningDocument,
   type SigningField,
+  type FillToSubmit,
   type SigningState,
 } from './signingMachine';
 
@@ -333,6 +334,39 @@ type FillOp = Operation<typeof FILL_PATH, 'post'>;
 type FillBody = NonNullable<RequestJson<FillOp>>;
 type FillResult = SuccessJson<FillOp>;
 
+/** One fill call: a value to store, or null to clear the stored one. */
+async function postFill(session: GuestSigningSession, f: FillToSubmit): Promise<void> {
+  // C0-2 — every fill and the completion carry the device's IANA time zone: the server
+  // stamps the stored SIGN_DATE in it (the value sent for a date is only the preview).
+  // FIELD-PARITY-2 B-6 follow-up — value null clears a value the server holds.
+  const body: Omit<FillBody, 'token'> = f.method
+    ? { value: f.value, signature_method: f.method, ...timeZoneBody() }
+    : { value: f.value, ...timeZoneBody() };
+  await session.postRaw<FillResult>(
+    fillPath(FILL_PATH, { fieldId: f.fieldId }) as `/v1/sign/signing/${string}`,
+    body,
+  );
+}
+
+/**
+ * Save as you go (web / app consistency, PO 2026-11-25): send every answer that differs from
+ * what the server holds, without completing. `onSaved` is told of each accepted fill (the
+ * caller records it on its CURRENT state with markSaved). A failure stops here and throws;
+ * what is not sent stays pending on the device.
+ */
+export async function saveAnswers(
+  session: GuestSigningSession,
+  state: SigningState,
+  onSaved: (fill: FillToSubmit) => void,
+): Promise<number> {
+  const fills = fillsToSubmit(state);
+  for (const f of fills) {
+    await postFill(session, f);
+    onSaved(f);
+  }
+  return fills.length;
+}
+
 export async function submitSigning(
   session: GuestSigningSession,
   state: SigningState,
@@ -340,16 +374,7 @@ export async function submitSigning(
 ): Promise<{ envelopeStatus: string }> {
   let s = state;
   for (const f of fillsToSubmit(s)) {
-    // C0-2 — every fill and the completion carry the device's IANA time zone: the server
-    // stamps the stored SIGN_DATE in it (the value sent for a date is only the preview).
-    // FIELD-PARITY-2 B-6 follow-up — value null clears a value the server holds.
-    const body: Omit<FillBody, 'token'> = f.method
-      ? { value: f.value, signature_method: f.method, ...timeZoneBody() }
-      : { value: f.value, ...timeZoneBody() };
-    await session.postRaw<FillResult>(
-      fillPath(FILL_PATH, { fieldId: f.fieldId }) as `/v1/sign/signing/${string}`,
-      body,
-    );
+    await postFill(session, f);
     s = f.value === null ? markCleared(s, f.fieldId) : markStored(s, f.fieldId);
     onProgress(s);
   }
