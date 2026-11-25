@@ -37,7 +37,6 @@ import type { SendFlowController } from './sendFlowController';
 import { pickPdf, scanToPdf, type SourceResult } from './sources';
 import { createFromTemplate, type SenderTemplate } from './templates';
 import { ErrorText } from './ui';
-import { UploadOptions } from './UploadOptions';
 import type { SendStep } from '../../state/draftStore';
 
 export const FILES_NOTE = 'A PDF from this phone, OneDrive or Google Drive';
@@ -405,8 +404,10 @@ export function AddDocumentsSheet({
               />
             ))}
           </View>
-          {/* FIELD-PARITY-2 A-3 — sign-web's two upload choices, for the documents added here. */}
-          <UploadOptions value={controller.uploadOptions} onChange={(o) => controller.setUploadOptions(o)} />
+          {/* PO ruling 2026-11-25 — the FIELD-PARITY-2 A-3 upload choices ("Import fields from a
+              fillable PDF", "Apply text tags") are not offered in the app: too technical for a
+              phone sender, and no comparable Sign app has them on the add-document screen.
+              Documents added here upload with neither (the controller's default). */}
           {disabled ? <ActivityIndicator color={t.color.accent} accessibilityLabel="Adding the document" /> : null}
           <ErrorText>{refusal ?? error}</ErrorText>
           <Text style={[styles.caption, { color: t.color.textSecondary, fontFamily: t.font.family }]}>

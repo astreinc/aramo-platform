@@ -196,20 +196,16 @@ describe('Preview a document', () => {
   });
 });
 
-describe('FIELD-PARITY-2 A-3 — the upload options in the sheet', () => {
-  it('offers sign-web’s two choices (both off) in the shared words; a tick is kept on the draft', async () => {
+// PO ruling 2026-11-25 — the FIELD-PARITY-2 A-3 upload choices are not offered in the app.
+describe('the Add documents sheet has no upload options', () => {
+  it('shows neither "Import fields from a fillable PDF" nor "Apply text tags"; uploads go without them', async () => {
     const c = controller();
     await c.open();
     renderStep(c);
-    const imp = screen.getByTestId('upload-opt-import_fields');
-    const tags = screen.getByTestId('upload-opt-apply_text_tags');
-    expect(imp.props.accessibilityLabel).toBe('Import fields from a fillable PDF');
-    expect(tags.props.accessibilityLabel).toBe('Apply text tags ({{…}})');
-    expect(imp.props.accessibilityState).toMatchObject({ checked: false });
-    expect(screen.queryByTestId('upload-tag-help')).toBeNull();
-    act(() => fireEvent.press(tags));
-    await waitFor(() => expect(screen.getByTestId('upload-opt-apply_text_tags').props.accessibilityState).toMatchObject({ checked: true }));
-    expect(screen.getByTestId('upload-tag-help')).toBeTruthy();
-    expect(c.uploadOptions).toEqual({ importFields: false, applyTextTags: true });
+    expect(screen.queryByTestId('upload-options')).toBeNull();
+    expect(screen.queryByTestId('upload-opt-import_fields')).toBeNull();
+    expect(screen.queryByTestId('upload-opt-apply_text_tags')).toBeNull();
+    expect(screen.queryByText('When uploading')).toBeNull();
+    expect(c.uploadOptions).toEqual({ importFields: false, applyTextTags: false });
   });
 });
