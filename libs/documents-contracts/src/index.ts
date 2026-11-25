@@ -38,6 +38,7 @@ export {
   type SignTemplatePreviewResponse,
   type SignTemplateRenderRequest,
   type SignTemplateRenderResponse,
+  type SignTemplateInlineField,
   type SignTemplateSignatureField,
   type SignTemplateSignatureFieldType,
   SIGN_TEMPLATE_SIGNATURE_FIELD_TYPES,

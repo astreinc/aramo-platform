@@ -86,6 +86,9 @@ export class RenderService {
             model: manifestProjection(input.model),
             provenance: out.provenance,
             ...(out.signature_fields !== undefined ? { signature_fields: out.signature_fields } : {}),
+            // TEMPLATE-FIELDS-1 F-10 (ruling R-3) — where each inline field box was drawn, per
+            // render (its provenance hash covers them); "Use" fills the rows' positions from here.
+            ...(out.inline_fields !== undefined ? { inline_fields: out.inline_fields } : {}),
           } as never,
           content_sha256: out.sha256,
           mime_type: 'application/pdf',
