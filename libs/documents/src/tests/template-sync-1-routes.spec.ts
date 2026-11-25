@@ -52,6 +52,8 @@ function setup(opts: { template?: Record<string, unknown>; master?: TemplateMast
       return { version: { id: 'cv2', version_number: 2, template_id: template.id, field_schema: input['field_schema'] }, source: {} };
     }),
     keepPlatformVersion: vi.fn(async () => ({ ...template, sync_kept_platform_version_id: 'mv2' })),
+    // TEMPLATE-FIELDS-1 — the master version's field rows (none unless a test sets them).
+    listPlatformFields: vi.fn(async (_id: string): Promise<unknown[]> => []),
   };
   const caps = {
     isConfigurable: vi.fn(async () => true),
@@ -124,6 +126,21 @@ describe('TEMPLATE-SYNC-1 S-7 — start a draft from the new version', () => {
     expect(audit.recordGovernance).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'draft_from_master', tenant_id: TENANT, subject_id: 'copy-1', payload: expect.objectContaining({ version_id: 'cv2', master_version_id: 'mv2', master_version_number: 2 }) }),
     );
+  });
+
+  // TEMPLATE-FIELDS-1 F-3 × SYNC-1 S-7 — a master with fields in its text: the normaliser checks
+  // the master's markers against the master version's own rows (the rows the draft copies), so
+  // the update is not refused as field_marker_mismatch.
+  it("a master with inline fields is normalised with the master version's own field rows", async () => {
+    const { c, repo, caps } = setup();
+    repo.listPlatformFields.mockResolvedValueOnce([
+      { field_key: 'nda_accepted', field_type: 'CHECKBOX', signer_role: 'party', required: false, ordinal: 0, label: 'Accepted', page_number: null, x: null, y: null, width: null, height: null },
+    ]);
+    await c.draftFromMaster(AUTH, 'copy-1', RID);
+    expect(repo.listPlatformFields).toHaveBeenCalledWith('mv2');
+    const arg = (caps.normalizeDraftContent as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { fields: Array<{ field_key: string }>; owner: string };
+    expect(arg.fields.map((f) => f.field_key)).toEqual(['nda_accepted']);
+    expect(arg.owner).toBe('TENANT');
   });
 
   it('a master without signing roles gives a draft without roles (roles come from the master)', async () => {

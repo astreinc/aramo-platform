@@ -626,6 +626,11 @@ export class DocumentTemplatesController {
           field_schema: Object.prototype.hasOwnProperty.call(raw, 'signing') ? raw : { ...raw, signing: null },
           existing_field_schema: null,
           requestId,
+          // TEMPLATE-FIELDS-1 F-3 — the master's inline markers are checked against the master
+          // version's own field rows, the rows this draft copies (createDraftFromPlatformVersion);
+          // without them every marker of a master with fields was refused (field_marker_mismatch).
+          fields: (await this.repo.listPlatformFields(mv.id)).map(inlineRowOf),
+          owner: 'TENANT',
         });
         // The company's letterhead logo carries over from its current version (server-owned).
         const logo = current === null ? null : caps.logoOf(current.field_schema);
