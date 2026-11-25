@@ -24,14 +24,14 @@ export function isHtmlContentVersion(v: unknown): v is HtmlContentVersion {
   return v === RTR_HTML_V1 || v === RTR_HTML_V2 || v === RTR_HTML_V3;
 }
 
-/** The rank of a version: v1 = 1, v2 = 2, v3 = 3. */
-export function contentVersionRank(v: HtmlContentVersion): number {
+/** The ordinal of a version: v1 = 1, v2 = 2, v3 = 3. */
+export function contentVersionOrdinal(v: HtmlContentVersion): number {
   return v === RTR_HTML_V3 ? 3 : v === RTR_HTML_V2 ? 2 : 1;
 }
 
 /** Whether `version` has the v2 features (h3 / h4, tables, hr, page breaks, 2-level lists): v2 and v3. */
 export function hasV2Features(version: HtmlContentVersion): boolean {
-  return contentVersionRank(version) >= 2;
+  return contentVersionOrdinal(version) >= 2;
 }
 
 /** Whether `version` may carry inline Sign field markers (v3 only, F-1). */
@@ -41,7 +41,7 @@ export function allowsInlineFields(version: HtmlContentVersion): boolean {
 
 /** v3 > v2 > v1: whether replacing `from` content with `to` content would lose features (C-6, F-1). */
 export function isContentDowngrade(from: HtmlContentVersion, to: HtmlContentVersion): boolean {
-  return contentVersionRank(to) < contentVersionRank(from);
+  return contentVersionOrdinal(to) < contentVersionOrdinal(from);
 }
 
 // ── Block kinds ──────────────────────────────────────────────────────────────
