@@ -50,6 +50,16 @@ import { useStudioDoc } from './use-studio-doc';
 import { useStudioDrag, type DragPayload, type DropPos } from './use-studio-drag';
 import { VersionDiff, type DiffSide } from './VersionDiff';
 import { EMPTY_CATALOG, buildCatalog, chipInfo, type VariableCatalog } from './variables';
+import { InlineFieldDialog } from './InlineFieldDialog';
+import {
+  inlineFieldChecks,
+  inlineFieldChipResolver,
+  inlineFieldFromRow,
+  inlineFieldKeysOf,
+  inlineFieldsToSave,
+  nextInlineFieldKey,
+  type StudioInlineField,
+} from './inline-fields';
 import './studio.css';
 
 // PLATFORM-UX-1 F-9 (handoff §10; directive R-10–R-13) — the Template Studio (platform:
@@ -186,6 +196,12 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
 
   const docState = useStudioDoc({ title: '', blocks: [] });
   const { doc, change, editRev } = docState;
+  // TEMPLATE-FIELDS-1 — the loaded field keys (a tenant copy must keep exactly these, F-15), the
+  // sender-filled switch, and the Insert / settings dialog (null key = insert).
+  const [lockedKeys, setLockedKeys] = useState<readonly string[]>([]);
+  const [senderFilledOn, setSenderFilledOn] = useState(false);
+  const [fieldDialog, setFieldDialog] = useState<{ readonly key: string | null } | null>(null);
+  const loadedFieldKeys = useRef<readonly string[]>([]);
   const [savedEditRev, setSavedEditRev] = useState(0);
   const [draft, setDraft] = useState<TemplateVersion | null>(null);
   const [savedRev, setSavedRev] = useState(0);
@@ -256,14 +272,17 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   // ── load ──────────────────────────────────────────────────────────────
   const { reset } = docState;
   const initDoc = useCallback(
-    (d: TemplateDetail) => {
+    (d: TemplateDetail, fields: readonly StudioInlineField[] = []) => {
       const dv = draftOf(d);
       const cur = currentOf(d);
       const fromDraft = dv !== null ? contentDoc(dv, content) : null;
       const base: StudioDoc = canManage
         ? (fromDraft ?? contentDoc(cur, content) ?? { title: d.name, blocks: [] })
         : (contentDoc(cur, content) ?? { title: d.name, blocks: [] });
-      reset(base);
+      // TEMPLATE-FIELDS-1 — the version's inline field rows ride beside the blocks.
+      reset(fields.length > 0 ? { ...base, fields } : base);
+      setLockedKeys(fields.map((f) => f.field_key));
+      loadedFieldKeys.current = fields.map((f) => f.field_key);
       savedEditRevRef.current = 0;
       setSavedEditRev(0);
       draftRef.current = dv;
@@ -281,7 +300,11 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     void (async () => {
       try {
         const [d, cat] = await Promise.all([ds.load(templateId), ds.catalog(templateId)]);
+        // TEMPLATE-FIELDS-1 — the inline field rows of the version the Studio opens.
+        const fieldsVersion = canManage ? (draftOf(d) ?? currentOf(d)) : currentOf(d);
+        const fieldData = fieldsVersion !== null && ds.fields !== undefined ? await ds.fields(fieldsVersion.id).catch(() => null) : null;
         if (!live) return;
+        setSenderFilledOn(fieldData?.sender_filled_fields_enabled === true);
         setCatalog(buildCatalog(cat.variables, cat.bindings));
         setTenantLogo(cat.tenantLogo ?? null);
         const loadedType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
@@ -289,7 +312,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         setDocType({ id: d.document_type_id, name: loadedType?.name ?? '' });
         setTypeProducts(loadedType?.products);
         setDetail(d);
-        initDoc(d);
+        initDoc(d, (fieldData?.fields ?? []).map(inlineFieldFromRow));
       } catch (e) {
         if (live) setLoadError(templateErrorMessage(e, 'Failed to load the template.'));
       }
@@ -297,7 +320,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return () => {
       live = false;
     };
-  }, [ds, templateId, initDoc, templateErrorMessage]);
+  }, [ds, templateId, initDoc, templateErrorMessage, canManage]);
 
   const refreshDetail = useCallback(async (): Promise<TemplateDetail | null> => {
     try {
@@ -325,12 +348,45 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // ── fields in the text (TEMPLATE-FIELDS-1) ────────────────────────────
+  const fieldsEditable = ds.capabilities.inlineFields === 'edit';
+  const docFields = doc.fields;
+  const docSigning = doc.signing;
+  const fieldChip = useMemo(() => inlineFieldChipResolver(docFields ?? [], docSigning, !fieldsEditable), [docFields, docSigning, fieldsEditable]);
+  // A cut chip may be pasted back (moved) when it is one of the document's fields no longer in the text.
+  const docRefForPaste = useRef(doc);
+  docRefForPaste.current = doc;
+  const acceptPastedField = useCallback(
+    (key: string): boolean => {
+      const d = docRefForPaste.current;
+      return fieldsEditable && (d.fields ?? []).some((f) => f.field_key === key) && !inlineFieldKeysOf(d.blocks).includes(key);
+    },
+    [fieldsEditable],
+  );
+  const saveField = (f: StudioInlineField): void => {
+    const exists = (doc.fields ?? []).some((x) => x.field_key === f.field_key);
+    if (!exists) {
+      const info = inlineFieldChipResolver([f], doc.signing, false)(f.field_key);
+      if (canvasRef.current?.insertField(f.field_key, info) !== true) return;
+    }
+    change((d) => ({ ...d, fields: [...(d.fields ?? []).filter((x) => x.field_key !== f.field_key), f] }));
+    setFieldDialog(null);
+  };
+  const deleteField = (key: string): void => {
+    change((d) => ({
+      ...d,
+      blocks: d.blocks.map((b) => (b.value.includes(`data-sign-field="${key}"`) ? { ...b, value: b.value.split(`<span data-sign-field="${key}"></span>`).join('') } : b)),
+      fields: (d.fields ?? []).filter((x) => x.field_key !== key),
+    }));
+    setFieldDialog(null);
+  };
+
   // ── derived ───────────────────────────────────────────────────────────
   const dirty = editRev !== savedEditRev;
   const withdrawal = detail !== null ? withdrawalStateOf(detail) : 'NONE';
   const current = currentOf(detail);
   const currentDoc = useMemo(() => contentDoc(current, content), [current, content]);
-  const codec = useMemo(() => createStudioCodec((k) => chipInfo(catalog, k)), [catalog]);
+  const codec = useMemo(() => createStudioCodec((k) => chipInfo(catalog, k), fieldChip, acceptPastedField), [catalog, fieldChip, acceptPastedField]);
   const map = useMemo(() => bindingMapFrom(catalog.list.map((v) => ({ key: v.key, label: v.label }))), [catalog]);
   const readiness = useMemo(
     () =>
@@ -346,6 +402,15 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         // TEMPLATE-PRODUCT-1 §2.6 — a blocking check where the context carries product tags.
         // TEMPLATE-PRODUCT-1 §6.1 — read-only (inherited) tags never block approval.
         products: ds.capabilities.productTags && ds.capabilities.productTagsReadOnly !== true ? (detail?.products ?? []) : null,
+        // TEMPLATE-FIELDS-1 — F-17 (an `ats` template cannot have fields in its text: a blocking
+        // check), F-6 roles, and F-15 (a tenant copy keeps the fields Aramo placed).
+        extra: inlineFieldChecks({
+          blocks: doc.blocks,
+          fields: doc.fields ?? [],
+          signing: doc.signing,
+          products: detail?.products ?? [],
+          lockedKeys: fieldsEditable ? null : lockedKeys,
+        }),
       }),
     [
       doc,
@@ -359,6 +424,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
       ds.capabilities.productTags,
       ds.capabilities.productTagsReadOnly,
       detail?.products,
+      fieldsEditable,
+      lockedKeys,
     ],
   );
   const editable = canManage && mode === 'edit';
@@ -417,13 +484,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         html: content.encode(d.blocks, d.letterhead ?? null),
         ...(d.signing !== undefined ? { signing: d.signing } : {}),
       };
+      // TEMPLATE-FIELDS-1 F-14 — the platform saves the field rows WITH the content (one
+      // transaction); a tenant never sends them (F-15: the server keeps the copy's rows).
+      // Sent only when the draft has (or had) fields, so a body without them is as before.
+      const rows = ds.capabilities.inlineFields === 'edit' ? inlineFieldsToSave(d.blocks, d.fields ?? []) : [];
+      const fieldsBody = ds.capabilities.inlineFields === 'edit' && (rows.length > 0 || loadedFieldKeys.current.length > 0) ? { fields: rows } : {};
       setSaving(true);
       const p = (async () => {
         try {
           const v =
             dv !== null
-              ? await ds.saveDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema })
-              : await ds.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema });
+              ? await ds.saveDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema, ...fieldsBody })
+              : await ds.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema, ...fieldsBody });
           draftRef.current = v;
           setDraft(v);
           savedEditRevRef.current = rev;
@@ -447,6 +519,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     },
     [canManage, templateId, toast, ds, content, templateErrorMessage],
   );
+
 
   useEffect(() => {
     if (!canManage || !autosave || !dirty) return undefined;
@@ -1210,6 +1283,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               toast={toast}
               drag={drag}
               letterhead={letterheadSlot}
+              fieldChip={fieldChip}
+              onFieldClick={(key) => setFieldDialog({ key })}
+              {...(fieldsEditable && editable ? { onInsertField: () => setFieldDialog({ key: null }) } : {})}
             />
           )}
         </div>
@@ -1262,6 +1338,22 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         ) : null}
       </div>
 
+      {fieldDialog !== null ? (
+        <InlineFieldDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setFieldDialog(null);
+          }}
+          field={fieldDialog.key === null ? null : ((doc.fields ?? []).find((f) => f.field_key === fieldDialog.key) ?? null)}
+          fields={doc.fields ?? []}
+          signing={doc.signing}
+          senderFilledEnabled={senderFilledOn}
+          readOnly={!fieldsEditable || !editable}
+          newKey={(type) => nextInlineFieldKey(type, [...(doc.fields ?? []).map((f) => f.field_key), ...inlineFieldKeysOf(doc.blocks)])}
+          onSave={saveField}
+          onDelete={deleteField}
+        />
+      ) : null}
       <PublishDialog
         open={publishOpen}
         onOpenChange={setPublishOpen}

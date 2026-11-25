@@ -10,12 +10,24 @@
 // previews only, data-sample) — so the result can be serialised safely.
 
 import {
+  ASSET_ATTR,
+  BLOCK_LIKE_TAGS,
+  CONTENT_KEY_RE,
+  DROPPED_WITH_CONTENT_TAGS,
+  INLINE_MARK_TAGS,
   LIST_MAX_DEPTH_V2,
   PAGE_BREAK_ATTR,
   PAGE_BREAK_VALUE,
   RTR_HTML_V1,
   RTR_HTML_V2,
+  SAMPLE_ATTR,
+  SIGN_FIELD_ATTR,
+  SIGN_FIELD_SAMPLE_ATTR,
+  VARIABLE_ATTR,
+  allowsInlineFields,
   hasV2Features,
+  inlineFieldMarkerHtml,
+  isInlineFieldKey,
   type BlockKindV2,
   type HtmlContentVersion,
 } from '@aramo/template-content';
@@ -27,14 +39,13 @@ export type BlockKind = BlockKindV2;
 export type DocHtmlVersion = HtmlContentVersion;
 export interface HtmlBlock { readonly kind: BlockKind; readonly value: string } // value = canonical inner HTML
 
-export const LOGO_HTML = '<div data-asset="tenant.logo"></div>';
-const KEY_RE = /^[A-Za-z0-9_.]+$/;
-const DROP = new Set([
-  'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'TITLE', 'META', 'LINK', 'SVG', 'MATH',
-  'IMG', 'PICTURE', 'VIDEO', 'AUDIO', 'CANVAS', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA', 'OPTION', 'FRAME', 'FRAMESET', 'BASE',
-]);
-const MARK: Record<string, 'b' | 'i' | 'u'> = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u' };
-const BLOCKISH = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'UL', 'OL', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'TABLE', 'TBODY', 'THEAD', 'TR', 'TD', 'TH', 'ASIDE', 'MAIN', 'NAV', 'FIGURE', 'ADDRESS', 'DL', 'DT', 'DD', 'HR']);
+export const LOGO_HTML = `<div ${ASSET_ATTR}="tenant.logo"></div>`;
+// TEMPLATE-FIELDS-1 F-4 (D-4) — the tags, attributes and the marker rule come from the ONE set of
+// rules (@aramo/template-content); the hand-written copies that lived here are removed.
+const KEY_RE = CONTENT_KEY_RE;
+const DROP: ReadonlySet<string> = new Set(DROPPED_WITH_CONTENT_TAGS.map((t) => t.toUpperCase()));
+const MARK: Readonly<Record<string, 'b' | 'i' | 'u'>> = Object.fromEntries(Object.entries(INLINE_MARK_TAGS).map(([k, v]) => [k.toUpperCase(), v]));
+const BLOCKISH: ReadonlySet<string> = new Set(BLOCK_LIKE_TAGS.map((t) => t.toUpperCase()));
 
 export function parseFragment(html: string): DocumentFragment {
   const t = document.createElement('template');
@@ -46,17 +57,26 @@ function cleanText(s: string): string { return s.replace(/\u00a0/g, ' ').replace
 export function escapeText(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 function isLogoDiv(n: Node): boolean {
-  return n.nodeType === Node.ELEMENT_NODE && (n as Element).tagName === 'DIV' && (n as Element).getAttribute('data-asset') === 'tenant.logo';
+  return n.nodeType === Node.ELEMENT_NODE && (n as Element).tagName === 'DIV' && (n as Element).getAttribute(ASSET_ATTR) === 'tenant.logo';
 }
 
 function fieldSpan(key: string): HTMLSpanElement {
   const s = document.createElement('span');
-  s.setAttribute('data-field', key);
+  s.setAttribute(VARIABLE_ATTR, key);
+  return s;
+}
+
+// TEMPLATE-FIELDS-1 F-1 / F-2 — the inline Sign field marker (v3): empty, only the attribute.
+function markerSpan(key: string): HTMLSpanElement {
+  const s = document.createElement('span');
+  s.setAttribute(SIGN_FIELD_ATTR, key);
   return s;
 }
 
 // Append sanitized INLINE content of `nodes` into `out`. Nested block boundaries become <br>.
-function sanitizeInline(nodes: ArrayLike<Node>, out: Node, allowSample: boolean): void {
+// `fields` — keep inline Sign field markers (v3, in a paragraph / list item / table cell, F-2);
+// otherwise they are dropped, exactly as v1 / v2 readers drop them.
+function sanitizeInline(nodes: ArrayLike<Node>, out: Node, allowSample: boolean, fields = false): void {
   const list = Array.from(nodes);
   list.forEach((n, idx) => {
     if (n.nodeType === Node.TEXT_NODE) { const t = cleanText(n.textContent ?? ''); if (t !== '') out.appendChild(document.createTextNode(t)); return; }
@@ -65,13 +85,25 @@ function sanitizeInline(nodes: ArrayLike<Node>, out: Node, allowSample: boolean)
     const tag = e.tagName;
     if (DROP.has(tag)) return;
     if (tag === 'BR') { out.appendChild(document.createElement('br')); return; }
-    const key = e.getAttribute('data-field');
+    const marker = e.getAttribute(SIGN_FIELD_ATTR);
+    if (tag === 'SPAN' && marker != null && marker !== '') { if (fields && isInlineFieldKey(marker)) out.appendChild(markerSpan(marker)); return; }
+    const key = e.getAttribute(VARIABLE_ATTR);
     if (tag === 'SPAN' && key != null) { if (KEY_RE.test(key)) out.appendChild(fieldSpan(key)); return; }
-    const sample = e.getAttribute('data-sample');
+    const sample = e.getAttribute(SAMPLE_ATTR);
     if (allowSample && tag === 'SPAN' && sample != null) {
       if (!KEY_RE.test(sample)) return;
       const s = document.createElement('span');
-      s.setAttribute('data-sample', sample);
+      s.setAttribute(SAMPLE_ATTR, sample);
+      s.appendChild(document.createTextNode(cleanText(e.textContent ?? '')));
+      out.appendChild(s);
+      return;
+    }
+    // F-13 — the server's sample preview draws each inline field as a labelled box.
+    const fieldSample = e.getAttribute(SIGN_FIELD_SAMPLE_ATTR);
+    if (allowSample && tag === 'SPAN' && fieldSample != null) {
+      if (!isInlineFieldKey(fieldSample)) return;
+      const s = document.createElement('span');
+      s.setAttribute(SIGN_FIELD_SAMPLE_ATTR, fieldSample);
       s.appendChild(document.createTextNode(cleanText(e.textContent ?? '')));
       out.appendChild(s);
       return;
@@ -79,12 +111,12 @@ function sanitizeInline(nodes: ArrayLike<Node>, out: Node, allowSample: boolean)
     const m = MARK[tag];
     if (m != null) {
       const w = document.createElement(m);
-      sanitizeInline(e.childNodes, w, allowSample);
+      sanitizeInline(e.childNodes, w, allowSample, fields);
       if (w.childNodes.length > 0) out.appendChild(w);
       return;
     }
     if (isLogoDiv(e)) return;
-    sanitizeInline(e.childNodes, out, allowSample); // unwrap anything else
+    sanitizeInline(e.childNodes, out, allowSample, fields); // unwrap anything else
     if (BLOCKISH.has(tag) && idx < list.length - 1 && out.lastChild != null && out.lastChild.nodeName !== 'BR') out.appendChild(document.createElement('br'));
   });
 }
@@ -100,19 +132,19 @@ function isListEl(n: Node): n is Element {
 
 // One list (any depth). Lists nest up to LIST_MAX_DEPTH_V2 levels; the items of a deeper list
 // are lifted into the deepest allowed list, after the item that held them (never dropped).
-function buildListV2(e: Element, depth: number, allowSample: boolean): HTMLElement {
+function buildListV2(e: Element, depth: number, allowSample: boolean, fields = false): HTMLElement {
   const l = document.createElement(e.tagName.toLowerCase());
   const addItem = (src: ArrayLike<Node>): void => {
     const li = document.createElement('li');
     const inline: Node[] = [];
     const nested: Element[] = [];
     for (const c of Array.from(src)) (isListEl(c) ? nested : inline).push(c as Element);
-    sanitizeInline(inline, li, allowSample);
+    sanitizeInline(inline, li, allowSample, fields);
     trimBr(li);
     l.appendChild(li);
     for (const n of nested) {
       if (depth < LIST_MAX_DEPTH_V2) {
-        const sub = buildListV2(n, depth + 1, allowSample);
+        const sub = buildListV2(n, depth + 1, allowSample, fields);
         if (sub.childNodes.length > 0) li.appendChild(sub);
       } else {
         for (const c of Array.from(n.childNodes)) {
@@ -144,7 +176,7 @@ function tableRows(t: Element): Element[] {
 
 // A table: rows of th / td cells with inline content only (C-1). Rows are padded to the widest
 // row so the editor always has a grid. No rows → no table.
-function buildTableV2(e: Element, allowSample: boolean): HTMLElement | null {
+function buildTableV2(e: Element, allowSample: boolean, fields = false): HTMLElement | null {
   const rows = tableRows(e).map((tr) => Array.from(tr.children).filter((c) => c.tagName === 'TD' || c.tagName === 'TH'));
   const width = Math.max(0, ...rows.map((r) => r.length));
   if (rows.length === 0 || width === 0) return null;
@@ -155,7 +187,7 @@ function buildTableV2(e: Element, allowSample: boolean): HTMLElement | null {
       const src = r[i];
       // A padding cell takes the row's own cell type (a header row stays all th).
       const cell = document.createElement((src ?? r[r.length - 1])?.tagName === 'TH' ? 'th' : 'td');
-      if (src !== undefined) sanitizeInline(src.childNodes, cell, allowSample);
+      if (src !== undefined) sanitizeInline(src.childNodes, cell, allowSample, fields);
       trimBr(cell);
       tr.appendChild(cell);
     }
@@ -181,6 +213,8 @@ function headingTag(tag: string, v2: boolean): 'h2' | 'h3' | 'h4' {
 export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; version?: DocHtmlVersion } = {}): string {
   const allowSample = opts.allowSample === true;
   const v2 = opts.version !== undefined && hasV2Features(opts.version);
+  // TEMPLATE-FIELDS-1 F-2 — v3 keeps the marker in paragraphs, list items and table cells only.
+  const fields = opts.version !== undefined && allowsInlineFields(opts.version);
   const out = document.createElement('div');
   let openP: HTMLElement | null = null;
   let openList: HTMLElement | null = null;
@@ -199,21 +233,21 @@ export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; ver
         if (tag === 'P' || /^H[1-6]$/.test(tag)) {
           closeOpen();
           const b = document.createElement(tag === 'P' ? 'p' : headingTag(tag, v2));
-          sanitizeInline(e.childNodes, b, allowSample);
+          sanitizeInline(e.childNodes, b, allowSample, fields && tag === 'P');
           trimBr(b);
           out.appendChild(b);
           continue;
         }
         if (v2 && (tag === 'UL' || tag === 'OL')) {
           closeOpen();
-          const l = buildListV2(e, 1, allowSample);
+          const l = buildListV2(e, 1, allowSample, fields);
           if (l.childNodes.length === 0) l.appendChild(document.createElement('li'));
           out.appendChild(l);
           continue;
         }
         if (v2 && tag === 'TABLE') {
           closeOpen();
-          const t = buildTableV2(e, allowSample);
+          const t = buildTableV2(e, allowSample, fields);
           if (t !== null) out.appendChild(t);
           continue;
         }
@@ -239,7 +273,7 @@ export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; ver
         if (tag === 'LI') {
           if (openList == null) { closeOpen(); openList = document.createElement('ul'); out.appendChild(openList); }
           const li = document.createElement('li');
-          sanitizeInline(e.childNodes, li, allowSample);
+          sanitizeInline(e.childNodes, li, allowSample, fields);
           trimBr(li);
           openList.appendChild(li);
           continue;
@@ -250,7 +284,7 @@ export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; ver
       }
       // Stray inline content at top level → an implicit paragraph.
       if (openP == null) { openList = null; openP = document.createElement('p'); out.appendChild(openP); }
-      sanitizeInline([n], openP, allowSample);
+      sanitizeInline([n], openP, allowSample, fields);
     }
   };
   walk(parseFragment(html).childNodes, true);
@@ -282,7 +316,7 @@ function innerOf(e: Element): string {
 export function canonicalInner(kind: BlockKind, inner: string, version: DocHtmlVersion = RTR_HTML_V1): string {
   if (kind === 'hr' || kind === 'page_break') return '';
   const tag = blockTag(kind);
-  const html = sanitizeDocHtml(`<${tag}>${inner}</${tag}>`, { version: kind === 'table' || kind === 'h3' || kind === 'h4' ? RTR_HTML_V2 : version });
+  const html = sanitizeDocHtml(`<${tag}>${inner}</${tag}>`, { version: (kind === 'table' || kind === 'h3' || kind === 'h4') && !hasV2Features(version) ? RTR_HTML_V2 : version });
   const first = parseFragment(html).firstElementChild;
   if (first == null) return kind === 'ul' || kind === 'ol' ? '<li></li>' : '';
   return mergeMarks(innerOf(first));
@@ -336,7 +370,9 @@ export function convertKind(value: string, from: BlockKind, to: BlockKind): stri
   return canonicalInner(to, items.join('<br>'));
 }
 
-export function chipHtml(key: string): string { return `<span data-field="${key}"></span>`; }
+export function chipHtml(key: string): string { return `<span ${VARIABLE_ATTR}="${key}"></span>`; }
+/** TEMPLATE-FIELDS-1 — the stored form of an inline Sign field (the shared marker rule). */
+export function fieldMarkerHtml(key: string): string { return inlineFieldMarkerHtml(key); }
 
 // Used + unknown keys in a block value (chips + any [Label] text not yet normalised).
 export function scanHtml(value: string, labelToKey: Record<string, string>, known: (k: string) => boolean): { used: string[]; bad: string[] } {
@@ -359,7 +395,7 @@ export function scanHtml(value: string, labelToKey: Record<string, string>, know
 }
 export function isHtmlEmpty(value: string): boolean {
   const frag = parseFragment(value);
-  return frag.querySelector('[data-field]') == null && (frag.textContent ?? '').trim() === '';
+  return frag.querySelector(`[${VARIABLE_ATTR}],[${SIGN_FIELD_ATTR}]`) == null && (frag.textContent ?? '').trim() === '';
 }
 
 // ── Inline marks on a live selection (Range-based; normalised to b/i/u) ──────
@@ -383,7 +419,7 @@ export function activeMarks(root: Element | null, range: Range | null): { b: boo
 }
 function chipOf(n: Node, root: Element): Element | null {
   const e = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
-  const c = e?.closest('[data-field],[data-bad],[data-bad-field]') ?? null;
+  const c = e?.closest(`[${VARIABLE_ATTR}],[${SIGN_FIELD_ATTR}],[data-bad],[data-bad-field]`) ?? null;
   return c != null && root.contains(c) && c !== root ? c : null;
 }
 function unwrap(e: Element): void {

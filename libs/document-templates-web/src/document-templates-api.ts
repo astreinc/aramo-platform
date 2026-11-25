@@ -10,6 +10,8 @@
 // :manage → approve (activate) and selections. A manage holder may author too.
 
 import { RTR_HTML_V2 } from '@aramo/template-content';
+
+import type { StudioInlineFieldRow } from './studio/inline-fields';
 import { apiClient } from '@aramo/fe-foundation';
 
 import type { TemplateMaster, TemplateMasterContent } from './template-sync';
@@ -231,6 +233,13 @@ export async function updateDraftVersion(
 
 // Fixed-sample preview of the CURRENT draft content (validates + substitutes safe
 // sample values; records the preview to satisfy the §18 approve gate).
+// TEMPLATE-FIELDS-1 F-15 — the field rows of a tenant version (GET /v1/document-templates/versions/:id/fields):
+// a tenant copy's fields placed in the text, shown locked in the Studio.
+export async function listVersionFields(versionId: string): Promise<{ fields: StudioInlineFieldRow[] }> {
+  const rows = await apiClient.get<StudioInlineFieldRow[]>(`${BASE}/versions/${encodeURIComponent(versionId)}/fields`);
+  return { fields: Array.isArray(rows) ? rows : [] };
+}
+
 export async function previewTemplateVersion(versionId: string): Promise<TemplateSamplePreview> {
   return apiClient.post<TemplateSamplePreview>(`${BASE}/versions/${encodeURIComponent(versionId)}/preview`, {});
 }

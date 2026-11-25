@@ -13,10 +13,12 @@
 
 import {
   BLOCK_KINDS_V2,
+  CURRENT_HTML_CONTENT_VERSION,
   LIST_MAX_DEPTH_V2,
   PAGE_BREAK_ATTR,
   PAGE_BREAK_VALUE,
-  RTR_HTML_V2,
+  SIGN_FIELD_ATTR,
+  isInlineFieldKey,
   PLACEHOLDER_TOKEN_SOURCE,
   placeholderKeysIn,
   placeholderTokenRe,
@@ -60,10 +62,26 @@ export interface StudioChipInfo {
 }
 export type StudioChipResolver = (key: string) => StudioChipInfo;
 
+/**
+ * TEMPLATE-FIELDS-1 F-7 / F-14 — how an inline Sign field chip looks: its type's glyph and label,
+ * its role (or "Sender fills it") and that role's colour index; `locked` on a tenant copy (F-15).
+ * Distinct from a variable chip (`{{key}}`): a field is filled by a person when signing.
+ */
+export interface StudioFieldChipInfo {
+  readonly glyph: string;
+  readonly label: string;
+  readonly role: string;
+  /** 0-based colour slot of the role; -1 for a sender-filled field. */
+  readonly tone: number;
+  readonly locked: boolean;
+}
+export type StudioFieldChipResolver = (key: string) => StudioFieldChipInfo | null;
+
 // TEMPLATE-CONTENT-2 (C-12) — the Studio writes rtr-html-v2; its kinds come from the shared
 // rules (C-0). Text kinds are typed in and converted between; a table, a divider and a page
 // break are inserted (and moved, duplicated, deleted) but never converted.
-export const STUDIO_CONTENT_VERSION = RTR_HTML_V2;
+// TEMPLATE-FIELDS-1 F-1 — the current version (rtr-html-v3: v2 plus inline Sign field markers).
+export const STUDIO_CONTENT_VERSION = CURRENT_HTML_CONTENT_VERSION;
 export const STUDIO_BLOCK_KINDS: readonly StudioBlockKind[] = BLOCK_KINDS_V2;
 const NON_TEXT_KINDS: readonly StudioBlockKind[] = ['table', 'hr', 'page_break'];
 export const STUDIO_TEXT_KINDS: readonly StudioBlockKind[] = STUDIO_BLOCK_KINDS.filter((k) => !NON_TEXT_KINDS.includes(k));
@@ -227,6 +245,13 @@ export function studioBlockText(b: Pick<StudioBlock, 'kind' | 'value'>): string 
   return studioPlainText(b.value);
 }
 
+/** TEMPLATE-FIELDS-1 — every inline Sign field key in a value, in order. */
+export function studioFieldKeys(value: string): string[] {
+  return Array.from(parseFragment(value).querySelectorAll(`[${SIGN_FIELD_ATTR}]`))
+    .map((e) => e.getAttribute(SIGN_FIELD_ATTR) ?? '')
+    .filter((k) => k !== '');
+}
+
 /** Every variable key used in a value, in order, with repeats (for "N× in draft"). */
 export function studioVariableKeys(value: string): string[] {
   return Array.from(parseFragment(value).querySelectorAll('[data-field]'))
@@ -326,7 +351,7 @@ export function appendStudioVariable(kind: StudioBlockKind, value: string, key: 
   if (kind === 'table') {
     // Into the last cell.
     const i = Math.max(value.lastIndexOf('</td>'), value.lastIndexOf('</th>'));
-    return i >= 0 ? canonicalInner('table', `${value.slice(0, i)} ${chipHtml(key)}${value.slice(i)}`) : value;
+    return i >= 0 ? canonicalInner('table', `${value.slice(0, i)} ${chipHtml(key)}${value.slice(i)}`, STUDIO_CONTENT_VERSION) : value;
   }
   if (kind === 'hr' || kind === 'page_break') return value;
   return HTML_CODEC.appendField(value, kind, key, key);
@@ -375,6 +400,23 @@ export function makeStudioChip(key: string, info: StudioChipInfo): HTMLSpanEleme
   return c;
 }
 
+/**
+ * TEMPLATE-FIELDS-1 F-14 — an inline Sign field chip: atomic, its glyph and label, coloured by its
+ * role. It carries data-sign-field (serialised as the marker); a locked chip (a tenant copy,
+ * F-15) shows a lock and cannot be opened for editing.
+ */
+export function makeStudioFieldChip(key: string, info: StudioFieldChipInfo | null): HTMLSpanElement {
+  const c = document.createElement('span');
+  const tone = info === null ? 'unknown' : info.tone < 0 ? 'sender' : String(info.tone % 6);
+  c.className = `pws-fchip pws-fchip--${tone}${info?.locked === true ? ' pws-fchip--locked' : ''}`;
+  c.setAttribute('contenteditable', 'false');
+  c.setAttribute(SIGN_FIELD_ATTR, key);
+  c.setAttribute('data-testid', `field-chip-${key}`);
+  c.setAttribute('title', info === null ? `Field ${key}` : `${info.label} · ${info.role}${info.locked ? ' (placed by Aramo)' : ''}`);
+  c.textContent = info === null ? `▢ ${key}` : `${info.locked ? '🔒 ' : ''}${info.glyph} ${info.label} · ${info.role}`;
+  return c;
+}
+
 function textWithChips(text: string, resolve: StudioChipResolver): Node[] {
   const out: Node[] = [];
   let last = 0;
@@ -391,11 +433,13 @@ function textWithChips(text: string, resolve: StudioChipResolver): Node[] {
 
 // Canonical inline html → editor nodes. Text stays text (no `[Label]` parsing: brackets
 // are ordinary characters in the Studio); data-field spans become Studio chips.
-function studioEditorNodes(inner: string, resolve: StudioChipResolver): Node[] {
+function studioEditorNodes(inner: string, resolve: StudioChipResolver, field?: StudioFieldChipResolver): Node[] {
   const conv = (n: Node): Node[] => {
     if (n.nodeType === Node.TEXT_NODE) return [document.createTextNode(n.textContent ?? '')];
     if (n.nodeType !== Node.ELEMENT_NODE) return [];
     const e = n as Element;
+    const marker = e.getAttribute(SIGN_FIELD_ATTR);
+    if (marker !== null) return isInlineFieldKey(marker) ? [makeStudioFieldChip(marker, field?.(marker) ?? null)] : [];
     const key = e.getAttribute('data-field');
     if (key !== null) return KEY_RE.test(key) ? [makeStudioChip(key, resolve(key))] : [];
     const c = document.createElement(e.tagName.toLowerCase());
@@ -439,6 +483,7 @@ export function studioTableValue(t: StudioTable): string {
   return canonicalInner(
     'table',
     t.rows.map((r, ri) => `<tr>${r.map((c) => (t.header && ri === 0 ? `<th>${c}</th>` : `<td>${c}</td>`)).join('')}</tr>`).join(''),
+    STUDIO_CONTENT_VERSION,
   );
 }
 
@@ -451,7 +496,7 @@ function cellLabel(header: boolean, r: number, c: number): string {
   return `Row ${header ? r : r + 1}, column ${c + 1}`;
 }
 
-function renderStudioTableDom(el: HTMLElement, value: string, resolve: StudioChipResolver): void {
+function renderStudioTableDom(el: HTMLElement, value: string, resolve: StudioChipResolver, field?: StudioFieldChipResolver): void {
   const t = parseStudioTable(value);
   const table = el.appendChild(document.createElement('table'));
   table.className = 'pws-tbl';
@@ -466,7 +511,7 @@ function renderStudioTableDom(el: HTMLElement, value: string, resolve: StudioChi
       ed.setAttribute('role', 'textbox');
       ed.setAttribute('aria-label', cellLabel(t.header, r, c));
       ed.setAttribute('data-cell', `${r}:${c}`);
-      studioEditorNodes(cell, resolve).forEach((n) => ed.appendChild(n));
+      studioEditorNodes(cell, resolve, field).forEach((n) => ed.appendChild(n));
     });
   });
 }
@@ -479,7 +524,7 @@ function serializeStudioTableDom(el: Node): string {
       inner: serializeInlineHtml(cell, NO_BINDINGS),
     })),
   );
-  return canonicalInner('table', rows.map((r) => `<tr>${r.map((c) => (c.th ? `<th>${c.inner}</th>` : `<td>${c.inner}</td>`)).join('')}</tr>`).join(''));
+  return canonicalInner('table', rows.map((r) => `<tr>${r.map((c) => (c.th ? `<th>${c.inner}</th>` : `<td>${c.inner}</td>`)).join('')}</tr>`).join(''), STUDIO_CONTENT_VERSION);
 }
 
 // ── Lists two levels deep (C-14) ─────────────────────────────────────────
@@ -563,11 +608,11 @@ export function outdentStudioListItem(li: HTMLElement): boolean {
 }
 
 /** Render a block value into its editable element (lists get their `<ul>/<ol>` host). */
-export function renderStudioBlockDom(el: HTMLElement, value: string, kind: StudioBlockKind, resolve: StudioChipResolver): void {
+export function renderStudioBlockDom(el: HTMLElement, value: string, kind: StudioBlockKind, resolve: StudioChipResolver, field?: StudioFieldChipResolver): void {
   while (el.firstChild !== null) el.removeChild(el.firstChild);
   el.setAttribute('data-kind', kind);
   if (kind === 'table') {
-    renderStudioTableDom(el, value, resolve);
+    renderStudioTableDom(el, value, resolve, field);
     return;
   }
   if (kind === 'hr') {
@@ -581,12 +626,49 @@ export function renderStudioBlockDom(el: HTMLElement, value: string, kind: Studi
     return;
   }
   const host: Element = isListKind(kind) ? el.appendChild(document.createElement(kind)) : el;
-  studioEditorNodes(value, resolve).forEach((n) => host.appendChild(n));
+  studioEditorNodes(value, resolve, field).forEach((n) => host.appendChild(n));
   if (isListKind(kind) && host.childNodes.length === 0) host.appendChild(document.createElement('li'));
 }
 
+/**
+ * TEMPLATE-FIELDS-1 F-14 — moving a field chip (cut, then paste): when the clipboard html holds
+ * field chips, the paste rebuilds them (only keys `acceptField` allows: the document's own fields
+ * that are not in the text any more), with the plain text around them. Otherwise null.
+ */
+function pastedWithFieldChips(html: string, resolve: StudioChipResolver, field: StudioFieldChipResolver | undefined, acceptField: (key: string) => boolean): Node[] | null {
+  if (!html.includes(SIGN_FIELD_ATTR)) return null;
+  const out: Node[] = [];
+  const walk = (n: Node): void => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      textWithChips((n.textContent ?? '').replace(/[\r\n\t]+/g, ' '), resolve).forEach((x) => out.push(x));
+      return;
+    }
+    if (n.nodeType !== Node.ELEMENT_NODE) return;
+    const e = n as Element;
+    const marker = e.getAttribute(SIGN_FIELD_ATTR);
+    if (marker !== null) {
+      if (isInlineFieldKey(marker) && acceptField(marker)) out.push(makeStudioFieldChip(marker, field?.(marker) ?? null));
+      return;
+    }
+    const variable = e.getAttribute('data-field');
+    if (variable !== null) {
+      if (KEY_RE.test(variable)) out.push(makeStudioChip(variable, resolve(variable)));
+      return;
+    }
+    if (e.tagName === 'BR') {
+      out.push(document.createElement('br'));
+      return;
+    }
+    e.childNodes.forEach(walk);
+  };
+  parseFragment(html).childNodes.forEach(walk);
+  return out;
+}
+
 /** Pasted clipboard → plain text with `{{key}}` tokens as chips and line breaks as `<br>`. */
-export function studioPasteNodes(data: DataTransfer | null, resolve: StudioChipResolver): Node[] {
+export function studioPasteNodes(data: DataTransfer | null, resolve: StudioChipResolver, field?: StudioFieldChipResolver, acceptField: (key: string) => boolean = () => false): Node[] {
+  const moved = pastedWithFieldChips(data?.getData('text/html') ?? '', resolve, field, acceptField);
+  if (moved !== null) return moved;
   const plain = (data?.getData('text/plain') ?? '').replace(/\r\n?/g, '\n');
   if (plain === '') return [];
   const out: Node[] = [];
@@ -601,15 +683,15 @@ export function studioPasteNodes(data: DataTransfer | null, resolve: StudioChipR
  * The Studio BlockCodec: HTML_CODEC (rtr-html-v1) with the Studio's chip renderer. Storage,
  * serialisation, kind conversion, emptiness and scanning are HTML_CODEC's own functions.
  */
-export function createStudioCodec(resolve: StudioChipResolver): BlockCodec {
+export function createStudioCodec(resolve: StudioChipResolver, field?: StudioFieldChipResolver, acceptField?: (key: string) => boolean): BlockCodec {
   return {
     ...HTML_CODEC,
-    render: (el: HTMLElement, value: string, _map: BindingMap, kind: BlockKind) => renderStudioBlockDom(el, value, kind, resolve),
+    render: (el: HTMLElement, value: string, _map: BindingMap, kind: BlockKind) => renderStudioBlockDom(el, value, kind, resolve, field),
     serialize: (el: Node, _map: BindingMap, kind: BlockKind) => serializeStudioBlockDom(el, kind),
     convert: convertStudioValue,
     appendField: (value: string, kind: BlockKind, key: string) => appendStudioVariable(kind, value, key),
     needsNormalize: () => false,
-    pasteNodes: (data: DataTransfer | null) => studioPasteNodes(data, resolve),
+    pasteNodes: (data: DataTransfer | null) => studioPasteNodes(data, resolve, field, acceptField),
   };
 }
 
@@ -624,7 +706,9 @@ export function serializeStudioBlockDom(el: Node, kind: StudioBlockKind): string
     const host = Array.from((el as Element).children ?? []).find((c) => isListEl(c)) ?? el;
     return canonicalInner(kind, serializeStudioList(host), STUDIO_CONTENT_VERSION);
   }
-  return HTML_CODEC.serialize(el, NO_BINDINGS, kind);
+  // TEMPLATE-FIELDS-1 — paragraphs and headings canonicalise in the Studio's version (v3), so a
+  // paragraph keeps its field markers (a heading never does: the shared rule, F-2).
+  return canonicalInner(kind, serializeInlineHtml(el, NO_BINDINGS), STUDIO_CONTENT_VERSION);
 }
 
 // Range-based editing helpers re-exported for the Studio canvas (no document.execCommand).

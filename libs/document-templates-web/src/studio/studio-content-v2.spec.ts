@@ -23,7 +23,6 @@ import {
   type StudioBlock,
   type StudioChipResolver,
 } from '../studio-codec';
-import { RTR_HTML_SCHEMA_V2 } from '../document-templates-api';
 
 import { contentRefusalMessage } from './content-refusals';
 import { STUDIO_HTML_CONTENT_VERSION, studioHtmlContentOf } from './data-source';
@@ -71,8 +70,8 @@ describe('C-15 — loading content', () => {
     expect(studioBlocksToHtml(studioBlocksFromHtml(html, newId))).toBe(html);
   });
 
-  it('the Studio writes v2 and reads v1 and v2 content', () => {
-    expect(STUDIO_HTML_CONTENT_VERSION).toBe(RTR_HTML_SCHEMA_V2);
+  it('the Studio writes the current version (v3 since TEMPLATE-FIELDS-1 F-1) and reads v1 and v2 content', () => {
+    expect(STUDIO_HTML_CONTENT_VERSION).toBe('rtr-html-v3');
     const fs = { title: 'T', html: '<p>x</p>' };
     expect(studioHtmlContentOf({ render_schema_version: 'rtr-html-v1', field_schema: { ...fs, render_schema_version: 'rtr-html-v1' } })).toEqual(fs);
     expect(studioHtmlContentOf({ render_schema_version: 'rtr-html-v2', field_schema: { ...fs, render_schema_version: 'rtr-html-v2' } })).toEqual(fs);

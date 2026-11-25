@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from 'react';
-import { PAGE_BREAK_ATTR, PAGE_BREAK_VALUE, RTR_HTML_V2 } from '@aramo/template-content';
+import { CURRENT_HTML_CONTENT_VERSION, PAGE_BREAK_ATTR, PAGE_BREAK_VALUE, SIGN_FIELD_ATTR, SIGN_FIELD_SAMPLE_ATTR } from '@aramo/template-content';
 
 import { parseFragment, sanitizeDocHtml, type DocHtmlVersion } from './dt-html';
 import { JOB_DESCRIPTION_KEY, SourceIcon, sourceOf, type BindingMap } from './dt-ui';
@@ -46,7 +46,7 @@ const PASS: Record<string, string> = {
   TABLE: 'table', TR: 'tr', TH: 'th', TD: 'td',
 };
 
-export function SafeDoc({ html, map, mode, letterhead, testId, version = RTR_HTML_V2 }: {
+export function SafeDoc({ html, map, mode, letterhead, testId, version = CURRENT_HTML_CONTENT_VERSION }: {
   readonly html: string;
   readonly map: BindingMap;
   readonly mode: 'content' | 'sample';
@@ -72,6 +72,16 @@ export function SafeDoc({ html, map, mode, letterhead, testId, version = RTR_HTM
       return (
         <span key={k} className={`dt-chip${field === JOB_DESCRIPTION_KEY ? ' dt-chip--block' : ''}`}>
           <SourceIcon source={sourceOf(field)} size={12} />{field === JOB_DESCRIPTION_KEY ? 'Job description' : label}
+        </span>
+      );
+    }
+    // TEMPLATE-FIELDS-1 F-13 — an inline Sign field: a labelled box where the text places it (the
+    // server's sample label, or the field key in stored content).
+    const fieldSample = e.getAttribute(SIGN_FIELD_SAMPLE_ATTR) ?? e.getAttribute(SIGN_FIELD_ATTR);
+    if (fieldSample != null) {
+      return (
+        <span key={k} className="dt-signfield" data-sign-field-box={fieldSample}>
+          {e.textContent !== null && e.textContent !== '' ? e.textContent : fieldSample}
         </span>
       );
     }

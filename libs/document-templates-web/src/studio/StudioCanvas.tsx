@@ -18,6 +18,7 @@ import {
   indentStudioListItem,
   isStudioTextKind,
   makeStudioChip,
+  makeStudioFieldChip,
   makeStudioTable,
   outdentStudioListItem,
   parseStudioTable,
@@ -28,6 +29,8 @@ import {
   type StudioBlock,
   type StudioBlockKind,
   type StudioCodec,
+  type StudioFieldChipInfo,
+  type StudioFieldChipResolver,
   type StudioTable,
 } from '../studio-codec';
 
@@ -124,6 +127,12 @@ export const SLASH_ITEMS: readonly SlashItem[] = [
 export interface CanvasHandle {
   /** Insert a chip at the last caret (or append to the selected block). */
   readonly insertVariable: (key: string) => void;
+  /**
+   * TEMPLATE-FIELDS-1 F-14 — insert an inline Sign field chip at the last caret (the same
+   * insert-at-caret path as a variable). Only in a paragraph, a list item or a table cell (F-2);
+   * false (with a toast) when there is no caret there.
+   */
+  readonly insertField: (key: string, info?: StudioFieldChipInfo | null) => boolean;
   /** Scroll a block into view and focus it (Outline row click). */
   readonly focusBlock: (id: string) => void;
 }
@@ -150,6 +159,12 @@ export interface StudioCanvasProps {
   readonly drag: StudioDrag;
   /** TEMPLATE-STUDIO-1 S-1 — the non-editable letterhead slot at the top of the page (organization). */
   readonly letterhead?: ReactNode;
+  /** TEMPLATE-FIELDS-1 F-14 — "+ Field" (platform only): opens the Insert field dialog. */
+  readonly onInsertField?: () => void;
+  /** TEMPLATE-FIELDS-1 — how a field chip looks (its type, role and colour). */
+  readonly fieldChip?: StudioFieldChipResolver;
+  /** TEMPLATE-FIELDS-1 — a field chip was clicked (open its settings, or read-only details). */
+  readonly onFieldClick?: (key: string) => void;
 }
 
 function rectOf(el: Element | null): DOMRect | null {
@@ -323,8 +338,32 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
     syncEl(lr.id);
   };
 
+  // TEMPLATE-FIELDS-1 F-14 — the insert-at-caret path for an inline field chip.
+  const insertField = (key: string, info?: StudioFieldChipInfo | null): boolean => {
+    const lr = lastRange.current;
+    const el = lr !== null ? els.current.get(lr.id) : undefined;
+    if (lr === null || el === undefined || !el.isConnected || !el.contains(lr.range.startContainer)) {
+      toast('Click into the text where the field goes first.');
+      return false;
+    }
+    const kind = el.getAttribute('data-kind');
+    if (kind !== 'p' && kind !== 'ul' && kind !== 'ol' && kind !== 'table') {
+      toast('A field goes in a paragraph, a list item or a table cell, never in a heading.');
+      return false;
+    }
+    const r = lr.range;
+    (cellOf(r.startContainer) ?? el).focus();
+    const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+    studioInsertAtRange(el, r, [makeStudioFieldChip(key, info ?? props.fieldChip?.(key) ?? null), document.createTextNode('\u00a0')]);
+    syncEl(lr.id);
+    return true;
+  };
+
   useImperativeHandle(handle, () => ({
     insertVariable: (key: string) => insertVariable(key),
+    insertField: (key: string, info?: StudioFieldChipInfo | null) => insertField(key, info),
     focusBlock: (id: string) => {
       const el = els.current.get(id);
       const sc = scrollRef.current;
@@ -822,6 +861,20 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
         >
           + Section
         </Button>
+        {props.onInsertField !== undefined ? (
+          <Button
+            unstyled
+            className="pws-tb__sec pws-tb__field"
+            title="Insert a Sign field (signature, initials, checkbox …) at the caret"
+            data-testid="insert-field"
+            onMouseDown={(e) => {
+              keep(e);
+              props.onInsertField?.();
+            }}
+          >
+            + Field
+          </Button>
+        ) : null}
         <span className="pws-tb__sep" aria-hidden="true" />
         <Button unstyled className="pws-tb__icon pws-tb__icon--auto pws-tb__hist" title="Undo (⌘Z)" aria-label="Undo" disabled={!canUndo} onMouseDown={(e) => { keep(e); undo(); }}>
           ↶
@@ -841,7 +894,18 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
         </Button>
       </div>
 
-      <div ref={scrollRef} className="pws-doc__scroll" onDragOver={(e) => drag.overCanvas(e)} onDrop={(e) => drag.drop(e, null)}>
+      <div
+        ref={scrollRef}
+        className="pws-doc__scroll"
+        onDragOver={(e) => drag.overCanvas(e)}
+        onDrop={(e) => drag.drop(e, null)}
+        onClick={(e) => {
+          // TEMPLATE-FIELDS-1 — a field chip opens its settings (read-only on a tenant copy).
+          const chip = (e.target as Element | null)?.closest?.('[data-sign-field]');
+          const key = chip?.getAttribute('data-sign-field');
+          if (key !== null && key !== undefined) props.onFieldClick?.(key);
+        }}
+      >
         <div className="pws-page">
           {props.letterhead}
           <label className="pws-page__title">

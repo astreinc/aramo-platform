@@ -1,3 +1,4 @@
+import { senderFilledFieldsEnabled } from '@aramo/sign-fields';
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
@@ -154,7 +155,7 @@ export class PlatformFixedFormsController {
   @RequireScopes('platform:document_template:read')
   async listFields(@Param('versionId', ParseUUIDPipe) versionId: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     this.assertPlatform(auth, requestId);
-    return this.run(requestId, async () => ({ fields: await this.forms.platformFields(versionId, requestId) }));
+    return this.run(requestId, async () => ({ fields: await this.forms.platformFields(versionId, requestId), sender_filled_fields_enabled: senderFilledFieldsEnabled(process.env) }));
   }
 
   @Post('document-templates/versions/:versionId/fixed-form/preview')
