@@ -3,6 +3,7 @@
 // box's accessible name.
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { Circle, Path } from 'react-native-svg';
 
 import { CheckboxField } from '../CheckboxField';
 
@@ -38,10 +39,19 @@ describe('CheckboxField', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('shows ✓ only when checked, and reports its state', () => {
+  // UAT SIG-03 (Android) — the tick is drawn, never a text glyph that Android clips in a small
+  // box, and a checked box is filled so it never looks like an empty one.
+  it('a checked box draws the tick (no text glyph) and is filled; an empty box has no mark', () => {
     show({ checked: true });
-    expect(screen.getByTestId('field-check-yes')).toHaveTextContent('✓');
+    const mark = screen.getByTestId('field-check-yes');
+    expect(mark).not.toHaveTextContent('✓');
+    expect(screen.UNSAFE_getAllByType(Path)).toHaveLength(1);
     expect(screen.getByTestId('field-yes').props.accessibilityState).toEqual({ checked: true });
+    const checkedBg = StyleSheet.flatten(screen.getByTestId('field-yes').props.style).backgroundColor;
+    screen.unmount();
+    show({ checked: false });
+    expect(screen.queryByTestId('field-check-yes')).toBeNull();
+    expect(StyleSheet.flatten(screen.getByTestId('field-yes').props.style).backgroundColor).not.toBe(checkedBg);
   });
 
   // FIELD-PARITY-1 P3 T-5 / S-4 — a radio option and a sender's (locked) box.
@@ -49,7 +59,8 @@ describe('CheckboxField', () => {
     show({ shape: 'circle', checked: true });
     const el = screen.getByTestId('field-yes');
     expect(el.props.accessibilityRole).toBe('radio');
-    expect(screen.getByTestId('field-check-yes')).toHaveTextContent('●');
+    expect(screen.getByTestId('field-check-yes')).toBeTruthy();
+    expect(screen.UNSAFE_getAllByType(Circle)).toHaveLength(1);
     expect(StyleSheet.flatten(el.props.style).borderRadius).toBe(5);
   });
 

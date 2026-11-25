@@ -3,7 +3,6 @@
 // default. M-A13 #1 (R-1a): a TYPED mark's fill value is the typed text, not the PNG. The saved default (/v1/sign/me/signature, /me/initials) is a
 // convenience; every signing still submits its value through the fill call.
 import type { RefObject } from 'react';
-import { Platform } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import type { WorkspaceClient } from '../../api/workspaceClient';
@@ -11,12 +10,13 @@ import type { AdoptedMark, SignatureMethod } from './signingMachine';
 
 export type AdoptTarget = 'SIGNATURE' | 'INITIALS';
 
-/** The script face for typed signatures (system fonts; no font file shipped). */
-export const SCRIPT_FONT = Platform.select({
-  ios: 'Snell Roundhand',
-  android: 'cursive',
-  default: undefined,
-});
+/**
+ * The script face for typed signatures: Homemade Apple, embedded at build time (app.config.ts,
+ * expo-font). UAT SIG-03 — the same font file the signed PDF and the Sign web page use, so a typed
+ * signature looks the same while signing and in the signed copy (the system faces, Android
+ * 'cursive' and iOS 'Snell Roundhand', did not).
+ */
+export const SCRIPT_FONT = 'HomemadeApple-Regular';
 /** Stable key stored with a TYPED default (server pattern ^[a-z0-9][a-z0-9_-]{0,39}$). */
 export const SCRIPT_FONT_KEY = 'system-script';
 
