@@ -10,6 +10,7 @@ import {
   PERSONAL_TEMPLATES_PROMPT,
   NO_TEMPLATES,
   TEMPLATE_BADGE_NEWER,
+  TEMPLATE_BADGE_NEWER_PERSONAL,
   TEMPLATE_BADGE_WITHDRAWN,
   contextRefusal,
   templateBadge,
@@ -268,9 +269,13 @@ describe('TEMPLATE-SYNC-1 — the newer-version badge', () => {
     }));
     const lib = await loadTemplateLibrary(w.workspace);
     if (lib.kind !== 'ok') throw new Error('expected ok');
-    expect(lib.items.map(templateBadge)).toEqual([TEMPLATE_BADGE_NEWER, TEMPLATE_BADGE_WITHDRAWN, null, null, null]);
+    expect(lib.items.map((t) => templateBadge(t))).toEqual([TEMPLATE_BADGE_NEWER, TEMPLATE_BADGE_WITHDRAWN, null, null, null]);
     expect(TEMPLATE_BADGE_NEWER).toBe('Newer version available — your administrator updates it in Org Home');
     expect(TEMPLATE_BADGE_WITHDRAWN).toBe('Withdrawn by Aramo');
     expect(templateRow(lib.items[0]!).accessibilityLabel).toContain(TEMPLATE_BADGE_NEWER);
+    // Amendment A1 — a Personal account is told to update it on the web (no administrator).
+    expect(templateBadge(lib.items[0]!, true)).toBe('Newer version available — update it in Sign on the web');
+    expect(templateRow(lib.items[0]!, true).badge).toBe(TEMPLATE_BADGE_NEWER_PERSONAL);
+    expect(templateBadge(lib.items[1]!, true)).toBe(TEMPLATE_BADGE_WITHDRAWN);
   });
 });

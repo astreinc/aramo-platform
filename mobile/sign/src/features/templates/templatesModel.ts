@@ -38,12 +38,15 @@ export const PERSONAL_TEMPLATES_PROMPT = 'Sending the same thing over and over? 
  * strings, mirroring the server's master flag (no compare or update on the phone).
  */
 export const TEMPLATE_BADGE_NEWER = 'Newer version available — your administrator updates it in Org Home';
+/** Amendment A1 (PO 2026-11-25) — a Personal account has no administrator or Org Home. */
+export const TEMPLATE_BADGE_NEWER_PERSONAL = 'Newer version available — update it in Sign on the web';
 export const TEMPLATE_BADGE_WITHDRAWN = 'Withdrawn by Aramo';
 
-/** The row badge from the server flags only (null: none). */
-export function templateBadge(t: SenderTemplate): string | null {
+/** The row badge from the server flags only (null: none); the wording follows the account kind. */
+export function templateBadge(t: SenderTemplate, personal = false): string | null {
   if (t.masterWithdrawn === true) return TEMPLATE_BADGE_WITHDRAWN;
-  return t.masterNewer === true ? TEMPLATE_BADGE_NEWER : null;
+  if (t.masterNewer !== true) return null;
+  return personal ? TEMPLATE_BADGE_NEWER_PERSONAL : TEMPLATE_BADGE_NEWER;
 }
 
 export type TemplateTab = 'mine' | 'shared';
@@ -172,9 +175,9 @@ export function templateMeta(t: SenderTemplate): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-export function templateRow(t: SenderTemplate): TemplateRowModel {
+export function templateRow(t: SenderTemplate, personal = false): TemplateRowModel {
   const meta = templateMeta(t);
-  const badge = templateBadge(t);
+  const badge = templateBadge(t, personal);
   return {
     template: t,
     title: t.name,
@@ -227,5 +230,6 @@ export function templatesView(input: {
   const note = unavailableNote(lib.unavailable);
   if (lib.items.length === 0)
     return { kind: 'empty', message: isPersonal(input.context) ? PERSONAL_NO_TEMPLATES : NO_TEMPLATES, note };
-  return { kind: 'list', rows: lib.items.map(templateRow), note };
+  const personal = isPersonal(input.context);
+  return { kind: 'list', rows: lib.items.map((t) => templateRow(t, personal)), note };
 }
