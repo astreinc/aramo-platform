@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { SIGN_FIELD_ATTR } from '@aramo/template-content';
 
 import { parseLabelSegments, sourceOf, tokensToLabels, SOURCE_PATH, type BindingMap } from './dt-ui';
 import {
   canonicalInner,
   chipHtml,
+  fieldMarkerHtml,
   convertKind,
   escapeText,
   isHtmlEmpty,
@@ -167,6 +169,9 @@ export function serializeInlineHtml(n: Node, map: BindingMap): string {
     if (c.nodeType === Node.TEXT_NODE) { out += escapeText((c.textContent ?? '').replace(/\u00a0/g, ' ').replace(/[\r\n]+/g, ' ')); return; }
     if (c.nodeType !== Node.ELEMENT_NODE) return;
     const e = c as Element;
+    // TEMPLATE-FIELDS-1 — an inline Sign field chip serialises to its marker (the shared rule).
+    const marker = e.getAttribute(SIGN_FIELD_ATTR);
+    if (marker != null && marker !== '') { out += fieldMarkerHtml(marker); return; }
     const key = e.getAttribute('data-field') ?? e.getAttribute('data-bad-field');
     if (key != null) { out += chipHtml(key); return; }
     const bad = e.getAttribute('data-bad');

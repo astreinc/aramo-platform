@@ -15,6 +15,7 @@ import {
   updateDocumentTemplate,
   updateDraftVersion,
   versionLogoUrl,
+  listVersionFields,
   type DocumentTemplateView,
   type TemplateLibraryView,
   type TemplateSamplePreview,
@@ -58,6 +59,8 @@ export interface OrganizationStudioApi {
   readonly captureLogo: typeof captureVersionLogo;
   readonly removeLogo: typeof removeVersionLogo;
   readonly logoUrl: typeof versionLogoUrl;
+  /** TEMPLATE-FIELDS-1 F-15 — the copy's (locked) field rows. */
+  readonly listFields: typeof listVersionFields;
 }
 
 export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
@@ -75,6 +78,7 @@ export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
   captureLogo: captureVersionLogo,
   removeLogo: removeVersionLogo,
   logoUrl: versionLogoUrl,
+  listFields: listVersionFields,
 };
 
 const field = (key: string): string => `<span data-field="${key}"></span>`;
@@ -204,6 +208,8 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
     saveDraft: async (versionId, body) =>
       studioVersion(await api.updateDraft(versionId, { render_schema_version: body.render_schema_version, field_schema: body.field_schema })),
     discardDraft: (versionId) => api.discardDraft(versionId),
+    // TEMPLATE-FIELDS-1 F-15 — the fields placed in the text of a tenant copy, shown locked.
+    fields: (versionId) => api.listFields(versionId),
     preview: async (versionId) => studioPreview(await api.preview(versionId)),
     approve: async (versionId) => studioVersion(await api.activate(versionId)),
     // Name only: the tenant description and product tags are not shipped (§8; DB CHECK).
@@ -220,7 +226,7 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
     },
     sections: ORGANIZATION_STUDIO_SECTIONS,
     // TEMPLATE-PRODUCT-1 §6.4 — Properties shows the tags read-only (a tenant can't change them).
-    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: true, productTagsReadOnly: true, description: false },
+    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: true, productTagsReadOnly: true, description: false, inlineFields: 'locked' },
     copy: organizationStudioCopy(o),
     content: LETTERHEAD_STUDIO_CONTENT_CODEC,
   };

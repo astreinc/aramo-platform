@@ -1354,6 +1354,41 @@ a.pws-top__crumb:hover {
   color: var(--ts-alert-error-ink);
 }
 
+/* TEMPLATE-FIELDS-1 F-7 / F-14 — an inline Sign field chip: a box (not the mono {{variable}}
+   token), its glyph and label, coloured by its signer role; a locked chip on a tenant copy (F-15). */
+.pws-fchip {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 1px 8px;
+  border: 1.5px solid #4f6bed;
+  border-radius: 4px;
+  background: #eef1fd;
+  color: #24306e;
+  font-size: var(--ts-fs-12-5);
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pws-fchip--1 { border-color: #0f8a5f; background: #e8f6f0; color: #0b4d36; }
+.pws-fchip--2 { border-color: #b4570b; background: #fdf1e6; color: #5f2e06; }
+.pws-fchip--3 { border-color: #8a3ab9; background: #f6edfb; color: #4a1f63; }
+.pws-fchip--4 { border-color: #0b7a8a; background: #e6f6f8; color: #06434c; }
+.pws-fchip--5 { border-color: #a3214a; background: #fbe9ef; color: #5a1027; }
+.pws-fchip--sender { border-style: dashed; border-color: #6b7785; background: #f3f5f7; color: #2c3540; }
+.pws-fchip--unknown { border-style: dashed; border-color: var(--ts-chip-unknown-line); background: var(--ts-alert-error-bg); color: var(--ts-alert-error-ink); }
+.pws-fchip--locked { cursor: help; }
+.pws-tb__field { font-weight: 600; }
+.pws-ifd { display: grid; gap: 10px; min-width: 320px; }
+.pws-ifd__palette { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.pws-ifd__type { text-align: left; padding: 6px 8px; border: 1px solid var(--ts-line, #d5dbe1); border-radius: 6px; background: #fff; cursor: pointer; }
+.pws-ifd__type:hover, .pws-ifd__type:focus-visible { border-color: #4f6bed; }
+.pws-ifd__glyph { display: inline-block; width: 1.4em; text-align: center; }
+.pws-ifd__head { margin: 0; }
+.pws-ifd__key { font-size: var(--ts-fs-12-5); color: var(--ts-ink-3, #5b6670); }
+.pws-ifd__settings { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.pws-ifd__delete { justify-self: start; border: 0; background: none; color: var(--ts-alert-error-ink, #a3142b); cursor: pointer; padding: 0; }
+
 /* Read-only renders (SafeDoc): the version view and the :read preview show chips in the
    Studio's known-chip colours. */
 .pws-page--ro .dt-doc,

@@ -15,6 +15,7 @@ import {
 } from '../studio-codec';
 
 import type { StudioSigning } from './data-source';
+import type { StudioInlineField } from './inline-fields';
 
 // PLATFORM-UX-1 F-9 (handoff §10.4) — pure block-list operations of the Studio canvas:
 // insert, move (drag and drop, ⌥↑/⌥↓, block menu), turn into, duplicate, delete,
@@ -34,6 +35,11 @@ export interface StudioDoc {
    * the roles (loaded or edited); null = removed in the Studio (the save body sends null).
    */
   readonly signing?: StudioSigning | null;
+  /**
+   * TEMPLATE-FIELDS-1 — the fields placed in the text (their type, role and settings; the blocks
+   * hold only the markers). Kept beside the blocks so undo / redo covers them. Absent: none.
+   */
+  readonly fields?: readonly StudioInlineField[];
 }
 
 let seq = 0;

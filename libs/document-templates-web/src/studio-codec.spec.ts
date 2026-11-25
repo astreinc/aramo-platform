@@ -8,6 +8,7 @@ import {
   createStudioCodec,
   isCanonicalStudioHtml,
   removeStudioVariable,
+  makeStudioFieldChip,
   renderStudioBlockDom,
   serializeStudioBlockDom,
   studioBlocksFromHtml,
@@ -17,6 +18,7 @@ import {
   studioDocHasLetterhead,
   studioDocToHtml,
   studioLetterheadState,
+  studioFieldKeys,
   studioPasteNodes,
   studioPlainText,
   studioReadableText,
@@ -214,5 +216,41 @@ describe('studio codec — letterhead logo (TEMPLATE-STUDIO-1 B-1)', () => {
     expect(studioLetterheadState(without, ref)).toBe('node_missing');
     expect(studioLetterheadState(withLogo, null)).toBe('asset_missing');
     expect(studioLetterheadState(withLogo, undefined)).toBe('asset_missing');
+  });
+});
+
+// TEMPLATE-FIELDS-1 F-14 — a field chip moves by cut and paste: the clipboard html's chip is
+// rebuilt only for a field of the document that is no longer in the text; a field chip
+// serialises to the marker; a heading never keeps one (F-2).
+describe('TEMPLATE-FIELDS-1 — field chips in the Studio codec', () => {
+  const resolveVar: StudioChipResolver = () => ({ state: 'known', title: '' });
+  const info = () => ({ glyph: '✍', label: 'Signature', role: 'Employee', tone: 0, locked: false });
+  const data = (html: string, plain: string) => ({ getData: (t: string) => (t === 'text/html' ? html : plain) }) as unknown as DataTransfer;
+
+  it('paste rebuilds a cut field chip (move); a field still in the text or unknown is not duplicated', () => {
+    const clip = data('Signed: <span class="pws-fchip" data-sign-field="sig" contenteditable="false">✍ Signature · Employee</span> now', 'Signed: ✍ Signature · Employee now');
+    const moved = studioPasteNodes(clip, resolveVar, info, (k) => k === 'sig');
+    const host = document.createElement('p');
+    moved.forEach((n) => host.appendChild(n));
+    expect(host.querySelector('[data-sign-field="sig"]')?.textContent).toBe('✍ Signature · Employee');
+    expect(host.textContent).toContain('Signed: ');
+    const dup = studioPasteNodes(clip, resolveVar, info, () => false);
+    const host2 = document.createElement('p');
+    dup.forEach((n) => host2.appendChild(n));
+    expect(host2.querySelector('[data-sign-field]')).toBeNull();
+  });
+
+  it('renders a marker as an atomic field chip and serialises it back to the marker', () => {
+    const el = document.createElement('div');
+    renderStudioBlockDom(el, 'Signed: <span data-sign-field="sig"></span>', 'p', resolveVar, info);
+    const chip = el.querySelector('[data-sign-field="sig"]');
+    expect(chip?.getAttribute('contenteditable')).toBe('false');
+    expect(chip?.className).toContain('pws-fchip');
+    expect(serializeStudioBlockDom(el, 'p')).toBe('Signed: <span data-sign-field="sig"></span>');
+    const h = document.createElement('div');
+    renderStudioBlockDom(h, 'Title', 'h2', resolveVar, info);
+    h.appendChild(makeStudioFieldChip('sig', info()));
+    expect(serializeStudioBlockDom(h, 'h2')).toBe('Title');
+    expect(studioFieldKeys('a <span data-sign-field="x"></span> <span data-sign-field="y"></span>')).toEqual(['x', 'y']);
   });
 });

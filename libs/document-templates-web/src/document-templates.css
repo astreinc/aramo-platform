@@ -384,6 +384,8 @@
 .dt-chip { gap: 4px; }
 .dt-chip--block { display: flex; width: fit-content; margin: 6px 0; }
 .dt-sample { background: #fff6dd; border-bottom: 1px dotted #c98a1b; padding: 0 1px; }
+/* TEMPLATE-FIELDS-1 F-13 — an inline Sign field in a preview: a labelled box where the text places it. */
+.dt-signfield { display: inline-block; margin: 0 2px; padding: 2px 8px; min-width: 48px; border: 1.5px solid #4f6bed; border-radius: 3px; background: #f4f6fe; color: #24306e; font-size: 0.85em; font-weight: 600; white-space: nowrap; vertical-align: middle; }
 .dt-sample--block { display: block; border-bottom: none; border-left: 3px solid #c98a1b; padding: 6px 10px; margin: 4px 0 11px; white-space: pre-line; }
 .dt-missing { background: #fbe9e4; color: #b3402a; padding: 0 3px; border-radius: 3px; }
 

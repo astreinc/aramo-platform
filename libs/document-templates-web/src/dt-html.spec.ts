@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { HTML_CODEC } from './dt-block-editor';
@@ -154,5 +157,34 @@ describe('toggleMark (Range-based)', () => {
     r.setStart(el.firstChild as Text, 1);
     expect(toggleMark(el, r, 'u')).toBe(false);
     el.remove();
+  });
+});
+
+// TEMPLATE-FIELDS-1 §5.1 — client and server agree on the inline Sign field marker: the SAME
+// fixtures the server sanitiser runs (apps/api template-fields-1-server.unit.spec.ts) give the
+// same canonical html here (F-2, F-4: the rules come from @aramo/template-content).
+
+const inlineFieldFixtures = JSON.parse(readFileSync(resolve(__dirname, '../../template-content/test-fixtures/inline-fields.json'), 'utf8')) as {
+  cases: { name: string; input: string; canonical: string }[];
+};
+
+describe('TEMPLATE-FIELDS-1 — the inline field marker on the client', () => {
+  for (const c of inlineFieldFixtures.cases) {
+    it(`shared fixture: ${c.name}`, () => {
+      expect(sanitizeDocHtml(c.input, { version: 'rtr-html-v3' })).toBe(c.canonical);
+    });
+  }
+
+  it('v1 / v2 drop the marker; v3 drops it in a heading (never a place for a field)', () => {
+    const p = '<p>Signed: <span data-sign-field="sig"></span></p>';
+    expect(sanitizeDocHtml(p, { version: 'rtr-html-v2' })).toBe('<p>Signed: </p>');
+    expect(sanitizeDocHtml(p)).toBe('<p>Signed: </p>');
+    expect(sanitizeDocHtml('<h2>T <span data-sign-field="sig"></span></h2>', { version: 'rtr-html-v3' })).toBe('<h2>T </h2>');
+    // A bad key is never kept.
+    expect(sanitizeDocHtml('<p><span data-sign-field="Bad-Key"></span></p>', { version: 'rtr-html-v3' })).toBe('<p></p>');
+  });
+
+  it('a pasted fragment never brings a marker (fields are inserted, never pasted in)', () => {
+    expect(sanitizePastedInline('a <span data-sign-field="sig"></span> b')).toBe('a  b');
   });
 });

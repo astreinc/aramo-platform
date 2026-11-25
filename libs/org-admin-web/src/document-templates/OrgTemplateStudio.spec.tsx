@@ -80,6 +80,8 @@ function makeApi(versions: TemplateVersionView[], tpl: DocumentTemplateView = te
     captureLogo: vi.fn().mockResolvedValue({ asset_id: 'a1', mime: 'image/png' }),
     removeLogo: vi.fn().mockResolvedValue(undefined),
     logoUrl: vi.fn((v: string, a: string | null) => `/logo/${v}/${a ?? ''}`),
+    // TEMPLATE-FIELDS-1 F-15 — the copy's field rows (none unless a test sets them).
+    listFields: vi.fn().mockResolvedValue({ fields: [] }),
   } satisfies OrganizationStudioApi;
   return api;
 }
@@ -391,8 +393,8 @@ describe('Org Studio — explicit Create new version (directive §1.4, §3.4)', 
     expect(create).toHaveTextContent('Create new version v3');
     fireEvent.click(create);
     await waitFor(() => expect(api.createDraftFromActive).toHaveBeenCalledWith('tpl-1'));
-    // TEMPLATE-CONTENT-2 (C-4) — the Studio saves rtr-html-v2.
-    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledWith('d3', expect.objectContaining({ render_schema_version: 'rtr-html-v2' })));
+    // TEMPLATE-CONTENT-2 (C-4) — the Studio saves the current version (TEMPLATE-FIELDS-1 F-1: rtr-html-v3).
+    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledWith('d3', expect.objectContaining({ render_schema_version: 'rtr-html-v3' })));
     expect(api.createVersion).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft v3 created. Nothing changes until it’s approved.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('studio-create-version')).toBeNull());
@@ -448,7 +450,7 @@ describe('Org Studio — an active version in the pre-Studio format (rtr-generat
   };
   const LEGACY_V2 = version('v2', 2, 'ACTIVE', '', { render_schema_version: 'rtr-generated-v1', field_schema: LEGACY_FS });
 
-  it('opens with its content, and Create new version stores it as rtr-html-v2', async () => {
+  it('opens with its content, and Create new version stores it in the current version (rtr-html-v3)', async () => {
     const api = makeApi([LEGACY_V2, V1]);
     renderStudio(MANAGER, api);
     await screen.findByDisplayValue('Right to Represent');
@@ -459,10 +461,56 @@ describe('Org Studio — an active version in the pre-Studio format (rtr-generat
       expect(api.updateDraft).toHaveBeenCalledWith(
         'd3',
         expect.objectContaining({
-          render_schema_version: 'rtr-html-v2',
+          render_schema_version: 'rtr-html-v3',
           field_schema: expect.objectContaining({ html: BODY }),
         }),
       ),
     );
+  });
+});
+
+// TEMPLATE-FIELDS-1 (Aramo-Template-Fields-1-Directive-v1_0-LOCKED) F-15 — an adopted copy keeps the
+// fields Aramo placed in its text: they show as locked chips, their settings read-only, there is no
+// Insert field, and removing one is a failing check (the server refuses it: fields_platform_only).
+describe('OrgTemplateStudio — locked fields of an adopted copy (TEMPLATE-FIELDS-1 F-15)', () => {
+  const SIGNING = { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
+  const FIELDS_BODY = '<p>Signed: <span data-sign-field="employee_signature"></span></p>';
+  const V3 = version('d3', 3, 'DRAFT', FIELDS_BODY, {
+    render_schema_version: 'rtr-html-v3',
+    field_schema: { render_schema_version: 'rtr-html-v3', title: 'Employee Handbook', html: FIELDS_BODY, signing: SIGNING },
+  });
+
+  it('shows locked chips with read-only settings, offers no Insert field, and flags a removed field', async () => {
+    const api = makeApi([V3, V2]);
+    api.listFields.mockResolvedValue({ fields: [{ field_key: 'employee_signature', field_type: 'SIGNATURE', signer_role: 'employee', required: true }] });
+    renderStudio(MANAGER, api);
+    const chip = await screen.findByTestId('field-chip-employee_signature');
+    expect(chip.textContent).toContain('🔒');
+    expect(chip.textContent).toContain('Signature · Employee');
+    expect(screen.queryByTestId('insert-field')).toBeNull();
+    fireEvent.click(chip);
+    expect(await screen.findByText('Field placed by Aramo')).toBeInTheDocument();
+    expect((screen.getByTestId('inline-field-role') as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByTestId('inline-field-delete')).toBeNull();
+    fireEvent.keyDown(screen.getByTestId('inline-field-dialog'), { key: 'Escape' });
+    // Removing the chip (wording edits keep it) is a failing check.
+    const p = chip.closest('[data-block-id]') as HTMLElement;
+    chip.remove();
+    fireEvent.input(p);
+    fireEvent.click(screen.getByRole('tab', { name: /Checks/ }));
+    expect(await screen.findByText('Fields placed by Aramo are kept')).toBeInTheDocument();
+  });
+
+  it('a refused save shows the fields_platform_only message', async () => {
+    const api = makeApi([V3, V2]);
+    api.listFields.mockResolvedValue({ fields: [{ field_key: 'employee_signature', field_type: 'SIGNATURE', signer_role: 'employee', required: true }] });
+    api.updateDraft.mockRejectedValue(Object.assign(new Error('refused'), { details: { reason: 'fields_platform_only' } }));
+    renderStudio(MANAGER, api);
+    const chip = await screen.findByTestId('field-chip-employee_signature');
+    const p = chip.closest('[data-block-id]') as HTMLElement;
+    p.appendChild(document.createTextNode(' today'));
+    fireEvent.input(p);
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    expect(await screen.findByText(/Fields are placed by Aramo/)).toBeInTheDocument();
   });
 });

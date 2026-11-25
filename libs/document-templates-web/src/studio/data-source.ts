@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
 import { isHtmlContentVersion } from '@aramo/template-content';
 
-import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V2 } from '../document-templates-api';
+import { CURRENT_HTML_CONTENT_VERSION } from '@aramo/template-content';
+
+import { RTR_GENERATED_SCHEMA_V1 } from '../document-templates-api';
 import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, studioValueFromText, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
 
 import type { PillSpec } from './primitives';
+import type { StudioInlineFieldRow, StudioInlineFieldWire } from './inline-fields';
 import type { Readiness } from './readiness';
 
 // TEMPLATE-STUDIO-1 S-0 (directive §2) — the Template Studio's data-source adapter. The
@@ -27,10 +30,11 @@ import type { Readiness } from './readiness';
 // The server stays authoritative for every rule; capabilities only hide controls.
 
 /**
- * The editable content contract the Studio WRITES: rtr-html-v2 (TEMPLATE-CONTENT-2 C-4). It
- * reads v1 and v2; saving v1 content here upgrades it (v2 is a strict superset).
+ * The editable content contract the Studio WRITES: the current version (TEMPLATE-CONTENT-2 C-4;
+ * TEMPLATE-FIELDS-1 F-1: rtr-html-v3). It reads every version; saving older content here upgrades
+ * it (each version is a strict superset of the one before).
  */
-export const STUDIO_HTML_CONTENT_VERSION = RTR_HTML_SCHEMA_V2;
+export const STUDIO_HTML_CONTENT_VERSION: string = CURRENT_HTML_CONTENT_VERSION;
 
 export type StudioVersionStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -145,6 +149,17 @@ export interface StudioContentBody {
      */
     readonly signing?: StudioSigning | null;
   };
+  /**
+   * TEMPLATE-FIELDS-1 F-14 — the rows of the fields placed in the text, saved WITH the content
+   * (platform only; a tenant never sends them, F-15). Omitted ⇒ the body is as before.
+   */
+  readonly fields?: readonly StudioInlineFieldWire[];
+}
+
+/** TEMPLATE-FIELDS-1 — a version's inline field rows, and whether sender-filled fields are on. */
+export interface StudioInlineFieldsData {
+  readonly fields: readonly StudioInlineFieldRow[];
+  readonly sender_filled_fields_enabled?: boolean;
 }
 
 export interface StudioPropertiesPatch {
@@ -192,6 +207,12 @@ export interface StudioCapabilities {
    * of an Aramo default: there is no draft, so the count is meaningless there.
    */
   readonly usageCounts?: boolean;
+  /**
+   * TEMPLATE-FIELDS-1 — fields inside the text: 'edit' (platform: Insert field, settings, saved
+   * with the content, F-14) or 'locked' (a tenant copy: shown, never changed, F-15). Absent: shown
+   * read-only like 'locked'.
+   */
+  readonly inlineFields?: 'edit' | 'locked';
 }
 
 /** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */
@@ -343,6 +364,8 @@ export interface TemplateStudioDataSource {
    */
   deleteTemplate?(templateId: string): Promise<void>;
   preview(versionId: string): Promise<StudioSamplePreview>;
+  /** TEMPLATE-FIELDS-1 — a version's inline field rows (GET …/versions/:id/fields). */
+  fields?(versionId: string): Promise<StudioInlineFieldsData>;
   /** Platform: publish · organization: activate. */
   approve(versionId: string): Promise<StudioVersion>;
   updateProperties?(templateId: string, patch: StudioPropertiesPatch): Promise<StudioTemplateInfo>;
