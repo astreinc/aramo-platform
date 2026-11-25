@@ -35,7 +35,11 @@ import {
   type UpdateTemplateVariableInput,
   isTemplateProductKey,
   type TemplateProductKey,
+  inlineRowOf,
+  parseInlineFieldRows,
+  type InlineFieldRowInput,
 } from '@aramo/documents';
+import { senderFilledFieldsEnabled } from '@aramo/sign-fields';
 import { CONTENT_MAX_BYTES_V2, CURRENT_HTML_CONTENT_VERSION, placeholderKeysIn } from '@aramo/template-content';
 
 import { convertDocx } from './word-import/docx-to-content.js';
@@ -667,6 +671,21 @@ export class PlatformDocumentTemplatesController {
     const rsvRaw = body?.['render_schema_version'];
     if (rsvRaw !== undefined && (typeof rsvRaw !== 'string' || rsvRaw.length === 0)) throw bad('invalid render_schema_version', requestId);
     const render_schema_version = rsvRaw as string | undefined;
+    // TEMPLATE-FIELDS-1 F-14 — `fields`: the inline field rows saved WITH the content (one
+    // transaction). Absent ⇒ the draft's rows are kept (and the content must still match them).
+    const hasFields = body !== undefined && body !== null && 'fields' in body;
+    let fields: InlineFieldRowInput[] | undefined;
+    if (hasFields) {
+      if (!hasContent) throw bad('fields are saved with the content (field_schema)', requestId, 'fields_require_content');
+      const parsed = parseInlineFieldRows(body['fields'], { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+      if (!parsed.ok) {
+        throw new AramoError('VALIDATION_ERROR', parsed.message, 422, {
+          requestId,
+          details: { reason: parsed.reason, ...(parsed.index !== undefined ? { index: parsed.index } : {}), ...(parsed.field !== undefined ? { field: parsed.field } : {}) },
+        });
+      }
+      fields = parsed.rows;
+    }
     return this.run(requestId, async () => {
       let field_schema: unknown = hasContent ? body['field_schema'] : undefined;
       if (hasContent && this.caps !== undefined) {
@@ -676,14 +695,27 @@ export class PlatformDocumentTemplatesController {
         }
         const t = await this.templates.getPlatformTemplate(existing.template_id);
         if (await this.caps.isConfigurable(t.document_type_id)) {
+          const rows = fields ?? (await this.templates.listPlatformFields(versionId)).map(inlineRowOf);
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: render_schema_version ?? existing.render_schema_version,
             field_schema: body['field_schema'],
             existing_field_schema: existing.field_schema,
             requestId,
+            fields: rows,
+            owner: 'PLATFORM',
           });
         }
+      }
+      if (fields !== undefined) {
+        const saved = await this.templates.updatePlatformDraftContentWithFields({
+          version_id: versionId,
+          field_schema,
+          ...(render_schema_version !== undefined ? { render_schema_version } : {}),
+          fields,
+        });
+        if (internal_notes !== undefined) return this.versionView(await this.templates.updatePlatformDraftVersion({ version_id: versionId, internal_notes }));
+        return this.versionView(saved);
       }
       const v = await this.templates.updatePlatformDraftVersion({
         version_id: versionId,
@@ -748,6 +780,7 @@ export class PlatformDocumentTemplatesController {
         field_schema: v.field_schema,
         render_schema_version: v.render_schema_version,
         requestId,
+        fields: (await this.templates.listPlatformFields(versionId)).map(inlineRowOf),
       });
       await this.templates.recordPlatformPreview(versionId);
       return out;
@@ -776,6 +809,9 @@ export class PlatformDocumentTemplatesController {
           field_schema: v.field_schema,
           render_schema_version: v.render_schema_version,
           requestId,
+          // TEMPLATE-FIELDS-1 F-3 / F-6 / F-9 re-checked at publish; F-17 the `ats` refusal.
+          fields: (await this.templates.listPlatformFields(versionId)).map(inlineRowOf),
+          products: t.products ?? [],
         });
       }
       return this.versionView(await this.templates.activatePlatformVersion({ version_id: versionId, actor_id: auth.sub }));

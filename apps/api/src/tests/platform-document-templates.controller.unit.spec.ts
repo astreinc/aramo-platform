@@ -104,6 +104,8 @@ function build() {
       });
     }),
     getPlatformVersion: vi.fn(async () => ({ id: VID, template_id: ID, status: 'DRAFT', field_schema: {}, render_schema_version: 'rtr-html-v1' })),
+    // TEMPLATE-FIELDS-1 — the draft's inline field rows (none here).
+    listPlatformFields: vi.fn(async () => []),
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
     updatePlatformDraftVersion: vi.fn(async () => ({ id: VID })),
@@ -333,7 +335,7 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     const { c, templates, caps } = build();
     templates.activatePlatformVersion.mockRejectedValueOnce(new TemplatePreviewRequiredError(VID));
     const e = await errorOf(c.publish(VID, auth('platform'), RID));
-    expect(caps.validateDraftContent).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: TYPE, requestId: RID }));
+    expect(caps.validateDraftContent).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: TYPE, requestId: RID, fields: [], products: [] }));
     expect(e.code).toBe('TEMPLATE_PREVIEW_REQUIRED');
     expect(e.statusCode).toBe(409);
     await expect(c.publish(VID, auth('platform'), RID)).resolves.toMatchObject({ status: 'ACTIVE', logo: null });

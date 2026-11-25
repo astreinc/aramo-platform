@@ -20,7 +20,10 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 import { RETIRED_FIELD_TYPES, fieldConditionIssues, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled, type FieldCondition } from '@aramo/sign-fields';
 
+import { isHtmlContentVersion } from '@aramo/template-content';
+
 import { TemplatesRepository, templateContentFingerprint } from './templates.repository.js';
+import { inlineRowOf, parseInlineFieldRows, sameInlineFieldSet } from './inline-fields.js';
 import { RequirementsRepository } from './requirements.repository.js';
 import {
   TEMPLATE_CAPABILITIES,
@@ -112,6 +115,15 @@ function toHttp(e: unknown, requestId: string): AramoError {
 // routes (apps/api), so both surfaces return identical error codes.
 export const templateErrorToHttp = toHttp;
 
+// TEMPLATE-FIELDS-1 F-15 (ruling R-5) — fields inside editable content are placed by Aramo: a
+// tenant copy keeps them locked (the wording around them stays editable).
+function fieldsPlatformOnly(requestId: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', 'Fields are placed by Aramo: you can edit the wording around them, but not add, remove or change them', 422, {
+    requestId,
+    details: { reason: 'fields_platform_only' },
+  });
+}
+
 function validate(condition: boolean, message: string, requestId: string): void {
   if (!condition) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
 }
@@ -158,6 +170,8 @@ interface CreateVersionBody {
 // are NOT accepted here (immutable fields are enforced by the repo, not this DTO).
 interface UpdateVersionBody {
   field_schema?: unknown;
+  // TEMPLATE-FIELDS-1 F-15 — a tenant may send the field rows back, but never change them.
+  fields?: unknown;
   render_schema_version?: string;
   // Slice 1 B1 — admin-only notes (string|null; trimmed; ≤500; never rendered).
   internal_notes?: string | null;
@@ -438,6 +452,9 @@ export class DocumentTemplatesController {
             field_schema: body.field_schema,
             existing_field_schema: current?.field_schema ?? null,
             requestId,
+            // TEMPLATE-FIELDS-1 F-15 — a new tenant version starts with no field rows.
+            fields: [],
+            owner: 'TENANT',
           });
         }
       }
@@ -534,12 +551,21 @@ export class DocumentTemplatesController {
         if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
         const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
         if (await this.caps.isConfigurable(t.document_type_id)) {
+          // TEMPLATE-FIELDS-1 F-15 — the copy's field rows are locked: the content must keep every
+          // marker, and rows sent back must equal the stored ones (type, role, settings).
+          const rows = (await this.repo.listFields(auth.tenant_id, versionId)).map(inlineRowOf);
+          if (body.fields !== undefined) {
+            const sent = parseInlineFieldRows(body.fields, { sender_filled_enabled: true });
+            if (!sent.ok || !sameInlineFieldSet(rows, sent.rows)) throw fieldsPlatformOnly(requestId);
+          }
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version ?? existing.render_schema_version,
             field_schema: body.field_schema,
             existing_field_schema: existing.field_schema,
             requestId,
+            fields: rows,
+            owner: 'TENANT',
           });
         }
       }
@@ -598,7 +624,8 @@ export class DocumentTemplatesController {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
       validate(this.caps !== undefined && (await this.caps.isConfigurable(ctx.document_type_id)), 'this document type is not configurable', requestId);
-      const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId });
+      const fields = (await this.repo.listFields(auth.tenant_id, versionId)).map(inlineRowOf);
+      const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId, fields });
       await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
       return preview;
     } catch (e) {
@@ -712,7 +739,10 @@ export class DocumentTemplatesController {
       if (this.caps !== undefined) {
         const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
         const unmodified_adopted_copy = await this.isUnmodifiedAdoptedCopy(auth.tenant_id, versionId, ctx.field_schema);
-        await this.caps.validateDraftContent({ ...ctx, requestId, unmodified_adopted_copy });
+        // TEMPLATE-FIELDS-1 F-3 / F-6 / F-9 re-checked; F-17 an `ats` template cannot have inline fields.
+        const fields = (await this.repo.listFields(auth.tenant_id, versionId)).map(inlineRowOf);
+        const products = (await this.repo.getTemplate(auth.tenant_id, (await this.repo.getVersion(auth.tenant_id, versionId)).template_id)).products ?? [];
+        await this.caps.validateDraftContent({ ...ctx, requestId, unmodified_adopted_copy, fields, products });
       }
       const activated = await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
       await this.governance(
@@ -743,6 +773,14 @@ export class DocumentTemplatesController {
     }
     validate(FIELD_TYPES.has(body.field_type), 'invalid field_type', requestId);
     validate(typeof body?.ordinal === 'number', 'ordinal is required', requestId);
+    // TEMPLATE-FIELDS-1 F-15 — editable (html) content places its fields in the text, on the
+    // platform only; a tenant never adds one.
+    try {
+      const v = await this.repo.getVersion(auth.tenant_id, versionId);
+      if (isHtmlContentVersion(v.render_schema_version)) throw fieldsPlatformOnly(requestId);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
     // FIELD-PARITY-1 P1-3 / P3 — a setting the type does not take is refused with a named reason
     // (the same reasons as Sign's sender API), never stored or dropped. A sender-filled field
     // (S-5) is refused while SIGN_SENDER_FILLED_FIELDS_ENABLED is off (dark, ruling R-3).

@@ -1,0 +1,29 @@
+{
+  "description": "TEMPLATE-FIELDS-1 §5.1 — the same rtr-html-v3 fixtures run through the server sanitiser (apps/api) and the client sanitiser (libs/document-templates-web): both must keep or drop each marker the same way.",
+  "cases": [
+    {
+      "name": "a marker in a paragraph is kept, canonical (empty, only the attribute)",
+      "input": "<p>Signed: <span data-sign-field=\"employee_signature\" class=\"x\">junk</span></p>",
+      "canonical": "<p>Signed: <span data-sign-field=\"employee_signature\"></span></p>",
+      "markers": ["employee_signature"]
+    },
+    {
+      "name": "a marker inside marks in a list item is kept",
+      "input": "<ul><li>I accept <b><span data-sign-field=\"policy_ack\"></span></b></li></ul>",
+      "canonical": "<ul><li>I accept <b><span data-sign-field=\"policy_ack\"></span></b></li></ul>",
+      "markers": ["policy_ack"]
+    },
+    {
+      "name": "a marker in a table cell is kept",
+      "input": "<table><tr><td>Initials</td><td><span data-sign-field=\"employee_initials\"></span></td></tr></table>",
+      "canonical": "<table><tr><td>Initials</td><td><span data-sign-field=\"employee_initials\"></span></td></tr></table>",
+      "markers": ["employee_initials"]
+    },
+    {
+      "name": "a marker beside a variable: the variable stays a variable",
+      "input": "<p><span data-field=\"talent.full_name\"></span> <span data-sign-field=\"sig\"></span></p>",
+      "canonical": "<p><span data-field=\"talent.full_name\"></span> <span data-sign-field=\"sig\"></span></p>",
+      "markers": ["sig"]
+    }
+  ]
+}

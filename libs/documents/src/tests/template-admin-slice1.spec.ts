@@ -286,6 +286,8 @@ describe('A1 — templates controller (html content + tenant logo)', () => {
       createAsset: vi.fn(async () => ({ id: 'asset-9' })),
       findAssetById: vi.fn(async () => ({ id: 'asset-1', storage_locator: 'loc', mime_type: 'image/png' })),
       listVersions: vi.fn(async () => [v]),
+      // TEMPLATE-FIELDS-1 F-15 — the version's (locked) field rows.
+      listFields: vi.fn(async () => []),
     };
   }
   function logoPort(over: Record<string, unknown> = {}) {
@@ -311,6 +313,9 @@ describe('A1 — templates controller (html content + tenant logo)', () => {
       field_schema: { title: 'T', html: '<p onclick=x>new</p>' },
       existing_field_schema: { html: '<p>old</p>', logo: LOGO },
       requestId: 'r',
+      // TEMPLATE-FIELDS-1 F-15 — the copy's rows (none here), held as a tenant save.
+      fields: [],
+      owner: 'TENANT',
     });
     expect(out.field_schema.html).toBe('<p>clean</p>');
     expect(r.updateDraftVersion.mock.calls[0]?.[0]).toMatchObject({ field_schema: { title: 'T', html: '<p>clean</p>' } });

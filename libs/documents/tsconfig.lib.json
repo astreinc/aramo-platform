@@ -14,7 +14,8 @@
       "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"],
-      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"]
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"],
+      "@aramo/template-content": ["../../dist/libs/template-content/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

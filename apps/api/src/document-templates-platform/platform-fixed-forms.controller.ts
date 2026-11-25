@@ -154,7 +154,7 @@ export class PlatformFixedFormsController {
   @RequireScopes('platform:document_template:read')
   async listFields(@Param('versionId', ParseUUIDPipe) versionId: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     this.assertPlatform(auth, requestId);
-    return this.run(requestId, async () => ({ fields: (await this.forms.platformView(versionId, requestId)).fields }));
+    return this.run(requestId, async () => ({ fields: await this.forms.platformFields(versionId, requestId) }));
   }
 
   @Post('document-templates/versions/:versionId/fixed-form/preview')

@@ -196,4 +196,15 @@ export {
   type FixedFormRole,
   type FixedFormSigning,
 } from './lib/fixed-forms.js';
+// TEMPLATE-FIELDS-1 — the rows of the fields placed inside editable template content.
+export {
+  INLINE_FIELD_TYPES,
+  parseInlineFieldRows,
+  inlineRowOf,
+  sameInlineFieldSet,
+  inlineRowColumns,
+  type InlineFieldRowInput,
+  type InlineFieldRowsParse,
+  type StoredFieldRow,
+} from './lib/inline-fields.js';
 export { FixedFormsRepository, type FixedFormTypeRow, type PublishedFixedForm } from './lib/fixed-forms.repository.js';

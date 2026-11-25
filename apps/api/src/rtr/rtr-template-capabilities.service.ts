@@ -12,6 +12,7 @@ import {
   type TemplateSamplePreview,
   type TemplateVariableCatalogReader,
   type TemplateVariableRow,
+  type InlineFieldRowInput,
 } from '@aramo/documents';
 import {
   CONTENT_KEY_RE,
@@ -46,6 +47,24 @@ import {
   type RtrTemplateContentHtmlV1,
 } from './rtr-html-content.js';
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
+import { hasInlineFields, inlineFieldIssue, inlineFieldLabeller, type InlineFieldIssue } from './rtr-inline-fields.js';
+
+// TEMPLATE-FIELDS-1 — an inline field refusal (§3.7): 422 VALIDATION_ERROR, details.reason + the
+// issue's details (missing / orphans, keys, field_key / place / max_width). Nothing is saved.
+function inlineInvalid(requestId: string, issue: InlineFieldIssue): AramoError {
+  return new AramoError('VALIDATION_ERROR', `template content rejected: ${issue.message}`, 422, {
+    requestId,
+    details: { reason: issue.reason, ...issue.details },
+  });
+}
+
+// F-15 (ruling R-5) — a tenant save that changes the field set is refused as platform-only.
+function tenantFieldsRefusal(requestId: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', 'Fields are placed by Aramo: you can edit the wording around them, but not add, remove or change them', 422, {
+    requestId,
+    details: { reason: 'fields_platform_only' },
+  });
+}
 
 // DOC-TEMPLATE-ADMIN-RTR-1 — the RTR implementation of the generic template-content
 // capability port (§14/§15/§17), extended by Amendment A1 for `rtr-html-v1`. No
@@ -201,11 +220,30 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     render_schema_version: string;
     requestId: string;
     unmodified_adopted_copy?: boolean;
+    fields?: readonly InlineFieldRowInput[];
+    products?: readonly string[];
   }): Promise<void> {
     const type = await this.editableType(input.document_type_id);
     if (type === null) return; // non-configurable → nothing to validate
     const cat = await this.atsCatalog(type);
     const parsed = await this.validateAgainst(cat, input);
+    // TEMPLATE-FIELDS-1 F-17 (ruling R-9) — a template tagged `ats` cannot have inline fields: the
+    // ATS send never carries them. F-3 / F-6 / F-9 — the markers and the rows agree, name signing
+    // roles and fit (authoritative at publish / activate, as at save).
+    if ('html' in parsed) {
+      const withFields = hasInlineFields(parsed.html.nodes) || (input.fields ?? []).length > 0;
+      if (withFields && (input.products ?? []).some((p) => p.toLowerCase() === 'ats')) {
+        throw inlineInvalid(input.requestId, {
+          reason: 'inline_fields_not_supported_for_ats',
+          message: 'A template used in ATS cannot have fields in its text',
+          details: {},
+        });
+      }
+      if (input.fields !== undefined) {
+        const issue = inlineFieldIssue({ nodes: parsed.html.nodes, rows: input.fields, signing: parsed.html.content.signing });
+        if (issue !== null) throw inlineInvalid(input.requestId, issue);
+      }
+    }
     // TEMPLATE-CONTENT-2 C-17 — at publish / activate ONLY (never at preview): a `{{…}}` still
     // typed as text in the body, or an unknown token in the title, would print literally, so
     // it is refused. An UNMODIFIED adopted copy is exempt, so "Use as it is" never breaks on an
@@ -245,6 +283,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     render_schema_version: string;
     requestId: string;
     sample_overrides?: Readonly<Record<string, string>>;
+    fields?: readonly InlineFieldRowInput[];
   }): Promise<TemplateSamplePreview> {
     const type = await this.editableType(input.document_type_id);
     if (type === null) {
@@ -266,7 +305,8 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
       return {
         title: sub(content.title),
         blocks: [],
-        html: htmlWithSamples(nodes, (key) => samples.get(key) ?? ''),
+        // TEMPLATE-FIELDS-1 F-13 — each inline field is a labelled box (its type and role).
+        html: htmlWithSamples(nodes, (key) => samples.get(key) ?? '', inlineFieldLabeller(input.fields ?? [], content.signing)),
         logo: content.logo ? { asset_id: content.logo.asset_id } : null,
         sample_values,
         signature_block,
@@ -290,6 +330,8 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     field_schema: unknown;
     existing_field_schema: unknown;
     requestId: string;
+    fields?: readonly InlineFieldRowInput[];
+    owner?: 'PLATFORM' | 'TENANT';
   }): Promise<unknown> {
     const version = input.render_schema_version;
     // rtr-generated-v1 exists only on old RTR rows (read-compatible, stored as is).
@@ -310,7 +352,13 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     if (typeof o.title !== 'string' || typeof o.html !== 'string') throw htmlInvalid(input.requestId, 'content_invalid');
     const allowedKeys = new Set((await this.atsCatalog(type)).allowed.map((d) => d.key));
     const res = sanitizeRtrHtml(o.html, (k) => allowedKeys.has(k), version);
-    if ('issue' in res) throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);
+    if ('issue' in res) {
+      // F-15 — a tenant cannot add or repeat a field marker.
+      if (input.owner === 'TENANT' && (res.issue.reason === 'field_marker_duplicate' || res.issue.reason === 'field_marker_mismatch')) {
+        throw tenantFieldsRefusal(input.requestId);
+      }
+      throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);
+    }
     // C-16 — a `{{key}}` typed as text whose key is a known variable becomes a chip.
     const html = serialize(chipKnownTypedTokens(res.nodes, (k) => allowedKeys.has(k) && CONTENT_KEY_RE.test(k)));
     if (Buffer.byteLength(html, 'utf8') > contentMaxBytesOf(version)) throw htmlInvalid(input.requestId, 'content_too_large');
@@ -337,6 +385,14 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
         });
       }
       content.signing = sg.signing;
+    }
+    // TEMPLATE-FIELDS-1 F-3 / F-6 / F-9 — the markers in the content and the rows the version
+    // will hold agree, name signing roles and fit; refused before anything is saved. A tenant
+    // (F-15) cannot change the field set: any disagreement is fields_platform_only.
+    const issue = inlineFieldIssue({ nodes: res.nodes, rows: input.fields ?? [], signing: content.signing });
+    if (issue !== null) {
+      if (input.owner === 'TENANT' && (issue.reason === 'field_marker_mismatch' || issue.reason === 'field_marker_duplicate')) throw tenantFieldsRefusal(input.requestId);
+      throw inlineInvalid(input.requestId, issue);
     }
     return content;
   }
@@ -396,7 +452,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     }
     const hasText = res.nodes.some(function nonEmpty(n): boolean {
       if (n.type === 'text') return n.text.trim().length > 0;
-      if (n.tag === 'span' && n.attrs['data-field'] !== undefined) return true;
+      if (n.tag === 'span' && (n.attrs['data-field'] !== undefined || n.attrs['data-sign-field'] !== undefined)) return true;
       return n.children.some(nonEmpty);
     });
     if (content.title.trim() === '' || !hasText) {
