@@ -226,6 +226,11 @@
       "to": "deploy/nginx/templates/aramo.conf.template"
     },
     {
+      "from": "apps/api/src/document-templates-platform/template-content-upload.constants.ts",
+      "status": "production",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
       "from": "apps/api/src/my-desk/dto/my-desk.view.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
@@ -10267,6 +10272,11 @@
       "to": "libs/sign-fields/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -10359,6 +10369,11 @@
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     {
       "from": "apps/platform-admin/Dockerfile",
@@ -10774,6 +10789,11 @@
       "to": "libs/sign-fields/src/index.ts"
     },
     {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
       "from": "apps/portal-web/project.json",
       "status": "unscoped",
       "to": "apps/portal-web/vite.config.ts"
@@ -10993,6 +11013,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     {
       "from": "apps/talent-intelligence-service/project.json",
@@ -36010,6 +36035,16 @@
       "to": "libs/technical-screening/tsconfig.lib.json"
     },
     {
+      "from": "libs/template-content/project.json",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
+      "from": "libs/template-content/project.json",
+      "status": "unscoped",
+      "to": "libs/template-content/tsconfig.lib.json"
+    },
+    {
       "from": "libs/tenant-reset/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -39145,6 +39180,11 @@
       "status": "unscoped",
       "to": "libs/technical-screening/src/index.ts"
     },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -39353,6 +39393,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/technical-screening/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/visibility/src/index.ts" },

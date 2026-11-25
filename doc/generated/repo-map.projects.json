@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 89 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 90 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -88,6 +88,7 @@
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
     "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
+    "@aramo/template-content": "./libs/template-content/src/index.ts",
     "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
     "@aramo/visibility": "./libs/visibility/src/index.ts"
   },
@@ -741,6 +742,7 @@
       "RIGHT_TO_REPRESENT_TYPE_ID",
       "RTR_GENERATED_SCHEMA_V1",
       "RTR_HTML_SCHEMA_V1",
+      "RTR_HTML_SCHEMA_V2",
       "STUDIO_HTML_CONTENT_VERSION",
       "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
@@ -3891,6 +3893,44 @@
       "TechnicalScreeningService",
       "buildScreeningFindingPayload",
       "screeningPayloadHash"
+    ],
+    "@aramo/template-content": [
+      "ALLOWED_TAGS_V1",
+      "ALLOWED_TAGS_V2",
+      "ASSET_ATTR",
+      "BLOCK_KINDS_V1",
+      "BLOCK_KINDS_V2",
+      "CONTENT_KEY_RE",
+      "CONTENT_MAX_BYTES_V1",
+      "CONTENT_MAX_BYTES_V2",
+      "CONTENT_PREVIEW_IFRAME_STYLE",
+      "CONTENT_REFUSAL_REASONS",
+      "CURRENT_HTML_CONTENT_VERSION",
+      "HEADING_TAGS_V1",
+      "HEADING_TAGS_V2",
+      "HTML_CONTENT_VERSIONS",
+      "LIST_MAX_DEPTH_V2",
+      "PAGE_BREAK_ATTR",
+      "PAGE_BREAK_VALUE",
+      "PLACEHOLDER_TOKEN_SOURCE",
+      "RTR_HTML_V1",
+      "RTR_HTML_V2",
+      "TABLE_MAX_COLUMNS",
+      "TABLE_MAX_ROWS",
+      "VARIABLE_ATTR",
+      "VARIABLE_CATALOG_KEY_MAX",
+      "VARIABLE_CATALOG_KEY_RE",
+      "allowedAttributesOf",
+      "allowedTagsOf",
+      "blockKindsOf",
+      "contentMaxBytesOf",
+      "contentPreviewIframeDoc",
+      "headingLevelOf",
+      "isContentDowngrade",
+      "isHtmlContentVersion",
+      "listMaxDepthOf",
+      "placeholderKeysIn",
+      "placeholderTokenRe"
     ],
     "@aramo/tenant-reset": [
       "ACTIVITY_SCOPE_PREDICATE",
@@ -16294,6 +16334,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/technical-screening": [{ "project": "api", "status": "production" }],
+    "@aramo/template-content": [
+      { "project": "api", "status": "production" },
+      { "project": "aramo-platform-web", "status": "production" },
+      { "project": "aramo-sign-web", "status": "production" },
+      { "project": "document-templates-web", "status": "production" }
+    ],
     "@aramo/tenant-reset": [
       {
         "excludedBy": "src/tests/**/*",
@@ -17093,6 +17139,13 @@
       "root": "libs/technical-screening",
       "sourceRoot": "libs/technical-screening/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "template-content",
+      "root": "libs/template-content",
+      "sourceRoot": "libs/template-content/src",
+      "tags": ["scope:shared", "type:client-shared"],
       "targets": ["build", "lint", "test"]
     },
     {
