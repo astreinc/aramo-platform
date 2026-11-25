@@ -1,8 +1,10 @@
 // The signing page state machine (handoff §4.4; directive §6, §9). Pure and synchronous.
 //
-//   - Values are LOCAL until Finish: tapping a filled field clears it on the device, and Finish
-//     submits the final values with the existing fill-then-complete calls. A failed submit keeps
-//     every value (offline included). FIELD-PARITY-2 B-6 follow-up: a value the server holds that
+//   - Values are saved to the server as the signer goes (web / app consistency, PO 2026-11-25):
+//     each changed answer is sent with the fill call (fillsToSubmit; markSaved records it), so
+//     leaving and reopening the link shows what was saved, on any device. Offline, answers stay
+//     on the device and are sent with the next save or at Finish, which sends anything still
+//     pending, then completes. A failed send keeps every value. FIELD-PARITY-2 B-6 follow-up: a value the server holds that
 //     the signer emptied (a dropdown back to empty, a text emptied) is sent as a clear (value
 //     null) when the shared rule allows it (@aramo/sign-client signerClearRefusal), in the same
 //     trigger-first order as the fills, so the server and the app agree on what is shown.
@@ -685,4 +687,16 @@ export function markCleared(s: SigningState, fieldId: string): SigningState {
   const held = { ...s.held };
   delete held[fieldId];
   return { ...s, held };
+}
+
+/**
+ * Save as you go (web / app consistency, PO 2026-11-25): record one fill the server accepted
+ * while the signer kept working. It is recorded only if the answer is still the one that was
+ * sent — an answer changed during the send stays pending and goes with the next save (or at
+ * Finish), so a quick edit is never lost or overwritten.
+ */
+export function markSaved(s: SigningState, fill: FillToSubmit): SigningState {
+  const v = s.values[fill.fieldId];
+  if (fill.value === null) return v ? s : markCleared(s, fill.fieldId);
+  return v && !v.fromServer && v.value === fill.value ? markStored(s, fill.fieldId) : s;
 }
