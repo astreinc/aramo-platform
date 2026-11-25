@@ -2868,6 +2868,7 @@ paths:
               properties:
                 render_schema_version:
                   type: string
+                  description: Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules.
                 field_schema: {}
       responses:
         '201':
@@ -2978,6 +2979,7 @@ paths:
               properties:
                 render_schema_version:
                   type: string
+                  description: Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules.
                 field_schema: {}
                 internal_notes:
                   type: [string, 'null']

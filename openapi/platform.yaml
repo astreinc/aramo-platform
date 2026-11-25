@@ -13320,9 +13320,9 @@ components:
       properties:
         render_schema_version:
           type: string
-          description: Required when field_schema is supplied.
+          description: Required when field_schema is supplied. Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2; see documents.yaml RtrHtmlContent).
         field_schema:
-          description: The starting content (e.g. rtr-html-v1); omitted = start from the current published version.
+          description: The starting content (e.g. rtr-html-v2); omitted = start from the current published version.
         internal_notes:
           type: [string, 'null']
           maxLength: 500

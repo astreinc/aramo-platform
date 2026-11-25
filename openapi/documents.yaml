@@ -565,7 +565,11 @@ paths:
     post:
       operationId: createTemplateVersion
       summary: Create a DRAFT template version.
-      description: Version numbers auto-increment. Requires `document_template:author` (ORG-UX-1 §4.1).
+      description: |
+        Version numbers auto-increment. Editable html content is sanitised by the same rules as
+        PATCH versions/{versionId} (TEMPLATE-CONTENT-2: the refusals there apply here too, with
+        content_version_downgrade judged against the template's current version). Requires
+        `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -661,10 +665,15 @@ paths:
       summary: Update a DRAFT version's editable content.
       description: |
         DRAFT-only (ACTIVE/RETIRED -> 409 TEMPLATE_IMMUTABLE). Editing re-arms the
-        preview-before-approve gate. For `rtr-html-v1` content the html is sanitised server-side
-        against the A1 allowlist and the sanitised form is stored and returned; an unknown field key →
-        422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a misplaced / repeated logo
-        node → 422 (logo_position); over 64 KB → 422 (content_too_large). Requires `document_template:author` (ORG-UX-1 §4.1).
+        preview-before-approve gate. For `rtr-html-v1` / `rtr-html-v2` content the html is sanitised
+        server-side against that version's allowlist (see RtrHtmlContent) and the sanitised form is
+        stored and returned; a typed `{{key}}` whose key is a known variable becomes a field node. An
+        unknown field key → 422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a
+        misplaced / repeated logo node → 422 (logo_position); over the version's size cap (v1 64 KB,
+        v2 256 KB) → 422 (content_too_large); an unknown `render_schema_version` → 422
+        (unsupported_content_version); `rtr-html-v1` content over a draft holding `rtr-html-v2` → 422
+        (content_version_downgrade); a table over 8 columns or 200 rows → 422 (table_too_large); a
+        list nested over 2 levels → 422 (list_too_deep). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       requestBody:
@@ -796,7 +805,11 @@ paths:
       summary: Activate a DRAFT template version (DRAFT -> ACTIVE).
       description: |
         Activates the version and retires any prior ACTIVE version of the same
-        template. Once ACTIVE the version is immutable. Requires `document_template:manage`.
+        template. Once ACTIVE the version is immutable. Editable html content that still holds
+        typed `{{…}}` text in the body, or an unknown `{{key}}` in the title, is refused 422
+        VALIDATION_ERROR (details.reason = unresolved_placeholder, details.keys); an unmodified
+        adopted copy (content fingerprint equal to its source default's) is exempt. Preview is
+        never refused for it. Requires `document_template:manage`.
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -2445,17 +2458,26 @@ components:
     RtrHtmlContent:
       type: object
       description: |
-        Amendment A1 `rtr-html-v1` content. `html` is restricted to the allowlist p, h2, b/strong, i/em, u,
-        ul, ol, li, br; `<span data-field="{closed catalog key}"></span>` (empty) field nodes; and at most one
-        `<div data-asset="tenant.logo"></div>`, only as the first child. No other elements or attributes, no
-        style/class, no URLs. Max 64 KB. The server re-serialises on every PATCH (strong→b, em→i, field spans
-        emptied, unknown tags/attributes removed) and returns the sanitised html. `logo` is server-owned
-        (set only by POST versions/{versionId}/logo); a client-supplied value is ignored.
+        Editable html content, per `render_schema_version`:
+        - `rtr-html-v1` (Amendment A1): `html` is restricted to the allowlist p, h2, b/strong, i/em, u,
+          ul, ol, li, br; `<span data-field="{closed catalog key}"></span>` (empty) field nodes; and at most
+          one `<div data-asset="tenant.logo"></div>`, only as the first child. Max 64 KB.
+        - `rtr-html-v2` (TEMPLATE-CONTENT-2; a strict superset, written by the Studio): v1 plus h3, h4,
+          table / tr / th / td (thead and tbody are accepted and unwrapped; a cell holds inline content
+          only; no merged cells; at most 8 columns and 200 rows), hr (a divider; `<hr data-break="page">`
+          is a page break, the only attribute allowed on hr) and lists nested up to 2 levels. Max 256 KB.
+        No other elements or attributes, no style/class, no URLs. The server re-serialises on every write
+        (strong→b, em→i, field spans emptied, unknown tags/attributes removed) and returns the sanitised
+        html. v1 content is never upgraded or rewritten by the server; it renders as before. Refusal
+        reasons (422 VALIDATION_ERROR, details.reason): content_too_large, unsupported_content_version,
+        content_version_downgrade, table_too_large, list_too_deep, and unresolved_placeholder (publish /
+        activate only). `logo` is server-owned (set only by POST versions/{versionId}/logo); a
+        client-supplied value is ignored.
       required: [render_schema_version, title, html]
       properties:
-        render_schema_version: { type: string, enum: [rtr-html-v1] }
+        render_schema_version: { type: string, enum: [rtr-html-v1, rtr-html-v2] }
         title: { type: string }
-        html: { type: string, maxLength: 65536 }
+        html: { type: string, maxLength: 262144, description: 'Max 65536 for rtr-html-v1; 262144 for rtr-html-v2.' }
         logo:
           oneOf:
             - type: object

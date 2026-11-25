@@ -8238,6 +8238,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules. */
                     render_schema_version: string;
                     field_schema?: unknown;
                 };
@@ -8350,6 +8351,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules. */
                     render_schema_version?: string;
                     field_schema?: unknown;
                     internal_notes?: string | null;
