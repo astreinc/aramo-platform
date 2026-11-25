@@ -1,4 +1,5 @@
 import { apiClient } from '@aramo/fe-foundation';
+import { TEMPLATE_SYNC_COPY } from '@aramo/document-templates-web';
 
 // DOC-TEMPLATE-LIB-1 T-4 / T-6 (Implementation Directive v1.0 LOCKED §9; ADR-0034 D10) —
 // the withdrawal notices the Org Home banner shows: Aramo defaults this organization uses
@@ -19,6 +20,11 @@ export interface TemplateWithdrawalNotice {
   readonly selected_for_client_ids: readonly string[];
   readonly relies_on_default: boolean;
   readonly has_own_template: boolean;
+  /**
+   * TEMPLATE-SYNC-1 S-4 — present only on an ADOPTED copy's notice: `template_id` is then the
+   * organization's copy and this is the withdrawn Aramo default.
+   */
+  readonly master_template_id?: string;
 }
 
 // Defensive read of `{ notices: [...] }`: entries missing their identity, name, status or
@@ -52,6 +58,7 @@ export function parseNotices(raw: unknown): TemplateWithdrawalNotice[] {
         : [],
       relies_on_default: o['relies_on_default'] === true,
       has_own_template: o['has_own_template'] === true,
+      ...(typeof o['master_template_id'] === 'string' ? { master_template_id: o['master_template_id'] } : {}),
     });
   }
   return out;
@@ -67,6 +74,8 @@ export async function fetchTemplateNotices(): Promise<TemplateWithdrawalNotice[]
 
 // The banner sentence for one notice (manage holders also get the next step).
 export function noticeMessage(n: TemplateWithdrawalNotice, fmt: (iso: string) => string, canManage: boolean): string {
+  // TEMPLATE-SYNC-1 S-4 — an adopted copy: the shared words (the copy itself never changes).
+  if (n.master_template_id !== undefined) return TEMPLATE_SYNC_COPY.adoptedWithdrawal(n.name, n.status, fmt(n.withdraw_effective_at));
   if (n.status === 'IN_EFFECT') {
     const next = n.has_own_template
       ? 'documents of this type now use your own approved template.'

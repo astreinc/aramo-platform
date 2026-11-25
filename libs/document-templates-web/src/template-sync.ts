@@ -50,6 +50,11 @@ export const TEMPLATE_SYNC_COPY = {
     const when = m.withdrawn?.status === 'IN_EFFECT' ? 'has withdrawn' : 'is withdrawing';
     return `Aramo ${when} ${m.name ?? 'the template'} this one was adopted from. Your template is not changed.`;
   },
+  /** S-4 — the withdrawal notice of an ADOPTED copy (the list banner). */
+  adoptedWithdrawal: (copyName: string, status: 'PENDING' | 'IN_EFFECT', effective: string): string =>
+    status === 'IN_EFFECT'
+      ? `Aramo withdrew the Aramo template “${copyName}” was adopted from on ${effective}. Your template is not changed and stays in use.`
+      : `Aramo is withdrawing the Aramo template “${copyName}” was adopted from, from ${effective}. Your template is not changed and stays in use.`,
   compare: 'Compare with Aramo’s new version',
   startDraft: 'Start a draft from the new version',
   discardAndStart: 'Discard the draft and start',

@@ -10,6 +10,8 @@ import {
   listTemplateSelections,
   listTemplateVersions,
   resolveUserNames,
+  TEMPLATE_SYNC_COPY,
+  templatesWithNewerMaster,
   useDocTemplateRoutes,
   type TemplateStatus,
   type TemplateVersionView,
@@ -32,6 +34,9 @@ import './templates.css';
 // TEMPLATE-STUDIO-1 (directive §1.4, §3.4) — a row with an approved version and no open
 // draft also offers "Create new version" (author or manage; never read-only): POST /:id/draft
 // (copies the ACTIVE version and its logo reference) → the Studio opens on the new draft.
+// TEMPLATE-SYNC-1 S-9 — "Aramo updated N templates you use" and the row badge ("Newer version
+// available" / "Withdrawn by Aramo") from the server's master flag; the Studio holds Compare,
+// Start a draft from the new version and Keep my version.
 
 export const OUR_TEMPLATES_COLUMNS = 'minmax(240px,1.8fr) minmax(140px,1fr) 70px 96px minmax(170px,1fr) 250px';
 export const LEGACY_BANNER_TEXT = 'You’re using an Aramo starting point. Adopt and approve your own version.';
@@ -41,7 +46,7 @@ const GALLERY_PATH = '/org/document-templates/gallery';
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; rows: readonly OurTemplateRow[]; legacy: boolean; names: Readonly<Record<string, string>> };
+  | { status: 'ready'; rows: readonly OurTemplateRow[]; legacy: boolean; names: Readonly<Record<string, string>>; newer: number };
 
 interface Props {
   readonly session: Session;
@@ -94,7 +99,8 @@ export function OurTemplatesPage({
           names = {};
         }
       }
-      setLoad({ status: 'ready', rows, legacy: hasLegacySelection(selections), names });
+      // TEMPLATE-SYNC-1 S-9 — the banner counts the server's newer_available flags.
+      setLoad({ status: 'ready', rows, legacy: hasLegacySelection(selections), names, newer: templatesWithNewerMaster(own) });
     } catch (err) {
       setLoad({ status: 'error', message: safeErrorMessage(err, 'Could not load your templates.') });
     }
@@ -131,6 +137,11 @@ export function OurTemplatesPage({
           <Link className="ox-link" to={GALLERY_PATH}>
             Open the Template gallery
           </Link>
+        </div>
+      ) : null}
+      {load.status === 'ready' && load.newer > 0 ? (
+        <div className="ox-alert ox-alert--info ox-tpl__banner" role="status" data-testid="our-templates-newer">
+          <b>{TEMPLATE_SYNC_COPY.banner(load.newer)}.</b> {TEMPLATE_SYNC_COPY.bannerDetail}
         </div>
       ) : null}
       {notices.map((n) => (
@@ -193,6 +204,11 @@ export function OurTemplatesPage({
                       <span className="ox-tpl__nametext">
                         <span className="ox-tpl__title">{r.name}</span>
                         <span className="ox-tpl__type">{r.typeName}</span>
+                        {r.masterBadge !== null ? (
+                          <span className="ox-pill ox-pill--warn ox-tpl__sync" data-testid={`our-template-master-${r.id}`}>
+                            {r.masterBadge}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                     <span role="cell">{r.usedIn}</span>

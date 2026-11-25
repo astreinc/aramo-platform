@@ -678,3 +678,39 @@ describe('Org routing — org_access (§4.3)', () => {
   });
 });
 
+
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-9 / S-4 and §5 test 4 — Our templates shows "Aramo
+// updated N templates you use" and the row badge from the server's master flag; an adopted
+// copy's withdrawal notice uses the shared words.
+describe('Our templates — a newer master is available (TEMPLATE-SYNC-1)', () => {
+  const MASTER = {
+    template_id: 'def-rtr', name: 'Aramo Right to Represent', current_version_id: 'pv3', current_version_number: 3, based_on_version_number: 2,
+    newer_available: true, withdrawn: null, kept: false,
+  };
+  const SYNC_LIBRARY: TemplateLibraryView = {
+    ...LIBRARY,
+    items: [DEFAULT, { ...OWN, master: MASTER }, { ...OWN_DRAFT, master: { ...MASTER, newer_available: false, withdrawn: { notice_at: '2026-10-21T00:00:00.000Z', effective_at: '2026-10-28T00:00:00.000Z', status: 'PENDING' as const } } }],
+  };
+
+  it('the banner counts the templates the server flags; each row shows its badge', async () => {
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue(SYNC_LIBRARY) });
+    expect(await screen.findByTestId('our-templates-newer')).toHaveTextContent('Aramo updated 1 template you use');
+    expect(screen.getByTestId('our-template-master-own-rtr')).toHaveTextContent('Newer version available');
+    expect(screen.getByTestId('our-template-master-own-draft')).toHaveTextContent('Withdrawn by Aramo');
+  });
+
+  it('no banner and no badge when nothing is newer (kept, or not adopted)', async () => {
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [DEFAULT, { ...OWN, master: { ...MASTER, newer_available: false, kept: true } }, OWN_DRAFT] }) });
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.queryByTestId('our-templates-newer')).toBeNull();
+    expect(screen.queryByTestId('our-template-master-own-rtr')).toBeNull();
+  });
+
+  it('an adopted copy’s withdrawal notice says the copy is not changed', async () => {
+    const adopted = { ...NOTICE, template_id: 'own-rtr', name: 'Our RTR', master_template_id: 'def-rtr', relies_on_default: false, has_own_template: true };
+    renderOurs({ noticesFn: vi.fn().mockResolvedValue(parseNotices({ notices: [adopted] })) });
+    const n = await screen.findByTestId('dt-notice-own-rtr');
+    expect(n).toHaveTextContent('Aramo is withdrawing the Aramo template “Our RTR” was adopted from');
+    expect(n).toHaveTextContent('Your template is not changed and stays in use.');
+  });
+});
