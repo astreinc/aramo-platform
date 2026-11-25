@@ -77,16 +77,20 @@ const show = (path: string) =>
 
 const pdfFile = () => new File([new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55])], 'form.pdf', { type: 'application/pdf' });
 
-describe('sign-web document step — upload options (P2-5 / P2-6)', () => {
+// PO ruling 2026-11-25 — the upload options belong to Document templates (the console form
+// Studio), not to sending: the Send wizard offers none and uploads without the flags.
+describe('sign-web document step — no upload options when sending', () => {
   beforeEach(() => configureAuthConsumer('sign'));
   afterEach(() => vi.unstubAllGlobals());
 
-  it('off by default: the upload body has no flag', async () => {
+  it('offers neither option; the upload body has no flag', async () => {
     const calls: Call[] = [];
     stub(calls);
     show('/sign/envelopes/e1/edit?step=1');
     const input = await screen.findByLabelText('Upload PDF documents');
-    expect((screen.getByTestId('docs-opt-import_fields') as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByTestId('docs-opt-import_fields')).toBeNull();
+    expect(screen.queryByTestId('docs-opt-apply_text_tags')).toBeNull();
+    expect(screen.queryByText('Import fields from a fillable PDF')).toBeNull();
     fireEvent.change(input, { target: { files: [pdfFile()] } });
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/documents'))).toBe(true));
     const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/documents'))!.body as Record<string, unknown>;
@@ -94,19 +98,6 @@ describe('sign-web document step — upload options (P2-5 / P2-6)', () => {
     expect(screen.queryByTestId('docs-import-result')).toBeNull();
   });
 
-  it('ticked options are sent and the result is shown in plain language', async () => {
-    const calls: Call[] = [];
-    stub(calls, { ...UPLOADED, field_import: { fields: [{}, {}], warnings: [{ code: 'field_assigned_to_first_recipient', message: 'x', name: 'signature:Buyer' }], stripped: [] } });
-    show('/sign/envelopes/e1/edit?step=1');
-    const input = await screen.findByLabelText('Upload PDF documents');
-    fireEvent.click(screen.getByTestId('docs-opt-apply_text_tags'));
-    fireEvent.change(input, { target: { files: [pdfFile()] } });
-    expect(await screen.findByTestId('docs-import-summary')).toHaveTextContent('2 fields added · 1 warning');
-    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/documents'))!.body as Record<string, unknown>;
-    expect(body).toMatchObject({ apply_text_tags: true });
-    expect('import_fields' in body).toBe(false);
-    expect(screen.getByTestId('docs-import-warnings')).toHaveTextContent('A field’s role matched no one, so it was given to the first signer. (signature:Buyer)');
-  });
 });
 
 describe('sign-web Prepare — Find fields (P2-4)', () => {
