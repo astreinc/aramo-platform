@@ -1,7 +1,12 @@
 import sanitizeHtml from 'sanitize-html';
-import { type RichBlock, type RichListItem, type RichRun } from '@aramo/documents-rendering';
+import { type InlineFieldPlace, type RichBlock, type RichListItem, type RichRun } from '@aramo/documents-rendering';
 import {
   CONTENT_KEY_RE,
+  SIGN_FIELD_ATTR,
+  SIGN_FIELD_SAMPLE_ATTR,
+  allowsInlineFields,
+  inlineFieldAllowedIn,
+  isInlineFieldKey,
   CURRENT_HTML_CONTENT_VERSION,
   PAGE_BREAK_ATTR,
   PAGE_BREAK_VALUE,
@@ -252,6 +257,13 @@ function canonicalise(nodes: readonly HtmlNode[], inCell = false): HtmlNode[] {
       continue;
     }
     if (n.tag === 'span') {
+      // TEMPLATE-FIELDS-1 F-2 — the inline Sign field marker (v3 only: sanitize-html keeps the
+      // attribute only for v3): canonical = empty, only the attribute. Never a variable.
+      const marker = n.attrs[SIGN_FIELD_ATTR];
+      if (marker !== undefined && marker.length > 0) {
+        out.push({ type: 'el', tag: 'span', attrs: { [SIGN_FIELD_ATTR]: marker }, children: [] });
+        continue;
+      }
       const key = n.attrs['data-field'];
       if (key !== undefined && key.length > 0) out.push({ type: 'el', tag: 'span', attrs: { 'data-field': key }, children: [] });
       else out.push(...canonicalise(n.children, inCell));
@@ -322,8 +334,87 @@ export function serialize(nodes: readonly HtmlNode[]): string {
 }
 
 export interface HtmlValidationIssue {
-  reason: 'unknown_field' | 'logo_position' | 'content_too_large' | 'unknown_asset' | 'table_too_large' | 'list_too_deep';
+  reason:
+    | 'unknown_field'
+    | 'logo_position'
+    | 'content_too_large'
+    | 'unknown_asset'
+    | 'table_too_large'
+    | 'list_too_deep'
+    // TEMPLATE-FIELDS-1 F-2 / F-3.
+    | 'field_position_not_allowed'
+    | 'field_marker_duplicate'
+    | 'field_marker_mismatch';
   keys?: string[];
+}
+
+// ── Inline Sign field markers (TEMPLATE-FIELDS-1 F-2) ─────────────────────────────
+
+/** One marker in the canonical tree: its key, the block it sits in, and the space it may use. */
+export interface InlineFieldMarker {
+  key: string;
+  /** The nearest block: p, li, td, th, a heading tag, or null (loose top-level content). */
+  block: string | null;
+  /** The renderer's width context (null where a marker is not allowed). */
+  place: InlineFieldPlace | null;
+}
+
+const MARKER_BLOCK_TAGS = new Set(['p', 'li', 'td', 'th', 'h2', 'h3', 'h4']);
+
+/** Every marker in document order (duplicates kept), with where it sits. */
+export function collectInlineFieldMarkers(nodes: readonly HtmlNode[]): InlineFieldMarker[] {
+  const out: InlineFieldMarker[] = [];
+  const walk = (ns: readonly HtmlNode[], block: string | null, place: InlineFieldPlace | null, listLevel: number, tableCols: number): void => {
+    for (const n of ns) {
+      if (n.type !== 'el') continue;
+      if (n.tag === 'span' && n.attrs[SIGN_FIELD_ATTR] !== undefined) {
+        out.push({ key: n.attrs[SIGN_FIELD_ATTR] as string, block, place: inlineFieldAllowedIn(block) ? place : null });
+        continue;
+      }
+      if (n.tag === 'ul' || n.tag === 'ol') {
+        walk(n.children, block, place, listLevel + 1, tableCols);
+        continue;
+      }
+      if (n.tag === 'table') {
+        const cols = Math.max(1, ...n.children.map((r) => (r.type === 'el' ? r.children.length : 0)));
+        walk(n.children, block, place, listLevel, cols);
+        continue;
+      }
+      if (n.tag === 'li') {
+        walk(n.children, 'li', { in: 'list', level: Math.max(0, listLevel - 1) }, listLevel, tableCols);
+        continue;
+      }
+      if (n.tag === 'td' || n.tag === 'th') {
+        walk(n.children, n.tag, { in: 'table', columns: tableCols }, listLevel, tableCols);
+        continue;
+      }
+      if (MARKER_BLOCK_TAGS.has(n.tag)) {
+        // A paragraph keeps the width of what holds it (a list item); on its own, the content width.
+        const p: InlineFieldPlace | null = n.tag === 'p' ? (place ?? { in: 'paragraph' }) : place;
+        // A heading is never an allowed place, whatever holds it.
+        walk(n.children, n.tag === 'p' && block !== null && /^h[234]$/.test(block) ? block : n.tag, p, listLevel, tableCols);
+        continue;
+      }
+      walk(n.children, block, place, listLevel, tableCols);
+    }
+  };
+  walk(nodes, null, null, 0, 1);
+  return out;
+}
+
+/** F-2 / F-3 — the first marker issue of canonical content: bad key, bad place, duplicate. */
+function markerIssue(nodes: readonly HtmlNode[]): HtmlValidationIssue | null {
+  const markers = collectInlineFieldMarkers(nodes);
+  if (markers.length === 0) return null;
+  const invalid = markers.filter((m) => !isInlineFieldKey(m.key)).map((m) => m.key);
+  if (invalid.length > 0) return { reason: 'field_marker_mismatch', keys: [...new Set(invalid)] };
+  const misplaced = markers.filter((m) => m.place === null).map((m) => m.key);
+  if (misplaced.length > 0) return { reason: 'field_position_not_allowed', keys: [...new Set(misplaced)] };
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const m of markers) (seen.has(m.key) ? dup : seen).add(m.key);
+  if (dup.size > 0) return { reason: 'field_marker_duplicate', keys: [...dup] };
+  return null;
 }
 
 export function collectFieldKeys(nodes: readonly HtmlNode[], out: string[] = []): string[] {
@@ -398,6 +489,10 @@ export function sanitizeRtrHtml(
   if (assets.count > 1 || (assets.count === 1 && !hasLogoNode(nodes))) return { issue: { reason: 'logo_position' } };
   const structure = structureIssue(nodes, version);
   if (structure !== null) return { issue: structure };
+  if (allowsInlineFields(version)) {
+    const marker = markerIssue(nodes);
+    if (marker !== null) return { issue: marker };
+  }
   const out = serialize(nodes);
   if (Buffer.byteLength(out, 'utf8') > maxBytes) return { issue: { reason: 'content_too_large' } };
   return { html: out, nodes };
@@ -462,9 +557,17 @@ export function convertV1ToHtml(content: RtrTemplateContentV1): RtrTemplateConte
 }
 
 // ── Sample preview html (A1 / coordinator contract §7) ─────────────────────────────
-export function htmlWithSamples(nodes: readonly HtmlNode[], sample: (key: string) => string): string {
+// TEMPLATE-FIELDS-1 F-13 — `fieldLabel` names an inline field for the preview ("Signature ·
+// Employee"): each marker becomes `<span data-sign-field-sample="key">label</span>`, which the
+// clients draw as a labelled box. Without it (or for an unknown key) the label is the key.
+export function htmlWithSamples(nodes: readonly HtmlNode[], sample: (key: string) => string, fieldLabel?: (key: string) => string | null): string {
   const map = (ns: readonly HtmlNode[]): HtmlNode[] =>
     ns.map((n) => {
+      if (n.type === 'el' && n.tag === 'span' && n.attrs[SIGN_FIELD_ATTR] !== undefined) {
+        const key = n.attrs[SIGN_FIELD_ATTR] as string;
+        const label = fieldLabel?.(key) ?? key;
+        return { type: 'el', tag: 'span', attrs: { [SIGN_FIELD_SAMPLE_ATTR]: key }, children: [{ type: 'text', text: label }] };
+      }
       if (n.type === 'el' && n.tag === 'span' && n.attrs['data-field'] !== undefined) {
         const key = n.attrs['data-field'] as string;
         const lines = sample(key).split('\n');
@@ -486,6 +589,19 @@ interface Marks {
   italic: boolean;
   underline: boolean;
 }
+
+/** F-8 — the box size of an inline field (the domain's catalog default for its type), or null. */
+export type InlineFieldBox = (key: string) => { width: number; height: number } | null;
+
+/** A marker reached the render model without a box size (no row / not placeable). */
+export class InlineFieldNotPlacedError extends Error {
+  constructor(public readonly field_key: string) {
+    super(`field_not_placed: ${field_key}`);
+    this.name = 'InlineFieldNotPlacedError';
+  }
+}
+
+let currentBox: InlineFieldBox | undefined;
 
 function runsOf(nodes: readonly HtmlNode[], value: (key: string) => string, marks: Marks, out: RichRun[]): RichRun[] {
   for (const n of nodes) {
@@ -509,6 +625,14 @@ function runsOf(nodes: readonly HtmlNode[], value: (key: string) => string, mark
         runsOf(n.children, value, { ...marks, underline: true }, out);
         break;
       case 'span': {
+        const marker = n.attrs[SIGN_FIELD_ATTR];
+        if (marker !== undefined) {
+          // F-8 — an inline field box; a marker without a size is never dropped silently.
+          const box = currentBox?.(marker) ?? null;
+          if (box === null) throw new InlineFieldNotPlacedError(marker);
+          out.push({ kind: 'field', field_key: marker, width: box.width, height: box.height });
+          break;
+        }
         const key = n.attrs['data-field'];
         if (key !== undefined) out.push({ text: value(key), ...marks });
         break;
@@ -549,7 +673,17 @@ function tableBlock(table: HtmlNode & { type: 'el' }, value: (key: string) => st
 
 const TOP_BLOCK_TAGS = new Set(['p', 'h2', 'h3', 'h4', 'ul', 'ol', 'table', 'hr']);
 
-export function toRichBlocks(nodes: readonly HtmlNode[], value: (key: string) => string): RichBlock[] {
+export function toRichBlocks(nodes: readonly HtmlNode[], value: (key: string) => string, box?: InlineFieldBox): RichBlock[] {
+  const prev = currentBox;
+  currentBox = box;
+  try {
+    return toRichBlocksInner(nodes, value);
+  } finally {
+    currentBox = prev;
+  }
+}
+
+function toRichBlocksInner(nodes: readonly HtmlNode[], value: (key: string) => string): RichBlock[] {
   const blocks: RichBlock[] = [];
   let loose: HtmlNode[] = [];
   const flushLoose = (): void => {

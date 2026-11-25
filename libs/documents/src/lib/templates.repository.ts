@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { type DocumentTypeTemplateConfig, type DocumentTypeTemplateKind } from './document-types.js';
+import { inlineRowColumns, type InlineFieldRowInput } from './inline-fields.js';
 import { templateMasterView, type TemplateMasterRow, type TemplateMasterView } from './template-master.js';
 import {
   DocumentNotFoundError,
@@ -244,6 +245,9 @@ export interface CreateVersionInput {
   // (carried from the version a tenant's own draft was copied from). Server-written only.
   based_on_platform_version_id?: string | null;
   created_by: string;
+  // TEMPLATE-FIELDS-1 F-3 / F-15 — the field rows the new DRAFT starts with (the ACTIVE version's
+  // rows, copied with the content), written in the same transaction. Absent ⇒ none.
+  copy_fields?: readonly FingerprintField[];
 }
 
 type DraftTransform = (c: { render_schema_version: string; field_schema: unknown }) => {
@@ -859,7 +863,9 @@ export class TemplatesRepository {
       orderBy: { version_number: 'desc' },
     });
     const nextNumber = (last?.version_number ?? 0) + 1;
+    const copied = input.copy_fields ?? [];
     try {
+      if (copied.length > 0) return await this.createVersionWithFields(tenant_id, input, nextNumber, copied);
       return await this.prisma.templateVersion.create({
         data: {
           id: randomUUID(),
@@ -882,6 +888,61 @@ export class TemplatesRepository {
     } catch (e) {
       throw mapOneDraftConflict(e, input.template_id);
     }
+  }
+
+  // TEMPLATE-FIELDS-1 F-3 / F-15 — a new DRAFT and its copied field rows in ONE transaction; the
+  // rows join the fingerprint (M-A6 §3.4).
+  private async createVersionWithFields(
+    tenant_id: string | null,
+    input: Omit<CreateVersionInput, 'tenant_id'>,
+    version_number: number,
+    fields: readonly FingerprintField[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const id = randomUUID();
+      await tx.templateVersion.create({
+        data: {
+          id,
+          tenant_id,
+          template_id: input.template_id,
+          version_number,
+          status: 'DRAFT',
+          render_schema_version: input.render_schema_version,
+          field_schema: (input.field_schema ?? undefined) as never,
+          binding_schema: (input.binding_schema ?? undefined) as never,
+          source_artifact_id: input.source_artifact_id ?? null,
+          effective_from: input.effective_from ?? null,
+          internal_notes: input.internal_notes ?? null,
+          created_by: input.created_by,
+          content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
+        },
+      });
+      for (const f of fields) {
+        await tx.templateFieldDefinition.create({
+          data: {
+            id: randomUUID(),
+            template_version_id: id,
+            field_key: f.field_key,
+            field_type: f.field_type,
+            binding_key: f.binding_key,
+            required: f.required,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            format_rule: f.format_rule,
+            signer_role: f.signer_role,
+            ordinal: f.ordinal,
+            ...templateFieldSettingColumns(f),
+          },
+        });
+      }
+      return tx.templateVersion.update({
+        where: { id },
+        data: { content_fingerprint: templateContentFingerprint(input.field_schema ?? null, fields) },
+      });
+    });
   }
 
   // DOC-TEMPLATE-ADMIN-RTR-1 (§8) — create a DRAFT vN+1 by COPYING the template's
@@ -918,6 +979,10 @@ export class TemplatesRepository {
       field_schema: (active?.field_schema ?? undefined) as unknown,
     };
     const start = input.transform !== undefined && active !== null ? input.transform(base) : base;
+    // TEMPLATE-FIELDS-1 F-15 — the ACTIVE version's field rows start the new DRAFT too, so the
+    // fields placed in its text (and adopted copies' locked fields) are kept. A version without
+    // rows starts without rows, exactly as before.
+    const copy_fields = active === null ? [] : await this.fingerprintFields(active.id);
     return this.createVersionFor(owner, {
       template_id: input.template_id,
       render_schema_version: start.render_schema_version,
@@ -927,6 +992,7 @@ export class TemplatesRepository {
       // TEMPLATE-SYNC-1 S-2 — a tenant's own edits keep the master version they were copied from.
       based_on_platform_version_id: active?.based_on_platform_version_id ?? null,
       created_by: input.created_by,
+      ...(copy_fields.length > 0 ? { copy_fields } : {}),
     });
   }
 
@@ -949,6 +1015,42 @@ export class TemplatesRepository {
   }) {
     const { tenant_id, ...rest } = input;
     return this.updateDraftVersionFor(tenantOwner(tenant_id), rest);
+  }
+
+  // TEMPLATE-FIELDS-1 F-14 — the content AND its inline field rows of a platform DRAFT, saved
+  // together in ONE transaction: the rows are replaced (NULL geometry) and the fingerprint covers
+  // both, so the preview gate re-arms.
+  async updatePlatformDraftContentWithFields(input: {
+    version_id: string;
+    field_schema: unknown;
+    render_schema_version?: string;
+    fields: readonly InlineFieldRowInput[];
+  }) {
+    const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: input.version_id } });
+      for (const r of input.fields) {
+        await tx.templateFieldDefinition.create({ data: { id: randomUUID(), template_version_id: input.version_id, ...inlineRowColumns(r) } as never });
+      }
+      const rows = await tx.templateFieldDefinition.findMany({ where: { template_version_id: input.version_id }, orderBy: { ordinal: 'asc' } });
+      return tx.templateVersion.update({
+        where: { id: input.version_id },
+        data: {
+          field_schema: (input.field_schema ?? undefined) as never,
+          ...(input.render_schema_version !== undefined ? { render_schema_version: input.render_schema_version } : {}),
+          content_fingerprint: templateContentFingerprint(input.field_schema ?? null, rows),
+          previewed_fingerprint: null,
+        },
+      });
+    });
+  }
+
+  // TEMPLATE-FIELDS-1 — the field rows of a platform version (by id; the platform routes are
+  // platform-scoped by their guard).
+  async listPlatformFields(template_version_id: string) {
+    await this.getVersionFor(PLATFORM_OWNER, template_version_id);
+    return this.prisma.templateFieldDefinition.findMany({ where: { template_version_id }, orderBy: { ordinal: 'asc' } });
   }
 
   private async updateDraftVersionFor(

@@ -276,9 +276,10 @@ describe('W-1, W-4 … W-8 — the import route', () => {
     expect(templates.createPlatformVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         template_id: ID,
-        render_schema_version: 'rtr-html-v2',
+        // TEMPLATE-FIELDS-1 F-1 — the current version is v3 (the imported content is unchanged).
+        render_schema_version: 'rtr-html-v3',
         field_schema: {
-          render_schema_version: 'rtr-html-v2',
+          render_schema_version: 'rtr-html-v3',
           title: 'Offer',
           html: '<h2>Terms</h2><p>Dear <span data-field="talent.first_name"></span>, contact {{hr_contact}} or {{hr_contact}}.</p>',
         },

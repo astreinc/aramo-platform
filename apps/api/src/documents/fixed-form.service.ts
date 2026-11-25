@@ -493,6 +493,15 @@ export class FixedFormService {
   }
 
   /** The Studio's view of a version: content, fields, variables and the publish problems. */
+  // TEMPLATE-FIELDS-1 F-14 — GET …/versions/:id/fields for ANY platform version: a fixed form's
+  // placed fields, or an editable template's inline field rows (NULL geometry: positions are
+  // computed per render). The same field view either way.
+  async platformFields(version_id: string, requestId: string) {
+    const out = await this.forms.getPlatformVersion(version_id);
+    if (await this.forms.isFixedFormType(out.template.document_type_id)) return (await this.platformView(version_id, requestId)).fields;
+    return (await this.forms.listFields(out.version.id)).map(toFieldView);
+  }
+
   async platformView(version_id: string, requestId: string) {
     const { version, template } = await this.platformVersion(version_id, requestId);
     const fields = (await this.forms.listFields(version.id)).map(toFieldView);
