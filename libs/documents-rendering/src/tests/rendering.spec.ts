@@ -315,6 +315,22 @@ describe('PdfLibDocumentRenderingAdapter (GENERATED path — rich content, A1)',
     );
   });
 
+  // TEMPLATE-CONTENT-2 C-10 — golden hashes for the RICH path, captured from main 246fbfc9's
+  // adapter BEFORE the v2 blocks (heading levels, tables, hr, page break) landed. Existing
+  // rtr-html-v1 content must keep rendering byte-identically after them.
+  it('C-10 golden: v1 rich content renders byte-identically to main 246fbfc9', async () => {
+    const lh = { image_bytes: PNG, image_format: 'PNG' as const, image_sha256: 'abc', name: 'Astre Consulting Services' };
+    const multiPage: RenderModel = {
+      ...RICH,
+      rich_blocks: [...RICH.rich_blocks!, { kind: 'paragraph', runs: [{ text: 'The Talent authorizes the Recruiting Company to represent them. '.repeat(60) }] }, { kind: 'heading', runs: [{ text: 'Terms' }] }],
+    };
+    const roles: RenderModel = { ...RICH, signature_block: undefined, signature_blocks: [{ role_key: 'client', label: 'Client' }, { role_key: 'agency', label: 'Agency representative' }] };
+    expect((await adapter.renderGenerated(RICH)).sha256).toBe('15e5cf2ce9c7bde585dbedd688e44f0fd8216ecaa79cd772aa65e46adba1e95a');
+    expect((await adapter.renderGenerated(multiPage)).sha256).toBe('af7b99c8f18cdb07233a82fcfa1236b4e50c5f6ca7c030b66295340803abc312');
+    expect((await adapter.renderGenerated({ ...RICH, letterhead: lh })).sha256).toBe('800646c3f276496f47b1f15e8cbbab42263803aba4a4647fd68454624209d0dd');
+    expect((await adapter.renderGenerated(roles)).sha256).toBe('3d8836e03e423d5ea87e1b85e09453a7a2ceb87816026e4cb0bf692680e11c4e');
+  });
+
   it('renders marks + lists with the signature block appended; hash-stable', async () => {
     const a = await adapter.renderGenerated(RICH);
     const b = await adapter.renderGenerated(RICH);
