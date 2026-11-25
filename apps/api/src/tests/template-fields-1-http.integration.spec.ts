@@ -126,6 +126,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-FIELDS-1
     for (const t of [TENANT, PLATFORM_TENANT_SENTINEL_ID]) await ensureWriteFreezeTenant((s) => db.query(s), t);
     await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT]);
     await grantTemplateProductEntitlements((q, params) => db.query(q, params), TENANT);
+    // With the identity schema present the DOC-TEMPLATE-LIB-1 T-3 migration seeds a live Aramo
+    // RTR default; one live default per document type means this spec's handbook could never be
+    // published. Withdraw the seeded one (effective yesterday) so the handbook is the live default.
+    await db.query(
+      `UPDATE documents."DocumentTemplate" SET withdraw_notice_at = now() - interval '2 days', withdraw_effective_at = now() - interval '1 day'
+        WHERE owner_scope = 'PLATFORM' AND document_type_id = $1`,
+      [RTR],
+    );
 
     const kp = await generateKeyPair(ALG);
     const publicPem = await exportSPKI(kp.publicKey as never);

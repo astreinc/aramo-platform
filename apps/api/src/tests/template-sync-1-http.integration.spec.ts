@@ -69,6 +69,8 @@ interface MasterView {
 }
 
 // TEMPLATE-FIELDS-1 â€” the signing roles a version with a field in its text must carry.
+// Master v2 as stored: its wording plus the one field placed in the text (rtr-html-v3).
+const MASTER_V2_HTML = '<p>Master wording v2</p><p>Company: <span data-sign-field="company_name"></span></p>';
 const SIGNING = { roles: [{ role_key: 'signer', label: 'Signer', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
 
 // Fails with the response body in the message (the error code and details), not just the status.
@@ -119,19 +121,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
   // rtr-html-v3 marker, a signing role, and the matching row with that role), so S-7's "the
   // master's field rows are copied" is exercised under the FIELDS-1 marker / row rule.
   async function publishMaster(html: string, withField = false): Promise<string> {
-    const rsv = withField ? 'rtr-html-v3' : 'rtr-html-v2';
-    const body = withField ? `${html}<p>Company: <span data-sign-field="company_name"></span></p>` : html;
     const draft = await post(operatorJwt, `/platform/document-templates/${masterId}/versions`, {
-      render_schema_version: rsv,
-      field_schema: { render_schema_version: rsv, title: 'Mutual NDA', html: body, ...(withField ? { signing: SIGNING } : {}) },
+      render_schema_version: 'rtr-html-v2',
+      field_schema: { render_schema_version: 'rtr-html-v2', title: 'Mutual NDA', html },
     });
     expectStatus(draft, 201);
     const vid = draft.body['id'] as string;
     if (withField) {
-      await db.query(
-        `INSERT INTO documents."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, signer_role, ordinal) VALUES (gen_random_uuid(), $1, 'company_name', 'TEXT', 'signer', 0)`,
-        [vid],
-      );
+      // Content and field rows are saved together (the FIELDS-1 marker / row rule).
+      const saved = await call('PATCH', operatorJwt, `/platform/document-templates/versions/${vid}`, {
+        render_schema_version: 'rtr-html-v3',
+        field_schema: {
+          render_schema_version: 'rtr-html-v3',
+          title: 'Mutual NDA',
+          html: `${html}<p>Company: <span data-sign-field="company_name"></span></p>`,
+          signing: SIGNING,
+        },
+        fields: [{ field_key: 'company_name', field_type: 'TEXT', signer_role: 'signer', required: false, ordinal: 0 }],
+      });
+      expectStatus(saved, 200);
     }
     expectStatus(await post(operatorJwt, `/platform/document-templates/versions/${vid}/preview`), 200);
     const pub = await post(operatorJwt, `/platform/document-templates/versions/${vid}/publish`);
@@ -222,7 +230,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
   it('compare content returns the v2 stored content only', async () => {
     const res = await get(jwtA, `/v1/document-templates/${copyA}/master`);
     expectStatus(res, 200);
-    expect(res.body).toMatchObject({ template_id: copyA, master_template_id: masterId, version_id: masterV2, version_number: 2, render_schema_version: 'rtr-html-v2', title: 'Mutual NDA', html: '<p>Master wording v2</p>' });
+    expect(res.body).toMatchObject({ template_id: copyA, master_template_id: masterId, version_id: masterV2, version_number: 2, render_schema_version: 'rtr-html-v3', title: 'Mutual NDA', html: MASTER_V2_HTML });
   });
 
   it('not_an_adopted_template: a template the company wrote itself', async () => {
@@ -247,7 +255,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
     expect(res.body).toMatchObject({ status: 'DRAFT', version_number: 2 });
     const row = (await db.query(`SELECT field_schema, based_on_platform_version_id::text b FROM documents."TemplateVersion" WHERE id = $1`, [draftA])).rows[0];
     expect(row.b).toBe(masterV2);
-    expect(row.field_schema.html).toBe(`${LOGO_NODE}<p>Master wording v2</p>`);
+    expect(row.field_schema.html).toBe(`${LOGO_NODE}${MASTER_V2_HTML}`);
     expect(row.field_schema.logo).toEqual(LOGO);
     const fields = await db.query(`SELECT field_key FROM documents."TemplateFieldDefinition" WHERE template_version_id = $1`, [draftA]);
     expect(fields.rows.map((f: { field_key: string }) => f.field_key)).toEqual(['company_name']);
