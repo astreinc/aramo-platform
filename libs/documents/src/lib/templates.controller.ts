@@ -20,7 +20,7 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 import { RETIRED_FIELD_TYPES, fieldConditionIssues, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled, type FieldCondition } from '@aramo/sign-fields';
 
-import { TemplatesRepository } from './templates.repository.js';
+import { TemplatesRepository, templateContentFingerprint } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
 import {
   TEMPLATE_CAPABILITIES,
@@ -244,6 +244,17 @@ export class DocumentTemplatesController {
   }
 
   // Load the document type for a version (version -> template -> document_type_id).
+  // TEMPLATE-CONTENT-2 C-17 — whether the version's content equals the Aramo default version
+  // it was adopted from (same content fingerprint): such a copy activates even if the default
+  // still has typed placeholders, so "Use as it is" never breaks.
+  private async isUnmodifiedAdoptedCopy(tenant_id: string, versionId: string, field_schema: unknown): Promise<boolean> {
+    const v = await this.repo.getVersion(tenant_id, versionId);
+    const t = await this.repo.getTemplate(tenant_id, v.template_id);
+    if (t.adopted_from_version_id === null || t.adopted_from_version_id === undefined) return false;
+    const source = await this.repo.getPlatformVersion(t.adopted_from_version_id).catch(() => null);
+    return source !== null && templateContentFingerprint(source.field_schema) === templateContentFingerprint(field_schema);
+  }
+
   private async documentTypeForVersion(tenant_id: string, versionId: string): Promise<{ document_type_id: string; field_schema: unknown; render_schema_version: string }> {
     const v = await this.repo.getVersion(tenant_id, versionId);
     const t = await this.repo.getTemplate(tenant_id, v.template_id);
@@ -413,11 +424,28 @@ export class DocumentTemplatesController {
   ) {
     validate(typeof body?.render_schema_version === 'string' && body.render_schema_version.length > 0, 'render_schema_version is required', requestId);
     try {
+      // TEMPLATE-CONTENT-2 C-5 / C-6 — a new draft goes through the same authoritative
+      // normaliser as a PATCH (it used to be stored as sent), compared with the template's
+      // current version for the downgrade guard.
+      let field_schema: unknown = body.field_schema;
+      if (this.caps !== undefined) {
+        const t = await this.repo.getTemplate(auth.tenant_id, templateId);
+        if (await this.caps.isConfigurable(t.document_type_id)) {
+          const current = t.current_version_id === null ? null : await this.repo.getVersion(auth.tenant_id, t.current_version_id).catch(() => null);
+          field_schema = await this.caps.normalizeDraftContent({
+            document_type_id: t.document_type_id,
+            render_schema_version: body.render_schema_version,
+            field_schema: body.field_schema,
+            existing_field_schema: current?.field_schema ?? null,
+            requestId,
+          });
+        }
+      }
       return await this.repo.createVersion({
         tenant_id: auth.tenant_id,
         template_id: templateId,
         render_schema_version: body.render_schema_version,
-        field_schema: body.field_schema,
+        field_schema,
         binding_schema: body.binding_schema,
         source_artifact_id: body.source_artifact_id,
         created_by: auth.sub,
@@ -683,7 +711,8 @@ export class DocumentTemplatesController {
       // gate + §21 actor + the DRAFT->ACTIVE transition.
       if (this.caps !== undefined) {
         const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
-        await this.caps.validateDraftContent({ ...ctx, requestId });
+        const unmodified_adopted_copy = await this.isUnmodifiedAdoptedCopy(auth.tenant_id, versionId, ctx.field_schema);
+        await this.caps.validateDraftContent({ ...ctx, requestId, unmodified_adopted_copy });
       }
       const activated = await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
       await this.governance(

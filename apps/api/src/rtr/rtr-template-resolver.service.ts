@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { TemplateResolutionService, TemplatesRepository, type TemplateProductKey, type TemplateResolutionSource } from '@aramo/documents';
+import { isHtmlContentVersion } from '@aramo/template-content';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import {
@@ -8,7 +9,7 @@ import {
   type RtrContentBlock,
   type RtrTemplateContentV1,
 } from './rtr-template-content.js';
-import { RTR_HTML_SCHEMA_V1, parseHtmlContent, sanitizeRtrHtml, type RtrTemplateContent } from './rtr-html-content.js';
+import { parseHtmlContent, sanitizeRtrHtml, type RtrTemplateContent } from './rtr-html-content.js';
 
 // RTR-TEMPLATE-1 (§6, §10, §27) — the server-authoritative RTR template resolver.
 //
@@ -131,14 +132,15 @@ export class RtrTemplateResolverService {
     const { template, version } = input;
 
     // Unrecognised content-contract version ⇒ fail closed (§8): never interpret.
-    if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1 && version.render_schema_version !== RTR_HTML_SCHEMA_V1) {
+    // TEMPLATE-CONTENT-2 C-3 — rtr-html-v1 and rtr-html-v2 (and the legacy generated form).
+    if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1 && !isHtmlContentVersion(version.render_schema_version)) {
       throw this.invalid(input.requestId, template.id, 'unrecognised_render_schema_version', {
         render_schema_version: version.render_schema_version,
       });
     }
 
     const content: RtrTemplateContent | null =
-      version.render_schema_version === RTR_HTML_SCHEMA_V1
+      isHtmlContentVersion(version.render_schema_version)
         ? this.parseHtml(version.field_schema)
         : this.parseContent(version.field_schema);
     if (content === null) {
@@ -179,7 +181,7 @@ export class RtrTemplateResolverService {
   private parseHtml(fieldSchema: unknown): RtrTemplateContent | null {
     const c = parseHtmlContent(fieldSchema);
     if (c === null || c.title.trim().length === 0) return null;
-    const res = sanitizeRtrHtml(c.html);
+    const res = sanitizeRtrHtml(c.html, undefined, c.render_schema_version);
     if ('issue' in res) return null;
     return { ...c, html: res.html };
   }

@@ -13,6 +13,15 @@ import {
   type TemplateVariableCatalogReader,
   type TemplateVariableRow,
 } from '@aramo/documents';
+import {
+  CONTENT_KEY_RE,
+  CURRENT_HTML_CONTENT_VERSION,
+  contentMaxBytesOf,
+  isContentDowngrade,
+  isHtmlContentVersion,
+  placeholderKeysIn,
+  placeholderTokenRe,
+} from '@aramo/template-content';
 
 import {
   RTR_BINDING_KEYS,
@@ -22,8 +31,8 @@ import {
   type RtrTemplateContentV1,
 } from './rtr-template-content.js';
 import {
-  RTR_HTML_SCHEMA_V1,
   TENANT_LOGO_ASSET,
+  chipKnownTypedTokens,
   convertV1ToHtml,
   hasLogoNode,
   htmlWithSamples,
@@ -32,6 +41,7 @@ import {
   parseSigningConfig,
   sanitizeRtrHtml,
   serialize,
+  typedPlaceholderKeys,
   type HtmlNode,
   type RtrTemplateContentHtmlV1,
 } from './rtr-html-content.js';
@@ -71,8 +81,6 @@ import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 //        and every seeded row carries ats, so its result is exactly the former one (same
 //        keys, order, labels, groups, samples) — the ATS RTR regression gate.
 // Products are compared case-insensitively (the stored keys are lowercase since TP-1).
-
-const TOKEN_RE = /\{\{\s*([\w.]+)\s*\}\}/g;
 
 function htmlInvalid(requestId: string, reason: string, keys?: string[]): AramoError {
   return new AramoError('VALIDATION_ERROR', `RTR template content rejected: ${reason}`, 422, {
@@ -187,10 +195,26 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     return allowed.map((d) => ({ key: d.key, label: d.label, group: d.group, data_type: d.data_type, sample_value: d.sample_value, active: d.active }));
   }
 
-  async validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void> {
+  async validateDraftContent(input: {
+    document_type_id: string;
+    field_schema: unknown;
+    render_schema_version: string;
+    requestId: string;
+    unmodified_adopted_copy?: boolean;
+  }): Promise<void> {
     const type = await this.editableType(input.document_type_id);
     if (type === null) return; // non-configurable → nothing to validate
-    await this.validateAgainst(await this.atsCatalog(type), input);
+    const cat = await this.atsCatalog(type);
+    const parsed = await this.validateAgainst(cat, input);
+    // TEMPLATE-CONTENT-2 C-17 — at publish / activate ONLY (never at preview): a `{{…}}` still
+    // typed as text in the body, or an unknown token in the title, would print literally, so
+    // it is refused. An UNMODIFIED adopted copy is exempt, so "Use as it is" never breaks on an
+    // already-published default.
+    if ('html' in parsed && input.unmodified_adopted_copy !== true) {
+      const allowed = new Set(cat.allowed.map((d) => d.key));
+      const keys = [...new Set([...typedPlaceholderKeys(parsed.html.nodes), ...placeholderKeysIn(parsed.html.content.title).filter((k) => !allowed.has(k))])];
+      if (keys.length > 0) throw htmlInvalid(input.requestId, 'unresolved_placeholder', keys);
+    }
   }
 
   // Structure + closed-binding validation against an already-loaded catalog (one catalog
@@ -200,7 +224,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     input: { field_schema: unknown; render_schema_version: string; requestId: string },
   ): Promise<{ html: { content: RtrTemplateContentHtmlV1; nodes: HtmlNode[] } } | { v1: RtrTemplateContentV1 }> {
     const allowedKeys = new Set(cat.allowed.map((d) => d.key));
-    if (input.render_schema_version === RTR_HTML_SCHEMA_V1) {
+    if (isHtmlContentVersion(input.render_schema_version)) {
       return { html: this.validateHtml(input, allowedKeys, cat.unresolvable) };
     }
     const content = this.parse(input);
@@ -234,7 +258,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     const valueOf = (d: CatalogBinding): string =>
       Object.prototype.hasOwnProperty.call(overrides, d.key) ? (overrides[d.key] as string) : d.sample;
     const samples = new Map(cat.allowed.map((d) => [d.key, valueOf(d)]));
-    const sub = (text: string): string => text.replace(TOKEN_RE, (_whole, key: string) => samples.get(key) ?? `{{${key}}}`);
+    const sub = (text: string): string => text.replace(placeholderTokenRe(), (_whole, key: string) => samples.get(key) ?? `{{${key}}}`);
     const sample_values = cat.allowed.map((d) => ({ key: d.key, label: d.label, value: valueOf(d) }));
     const signature_block = { printed_name: samples.get('talent.full_name') ?? null };
     if ('html' in parsed) {
@@ -267,22 +291,35 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     existing_field_schema: unknown;
     requestId: string;
   }): Promise<unknown> {
-    if (input.render_schema_version !== RTR_HTML_SCHEMA_V1) return input.field_schema;
+    const version = input.render_schema_version;
+    // rtr-generated-v1 exists only on old RTR rows (read-compatible, stored as is).
+    if (version === RTR_GENERATED_SCHEMA_V1) return input.field_schema;
     const type = await this.editableType(input.document_type_id);
     if (type === null) return input.field_schema;
+    // TEMPLATE-CONTENT-2 C-5 — every editable write is sanitised; any other version is refused
+    // (it used to be stored unsanitised).
+    if (!isHtmlContentVersion(version)) throw htmlInvalid(input.requestId, 'unsupported_content_version');
+    // C-6 — never replace v2 content with v1 (an outdated cached Studio would drop tables).
+    const existingVersion = (input.existing_field_schema as Record<string, unknown> | null)?.['render_schema_version'];
+    if (isHtmlContentVersion(existingVersion) && isContentDowngrade(existingVersion, version)) {
+      throw htmlInvalid(input.requestId, 'content_version_downgrade');
+    }
     const fs = input.field_schema;
     if (fs === null || typeof fs !== 'object' || Array.isArray(fs)) throw htmlInvalid(input.requestId, 'content_invalid');
     const o = fs as Record<string, unknown>;
     if (typeof o.title !== 'string' || typeof o.html !== 'string') throw htmlInvalid(input.requestId, 'content_invalid');
     const allowedKeys = new Set((await this.atsCatalog(type)).allowed.map((d) => d.key));
-    const res = sanitizeRtrHtml(o.html, (k) => allowedKeys.has(k));
+    const res = sanitizeRtrHtml(o.html, (k) => allowedKeys.has(k), version);
     if ('issue' in res) throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);
+    // C-16 — a `{{key}}` typed as text whose key is a known variable becomes a chip.
+    const html = serialize(chipKnownTypedTokens(res.nodes, (k) => allowedKeys.has(k) && CONTENT_KEY_RE.test(k)));
+    if (Buffer.byteLength(html, 'utf8') > contentMaxBytesOf(version)) throw htmlInvalid(input.requestId, 'content_too_large');
     // The logo reference is SERVER-OWNED: carried over from the existing content only.
     const existingLogo = parseLogoRef((input.existing_field_schema as Record<string, unknown> | null)?.['logo']);
     const content: RtrTemplateContentHtmlV1 = {
-      render_schema_version: RTR_HTML_SCHEMA_V1,
+      render_schema_version: version,
       title: o.title.trim(),
-      html: res.html,
+      html,
       logo: existingLogo,
     };
     // Amendment M-A6 §3.2 — the signing roles are KEPT and validated (never stripped).
@@ -309,7 +346,8 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   draftContentFrom(input: { document_type_id: string; render_schema_version: string; field_schema: unknown }): { render_schema_version: string; field_schema: unknown } {
     if (input.render_schema_version === RTR_GENERATED_SCHEMA_V1) {
       const v1 = this.tryParseV1(input.field_schema);
-      if (v1 !== null) return { render_schema_version: RTR_HTML_SCHEMA_V1, field_schema: convertV1ToHtml(v1) };
+      // TEMPLATE-CONTENT-2 C-4 — an adopted / converted draft is written in the current version.
+      if (v1 !== null) return { render_schema_version: CURRENT_HTML_CONTENT_VERSION, field_schema: convertV1ToHtml(v1) };
     }
     return { render_schema_version: input.render_schema_version, field_schema: input.field_schema };
   }
@@ -322,7 +360,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   withLogo(field_schema: unknown, logo: TemplateLogoRef | null, requestId: string): unknown {
     const c = parseHtmlContent(field_schema);
     if (c === null) throw htmlInvalid(requestId, 'logo_requires_html_content');
-    const res = sanitizeRtrHtml(c.html);
+    const res = sanitizeRtrHtml(c.html, undefined, c.render_schema_version);
     if ('issue' in res) throw htmlInvalid(requestId, res.issue.reason, res.issue.keys);
     const nodes: HtmlNode[] = res.nodes;
     const withoutLogo = nodes.filter((n) => !(n.type === 'el' && n.tag === 'div' && n.attrs['data-asset'] !== undefined));
@@ -344,7 +382,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   ): { content: RtrTemplateContentHtmlV1; nodes: HtmlNode[] } {
     const content = parseHtmlContent(input.field_schema);
     if (content === null) throw new AramoError('VALIDATION_ERROR', 'RTR html content is empty or invalid', 400, { requestId: input.requestId });
-    const res = sanitizeRtrHtml(content.html, (k) => allowedKeys.has(k));
+    const res = sanitizeRtrHtml(content.html, (k) => allowedKeys.has(k), content.render_schema_version);
     if ('issue' in res) {
       if (res.issue.reason === 'unknown_field') {
         const keys = res.issue.keys ?? [];
@@ -405,7 +443,7 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   private collectTokens(content: RtrTemplateContentV1): Set<string> {
     const out = new Set<string>();
     for (const text of [content.title, ...content.blocks.map((b) => b.text)]) {
-      for (const m of text.matchAll(TOKEN_RE)) {
+      for (const m of text.matchAll(placeholderTokenRe())) {
         if (m[1] !== undefined) out.add(m[1]);
       }
     }

@@ -1,5 +1,23 @@
 import sanitizeHtml from 'sanitize-html';
 import { type RichBlock, type RichListItem, type RichRun } from '@aramo/documents-rendering';
+import {
+  CONTENT_KEY_RE,
+  CURRENT_HTML_CONTENT_VERSION,
+  PAGE_BREAK_ATTR,
+  PAGE_BREAK_VALUE,
+  RTR_HTML_V1,
+  RTR_HTML_V2,
+  TABLE_MAX_COLUMNS,
+  TABLE_MAX_ROWS,
+  allowedAttributesOf,
+  allowedTagsOf,
+  contentMaxBytesOf,
+  headingLevelOf,
+  isHtmlContentVersion,
+  listMaxDepthOf,
+  placeholderTokenRe,
+  type HtmlContentVersion,
+} from '@aramo/template-content';
 
 import { isRtrBindingKey, type RtrContentBlock, type RtrTemplateContentV1 } from './rtr-template-content.js';
 
@@ -15,8 +33,13 @@ import { isRtrBindingKey, type RtrContentBlock, type RtrTemplateContentV1 } from
 // every PATCH re-serialises the content against the allowlist. `logo` is SERVER-OWNED
 // (set only by the logo-capture route) and is never accepted from the client.
 
-export const RTR_HTML_SCHEMA_V1 = 'rtr-html-v1';
-export const RTR_HTML_MAX_BYTES = 64 * 1024;
+// TEMPLATE-CONTENT-2 C-0/C-1 — the versions and limits come from @aramo/template-content. v2 is a
+// strict superset of v1 (h3/h4, simple tables, hr, page break, 2-level lists, 256 KiB); v1
+// content is sanitised and rendered exactly as before, forever.
+export const RTR_HTML_SCHEMA_V1 = RTR_HTML_V1;
+export const RTR_HTML_SCHEMA_V2 = RTR_HTML_V2;
+/** The v1 cap (kept for existing callers); per-version caps come from contentMaxBytesOf. */
+export const RTR_HTML_MAX_BYTES = contentMaxBytesOf(RTR_HTML_V1);
 export const TENANT_LOGO_ASSET = 'tenant.logo';
 
 export interface RtrHtmlLogoRef {
@@ -25,8 +48,10 @@ export interface RtrHtmlLogoRef {
   mime: 'image/png' | 'image/jpeg';
 }
 
+// Editable (html) content of either version. The name is historical: since TEMPLATE-CONTENT-2
+// it also carries rtr-html-v2 content (the shape is the same; only the allowed markup grows).
 export interface RtrTemplateContentHtmlV1 {
-  render_schema_version: typeof RTR_HTML_SCHEMA_V1;
+  render_schema_version: HtmlContentVersion;
   title: string;
   html: string;
   logo?: RtrHtmlLogoRef | null;
@@ -126,14 +151,18 @@ export function signerRoles(content: { signing?: RtrSigningConfig }): RtrSigning
 
 export type RtrTemplateContent = RtrTemplateContentV1 | RtrTemplateContentHtmlV1;
 
+export type RtrTemplateContentHtml = RtrTemplateContentHtmlV1;
+
+/** Editable html content of either version (C-3: every reader accepts v1 and v2). */
 export function isHtmlContent(c: RtrTemplateContent): c is RtrTemplateContentHtmlV1 {
-  return c.render_schema_version === RTR_HTML_SCHEMA_V1;
+  return isHtmlContentVersion(c.render_schema_version);
 }
 
 // ── Sanitiser (authoritative) ────────────────────────────────────────────────────
-const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: ['p', 'h2', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'br', 'span', 'div'],
-  allowedAttributes: { span: ['data-field'], div: ['data-asset'] },
+function sanitizeOptions(version: HtmlContentVersion): sanitizeHtml.IOptions {
+  return {
+  allowedTags: [...allowedTagsOf(version)],
+  allowedAttributes: Object.fromEntries(Object.entries(allowedAttributesOf(version)).map(([t, a]) => [t, [...a]])),
   allowedSchemes: [],
   allowedSchemesByTag: {},
   allowProtocolRelative: false,
@@ -144,7 +173,8 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   // Normalise synonyms so the stored form is canonical.
   transformTags: { strong: 'b', em: 'i' },
   parser: { lowerCaseTags: true, lowerCaseAttributeNames: true },
-};
+  };
+}
 
 // ── Minimal tree over SANITISED output only ────────────────────────────────────────
 // sanitize-html's output contains only allowlisted tags with only data-field/data-asset
@@ -153,7 +183,7 @@ export type HtmlNode =
   | { type: 'text'; text: string }
   | { type: 'el'; tag: string; attrs: Record<string, string>; children: HtmlNode[] };
 
-const VOID_TAGS = new Set(['br']);
+const VOID_TAGS = new Set(['br', 'hr']);
 
 function decodeEntities(s: string): string {
   return s
@@ -206,7 +236,15 @@ export function parseSanitized(html: string): HtmlNode[] {
 
 // Canonicalise: data-field spans become EMPTY; spans without data-field are unwrapped;
 // divs other than the tenant-logo node are unwrapped; the logo div is emptied.
-function canonicalise(nodes: readonly HtmlNode[]): HtmlNode[] {
+// TEMPLATE-CONTENT-2 C-2 (v2 only reaches the new tags; v1 discards them in sanitize-html):
+//   - hr keeps only data-break="page" (a page break); any other value is a plain divider;
+//   - a table keeps only its rows (thead / tbody are unwrapped, as browsers insert them), a
+//     row only its th / td cells, and a cell only INLINE content (blocks inside a cell are
+//     unwrapped and separated by a line break; nested tables become their text);
+//   - tr / th / td outside a table are unwrapped; an empty table is dropped.
+const CELL_BLOCKS = new Set(['p', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
+
+function canonicalise(nodes: readonly HtmlNode[], inCell = false): HtmlNode[] {
   const out: HtmlNode[] = [];
   for (const n of nodes) {
     if (n.type === 'text') {
@@ -216,17 +254,58 @@ function canonicalise(nodes: readonly HtmlNode[]): HtmlNode[] {
     if (n.tag === 'span') {
       const key = n.attrs['data-field'];
       if (key !== undefined && key.length > 0) out.push({ type: 'el', tag: 'span', attrs: { 'data-field': key }, children: [] });
-      else out.push(...canonicalise(n.children));
+      else out.push(...canonicalise(n.children, inCell));
       continue;
     }
     if (n.tag === 'div') {
       if (n.attrs['data-asset'] !== undefined) out.push({ type: 'el', tag: 'div', attrs: { 'data-asset': n.attrs['data-asset'] }, children: [] });
-      else out.push(...canonicalise(n.children));
+      else out.push(...canonicalise(n.children, inCell));
       continue;
     }
-    out.push({ type: 'el', tag: n.tag, attrs: {}, children: canonicalise(n.children) });
+    if (n.tag === 'hr') {
+      if (inCell) continue;
+      out.push({ type: 'el', tag: 'hr', attrs: n.attrs[PAGE_BREAK_ATTR] === PAGE_BREAK_VALUE ? { [PAGE_BREAK_ATTR]: PAGE_BREAK_VALUE } : {}, children: [] });
+      continue;
+    }
+    if (inCell && CELL_BLOCKS.has(n.tag)) {
+      // A block inside a table cell: keep its inline content, one line per block.
+      const inner = canonicalise(n.children, true);
+      if (inner.length > 0) {
+        if (out.length > 0) out.push({ type: 'el', tag: 'br', attrs: {}, children: [] });
+        out.push(...inner);
+      }
+      continue;
+    }
+    if (n.tag === 'table') {
+      const rows = tableRows(n);
+      if (rows.length > 0) out.push({ type: 'el', tag: 'table', attrs: {}, children: rows });
+      continue;
+    }
+    if (n.tag === 'thead' || n.tag === 'tbody' || n.tag === 'tr' || n.tag === 'th' || n.tag === 'td') {
+      out.push(...canonicalise(n.children, inCell));
+      continue;
+    }
+    out.push({ type: 'el', tag: n.tag, attrs: {}, children: canonicalise(n.children, inCell) });
   }
   return out;
+}
+
+function tableRows(table: HtmlNode & { type: 'el' }): HtmlNode[] {
+  const rows: HtmlNode[] = [];
+  const collect = (ns: readonly HtmlNode[]): void => {
+    for (const c of ns) {
+      if (c.type !== 'el') continue;
+      if (c.tag === 'thead' || c.tag === 'tbody') collect(c.children);
+      else if (c.tag === 'tr') {
+        const cells = c.children
+          .filter((x): x is HtmlNode & { type: 'el' } => x.type === 'el' && (x.tag === 'th' || x.tag === 'td'))
+          .map((x) => ({ type: 'el' as const, tag: x.tag, attrs: {}, children: canonicalise(x.children, true) }));
+        if (cells.length > 0) rows.push({ type: 'el', tag: 'tr', attrs: {}, children: cells });
+      }
+    }
+  };
+  collect(table.children);
+  return rows;
 }
 
 export function serialize(nodes: readonly HtmlNode[]): string {
@@ -243,7 +322,7 @@ export function serialize(nodes: readonly HtmlNode[]): string {
 }
 
 export interface HtmlValidationIssue {
-  reason: 'unknown_field' | 'logo_position' | 'content_too_large' | 'unknown_asset';
+  reason: 'unknown_field' | 'logo_position' | 'content_too_large' | 'unknown_asset' | 'table_too_large' | 'list_too_deep';
   keys?: string[];
 }
 
@@ -283,30 +362,88 @@ export function hasLogoNode(nodes: readonly HtmlNode[]): boolean {
 // DOC-TEMPLATE-LIB-1 T-2 — `isKnownKey` lets the capability port validate against the Aramo
 // variable catalog (active, resolvable keys); it defaults to the resolver key set, so the
 // render-time callers (binding / resolver) keep their existing closed check.
+// TEMPLATE-CONTENT-2 C-1 — table and list limits (v2). The first issue found, or null.
+function structureIssue(nodes: readonly HtmlNode[], version: HtmlContentVersion): HtmlValidationIssue | null {
+  const maxDepth = listMaxDepthOf(version);
+  const walk = (ns: readonly HtmlNode[], listDepth: number): HtmlValidationIssue | null => {
+    for (const n of ns) {
+      if (n.type !== 'el') continue;
+      if (n.tag === 'table') {
+        const widest = Math.max(0, ...n.children.map((r) => (r.type === 'el' ? r.children.length : 0)));
+        if (n.children.length > TABLE_MAX_ROWS || widest > TABLE_MAX_COLUMNS) return { reason: 'table_too_large' };
+      }
+      const depth = n.tag === 'ul' || n.tag === 'ol' ? listDepth + 1 : listDepth;
+      if (depth > maxDepth) return { reason: 'list_too_deep' };
+      const inner = walk(n.children, depth);
+      if (inner !== null) return inner;
+    }
+    return null;
+  };
+  return walk(nodes, 0);
+}
+
 export function sanitizeRtrHtml(
   html: string,
   isKnownKey: (key: string) => boolean = isRtrBindingKey,
+  version: HtmlContentVersion = RTR_HTML_V1,
 ): { html: string; nodes: HtmlNode[] } | { issue: HtmlValidationIssue } {
-  if (Buffer.byteLength(html, 'utf8') > RTR_HTML_MAX_BYTES) return { issue: { reason: 'content_too_large' } };
-  const cleaned = sanitizeHtml(html, SANITIZE_OPTIONS);
+  const maxBytes = contentMaxBytesOf(version);
+  if (Buffer.byteLength(html, 'utf8') > maxBytes) return { issue: { reason: 'content_too_large' } };
+  const cleaned = sanitizeHtml(html, sanitizeOptions(version));
   const nodes = canonicalise(parseSanitized(cleaned));
   const unknown = [...new Set(collectFieldKeys(nodes).filter((k) => !isKnownKey(k)))];
   if (unknown.length > 0) return { issue: { reason: 'unknown_field', keys: unknown } };
   const assets = countAssets(nodes);
   if (assets.nonTenantLogo.length > 0) return { issue: { reason: 'unknown_asset', keys: assets.nonTenantLogo } };
   if (assets.count > 1 || (assets.count === 1 && !hasLogoNode(nodes))) return { issue: { reason: 'logo_position' } };
+  const structure = structureIssue(nodes, version);
+  if (structure !== null) return { issue: structure };
   const out = serialize(nodes);
-  if (Buffer.byteLength(out, 'utf8') > RTR_HTML_MAX_BYTES) return { issue: { reason: 'content_too_large' } };
+  if (Buffer.byteLength(out, 'utf8') > maxBytes) return { issue: { reason: 'content_too_large' } };
   return { html: out, nodes };
 }
 
-// ── v1 → rtr-html-v1 conversion (draft creation, A1 §2.1) ──────────────────────────
-const TOKEN_RE = /\{\{\s*([\w.]+)\s*\}\}/g;
+// ── Typed placeholders (TEMPLATE-CONTENT-2 C-16 / C-17) ─────────────────────────────
+// A `{{key}}` typed as TEXT prints literally. On save, a typed token whose key is known becomes
+// a chip; at publish / activate, any typed token left is refused (unresolved_placeholder).
 
+/** Text tokens become chips where `isKnownKey(key)`; unknown tokens stay as text. */
+export function chipKnownTypedTokens(nodes: readonly HtmlNode[], isKnownKey: (key: string) => boolean): HtmlNode[] {
+  return nodes.flatMap((n): HtmlNode[] => {
+    if (n.type === 'el') return [{ ...n, children: chipKnownTypedTokens(n.children, isKnownKey) }];
+    const out: HtmlNode[] = [];
+    let last = 0;
+    for (const m of n.text.matchAll(placeholderTokenRe())) {
+      const key = m[1] as string;
+      if (!isKnownKey(key) || !CONTENT_KEY_RE.test(key)) continue;
+      if ((m.index ?? 0) > last) out.push({ type: 'text', text: n.text.slice(last, m.index) });
+      out.push({ type: 'el', tag: 'span', attrs: { 'data-field': key }, children: [] });
+      last = (m.index ?? 0) + m[0].length;
+    }
+    if (last === 0) return [n];
+    if (last < n.text.length) out.push({ type: 'text', text: n.text.slice(last) });
+    return out;
+  });
+}
+
+/** The keys of every `{{key}}` still typed as text, in order, without duplicates. */
+export function typedPlaceholderKeys(nodes: readonly HtmlNode[]): string[] {
+  const keys: string[] = [];
+  const walk = (ns: readonly HtmlNode[]): void => {
+    for (const n of ns) {
+      if (n.type === 'text') for (const m of n.text.matchAll(placeholderTokenRe())) keys.push(m[1] as string);
+      else walk(n.children);
+    }
+  };
+  walk(nodes);
+  return [...new Set(keys)];
+}
+
+// ── v1 → rtr-html-v1 conversion (draft creation, A1 §2.1) ──────────────────────────
 function textToHtml(text: string): string {
   let out = '';
   let last = 0;
-  for (const m of text.matchAll(TOKEN_RE)) {
+  for (const m of text.matchAll(placeholderTokenRe())) {
     out += escapeHtml(text.slice(last, m.index)).replace(/\n/g, '<br>');
     out += `<span data-field="${escapeHtml(m[1] as string)}"></span>`;
     last = (m.index ?? 0) + m[0].length;
@@ -319,7 +456,9 @@ export function convertV1ToHtml(content: RtrTemplateContentV1): RtrTemplateConte
   const html = content.blocks
     .map((b: RtrContentBlock) => (b.type === 'HEADING' ? `<h2>${textToHtml(b.text)}</h2>` : `<p>${textToHtml(b.text)}</p>`))
     .join('');
-  return { render_schema_version: RTR_HTML_SCHEMA_V1, title: content.title, html, logo: null };
+  // TEMPLATE-CONTENT-2 C-4 — a new html draft (adopt / generated → html) is written in the
+  // current version.
+  return { render_schema_version: CURRENT_HTML_CONTENT_VERSION, title: content.title, html, logo: null };
 }
 
 // ── Sample preview html (A1 / coordinator contract §7) ─────────────────────────────
@@ -398,6 +537,18 @@ function listItems(list: HtmlNode & { type: 'el' }, value: (key: string) => stri
   return items;
 }
 
+function tableBlock(table: HtmlNode & { type: 'el' }, value: (key: string) => string): RichBlock {
+  const rows = table.children.filter((r): r is HtmlNode & { type: 'el' } => r.type === 'el' && r.tag === 'tr');
+  const header = rows.length > 0 && (rows[0] as HtmlNode & { type: 'el' }).children.every((c) => c.type === 'el' && c.tag === 'th');
+  return {
+    kind: 'table',
+    header,
+    rows: rows.map((r) => r.children.filter((c): c is HtmlNode & { type: 'el' } => c.type === 'el').map((c) => runsOf(c.children, value, NO_MARKS, []))),
+  };
+}
+
+const TOP_BLOCK_TAGS = new Set(['p', 'h2', 'h3', 'h4', 'ul', 'ol', 'table', 'hr']);
+
 export function toRichBlocks(nodes: readonly HtmlNode[], value: (key: string) => string): RichBlock[] {
   const blocks: RichBlock[] = [];
   let loose: HtmlNode[] = [];
@@ -409,10 +560,14 @@ export function toRichBlocks(nodes: readonly HtmlNode[], value: (key: string) =>
   };
   for (const n of nodes) {
     if (n.type === 'el' && n.tag === 'div') continue; // the logo node is drawn as letterhead
-    if (n.type === 'el' && (n.tag === 'p' || n.tag === 'h2' || n.tag === 'ul' || n.tag === 'ol')) {
+    if (n.type === 'el' && TOP_BLOCK_TAGS.has(n.tag)) {
       flushLoose();
+      const level = headingLevelOf(n.tag);
       if (n.tag === 'p') blocks.push({ kind: 'paragraph', runs: runsOf(n.children, value, NO_MARKS, []) });
-      else if (n.tag === 'h2') blocks.push({ kind: 'heading', runs: runsOf(n.children, value, NO_MARKS, []) });
+      else if (level === 2) blocks.push({ kind: 'heading', runs: runsOf(n.children, value, NO_MARKS, []) });
+      else if (level === 3 || level === 4) blocks.push({ kind: 'heading', runs: runsOf(n.children, value, NO_MARKS, []), level });
+      else if (n.tag === 'table') blocks.push(tableBlock(n, value));
+      else if (n.tag === 'hr') blocks.push(n.attrs[PAGE_BREAK_ATTR] === PAGE_BREAK_VALUE ? { kind: 'page_break' } : { kind: 'rule' });
       else blocks.push({ kind: 'list', ordered: n.tag === 'ol', items: listItems(n, value) });
       continue;
     }
@@ -426,16 +581,17 @@ export function toRichBlocks(nodes: readonly HtmlNode[], value: (key: string) =>
 export function parseHtmlContent(fieldSchema: unknown): RtrTemplateContentHtmlV1 | null {
   if (typeof fieldSchema !== 'object' || fieldSchema === null || Array.isArray(fieldSchema)) return null;
   const o = fieldSchema as Record<string, unknown>;
-  if (o.render_schema_version !== RTR_HTML_SCHEMA_V1) return null;
+  const version = o.render_schema_version;
+  if (!isHtmlContentVersion(version)) return null;
   if (typeof o.title !== 'string' || typeof o.html !== 'string') return null;
   const logo = parseLogoRef(o.logo);
   // M-A6 §3.2 — `signing` is kept and validated; an invalid one fails the parse closed.
   if (o.signing !== undefined) {
     const sg = parseSigningConfig(o.signing);
     if ('issue' in sg) return null;
-    return { render_schema_version: RTR_HTML_SCHEMA_V1, title: o.title, html: o.html, logo, signing: sg.signing };
+    return { render_schema_version: version, title: o.title, html: o.html, logo, signing: sg.signing };
   }
-  return { render_schema_version: RTR_HTML_SCHEMA_V1, title: o.title, html: o.html, logo };
+  return { render_schema_version: version, title: o.title, html: o.html, logo };
 }
 
 export function parseLogoRef(raw: unknown): RtrHtmlLogoRef | null {

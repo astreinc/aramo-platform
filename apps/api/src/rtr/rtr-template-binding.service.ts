@@ -8,6 +8,7 @@ import { IdentityRepository, TenantRepository } from '@aramo/identity';
 
 import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
 import {
+  RTR_HTML_SCHEMA_V2,
   collectFieldKeys,
   htmlWithSamples,
   isHtmlContent,
@@ -15,6 +16,7 @@ import {
   signerRoles,
   toRichBlocks,
   type RtrTemplateContent,
+  type RtrTemplateContentHtml,
 } from './rtr-html-content.js';
 
 // RTR-TEMPLATE-1 (§9, §10, INV-8/INV-9) — the server-owned RTR binding resolver.
@@ -113,7 +115,7 @@ export class RtrTemplateBindingService {
   // name, always bound). Fails closed on an unknown key / unusable html like bind().
   usedKeys(content: RtrTemplateContent, requestId: string): RtrBindingKey[] {
     if (isHtmlContent(content)) {
-      const res = sanitizeRtrHtml(content.html);
+      const res = sanitizeRtrHtml(content.html, undefined, content.render_schema_version);
       if ('issue' in res) {
         throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template content is not usable: ${res.issue.reason}`, 422, {
           requestId,
@@ -202,11 +204,11 @@ export class RtrTemplateBindingService {
   // closed as a configuration error.
   private async bindHtml(
     input: { letterhead?: LetterheadModel; template_version_id: string; tenant_id: string; requestId: string },
-    content: Extract<RtrTemplateContent, { render_schema_version: 'rtr-html-v1' }>,
+    content: RtrTemplateContentHtml,
     resolve: (used: Set<RtrBindingKey>) => Promise<Map<string, string>>,
     talentBlock = true,
   ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html: string }> {
-    const res = sanitizeRtrHtml(content.html);
+    const res = sanitizeRtrHtml(content.html, undefined, content.render_schema_version);
     if ('issue' in res) {
       throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template content is not usable: ${res.issue.reason}`, 422, {
         requestId: input.requestId,
@@ -239,6 +241,9 @@ export class RtrTemplateBindingService {
       title: this.substitute(content.title, values, input.requestId),
       blocks: [],
       rich_blocks: toRichBlocks(res.nodes, value),
+      // TEMPLATE-CONTENT-2 C-9 — keep headings with the next block for v2 content only, so v1
+      // content keeps its exact layout.
+      ...(content.render_schema_version === RTR_HTML_SCHEMA_V2 ? { heading_keep_with_next: true } : {}),
       ...(letterhead !== undefined ? { letterhead } : {}),
       signature_block: { printed_name: values.get('talent.full_name') as string },
       // The bound content as allowlisted html (field nodes → <span data-sample> with the

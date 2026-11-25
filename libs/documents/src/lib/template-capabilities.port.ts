@@ -72,7 +72,15 @@ export interface TemplateCapabilitiesPort {
   // type and reference ONLY catalog bindings. Throws (TemplateBindingUnsupportedError /
   // VALIDATION_ERROR) on an unknown token, structural invalidity, or empty content. A
   // non-configurable type is a no-op (nothing to validate). Authoritative at activation.
-  validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void>;
+  // TEMPLATE-CONTENT-2 C-17 — `unmodified_adopted_copy`: the version's content equals its
+  // adopted source version's, so typed placeholders already in the master do not block it.
+  validateDraftContent(input: {
+    document_type_id: string;
+    field_schema: unknown;
+    render_schema_version: string;
+    requestId: string;
+    unmodified_adopted_copy?: boolean;
+  }): Promise<void>;
 
   // Fixed-sample preview (§17) of the CURRENT draft content. Validates first, then
   // substitutes the fixed SAFE sample values. Never persists a business Document.

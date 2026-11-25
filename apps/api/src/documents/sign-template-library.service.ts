@@ -22,8 +22,9 @@ import {
 } from '@aramo/documents-contracts';
 import { type LetterheadModel } from '@aramo/documents-rendering';
 import { type TenantRepository } from '@aramo/identity';
+import { isHtmlContentVersion } from '@aramo/template-content';
 
-import { RTR_HTML_SCHEMA_V1, isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
+import { isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
 import { type RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { captureTenantLetterhead, loadLetterhead } from '../rtr/rtr-template-letterhead.js';
 import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
@@ -577,7 +578,7 @@ export function signatureFields(manifest: unknown, withRoles = false): SignTempl
 // the parsed content or a raw stored field_schema (re-validated; invalid ⇒ null).
 function signingOf(content: RtrTemplateContent | unknown): SignTemplateSigning | null {
   const raw = (content as { render_schema_version?: unknown; signing?: unknown } | null) ?? null;
-  if (raw === null || raw.render_schema_version !== RTR_HTML_SCHEMA_V1 || raw.signing === undefined) return null;
+  if (raw === null || !isHtmlContentVersion(raw.render_schema_version) || raw.signing === undefined) return null;
   const parsed = parseSigningConfig(raw.signing);
   return 'issue' in parsed ? null : parsed.signing;
 }
