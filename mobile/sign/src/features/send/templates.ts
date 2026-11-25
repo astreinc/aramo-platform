@@ -57,6 +57,12 @@ export interface SenderTemplate {
   readonly favorite?: boolean;
   /** M-A12 W1-F — the server's ownership (absent from older servers; never derived). */
   readonly ownership?: 'mine' | 'shared' | null;
+  /**
+   * TEMPLATE-SYNC-1 S-11 — the server-computed master flags of an adopted template (absent from
+   * older servers). Shown as a badge only; never recomputed on the device.
+   */
+  readonly masterNewer?: boolean;
+  readonly masterWithdrawn?: boolean;
 }
 
 const count = (v: unknown): number | null =>
@@ -127,6 +133,8 @@ function parseTemplate(raw: unknown): SenderTemplate {
     signing: parseSigning(t['signing']),
     favorite: t['favorite'] === true,
     ownership: t['ownership'] === 'mine' || t['ownership'] === 'shared' ? t['ownership'] : null,
+    masterNewer: rec(t['master'])['newer_available'] === true,
+    masterWithdrawn: t['master'] !== null && typeof t['master'] === 'object' && rec(t['master'])['withdrawn'] !== null && rec(t['master'])['withdrawn'] !== undefined,
   };
 }
 

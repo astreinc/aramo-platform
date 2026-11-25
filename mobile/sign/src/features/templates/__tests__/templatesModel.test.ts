@@ -9,8 +9,12 @@ import {
   NO_TEMPLATE_PERMISSION,
   PERSONAL_TEMPLATES_PROMPT,
   NO_TEMPLATES,
+  TEMPLATE_BADGE_NEWER,
+  TEMPLATE_BADGE_WITHDRAWN,
   contextRefusal,
+  templateBadge,
   templateMeta,
+  templateRow,
   templatesView,
   unavailableNote,
 } from '../templatesModel';
@@ -75,6 +79,8 @@ describe('template library (GET /v1/sign/sender/templates)', () => {
           signing: null,
           favorite: false,
           ownership: null,
+          masterNewer: false,
+          masterWithdrawn: false,
         },
       ],
       unavailable: [{ documentTypeId: 'dt2', reason: 'TEMPLATE_SELECTION_REQUIRED' }],
@@ -240,5 +246,31 @@ describe('templates view', () => {
     });
     if (list.kind !== 'list') throw new Error('expected list');
     expect(list.rows[0]!.accessibilityLabel).toBe('Offer letter. Offer · Version 2');
+  });
+});
+
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-11 / S-12 — the app renders the server's master flag
+// as a badge (its own copy of the two strings); nothing is computed on the device.
+describe('TEMPLATE-SYNC-1 — the newer-version badge', () => {
+  it('parses the server flags and maps them to the two badge strings', async () => {
+    const w = workspace(() => ({
+      status: 200,
+      body: {
+        items: [
+          { ...ITEM, template_id: 'a', master: { newer_available: true, withdrawn: null, current_version_number: 2, based_on_version_number: 1 } },
+          { ...ITEM, template_id: 'b', master: { newer_available: false, withdrawn: { notice_at: 'x', effective_at: 'y', status: 'PENDING' } } },
+          { ...ITEM, template_id: 'c', master: { newer_available: false, withdrawn: null } },
+          { ...ITEM, template_id: 'd', master: null },
+          { ...ITEM, template_id: 'e' },
+        ],
+        unavailable: [],
+      },
+    }));
+    const lib = await loadTemplateLibrary(w.workspace);
+    if (lib.kind !== 'ok') throw new Error('expected ok');
+    expect(lib.items.map(templateBadge)).toEqual([TEMPLATE_BADGE_NEWER, TEMPLATE_BADGE_WITHDRAWN, null, null, null]);
+    expect(TEMPLATE_BADGE_NEWER).toBe('Newer version available — your administrator updates it in Org Home');
+    expect(TEMPLATE_BADGE_WITHDRAWN).toBe('Withdrawn by Aramo');
+    expect(templateRow(lib.items[0]!).accessibilityLabel).toContain(TEMPLATE_BADGE_NEWER);
   });
 });

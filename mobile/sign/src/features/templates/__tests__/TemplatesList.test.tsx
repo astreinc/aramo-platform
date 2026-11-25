@@ -113,6 +113,17 @@ describe('Templates screen', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('SendFlow', { envelopeId: 'env-1', step: 'recipients' }), WAIT);
   });
 
+  // TEMPLATE-SYNC-1 S-11 — the badge from the server flag; no compare or update on the phone.
+  it('shows the newer-version badge the server flags, and nothing to update', async () => {
+    const call = jest.fn();
+    renderList({ features: { templates: true }, permissions: { templates: true } }, call, {
+      items: [{ ...TEMPLATE, master: { newer_available: true, withdrawn: null, current_version_number: 2, based_on_version_number: 1 } }],
+    });
+    expect(await screen.findByText('Newer version available — your administrator updates it in Org Home', undefined, WAIT)).toBeTruthy();
+    expect(screen.queryByText('Start a draft from the new version')).toBeNull();
+    expect(screen.queryByText('Keep my version')).toBeNull();
+  });
+
   it('shows the reason when templates are not available, without calling the route', async () => {
     const call = jest.fn();
     renderList({ features: { templates: false }, permissions: { templates: true } }, call);
