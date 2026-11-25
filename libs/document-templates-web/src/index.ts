@@ -236,3 +236,19 @@ export {
   type TenantFixedForm,
   type TenantFixedFormDetail,
 } from './fixed-form/fixed-forms-api';
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-6 — the compare engine and view, exported for the
+// "Compare with Aramo's new version" side (2-way only, no merge — R-7).
+export { blockDiff, diffStats, wordDiff, type DiffBlock, type DiffRowModel, type DiffSeg, type DiffStats, type RowKind } from './studio/diff';
+export { VersionDiff, type DiffSide, type VersionDiffProps } from './studio/VersionDiff';
+export type { StudioSyncApi } from './studio/data-source';
+// TEMPLATE-SYNC-1 S-3 / S-12 — the server's master flag, its words (one set for Org Home and Sign
+// web), and the client calls for compare / start a draft / keep my version.
+export {
+  TEMPLATE_SYNC_COPY,
+  templateMasterBadge,
+  templatesWithNewerMaster,
+  showsMasterNotice,
+  type TemplateMaster,
+  type TemplateMasterContent,
+} from './template-sync';
+export { getTemplateMasterContent, createDraftFromMaster, keepTemplateVersion } from './document-templates-api';

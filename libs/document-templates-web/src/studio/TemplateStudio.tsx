@@ -16,6 +16,7 @@ import {
   type StudioLetterheadState,
 } from '../studio-codec';
 import { bytesToBase64 } from '../fixed-form/fixed-form-model';
+import { TEMPLATE_SYNC_COPY, showsMasterNotice } from '../template-sync';
 
 import {
   DEFAULT_STUDIO_CONTENT_CODEC,
@@ -230,6 +231,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [compare, setCompare] = useState<{ left: string; right: string; changesOnly: boolean } | null>(null);
+  // TEMPLATE-SYNC-1 S-6 — the master's current version as a compare side (loaded on demand).
+  const [masterSide, setMasterSide] = useState<DiffSide | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -671,6 +675,56 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     }, 'Could not discard the draft.');
   };
 
+  // ── TEMPLATE-SYNC-1 S-6 / S-7 / S-8 — a newer master is available (organization) ──
+  // Compare: 2-way, the master's CURRENT version against the copy's current version (and the
+  // draft, both selectable). Start a draft: the server builds it (master content and roles, the
+  // company's logo, the master's fields); an open draft is discarded first only when the person
+  // chooses "Discard the draft and start". Keep my version: approvers only. No merge (R-7).
+  const sync = ds.sync;
+  const runSync = async (fn: () => Promise<void>, fallback: string): Promise<void> => {
+    setActionBusy(true);
+    setSyncError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setSyncError(templateErrorMessage(e, fallback));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const openMasterCompare = (): void => {
+    if (sync === undefined) return;
+    void runSync(async () => {
+      const m = await sync.masterContent(templateId);
+      const blocks = m.html !== null ? content.decode(m.html, newBlockId).blocks : [];
+      setMasterSide({ key: 'master', label: TEMPLATE_SYNC_COPY.masterSide(m.version_number), sub: TEMPLATE_SYNC_COPY.masterSideSub, blocks: diffBlocksOf(blocks) });
+      const cur = currentOf(detail);
+      setCompare({ left: 'master', right: cur !== null ? cur.id : 'draft', changesOnly: false });
+    }, TEMPLATE_SYNC_COPY.compareFailed);
+  };
+  const doStartFromMaster = (discardFirst: boolean): void => {
+    if (sync === undefined) return;
+    void runSync(async () => {
+      const open = draftRef.current;
+      if (discardFirst && open !== null && ds.discardDraft !== undefined) await ds.discardDraft(open.id);
+      const v = await sync.draftFromMaster(templateId);
+      setMode('edit');
+      setViewVersionId(null);
+      setMasterSide(null);
+      await reloadDraft();
+      toast(TEMPLATE_SYNC_COPY.draftStarted(v.version_number));
+    }, TEMPLATE_SYNC_COPY.startFailed);
+  };
+  const doKeepVersion = (): void => {
+    const keep = sync?.keepVersion;
+    if (keep === undefined) return;
+    void runSync(async () => {
+      await keep(templateId);
+      await refreshDetail();
+      toast(TEMPLATE_SYNC_COPY.kept);
+    }, TEMPLATE_SYNC_COPY.keepFailed);
+  };
+
   // ── import from Word (platform, TEMPLATE-IMPORT-1 W-9) ──
   const doImportWord = (file: File): void => {
     if (file.size > WORD_IMPORT_MAX_FILE_BYTES) {
@@ -810,6 +864,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     })),
   ];
   const diffSides: DiffSide[] = [
+    ...(masterSide !== null ? [masterSide] : []),
     { key: 'draft', label: 'Draft', sub: 'Unpublished', blocks: diffBlocksOf(doc.blocks) },
     ...pastVersions.map((v) => ({
       key: v.id,
@@ -981,6 +1036,45 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               Cancel withdrawal
             </Button>
           ) : null}
+        </div>
+      ) : null}
+      {showsMasterNotice(detail.master) ? (
+        <div role="status" className={`pws-bar ${detail.master.withdrawn !== null ? 'pws-bar--warn' : 'pws-bar--info'}`} data-testid="studio-master-notice">
+          {detail.master.withdrawn !== null ? (
+            <span>{TEMPLATE_SYNC_COPY.withdrawnNotice(detail.master)}</span>
+          ) : (
+            <>
+              <span>
+                <b>{TEMPLATE_SYNC_COPY.badgeNewer}.</b> {TEMPLATE_SYNC_COPY.notice(detail.master)} {TEMPLATE_SYNC_COPY.noticeUnchanged}
+              </span>
+              {sync !== undefined && canManage ? (
+                <>
+                  <Button unstyled className="pws-bar__btn" disabled={actionBusy} onClick={openMasterCompare} data-testid="studio-master-compare">
+                    {TEMPLATE_SYNC_COPY.compare}
+                  </Button>
+                  <Button
+                    unstyled
+                    className="pws-bar__btn"
+                    disabled={actionBusy}
+                    onClick={() => doStartFromMaster(draft !== null)}
+                    data-testid="studio-master-start"
+                  >
+                    {draft !== null ? TEMPLATE_SYNC_COPY.discardAndStart : TEMPLATE_SYNC_COPY.startDraft}
+                  </Button>
+                </>
+              ) : null}
+              {sync?.keepVersion !== undefined && canApprove ? (
+                <Button unstyled className="pws-bar__btn" disabled={actionBusy} onClick={doKeepVersion} data-testid="studio-master-keep">
+                  {TEMPLATE_SYNC_COPY.keep}
+                </Button>
+              ) : null}
+              {syncError !== null ? (
+                <span role="alert" data-testid="studio-master-error">
+                  {syncError}
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
       {!canManage ? (

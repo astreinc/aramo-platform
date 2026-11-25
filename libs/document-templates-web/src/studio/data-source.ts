@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { isHtmlContentVersion } from '@aramo/template-content';
 
 import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V2 } from '../document-templates-api';
+import type { TemplateMaster, TemplateMasterContent } from '../template-sync';
 import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, studioValueFromText, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
 
 import type { PillSpec } from './primitives';
@@ -67,6 +68,23 @@ export interface StudioTemplateInfo {
   readonly withdraw_effective_at: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  /**
+   * TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted organization template (null
+   * or absent otherwise). The Studio shows its notice from these flags; it never recomputes them.
+   */
+  readonly master?: TemplateMaster | null;
+}
+
+/**
+ * TEMPLATE-SYNC-1 S-6 / S-7 / S-8 — "a newer master is available" (organization data source).
+ * Compare (2-way, master current vs the copy's current version and draft), start a draft from
+ * the new version, keep my version. The server decides every refusal (§3.6).
+ */
+export interface StudioSyncApi {
+  masterContent(templateId: string): Promise<TemplateMasterContent>;
+  draftFromMaster(templateId: string): Promise<StudioVersion>;
+  /** Offered only with `canApprove` (document_template:manage). */
+  keepVersion?(templateId: string): Promise<unknown>;
 }
 
 /** The template plus every version (load). */
@@ -356,6 +374,8 @@ export interface TemplateStudioDataSource {
   previewCurrent?(templateId: string): Promise<StudioSamplePreview>;
   /** TEMPLATE-STUDIO-1 S-1 — the tenant letterhead logo (organization only). */
   readonly letterhead?: StudioLetterheadApi;
+  /** TEMPLATE-SYNC-1 — compare / start a draft from / keep, for an adopted template (organization only). */
+  readonly sync?: StudioSyncApi;
   /** TEMPLATE-STUDIO-1 S-1 — the Sections tab's static set (omit: the empty state, R-13). */
   readonly sections?: readonly StudioSection[];
   readonly capabilities: StudioCapabilities;

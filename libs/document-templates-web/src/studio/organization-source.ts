@@ -4,11 +4,14 @@ import {
   canAuthorTemplates,
   captureVersionLogo,
   createDraftFromActive,
+  createDraftFromMaster,
   createTemplateVersion,
   deleteDraftVersion,
   fetchTemplateCatalog,
   fetchTemplateLibrary,
   getDocumentTemplate,
+  getTemplateMasterContent,
+  keepTemplateVersion,
   listTemplateVersions,
   previewTemplateVersion,
   removeVersionLogo,
@@ -58,6 +61,10 @@ export interface OrganizationStudioApi {
   readonly captureLogo: typeof captureVersionLogo;
   readonly removeLogo: typeof removeVersionLogo;
   readonly logoUrl: typeof versionLogoUrl;
+  // TEMPLATE-SYNC-1 S-5 / S-7 / S-8.
+  readonly masterContent: typeof getTemplateMasterContent;
+  readonly draftFromMaster: typeof createDraftFromMaster;
+  readonly keepVersion: typeof keepTemplateVersion;
 }
 
 export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
@@ -75,6 +82,9 @@ export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
   captureLogo: captureVersionLogo,
   removeLogo: removeVersionLogo,
   logoUrl: versionLogoUrl,
+  masterContent: getTemplateMasterContent,
+  draftFromMaster: createDraftFromMaster,
+  keepVersion: keepTemplateVersion,
 };
 
 const field = (key: string): string => `<span data-field="${key}"></span>`;
@@ -149,6 +159,8 @@ function studioInfo(t: DocumentTemplateView, versions: readonly TemplateVersionV
     withdraw_effective_at: null,
     created_at: t.created_at,
     updated_at: t.updated_at,
+    // TEMPLATE-SYNC-1 S-3 — the server's flag, as returned.
+    master: t.master ?? null,
   };
 }
 
@@ -217,6 +229,13 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
       capture: (versionId) => api.captureLogo(versionId),
       remove: (versionId) => api.removeLogo(versionId),
       logoUrl: (versionId, assetId) => api.logoUrl(versionId, assetId),
+    },
+    // TEMPLATE-SYNC-1 S-6..S-8 — Compare and Start a draft for authors, Keep my version for
+    // approvers (document_template:manage); the server re-checks every scope.
+    sync: {
+      masterContent: (id) => api.masterContent(id),
+      draftFromMaster: async (id) => studioVersion(await api.draftFromMaster(id)),
+      ...(canApprove ? { keepVersion: (id: string) => api.keepVersion(id) } : {}),
     },
     sections: ORGANIZATION_STUDIO_SECTIONS,
     // TEMPLATE-PRODUCT-1 §6.4 — Properties shows the tags read-only (a tenant can't change them).

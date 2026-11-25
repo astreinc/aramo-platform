@@ -12,6 +12,8 @@
 import { RTR_HTML_V2 } from '@aramo/template-content';
 import { apiClient } from '@aramo/fe-foundation';
 
+import type { TemplateMaster, TemplateMasterContent } from './template-sync';
+
 const BASE = '/v1/document-templates';
 
 export const DOC_TEMPLATE_READ_SCOPE = 'document_template:read';
@@ -67,6 +69,9 @@ export interface DocumentTemplateView {
   // TEMPLATE-PRODUCT-1 §6.1 — the template's own product tags, server-written (copied from the
   // default at Adopt, else from the document type). Read-only for the tenant.
   readonly products?: readonly string[] | null;
+  // TEMPLATE-SYNC-1 S-3 — the server-computed master (null unless adopted; ADD-only, optional
+  // in this mirror). No client recomputes it.
+  readonly master?: TemplateMaster | null;
 }
 
 export interface TemplateVersionView {
@@ -190,6 +195,23 @@ export async function createDraftFromActive(templateId: string): Promise<Templat
   return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft`, {});
 }
 
+// TEMPLATE-SYNC-1 S-5 — the Aramo master's CURRENT version content of an adopted template
+// (GET /:id/master; document_template:read). 404 not_an_adopted_template / master_not_available.
+export async function getTemplateMasterContent(templateId: string): Promise<TemplateMasterContent> {
+  return apiClient.get<TemplateMasterContent>(`${BASE}/${encodeURIComponent(templateId)}/master`);
+}
+
+// TEMPLATE-SYNC-1 S-7 — start the next DRAFT from the master's new version (document_template:author).
+// 409 draft_exists while a draft is open; already_current / master_not_available.
+export async function createDraftFromMaster(templateId: string): Promise<TemplateVersionView> {
+  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft-from-master`, {});
+}
+
+// TEMPLATE-SYNC-1 S-8 — "Keep my version" for the master's current version (document_template:manage).
+export async function keepTemplateVersion(templateId: string): Promise<DocumentTemplateView> {
+  return apiClient.post<DocumentTemplateView>(`${BASE}/${encodeURIComponent(templateId)}/keep-version`, {});
+}
+
 // TEMPLATE-STUDIO-1 S-1 — open a DRAFT with the given content (POST /:id/versions;
 // document_template:author). Used when the template has no ACTIVE version to copy from.
 export async function createTemplateVersion(
@@ -266,6 +288,8 @@ export interface TemplateLibraryItem {
   readonly products: readonly string[] | null;
   readonly withdraw_effective_at: string | null;
   readonly configurable: boolean;
+  /** TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted own template (else null). */
+  readonly master?: TemplateMaster | null;
 }
 
 export interface TemplateDocumentType {
