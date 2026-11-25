@@ -281,7 +281,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         : (contentDoc(cur, content) ?? { title: d.name, blocks: [] });
       // TEMPLATE-FIELDS-1 — the version's inline field rows ride beside the blocks.
       reset(fields.length > 0 ? { ...base, fields } : base);
-      setLockedKeys(fields.map((f) => f.field_key));
+      // F-15 — the fields a tenant copy must keep are the markers of the loaded content (the server
+      // holds them equal to the rows, F-3), so the check stands even where the rows are not read.
+      setLockedKeys(inlineFieldKeysOf(base.blocks));
       loadedFieldKeys.current = fields.map((f) => f.field_key);
       savedEditRevRef.current = 0;
       setSavedEditRev(0);

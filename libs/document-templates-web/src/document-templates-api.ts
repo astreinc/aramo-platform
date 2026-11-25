@@ -10,9 +10,9 @@
 // :manage → approve (activate) and selections. A manage holder may author too.
 
 import { RTR_HTML_V2 } from '@aramo/template-content';
+import { apiClient } from '@aramo/fe-foundation';
 
 import type { StudioInlineFieldRow } from './studio/inline-fields';
-import { apiClient } from '@aramo/fe-foundation';
 
 import type { TemplateMaster, TemplateMasterContent } from './template-sync';
 

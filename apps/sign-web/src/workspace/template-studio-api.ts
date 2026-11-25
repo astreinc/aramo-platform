@@ -84,4 +84,8 @@ export const SIGN_STUDIO_API: OrganizationStudioApi = {
   masterContent: (id) => apiClient.get<TemplateMasterContent>(`${STUDIO}/${enc(id)}/master`),
   draftFromMaster: (id) => apiClient.post<TemplateVersionView>(`${STUDIO}/${enc(id)}/draft-from-master`, {}),
   keepVersion: (id) => apiClient.post<DocumentTemplateView>(`${STUDIO}/${enc(id)}/keep-version`, {}),
+  // TEMPLATE-FIELDS-1 F-15 — sign-service has no proxy for a version's field rows, so the Personal
+  // Studio reads none: the fields in an adopted template's text show as locked chips (by key) and
+  // the server keeps them (fields_platform_only); the preview still labels each field.
+  listFields: async () => ({ fields: [] }),
 };

@@ -111,7 +111,9 @@ export function InlineFieldDialog(p: InlineFieldDialogProps) {
       }}
     >
       <div className="pws-ifd" data-testid="inline-field-dialog">
-        {draft === null ? (
+        {draft === null && p.readOnly ? (
+          <p className="pws-ifd__head">This field is part of the template as Aramo published it.</p>
+        ) : draft === null ? (
           <div className="pws-ifd__palette" role="listbox" aria-label="Field type">
             {palette.map((e) => (
               <button key={e.type} type="button" role="option" aria-selected={false} className="pws-ifd__type" data-testid={`inline-field-type-${e.type}`} onClick={() => choose(e.type)}>
