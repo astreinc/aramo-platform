@@ -13,7 +13,7 @@ export {
   CURRENT_HTML_CONTENT_VERSION,
   isHtmlContentVersion,
   isContentDowngrade,
-  contentVersionRank,
+  contentVersionOrdinal,
   hasV2Features,
   allowsInlineFields,
   BLOCK_KINDS_V1,
