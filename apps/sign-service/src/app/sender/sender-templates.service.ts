@@ -4,7 +4,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { EsignSenderRepository, SignUserProfileRepository, type TemplateFieldInput, type TemplateRecipientInput } from '@aramo/sign';
-import { type SignTemplateFieldDefinition, type SignTemplateSigning } from '@aramo/documents-contracts';
+import { type SignTemplateFieldDefinition, type SignTemplateRenderResponse, type SignTemplateSigning } from '@aramo/documents-contracts';
 import { SignTemplateEntitlementService } from '@aramo/subscription';
 import { EMAIL_PATTERN, ENVELOPE_SUBJECT_MAX } from '@aramo/sign-client';
 import {
@@ -259,6 +259,16 @@ export class SenderTemplatesService {
       requestId,
     });
 
+    // TEMPLATE-FIELDS-1 F-12 — the single-signer path carries no field definitions, so a template
+    // with fields placed in its text is refused here (bind its signing roles instead), never sent
+    // without them. The frozen Document stays unused.
+    if ((rendered.inline_fields ?? []).length > 0) {
+      throw new AramoError('VALIDATION_ERROR', 'This template places fields for its signing roles. Add a recipient for each role instead.', 422, {
+        requestId,
+        details: { reason: 'signing_roles_required', keys: (rendered.inline_fields ?? []).map((f) => f.field_key) },
+      });
+    }
+
     // 2. A Sign console draft holding the frozen revision as its CORE_REF source.
     const title = rendered.title.slice(0, MAX_TITLE);
     const env = await this.repo.createDraft({
@@ -344,9 +354,12 @@ export class SenderTemplatesService {
       body: { values: input.values, created_by: auth.sub, client_id: null },
       requestId,
     });
+    // TEMPLATE-FIELDS-1 F-12 — a field placed in the text arrives with its render position, or
+    // the request is refused (never silently skipped).
+    assertInlineFieldsPlaced(rendered, requestId);
     // FIELD-PARITY-1 P1-4 — every signer field is carried with its settings, or the request is
     // refused before the envelope is created (the frozen Document stays unused).
-    assertTemplateFieldsCarried(rendered.field_definitions, requestId);
+    assertTemplateFieldsCarried(rendered.field_definitions, requestId, inlineKeysOf(rendered));
     // The signer roles the fields need. More than one ⇒ refused (the frozen Document stays unused).
     const needed = new Set<string>();
     for (const f of rendered.signature_fields) if (f.role_key !== undefined) needed.add(f.role_key);
@@ -387,8 +400,12 @@ export class SenderTemplatesService {
         if (!mine(f.role_key)) continue;
         fields.push({ envelope_document_id: doc.id, signer_id, field_type: f.field_type, page_number: f.page_number, x: f.x, y: f.y, width: f.width, height: f.height, required: true });
       }
+      const inlineSelf = inlineKeysOf(rendered);
       for (const d of rendered.field_definitions) {
-        if (d.signer_role === null || d.signer_role !== role) continue;
+        // TEMPLATE-FIELDS-1 F-7 — a sender-filled field in the text has no role: in self mode the
+        // sender is the signer.
+        const owner = d.signer_role ?? (inlineSelf.has(d.field_key) && d.sender_filled === true ? role : null);
+        if (owner === null || owner !== role) continue;
         if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
         fields.push({
           envelope_document_id: doc.id,
@@ -475,8 +492,11 @@ export class SenderTemplatesService {
     // role must receive one, else the request is refused before the envelope is created (the
     // frozen Document stays unused), never silently left without a field.
     if (rendered.template_kind === 'FIXED_FORM') assertFixedFormPlaceable(rendered.field_definitions, bound, requestId);
+    // TEMPLATE-FIELDS-1 F-12 — a field placed in the text arrives with its render position, or
+    // the request is refused (never silently skipped).
+    assertInlineFieldsPlaced(rendered, requestId);
     // FIELD-PARITY-1 P1-4 — every signer field is carried with its settings, or refused here.
-    assertTemplateFieldsCarried(rendered.field_definitions, requestId);
+    assertTemplateFieldsCarried(rendered.field_definitions, requestId, inlineKeysOf(rendered));
     // FIELD-PARITY-2 B-9 — every condition's trigger is carried too, and the carried set holds the
     // one cross-field rule (C-6 included: the drawn signature blocks count), or refused here.
     assertConditionsCarried(rendered.field_definitions, rendered.signature_fields, new Set(bound.filter((r) => r.recipient_kind === 'SIGNER').map((r) => r.role_key)), requestId);
@@ -505,15 +525,20 @@ export class SenderTemplatesService {
       fields.push({ envelope_document_id: doc.id, role_key: f.role_key, field_type: f.field_type, page_number: f.page_number, x: f.x, y: f.y, width: f.width, height: f.height, required: true });
     }
     // UPLOADED_PDF field definitions placed per role (TemplateFieldDefinition.signer_role).
+    // TEMPLATE-FIELDS-1 F-7 — a sender-filled field placed in the text has no role: it is attached
+    // to the first signing role (Sign stores every field on a recipient; the sender fills it).
+    const inlineMulti = inlineKeysOf(rendered);
+    const firstSigner = (signing?.roles ?? []).filter((r) => r.kind === 'SIGNER' && signerKeys.has(r.role_key)).sort((a, b) => a.order - b.order)[0]?.role_key ?? null;
     for (const d of rendered.field_definitions) {
-      if (d.signer_role === null || !signerKeys.has(d.signer_role)) continue;
+      const roleKey = d.signer_role ?? (inlineMulti.has(d.field_key) && d.sender_filled === true ? firstSigner : null);
+      if (roleKey === null || !signerKeys.has(roleKey)) continue;
       if (d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null) continue;
       // FIELD-PARITY-1 P1-4 / P3 — the template's settings, unchanged (SIGNER_NAME: NULL =
       // SIGNER_PROFILE); a CURRENCY / SIGNER_EMAIL field carried as its Sign type (R-9).
       const carried = carriedField(d);
       fields.push({
         envelope_document_id: doc.id,
-        role_key: d.signer_role,
+        role_key: roleKey,
         field_type: carried.field_type,
         page_number: d.page_number,
         x: d.x,
@@ -653,8 +678,32 @@ function assertFixedFormPlaceable(
 // format and SIGNER_EMAIL → EMAIL are carried; IMAGE is retired (template_field_type_retired). A
 // sender-filled field (S-5) is carried only while SIGN_SENDER_FILLED_FIELDS_ENABLED is on
 // (setting_reason sender_filled_not_available otherwise).
-function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[], requestId: string): void {
-  const signerFields = defs.filter((d) => d.signer_role !== null);
+// TEMPLATE-FIELDS-1 F-12 — the keys of the fields placed in the text of an editable template (the
+// render reports where it drew each one).
+function inlineKeysOf(rendered: Pick<SignTemplateRenderResponse, 'inline_fields'>): Set<string> {
+  return new Set((rendered.inline_fields ?? []).map((f) => f.field_key));
+}
+
+// TEMPLATE-FIELDS-1 F-12 (D-5) — for a template with fields in its text, a definition without a
+// position is refused 409 (field_not_placed) instead of being skipped silently.
+function assertInlineFieldsPlaced(rendered: Pick<SignTemplateRenderResponse, 'inline_fields' | 'field_definitions'>, requestId: string): void {
+  const inline = inlineKeysOf(rendered);
+  if (inline.size === 0) return;
+  const unplaced = rendered.field_definitions
+    .filter((d) => inline.has(d.field_key) || d.signer_role !== null || d.sender_filled === true)
+    .filter((d) => d.page_number === null || d.x === null || d.y === null || d.width === null || d.height === null)
+    .map((d) => d.field_key);
+  if (unplaced.length > 0) {
+    throw new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', 'A field in this template could not be placed. Ask your administrator to check the template.', 409, {
+      requestId,
+      details: { reason: 'field_not_placed', keys: unplaced },
+    });
+  }
+}
+
+function assertTemplateFieldsCarried(defs: readonly SignTemplateFieldDefinition[], requestId: string, inline: ReadonlySet<string> = new Set()): void {
+  // TEMPLATE-FIELDS-1 F-7 — a sender-filled field in the text (no role) is carried too.
+  const signerFields = defs.filter((d) => d.signer_role !== null || inline.has(d.field_key));
   const enabled = senderFilledFieldsEnabled(process.env);
   for (const d of signerFields) {
     if (RETIRED_TYPES.has(d.field_type)) {
