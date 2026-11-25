@@ -7,8 +7,8 @@ import { CompanyRepository } from '@aramo/company';
 import { IdentityRepository, TenantRepository } from '@aramo/identity';
 
 import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
+import { hasV2Features } from '@aramo/template-content';
 import {
-  RTR_HTML_SCHEMA_V2,
   collectFieldKeys,
   htmlWithSamples,
   isHtmlContent,
@@ -241,9 +241,9 @@ export class RtrTemplateBindingService {
       title: this.substitute(content.title, values, input.requestId),
       blocks: [],
       rich_blocks: toRichBlocks(res.nodes, value),
-      // TEMPLATE-CONTENT-2 C-9 — keep headings with the next block for v2 content only, so v1
-      // content keeps its exact layout.
-      ...(content.render_schema_version === RTR_HTML_SCHEMA_V2 ? { heading_keep_with_next: true } : {}),
+      // TEMPLATE-CONTENT-2 C-9 — keep headings with the next block for v2 (and v3, F-1) content only,
+      // so v1 content keeps its exact layout.
+      ...(hasV2Features(content.render_schema_version) ? { heading_keep_with_next: true } : {}),
       ...(letterhead !== undefined ? { letterhead } : {}),
       signature_block: { printed_name: values.get('talent.full_name') as string },
       // The bound content as allowlisted html (field nodes → <span data-sample> with the
