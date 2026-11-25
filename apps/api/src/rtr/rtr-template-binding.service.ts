@@ -5,10 +5,10 @@ import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
 import { CompanyRepository } from '@aramo/company';
 import { IdentityRepository, TenantRepository } from '@aramo/identity';
-
-import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
 import { hasV2Features } from '@aramo/template-content';
 import { type InlineFieldRowInput } from '@aramo/documents';
+
+import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
 import { hasInlineFields, inlineFieldBoxes } from './rtr-inline-fields.js';
 import {
   InlineFieldNotPlacedError,

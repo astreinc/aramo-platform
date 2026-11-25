@@ -78,4 +78,8 @@ export const SIGN_STUDIO_API: OrganizationStudioApi = {
   captureLogo: async () => unavailable(),
   removeLogo: async () => unavailable(),
   logoUrl: () => '',
+  // TEMPLATE-FIELDS-1 F-15 — sign-service has no proxy for a version's field rows, so the Personal
+  // Studio reads none: the fields in an adopted template's text show as locked chips (by key) and
+  // the server keeps them (fields_platform_only); the preview still labels each field.
+  listFields: async () => ({ fields: [] }),
 };

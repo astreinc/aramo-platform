@@ -3,6 +3,7 @@
 // than its space is refused; content without boxes is unchanged (the C-10 goldens in
 // rendering.spec.ts), and content with boxes has its own goldens here.
 import { describe, expect, it } from 'vitest';
+
 import { PdfLibDocumentRenderingAdapter, InlineFieldTooWideError, inlineFieldMaxWidth, layoutRuns, type RenderModel, type RichRun } from '../index.js';
 
 const adapter = new PdfLibDocumentRenderingAdapter();

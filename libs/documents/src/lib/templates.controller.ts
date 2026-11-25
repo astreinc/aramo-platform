@@ -19,7 +19,6 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 import { RETIRED_FIELD_TYPES, fieldConditionIssues, fieldTypesFor, parseTemplateFieldSettings, senderFilledFieldsEnabled, type FieldCondition } from '@aramo/sign-fields';
-
 import { isHtmlContentVersion } from '@aramo/template-content';
 
 import { TemplatesRepository, templateContentFingerprint } from './templates.repository.js';

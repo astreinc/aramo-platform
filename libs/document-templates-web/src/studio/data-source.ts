@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { isHtmlContentVersion } from '@aramo/template-content';
-
 import { CURRENT_HTML_CONTENT_VERSION } from '@aramo/template-content';
 
 import { RTR_GENERATED_SCHEMA_V1 } from '../document-templates-api';
