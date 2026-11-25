@@ -9727,6 +9727,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+      "status": "excluded",
+      "to": "libs/template-content/test-fixtures/inline-fields.json"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
