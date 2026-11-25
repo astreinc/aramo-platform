@@ -9727,6 +9727,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr14-b2-dossier-wire.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
