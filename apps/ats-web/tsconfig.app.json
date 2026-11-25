@@ -15,6 +15,7 @@
       "@aramo/org-admin-web": ["../../dist/libs/org-admin-web/src/index.d.ts"],
       "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"],
       "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"],
+      "@aramo/template-content": ["../../dist/libs/template-content/src/index.d.ts"],
       "@aramo/field-placement-web": ["../../dist/libs/field-placement-web/src/index.d.ts"]
     }
   },
