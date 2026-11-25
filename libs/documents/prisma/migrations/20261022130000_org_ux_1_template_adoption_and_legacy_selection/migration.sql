@@ -3,9 +3,12 @@
 --
 -- (1) ADD-not-rename provenance on DocumentTemplate: adopted_from_template_id and
 --     adopted_from_version_id (nullable UUID, NO foreign key, no cascade). Written once
---     when a tenant ADOPTS an Aramo default. Audit/provenance only: resolution, rendering
---     and every update path ignore them, so a later change to the Aramo default never
---     reaches the tenant's independent copy.
+--     when a tenant ADOPTS an Aramo default. TEMPLATE-SYNC-1 §0 (amends ORG-UX-1 §5.1,
+--     comment only, no SQL change): they may be read to tell a company that a newer master
+--     version exists, or that the master was withdrawn, and to start an update the company
+--     asks for. Resolution and rendering never read them. A master change never propagates
+--     into, overwrites or invalidates an adopted copy by itself: every update is a new DRAFT
+--     that the company previews and approves.
 -- (2) ADD-not-rename TenantTemplateSelection.legacy_platform (nullable BOOLEAN). The
 --     resolver honours a selection naming a PLATFORM template ONLY when it is true.
 -- (3) T-A GRANDFATHER (one guarded DO block, atomic): every tenant that resolves to an

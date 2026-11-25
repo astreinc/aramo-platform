@@ -253,11 +253,18 @@ model DocumentTemplate {
   withdraw_notice_at    DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
   withdraw_effective_at DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
   // ORG-UX-1 (LOCKED §5.1, Lead Correction B) — provenance of an ADOPTED tenant template:
-  // the Aramo default (and its version) the draft was copied from. AUDIT/PROVENANCE ONLY —
-  // never read by resolution, rendering or any update path, no FK, no cascade: later
-  // changes to the Aramo default never reach the tenant's independent copy.
+  // the Aramo default (and its version) the draft was copied from. Written once at adoption,
+  // no FK, no cascade. TEMPLATE-SYNC-1 §0 (amends §5.1): these columns, and
+  // TemplateVersion.based_on_platform_version_id, may be read to tell a company that a newer
+  // master version exists, or that the master was withdrawn, and to start an update the
+  // company asks for. They are still never read by resolution or rendering. A master change
+  // still never propagates into, overwrites or invalidates an adopted copy by itself: every
+  // update is a new DRAFT that the company previews and approves.
   adopted_from_template_id String? @db.Uuid
   adopted_from_version_id  String? @db.Uuid
+  // TEMPLATE-SYNC-1 S-1 (R-8) — "Keep my version": the master version the company chose to
+  // keep its copy against. The notice hides for that master version only. No FK.
+  sync_kept_platform_version_id String? @db.Uuid
   created_by            String    @db.Uuid
   created_at            DateTime  @default(now()) @db.Timestamptz
   updated_at            DateTime  @updatedAt @db.Timestamptz
@@ -268,6 +275,8 @@ model DocumentTemplate {
   @@index([tenant_id])
   @@index([tenant_id, document_type_id])
   @@index([owner_scope, document_type_id])
+  // TEMPLATE-SYNC-1 S-1 — the newer-version / withdrawal reads by master.
+  @@index([adopted_from_template_id])
   // DOC-TEMPLATE-LIB-1 T-6 — partial UNIQUE index DocumentTemplate_one_live_platform_default
   // (document_type_id) WHERE owner_scope='PLATFORM' AND status='ACTIVE' AND
   // withdraw_effective_at IS NULL (migration 20261021160000 — not expressible in Prisma).
@@ -307,6 +316,11 @@ model TemplateVersion {
   // Document Templates slice 1 (B1) — admin-only notes for this version (≤500 chars,
   // DB CHECK in the migration). DRAFT-editable; NEVER rendered into any document.
   internal_notes        String?
+  // TEMPLATE-SYNC-1 S-1 / S-2 (R-3) — the PLATFORM version a TENANT version's content came
+  // from: set by Adopt, by "Start a draft from the new version" (the master version used), and
+  // carried by a tenant's own new draft from its current version. No FK. Read only for the
+  // newer-version notice (§0); never by resolution or rendering.
+  based_on_platform_version_id String? @db.Uuid
 
   template              DocumentTemplate          @relation(fields: [template_id], references: [id], onDelete: Restrict)
   fields                TemplateFieldDefinition[]
@@ -314,6 +328,7 @@ model TemplateVersion {
   @@unique([template_id, version_number])
   @@index([tenant_id])
   @@index([tenant_id, template_id])
+  @@index([based_on_platform_version_id])
   // NOTE: the one-DRAFT partial unique index (tenant_id, template_id) WHERE
   // status='DRAFT' is defined in the migration (Prisma schema cannot express a
   // partial/WHERE index). It is the §41 race backstop. DOC-TEMPLATE-LIB-1 T-1 rebuilt

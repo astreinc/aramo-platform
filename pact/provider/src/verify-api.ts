@@ -634,6 +634,16 @@ const DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql',
 );
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-1 — TemplateVersion.based_on_platform_version_id and
+// DocumentTemplate.sync_kept_platform_version_id (ADD-not-rename, nullable UUID, no FK), the two
+// lineage indexes and the based_on backfill for adopted versions. Changes the returned shapes:
+// the template / version rows carry the new columns (the regenerated client SELECTs them) and the
+// Sign S2S studio / library items carry the server-computed `master` object → registered
+// (CLAUDE.md law); after the FIELD-PARITY-2 migration.
+const DOCUMENTS_TEMPLATE_SYNC_1_MASTER_LINEAGE_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261125120000_template_sync_1_master_lineage/migration.sql',
+);
 // FIELD-PARITY-1 P2-5 / P2-6 (fillable-PDF import, text tags) — NO migration: imported fields are
 // ordinary TemplateFieldDefinition rows (the P1-3 columns above). The only returned-shape change is
 // the optional `field_import` member of PUT …/fixed-form/pdf (openapi/platform.yaml
@@ -3807,6 +3817,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_FP1_TEMPLATE_FIELD_SETTINGS_MIGRATION,
         DOCUMENTS_FP1_P3_TEMPLATE_FIELD_TYPES_SETTINGS_MIGRATION,
         DOCUMENTS_FP2_TEMPLATE_FIELD_CONDITION_MIGRATION,
+        DOCUMENTS_TEMPLATE_SYNC_1_MASTER_LINEAGE_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
