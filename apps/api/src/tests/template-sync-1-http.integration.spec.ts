@@ -117,7 +117,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
     const rsv = withField ? 'rtr-html-v3' : 'rtr-html-v2';
     const body = withField ? html.replace('</p>', ` <span data-sign-field="${MASTER_FIELD.field_key}"></span></p>`) : html;
     const fs = { render_schema_version: rsv, title: 'Mutual NDA', html: body, ...(withField ? { signing: MASTER_SIGNING } : {}) };
-    const draft = await post(operatorJwt, `/platform/document-templates/${masterId}/versions`, { render_schema_version: rsv, field_schema: fs });
+    // The draft opens without the marker; the marker and its row are then saved together (a
+    // marker without its row is refused: field_marker_mismatch).
+    const opening = withField ? { ...fs, html } : fs;
+    const draft = await post(operatorJwt, `/platform/document-templates/${masterId}/versions`, { render_schema_version: rsv, field_schema: opening });
     expect(draft.status, JSON.stringify(draft.body)).toBe(201);
     const vid = draft.body['id'] as string;
     if (withField) {
@@ -214,7 +217,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TEMPLATE-SYNC-1 â
   it('compare content returns the v2 stored content only', async () => {
     const res = await get(jwtA, `/v1/document-templates/${copyA}/master`);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body).toMatchObject({ template_id: copyA, master_template_id: masterId, version_id: masterV2, version_number: 2, render_schema_version: 'rtr-html-v2', title: 'Mutual NDA', html: '<p>Master wording v2</p>' });
+    expect(res.body).toMatchObject({ template_id: copyA, master_template_id: masterId, version_id: masterV2, version_number: 2, render_schema_version: 'rtr-html-v3', title: 'Mutual NDA', html: '<p>Master wording v2 <span data-sign-field="nda_accepted"></span></p>' });
   });
 
   it('not_an_adopted_template: a template the company wrote itself', async () => {
