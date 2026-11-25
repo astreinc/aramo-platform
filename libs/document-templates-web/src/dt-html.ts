@@ -9,7 +9,21 @@
 // allowlist with no attributes other than data-field / data-asset (and, for server sample
 // previews only, data-sample) — so the result can be serialised safely.
 
-export type BlockKind = 'p' | 'h2' | 'ul' | 'ol';
+import {
+  LIST_MAX_DEPTH_V2,
+  PAGE_BREAK_ATTR,
+  PAGE_BREAK_VALUE,
+  RTR_HTML_V1,
+  RTR_HTML_V2,
+  type BlockKindV2,
+  type HtmlContentVersion,
+} from '@aramo/template-content';
+
+// TEMPLATE-CONTENT-2 (C-15) — the kinds are the rtr-html-v2 set (a superset of v1's p · h2 ·
+// ul · ol). Content sanitised as v1 (the default, every existing caller) only ever yields the
+// v1 kinds; the Studio sanitises as v2 and also gets h3 · h4 · table · hr · page_break.
+export type BlockKind = BlockKindV2;
+export type DocHtmlVersion = HtmlContentVersion;
 export interface HtmlBlock { readonly kind: BlockKind; readonly value: string } // value = canonical inner HTML
 
 export const LOGO_HTML = '<div data-asset="tenant.logo"></div>';
@@ -78,9 +92,94 @@ function trimBr(el: Element): void {
   while (el.lastChild != null && el.lastChild.nodeName === 'BR') el.removeChild(el.lastChild);
 }
 
-// Sanitize a whole stored document to canonical rtr-html-v1. Returns canonical HTML.
-export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean } = {}): string {
+// ── rtr-html-v2 structures (TEMPLATE-CONTENT-2 C-14, C-15) ───────────────
+function isListEl(n: Node): n is Element {
+  return n.nodeType === Node.ELEMENT_NODE && ((n as Element).tagName === 'UL' || (n as Element).tagName === 'OL');
+}
+
+// One list (any depth). Lists nest up to LIST_MAX_DEPTH_V2 levels; the items of a deeper list
+// are lifted into the deepest allowed list, after the item that held them (never dropped).
+function buildListV2(e: Element, depth: number, allowSample: boolean): HTMLElement {
+  const l = document.createElement(e.tagName.toLowerCase());
+  const addItem = (src: ArrayLike<Node>): void => {
+    const li = document.createElement('li');
+    const inline: Node[] = [];
+    const nested: Element[] = [];
+    for (const c of Array.from(src)) (isListEl(c) ? nested : inline).push(c as Element);
+    sanitizeInline(inline, li, allowSample);
+    trimBr(li);
+    l.appendChild(li);
+    for (const n of nested) {
+      if (depth < LIST_MAX_DEPTH_V2) {
+        const sub = buildListV2(n, depth + 1, allowSample);
+        if (sub.childNodes.length > 0) li.appendChild(sub);
+      } else {
+        for (const c of Array.from(n.childNodes)) {
+          if (c.nodeType === Node.TEXT_NODE && (c.textContent ?? '').trim() === '') continue;
+          addItem(c.nodeType === Node.ELEMENT_NODE && (c as Element).tagName === 'LI' ? c.childNodes : [c]);
+        }
+      }
+    }
+  };
+  for (const c of Array.from(e.childNodes)) {
+    if (c.nodeType === Node.TEXT_NODE && (c.textContent ?? '').trim() === '') continue;
+    addItem(c.nodeType === Node.ELEMENT_NODE && (c as Element).tagName === 'LI' ? c.childNodes : [c]);
+  }
+  return l;
+}
+
+// The rows of a table (through thead / tbody / tfoot; a nested table's rows are not its own).
+function tableRows(t: Element): Element[] {
+  const rows: Element[] = [];
+  const walk = (n: Element): void => {
+    for (const c of Array.from(n.children)) {
+      if (c.tagName === 'TR') rows.push(c);
+      else if (c.tagName === 'THEAD' || c.tagName === 'TBODY' || c.tagName === 'TFOOT') walk(c);
+    }
+  };
+  walk(t);
+  return rows;
+}
+
+// A table: rows of th / td cells with inline content only (C-1). Rows are padded to the widest
+// row so the editor always has a grid. No rows → no table.
+function buildTableV2(e: Element, allowSample: boolean): HTMLElement | null {
+  const rows = tableRows(e).map((tr) => Array.from(tr.children).filter((c) => c.tagName === 'TD' || c.tagName === 'TH'));
+  const width = Math.max(0, ...rows.map((r) => r.length));
+  if (rows.length === 0 || width === 0) return null;
+  const t = document.createElement('table');
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    for (let i = 0; i < width; i++) {
+      const src = r[i];
+      // A padding cell takes the row's own cell type (a header row stays all th).
+      const cell = document.createElement((src ?? r[r.length - 1])?.tagName === 'TH' ? 'th' : 'td');
+      if (src !== undefined) sanitizeInline(src.childNodes, cell, allowSample);
+      trimBr(cell);
+      tr.appendChild(cell);
+    }
+    t.appendChild(tr);
+  }
+  return t;
+}
+
+function hrBlock(e: Element): HTMLElement {
+  const hr = document.createElement('hr');
+  if (e.getAttribute(PAGE_BREAK_ATTR) === PAGE_BREAK_VALUE) hr.setAttribute(PAGE_BREAK_ATTR, PAGE_BREAK_VALUE);
+  return hr;
+}
+
+function headingTag(tag: string, v2: boolean): 'h2' | 'h3' | 'h4' {
+  if (!v2 || tag === 'H1' || tag === 'H2') return 'h2';
+  return tag === 'H3' ? 'h3' : 'h4';
+}
+
+// Sanitize a whole stored document to canonical rtr-html-v1 (default) or rtr-html-v2. v1 output
+// is exactly what it was before TEMPLATE-CONTENT-2; v2 also keeps h3 / h4, tables, dividers,
+// page breaks and lists two levels deep. Returns canonical HTML.
+export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean; version?: DocHtmlVersion } = {}): string {
   const allowSample = opts.allowSample === true;
+  const v2 = opts.version === RTR_HTML_V2;
   const out = document.createElement('div');
   let openP: HTMLElement | null = null;
   let openList: HTMLElement | null = null;
@@ -98,10 +197,28 @@ export function sanitizeDocHtml(html: string, opts: { allowSample?: boolean } = 
         }
         if (tag === 'P' || /^H[1-6]$/.test(tag)) {
           closeOpen();
-          const b = document.createElement(tag === 'P' ? 'p' : 'h2');
+          const b = document.createElement(tag === 'P' ? 'p' : headingTag(tag, v2));
           sanitizeInline(e.childNodes, b, allowSample);
           trimBr(b);
           out.appendChild(b);
+          continue;
+        }
+        if (v2 && (tag === 'UL' || tag === 'OL')) {
+          closeOpen();
+          const l = buildListV2(e, 1, allowSample);
+          if (l.childNodes.length === 0) l.appendChild(document.createElement('li'));
+          out.appendChild(l);
+          continue;
+        }
+        if (v2 && tag === 'TABLE') {
+          closeOpen();
+          const t = buildTableV2(e, allowSample);
+          if (t !== null) out.appendChild(t);
+          continue;
+        }
+        if (v2 && tag === 'HR') {
+          closeOpen();
+          out.appendChild(hrBlock(e));
           continue;
         }
         if (tag === 'UL' || tag === 'OL') {
@@ -148,12 +265,26 @@ export function sanitizePastedInline(html: string): string {
   return out.innerHTML;
 }
 
+// The element a block kind is stored as.
+function blockTag(kind: BlockKind): string {
+  return kind === 'page_break' ? 'hr' : kind;
+}
+
+// The canonical inner HTML of a parsed element. Re-parsing `<table><tr>` makes the HTML parser
+// insert a <tbody>; the canonical form (the server's too) has rows directly in the table.
+function innerOf(e: Element): string {
+  return e.tagName === 'TABLE' ? e.innerHTML.replace(/<\/?(?:tbody|thead|tfoot)>/g, '') : e.innerHTML;
+}
+
 // Canonical inner HTML of one block (marks merged, empties dropped, trailing <br> trimmed).
-export function canonicalInner(kind: BlockKind, inner: string): string {
-  const html = sanitizeDocHtml(`<${kind}>${inner}</${kind}>`);
+// Dividers and page breaks have no inner HTML; a table's is its rows.
+export function canonicalInner(kind: BlockKind, inner: string, version: DocHtmlVersion = RTR_HTML_V1): string {
+  if (kind === 'hr' || kind === 'page_break') return '';
+  const tag = blockTag(kind);
+  const html = sanitizeDocHtml(`<${tag}>${inner}</${tag}>`, { version: kind === 'table' || kind === 'h3' || kind === 'h4' ? RTR_HTML_V2 : version });
   const first = parseFragment(html).firstElementChild;
   if (first == null) return kind === 'ul' || kind === 'ol' ? '<li></li>' : '';
-  return mergeMarks(first.innerHTML);
+  return mergeMarks(innerOf(first));
 }
 function mergeMarks(s: string): string {
   let prev = '';
@@ -162,24 +293,32 @@ function mergeMarks(s: string): string {
   return cur;
 }
 
-// Stored document → editor model.
-export function htmlToBlocks(html: string): { logo: boolean; blocks: HtmlBlock[] } {
-  const clean = sanitizeDocHtml(html);
+// Stored document → editor model (v1 by default; the Studio reads v2).
+export function htmlToBlocks(html: string, version: DocHtmlVersion = RTR_HTML_V1): { logo: boolean; blocks: HtmlBlock[] } {
+  const clean = sanitizeDocHtml(html, { version });
   let logo = false;
   const blocks: HtmlBlock[] = [];
   for (const c of Array.from(parseFragment(clean).children)) {
     if (isLogoDiv(c)) { logo = true; continue; }
-    const kind = c.tagName.toLowerCase() as BlockKind;
-    blocks.push({ kind, value: mergeMarks(c.innerHTML) });
+    const tag = c.tagName.toLowerCase();
+    if (tag === 'hr') { blocks.push({ kind: c.getAttribute(PAGE_BREAK_ATTR) === PAGE_BREAK_VALUE ? 'page_break' : 'hr', value: '' }); continue; }
+    blocks.push({ kind: tag as BlockKind, value: mergeMarks(innerOf(c)) });
   }
   return { logo, blocks };
 }
+// One block → its stored HTML.
+export function blockToHtml(b: HtmlBlock): string {
+  if (b.kind === 'hr') return '<hr>';
+  if (b.kind === 'page_break') return `<hr ${PAGE_BREAK_ATTR}="${PAGE_BREAK_VALUE}">`;
+  return `<${b.kind}>${b.value}</${b.kind}>`;
+}
 // Editor model → stored document (joined HTML, no ids).
 export function blocksToHtml(logo: boolean, blocks: readonly HtmlBlock[]): string {
-  return (logo ? LOGO_HTML : '') + blocks.map((b) => `<${b.kind}>${b.value}</${b.kind}>`).join('');
+  return (logo ? LOGO_HTML : '') + blocks.map(blockToHtml).join('');
 }
 
 // Convert a block's value between kinds (H / • / 1. toggles).
+// Text kinds only: tables, dividers and page breaks are inserted, never converted.
 export function convertKind(value: string, from: BlockKind, to: BlockKind): string {
   const isList = (k: BlockKind) => k === 'ul' || k === 'ol';
   if (isList(from) === isList(to)) return value;
@@ -187,7 +326,12 @@ export function convertKind(value: string, from: BlockKind, to: BlockKind): stri
     const lines = value.split(/<br\s*\/?>/i);
     return lines.map((l) => `<li>${l}</li>`).join('') || '<li></li>';
   }
-  const items = Array.from(parseFragment(value).children).filter((c) => c.tagName === 'LI').map((li) => li.innerHTML).filter((s) => s !== '');
+  // Every item, nested ones included, becomes one line.
+  const items = Array.from(parseFragment(value).querySelectorAll('li')).map((li) => {
+    const c = li.cloneNode(true) as Element;
+    c.querySelectorAll('ul,ol').forEach((n) => n.remove());
+    return c.innerHTML;
+  }).filter((s) => s !== '');
   return canonicalInner(to, items.join('<br>'));
 }
 
@@ -262,7 +406,10 @@ export function toggleMark(root: HTMLElement, range: Range | null, tag: 'b' | 'i
     marks.forEach(unwrap);
     return marks.length > 0;
   }
-  const lists = Array.from(root.querySelectorAll('li')).filter((li) => r.intersectsNode(li));
+  // Each list item / table cell (the Studio's `[data-cell]` editor) is wrapped on its own; with
+  // nested lists only the innermost items are wrapped, so a mark never swallows a nested list.
+  const hit = Array.from(root.querySelectorAll('li,[data-cell]')).filter((li) => r.intersectsNode(li));
+  const lists = hit.filter((li) => !hit.some((o) => o !== li && li.contains(o)));
   const containers: Element[] = lists.length > 0 ? lists : [root];
   const wrapped: Element[] = [];
   for (const c of containers) {

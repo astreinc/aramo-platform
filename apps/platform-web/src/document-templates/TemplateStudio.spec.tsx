@@ -224,8 +224,10 @@ describe('TemplateStudio (manage)', () => {
     expect(empty.textContent).toBe('');
     fireEvent.keyDown(empty, { key: '/' });
     const menu = screen.getByRole('menu', { name: 'Blocks' });
-    expect(within(menu).getByRole('menuitem', { name: /Subheading \(H3\)/ })).toHaveAttribute('aria-disabled', 'true');
-    expect(within(menu).getByRole('menuitem', { name: /Table/ })).toHaveAttribute('aria-disabled', 'true');
+    // TEMPLATE-CONTENT-2 (C-12) — subheadings, tables, dividers and page breaks are enabled.
+    for (const name of [/Subheading \(H3\)/, /Small heading \(H4\)/, /^Table/, /^Divider/, /^Page break/]) {
+      expect(within(menu).getByRole('menuitem', { name })).toHaveAttribute('aria-disabled', 'false');
+    }
     fireEvent.mouseDown(within(menu).getByRole('menuitem', { name: /^Heading/ }));
     expect(screen.queryByRole('menu', { name: 'Blocks' })).toBeNull();
     expect(blockEls()[2]).toHaveAttribute('data-kind', 'h2');

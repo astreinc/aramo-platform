@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { ENVELOPE_MESSAGE_MAX, ENVELOPE_SUBJECT_MAX, templateAccess, type TemplateAccess } from '@aramo/sign-client';
+import { contentPreviewIframeDoc } from '@aramo/template-content';
 
 import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
 import { Area, Btn, Empty, ErrorBox, Field, Loading, Sel, TextIn, fmtDate } from '../ui';
@@ -215,7 +216,7 @@ function PreviewPanel({ template, values }: { template: SenderTemplate; values: 
         {preview.title}
       </h2>
       {preview.html !== null ? (
-        <iframe title={`Preview of ${template.name}`} sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 320, border: '1px solid var(--line)' }} />
+        <iframe title={`Preview of ${template.name}`} sandbox="" srcDoc={contentPreviewIframeDoc(preview.html)} style={{ width: '100%', minHeight: 320, border: '1px solid var(--line)' }} />
       ) : (
         preview.blocks.map((b, i) =>
           b.type === 'HEADING' ? (

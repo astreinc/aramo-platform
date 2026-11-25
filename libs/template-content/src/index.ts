@@ -40,6 +40,8 @@ export {
   VARIABLE_CATALOG_KEY_RE,
   VARIABLE_CATALOG_KEY_MAX,
   CONTENT_REFUSAL_REASONS,
+  CONTENT_PREVIEW_IFRAME_STYLE,
+  contentPreviewIframeDoc,
   type HtmlContentVersion,
   type BlockKindV1,
   type BlockKindV2,

@@ -44,6 +44,7 @@ export {
   adoptTemplate,
   RIGHT_TO_REPRESENT_TYPE_ID,
   RTR_HTML_SCHEMA_V1,
+  RTR_HTML_SCHEMA_V2,
   RTR_GENERATED_SCHEMA_V1,
   listDocumentTemplates,
   getDocumentTemplate,

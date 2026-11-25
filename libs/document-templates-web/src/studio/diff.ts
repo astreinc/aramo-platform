@@ -70,7 +70,7 @@ export function wordDiff(a: string, b: string): { L: DiffSeg[]; R: DiffSeg[] } {
 
 export type RowKind = 'same' | 'add' | 'del' | 'chg';
 export interface DiffBlock {
-  readonly kind: string; // block kind (p · h2 · ul · ol)
+  readonly kind: string; // block kind (p · h2 · h3 · h4 · ul · ol · table · hr · page_break)
   readonly text: string; // plain text, variables as {{key}}
 }
 export interface DiffRowModel {

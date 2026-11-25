@@ -161,7 +161,7 @@ function renderHtmlDom(el: HTMLElement, value: string, map: BindingMap, kind: Bl
   if (isList(kind) && host.childNodes.length === 0) host.appendChild(document.createElement('li'));
 }
 
-function serializeInlineHtml(n: Node, map: BindingMap): string {
+export function serializeInlineHtml(n: Node, map: BindingMap): string {
   let out = '';
   n.childNodes.forEach((c) => {
     if (c.nodeType === Node.TEXT_NODE) { out += escapeText((c.textContent ?? '').replace(/\u00a0/g, ' ').replace(/[\r\n]+/g, ' ')); return; }

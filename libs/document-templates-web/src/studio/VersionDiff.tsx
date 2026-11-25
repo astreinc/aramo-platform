@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { Button, Checkbox, Dialog, DialogClose, Select } from '@aramo/fe-foundation';
 
+import { isStudioHeadingKind } from '../studio-codec';
+
 import { useReturnFocus } from './primitives';
 import { blockDiff, diffStats, type DiffBlock, type DiffSeg, type RowKind } from './diff';
 
@@ -117,8 +119,8 @@ export function VersionDiff(props: VersionDiffProps) {
                 <span aria-hidden="true">{MARK[r.kind]}</span>
                 <span className="pws-sr">{SR[r.kind]}</span>
               </span>
-              <div className={`pws-drow__l${r.lt === 'h2' ? ' pws-drow--h' : ''}`}>{r.L.length === 0 ? <span className="pws-drow__none">—</span> : <Segs segs={r.L} />}</div>
-              <div className={`pws-drow__r${r.rt === 'h2' ? ' pws-drow--h' : ''}`}>{r.R.length === 0 ? <span className="pws-drow__none">—</span> : <Segs segs={r.R} />}</div>
+              <div className={`pws-drow__l${isStudioHeadingKind(r.lt) ? ' pws-drow--h' : ''}`}>{r.L.length === 0 ? <span className="pws-drow__none">—</span> : <Segs segs={r.L} />}</div>
+              <div className={`pws-drow__r${isStudioHeadingKind(r.rt) ? ' pws-drow--h' : ''}`}>{r.R.length === 0 ? <span className="pws-drow__none">—</span> : <Segs segs={r.R} />}</div>
             </div>
           ))}
           {identical && props.changesOnly ? <div className="pws-cmp__same">These two versions have identical content.</div> : null}

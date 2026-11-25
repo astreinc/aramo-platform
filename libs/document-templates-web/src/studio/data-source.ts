@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import { isHtmlContentVersion } from '@aramo/template-content';
 
-import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V1 } from '../document-templates-api';
+import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V2 } from '../document-templates-api';
 import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, studioValueFromText, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
 
 import type { PillSpec } from './primitives';
@@ -25,8 +26,11 @@ import type { Readiness } from './readiness';
 //   • optionally the content codec (the tenant letterhead block, A1).
 // The server stays authoritative for every rule; capabilities only hide controls.
 
-/** The editable content contract (rtr-html-v1). */
-export const STUDIO_HTML_CONTENT_VERSION = RTR_HTML_SCHEMA_V1;
+/**
+ * The editable content contract the Studio WRITES: rtr-html-v2 (TEMPLATE-CONTENT-2 C-4). It
+ * reads v1 and v2; saving v1 content here upgrades it (v2 is a strict superset).
+ */
+export const STUDIO_HTML_CONTENT_VERSION = RTR_HTML_SCHEMA_V2;
 
 export type StudioVersionStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -395,7 +399,7 @@ function legacyGeneratedContentOf(field_schema: unknown): { title: string; html:
 /** The editable html content of a version (null when it is another content version). */
 export function studioHtmlContentOf(v: Pick<StudioVersion, 'render_schema_version' | 'field_schema'>): { title: string; html: string } | null {
   if (v.render_schema_version === RTR_GENERATED_SCHEMA_V1) return legacyGeneratedContentOf(v.field_schema);
-  if (v.render_schema_version !== STUDIO_HTML_CONTENT_VERSION) return null;
+  if (!isHtmlContentVersion(v.render_schema_version)) return null;
   const fs = v.field_schema as { title?: unknown; html?: unknown } | null;
   if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || typeof fs.html !== 'string') return null;
   return { title: fs.title, html: fs.html };

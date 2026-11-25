@@ -22,11 +22,18 @@ export const MEASURED_GAP_PX = 12;
  * design, a block's height is its MEASURED editor height plus 12px when the editor's
  * blocks were measured (one height per block); otherwise it is estimated from its text.
  */
-export function paginate(texts: readonly string[], measured?: readonly number[] | null): number[][] {
+export function paginate(texts: readonly string[], measured?: readonly number[] | null, breaks?: readonly boolean[] | null): number[][] {
   const pages: number[][] = [[]];
   let h = FIRST_PAGE_OFFSET_PX;
   const useMeasured = measured != null && measured.length === texts.length;
   texts.forEach((t, i) => {
+    // TEMPLATE-CONTENT-2 (C-11) — a page break ends its page; the next block starts a new one.
+    if (breaks?.[i] === true) {
+      (pages[pages.length - 1] as number[]).push(i);
+      pages.push([]);
+      h = 0;
+      return;
+    }
     const bh = useMeasured ? (measured[i] as number) + MEASURED_GAP_PX : estimateBlockHeight(t);
     const cur = pages[pages.length - 1] as number[];
     if (h + bh > PAGE_BODY_PX && cur.length > 0) {
@@ -37,6 +44,8 @@ export function paginate(texts: readonly string[], measured?: readonly number[] 
     cur.push(i);
     h += bh;
   });
+  // A break at the very end leaves no empty page behind it.
+  if (pages.length > 1 && (pages[pages.length - 1] as number[]).length === 0) pages.pop();
   return pages;
 }
 

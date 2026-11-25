@@ -9,6 +9,8 @@ import {
   createStudioCodec,
   studioBlocksFromHtml,
   studioLetterheadState,
+  isStudioHeadingKind,
+  studioBlockText,
   studioPlainText,
   studioVariableKeys,
   type StudioLetterheadState,
@@ -30,7 +32,8 @@ import {
 import { formatDate, formatDateRelative } from './format-date';
 import { Pill, SkeletonPanel } from './primitives';
 import { blockDiff, diffStats, type DiffBlock } from './diff';
-import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlockId, removeVariableEverywhere, type StudioDoc } from './doc-ops';
+import { contentRefusalMessage } from './content-refusals';
+import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlockId, removeVariableEverywhere, convertTypedPlaceholderEverywhere, type StudioDoc } from './doc-ops';
 import { deriveReadiness } from './readiness';
 import { StudioCanvas, type CanvasHandle } from './StudioCanvas';
 import { StudioInspector, type PropertiesPatch, type RightTab } from './StudioInspector';
@@ -92,7 +95,7 @@ function contentDoc(v: TemplateVersion | null, content: StudioContentCodec): Stu
   return signing !== null ? { ...base, signing } : base;
 }
 function diffBlocksOf(blocks: StudioDoc['blocks']): DiffBlock[] {
-  return blocks.map((b) => ({ kind: b.kind, text: studioPlainText(b.value) }));
+  return blocks.map((b) => ({ kind: b.kind, text: studioBlockText(b) }));
 }
 /** What the host's account slot receives (TEMPLATE-STUDIO-1 S-0). */
 export interface StudioAccountSlot {
@@ -154,7 +157,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return docType !== null && base.forDocumentType !== undefined ? { ...base, ...base.forDocumentType(docType) } : base;
   }, [ds.copy, docType]);
   const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
-  const templateErrorMessage = formatError;
+  // TEMPLATE-CONTENT-2 — content refusals are worded once, here; anything else is the host's.
+  const templateErrorMessage = useCallback((e: unknown, fallback: string) => contentRefusalMessage(e) ?? formatError(e, fallback), [formatError]);
   const hasWithdrawal = ds.withdraw !== undefined;
   const showVersions = ds.capabilities.versions !== false;
   const showModeToggle = ds.capabilities.modeToggle !== false;
@@ -560,6 +564,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     change((d) => ({ ...d, blocks: removeVariableEverywhere(d.blocks, key) }));
     toast(`Removed {{${key}}} from the draft.`);
   };
+  const convertTyped = (key: string): void => {
+    change((d) => ({ ...d, blocks: convertTypedPlaceholderEverywhere(d.blocks, key) }));
+    toast(`Converted {{${key}}} to a variable.`);
+  };
   const copyPublished = (): void => {
     const src = currentDoc;
     if (src === null) return;
@@ -795,7 +803,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const leftOverlay = width < LEFT_BP;
   const rightOverlay = width < RIGHT_BP;
   const cols = `${leftOpen && !leftOverlay ? '272px ' : ''}minmax(0,1fr)${rightOpen && !rightOverlay ? ' 328px' : ''}`;
-  const headings = doc.blocks.filter((b) => b.kind === 'h2').length;
+  const headings = doc.blocks.filter((b) => isStudioHeadingKind(b.kind)).length;
 
   const readerSource: PreviewSource | null = (() => {
     if (readerPreview !== null) {
@@ -1088,6 +1096,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             onInsert={(key) => canvasRef.current?.insertVariable(key)}
             drag={drag}
             onFix={removeVar}
+            onConvert={convertTyped}
             template={detail}
             docTypeName={docTypeName}
             withdrawal={withdrawal}

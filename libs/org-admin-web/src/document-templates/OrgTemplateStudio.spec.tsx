@@ -391,7 +391,8 @@ describe('Org Studio — explicit Create new version (directive §1.4, §3.4)', 
     expect(create).toHaveTextContent('Create new version v3');
     fireEvent.click(create);
     await waitFor(() => expect(api.createDraftFromActive).toHaveBeenCalledWith('tpl-1'));
-    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledWith('d3', expect.objectContaining({ render_schema_version: 'rtr-html-v1' })));
+    // TEMPLATE-CONTENT-2 (C-4) — the Studio saves rtr-html-v2.
+    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledWith('d3', expect.objectContaining({ render_schema_version: 'rtr-html-v2' })));
     expect(api.createVersion).not.toHaveBeenCalled();
     expect(await screen.findByText('Draft v3 created. Nothing changes until it’s approved.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('studio-create-version')).toBeNull());
@@ -447,7 +448,7 @@ describe('Org Studio — an active version in the pre-Studio format (rtr-generat
   };
   const LEGACY_V2 = version('v2', 2, 'ACTIVE', '', { render_schema_version: 'rtr-generated-v1', field_schema: LEGACY_FS });
 
-  it('opens with its content, and Create new version stores it as rtr-html-v1', async () => {
+  it('opens with its content, and Create new version stores it as rtr-html-v2', async () => {
     const api = makeApi([LEGACY_V2, V1]);
     renderStudio(MANAGER, api);
     await screen.findByDisplayValue('Right to Represent');
@@ -458,7 +459,7 @@ describe('Org Studio — an active version in the pre-Studio format (rtr-generat
       expect(api.updateDraft).toHaveBeenCalledWith(
         'd3',
         expect.objectContaining({
-          render_schema_version: 'rtr-html-v1',
+          render_schema_version: 'rtr-html-v2',
           field_schema: expect.objectContaining({ html: BODY }),
         }),
       ),

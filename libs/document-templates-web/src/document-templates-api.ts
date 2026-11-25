@@ -9,6 +9,7 @@
 // view; :author → adopt / create / edit, preview and discard drafts / logo / fields;
 // :manage → approve (activate) and selections. A manage holder may author too.
 
+import { RTR_HTML_V2 } from '@aramo/template-content';
 import { apiClient } from '@aramo/fe-foundation';
 
 const BASE = '/v1/document-templates';
@@ -41,6 +42,9 @@ export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
 // Amendment A1 — allowlisted-HTML content (field_schema { render_schema_version, title, html }).
 // New drafts copied from a v1 ACTIVE arrive as rtr-html-v1; an existing v1 DRAFT stays v1.
 export const RTR_HTML_SCHEMA_V1 = 'rtr-html-v1';
+// TEMPLATE-CONTENT-2 (C-4) — the version the Studio writes (h3 / h4, tables, dividers, page
+// breaks, two-level lists). The value comes from the shared rules.
+export const RTR_HTML_SCHEMA_V2: string = RTR_HTML_V2;
 
 export type TemplateStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -348,8 +352,8 @@ export async function createOwnTemplate(input: {
     ...(input.description !== undefined && input.description.length > 0 ? { description: input.description } : {}),
   });
   const draft = await apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(template.id)}/versions`, {
-    render_schema_version: RTR_HTML_SCHEMA_V1,
-    field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: input.name, html: '' },
+    render_schema_version: RTR_HTML_SCHEMA_V2,
+    field_schema: { render_schema_version: RTR_HTML_SCHEMA_V2, title: input.name, html: '' },
   });
   return { template, draft };
 }

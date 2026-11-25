@@ -120,6 +120,24 @@ export const CONTENT_KEY_RE = /^[A-Za-z0-9_.]+$/;
 export const VARIABLE_CATALOG_KEY_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 export const VARIABLE_CATALOG_KEY_MAX = 64;
 
+// ── Raw preview html in a sandboxed iframe (C-11) ────────────────────────────
+
+/**
+ * The minimal table / divider / page-break styles for a host that shows the server's preview
+ * html in a sandboxed iframe (no scripts; CSS only). Only these rules are added, so v1 content
+ * looks exactly as before.
+ */
+export const CONTENT_PREVIEW_IFRAME_STYLE =
+  '<style>table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 10px}' +
+  'th,td{border:1px solid #c9d2d8;padding:4px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}' +
+  'th{background:#f3f5f7;font-weight:700}hr{border:0;border-top:1px solid #c9d2d8;margin:12px 0}' +
+  'hr[data-break="page"]{border-top:1px dashed #93a0a8;margin:18px 0}li>ul,li>ol{margin:2px 0 0}</style>';
+
+/** Preview html for a sandboxed iframe's srcDoc, with CONTENT_PREVIEW_IFRAME_STYLE in front. */
+export function contentPreviewIframeDoc(html: string): string {
+  return CONTENT_PREVIEW_IFRAME_STYLE + html;
+}
+
 // ── Refusal reasons (C-3.8; stable) ──────────────────────────────────────────
 
 export const CONTENT_REFUSAL_REASONS = [

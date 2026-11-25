@@ -78,7 +78,8 @@ describe('studio codec — round trip (blocks → rtr-html-v1 → blocks)', () =
     const blocks = studioBlocksFromHtml('<p onclick="x()">Hi <script>alert(1)</script><strong>B</strong></p><h3>Sub</h3><div data-asset="tenant.logo"></div>', newId);
     expect(blocks.map((b) => [b.kind, b.value])).toEqual([
       ['p', 'Hi <b>B</b>'],
-      ['h2', 'Sub'],
+      // TEMPLATE-CONTENT-2 — the Studio reads rtr-html-v2: an h3 stays a subheading.
+      ['h3', 'Sub'],
     ]);
   });
 });

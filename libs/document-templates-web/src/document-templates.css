@@ -370,6 +370,16 @@
 .dt-doc h2:first-child { margin-top: 0; }
 .dt-doc ul, .dt-doc ol { margin: 0 0 11px; padding-left: 22px; }
 .dt-doc li { margin: 2px 0; }
+/* TEMPLATE-CONTENT-2 (C-11) — rtr-html-v2 blocks */
+.dt-doc h3 { font-size: 14px; font-weight: 700; margin: 12px 0 5px; }
+.dt-doc h4 { font-size: 13.5px; font-weight: 700; margin: 10px 0 4px; }
+.dt-doc li > ul, .dt-doc li > ol { margin: 2px 0 0; }
+.dt-doc .dt-tbl { width: 100%; border-collapse: collapse; margin: 0 0 11px; table-layout: fixed; }
+.dt-doc .dt-tbl th, .dt-doc .dt-tbl td { border: 1px solid #c9d2d8; padding: 4px 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.dt-doc .dt-tbl th { font-weight: 700; background: #f3f5f7; }
+.dt-doc .dt-hr { border: 0; border-top: 1px solid #c9d2d8; margin: 12px 0; }
+.dt-doc .dt-pb { display: flex; align-items: center; gap: 8px; margin: 14px 0; color: #6b7a84; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.dt-doc .dt-pb::before, .dt-doc .dt-pb::after { content: ''; flex: 1; border-top: 1px dashed #93a0a8; }
 .dt-doc p:last-child { margin-bottom: 0; }
 .dt-chip { gap: 4px; }
 .dt-chip--block { display: flex; width: fit-content; margin: 6px 0; }

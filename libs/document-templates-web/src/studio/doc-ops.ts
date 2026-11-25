@@ -1,6 +1,12 @@
 import {
   appendStudioVariable,
+  chipTypedPlaceholder,
   convertStudioValue,
+  studioTypedPlaceholderKeys,
+  isStudioTextKind,
+  isStudioValueEmpty,
+  makeStudioTable,
+  studioTableValue,
   removeStudioVariable,
   studioValueFromText,
   type StudioBlock,
@@ -38,7 +44,20 @@ export function newBlockId(): string {
 }
 
 export function makeBlock(kind: StudioBlockKind, value = ''): StudioBlock {
+  if (kind === 'table') return { id: newBlockId(), kind, value: value || studioTableValue(makeStudioTable(3, 2)) };
+  if (kind === 'hr' || kind === 'page_break') return { id: newBlockId(), kind, value: '' };
   return { id: newBlockId(), kind, value: kind === 'ul' || kind === 'ol' ? value || '<li></li>' : value };
+}
+
+/**
+ * TEMPLATE-CONTENT-2 — place an inserted block (a table, divider or page break) at `atId`:
+ * it REPLACES that block when it is an empty text block (the "/" menu on an empty line),
+ * otherwise it goes below it (or at the end).
+ */
+export function placeBlock(blocks: readonly StudioBlock[], add: StudioBlock, atId?: string | null): StudioBlock[] {
+  const at = atId ? blocks.find((b) => b.id === atId) : undefined;
+  if (at !== undefined && isStudioTextKind(at.kind) && isStudioValueEmpty(at.value)) return blocks.map((b) => (b.id === at.id ? add : b));
+  return insertBlocks(blocks, [add], atId);
 }
 
 export function blockFromText(kind: StudioBlockKind, text: string): StudioBlock {
@@ -86,8 +105,10 @@ export function shiftBlock(blocks: readonly StudioBlock[], id: string, dir: -1 |
   return out;
 }
 
+/** Turn a text block into another text kind (tables, dividers and page breaks never convert). */
 export function setBlockKind(blocks: readonly StudioBlock[], id: string, kind: StudioBlockKind): StudioBlock[] {
-  return blocks.map((b) => (b.id === id && b.kind !== kind ? { ...b, kind, value: convertStudioValue(b.value, b.kind, kind) } : b));
+  if (!isStudioTextKind(kind)) return [...blocks];
+  return blocks.map((b) => (b.id === id && b.kind !== kind && isStudioTextKind(b.kind) ? { ...b, kind, value: convertStudioValue(b.value, b.kind, kind) } : b));
 }
 
 export function setBlockValue(blocks: readonly StudioBlock[], id: string, value: string): StudioBlock[] {
@@ -107,6 +128,11 @@ export function deleteBlock(blocks: readonly StudioBlock[], id: string): StudioB
 /** Remove every chip for `key` across the draft (the Checks "Remove from draft" fix). */
 export function removeVariableEverywhere(blocks: readonly StudioBlock[], key: string): StudioBlock[] {
   return blocks.map((b) => (b.value.includes(`data-field="${key}"`) ? { ...b, value: removeStudioVariable(b.kind, b.value, key) } : b));
+}
+
+/** TEMPLATE-CONTENT-2 (C-18) — turn every typed `{{key}}` text into a chip (the Checks "Convert to variable" fix). */
+export function convertTypedPlaceholderEverywhere(blocks: readonly StudioBlock[], key: string): StudioBlock[] {
+  return blocks.map((b) => (studioTypedPlaceholderKeys(b.value).includes(key) ? { ...b, value: chipTypedPlaceholder(b.kind, b.value, key) } : b));
 }
 
 /** Append a chip for `key` to the block `id`. */

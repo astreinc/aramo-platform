@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { templateAccess, type TemplateAccess } from '@aramo/sign-client';
+import { contentPreviewIframeDoc } from '@aramo/template-content';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   TemplateStudio,
@@ -328,7 +329,7 @@ function GalleryPreview({ id, name }: { id: string; name: string }) {
       {preview.letterhead.organization_name !== null ? <div className="sg-muted">{preview.letterhead.organization_name}</div> : null}
       <h2 style={{ margin: '6px 0' }}>{preview.title}</h2>
       {preview.html !== undefined ? (
-        <iframe title={`Preview of ${name}`} sandbox="" srcDoc={preview.html} style={{ width: '100%', minHeight: 320, border: '1px solid var(--line)' }} />
+        <iframe title={`Preview of ${name}`} sandbox="" srcDoc={contentPreviewIframeDoc(preview.html)} style={{ width: '100%', minHeight: 320, border: '1px solid var(--line)' }} />
       ) : (
         (preview.blocks ?? []).map((b, i) => (
           <p key={i} style={{ whiteSpace: 'pre-wrap' }}>

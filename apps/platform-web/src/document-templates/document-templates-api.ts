@@ -1,5 +1,6 @@
 import { apiClient } from '@aramo/fe-foundation';
 import type { TemplateProductKey } from '@aramo/document-templates-web';
+import { CURRENT_HTML_CONTENT_VERSION, isHtmlContentVersion, type HtmlContentVersion } from '@aramo/template-content';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§8.1) — typed client for the platform-tier Aramo default
 // templates (/platform/document-templates*) and the template variable catalog
@@ -10,8 +11,9 @@ import type { TemplateProductKey } from '@aramo/document-templates-web';
 export const DOC_TEMPLATE_READ_SCOPE = 'platform:document_template:read';
 export const DOC_TEMPLATE_MANAGE_SCOPE = 'platform:document_template:manage';
 
-// The editable content contract (rtr-html-v1 — the A1 allowlisted html).
-export const HTML_CONTENT_VERSION = 'rtr-html-v1';
+// The editable content contract the console writes (TEMPLATE-CONTENT-2 C-4: rtr-html-v2, from
+// the shared rules); v1 content still reads.
+export const HTML_CONTENT_VERSION: HtmlContentVersion = CURRENT_HTML_CONTENT_VERSION;
 
 export interface PlatformTemplateVersionSummary {
   id: string;
@@ -98,17 +100,18 @@ export const TEMPLATE_VARIABLE_DATA_TYPES = ['TEXT', 'MULTILINE_TEXT', 'DATE', '
 export type TemplateVariableDataType = (typeof TEMPLATE_VARIABLE_DATA_TYPES)[number];
 
 export interface HtmlContent {
-  render_schema_version: typeof HTML_CONTENT_VERSION;
+  render_schema_version: HtmlContentVersion;
   title: string;
   html: string;
 }
 
 // Read the editable html content of a version (null when it is another content version).
 export function htmlContentOf(v: Pick<TemplateVersion, 'render_schema_version' | 'field_schema'>): HtmlContent | null {
-  if (v.render_schema_version !== HTML_CONTENT_VERSION) return null;
+  const version = v.render_schema_version;
+  if (!isHtmlContentVersion(version)) return null;
   const fs = v.field_schema as { title?: unknown; html?: unknown } | null;
   if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || typeof fs.html !== 'string') return null;
-  return { render_schema_version: HTML_CONTENT_VERSION, title: fs.title, html: fs.html };
+  return { render_schema_version: version, title: fs.title, html: fs.html };
 }
 
 // DOC-TEMPLATE-LIB-1 T-6 (§9) — the default notice length for a withdrawal (days).
