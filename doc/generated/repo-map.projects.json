@@ -4651,6 +4651,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10492,6 +10498,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
