@@ -14,6 +14,7 @@
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F9DE9B645983DF4DC6AD6FE6 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A6BD5A2293E8E16AE79E20 /* ExpoModulesProvider.swift */; };
+		B1E9E2E628964983BADE7819 /* HomemadeApple-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 703D899037CF4DA0B2F910B1 /* HomemadeApple-Regular.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = AramoSign/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* AramoSign-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "AramoSign-Bridging-Header.h"; path = "AramoSign/AramoSign-Bridging-Header.h"; sourceTree = "<group>"; };
+		703D899037CF4DA0B2F910B1 /* HomemadeApple-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "HomemadeApple-Regular.ttf"; path = "../assets/fonts/HomemadeApple-Regular.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -99,6 +101,7 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				B66B2C6A8F6EE4742EA6845C /* Pods */,
 				52122CABAA4CB1ADB726D1E7 /* ExpoModulesProviders */,
+				BFD6EDACBADE4E75B7E4AE58 /* Resources */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -130,6 +133,14 @@
 			);
 			name = Supporting;
 			path = AramoSign/Supporting;
+			sourceTree = "<group>";
+		};
+		BFD6EDACBADE4E75B7E4AE58 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				703D899037CF4DA0B2F910B1 /* HomemadeApple-Regular.ttf */,
+			);
+			name = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -196,6 +207,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
+				B1E9E2E628964983BADE7819 /* HomemadeApple-Regular.ttf in Resources */,
 				B658E609BE94962150F18732 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

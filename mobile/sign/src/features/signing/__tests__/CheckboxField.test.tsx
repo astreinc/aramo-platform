@@ -1,7 +1,9 @@
-// UAT SIG-03 retest (web ≡ app) — the signing page's check box: a plain box (✓ when checked),
-// its caption beside it (never inside), and the caption toggles the same box.
+// UAT SIG-03 retest (web ≡ app) — the signing page's check box: a plain box (✓ when checked).
+// PO 2026-11-25 — no label is drawn on the page, inside or beside the box; the label is the
+// box's accessible name.
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { Circle, Path } from 'react-native-svg';
 
 import { CheckboxField } from '../CheckboxField';
 
@@ -13,9 +15,6 @@ function show(over: Partial<Parameters<typeof CheckboxField>[0]> = {}) {
     <CheckboxField
       fieldId="yes"
       box={box}
-      pageWidth={300}
-      label="Yes"
-      required
       checked={false}
       current={false}
       accessibilityLabel="Yes, check box"
@@ -27,36 +26,32 @@ function show(over: Partial<Parameters<typeof CheckboxField>[0]> = {}) {
 }
 
 describe('CheckboxField', () => {
-  it('draws the caption beside the box, not inside it', () => {
+  it('draws no label on the page, inside or beside the box; the label is its accessible name', () => {
     show();
-    const boxEl = screen.getByTestId('field-yes');
-    expect(boxEl).not.toHaveTextContent('Yes');
-    const cap = StyleSheet.flatten(screen.getByTestId('field-caption-yes').props.style);
-    expect(cap.left).toBe(box.left + box.width + 4);
-    expect(screen.getByText('Yes')).toBeTruthy();
-  });
-
-  it('tapping the caption or the box toggles that box', () => {
-    const onPress = show();
-    fireEvent.press(screen.getByTestId('field-caption-yes'));
-    fireEvent.press(screen.getByTestId('field-yes'));
-    expect(onPress).toHaveBeenCalledTimes(2);
-  });
-
-  it('shows ✓ only when checked, and reports its state', () => {
-    show({ checked: true });
-    expect(screen.getByTestId('field-check-yes')).toHaveTextContent('✓');
-    expect(screen.getByTestId('field-yes').props.accessibilityState).toEqual({ checked: true });
-  });
-
-  it('an optional box says so beside it; no caption without a label', () => {
-    show({ required: false });
-    expect(screen.getByText('Yes · optional')).toBeTruthy();
-  });
-
-  it('no label → no caption', () => {
-    show({ label: null });
+    expect(screen.queryByText(/Yes/)).toBeNull();
     expect(screen.queryByTestId('field-caption-yes')).toBeNull();
+    expect(screen.getByTestId('field-yes').props.accessibilityLabel).toBe('Yes, check box');
+  });
+
+  it('tapping the box toggles it', () => {
+    const onPress = show();
+    fireEvent.press(screen.getByTestId('field-yes'));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  // UAT SIG-03 (Android) — the tick is drawn, never a text glyph that Android clips in a small
+  // box, and a checked box is filled so it never looks like an empty one.
+  it('a checked box draws the tick (no text glyph) and is filled; an empty box has no mark', () => {
+    show({ checked: true });
+    const mark = screen.getByTestId('field-check-yes');
+    expect(mark).not.toHaveTextContent('✓');
+    expect(screen.UNSAFE_getAllByType(Path)).toHaveLength(1);
+    expect(screen.getByTestId('field-yes').props.accessibilityState).toEqual({ checked: true });
+    const checkedBg = StyleSheet.flatten(screen.getByTestId('field-yes').props.style).backgroundColor;
+    screen.unmount();
+    show({ checked: false });
+    expect(screen.queryByTestId('field-check-yes')).toBeNull();
+    expect(StyleSheet.flatten(screen.getByTestId('field-yes').props.style).backgroundColor).not.toBe(checkedBg);
   });
 
   // FIELD-PARITY-1 P3 T-5 / S-4 — a radio option and a sender's (locked) box.
@@ -64,7 +59,8 @@ describe('CheckboxField', () => {
     show({ shape: 'circle', checked: true });
     const el = screen.getByTestId('field-yes');
     expect(el.props.accessibilityRole).toBe('radio');
-    expect(screen.getByTestId('field-check-yes')).toHaveTextContent('●');
+    expect(screen.getByTestId('field-check-yes')).toBeTruthy();
+    expect(screen.UNSAFE_getAllByType(Circle)).toHaveLength(1);
     expect(StyleSheet.flatten(el.props.style).borderRadius).toBe(5);
   });
 
@@ -74,7 +70,6 @@ describe('CheckboxField', () => {
     expect(el.props.accessibilityState).toEqual({ checked: true, disabled: true });
     expect(el.props.accessibilityHint).toBe('Set by the sender');
     fireEvent.press(el);
-    fireEvent.press(screen.getByTestId('field-caption-yes'));
     expect(onPress).not.toHaveBeenCalled();
   });
 });

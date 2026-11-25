@@ -36047,6 +36047,11 @@
       "to": "doc/runbooks/RELEASE-sign-mobile.md"
     },
     {
+      "from": "mobile/sign/app.config.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/public/fonts/HomemadeApple-LICENSE.txt"
+    },
+    {
       "from": "mobile/sign/plugins/withReleaseSigning.js",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-sign-mobile.md"
