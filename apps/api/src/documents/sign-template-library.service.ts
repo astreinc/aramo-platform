@@ -107,6 +107,8 @@ export class SignTemplateLibraryService {
     await this.assertTenant(input.tenant_id, input.requestId);
     const items: SignTemplateSummary[] = [];
     const unavailable: { document_type_id: string; reason: string }[] = [];
+    // TEMPLATE-SYNC-1 S-3 / S-11 — the server-computed master of each adopted copy (one read).
+    const masters = await this.d.templates.masterViewsForTenant(input.tenant_id);
     for (const type of await this.renderableTypes()) {
       // The automatic per-type choice (unchanged) — only to flag is_default / resolution.
       let auto: ResolvedRtrTemplate | null = null;
@@ -124,7 +126,10 @@ export class SignTemplateLibraryService {
         if (e.code !== 'RTR_TEMPLATE_NOT_CONFIGURED') autoError = e.code;
       }
       const usable = await this.usableTemplates(input.tenant_id, type, input.client_id, auto, input.requestId);
-      for (const resolved of usable) items.push(await this.summary(input.tenant_id, type, resolved, auto, input.requestId));
+      for (const resolved of usable) {
+        const summary = await this.summary(input.tenant_id, type, resolved, auto, input.requestId);
+        items.push({ ...summary, master: resolved.owner_scope === 'TENANT' ? (masters.get(resolved.template_id) ?? null) : null });
+      }
       // Nothing usable for the type and its configuration needs a choice / is broken:
       // reported, never silently swapped (ADR-0034 D10).
       if (usable.length === 0 && autoError !== null) unavailable.push({ document_type_id: type.id, reason: autoError });

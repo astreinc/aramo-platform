@@ -31,6 +31,7 @@ import {
 } from './template-capabilities.port.js';
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from './template-products.js';
+import { TEMPLATE_SYNC_REFUSALS, masterAvailable, masterIsNewer, type TemplateMasterView, type TemplateSyncRefusal } from './template-master.js';
 import {
   DocumentNotFoundError,
   DocumentTypeConflictError,
@@ -124,6 +125,19 @@ function refuseProducts(body: unknown, requestId: string): void {
       details: { reason: 'products_server_owned' },
     });
   }
+}
+
+// TEMPLATE-SYNC-1 §3.6 — a sync route refusal with its stable reason (details.reason).
+// not_an_adopted_template / master_not_available on a read → 404 (the compare route returns
+// only the tenant's own adopted template's master); every other refusal → 409.
+function syncRefused(reason: TemplateSyncRefusal, message: string, requestId: string, extra: Record<string, unknown> = {}): AramoError {
+  if (reason === TEMPLATE_SYNC_REFUSALS.notAdopted) {
+    return new AramoError('TEMPLATE_NOT_FOUND', message, 404, { requestId, details: { reason, ...extra } });
+  }
+  if (reason === TEMPLATE_SYNC_REFUSALS.draftExists) {
+    return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', message, 409, { requestId, details: { reason, ...extra } });
+  }
+  return new AramoError('VALIDATION_ERROR', message, 409, { requestId, details: { reason, ...extra } });
 }
 
 interface CreateTemplateBody {
@@ -227,7 +241,7 @@ export class DocumentTemplatesController {
   // silent. Absent only where no audit seam is wired (generic CRUD outside apps/api).
   private async governance(
     auth: AuthContextType,
-    action: 'adopted' | 'created' | 'version_activated',
+    action: 'adopted' | 'created' | 'version_activated' | 'draft_from_master' | 'master_version_kept',
     subject_id: string,
     payload: Record<string, string | number | null>,
     requestId: string,
@@ -345,7 +359,10 @@ export class DocumentTemplatesController {
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document_template:read')
   async list(@AuthContext() auth: AuthContextType) {
-    return this.repo.listTemplates(auth.tenant_id);
+    const rows = await this.repo.listTemplates(auth.tenant_id);
+    // TEMPLATE-SYNC-1 S-3 — the server-computed `master` (null when not adopted).
+    const masters = await this.repo.masterViewsForTenant(auth.tenant_id);
+    return rows.map((t) => ({ ...t, master: masters.get(t.id) ?? null }));
   }
 
   // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default withdrawal notices
@@ -362,9 +379,29 @@ export class DocumentTemplatesController {
       tenant_id: auth.tenant_id,
       grace_days: WITHDRAWAL_NOTICE_GRACE_DAYS,
     });
+    // TEMPLATE-SYNC-1 S-4 (R-9) — adopted copies whose master is withdrawn (PENDING /
+    // IN_EFFECT) are listed too: template_id = the copy, master_template_id = the default.
+    // The legacy items keep today's shape (no master_template_id).
+    const adopted = await this.repo.listAdoptedCopyWithdrawalNotices({
+      tenant_id: auth.tenant_id,
+      grace_days: WITHDRAWAL_NOTICE_GRACE_DAYS,
+    });
     const entitled = await this.entitledProducts(auth.tenant_id);
+    const adoptedNotices = adopted.filter((r) => visibleToTenant(r.products, entitled)).map((r) => ({
+      template_id: r.template_id,
+      master_template_id: r.master_template_id,
+      name: r.name,
+      document_type_id: r.document_type_id,
+      products: r.products,
+      withdraw_notice_at: r.withdraw_notice_at.toISOString(),
+      withdraw_effective_at: r.withdraw_effective_at.toISOString(),
+      status: r.in_effect ? 'IN_EFFECT' : 'PENDING',
+      selected_for_client_ids: [] as Array<string | null>,
+      relies_on_default: false,
+      has_own_template: true,
+    }));
     return {
-      notices: rows.filter((r) => visibleToTenant(r.products, entitled)).map((r) => ({
+      notices: [...rows.filter((r) => visibleToTenant(r.products, entitled)).map((r) => ({
         template_id: r.template_id,
         name: r.name,
         document_type_id: r.document_type_id,
@@ -375,7 +412,7 @@ export class DocumentTemplatesController {
         selected_for_client_ids: r.selected_for_client_ids,
         relies_on_default: r.relies_on_default,
         has_own_template: r.has_own_template,
-      })),
+      })), ...adoptedNotices],
     };
   }
 
@@ -384,7 +421,10 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:read')
   async get(@AuthContext() auth: AuthContextType, @Param('id') id: string, @RequestId() requestId: string) {
     try {
-      return await this.repo.getTemplate(auth.tenant_id, id);
+      const t = await this.repo.getTemplate(auth.tenant_id, id);
+      // TEMPLATE-SYNC-1 S-3 — the server-computed `master` (null when not adopted).
+      const masters = await this.repo.masterViewsForTenant(auth.tenant_id, { only: [t.id] });
+      return { ...t, master: masters.get(t.id) ?? null };
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -428,10 +468,12 @@ export class DocumentTemplatesController {
       // normaliser as a PATCH (it used to be stored as sent), compared with the template's
       // current version for the downgrade guard.
       let field_schema: unknown = body.field_schema;
+      // TEMPLATE-SYNC-1 S-2 — a tenant's own new version keeps the master version its current
+      // version was based on (server-written, never from the body).
+      const t = await this.repo.getTemplate(auth.tenant_id, templateId);
+      const current = t.current_version_id === null ? null : await this.repo.getVersion(auth.tenant_id, t.current_version_id).catch(() => null);
       if (this.caps !== undefined) {
-        const t = await this.repo.getTemplate(auth.tenant_id, templateId);
         if (await this.caps.isConfigurable(t.document_type_id)) {
-          const current = t.current_version_id === null ? null : await this.repo.getVersion(auth.tenant_id, t.current_version_id).catch(() => null);
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version,
@@ -448,6 +490,7 @@ export class DocumentTemplatesController {
         field_schema,
         binding_schema: body.binding_schema,
         source_artifact_id: body.source_artifact_id,
+        based_on_platform_version_id: current?.based_on_platform_version_id ?? null,
         created_by: auth.sub,
       });
     } catch (e) {
@@ -472,6 +515,179 @@ export class DocumentTemplatesController {
       return this.versionView(
         await this.repo.createDraftFromActive({ tenant_id: auth.tenant_id, template_id: templateId, created_by: auth.sub, ...(transform !== undefined ? { transform } : {}) }),
       );
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // ── TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-5, S-7, S-8 ────────────────────────────
+  // §0 (amends ORG-UX-1 §5.1 and ADR-0034 D3): a tenant may COMPARE the master's CURRENT
+  // published version with its own adopted copy and start a draft from it. Earlier master
+  // versions are never shown. Nothing here changes the copy: an update is a new DRAFT that the
+  // company previews and approves (the normal preview + activate steps).
+
+  // The master's current version content, in the editable form a draft starts from (an old
+  // rtr-generated-v1 master converted as Adopt converts it).
+  private async masterStartContent(document_type_id: string, v: { render_schema_version: string; field_schema: unknown }) {
+    const base = {
+      render_schema_version: v.render_schema_version,
+      field_schema: v.field_schema === null ? null : (JSON.parse(JSON.stringify(v.field_schema)) as unknown),
+    };
+    const caps = this.caps;
+    if (caps === undefined || !(await caps.isConfigurable(document_type_id))) return base;
+    return caps.draftContentFrom({ document_type_id, ...base });
+  }
+
+  // S-5 (R-6) — the master's CURRENT version stored content (render_schema_version, title,
+  // html, signing roles) for the tenant's own adopted template only; 404 otherwise.
+  @Get(':id/master')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async masterContent(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      const { template, master } = await this.repo.adoptedCopyWithMaster(auth.tenant_id, templateId);
+      if (template.adopted_from_template_id === null) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.notAdopted, 'This template was not adopted from an Aramo template', requestId);
+      }
+      if (master === null || master.current_version_id === null) {
+        throw new AramoError('TEMPLATE_NOT_FOUND', 'The Aramo template is no longer available', 404, {
+          requestId,
+          details: { reason: TEMPLATE_SYNC_REFUSALS.masterNotAvailable },
+        });
+      }
+      const v = await this.repo.getPlatformVersion(master.current_version_id);
+      const content = await this.masterStartContent(template.document_type_id, v);
+      const fs = (content.field_schema ?? null) as Record<string, unknown> | null;
+      return {
+        template_id: template.id,
+        master_template_id: master.id,
+        version_id: v.id,
+        version_number: v.version_number,
+        render_schema_version: content.render_schema_version,
+        title: typeof fs?.['title'] === 'string' ? fs['title'] : null,
+        html: typeof fs?.['html'] === 'string' ? fs['html'] : null,
+        signing: fs?.['signing'] ?? null,
+      };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // S-7 (R-2) — "Start a draft from the new version": the template's next DRAFT with the
+  // master's current content and signing roles, the company's letterhead logo carried over
+  // from its current version, the master version's field rows copied (as Adopt does) and
+  // based_on_platform_version_id = that master version. Normalised through
+  // normalizeDraftContent. One-DRAFT rule: an open draft is refused draft_exists.
+  @Post(':id/draft-from-master')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('document_template:author')
+  async draftFromMaster(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      const now = new Date();
+      const { template, master } = await this.repo.adoptedCopyWithMaster(auth.tenant_id, templateId);
+      if (template.adopted_from_template_id === null) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.notAdopted, 'This template was not adopted from an Aramo template', requestId);
+      }
+      if (!masterAvailable(master, now)) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.masterNotAvailable, 'The Aramo template is no longer available', requestId);
+      }
+      const view = (await this.repo.masterViewsForTenant(auth.tenant_id, { only: [template.id], now })).get(template.id);
+      if (view === undefined || !masterIsNewer(view.current_version_number, view.based_on_version_number)) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.alreadyCurrent, 'Your template is already based on the current Aramo version', requestId);
+      }
+      const mv = await this.repo.getPlatformVersion(master.current_version_id);
+      const current = template.current_version_id === null ? null : await this.repo.getVersion(auth.tenant_id, template.current_version_id).catch(() => null);
+      const start = await this.masterStartContent(template.document_type_id, mv);
+      let field_schema: unknown = start.field_schema;
+      const caps = this.caps;
+      if (caps !== undefined && (await caps.isConfigurable(template.document_type_id))) {
+        // The master's own content and roles (no `signing` in the master ⇒ none): normalised
+        // with no existing content, so nothing of the copy's wording or roles is mixed in.
+        const raw = field_schema !== null && typeof field_schema === 'object' && !Array.isArray(field_schema) ? (field_schema as Record<string, unknown>) : {};
+        field_schema = await caps.normalizeDraftContent({
+          document_type_id: template.document_type_id,
+          render_schema_version: start.render_schema_version,
+          field_schema: Object.prototype.hasOwnProperty.call(raw, 'signing') ? raw : { ...raw, signing: null },
+          existing_field_schema: null,
+          requestId,
+        });
+        // The company's letterhead logo carries over from its current version (server-owned).
+        const logo = current === null ? null : caps.logoOf(current.field_schema);
+        const isHtml = field_schema !== null && typeof field_schema === 'object' && typeof (field_schema as Record<string, unknown>)['html'] === 'string';
+        if (logo !== null && isHtml) field_schema = caps.withLogo(field_schema, logo, requestId);
+      }
+      let created: Awaited<ReturnType<TemplatesRepository['createDraftFromPlatformVersion']>>;
+      try {
+        created = await this.repo.createDraftFromPlatformVersion({
+          tenant_id: auth.tenant_id,
+          template_id: template.id,
+          platform_version_id: mv.id,
+          render_schema_version: start.render_schema_version,
+          field_schema,
+          internal_notes: current?.internal_notes ?? null,
+          created_by: auth.sub,
+        });
+      } catch (e) {
+        if (e instanceof TemplateDraftAlreadyExistsError) {
+          throw syncRefused(TEMPLATE_SYNC_REFUSALS.draftExists, 'This template already has a draft. Discard it to start a draft from the new version.', requestId, {
+            version_id: e.draftVersionId,
+          });
+        }
+        throw e;
+      }
+      await this.governance(
+        auth,
+        'draft_from_master',
+        template.id,
+        {
+          template_id: template.id,
+          version_id: created.version.id,
+          version_number: created.version.version_number,
+          master_template_id: master.id,
+          master_version_id: mv.id,
+          master_version_number: mv.version_number,
+        },
+        requestId,
+      );
+      return this.versionView(created.version);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // S-8 (R-8) — "Keep my version": recorded for the master's CURRENT version only, so the
+  // notice hides for it and shows again when a later master version is published.
+  @Post(':id/keep-version')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:manage')
+  async keepVersion(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      const { template, master } = await this.repo.adoptedCopyWithMaster(auth.tenant_id, templateId);
+      if (template.adopted_from_template_id === null) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.notAdopted, 'This template was not adopted from an Aramo template', requestId);
+      }
+      if (master === null || master.current_version_id === null) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.masterNotAvailable, 'The Aramo template is no longer available', requestId);
+      }
+      const before = (await this.repo.masterViewsForTenant(auth.tenant_id, { only: [template.id] })).get(template.id);
+      if (before === undefined || !masterIsNewer(before.current_version_number, before.based_on_version_number)) {
+        throw syncRefused(TEMPLATE_SYNC_REFUSALS.alreadyCurrent, 'Your template is already based on the current Aramo version', requestId);
+      }
+      const updated = await this.repo.keepPlatformVersion({ tenant_id: auth.tenant_id, template_id: template.id, platform_version_id: master.current_version_id });
+      await this.governance(
+        auth,
+        'master_version_kept',
+        template.id,
+        {
+          template_id: template.id,
+          master_template_id: master.id,
+          master_version_id: master.current_version_id,
+          master_version_number: before.current_version_number,
+        },
+        requestId,
+      );
+      const after = (await this.repo.masterViewsForTenant(auth.tenant_id, { only: [template.id] })).get(template.id) ?? null;
+      return { ...updated, master: after satisfies TemplateMasterView | null };
     } catch (e) {
       throw toHttp(e, requestId);
     }

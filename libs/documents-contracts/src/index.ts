@@ -33,6 +33,7 @@ export {
   type SignTemplateVariableSource,
   type SignTemplateVariable,
   type SignTemplateSummary,
+  type SignTemplateMaster,
   type SignTemplateListResponse,
   type SignTemplatePreviewRequest,
   type SignTemplatePreviewResponse,

@@ -180,6 +180,10 @@ export const EVENT_TYPES = [
   // payload { template_id, document_type_id, source_filename, source_sha256, source_bytes,
   // content_bytes, counts } — never the document text. Written AFTER the draft is created.
   'identity.document_template.platform_imported',
+  // TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-13 — a version of an Aramo (PLATFORM) default was
+  // published. GLOBAL (tenant_id NULL). subject_id = the published TemplateVersion; payload
+  // { template_id, document_type_id, version_id, version_number }. Written AFTER the publish.
+  'identity.document_template.platform_published',
   // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin created / updated / retired / deleted a SYSTEM
   // document type. GLOBAL (tenant_id NULL). subject_id = the DocumentType id; payload
   // { key, name, changed_fields? } (field names only). Written BEFORE the change.
@@ -202,6 +206,12 @@ export const EVENT_TYPES = [
   // payload { document_type_id }.
   'identity.document_template.fixed_form_hidden',
   'identity.document_template.fixed_form_shown',
+  // TEMPLATE-SYNC-1 S-13 — a company started a draft from the newer Aramo version of a template
+  // it adopted, or kept its version for that master version. Tenant-scoped; subject = the
+  // tenant template; payload { template_id, version_id?, version_number?, master_template_id,
+  // master_version_id, master_version_number }.
+  'identity.document_template.draft_from_master',
+  'identity.document_template.master_version_kept',
   // Domain-Enforcement P3 (LOCKED) §6 — the domain-claim lifecycle. Every one of these
   // is inserted IN THE SAME database transaction as the claim / exception write
   // (DomainClaimService), never through the best-effort audit service. All tenant-scoped
@@ -345,6 +355,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // TEMPLATE-PRODUCT-1 §7.3 — fixed-form Hide / Show rows carry the tenant id.
   'identity.document_template.fixed_form_hidden',
   'identity.document_template.fixed_form_shown',
+  // TEMPLATE-SYNC-1 S-13 — draft from master / keep my version rows carry the tenant id.
+  'identity.document_template.draft_from_master',
+  'identity.document_template.master_version_kept',
   // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',

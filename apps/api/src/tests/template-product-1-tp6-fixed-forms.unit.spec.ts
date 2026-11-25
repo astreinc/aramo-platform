@@ -475,7 +475,7 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.4 — Sign', () => {
       render: vi.fn(async () => ({ document_id: 'doc-1' }) as never),
     };
     const lib = new SignTemplateLibraryService({
-      templates: { listConfiguredTemplateTypes: vi.fn(async () => []) } as never,
+      templates: { listConfiguredTemplateTypes: vi.fn(async () => []), masterViewsForTenant: vi.fn(async () => new Map()) } as never,
       documents: {} as never,
       render: {} as never,
       idempotency: {} as never,

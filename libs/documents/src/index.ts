@@ -44,9 +44,23 @@ export {
   // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
   type TemplatePlatformDeletionAudit,
   type TemplatePlatformImportAudit,
+  // TEMPLATE-SYNC-1 S-13 — a new version of an Aramo default was published.
+  type TemplatePlatformPublishedAudit,
   // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type changes.
   type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';
+// TEMPLATE-SYNC-1 S-3 — the one server rule for "a newer master is available".
+export {
+  templateMasterView,
+  masterIsNewer,
+  masterAvailable,
+  TEMPLATE_SYNC_REFUSALS,
+  type TemplateMasterView,
+  type TemplateMasterWithdrawal,
+  type TemplateMasterRow,
+  type TemplateMasterInput,
+  type TemplateSyncRefusal,
+} from './lib/template-master.js';
 // TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
 export {
   TEMPLATE_PRODUCT_KEYS,

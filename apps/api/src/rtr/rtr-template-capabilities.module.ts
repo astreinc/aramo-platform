@@ -88,6 +88,24 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         requestId: e.requestId,
       });
     },
+    // TEMPLATE-SYNC-1 S-13 — a version of an Aramo default was published. GLOBAL (tenant_id
+    // NULL); subject = the published version; written AFTER the publish (non-swallowing).
+    async recordPlatformPublished(e) {
+      await repo.writeEvent({
+        event_type: 'identity.document_template.platform_published',
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.version_id,
+        event_payload: {
+          template_id: e.template_id,
+          document_type_id: e.document_type_id,
+          version_id: e.version_id,
+          version_number: e.version_number,
+        },
+        requestId: e.requestId,
+      });
+    },
     async recordPlatformDeletion(e) {
       await repo.writeEvent({
         event_type:
@@ -126,6 +144,7 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
       });
     },
     // ORG-UX-1 §5.4 — Org template governance (adopt / create / approve / select / clear).
+    // TEMPLATE-SYNC-1 S-13 — + draft_from_master / master_version_kept (tenant-scoped).
     async recordGovernance(e) {
       await repo.writeEvent({
         event_type: `identity.document_template.${e.action}`,

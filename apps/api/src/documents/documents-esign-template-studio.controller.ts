@@ -27,6 +27,10 @@ import { SignTemplateStudioService } from './sign-template-studio.service.js';
 //   PATCH  v1/documents/esign/templates/studio/versions/:versionId      DELETE (discard draft)
 //   POST   v1/documents/esign/templates/studio/versions/:versionId/preview
 //   POST   v1/documents/esign/templates/studio/versions/:versionId/activate  ("Use this version")
+//   TEMPLATE-SYNC-1 S-5 / S-7 / S-8 (a newer master is available):
+//   GET    v1/documents/esign/templates/studio/:id/master               compare content
+//   POST   v1/documents/esign/templates/studio/:id/draft-from-master    start a draft from it
+//   POST   v1/documents/esign/templates/studio/:id/keep-version         keep my version
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -178,6 +182,42 @@ export class DocumentsEsignTemplateStudioController {
   @HttpCode(HttpStatus.OK)
   allowedBindings(@Param('id') id: string, @Query('tenant_id') tenantId: string, @Query('actor_id') actorId: string, @RequestId() requestId: string) {
     return this.studio.allowedBindings({ ...this.who(tenantId, actorId, requestId), template_id: uuid(id, 'id', requestId) });
+  }
+
+  @Get(':id/master')
+  @HttpCode(HttpStatus.OK)
+  master(@Param('id') id: string, @Query('tenant_id') tenantId: string, @Query('actor_id') actorId: string, @RequestId() requestId: string) {
+    return this.studio.masterContent({ ...this.who(tenantId, actorId, requestId), template_id: uuid(id, 'id', requestId) });
+  }
+
+  @Post(':id/draft-from-master')
+  @HttpCode(HttpStatus.CREATED)
+  draftFromMaster(
+    @Param('id') id: string,
+    @Query('tenant_id') tenantId: string,
+    @Query('actor_id') actorId: string,
+    @Query(SIGN_TEMPLATE_BODY_DIGEST_PARAM) digest: string,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ) {
+    const who = this.who(tenantId, actorId, requestId);
+    assertBodyDigest(body, digest, requestId);
+    return this.studio.draftFromMaster({ ...who, template_id: uuid(id, 'id', requestId) });
+  }
+
+  @Post(':id/keep-version')
+  @HttpCode(HttpStatus.OK)
+  keepVersion(
+    @Param('id') id: string,
+    @Query('tenant_id') tenantId: string,
+    @Query('actor_id') actorId: string,
+    @Query(SIGN_TEMPLATE_BODY_DIGEST_PARAM) digest: string,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ) {
+    const who = this.who(tenantId, actorId, requestId);
+    assertBodyDigest(body, digest, requestId);
+    return this.studio.keepVersion({ ...who, template_id: uuid(id, 'id', requestId) });
   }
 
   @Patch('versions/:versionId')

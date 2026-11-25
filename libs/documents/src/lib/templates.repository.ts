@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { type DocumentTypeTemplateConfig, type DocumentTypeTemplateKind } from './document-types.js';
+import { templateMasterView, type TemplateMasterRow, type TemplateMasterView } from './template-master.js';
 import {
   DocumentNotFoundError,
   TemplateDraftAlreadyExistsError,
@@ -239,6 +240,9 @@ export interface CreateVersionInput {
   effective_from?: Date;
   // Slice 1 B1 — admin-only notes (≤500; never rendered). Caller validates.
   internal_notes?: string | null;
+  // TEMPLATE-SYNC-1 S-2 — the PLATFORM version this TENANT version's content came from
+  // (carried from the version a tenant's own draft was copied from). Server-written only.
+  based_on_platform_version_id?: string | null;
   created_by: string;
 }
 
@@ -514,8 +518,11 @@ export class TemplatesRepository {
   // ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B) — ADOPT an Aramo default:
   // create an INDEPENDENT tenant-owned template + a DRAFT v1 whose content (and field
   // definitions) is a full copy of the default's CURRENT version at adoption time. The
-  // tenant row records adopted_from_* for audit/provenance only — nothing ever reads them
-  // to resolve, render or update, so later changes to the default never reach this copy.
+  // tenant row records adopted_from_* (written once, provenance). TEMPLATE-SYNC-1 §0 (amends
+  // §5.1): they may be read to tell the company that a newer master version exists or that
+  // the master was withdrawn, and to start an update the company asks for; resolution and
+  // rendering never read them, and a later change to the default never reaches this copy by
+  // itself. S-2: the draft records based_on_platform_version_id = the adopted version.
   // Only a published, live (ACTIVE, pinned, not withdrawn) default may be adopted.
   async adoptPlatformTemplate(input: {
     tenant_id: string;
@@ -578,6 +585,8 @@ export class TemplatesRepository {
           render_schema_version: start.render_schema_version,
           field_schema: (start.field_schema ?? undefined) as never,
           internal_notes: null,
+          // TEMPLATE-SYNC-1 S-2 — the master version this copy's content came from.
+          based_on_platform_version_id: version.id,
           created_by: input.created_by,
           content_fingerprint: templateContentFingerprint(start.field_schema ?? null),
         },
@@ -616,6 +625,218 @@ export class TemplatesRepository {
     });
   }
 
+  // ── TEMPLATE-SYNC-1 — "a newer master is available" (S-3, S-4, S-7, S-8) ─────────────
+  // §0 (amends ORG-UX-1 §5.1 / ADR-0034 D3): the lineage (adopted_from_*, based_on_platform_
+  // version_id, sync_kept_platform_version_id) is read here ONLY to tell the company and to
+  // start an update it asks for. Resolution and rendering never call these methods, and none
+  // of them changes an adopted copy's content: an update is always a new DRAFT.
+
+  // The server-computed `master` object of each of the tenant's ADOPTED templates (keyed by
+  // the tenant template id). `only` limits it to some template ids. One read per table.
+  async masterViewsForTenant(tenant_id: string, opts: { only?: readonly string[]; now?: Date } = {}): Promise<Map<string, TemplateMasterView>> {
+    const now = opts.now ?? new Date();
+    const out = new Map<string, TemplateMasterView>();
+    if (opts.only !== undefined && opts.only.length === 0) return out;
+    const copies = await this.prisma.documentTemplate.findMany({
+      where: {
+        tenant_id,
+        owner_scope: 'TENANT',
+        adopted_from_template_id: { not: null },
+        ...(opts.only !== undefined ? { id: { in: [...opts.only] } } : {}),
+      },
+      select: { id: true, adopted_from_template_id: true, adopted_from_version_id: true, current_version_id: true, sync_kept_platform_version_id: true },
+    });
+    if (copies.length === 0) return out;
+    const masterIds = [...new Set(copies.map((c) => c.adopted_from_template_id as string))];
+    const masters = await this.prisma.documentTemplate.findMany({
+      where: { id: { in: masterIds }, owner_scope: 'PLATFORM', tenant_id: null },
+      select: { id: true, name: true, status: true, current_version_id: true, withdraw_notice_at: true, withdraw_effective_at: true },
+    });
+    const masterById = new Map<string, TemplateMasterRow>(masters.map((m) => [m.id, m]));
+    // The copies' current versions and open drafts (their based-on master versions).
+    const copyVersions = await this.prisma.templateVersion.findMany({
+      where: {
+        tenant_id,
+        template_id: { in: copies.map((c) => c.id) },
+        OR: [{ id: { in: copies.map((c) => c.current_version_id).filter((id): id is string => id !== null) } }, { status: 'DRAFT' }],
+      },
+      select: { id: true, template_id: true, status: true, based_on_platform_version_id: true },
+    });
+    const basedOnId = (c: (typeof copies)[number]): string | null => {
+      const current = c.current_version_id === null ? undefined : copyVersions.find((v) => v.id === c.current_version_id);
+      const draft = copyVersions.find((v) => v.template_id === c.id && v.status === 'DRAFT');
+      return current?.based_on_platform_version_id ?? draft?.based_on_platform_version_id ?? c.adopted_from_version_id ?? null;
+    };
+    const platformVersionIds = new Set<string>();
+    for (const m of masters) if (m.current_version_id !== null) platformVersionIds.add(m.current_version_id);
+    for (const c of copies) {
+      const b = basedOnId(c);
+      if (b !== null) platformVersionIds.add(b);
+    }
+    const numbers = new Map(
+      (
+        await this.prisma.templateVersion.findMany({
+          where: { id: { in: [...platformVersionIds] }, tenant_id: null, template: { owner_scope: 'PLATFORM' } },
+          select: { id: true, version_number: true },
+        })
+      ).map((v) => [v.id, v.version_number]),
+    );
+    for (const c of copies) {
+      const master = masterById.get(c.adopted_from_template_id as string) ?? null;
+      const b = basedOnId(c);
+      out.set(
+        c.id,
+        templateMasterView({
+          master_template_id: c.adopted_from_template_id as string,
+          master,
+          master_current_version_number: master?.current_version_id != null ? (numbers.get(master.current_version_id) ?? null) : null,
+          based_on_version_number: b !== null ? (numbers.get(b) ?? null) : null,
+          kept_version_id: c.sync_kept_platform_version_id,
+          now,
+        }),
+      );
+    }
+    return out;
+  }
+
+  // The tenant's own template with its master row (null when the master no longer exists).
+  // TemplateNotFoundError for an unknown / other tenant's template (404 concealment).
+  async adoptedCopyWithMaster(tenant_id: string, template_id: string) {
+    const template = await this.getTemplate(tenant_id, template_id);
+    const master =
+      template.adopted_from_template_id === null
+        ? null
+        : await this.prisma.documentTemplate.findFirst({ where: { id: template.adopted_from_template_id, owner_scope: 'PLATFORM', tenant_id: null } });
+    return { template, master };
+  }
+
+  // S-7 — the template's next DRAFT version seeded from a PLATFORM version: the given content
+  // (the master's, already normalised by the caller with the company's logo carried over),
+  // the master version's field rows copied (as Adopt does), based_on_platform_version_id = that
+  // master version. The one-DRAFT rule applies (TemplateDraftAlreadyExistsError). Approved
+  // through the normal preview and activate steps.
+  async createDraftFromPlatformVersion(input: {
+    tenant_id: string;
+    template_id: string;
+    platform_version_id: string;
+    render_schema_version: string;
+    field_schema: unknown;
+    internal_notes?: string | null;
+    created_by: string;
+  }) {
+    await this.getTemplate(input.tenant_id, input.template_id);
+    const source = await this.prisma.templateVersion.findFirst({
+      where: { id: input.platform_version_id, tenant_id: null, status: 'ACTIVE', template: { owner_scope: 'PLATFORM' } },
+      include: { fields: true },
+    });
+    if (source === null) throw new TemplateVersionNotFoundError(input.platform_version_id);
+    const existingDraft = await this.prisma.templateVersion.findFirst({
+      where: { tenant_id: input.tenant_id, template_id: input.template_id, status: 'DRAFT' },
+    });
+    if (existingDraft !== null) throw new TemplateDraftAlreadyExistsError(input.template_id, existingDraft.id);
+    const last = await this.prisma.templateVersion.findFirst({
+      where: { tenant_id: input.tenant_id, template_id: input.template_id },
+      orderBy: { version_number: 'desc' },
+    });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const draft = await tx.templateVersion.create({
+          data: {
+            id: randomUUID(),
+            tenant_id: input.tenant_id,
+            template_id: input.template_id,
+            version_number: (last?.version_number ?? 0) + 1,
+            status: 'DRAFT',
+            render_schema_version: input.render_schema_version,
+            field_schema: (input.field_schema ?? undefined) as never,
+            internal_notes: input.internal_notes ?? null,
+            based_on_platform_version_id: source.id,
+            created_by: input.created_by,
+            content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
+          },
+        });
+        for (const f of source.fields) {
+          await tx.templateFieldDefinition.create({
+            data: {
+              id: randomUUID(),
+              template_version_id: draft.id,
+              field_key: f.field_key,
+              field_type: f.field_type,
+              binding_key: f.binding_key,
+              required: f.required,
+              page_number: f.page_number,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              format_rule: f.format_rule,
+              signer_role: f.signer_role,
+              ordinal: f.ordinal,
+              ...templateFieldSettingColumns(f),
+            },
+          });
+        }
+        if (source.fields.length === 0) return { version: draft, source };
+        const withFields = await tx.templateVersion.update({
+          where: { id: draft.id },
+          data: { content_fingerprint: templateContentFingerprint(input.field_schema ?? null, source.fields) },
+        });
+        return { version: withFields, source };
+      });
+    } catch (e) {
+      throw mapOneDraftConflict(e, input.template_id);
+    }
+  }
+
+  // S-8 (R-8) — "Keep my version" for one master version: the notice hides for that version
+  // only; a later master version shows it again. Touches only sync_kept_platform_version_id.
+  async keepPlatformVersion(input: { tenant_id: string; template_id: string; platform_version_id: string }) {
+    const r = await this.prisma.documentTemplate.updateMany({
+      where: { tenant_id: input.tenant_id, id: input.template_id, owner_scope: 'TENANT' },
+      data: { sync_kept_platform_version_id: input.platform_version_id },
+    });
+    if (r.count === 0) throw new TemplateNotFoundError(input.template_id);
+    return this.getTemplate(input.tenant_id, input.template_id);
+  }
+
+  // S-4 (R-9) — the tenant's ADOPTED copies whose master has a published withdrawal that is
+  // pending or took effect less than `grace_days` ago (the same window as the legacy notices).
+  async listAdoptedCopyWithdrawalNotices(input: { tenant_id: string; now?: Date; grace_days: number }) {
+    const now = input.now ?? new Date();
+    const withdrawals = await this.listPlatformWithdrawals(new Date(now.getTime() - input.grace_days * DAY_MS));
+    if (withdrawals.length === 0) return [];
+    const copies = await this.prisma.documentTemplate.findMany({
+      where: { tenant_id: input.tenant_id, owner_scope: 'TENANT', adopted_from_template_id: { in: withdrawals.map((w) => w.id) } },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    const byId = new Map(withdrawals.map((w) => [w.id, w]));
+    const out: Array<{
+      template_id: string;
+      master_template_id: string;
+      name: string;
+      document_type_id: string;
+      products: string[];
+      withdraw_notice_at: Date;
+      withdraw_effective_at: Date;
+      in_effect: boolean;
+    }> = [];
+    for (const c of copies) {
+      const w = byId.get(c.adopted_from_template_id as string);
+      if (w === undefined || w.withdraw_notice_at === null || w.withdraw_effective_at === null) continue;
+      out.push({
+        template_id: c.id,
+        master_template_id: w.id,
+        name: c.name,
+        document_type_id: c.document_type_id,
+        products: c.products ?? w.products ?? [],
+        withdraw_notice_at: w.withdraw_notice_at,
+        withdraw_effective_at: w.withdraw_effective_at,
+        in_effect: w.withdraw_effective_at.getTime() <= now.getTime(),
+      });
+    }
+    return out;
+  }
+
   // ── Versions ─────────────────────────────────────────────────────────────
   async createVersion(input: CreateVersionInput) {
     const { tenant_id, ...rest } = input;
@@ -652,6 +873,7 @@ export class TemplatesRepository {
           source_artifact_id: input.source_artifact_id ?? null,
           effective_from: input.effective_from ?? null,
           internal_notes: input.internal_notes ?? null,
+          based_on_platform_version_id: input.based_on_platform_version_id ?? null,
           created_by: input.created_by,
           // §18 — fingerprint the starting content so the preview gate is armed on create.
           content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
@@ -702,6 +924,8 @@ export class TemplatesRepository {
       field_schema: start.field_schema ?? undefined,
       // Slice 1 B1 — the new DRAFT starts from the ACTIVE version's notes.
       internal_notes: active?.internal_notes ?? null,
+      // TEMPLATE-SYNC-1 S-2 — a tenant's own edits keep the master version they were copied from.
+      based_on_platform_version_id: active?.based_on_platform_version_id ?? null,
       created_by: input.created_by,
     });
   }

@@ -72,6 +72,9 @@ export interface TemplateDocumentTypeAudit {
 // already committed; a failed write surfaces as an error to the caller, never silently).
 // TEMPLATE-PRODUCT-1 §7.3 — + fixed_form_hidden / fixed_form_shown (a tenant hid or showed an
 // Aramo fixed form; subject = the template).
+// TEMPLATE-SYNC-1 S-13 — + draft_from_master (subject = the template; payload: the new version
+// and the master version it came from) and master_version_kept (subject = the template;
+// payload: the master version kept).
 export type TemplateGovernanceAction =
   | 'adopted'
   | 'created'
@@ -79,7 +82,9 @@ export type TemplateGovernanceAction =
   | 'selection_set'
   | 'selection_cleared'
   | 'fixed_form_hidden'
-  | 'fixed_form_shown';
+  | 'fixed_form_shown'
+  | 'draft_from_master'
+  | 'master_version_kept';
 export interface TemplateGovernanceAudit {
   readonly action: TemplateGovernanceAction;
   readonly tenant_id: string;
@@ -109,9 +114,22 @@ export interface TemplatePlatformImportAudit {
   readonly requestId: string;
 }
 
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-13 (R-10) — a platform operator published a version
+// of an Aramo (PLATFORM) default. GLOBAL (no tenant_id). Written AFTER the publish succeeds
+// through the non-swallowing writer (a failed write surfaces as an error, never silently).
+export interface TemplatePlatformPublishedAudit {
+  readonly actor_id: string;
+  readonly template_id: string;
+  readonly document_type_id: string;
+  readonly version_id: string;
+  readonly version_number: number;
+  readonly requestId: string;
+}
+
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
   recordPlatformImport(event: TemplatePlatformImportAudit): Promise<void>;
+  recordPlatformPublished(event: TemplatePlatformPublishedAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
   recordPlatformDeletion(event: TemplatePlatformDeletionAudit): Promise<void>;
   recordPlatformDocumentType(event: TemplateDocumentTypeAudit): Promise<void>;

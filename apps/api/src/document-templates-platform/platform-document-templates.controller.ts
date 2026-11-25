@@ -758,6 +758,11 @@ export class PlatformDocumentTemplatesController {
   // gate (409 TEMPLATE_PREVIEW_REQUIRED unless the current content was previewed), then
   // the prior ACTIVE version is RETIRED and current_version_id moves (tenants only ever
   // resolve the current version — D3). Documents already generated keep their pin.
+  // TEMPLATE-SYNC-1 S-13 (R-10) — a publish that moves a DRAFT to ACTIVE writes the GLOBAL
+  // audit event identity.document_template.platform_published (template, version, number)
+  // AFTER it succeeds, through the non-swallowing writer (no audit port ⇒ refused). A repeated
+  // publish of an already ACTIVE version is a no-op and writes nothing. Companies that adopted
+  // the default are told through the server-computed `master` flag; their copies never change.
   @Post('document-templates/versions/:versionId/publish')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('platform:document_template:manage')
@@ -767,10 +772,11 @@ export class PlatformDocumentTemplatesController {
     @RequestId() requestId: string,
   ) {
     this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'publish');
     return this.run(requestId, async () => {
+      const v = await this.templates.getPlatformVersion(versionId);
+      const t = await this.templates.getPlatformTemplate(v.template_id);
       if (this.caps !== undefined) {
-        const v = await this.templates.getPlatformVersion(versionId);
-        const t = await this.templates.getPlatformTemplate(v.template_id);
         await this.caps.validateDraftContent({
           document_type_id: t.document_type_id,
           field_schema: v.field_schema,
@@ -778,7 +784,18 @@ export class PlatformDocumentTemplatesController {
           requestId,
         });
       }
-      return this.versionView(await this.templates.activatePlatformVersion({ version_id: versionId, actor_id: auth.sub }));
+      const published = await this.templates.activatePlatformVersion({ version_id: versionId, actor_id: auth.sub });
+      if (v.status === 'DRAFT') {
+        await audit.recordPlatformPublished({
+          actor_id: auth.sub,
+          template_id: t.id,
+          document_type_id: t.document_type_id,
+          version_id: published.id,
+          version_number: published.version_number,
+          requestId,
+        });
+      }
+      return this.versionView(published);
     });
   }
 

@@ -59,6 +59,10 @@ function harness(opts: { kind?: string; held?: string[]; adoptedFrom?: string | 
     get: vi.fn(async () => ({ id: OWN })),
     rename: vi.fn(async () => ({ id: OWN })),
     updateVersion: vi.fn(async () => ({ id: 'v' })),
+    // TEMPLATE-SYNC-1 S-5 / S-7 / S-8.
+    masterContent: vi.fn(async () => ({ version_number: 2 })),
+    draftFromMaster: vi.fn(async () => ({ id: 'v-2' })),
+    keepVersion: vi.fn(async () => ({ id: OWN })),
   };
   const templates = {
     listTemplates: vi.fn(async () => [{ id: OWN, adopted_from_template_id: opts.adoptedFrom ?? null }]),
@@ -193,5 +197,27 @@ describe('§8.3 — the Studio: PERSONAL only, authority from live grants', () =
     const h = harness();
     await h.svc.updateVersion({ ...who, version_id: 'v', body: { field_schema: { html: '' }, render_schema_version: 'rtr-html-v1' } });
     expect(h.tenantTemplates.updateVersion).toHaveBeenCalledWith(expect.anything(), 'v', { field_schema: { html: '' }, render_schema_version: 'rtr-html-v1' }, 'r');
+  });
+});
+
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-5 / S-7 / S-8 — the Personal Studio's sync actions go
+// through the SAME tenant template code as Org Home, as the person, with the same authority split.
+describe('TEMPLATE-SYNC-1 — compare / start a draft from the new version / keep my version', () => {
+  it('compare needs read, a draft needs author, keep needs manage; BUSINESS is refused', async () => {
+    const h = harness();
+    await h.svc.masterContent({ ...who, template_id: OWN });
+    await h.svc.draftFromMaster({ ...who, template_id: OWN });
+    await h.svc.keepVersion({ ...who, template_id: OWN });
+    expect(h.tenantTemplates.masterContent).toHaveBeenCalledWith(expect.objectContaining({ sub: ACTOR, tenant_id: TENANT }), OWN, 'r');
+    expect(h.tenantTemplates.draftFromMaster).toHaveBeenCalledWith(expect.objectContaining({ scopes: expect.arrayContaining(['document_template:author']) }), OWN, 'r');
+    expect(h.tenantTemplates.keepVersion).toHaveBeenCalledWith(expect.objectContaining({ scopes: expect.arrayContaining(['document_template:manage']) }), OWN, 'r');
+
+    const author = harness({ held: ['document_template:read', 'document_template:author'] });
+    await expect(author.svc.keepVersion({ ...who, template_id: OWN })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'template_approval_required' } } });
+    expect(author.tenantTemplates.keepVersion).not.toHaveBeenCalled();
+    const manager = harness({ held: ['document_template:read', 'document_template:manage'] });
+    await expect(manager.svc.draftFromMaster({ ...who, template_id: OWN })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'template_authoring_required' } } });
+    const biz = harness({ kind: 'BUSINESS' });
+    await expect(biz.svc.masterContent({ ...who, template_id: OWN })).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'organization_templates_in_org_home' } } });
   });
 });

@@ -261,6 +261,21 @@ export class SignTemplateStudioService {
     return this.d.tenantTemplates.previewVersion(await this.studio(input, 'author'), input.version_id, input.requestId);
   }
 
+  // TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-5 / S-7 / S-8 — the Personal Studio's "a newer
+  // master is available" actions, through the SAME tenant template code as Org Home: compare
+  // content (read), start a draft from the new version (author), keep my version (manage).
+  async masterContent(input: { tenant_id: string; actor_id: string; template_id: string; requestId: string }) {
+    return this.d.tenantTemplates.masterContent(await this.studio(input, 'read'), input.template_id, input.requestId);
+  }
+
+  async draftFromMaster(input: { tenant_id: string; actor_id: string; template_id: string; requestId: string }) {
+    return this.d.tenantTemplates.draftFromMaster(await this.studio(input, 'author'), input.template_id, input.requestId);
+  }
+
+  async keepVersion(input: { tenant_id: string; actor_id: string; template_id: string; requestId: string }) {
+    return this.d.tenantTemplates.keepVersion(await this.studio(input, 'manage'), input.template_id, input.requestId);
+  }
+
   /** "Use this version" (the Personal word for Approve & activate). */
   async activate(input: { tenant_id: string; actor_id: string; version_id: string; requestId: string }) {
     return this.d.tenantTemplates.activate(await this.studio(input, 'manage'), input.version_id, input.requestId);
