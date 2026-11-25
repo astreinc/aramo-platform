@@ -7629,7 +7629,6 @@
     "mobile/sign/src/features/selfSign/selfSignSources.ts",
     "mobile/sign/src/features/send/AddDocumentsSheet.tsx",
     "mobile/sign/src/features/send/OnlineSync.tsx",
-    "mobile/sign/src/features/send/UploadOptions.tsx",
     "mobile/sign/src/features/send/__tests__/draftModel.test.ts",
     "mobile/sign/src/features/send/__tests__/draftNeedsUpload.test.ts",
     "mobile/sign/src/features/send/__tests__/fakeSenderServer.ts",
