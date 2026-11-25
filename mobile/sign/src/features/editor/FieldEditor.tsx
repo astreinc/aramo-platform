@@ -193,7 +193,12 @@ export function FieldEditor({
   senderFilledEnabled = false,
 }: FieldEditorProps) {
   const t = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight, fontScale } = useWindowDimensions();
+  // Android field test 2026-11-25 — on a short screen or with a large system font the three
+  // toolbar rows above the pages grow, and with the pages holding 50% the bottom panel was left
+  // too little room: its tool row was squeezed and the field icons cut in half. There the pages
+  // may go down to 35% so the panel's tools and "Place at center" always fit whole.
+  const compact = windowHeight < 700 || fontScale > 1.15;
   const [state, rawDispatch] = useReducer(editorReducer, undefined, () =>
     initialEditorState(initialFields, recipients[0]?.key ?? null),
   );
@@ -419,8 +424,9 @@ export function FieldEditor({
   const canvas = (
     <ScrollView
       ref={scrollRef}
+      testID="editor-canvas"
       onLayout={(e: LayoutChangeEvent) => (viewport.current = e.nativeEvent.layout.height)}
-      style={[styles.fill, styles.canvasMin, { backgroundColor: selfSign ? SELF_BACKDROP : t.color.documentBackdrop }]}
+      style={[styles.fill, !selfSign && compact ? styles.canvasMinCompact : styles.canvasMin, { backgroundColor: selfSign ? SELF_BACKDROP : t.color.documentBackdrop }]}
       contentContainerStyle={selfSign ? styles.selfCanvas : styles.canvas}
       scrollEnabled={!gesture}
       onScroll={onScroll}
@@ -775,13 +781,15 @@ export function FieldEditor({
         </ScrollView>
         {/* Pinned below the scrolling tools, so it is never scrolled or inset away. */}
         {selected ? null : (
-          <Button
-            title="Place at center"
-            variant="secondary"
-            disabled={state.tool === null}
-            accessibilityHint="Places the picked field in the middle of the page in view"
-            onPress={() => placeAtCenter()}
-          />
+          <View style={styles.noShrink}>
+            <Button
+              title="Place at center"
+              variant="secondary"
+              disabled={state.tool === null}
+              accessibilityHint="Places the picked field in the middle of the page in view"
+              onPress={() => placeAtCenter()}
+            />
+          </View>
         )}
       </View>
     </View>
@@ -980,6 +988,9 @@ function ToolRow({
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      // Never squeezed below its own height (a ScrollView shrinks by default): when the panel is
+      // short, the hint area below gives way instead (Android field test 2026-11-25).
+      style={styles.noShrink}
       contentContainerStyle={styles.selfTools}
       testID={testID}
     >
@@ -1357,6 +1368,8 @@ const styles = StyleSheet.create({
   zoomText: { minWidth: 48, textAlign: 'center', fontSize: 15 },
   canvas: { paddingVertical: 16 },
   canvasMin: { minHeight: '50%' },
+  canvasMinCompact: { minHeight: '35%' },
+  noShrink: { flexGrow: 0, flexShrink: 0 },
   hscroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16 },
   pages: { gap: 12 },
   loading: { height: 240, alignItems: 'center', justifyContent: 'center', padding: 24 },
