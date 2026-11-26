@@ -19,6 +19,7 @@ import { useSignSettings } from '../../features/profile/signProfile';
 import type { EditorField } from '../../features/editor/editorReducer';
 import { signingRecipients } from '../../features/send/recipientRoles';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
+import { ErrorText } from '../../features/send/ui';
 import { useTheme } from '../../theme';
 
 export function FieldsStep({
@@ -73,10 +74,10 @@ export function FieldsStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [recipientKeys],
   );
-  // Android field test 2026-11-25 — a PDF is uploaded only at Review / Save as draft / Send, so on
-  // this step Find and "Find fields" had no server copy to read ("No searchable text in this
-  // document"). Entering this step (and coming back online) saves the draft, which uploads the
-  // documents; their text and suggestions load as soon as they are on the server.
+  // Android field test 2026-11-25 — Find and "Find fields" read the server copy of a document. A
+  // PDF added online is uploaded at once (UAT DOC-06); one added offline is not, so entering this
+  // step (and coming back online) saves the draft, which uploads the documents; their text and
+  // suggestions load as soon as they are on the server.
   const online = useOnline();
   const needsUpload = draftNeedsUpload(envelopeId, p?.documents ?? []);
   useEffect(() => {
@@ -89,32 +90,47 @@ export function FieldsStep({
     [controller],
   );
   if (!p) return null;
+  // UAT DOC-06 — a refusal from the sync above (storage full, …) shows here, as on Documents
+  // and Review, instead of being swallowed.
+  const error = state.error ? (
+    <View style={styles.error}>
+      <ErrorText>{state.error}</ErrorText>
+    </View>
+  ) : null;
   if (documents.length === 0 || recipients.length === 0) {
     return (
-      <View style={styles.empty}>
-        <Text style={{ color: t.color.textSecondary, fontSize: 16, textAlign: 'center', fontFamily: t.font.family }}>
-          {documents.length === 0 ? 'Add a document first.' : 'Add at least one signer first.'}
-        </Text>
+      <View style={styles.fill}>
+        {error}
+        <View style={styles.empty}>
+          <Text style={{ color: t.color.textSecondary, fontSize: 16, textAlign: 'center', fontFamily: t.font.family }}>
+            {documents.length === 0 ? 'Add a document first.' : 'Add at least one signer first.'}
+          </Text>
+        </View>
       </View>
     );
   }
   return (
-    <FieldEditor
-      key={state.generation}
-      documents={documents}
-      recipients={recipients}
-      initialFields={p.fields}
-      loadAsset={loadAsset}
-      onFieldsChange={onFieldsChange}
-      findDocs={findDocs}
-      suggestDocs={suggestDocs}
-      fieldScale={sizeScale(settings.data?.default_field_size)}
-      bottomInset={insets.bottom}
-      senderFilledEnabled={p.senderFilledEnabled === true}
-    />
+    <View style={styles.fill}>
+      {error}
+      <FieldEditor
+        key={state.generation}
+        documents={documents}
+        recipients={recipients}
+        initialFields={p.fields}
+        loadAsset={loadAsset}
+        onFieldsChange={onFieldsChange}
+        findDocs={findDocs}
+        suggestDocs={suggestDocs}
+        fieldScale={sizeScale(settings.data?.default_field_size)}
+        bottomInset={insets.bottom}
+        senderFilledEnabled={p.senderFilledEnabled === true}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  error: { paddingHorizontal: 16, paddingVertical: 8 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });
