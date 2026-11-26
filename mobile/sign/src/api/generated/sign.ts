@@ -1355,6 +1355,26 @@ export interface paths {
         patch: operations["updateSenderStudioTemplateVersion"];
         trace?: never;
     };
+    "/v1/sign/sender/templates/studio/versions/{versionId}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The inline field rows of a Personal template version (Sign Field-Test Batch 1 F15-2).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). Returns the version's field rows as a bare array ordered by ordinal; read-only. The Studio uses them to label the locked field chips of an adopted copy (type, label and role); a save of a locked copy never carries fields.
+         */
+        get: operations["listSenderStudioTemplateVersionFields"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/templates/studio/versions/{versionId}/preview": {
         parameters: {
             query?: never;
@@ -4670,6 +4690,38 @@ export interface components {
             signing: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** @description Sign Field-Test Batch 1 F15-4 — one inline field row of a template version, as Documents stores it (documents.yaml TemplateFieldDefinition). The Personal Studio reads field_type, label and signer_role to label a locked chip; the settings are shown read-only and never sent back. */
+        SenderTemplateFieldRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            template_version_id: string;
+            field_key: string;
+            /** @description The catalog type (@aramo/sign-fields), e.g. SIGNATURE, SIGN_DATE, TEXT, CHECKBOX. */
+            field_type: string;
+            /** @description The template signing role that fills it; null = the sender fills it. */
+            signer_role?: string | null;
+            required: boolean;
+            page_number?: number | null;
+            ordinal: number;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            tooltip?: string | null;
+            placeholder?: string | null;
+            read_only?: boolean;
+            sender_filled?: boolean;
+            /** @enum {string|null} */
+            validation?: "email" | "phone" | "us_zip" | "number_range" | "date_range" | "max_length" | null;
+            font_size?: number | null;
+            data_name?: string | null;
+            options?: components["schemas"]["FieldOptions"] | null;
+            condition?: components["schemas"]["FieldCondition"] | null;
         };
         SignTokenRequest: {
             /** @enum {string} */
@@ -8574,6 +8626,32 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderStudioTemplateVersionFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateFieldRow"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     previewSenderStudioTemplateVersion: {

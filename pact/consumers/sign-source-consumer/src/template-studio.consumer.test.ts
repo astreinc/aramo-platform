@@ -21,7 +21,9 @@ const { like, eachLike, regex } = MatchersV3;
 //                             POST /v1/documents/esign/templates/library/:id/adopt-and-use
 //                             GET  /v1/documents/esign/templates/studio
 //                             POST /v1/documents/esign/templates/studio/adopt
-//                             GET  /v1/documents/esign/templates/studio/:id — TEMPLATE-SYNC-1 S-15)
+//                             GET  /v1/documents/esign/templates/studio/:id — TEMPLATE-SYNC-1 S-15
+//                             GET  /v1/documents/esign/templates/studio/versions/:versionId/fields
+//                                  — Sign Field-Test Batch 1 F15-4)
 // Provider:  aramo-core      (apps/api DocumentsEsignTemplateGalleryController /
 //                             DocumentsEsignTemplateStudioController).
 //
@@ -259,6 +261,47 @@ describe('sign-service → the Personal Studio: a newer master is available (TEM
         expect(res.status).toBe(200);
         const body = (await res.json()) as { master: { newer_available: boolean } };
         expect(body.master.newer_available).toBe(true);
+      });
+  });
+});
+
+// Sign Field-Test Batch 1 (Directive v1.0 LOCKED) F15-4 — the version's inline field rows, so the
+// Personal Studio labels its locked chips (type, label, role). Seeded by SYNC_STATE: the adopted
+// copy's open DRAFT carries two rows (verify-api.ts). A bare array ordered by ordinal.
+const COPY_DRAFT_ID = 'd0c4c000-0000-7000-8000-0000000000f4';
+
+describe('sign-service → the Personal Studio: a version’s field rows (F15-4)', () => {
+  it('GET /studio/versions/{versionId}/fields returns the labelled rows', async () => {
+    const path = `/v1/documents/esign/templates/studio/versions/${COPY_DRAFT_ID}/fields`;
+    const query = { tenant_id: PERSONAL_TENANT_ID, actor_id: OWNER_ID };
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given(SYNC_STATE)
+      .uponReceiving('a Personal Studio read of a version’s inline field rows')
+      .withRequest('GET', path, (b) => {
+        b.query(query).headers(headerMatchers('GET', `http://core${path}?${qs}`, false));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(
+          eachLike({
+            id: UUID,
+            template_version_id: COPY_DRAFT_ID,
+            field_key: like('client_signature'),
+            field_type: like('SIGNATURE'),
+            label: like('Client signature'),
+            signer_role: like('client'),
+            required: like(true),
+            ordinal: like(0),
+          }),
+        );
+      })
+      .executeTest(async (mock) => {
+        const url = `${mock.url}${path}?${qs}`;
+        const res = await fetch(url, { headers: signed('GET', url) });
+        expect(res.status).toBe(200);
+        const rows = (await res.json()) as Array<{ field_type: string; label: string; signer_role: string }>;
+        expect(rows[0]).toMatchObject({ field_type: 'SIGNATURE', label: 'Client signature', signer_role: 'client' });
       });
   });
 });
