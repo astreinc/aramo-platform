@@ -44,6 +44,20 @@ export {
   type ProfileTextFieldType,
   type FieldRuleViolation,
 } from './lib/field-rules.js';
+// Field-test batch 1 SIG-11 (+A1) — profile values on the signing page (server, sign-web, app).
+export {
+  PROFILE_OFFER_COPY,
+  SENDER_HELD_PREFILL_TYPES,
+  profilePrefill,
+  isPrefillTarget,
+  profileOfferFor,
+  profileOffers,
+  senderHeldPrefills,
+  type ProfilePrefill,
+  type ProfilePrefillSource,
+  type PrefillFieldLike,
+  type PrefillMatch,
+} from './lib/profile-prefill.js';
 // FIELD-PARITY-2 B-4 — the one visibility rule (server, sign-web and the app).
 export {
   fieldConditionOf,
