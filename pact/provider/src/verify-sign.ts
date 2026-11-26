@@ -564,7 +564,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
     // M-A12 W1-C.2 — the self-sign envelope with a live SELF session that accepted the disclosure.
-    async function seedMobileSelfSession(envelopeId: string): Promise<void> {
+    // SIG-11 — `token` names the session's own capability token (default: the mobile text-layer one).
+    async function seedMobileSelfSession(envelopeId: string, token: string = SIGN_MOBILE_SELF_TOKEN): Promise<void> {
       await seedMobileSelfSignEnvelope(envelopeId);
       const signerId = childId(envelopeId, 3);
       const sessionId = childId(envelopeId, 6);
@@ -572,7 +573,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin, authenticated_user_id)
          VALUES ($1,$2,$3,$4,$5,'ISSUED', now() + interval '30 minutes','SELF',$6)
          ON CONFLICT (id) DO NOTHING`,
-        [sessionId, SENDER_TENANT_ID, envelopeId, signerId, createHash('sha256').update(SIGN_MOBILE_SELF_TOKEN).digest('base64url'), SENDER_USER_ID],
+        [sessionId, SENDER_TENANT_ID, envelopeId, signerId, createHash('sha256').update(token).digest('base64url'), SENDER_USER_ID],
       );
       await db.query(
         `INSERT INTO "sign"."SignerDisclosureAcceptance" (id, tenant_id, signer_id, disclosure_version, disclosure_text_hash, session_id)
@@ -1509,6 +1510,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a self-sign session has accepted the disclosure': async (params?: unknown) => {
             await seedMobileSelfSession(envelopeParam(params));
+            return undefined;
+          },
+          // Field-test batch 1 SIG-11 (+A1) — a signed-in (SELF) session whose user has a Sign
+          // profile: the document view carries profile_prefill (the user's profile values and the
+          // recipient email). Each consumer names its own envelope and token.
+          'a signed-in self-sign session with a Sign profile has accepted the disclosure': async (params?: unknown) => {
+            const token = (params as { token?: unknown } | undefined)?.token;
+            if (typeof token !== 'string') throw new Error('provider state requires a token param');
+            await seedMobileProfile();
+            await seedMobileSelfSession(envelopeParam(params), token);
             return undefined;
           },
           'a sign-mobile user has a favorite template': async () => {

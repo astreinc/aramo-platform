@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const { like, uuid } = MatchersV3;
+const { like, uuid, eachLike } = MatchersV3;
 
 // DOC-4C (R1 seam A) — the public signer-session transport contract.
 //
@@ -39,6 +39,7 @@ const { like, uuid } = MatchersV3;
 //   10. POST /v1/sign/signing/document              200 — field configuration + the server-filled name (M-A6 §2.4)
 //   11. POST /v1/sign/signing/document              200 — each field's field_key + condition (FIELD-PARITY-2 B-6)
 //   12. POST /v1/sign/signing/fields/{id}/fill      200 — value null clears a stored value (FIELD-PARITY-2 B-6 follow-up)
+//   13. POST /v1/sign/signing/document              200 — profile_prefill on a signed-in session (field-test batch 1 SIG-11 + A1)
 
 const provider = new PactV4({
   consumer: 'sign-web',
@@ -82,6 +83,10 @@ const TOKEN_CONDITIONAL = 'sign-web-pact-token-conditional';
 const CLEAR_ENVELOPE_ID = '7a0000f3-0000-7000-8000-000000000001';
 const CLEAR_FIELD_ID = `${CLEAR_ENVELOPE_ID.slice(0, -1)}4`;
 const TOKEN_CLEAR = 'sign-web-pact-token-clear';
+// Field-test batch 1 SIG-11 — a signed-in (Sign now) session whose user has a Sign profile (the
+// provider derives the document id: last digit 2).
+const PREFILL_ENVELOPE_ID = '7a0000f4-0000-7000-8000-000000000001';
+const TOKEN_PREFILL = 'sign-web-pact-token-profile-prefill';
 
 describe('sign-web → POST /v1/sign/signing/exchange', () => {
   it('exchanges a capability token for a signer session', async () => {
@@ -425,6 +430,44 @@ describe('sign-web → POST /v1/sign/signing/document (FIELD-PARITY-2 conditiona
         expect(body.fields[0]?.condition).toBeNull();
         expect(body.fields[1]?.condition?.trigger_key).toBe(body.fields[0]?.field_key);
         expect(body.fields[1]?.condition?.when).toBe('checked');
+      });
+  });
+});
+
+// Aramo-Sign-Field-Test-Batch-1 §2 SIG-4 (+A1) — the document view carries profile_prefill for a
+// signed-in (Sign now / inbox) session: the signer's own profile values and the recipient email,
+// decided by the server (the page stays session-free). The page pre-fills Email and offers the rest.
+describe('sign-web → POST /v1/sign/signing/document (SIG-11 profile_prefill)', () => {
+  it('returns the signed-in signer’s profile values', async () => {
+    await provider
+      .addInteraction()
+      .given('a signed-in self-sign session with a Sign profile has accepted the disclosure', { envelope_id: PREFILL_ENVELOPE_ID, token: TOKEN_PREFILL })
+      .uponReceiving('a document view on a signed-in session with a Sign profile from the Sign Web client')
+      .withRequest('POST', '/v1/sign/signing/document', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_PREFILL });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          documents: eachLike({ document_id: uuid(`${PREFILL_ENVELOPE_ID.slice(0, -1)}2`), title: like('offer.pdf'), ordinal: like(1) }),
+          fields: eachLike({ field_id: uuid(`${PREFILL_ENVELOPE_ID.slice(0, -1)}4`), field_type: like('SIGNATURE') }),
+          profile_prefill: {
+            FIRST_NAME: like('Sam'),
+            LAST_NAME: like('Sender'),
+            EMAIL: like('sam.sender@example.com'),
+            COMPANY: like('Pact Sign Co'),
+            TITLE: like('Account Manager'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/document`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_PREFILL }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { profile_prefill: Record<string, string> | null };
+        expect(body.profile_prefill?.['TITLE']).toBe('Account Manager');
       });
   });
 });

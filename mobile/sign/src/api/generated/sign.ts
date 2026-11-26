@@ -6411,6 +6411,14 @@ export interface operations {
                         } | null;
                         /** @description M-A16 §3 — true when the finished screen may offer "Save to my Aramo inbox" (emailed links only). False on any lookup failure. */
                         inbox_save_available?: boolean;
+                        /** @description Field-test batch 1 SIG-11 (Amendment A1) — values by field type for a signed-in (inbox or Sign now) session, from the signer's own Sign profile and the recipient email the sender typed (one rule, @aramo/sign-client profilePrefill). EMAIL is pre-filled when the document opens; the other values are offers the page fills only when the signer chooses them, and an offer not taken is never sent. Empty values are left out; the signer-name field is never among them. Null for an emailed link, a hosted session or a guest, and on any lookup failure. */
+                        profile_prefill?: {
+                            FIRST_NAME?: string;
+                            LAST_NAME?: string;
+                            EMAIL?: string;
+                            COMPANY?: string;
+                            TITLE?: string;
+                        } | null;
                     };
                 };
             };
