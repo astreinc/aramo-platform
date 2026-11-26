@@ -119,6 +119,12 @@ describe('sign-web workspace LoginPage', () => {
     expect(screen.queryByRole('button', { name: 'Continue with Apple' })).toBeNull();
   });
 
+  it('a provider that did not share a full name gets its own explanation', () => {
+    renderAt('/login?error=VALIDATION_ERROR&reason=idp_profile_incomplete');
+    expect(screen.getByText('Your account didn’t share your full name')).toBeInTheDocument();
+    expect(screen.queryByText('Sign-in was canceled')).toBeNull();
+  });
+
   it('an unverified Microsoft email gets its own explanation', () => {
     renderAt('/login?error=VALIDATION_ERROR&reason=idp_email_unverified');
     expect(screen.getByText('Your Microsoft account’s email isn’t verified')).toBeInTheDocument();

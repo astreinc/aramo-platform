@@ -496,6 +496,8 @@ describe('SessionOrchestratorService.handleCallback', () => {
     ['access_denied', undefined, 'cognito_error'],
     ['invalid_request', 'PreSignUp failed with error Sign-in provider is not permitted. ', 'cognito_error'],
     ['invalid_request', 'PreSignUp failed with error Your sign-in provider has not verified your email address. ', 'idp_email_unverified'],
+    ['invalid_request', 'attributes required: [family_name]', 'idp_profile_incomplete'],
+    ['invalid_request', 'Attributes required: [given_name, family_name]', 'idp_profile_incomplete'],
   ])('a Cognito error (%s, %j) → validation_error reason %s, nothing exchanged', async (error, description, reason) => {
     const mocks = makeMocks();
     const svc = makeService(mocks);

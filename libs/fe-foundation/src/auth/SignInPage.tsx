@@ -155,6 +155,18 @@ function errorScreen(
       actions: ['providers', 'different-account'],
     };
   }
+  if (error === 'VALIDATION_ERROR' && reason === 'idp_profile_incomplete') {
+    // Cognito refused to create the account because the provider did not share a
+    // full name (first and last). Checked before the per-app copy, as above.
+    return {
+      tone: 'amber',
+      icon: ICON.warn,
+      title: 'Your account didn’t share your full name',
+      body: 'Your sign-in provider didn’t send us both a first and a last name, so we couldn’t finish signing you in. Nothing was changed.',
+      note: 'Add your first and last name in your Google, Microsoft or Apple account settings, then try again. Or use another sign-in method.',
+      actions: ['providers', 'different-account'],
+    };
+  }
   const override = errorCopy?.[error];
   if (override !== undefined) {
     return {

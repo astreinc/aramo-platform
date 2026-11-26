@@ -138,8 +138,19 @@ export type CallbackResult =
 export const IDP_EMAIL_UNVERIFIED_REASON = 'idp_email_unverified';
 const UNVERIFIED_EMAIL_REFUSAL = /not verified your email/i;
 
+// Cognito refuses to create a federated user when the provider did not send a
+// pool-required attribute (the pool requires name, given_name, family_name and
+// profile): it returns `error_description` "attributes required: [family_name]".
+// Its own reason, so the sign-in page can say the provider did not share a full
+// name instead of "Sign-in was canceled". Classification only.
+export const IDP_PROFILE_INCOMPLETE_REASON = 'idp_profile_incomplete';
+const REQUIRED_ATTRIBUTES_REFUSAL = /attributes required/i;
+
 export function cognitoErrorReason(description: string | undefined): string {
-  return description !== undefined && UNVERIFIED_EMAIL_REFUSAL.test(description) ? IDP_EMAIL_UNVERIFIED_REASON : 'cognito_error';
+  if (description === undefined) return 'cognito_error';
+  if (UNVERIFIED_EMAIL_REFUSAL.test(description)) return IDP_EMAIL_UNVERIFIED_REASON;
+  if (REQUIRED_ATTRIBUTES_REFUSAL.test(description)) return IDP_PROFILE_INCOMPLETE_REASON;
+  return 'cognito_error';
 }
 
 @Injectable()

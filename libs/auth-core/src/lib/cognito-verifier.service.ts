@@ -61,6 +61,9 @@ export interface CognitoIdTokenClaims extends JWTPayload {
   // firstName → given_name and lastName → family_name; absent when not shared).
   given_name?: string;
   family_name?: string;
+  // The full name the provider shared (Google / Microsoft always send it with the
+  // profile scope). Read only to undo the family_name placeholder (lastNameOf).
+  name?: string;
 }
 
 // Apple Go-Live R-1 — Cognito provider names (lowercased) whose Aramo value
@@ -104,6 +107,23 @@ function nameClaim(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const t = v.trim();
   return t.length > 0 && t.length <= 256 ? t : null;
+}
+
+// The pool requires family_name (fixed at pool creation), but Google and Microsoft
+// send a last name only when the account has one, and Cognito refuses to create a
+// user without it ("attributes required: [family_name]"). Their attribute mapping
+// therefore fills family_name from the full `name`, which they always send. A
+// family_name equal to the full name is that placeholder, not a last name: the last
+// name is what is left of the full name once the first name is taken off either end
+// ("Ada Lovelace" / "Ada" → "Lovelace"); a one-word name has none. A real last name
+// (from Apple, or any provider that sent its own) is returned as is.
+export function lastNameOf(given: string | null, family: string | null, full: string | null): string | null {
+  if (family === null || full === null || family !== full) return family;
+  if (given === null) return null;
+  if (full === given) return null;
+  if (full.startsWith(`${given} `)) return nameClaim(full.slice(given.length));
+  if (full.endsWith(` ${given}`)) return nameClaim(full.slice(0, full.length - given.length));
+  return null;
 }
 
 @Injectable()
@@ -169,7 +189,7 @@ export class CognitoVerifierService {
       token_use: 'id',
       idp: this.authenticatingIdp(p),
       given_name: nameClaim(p.given_name),
-      family_name: nameClaim(p.family_name),
+      family_name: lastNameOf(nameClaim(p.given_name), nameClaim(p.family_name), nameClaim(p.name)),
     };
   }
 
