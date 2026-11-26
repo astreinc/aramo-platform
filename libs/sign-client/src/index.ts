@@ -352,3 +352,5 @@ export {
 export { optionalMark, withOptionalMark, optionalSuffix } from './lib/optional-mark.js';
 // One rule for an envelope's email subject ("Please sign: …") on web, the app and the emails.
 export { SIGN_SUBJECT_PREFIX, subjectDocumentTitle, signatureRequestSubject } from './lib/envelope-subject.js';
+// UAT SND-14 — who a reminder reaches now and when the next one can go (web and the app).
+export { remindableNow, nextReminderAt, type ReminderRow } from './lib/reminders.js';
