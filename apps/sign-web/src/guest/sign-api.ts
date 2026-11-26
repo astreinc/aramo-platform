@@ -4,7 +4,7 @@
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
 
-import { localTimeZone, type AnyFieldType, type FieldOptions } from '@aramo/sign-client';
+import { localTimeZone, type AnyFieldType, type FieldOptions, type ProfilePrefill } from '@aramo/sign-client';
 
 import type { TextLayer } from './find.js';
 
@@ -87,6 +87,10 @@ export interface SignerDocumentView {
   saved_marks?: GuestSavedMarks | null;
   // M-A16 §3 — offer "Save to my Aramo inbox" after signing (emailed-link sessions only).
   inbox_save_available?: boolean;
+  // Field-test batch 1 SIG-11 (+A1) — the signer's own profile values, decided by the server: a
+  // signed-in (inbox / Sign now) session only (null: an emailed link, a hosted session or a
+  // guest; absent: an older server). EMAIL is pre-filled on open; the rest are offers only.
+  profile_prefill?: ProfilePrefill | null;
 }
 
 // M-A15 §4.1 — a saved mark offered on this signing page.

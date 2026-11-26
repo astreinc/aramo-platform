@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DELEGATE_REASON_MAX,
+  PROFILE_OFFER_COPY,
   SIGN_DATE_PREVIEW_NOTE,
   dateBoundsOf,
   dropdownChoicesOf,
@@ -17,7 +18,10 @@ import {
   numberPrefixOf,
   optionalMark,
   optionalSuffix,
+  profileOfferFor,
+  profileOffers,
   radioChoiceClearable,
+  senderHeldPrefills,
   signDatePreview,
   signerFieldCaption,
   signerFieldTooltip,
@@ -25,6 +29,7 @@ import {
   signerInputKind,
   signerClearRefusal,
   signerValueProblem,
+  type ProfilePrefill,
 } from '@aramo/sign-client';
 
 import { stashInboxClaim } from '../inbox-claim-handoff';
@@ -1111,6 +1116,10 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   const [view, setView] = useState<SignerDocumentView | null>(null);
   // M-A15 §4.1 — the signer's saved signature / initials offered on this page.
   const [savedMarks, setSavedMarks] = useState<GuestSavedMarks | null>(null);
+  // SIG-11 (+A1) — the server's profile values (null: an emailed link, a hosted session or a
+  // guest). Offers only: never sent until the signer takes one.
+  const [prefill, setPrefill] = useState<ProfilePrefill | null>(null);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   // PX-2 — the source bytes (base64) per document, rendered page by page with the
   // signer's fields in place; the browser PDF viewer is only the fallback.
@@ -1216,8 +1225,23 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     }
     setView(v);
     setSavedMarks(v.saved_marks ?? null);
+    setPrefill(v.profile_prefill ?? null);
     setDocUrls(urls);
     setDocB64(b64);
+    // SIG-11 A1-2 — the sender-held value (the recipient email) is pre-filled on open: sent through
+    // the per-field fill to the shown, empty, signer-editable EMAIL fields. Best effort: a refused
+    // or failed send leaves the field for the signer.
+    const held: Record<string, string> = {};
+    for (const f of v.fields) if (f.filled === true || isLocked(f)) held[f.field_id] = typeof f.value === 'string' ? f.value : FILLED_MARK;
+    const emailFills: Record<string, string> = {};
+    for (const m of senderHeldPrefills(shownSignFields(v.fields, held), v.profile_prefill ?? null, (f) => held[f.field_id] !== undefined)) {
+      try {
+        await signApi.fillField(token, m.field.field_id, m.value);
+        emailFills[m.field.field_id] = m.value;
+      } catch {
+        // Left empty: the signer enters it.
+      }
+    }
     // Restore progress after a reload: the backend returns this signer's own
     // entries, so the page shows the actual signature / date / text in place.
     setFilled((m) => {
@@ -1230,6 +1254,7 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
           continue;
         }
         if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = typeof f.value === 'string' && f.value.length > 0 ? f.value : FILLED_MARK;
+        if (emailFills[f.field_id] !== undefined && next[f.field_id] === undefined) next[f.field_id] = emailFills[f.field_id] as string;
       }
       // FIELD-PARITY-2 B-6 / C-3 — no answer is kept for a field these answers hide.
       return withoutHiddenAnswers(v.fields, next);
@@ -1309,6 +1334,9 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
   // rules above take every field (a hidden trigger keeps its dependents hidden).
   const shownList = useMemo(() => shownSignFields(fields, filled), [fields, filled]);
   const pending = (f: SignField): boolean => awaitsSigner(f, filled);
+  // SIG-11 A1-3 — the offers: empty, shown, signer-editable profile fields (the shared rule). The
+  // banner shows only while there is one.
+  const offers = profileOffers(shownList, prefill, (f) => filled[f.field_id] !== undefined);
   const nextField = nextFieldToDo(fields, filled);
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
 
@@ -1362,6 +1390,28 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
     const r = await save(f, value, method);
     if (!r.ok && r.message !== null) setNotice(r.message);
     return r.ok;
+  };
+
+  // SIG-11 A1-3 — "Fill from my profile": the signer's one tap fills every offered field through
+  // the per-field fill (they are ordinary answers from then on). A1-4 — nothing else ever sends
+  // an offer: Finish only completes.
+  const fillFromProfile = async () => {
+    setProfileNotice(null);
+    let n = 0;
+    for (const o of offers) {
+      const r = await save(o.field, o.value);
+      if (r.ok) n += 1;
+      else {
+        if (r.message !== null) setNotice(r.message);
+        break;
+      }
+    }
+    if (n > 0) setProfileNotice(PROFILE_OFFER_COPY.filled(n));
+  };
+  // SIG-11 A1-3 — one field's hint fills only that field.
+  const takeOffer = async (f: SignField, value: string) => {
+    setProfileNotice(null);
+    await fill(f, value);
   };
 
   // UAT SIG-03 — Start / Next field brings a check box into view without checking it
@@ -1905,6 +1955,13 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
       ) : (
         <main className="sg-work" data-testid="sg-workspace">
           <section className="sg-viewer" aria-label="Document">
+            {offers.length > 0 ? (
+              <div className="sg-offer" data-testid="sg-profile-offer">
+                <Btn variant="secondary" disabled={busy} onClick={() => void fillFromProfile()} data-testid="sg-profile-fill">
+                  {PROFILE_OFFER_COPY.banner}
+                </Btn>
+              </div>
+            ) : null}
             {docs.length > 1 ? (
               <div className="sg-doctabs">
                 {docs.map((d) => (
@@ -1947,6 +2004,11 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
             {notice ? (
               <p className="sg-error" role="alert" id="sg-notice" tabIndex={-1}>
                 {notice}
+              </p>
+            ) : null}
+            {profileNotice !== null ? (
+              <p className="sg-muted sg-small" role="status" data-testid="sg-profile-notice">
+                {profileNotice}
               </p>
             ) : null}
             <ul>
@@ -2017,6 +2079,8 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                     </li>
                   );
                 }
+                // SIG-11 A1-3 — an empty profile field shows its offer as a hint (fills this field only).
+                const offer = profileOfferFor(f, prefill, filled[f.field_id] !== undefined);
                 return (
                   <li key={f.field_id} className={`sg-field${done ? ' sg-field--done' : ''}${activeField === f.field_id ? ' sg-field--active' : ''}`}>
                     <span className="sg-field__text">
@@ -2027,6 +2091,11 @@ function SignerApp({ token }: { readonly token: string }): JSX.Element {
                         {f.field_type === 'SIGN_DATE' ? ` · ${SIGN_DATE_PREVIEW_NOTE}` : ''}
                       </span>
                       {helpLine}
+                      {offer !== null ? (
+                        <Btn variant="quiet" className="sg-offer__hint" disabled={busy} onClick={() => void takeOffer(f, offer)} data-testid={`sg-offer-${f.field_id}`}>
+                          {PROFILE_OFFER_COPY.hint(offer)}
+                        </Btn>
+                      ) : null}
                     </span>
                     {done ? (
                       <span className="sg-done-actions">
