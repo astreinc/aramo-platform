@@ -4,8 +4,10 @@
 //
 // Rules it keeps:
 //   - Every change is saved to the encrypted DraftStore at once (survives a restart).
-//   - Server writes happen only on Save as draft, on entering Review and on Send, and
-//     always with If-Match (syncDraft.ts). A new envelope is never created silently.
+//   - Server writes happen when a document is added online (it is uploaded at once, so a
+//     refusal shows in the Add sheet; UAT DOC-06), on entering Fields and Review, on Save as
+//     draft and on Send, always with If-Match (syncDraft.ts). The first of them creates the
+//     server draft, as on the web. Offline, a PDF stays on the phone and is never refused.
 //   - A 412 (revision_mismatch) reloads the envelope from the server, shows "This
 //     envelope changed elsewhere", and never overwrites it.
 //   - Send is an explicit user action, online only. Nothing is ever sent silently.
@@ -158,9 +160,6 @@ export interface DocumentAsset {
 type Listener = (s: SendFlowState) => void;
 
 const OFFLINE_SAVED = 'You’re offline. Your changes are saved on this phone.';
-/** UAT DOC-06 — storage full (the web's words for a Personal account; the app's Plans screen). */
-export const STORAGE_FULL =
-  'Your storage is full. Remove draft documents you no longer need, or see Account → Plans for more storage.';
 export const WORD_NEEDS_CONNECTION = 'Connect to the internet to add a Word file.';
 
 function messageFor(e: unknown): string {
@@ -188,9 +187,34 @@ function messageFor(e: unknown): string {
     if (e.reason === 'session_expired') return 'Your session ended. Sign in again.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope was already sent.';
     // UAT DOC-06 — the plan's storage allocation refused the upload (Personal Free: 15 MB).
-    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return STORAGE_FULL;
+    // The words are the shared map's (@aramo/sign-client), the same as the web's.
+    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return refusalMessage(e);
   }
   return 'Something went wrong. Try again.';
+}
+
+/** A failure that may pass on its own (no connection, a server error); the upload is retried later. */
+function isTransient(e: unknown): boolean {
+  return (
+    isApiError(e) &&
+    (e.isNetwork || e.status >= 500 || e.reason === 'idempotency_request_in_progress')
+  );
+}
+
+/**
+ * UAT DOC-06 — the server refused this upload itself (storage full, an unsafe PDF, …): a 4xx
+ * that is not a version conflict, a busy retry or an ended session.
+ */
+function isUploadRefusal(e: unknown): boolean {
+  if (!isApiError(e) || isTransient(e)) return false;
+  if (e.status === 412 || e.reason === 'revision_mismatch') return false;
+  return (
+    e.status >= 400 &&
+    e.status < 500 &&
+    e.status !== 401 &&
+    e.reason !== 'precondition_required' &&
+    e.reason !== 'session_expired'
+  );
 }
 
 export class SendFlowController {
@@ -211,6 +235,9 @@ export class SendFlowController {
   private readonly assets = new Map<string, DocumentAsset>();
   /** B2 — a messaging feature is available, so loadMessaging may be called. */
   private messagingEnabled = false;
+  /** UAT DOC-06 — the last sync's failure, and the upload it was refused on (its Idempotency-Key). */
+  private lastSyncError: unknown = null;
+  private failedUpload: { readonly idempotencyKey: string; readonly error: unknown } | null = null;
 
   constructor(private readonly deps: SendFlowDeps) {}
 
@@ -409,8 +436,44 @@ export class SendFlowController {
   /**
    * Add a PDF (picked or scanned). The bytes go to the encrypted store under a fresh
    * Idempotency-Key that every later upload attempt reuses.
+   *
+   * UAT DOC-06 — online, it is uploaded at once (the Word path below, generalised), so a
+   * refusal such as storage full shows in the Add sheet: the document is removed again and
+   * the error is kept. A network or server failure keeps it pending, as offline; offline it
+   * stays on the phone and is never refused here. Returns its key, or null when not kept.
    */
   async addDocument(input: {
+    readonly title: string;
+    readonly filename: string;
+    readonly bytes: Uint8Array;
+    readonly pages?: readonly PageSize[];
+    /** FIELD-PARITY-2 A-3 — the upload options for this document (default: the draft's). */
+    readonly options?: UploadOptions;
+  }): Promise<string | null> {
+    const key = await this.addLocal(input);
+    if (key === null || !this.deps.isOnline()) return key;
+    if (await this.sync()) return key;
+    const doc = this.payload.documents.find((d) => d.key === key);
+    // Uploaded, and a later stage failed: the document stays and the error shows.
+    if (!doc || doc.pendingUpload === null) return key;
+    const failed = this.failedUpload;
+    if (
+      failed !== null &&
+      failed.idempotencyKey === doc.pendingUpload.idempotencyKey &&
+      isUploadRefusal(failed.error)
+    ) {
+      const error = this.state.error;
+      await this.removeDocument(key);
+      this.set({ error });
+      return null;
+    }
+    // Not refused (no connection, a server error): it waits for the next sync, as offline.
+    if (isTransient(this.lastSyncError)) this.set({ error: null });
+    return key;
+  }
+
+  /** Store a document on the phone and add it to the draft, pending upload. */
+  private async addLocal(input: {
     readonly title: string;
     readonly filename: string;
     readonly bytes: Uint8Array;
@@ -474,7 +537,7 @@ export class SendFlowController {
     // draft already has a signing recipient (the fields they create need one); otherwise it is
     // uploaded plain rather than left waiting.
     const signer = this.payload.recipients.some((r) => r.kind !== 'RECEIVES_COPY');
-    const key = await this.addDocument({ ...input, options: signer ? this.uploadOptions : NO_UPLOAD_OPTIONS });
+    const key = await this.addLocal({ ...input, options: signer ? this.uploadOptions : NO_UPLOAD_OPTIONS });
     if (key === null) return;
     // Never render the Word bytes: the asset comes from the server once uploaded.
     this.assets.delete(key);
@@ -771,6 +834,8 @@ export class SendFlowController {
 
   /** Push local changes (Save as draft, Review, before Send). True when in sync. */
   async sync(): Promise<boolean> {
+    this.lastSyncError = null;
+    this.failedUpload = null;
     const d = this.state.draft;
     if (!d) return false;
     if (!this.deps.isOnline()) {
@@ -781,10 +846,22 @@ export class SendFlowController {
       return this.refreshIfChanged();
     }
     this.set({ busy: 'syncing', error: null });
+    const base = this.deps.api;
+    // UAT DOC-06 — note which upload failed, so a refused document added just now is removed.
+    const api: SenderApi = Object.assign(Object.create(base) as SenderApi, {
+      upload: async (...args: Parameters<SenderApi['upload']>) => {
+        try {
+          return await base.upload(...args);
+        } catch (e) {
+          this.failedUpload = { idempotencyKey: args[2].idempotencyKey, error: e };
+          throw e;
+        }
+      },
+    });
     try {
       const result = await syncDraft(
         {
-          api: this.deps.api,
+          api,
           bytes: this.deps.bytes,
           // Keep the in-memory draft in step with every saved stage, not only the
           // store: a sync that fails part-way (after the envelope was created) must
@@ -804,6 +881,7 @@ export class SendFlowController {
       this.set({ draft, ...(server ? { server } : {}), ...(imported ? { notice: imported } : {}) });
       return true;
     } catch (e) {
+      this.lastSyncError = e;
       if (isRevisionMismatch(e)) {
         await this.reloadAfterConflict();
         return false;

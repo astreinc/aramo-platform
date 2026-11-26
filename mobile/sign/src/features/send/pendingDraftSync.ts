@@ -1,8 +1,8 @@
 // UAT AND-12 — drafts saved on the phone while offline are written to the server once the
 // phone is back online (directive §9: "Local draft preparation persists in encrypted
-// on-device storage and syncs when online"). Only drafts the sender explicitly saved
-// (Save draft → pendingSync) are synced, so a new envelope is still never created from a
-// draft the sender did not save. Nothing is ever sent. A draft open in the Send flow is
+// on-device storage and syncs when online"). In the background, only drafts the sender
+// explicitly saved (Save draft → pendingSync) are synced; any other draft is written by the
+// Send flow itself while it is open (UAT DOC-06). Nothing is ever sent. A draft open in the Send flow is
 // left to that screen, so two writers never race on one envelope.
 import type { DraftStore } from '../../state/draftStore';
 import type { DocumentBytesStore } from './documentBytes';

@@ -3,7 +3,8 @@
 // Recipients -> Fields -> Review. Entry: "+ New" (no params), a local draft
 // (localDraftId) or "Continue editing" (envelopeId), opening at the furthest step with
 // data. Preparation is saved on the device as it happens (encrypted) and reaches the
-// server only on Save as draft, Review and Send, always with If-Match.
+// server, always with If-Match, when a document is added online, on entering Fields and
+// Review, and on Save as draft and Send (UAT DOC-06).
 // "Sign a document" (intent 'self', FEATURES.selfSign; M-A4 §6.3, M-A5 §4): the user is
 // pre-added as a signer with Assign to me; after Send, the app asks for a SELF session
 // and opens the signing flow on the guest transport with only a vault handle.

@@ -4,7 +4,9 @@
 // replays a document upload under its Idempotency-Key (M-A3 §8). M-A5: recipient kinds,
 // copy timing, Assign to me (bound only for the caller's account email), copy
 // recipients excluded from readiness and refused fields, and the self-sign / hosted
-// session routes (tokens are fake capability strings).
+// session routes (tokens are fake capability strings). UAT DOC-06: a full storage
+// allocation refuses an upload (409 ESIGN_STORAGE_QUOTA_EXCEEDED), and the connection can drop
+// before an upload reaches the server.
 import { createWorkspaceClient } from '../../../api/workspaceClient';
 import { recordingFetch, type RecordedRequest } from '../../../testing/fakes';
 
@@ -43,8 +45,14 @@ export function fakeSenderServer(
     accountEmail?: string;
     /** M-A13 R-4 — how a .docx / .doc upload is refused (absent = converted). */
     refuseWord?: { readonly status: number; readonly reason: string };
+    /** UAT DOC-06 — the plan's storage is full: every new upload is refused (switch with setStorageFull). */
+    storageFull?: boolean;
+    /** UAT DOC-06 — the first N upload attempts fail with no connection (nothing is stored). */
+    networkDownUploads?: number;
   } = {},
 ) {
+  let storageFull = opts.storageFull === true;
+  let networkDown = 0;
   const accountEmail = (opts.accountEmail ?? 'priya@northwind.example').toLowerCase();
   let env: FakeEnvelope | null = null;
   let refusedUploads = 0;
@@ -165,6 +173,10 @@ export function fakeSenderServer(
     }
     const pre = precondition(r);
     if (rest === '/documents' && r.method === 'POST') {
+      if (networkDown < (opts.networkDownUploads ?? 0)) {
+        networkDown += 1;
+        throw new Error('network down');
+      }
       const key = r.headers['Idempotency-Key'];
       if (key && uploads.has(key)) return { status: 201, body: uploads.get(key) };
       if (pre) return pre;
@@ -174,6 +186,19 @@ export function fakeSenderServer(
       }
       if (opts.refuseWord && /\.(docx|doc)$/i.test(String(r.body?.['filename'] ?? ''))) {
         return refuse(opts.refuseWord.status, opts.refuseWord.reason);
+      }
+      // The storage gate (aramo-sign-storage.gate.ts): 409, the code carries the meaning.
+      if (storageFull) {
+        return {
+          status: 409,
+          body: {
+            error: {
+              code: 'ESIGN_STORAGE_QUOTA_EXCEEDED',
+              message: 'Your organization’s storage is full',
+              details: { reason: 'CAPACITY_EXCEEDED' },
+            },
+          },
+        };
       }
       // FIELD-PARITY-2 A-3 — an opted-in upload creates fields for the first signing recipient
       // (a form's text field and a text tag's signature), refused before anything is stored when
@@ -360,6 +385,10 @@ export function fakeSenderServer(
       return env;
     },
     messaging,
+    /** UAT DOC-06 — fill or free the plan's storage. */
+    setStorageFull(v: boolean) {
+      storageFull = v;
+    },
     /** Someone else (the web editor) changes the draft. */
     editElsewhere(fn: (e: FakeEnvelope) => void) {
       fn(env!);
