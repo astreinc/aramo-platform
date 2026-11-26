@@ -1106,7 +1106,7 @@ describe('sign-mobile → FIELD-PARITY-2 clear a stored value', () => {
 // Aramo-Sign-Field-Test-Batch-1 §2 SIG-4 (+A1) — on a signed-in (Sign now / inbox) session the
 // signing view carries profile_prefill: the user's own Sign profile values and the recipient
 // email (the server decides; the app offers the profile values, never sends one untaken).
-const PREFILL_ENVELOPE_ID = 'e6c10000-0000-7000-8000-0000000000c1';
+const PREFILL_ENVELOPE_ID = 'e6c30000-0000-7000-8000-0000000000c1';
 const PREFILL_TOKEN = 'sign-mobile-pact-token-profile-prefill';
 describe('sign-mobile → SIG-11 profile_prefill on the signing view', () => {
   it('returns the signed-in signer’s profile values', async () => {
