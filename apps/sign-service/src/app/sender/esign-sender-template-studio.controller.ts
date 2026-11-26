@@ -24,6 +24,7 @@ import { SenderTemplateStudioService } from './sender-template-studio.service.js
 //   POST   v1/sign/sender/templates/studio/:id/draft
 //   GET    v1/sign/sender/templates/studio/:id/allowed-bindings
 //   PATCH  v1/sign/sender/templates/studio/versions/:versionId      DELETE = discard the draft
+//   GET    v1/sign/sender/templates/studio/versions/:versionId/fields       field rows (chip labels)
 //   POST   v1/sign/sender/templates/studio/versions/:versionId/preview
 //   POST   v1/sign/sender/templates/studio/versions/:versionId/activate   "Use this version"
 //   TEMPLATE-SYNC-1 S-5 / S-7 / S-8:
@@ -144,6 +145,13 @@ export class EsignSenderTemplateStudioController {
   @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
   discardDraft(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('versionId') versionId: string) {
     return this.run(requestId, () => this.studio.discardDraft(auth, versionId, requestId));
+  }
+
+  // Sign Field-Test Batch 1 F15-2 — the version's field rows (read-only pass-through).
+  @Get('studio/versions/:versionId/fields')
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  listFields(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('versionId') versionId: string) {
+    return this.run(requestId, () => this.studio.listFields(auth, versionId, requestId));
   }
 
   @Post('studio/versions/:versionId/preview')

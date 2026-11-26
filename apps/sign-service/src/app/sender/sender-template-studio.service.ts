@@ -180,6 +180,12 @@ export class SenderTemplateStudioService {
     await this.studio(auth, 'DELETE', `/versions/${uuid(versionId, 'versionId', requestId)}`, requestId);
   }
 
+  // Sign Field-Test Batch 1 F15-2 — the version's field rows (a bare array), so the Studio
+  // labels its locked chips. Display only: a save never carries them.
+  async listFields(auth: AuthContextType, versionId: string, requestId: string) {
+    return this.studio(auth, 'GET', `/versions/${uuid(versionId, 'versionId', requestId)}/fields`, requestId);
+  }
+
   async preview(auth: AuthContextType, versionId: string, requestId: string) {
     return this.studio(auth, 'POST', `/versions/${uuid(versionId, 'versionId', requestId)}/preview`, requestId, {});
   }
