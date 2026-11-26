@@ -25,6 +25,7 @@ import { SignTemplateStudioService } from './sign-template-studio.service.js';
 //   POST   v1/documents/esign/templates/studio/:id/draft
 //   GET    v1/documents/esign/templates/studio/:id/allowed-bindings
 //   PATCH  v1/documents/esign/templates/studio/versions/:versionId      DELETE (discard draft)
+//   GET    v1/documents/esign/templates/studio/versions/:versionId/fields   field rows (chip labels)
 //   POST   v1/documents/esign/templates/studio/versions/:versionId/preview
 //   POST   v1/documents/esign/templates/studio/versions/:versionId/activate  ("Use this version")
 //   TEMPLATE-SYNC-1 S-5 / S-7 / S-8 (a newer master is available):
@@ -239,6 +240,14 @@ export class DocumentsEsignTemplateStudioController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async discard(@Param('versionId') versionId: string, @Query('tenant_id') tenantId: string, @Query('actor_id') actorId: string, @RequestId() requestId: string): Promise<void> {
     await this.studio.discardDraft({ ...this.who(tenantId, actorId, requestId), version_id: uuid(versionId, 'versionId', requestId) });
+  }
+
+  // Sign Field-Test Batch 1 F15-1 — the version's inline field rows (a bare array), so the
+  // Personal Studio labels its locked chips as Org Home does. Read-only.
+  @Get('versions/:versionId/fields')
+  @HttpCode(HttpStatus.OK)
+  fields(@Param('versionId') versionId: string, @Query('tenant_id') tenantId: string, @Query('actor_id') actorId: string, @RequestId() requestId: string) {
+    return this.studio.listFields({ ...this.who(tenantId, actorId, requestId), version_id: uuid(versionId, 'versionId', requestId) });
   }
 
   @Post('versions/:versionId/preview')
