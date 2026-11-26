@@ -4,7 +4,7 @@ import { ApiError } from '@aramo/fe-foundation';
 import { NO_SENDER_ACTIONS, type SenderActions } from '@aramo/sign-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { EnvelopeDetail as Detail, Recipient } from '../api';
+import { nextSendTime, type EnvelopeDetail as Detail, type Recipient } from '../api';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §5 — envelope detail shows each
 // signer's status, the next signer when signing in order, and a per-signer Remind
@@ -112,6 +112,71 @@ describe('EnvelopeDetail — reminder on an envelope changed elsewhere (UAT SND-
     fireEvent.click(await screen.findByTestId('remind-s1'));
     await waitFor(() => expect(toast).toHaveBeenCalledWith('A document you sign yourself has no one to remind.'));
     expect(detail).toHaveBeenCalledTimes(1);
+  });
+});
+
+// UAT SND-14 (field-test batch 1 §4 SND-2, SND-4, SND-A) — can_remind stays true during the
+// reminder cooldown; reminder_available_at says when it ends (@aramo/sign-client remindableNow).
+describe('EnvelopeDetail — reminder cooldown (UAT SND-14)', () => {
+  const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  it('can_remind true with a future reminder_available_at: Send reminder and Remind are disabled and the note says when', async () => {
+    const at = inAnHour();
+    detail.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: at })] }));
+    show();
+    expect(await screen.findByTestId('send-reminder')).toBeDisabled();
+    expect(screen.getByTestId('remind-s1')).toBeDisabled();
+    expect(screen.getByTestId('remind-cooling')).toHaveTextContent(`You can send another reminder at ${nextSendTime(at)}.`);
+    fireEvent.click(screen.getByTestId('send-reminder'));
+    expect(remind).not.toHaveBeenCalled();
+  });
+
+  it('no cooldown: enabled and no note', async () => {
+    detail.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: null })] }));
+    show();
+    expect(await screen.findByTestId('send-reminder')).toBeEnabled();
+    expect(screen.getByTestId('remind-s1')).toBeEnabled();
+    expect(screen.queryByTestId('remind-cooling')).toBeNull();
+  });
+
+  it('one signer cooling, another not: Send reminder stays enabled (it reaches the other), no note; the cooling Remind is disabled', async () => {
+    detail.mockResolvedValue(
+      env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: inAnHour() }), rcp(2, { can_remind: true, reminder_available_at: null })] }),
+    );
+    show();
+    expect(await screen.findByTestId('send-reminder')).toBeEnabled();
+    expect(screen.getByTestId('remind-s1')).toBeDisabled();
+    expect(screen.getByTestId('remind-s2')).toBeEnabled();
+    expect(screen.queryByTestId('remind-cooling')).toBeNull();
+  });
+
+  it('right after a reminder the button is disabled with the time; when the time passes it is enabled again (SND-A)', async () => {
+    const soon = new Date(Date.now() + 1500).toISOString();
+    detail
+      .mockResolvedValueOnce(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: null })] }))
+      .mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: soon })] }));
+    remind.mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: soon })] }));
+    show();
+    fireEvent.click(await screen.findByTestId('send-reminder'));
+    await waitFor(() => expect(screen.getByTestId('send-reminder')).toBeDisabled());
+    expect(screen.getByTestId('remind-cooling')).toHaveTextContent(`You can send another reminder at ${nextSendTime(soon)}.`);
+    expect(remind).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByTestId('send-reminder')).toBeEnabled(), { timeout: 4000 });
+    expect(screen.queryByTestId('remind-cooling')).toBeNull();
+  });
+
+  it('a 429 (a reminder sent elsewhere) toasts the shared words and reads the envelope again', async () => {
+    const at = inAnHour();
+    detail
+      .mockResolvedValueOnce(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: null })] }))
+      .mockResolvedValue(env({ routing_mode: 'PARALLEL', next_signer_id: null, recipients: [rcp(1, { can_remind: true, reminder_available_at: at })] }));
+    remind.mockRejectedValue(new ApiError(429, 'x', 'ESIGN_REMINDER_NOT_ALLOWED', { reason: 'reminder_cooldown', retry_at: at }));
+    show();
+    fireEvent.click(await screen.findByTestId('send-reminder'));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(`This signer was reminded less than an hour ago. You can send another reminder at ${nextSendTime(at)}.`));
+    await waitFor(() => expect(screen.getByTestId('send-reminder')).toBeDisabled());
+    expect(detail).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('remind-cooling')).toBeInTheDocument();
   });
 });
 

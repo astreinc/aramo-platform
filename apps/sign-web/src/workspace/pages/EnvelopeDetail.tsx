@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Dialog } from '@aramo/fe-foundation';
-import { SIGNABLE_ENVELOPE_STATUSES, VOID_REASON_COPY, VOID_REASON_MAX, senderActionsOf, voidReasonProblem } from '@aramo/sign-client';
+import { ApiError, Dialog } from '@aramo/fe-foundation';
+import { SIGNABLE_ENVELOPE_STATUSES, VOID_REASON_COPY, VOID_REASON_MAX, nextReminderAt, remindableNow, senderActionsOf, voidReasonProblem } from '@aramo/sign-client';
 
-import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextReminderAt, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -40,6 +40,8 @@ export function EnvelopeDetail() {
   const [purgeLevel, setPurgeLevel] = useState<PurgeLevel>('DOCUMENTS');
   const [purgeTyped, setPurgeTyped] = useState('');
   const [actionError, setActionError] = useState('');
+  // UAT SND-14 — the clock the reminder rule reads; moved on when the soonest cooldown ends.
+  const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(() => {
     senderApi
@@ -60,6 +62,15 @@ export function EnvelopeDetail() {
       .catch(() => setEvents([]));
   }, [id]);
   useEffect(load, [load]);
+  // UAT SND-14 (SND-A) — when a signer's reminder cooldown ends, read the rule again so Send
+  // reminder (and that signer's Remind) is enabled at that time without a reload.
+  const coolingSigners = env !== null && OPEN.has(env.status) ? env.recipients.filter((r) => remindableNow([r], now).length === 0) : [];
+  const wakeAt = nextReminderAt(coolingSigners);
+  useEffect(() => {
+    if (wakeAt === null) return undefined;
+    const t = setTimeout(() => setNow(Date.now()), Math.max(0, Date.parse(wakeAt) - Date.now()) + 250);
+    return () => clearTimeout(t);
+  }, [wakeAt]);
 
   if (error !== '' && env === null)
     return (
@@ -80,7 +91,11 @@ export function EnvelopeDetail() {
   const purged = purge?.state === 'EXECUTED';
   const canDelete = actions.delete;
   const live = OPEN.has(env.status);
-  const nextReminder = live ? nextReminderAt(env.recipients) : null;
+  // UAT SND-14 (SND-2) — @aramo/sign-client's rule (the app's): a signer can be reminded now only
+  // when the server's can_remind is true AND reminder_available_at has passed. can_remind stays
+  // true during the cooldown, and actions.remind does not include it (by design).
+  const remindable = live ? remindableNow(env.recipients, now) : [];
+  const nextReminder = live && remindable.length === 0 ? nextReminderAt(env.recipients) : null;
 
   const ordered = env.routing_mode === 'SEQUENTIAL';
   const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
@@ -95,7 +110,9 @@ export function EnvelopeDetail() {
     } catch (e) {
       toast(errorMessage(e));
       // UAT SND-23 — changed elsewhere (e.g. voided on the app): show the latest version.
-      if (isReminderStale(e)) load();
+      // UAT SND-14 — a reminder limit (429) means this page missed a reminder sent elsewhere:
+      // read the envelope again, so the button and the note follow the new cooldown.
+      if (isReminderStale(e) || (e instanceof ApiError && e.status === 429)) load();
     } finally {
       setBusy(false);
     }
@@ -225,12 +242,12 @@ export function EnvelopeDetail() {
             </Btn>
           ) : null}
           {actions.remind ? (
-            <Btn onClick={() => void remind()} disabled={busy} data-testid="send-reminder">
+            <Btn onClick={() => void remind()} disabled={busy || remindable.length === 0} data-testid="send-reminder">
               Send reminder
             </Btn>
           ) : null}
-          {/* UAT SND-14 — while reminders are cooling down, say when the next can go (the app's words). */}
-          {live && actions.void && nextReminder !== null ? (
+          {/* UAT SND-14 — while no signer can be reminded now, say when the next can go (the app's words). */}
+          {actions.remind && nextReminder !== null ? (
             <span className="sg-help" role="status" data-testid="remind-cooling" style={{ alignSelf: 'center' }}>
               You can send another reminder at {nextSendTime(nextReminder)}.
             </span>
@@ -328,7 +345,7 @@ export function EnvelopeDetail() {
                   </Btn>
                 ) : null}
                 {actions.remind && r.can_remind === true ? (
-                  <LinkBtn disabled={busy} onClick={() => void remind(r)} data-testid={`remind-${r.id}`}>
+                  <LinkBtn disabled={busy || !remindable.includes(r)} onClick={() => void remind(r)} data-testid={`remind-${r.id}`}>
                     Remind
                   </LinkBtn>
                 ) : null}
