@@ -38,6 +38,7 @@ import { RecipientOtpService } from './messaging/recipient-otp.service.js';
 import { identityVerificationHttpError } from './identity-verification/identity-verification-http-error.js';
 import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
 import { GuestSavedMarksService, savedMarkNotAllowed } from './signing/guest-saved-marks.service.js';
+import { SignerProfilePrefillService } from './signing/signer-profile-prefill.service.js';
 
 // DOC-3 — the E-Sign HTTP API. The /envelopes surface is the provider seam that
 // apps/api's SignatureProviderPort adapter calls (trusted service-to-service:
@@ -266,6 +267,8 @@ export class EsignSignerController {
     @Optional() private readonly textLayer?: DocumentTextLayerService,
     // M-A15 — the saved signature on the web signing page (unbound ⇒ never offered).
     @Optional() private readonly savedMarks?: GuestSavedMarksService,
+    // Field-test batch 1 SIG-11 (+A1) — the signer's own profile values (unbound ⇒ never offered).
+    @Optional() private readonly profilePrefill?: SignerProfilePrefillService,
   ) {}
 
   // Resolve the session and, when the sender set SMS_OTP on this recipient, require a
@@ -409,8 +412,10 @@ export class EsignSignerController {
       const saved_marks = (await this.savedMarks?.viewFor(ctx)) ?? null;
       // M-A16 §3 — the finished screen's "Save to my Aramo inbox" (emailed links only).
       const inbox_save_available = (await this.savedMarks?.inboxSaveAvailable(ctx)) ?? false;
+      // SIG-11 (+A1) — a signed-in (SELF / INBOX) session only; otherwise null (D-2).
+      const profile_prefill = (await this.profilePrefill?.prefillFor(ctx)) ?? null;
       // B3 — the delegate action is offered only while sign.delegate_signing is available.
-      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE), saved_marks, inbox_save_available };
+      return { ...view, can_delegate: view.can_delegate === true && (this.features ?? new SignFeatureGate()).isAvailable(SIGN_DELEGATE_SIGNING_FEATURE), saved_marks, inbox_save_available, profile_prefill };
     } catch (e) {
       throw toHttp(e, requestId);
     }

@@ -132,6 +132,7 @@ import { SignAccountService } from './account/sign-account.service.js';
 import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
 import { SavedSignatureService } from './me/signature/saved-signature.service.js';
 import { GuestSavedMarksService } from './signing/guest-saved-marks.service.js';
+import { SignerProfilePrefillService } from './signing/signer-profile-prefill.service.js';
 import { SavedDataPurgeService } from './me/signature/saved-data-purge.service.js';
 import { DocumentTextLayerService } from './text-layer/document-text-layer.service.js';
 import { FieldSuggestionsService } from './text-layer/field-suggestions.service.js';
@@ -387,6 +388,8 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     SavedDataPurgeService,
     // M-A15 — the saved signature on the web signing page (v1/sign/signing/document, /saved-mark).
     GuestSavedMarksService,
+    // Field-test batch 1 SIG-11 (+A1) — the signer's own profile values (v1/sign/signing/document).
+    SignerProfilePrefillService,
     // Aramo Sign Mobile M-A12 — Find in document, and the user's profile / settings / app issues.
     DocumentTextLayerService,
     SignMeProfileService,
