@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 89 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 91 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -27,6 +27,7 @@
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
     "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
     "@aramo/document-templates-web/pdf": "./libs/document-templates-web/src/pdf/index.ts",
+    "@aramo/document-templates-web/sync": "./libs/document-templates-web/src/template-sync.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -88,6 +89,7 @@
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
     "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
+    "@aramo/template-content": "./libs/template-content/src/index.ts",
     "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
     "@aramo/visibility": "./libs/visibility/src/index.ts"
   },
@@ -723,6 +725,7 @@
       "FixedFormPreview",
       "FixedFormStudio",
       "GALLERY_STUDIO_READ_ONLY",
+      "InlineFieldDialog",
       "LETTERHEAD_SAVE_BLOCKED",
       "LETTERHEAD_STUDIO_CONTENT_CODEC",
       "Letterhead",
@@ -741,6 +744,7 @@
       "RIGHT_TO_REPRESENT_TYPE_ID",
       "RTR_GENERATED_SCHEMA_V1",
       "RTR_HTML_SCHEMA_V1",
+      "RTR_HTML_SCHEMA_V2",
       "STUDIO_HTML_CONTENT_VERSION",
       "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
@@ -749,13 +753,16 @@
       "StudioRolesPanel",
       "TEMPLATE_PRODUCT_KEYS",
       "TEMPLATE_PRODUCT_LABELS",
+      "TEMPLATE_SYNC_COPY",
       "TemplateStudio",
+      "VersionDiff",
       "activateTemplateVersion",
       "addRole",
       "adoptTemplate",
       "appendStudioVariable",
       "base64ToBytes",
       "bindingMapFrom",
+      "blockDiff",
       "bytesToBase64",
       "canApproveTemplates",
       "canAuthorTemplates",
@@ -764,8 +771,10 @@
       "contentFromVersion",
       "convertStudioValue",
       "createDraftFromActive",
+      "createDraftFromMaster",
       "createOwnTemplate",
       "createStudioCodec",
+      "diffStats",
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
@@ -778,18 +787,26 @@
       "getDocumentTemplate",
       "getFixedForm",
       "getFixedFormPdf",
+      "getTemplateMasterContent",
       "getTemplateVersion",
       "htmlOf",
+      "inlineFieldChecks",
+      "inlineFieldChipResolver",
+      "inlineFieldFromRow",
+      "inlineFieldKeysOf",
+      "inlineFieldsToSave",
       "isCanonicalStudioHtml",
       "isStudioLetterheadBlock",
       "isStudioValueEmpty",
       "isTemplateProductKey",
+      "keepTemplateVersion",
       "listDocumentTemplates",
       "listFixedForms",
       "listTemplateSelections",
       "listTemplateVersions",
       "makeStudioChip",
       "nextFieldKey",
+      "nextInlineFieldKey",
       "orderedProducts",
       "organizationReadinessLabel",
       "organizationStudioCopy",
@@ -805,6 +822,7 @@
       "serializeStudioBlockDom",
       "setFixedFormHidden",
       "setTemplateSelection",
+      "showsMasterNotice",
       "signerRolesOf",
       "studioActiveMarks",
       "studioBlocksFromHtml",
@@ -823,12 +841,23 @@
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
+      "templateMasterBadge",
       "templateProductLabel",
       "templateProductsLine",
+      "templatesWithNewerMaster",
       "useDocTemplateRoutes",
-      "variableToken"
+      "variableToken",
+      "wordDiff"
     ],
     "@aramo/document-templates-web/pdf": ["clampBox", "loadPdf", "toPdf", "toTopLeft"],
+    "@aramo/document-templates-web/sync": [
+      "TEMPLATE_SYNC_COPY",
+      "TemplateMaster",
+      "TemplateMasterContent",
+      "showsMasterNotice",
+      "templateMasterBadge",
+      "templatesWithNewerMaster"
+    ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_EXECUTION_MODES",
@@ -860,6 +889,7 @@
       "FIXED_FORM_MIN_FIELD_SIZE",
       "FIXED_FORM_SCHEMA_V1",
       "FixedFormsRepository",
+      "INLINE_FIELD_TYPES",
       "OFFER_LETTER_TYPE_ID",
       "PLATFORM_TEMPLATE_ASSET_PREFIX",
       "PlatformDocumentTypesRepository",
@@ -873,6 +903,7 @@
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
       "TEMPLATE_PRODUCT_KEYS",
+      "TEMPLATE_SYNC_REFUSALS",
       "TEMPLATE_TENANT_LOGO",
       "TEMPLATE_VARIABLE_DATA_TYPES",
       "TemplateDraftAlreadyExistsError",
@@ -891,10 +922,17 @@
       "fixedFormConditionIssues",
       "fixedFormIssues",
       "fixedFormPdfOf",
+      "inlineRowColumns",
+      "inlineRowOf",
       "isFixedFormFieldType",
       "isSystemLockedType",
       "isTemplateProductKey",
+      "masterAvailable",
+      "masterIsNewer",
+      "parseInlineFieldRows",
+      "sameInlineFieldSet",
       "templateErrorToHttp",
+      "templateMasterView",
       "visibleToTenant"
     ],
     "@aramo/documents-contracts": [
@@ -916,6 +954,7 @@
     ],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
+      "InlineFieldTooWideError",
       "PAGE_GRAPHICS_MAX_OPS",
       "PAGE_GRAPHICS_MAX_RECTS",
       "PdfFormImportError",
@@ -931,6 +970,8 @@
       "extractPageGraphics",
       "extractTextLayer",
       "importPdfForm",
+      "inlineFieldMaxWidth",
+      "isFieldRun",
       "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
@@ -3892,6 +3933,60 @@
       "buildScreeningFindingPayload",
       "screeningPayloadHash"
     ],
+    "@aramo/template-content": [
+      "ALLOWED_TAGS_V1",
+      "ALLOWED_TAGS_V2",
+      "ASSET_ATTR",
+      "BLOCK_KINDS_V1",
+      "BLOCK_KINDS_V2",
+      "BLOCK_LIKE_TAGS",
+      "CONTENT_KEY_RE",
+      "CONTENT_MAX_BYTES_V1",
+      "CONTENT_MAX_BYTES_V2",
+      "CONTENT_PREVIEW_IFRAME_STYLE",
+      "CONTENT_REFUSAL_REASONS",
+      "CURRENT_HTML_CONTENT_VERSION",
+      "DROPPED_WITH_CONTENT_TAGS",
+      "HEADING_TAGS_V1",
+      "HEADING_TAGS_V2",
+      "HTML_CONTENT_VERSIONS",
+      "INLINE_FIELD_BLOCKS",
+      "INLINE_FIELD_KEY_RE",
+      "INLINE_FIELD_REFUSAL_REASONS",
+      "INLINE_MARK_TAGS",
+      "LIST_MAX_DEPTH_V2",
+      "PAGE_BREAK_ATTR",
+      "PAGE_BREAK_VALUE",
+      "PLACEHOLDER_TOKEN_SOURCE",
+      "RTR_HTML_V1",
+      "RTR_HTML_V2",
+      "RTR_HTML_V3",
+      "SAMPLE_ATTR",
+      "SIGN_FIELD_ATTR",
+      "SIGN_FIELD_SAMPLE_ATTR",
+      "TABLE_MAX_COLUMNS",
+      "TABLE_MAX_ROWS",
+      "VARIABLE_ATTR",
+      "VARIABLE_CATALOG_KEY_MAX",
+      "VARIABLE_CATALOG_KEY_RE",
+      "allowedAttributesOf",
+      "allowedTagsOf",
+      "allowsInlineFields",
+      "blockKindsOf",
+      "contentMaxBytesOf",
+      "contentPreviewIframeDoc",
+      "contentVersionOrdinal",
+      "hasV2Features",
+      "headingLevelOf",
+      "inlineFieldAllowedIn",
+      "inlineFieldMarkerHtml",
+      "isContentDowngrade",
+      "isHtmlContentVersion",
+      "isInlineFieldKey",
+      "listMaxDepthOf",
+      "placeholderKeysIn",
+      "placeholderTokenRe"
+    ],
     "@aramo/tenant-reset": [
       "ACTIVITY_SCOPE_PREDICATE",
       "ArchiveLocationRequiredError",
@@ -4611,6 +4706,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-tp5-tag-enforcement-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4624,6 +4737,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4786,6 +4905,12 @@
         "status": "excluded"
       },
       { "project": "contact", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-sync-1-routes.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5302,6 +5427,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7366,6 +7497,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7397,6 +7546,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10274,6 +10429,7 @@
       { "project": "org-admin-web", "status": "production" }
     ],
     "@aramo/document-templates-web/pdf": [],
+    "@aramo/document-templates-web/sync": [],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
@@ -10457,6 +10613,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-import-1-word.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-tp4-generic-editable-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10580,6 +10748,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10640,6 +10814,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10695,6 +10875,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -13624,6 +13810,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/template-product-1-sign-studio-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -15836,6 +16028,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/template-fields-1-carry.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/template-product-1-sender-template-studio.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -16284,6 +16482,25 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/technical-screening": [{ "project": "api", "status": "production" }],
+    "@aramo/template-content": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-content.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "aramo-platform-web", "status": "production" },
+      { "project": "aramo-sign-web", "status": "production" },
+      { "project": "document-templates-web", "status": "production" },
+      { "project": "documents", "status": "production" }
+    ],
     "@aramo/tenant-reset": [
       {
         "excludedBy": "src/tests/**/*",
@@ -17083,6 +17300,13 @@
       "root": "libs/technical-screening",
       "sourceRoot": "libs/technical-screening/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "template-content",
+      "root": "libs/template-content",
+      "sourceRoot": "libs/template-content/src",
+      "tags": ["scope:shared", "type:client-shared"],
       "targets": ["build", "lint", "test"]
     },
     {

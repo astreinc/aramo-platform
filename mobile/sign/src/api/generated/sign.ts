@@ -1152,7 +1152,7 @@ export interface paths {
         };
         /**
          * A Personal account's templates and the Aramo templates for Aramo Sign (TEMPLATE-PRODUCT-1 §8.3).
-         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). TEMPLATE-SYNC-1 S-3 — each of the account's own templates carries the server-computed `master` object (null unless adopted from an Aramo template).
          */
         get: operations["listSenderStudioTemplates"];
         put?: never;
@@ -1192,7 +1192,7 @@ export interface paths {
         };
         /**
          * One of the Personal account's templates (TEMPLATE-PRODUCT-1 §8.3).
-         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). TEMPLATE-SYNC-1 S-3 — carries the server-computed `master` object.
          */
         get: operations["getSenderStudioTemplate"];
         put?: never;
@@ -1245,6 +1245,66 @@ export interface paths {
          * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api).
          */
         post: operations["createSenderStudioTemplateDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/master": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare with Aramo's new version — the current Aramo version content of an adopted template (TEMPLATE-SYNC-1 S-5).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). Returns the stored content (render_schema_version, title, html, signing roles) of the CURRENT version of the Aramo template this one was adopted from; never an earlier version. 404 details.reason not_an_adopted_template / master_not_available.
+         */
+        get: operations["getSenderStudioTemplateMasterContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/draft-from-master": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a draft from Aramo's new version (TEMPLATE-SYNC-1 S-7).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). Needs document_template:author (re-checked by Documents). The next draft gets the Aramo template's current content and signing roles, the account's letterhead logo carried over and the Aramo version's fields; it is used only after preview and "Use this version". Refusals (details.reason) not_an_adopted_template (404), master_not_available, already_current, draft_exists (409).
+         */
+        post: operations["createSenderStudioTemplateDraftFromMaster"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/templates/studio/{id}/keep-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep my version for Aramo's current version (TEMPLATE-SYNC-1 S-8).
+         * @description PERSONAL accounts only: a BUSINESS tenant is refused 403 INSUFFICIENT_PERMISSIONS (details.reason organization_templates_in_org_home; organizations manage templates in Org Home). The Personal owner holds author + approve (re-checked by Documents from their live role grants). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while sign.templates is not available; then the plan (Catalog v2 P-6): ESIGN_FEATURE_NOT_AVAILABLE (403, details.reason templates_not_in_plan) on the Free plan, details.reason subscription_inactive for a subscription that does not send, ESIGN_NOT_SUBSCRIBED (403) without one. Requires document_template:read. Sign stores nothing: Documents owns every row (signed service-to-service call to apps/api). Needs document_template:manage (re-checked by Documents). The notice hides for that Aramo version only and shows again when Aramo publishes a later one. Refusals (details.reason) not_an_adopted_template (404), master_not_available, already_current (409).
+         */
+        post: operations["keepSenderStudioTemplateVersion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4566,12 +4626,50 @@ export interface components {
                 /** @enum {string} */
                 routing_mode: "PARALLEL" | "SEQUENTIAL";
                 signing: components["schemas"]["SenderTemplateSigning"] | null;
+                /** @description TEMPLATE-SYNC-1 S-3 / S-11 — the server-computed master of a template the organization adopted from an Aramo template (null otherwise). Sign web Business and the app show the badge "Newer version available" (newer_available) or "Withdrawn by Aramo" (withdrawn) from it; no client recomputes it. */
+                master?: components["schemas"]["SenderTemplateMaster"] | null;
             }[];
             unavailable: {
                 /** Format: uuid */
                 document_type_id: string;
                 reason: string;
             }[];
+        };
+        /** @description TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-3 — whether the Aramo template an organization or account template was adopted from has a newer published version, or was withdrawn. Computed by Documents (the one server rule). */
+        SenderTemplateMaster: {
+            /** Format: uuid */
+            template_id: string;
+            name: string | null;
+            /** Format: uuid */
+            current_version_id: string | null;
+            current_version_number: number | null;
+            based_on_version_number: number | null;
+            newer_available: boolean;
+            withdrawn: {
+                /** Format: date-time */
+                notice_at: string;
+                /** Format: date-time */
+                effective_at: string;
+                /** @enum {string} */
+                status: "PENDING" | "IN_EFFECT";
+            } | null;
+            kept: boolean;
+        };
+        /** @description TEMPLATE-SYNC-1 S-5 — the Aramo template's CURRENT version stored content. */
+        SenderTemplateMasterContent: {
+            /** Format: uuid */
+            template_id: string;
+            /** Format: uuid */
+            master_template_id: string;
+            /** Format: uuid */
+            version_id: string;
+            version_number: number;
+            render_schema_version: string;
+            title: string | null;
+            html: string | null;
+            signing: {
+                [key: string]: unknown;
+            } | null;
         };
         SignTokenRequest: {
             /** @enum {string} */
@@ -8104,7 +8202,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        items?: {
+                            /** @description TEMPLATE-SYNC-1 S-3 — the server-computed master (null for an Aramo template and for a template the account wrote itself). */
+                            master?: components["schemas"]["SenderTemplateMaster"] | null;
+                        }[];
+                    };
                 };
             };
             401: components["responses"]["SenderUnauthorized"];
@@ -8238,6 +8341,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules. */
                     render_schema_version: string;
                     field_schema?: unknown;
                 };
@@ -8278,6 +8382,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getSenderStudioTemplateMasterContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderTemplateMasterContent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createSenderStudioTemplateDraftFromMaster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    keepSenderStudioTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        master?: components["schemas"]["SenderTemplateMaster"] | null;
+                    };
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -8350,6 +8536,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Editable html content is rtr-html-v1 or rtr-html-v2 (the Studio writes v2); documents.yaml RtrHtmlContent has the rules. */
                     render_schema_version?: string;
                     field_schema?: unknown;
                     internal_notes?: string | null;
@@ -8715,6 +8902,7 @@ export interface operations {
                             version_number: number;
                         };
                         suggested_fields: components["schemas"]["SenderTemplateSignatureField"][];
+                        /** @description The template's field definitions as rendered. TEMPLATE-FIELDS-1 F-12 — the fields placed in the text of an editable template carry this render's positions and are placed for their signing role (a sender-filled one on the first role); one without a position is refused 409 field_not_placed, and a template with such fields is refused on the single-signer path (422 signing_roles_required: bind recipients to roles). */
                         field_definitions: Record<string, never>[];
                         signing: components["schemas"]["SenderTemplateSigning"] | null;
                         /**

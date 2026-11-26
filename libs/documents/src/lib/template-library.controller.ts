@@ -28,6 +28,7 @@ import { TemplateNotFoundError, TemplateSelectionInvalidError } from './domain/e
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import { templateErrorToHttp } from './templates.controller.js';
 import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from './template-products.js';
+import { type TemplateMasterView } from './template-master.js';
 
 // DOC-TEMPLATE-LIB-1 T-4 — Implementation Directive v1.0 (LOCKED) §8.2 (ADR-0034 D3, D4,
 // D5, D6, D8, D11): the tenant template-library reads + the explicit selection, for the
@@ -49,8 +50,12 @@ import { TEMPLATE_PRODUCT_KEYS, entitledTemplateProducts, visibleToTenant } from
 //   DELETE selections             — clear it: the type reverts to the Aramo default.
 //
 // "Create your own document template" (D5) is the existing POST /v1/document-templates
-// (a TENANT template, written from scratch): there is NO copy-from-default route and no
-// provenance field. Every write here is TENANT-scoped (TenantTemplateSelection rows of
+// (a TENANT template, written from scratch). Copying a default is POST
+// /v1/document-templates/adopt (ORG-UX-1 §5.1), which records adopted_from_* provenance.
+// TEMPLATE-SYNC-1 §0 (amends ORG-UX-1 §5.1 / ADR-0034 D3): that lineage may be read to tell a
+// company that a newer master version exists or that the master was withdrawn (the `master`
+// object on TENANT items), and to start an update the company asks for; resolution and
+// rendering never read it. Every write here is TENANT-scoped (TenantTemplateSelection rows of
 // the caller's tenant); no tenant route can write a PLATFORM row.
 //
 // Registered BEFORE DocumentTemplatesController in DocumentsModule so the static paths
@@ -99,6 +104,9 @@ export interface TemplateLibraryItem {
   readonly products: readonly string[] | null;
   readonly withdraw_effective_at: string | null;
   readonly configurable: boolean;
+  // TEMPLATE-SYNC-1 S-3 — the server-computed master of an ADOPTED tenant template (null for
+  // an Aramo default and for a template the tenant wrote itself).
+  readonly master: TemplateMasterView | null;
 }
 
 export interface TemplateLibraryDocumentType {
@@ -159,6 +167,7 @@ export class DocumentTemplateLibraryController {
     const byId = new Map(versions.map((v) => [v.id, v]));
     // TEMPLATE-PRODUCT-1 §5.1 — configurability is data (one read per distinct type).
     const configurable = await this.configurableTypes([...rows.map((t) => t.document_type_id), ...systemTypes.map((d) => d.id)]);
+    const masters = await this.repo.masterViewsForTenant(auth.tenant_id, { now });
     const items: TemplateLibraryItem[] = rows.map((t) => {
       const v = t.current_version_id !== null ? byId.get(t.current_version_id) : undefined;
       const platform = t.owner_scope === 'PLATFORM';
@@ -178,6 +187,7 @@ export class DocumentTemplateLibraryController {
         products: t.products ?? (platform ? [] : null),
         withdraw_effective_at: platform && t.withdraw_effective_at !== null ? t.withdraw_effective_at.toISOString() : null,
         configurable: configurable.has(t.document_type_id),
+        master: platform ? null : (masters.get(t.id) ?? null),
       };
     });
     const document_types: TemplateLibraryDocumentType[] = systemTypes.map((d) => ({

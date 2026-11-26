@@ -43,9 +43,24 @@ export {
   type TemplatePlatformWithdrawalAudit,
   // TEMPLATE-PRODUCT-1 §3.3 — platform draft discard / never-published template delete.
   type TemplatePlatformDeletionAudit,
+  type TemplatePlatformImportAudit,
+  // TEMPLATE-SYNC-1 S-13 — a new version of an Aramo default was published.
+  type TemplatePlatformPublishedAudit,
   // TEMPLATE-PRODUCT-1 §4.3 — Platform Admin document type changes.
   type TemplateDocumentTypeAudit,
 } from './lib/template-audit.port.js';
+// TEMPLATE-SYNC-1 S-3 — the one server rule for "a newer master is available".
+export {
+  templateMasterView,
+  masterIsNewer,
+  masterAvailable,
+  TEMPLATE_SYNC_REFUSALS,
+  type TemplateMasterView,
+  type TemplateMasterWithdrawal,
+  type TemplateMasterRow,
+  type TemplateMasterInput,
+  type TemplateSyncRefusal,
+} from './lib/template-master.js';
 // TEMPLATE-PRODUCT-1 §2.1 — template product tags = the entitlement capability keys.
 export {
   TEMPLATE_PRODUCT_KEYS,
@@ -195,4 +210,15 @@ export {
   type FixedFormRole,
   type FixedFormSigning,
 } from './lib/fixed-forms.js';
+// TEMPLATE-FIELDS-1 — the rows of the fields placed inside editable template content.
+export {
+  INLINE_FIELD_TYPES,
+  parseInlineFieldRows,
+  inlineRowOf,
+  sameInlineFieldSet,
+  inlineRowColumns,
+  type InlineFieldRowInput,
+  type InlineFieldRowsParse,
+  type StoredFieldRow,
+} from './lib/inline-fields.js';
 export { FixedFormsRepository, type FixedFormTypeRow, type PublishedFixedForm } from './lib/fixed-forms.repository.js';

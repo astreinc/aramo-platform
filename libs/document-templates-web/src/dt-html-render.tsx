@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from 'react';
+import { CURRENT_HTML_CONTENT_VERSION, PAGE_BREAK_ATTR, PAGE_BREAK_VALUE, SIGN_FIELD_ATTR, SIGN_FIELD_SAMPLE_ATTR } from '@aramo/template-content';
 
-import { parseFragment, sanitizeDocHtml } from './dt-html';
+import { parseFragment, sanitizeDocHtml, type DocHtmlVersion } from './dt-html';
 import { JOB_DESCRIPTION_KEY, SourceIcon, sourceOf, type BindingMap } from './dt-ui';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 Amendment A1 — the SAFE allowlist renderer for rtr-html-v1.
@@ -37,16 +38,23 @@ export function Letterhead({ info, variant, testId }: {
   );
 }
 
-const PASS: Record<string, string> = { P: 'p', H2: 'h2', UL: 'ul', OL: 'ol', LI: 'li', B: 'b', I: 'i', U: 'u', BR: 'br' };
+// TEMPLATE-CONTENT-2 (C-11) — v2 adds h3 · h4, tables (a cell holds inline content only),
+// dividers and page breaks. Rendering reads content as v2 by default: v2 is a strict superset,
+// so v1 content (which never holds the v2 tags) renders as before.
+const PASS: Record<string, string> = {
+  P: 'p', H2: 'h2', H3: 'h3', H4: 'h4', UL: 'ul', OL: 'ol', LI: 'li', B: 'b', I: 'i', U: 'u', BR: 'br',
+  TABLE: 'table', TR: 'tr', TH: 'th', TD: 'td',
+};
 
-export function SafeDoc({ html, map, mode, letterhead, testId }: {
+export function SafeDoc({ html, map, mode, letterhead, testId, version = CURRENT_HTML_CONTENT_VERSION }: {
   readonly html: string;
   readonly map: BindingMap;
   readonly mode: 'content' | 'sample';
   readonly letterhead: LetterheadInfo | null;
   readonly testId?: string;
+  readonly version?: DocHtmlVersion;
 }) {
-  const clean = sanitizeDocHtml(html, { allowSample: mode === 'sample' });
+  const clean = sanitizeDocHtml(html, { allowSample: mode === 'sample', version });
   let k = 0;
   const conv = (n: Node): ReactNode => {
     k += 1;
@@ -67,6 +75,16 @@ export function SafeDoc({ html, map, mode, letterhead, testId }: {
         </span>
       );
     }
+    // TEMPLATE-FIELDS-1 F-13 — an inline Sign field: a labelled box where the text places it (the
+    // server's sample label, or the field key in stored content).
+    const fieldSample = e.getAttribute(SIGN_FIELD_SAMPLE_ATTR) ?? e.getAttribute(SIGN_FIELD_ATTR);
+    if (fieldSample != null) {
+      return (
+        <span key={k} className="dt-signfield" data-sign-field-box={fieldSample}>
+          {e.textContent !== null && e.textContent !== '' ? e.textContent : fieldSample}
+        </span>
+      );
+    }
     const sample = e.getAttribute('data-sample');
     if (sample != null) {
       return (
@@ -74,6 +92,15 @@ export function SafeDoc({ html, map, mode, letterhead, testId }: {
           {e.textContent ?? ''}
         </span>
       );
+    }
+    if (e.tagName === 'HR') {
+      return e.getAttribute(PAGE_BREAK_ATTR) === PAGE_BREAK_VALUE
+        ? <div key={k} className="dt-pb" role="separator" aria-label="Page break"><span>Page break</span></div>
+        : <hr key={k} className="dt-hr" />;
+    }
+    if (e.tagName === 'TABLE') {
+      // React needs the rows inside a tbody.
+      return <table key={k} className="dt-tbl"><tbody>{Array.from(e.childNodes).map(conv)}</tbody></table>;
     }
     const tag = PASS[e.tagName];
     if (tag == null) return Array.from(e.childNodes).map(conv);

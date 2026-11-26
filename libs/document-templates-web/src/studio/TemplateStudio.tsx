@@ -9,10 +9,14 @@ import {
   createStudioCodec,
   studioBlocksFromHtml,
   studioLetterheadState,
+  isStudioHeadingKind,
+  studioBlockText,
   studioPlainText,
   studioVariableKeys,
   type StudioLetterheadState,
 } from '../studio-codec';
+import { bytesToBase64 } from '../fixed-form/fixed-form-model';
+import { TEMPLATE_SYNC_COPY, showsMasterNotice } from '../template-sync';
 
 import {
   DEFAULT_STUDIO_CONTENT_CODEC,
@@ -21,6 +25,7 @@ import {
   studioSigningOf,
   withdrawalStateOf,
   type StudioContentCodec,
+  type StudioImportSummary,
   type StudioSamplePreview as SamplePreview,
   type StudioTemplate as TemplateDetail,
   type StudioVersion as TemplateVersion,
@@ -30,7 +35,8 @@ import {
 import { formatDate, formatDateRelative } from './format-date';
 import { Pill, SkeletonPanel } from './primitives';
 import { blockDiff, diffStats, type DiffBlock } from './diff';
-import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlockId, removeVariableEverywhere, type StudioDoc } from './doc-ops';
+import { contentRefusalMessage } from './content-refusals';
+import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlockId, removeVariableEverywhere, convertTypedPlaceholderEverywhere, type StudioDoc } from './doc-ops';
 import { deriveReadiness } from './readiness';
 import { StudioCanvas, type CanvasHandle } from './StudioCanvas';
 import { StudioInspector, type PropertiesPatch, type RightTab } from './StudioInspector';
@@ -38,11 +44,22 @@ import { StudioLeftPanel, type LeftTab, type SectionCardModel, type VersionRowMo
 import { StudioPreview, orgNameOf, type PreviewSource } from './StudioPreview';
 import { signerRolesOf } from './StudioRolesPanel';
 import { StudioTopBar, type SaveState, type StudioMode } from './StudioTopBar';
+import { ImportWordDialog, WORD_IMPORT_MAX_FILE_BYTES } from './ImportWordDialog';
 import { CancelWithdrawalDialog, DeleteTemplateDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
 import { useStudioDoc } from './use-studio-doc';
 import { useStudioDrag, type DragPayload, type DropPos } from './use-studio-drag';
 import { VersionDiff, type DiffSide } from './VersionDiff';
 import { EMPTY_CATALOG, buildCatalog, chipInfo, type VariableCatalog } from './variables';
+import { InlineFieldDialog } from './InlineFieldDialog';
+import {
+  inlineFieldChecks,
+  inlineFieldChipResolver,
+  inlineFieldFromRow,
+  inlineFieldKeysOf,
+  inlineFieldsToSave,
+  nextInlineFieldKey,
+  type StudioInlineField,
+} from './inline-fields';
 import './studio.css';
 
 // PLATFORM-UX-1 F-9 (handoff §10; directive R-10–R-13) — the Template Studio (platform:
@@ -92,7 +109,7 @@ function contentDoc(v: TemplateVersion | null, content: StudioContentCodec): Stu
   return signing !== null ? { ...base, signing } : base;
 }
 function diffBlocksOf(blocks: StudioDoc['blocks']): DiffBlock[] {
-  return blocks.map((b) => ({ kind: b.kind, text: studioPlainText(b.value) }));
+  return blocks.map((b) => ({ kind: b.kind, text: studioBlockText(b) }));
 }
 /** What the host's account slot receives (TEMPLATE-STUDIO-1 S-0). */
 export interface StudioAccountSlot {
@@ -154,7 +171,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return docType !== null && base.forDocumentType !== undefined ? { ...base, ...base.forDocumentType(docType) } : base;
   }, [ds.copy, docType]);
   const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
-  const templateErrorMessage = formatError;
+  // TEMPLATE-CONTENT-2 — content refusals are worded once, here; anything else is the host's.
+  const templateErrorMessage = useCallback((e: unknown, fallback: string) => contentRefusalMessage(e) ?? formatError(e, fallback), [formatError]);
   const hasWithdrawal = ds.withdraw !== undefined;
   const showVersions = ds.capabilities.versions !== false;
   const showModeToggle = ds.capabilities.modeToggle !== false;
@@ -178,6 +196,12 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
 
   const docState = useStudioDoc({ title: '', blocks: [] });
   const { doc, change, editRev } = docState;
+  // TEMPLATE-FIELDS-1 — the loaded field keys (a tenant copy must keep exactly these, F-15), the
+  // sender-filled switch, and the Insert / settings dialog (null key = insert).
+  const [lockedKeys, setLockedKeys] = useState<readonly string[]>([]);
+  const [senderFilledOn, setSenderFilledOn] = useState(false);
+  const [fieldDialog, setFieldDialog] = useState<{ readonly key: string | null } | null>(null);
+  const loadedFieldKeys = useRef<readonly string[]>([]);
   const [savedEditRev, setSavedEditRev] = useState(0);
   const [draft, setDraft] = useState<TemplateVersion | null>(null);
   const [savedRev, setSavedRev] = useState(0);
@@ -212,6 +236,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [cancelWdOpen, setCancelWdOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // TEMPLATE-IMPORT-1 W-9 — the Word import dialog and its result.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSummary, setImportSummary] = useState<StudioImportSummary | null>(null);
   const [tenantLogo, setTenantLogo] = useState<{ readonly available: boolean; readonly tenant_name: string } | null>(null);
   // S-2 — the read-only Preview's server render of the current version (previewCurrent).
   const [readerPreview, setReaderPreview] = useState<SamplePreview | null>(null);
@@ -220,6 +247,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [compare, setCompare] = useState<{ left: string; right: string; changesOnly: boolean } | null>(null);
+  // TEMPLATE-SYNC-1 S-6 — the master's current version as a compare side (loaded on demand).
+  const [masterSide, setMasterSide] = useState<DiffSide | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -242,14 +272,19 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   // ── load ──────────────────────────────────────────────────────────────
   const { reset } = docState;
   const initDoc = useCallback(
-    (d: TemplateDetail) => {
+    (d: TemplateDetail, fields: readonly StudioInlineField[] = []) => {
       const dv = draftOf(d);
       const cur = currentOf(d);
       const fromDraft = dv !== null ? contentDoc(dv, content) : null;
       const base: StudioDoc = canManage
         ? (fromDraft ?? contentDoc(cur, content) ?? { title: d.name, blocks: [] })
         : (contentDoc(cur, content) ?? { title: d.name, blocks: [] });
-      reset(base);
+      // TEMPLATE-FIELDS-1 — the version's inline field rows ride beside the blocks.
+      reset(fields.length > 0 ? { ...base, fields } : base);
+      // F-15 — the fields a tenant copy must keep are the markers of the loaded content (the server
+      // holds them equal to the rows, F-3), so the check stands even where the rows are not read.
+      setLockedKeys(inlineFieldKeysOf(base.blocks));
+      loadedFieldKeys.current = fields.map((f) => f.field_key);
       savedEditRevRef.current = 0;
       setSavedEditRev(0);
       draftRef.current = dv;
@@ -267,7 +302,11 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     void (async () => {
       try {
         const [d, cat] = await Promise.all([ds.load(templateId), ds.catalog(templateId)]);
+        // TEMPLATE-FIELDS-1 — the inline field rows of the version the Studio opens.
+        const fieldsVersion = canManage ? (draftOf(d) ?? currentOf(d)) : currentOf(d);
+        const fieldData = fieldsVersion !== null && ds.fields !== undefined ? await ds.fields(fieldsVersion.id).catch(() => null) : null;
         if (!live) return;
+        setSenderFilledOn(fieldData?.sender_filled_fields_enabled === true);
         setCatalog(buildCatalog(cat.variables, cat.bindings));
         setTenantLogo(cat.tenantLogo ?? null);
         const loadedType = cat.documentTypes?.find((t) => t.id === d.document_type_id);
@@ -275,7 +314,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         setDocType({ id: d.document_type_id, name: loadedType?.name ?? '' });
         setTypeProducts(loadedType?.products);
         setDetail(d);
-        initDoc(d);
+        initDoc(d, (fieldData?.fields ?? []).map(inlineFieldFromRow));
       } catch (e) {
         if (live) setLoadError(templateErrorMessage(e, 'Failed to load the template.'));
       }
@@ -283,7 +322,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return () => {
       live = false;
     };
-  }, [ds, templateId, initDoc, templateErrorMessage]);
+  }, [ds, templateId, initDoc, templateErrorMessage, canManage]);
 
   const refreshDetail = useCallback(async (): Promise<TemplateDetail | null> => {
     try {
@@ -311,12 +350,45 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // ── fields in the text (TEMPLATE-FIELDS-1) ────────────────────────────
+  const fieldsEditable = ds.capabilities.inlineFields === 'edit';
+  const docFields = doc.fields;
+  const docSigning = doc.signing;
+  const fieldChip = useMemo(() => inlineFieldChipResolver(docFields ?? [], docSigning, !fieldsEditable), [docFields, docSigning, fieldsEditable]);
+  // A cut chip may be pasted back (moved) when it is one of the document's fields no longer in the text.
+  const docRefForPaste = useRef(doc);
+  docRefForPaste.current = doc;
+  const acceptPastedField = useCallback(
+    (key: string): boolean => {
+      const d = docRefForPaste.current;
+      return fieldsEditable && (d.fields ?? []).some((f) => f.field_key === key) && !inlineFieldKeysOf(d.blocks).includes(key);
+    },
+    [fieldsEditable],
+  );
+  const saveField = (f: StudioInlineField): void => {
+    const exists = (doc.fields ?? []).some((x) => x.field_key === f.field_key);
+    if (!exists) {
+      const info = inlineFieldChipResolver([f], doc.signing, false)(f.field_key);
+      if (canvasRef.current?.insertField(f.field_key, info) !== true) return;
+    }
+    change((d) => ({ ...d, fields: [...(d.fields ?? []).filter((x) => x.field_key !== f.field_key), f] }));
+    setFieldDialog(null);
+  };
+  const deleteField = (key: string): void => {
+    change((d) => ({
+      ...d,
+      blocks: d.blocks.map((b) => (b.value.includes(`data-sign-field="${key}"`) ? { ...b, value: b.value.split(`<span data-sign-field="${key}"></span>`).join('') } : b)),
+      fields: (d.fields ?? []).filter((x) => x.field_key !== key),
+    }));
+    setFieldDialog(null);
+  };
+
   // ── derived ───────────────────────────────────────────────────────────
   const dirty = editRev !== savedEditRev;
   const withdrawal = detail !== null ? withdrawalStateOf(detail) : 'NONE';
   const current = currentOf(detail);
   const currentDoc = useMemo(() => contentDoc(current, content), [current, content]);
-  const codec = useMemo(() => createStudioCodec((k) => chipInfo(catalog, k)), [catalog]);
+  const codec = useMemo(() => createStudioCodec((k) => chipInfo(catalog, k), fieldChip, acceptPastedField), [catalog, fieldChip, acceptPastedField]);
   const map = useMemo(() => bindingMapFrom(catalog.list.map((v) => ({ key: v.key, label: v.label }))), [catalog]);
   const readiness = useMemo(
     () =>
@@ -332,6 +404,15 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         // TEMPLATE-PRODUCT-1 §2.6 — a blocking check where the context carries product tags.
         // TEMPLATE-PRODUCT-1 §6.1 — read-only (inherited) tags never block approval.
         products: ds.capabilities.productTags && ds.capabilities.productTagsReadOnly !== true ? (detail?.products ?? []) : null,
+        // TEMPLATE-FIELDS-1 — F-17 (an `ats` template cannot have fields in its text: a blocking
+        // check), F-6 roles, and F-15 (a tenant copy keeps the fields Aramo placed).
+        extra: inlineFieldChecks({
+          blocks: doc.blocks,
+          fields: doc.fields ?? [],
+          signing: doc.signing,
+          products: detail?.products ?? [],
+          lockedKeys: fieldsEditable ? null : lockedKeys,
+        }),
       }),
     [
       doc,
@@ -345,6 +426,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
       ds.capabilities.productTags,
       ds.capabilities.productTagsReadOnly,
       detail?.products,
+      fieldsEditable,
+      lockedKeys,
     ],
   );
   const editable = canManage && mode === 'edit';
@@ -360,6 +443,14 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   // published (a published one is only withdrawn); the server re-checks every guard.
   const neverPublished = detail !== null && detail.current_version === null && detail.versions.every((v) => v.status === 'DRAFT');
   const canDeleteTemplate = canManage && ds.deleteTemplate !== undefined && neverPublished;
+  // TEMPLATE-IMPORT-1 W-9 — platform only (the data source offers importWord); an open draft is
+  // discarded first, so it also needs discardDraft.
+  const canImportWord = canManage && ds.importWord !== undefined && (draft === null || ds.discardDraft !== undefined);
+  const openImport = (): void => {
+    setActionError(null);
+    setImportSummary(null);
+    setImportOpen(true);
+  };
   // S-1 (A1) — the server-owned logo reference the letterhead node must agree with: the
   // open draft's, or (no draft yet) the active version's, which POST …/:id/draft copies.
   const logoRef = draft !== null ? (draft.logo ?? null) : (current?.logo ?? null);
@@ -395,13 +486,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         html: content.encode(d.blocks, d.letterhead ?? null),
         ...(d.signing !== undefined ? { signing: d.signing } : {}),
       };
+      // TEMPLATE-FIELDS-1 F-14 — the platform saves the field rows WITH the content (one
+      // transaction); a tenant never sends them (F-15: the server keeps the copy's rows).
+      // Sent only when the draft has (or had) fields, so a body without them is as before.
+      const rows = ds.capabilities.inlineFields === 'edit' ? inlineFieldsToSave(d.blocks, d.fields ?? []) : [];
+      const fieldsBody = ds.capabilities.inlineFields === 'edit' && (rows.length > 0 || loadedFieldKeys.current.length > 0) ? { fields: rows } : {};
       setSaving(true);
       const p = (async () => {
         try {
           const v =
             dv !== null
-              ? await ds.saveDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema })
-              : await ds.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema });
+              ? await ds.saveDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema, ...fieldsBody })
+              : await ds.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema, ...fieldsBody });
           draftRef.current = v;
           setDraft(v);
           savedEditRevRef.current = rev;
@@ -425,6 +521,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     },
     [canManage, templateId, toast, ds, content, templateErrorMessage],
   );
+
 
   useEffect(() => {
     if (!canManage || !autosave || !dirty) return undefined;
@@ -560,6 +657,10 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     change((d) => ({ ...d, blocks: removeVariableEverywhere(d.blocks, key) }));
     toast(`Removed {{${key}}} from the draft.`);
   };
+  const convertTyped = (key: string): void => {
+    change((d) => ({ ...d, blocks: convertTypedPlaceholderEverywhere(d.blocks, key) }));
+    toast(`Converted {{${key}}} to a variable.`);
+  };
   const copyPublished = (): void => {
     const src = currentDoc;
     if (src === null) return;
@@ -647,6 +748,87 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
       await reloadDraft();
       toast(`Draft v${dv.version_number} discarded.`);
     }, 'Could not discard the draft.');
+  };
+
+  // ── TEMPLATE-SYNC-1 S-6 / S-7 / S-8 — a newer master is available (organization) ──
+  // Compare: 2-way, the master's CURRENT version against the copy's current version (and the
+  // draft, both selectable). Start a draft: the server builds it (master content and roles, the
+  // company's logo, the master's fields); an open draft is discarded first only when the person
+  // chooses "Discard the draft and start". Keep my version: approvers only. No merge (R-7).
+  const sync = ds.sync;
+  const runSync = async (fn: () => Promise<void>, fallback: string): Promise<void> => {
+    setActionBusy(true);
+    setSyncError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setSyncError(templateErrorMessage(e, fallback));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+  const openMasterCompare = (): void => {
+    if (sync === undefined) return;
+    void runSync(async () => {
+      const m = await sync.masterContent(templateId);
+      const blocks = m.html !== null ? content.decode(m.html, newBlockId).blocks : [];
+      setMasterSide({ key: 'master', label: TEMPLATE_SYNC_COPY.masterSide(m.version_number), sub: TEMPLATE_SYNC_COPY.masterSideSub, blocks: diffBlocksOf(blocks) });
+      const cur = currentOf(detail);
+      setCompare({ left: 'master', right: cur !== null ? cur.id : 'draft', changesOnly: false });
+    }, TEMPLATE_SYNC_COPY.compareFailed);
+  };
+  const doStartFromMaster = (discardFirst: boolean): void => {
+    if (sync === undefined) return;
+    void runSync(async () => {
+      const open = draftRef.current;
+      if (discardFirst && open !== null && ds.discardDraft !== undefined) await ds.discardDraft(open.id);
+      const v = await sync.draftFromMaster(templateId);
+      setMode('edit');
+      setViewVersionId(null);
+      setMasterSide(null);
+      await reloadDraft();
+      toast(TEMPLATE_SYNC_COPY.draftStarted(v.version_number));
+    }, TEMPLATE_SYNC_COPY.startFailed);
+  };
+  const doKeepVersion = (): void => {
+    const keep = sync?.keepVersion;
+    if (keep === undefined) return;
+    void runSync(async () => {
+      await keep(templateId);
+      await refreshDetail();
+      toast(TEMPLATE_SYNC_COPY.kept);
+    }, TEMPLATE_SYNC_COPY.keepFailed);
+  };
+
+  // ── import from Word (platform, TEMPLATE-IMPORT-1 W-9) ──
+  const doImportWord = (file: File): void => {
+    if (file.size > WORD_IMPORT_MAX_FILE_BYTES) {
+      setActionError('The file is larger than 10 MB.');
+      return;
+    }
+    if (!/\.docx$/i.test(file.name)) {
+      setActionError('Choose a Word .docx file.');
+      return;
+    }
+    void runAction(async () => {
+      if (ds.importWord === undefined) throw new Error('import unavailable');
+      const dv = draftRef.current;
+      if (dv !== null) {
+        if (ds.discardDraft === undefined) throw new Error('no discard');
+        await ds.discardDraft(dv.id);
+      }
+      const content_base64 = bytesToBase64(await file.arrayBuffer());
+      const res = await ds.importWord(templateId, { filename: file.name, content_base64 });
+      setImportSummary(res.summary);
+    }, 'Could not import the Word file.');
+  };
+  const finishImport = (): void => {
+    const title = importSummary?.title;
+    setImportOpen(false);
+    setImportSummary(null);
+    setMode('edit');
+    setViewVersionId(null);
+    void reloadDraft().then(() => toast(title !== undefined ? `Imported “${title}” as the draft.` : 'Imported the Word file as the draft.'));
   };
 
   // ── delete a never-published template (platform, TEMPLATE-PRODUCT-1 §3.4) ──
@@ -757,6 +939,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     })),
   ];
   const diffSides: DiffSide[] = [
+    ...(masterSide !== null ? [masterSide] : []),
     { key: 'draft', label: 'Draft', sub: 'Unpublished', blocks: diffBlocksOf(doc.blocks) },
     ...pastVersions.map((v) => ({
       key: v.id,
@@ -795,7 +978,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const leftOverlay = width < LEFT_BP;
   const rightOverlay = width < RIGHT_BP;
   const cols = `${leftOpen && !leftOverlay ? '272px ' : ''}minmax(0,1fr)${rightOpen && !rightOverlay ? ' 328px' : ''}`;
-  const headings = doc.blocks.filter((b) => b.kind === 'h2').length;
+  const headings = doc.blocks.filter((b) => isStudioHeadingKind(b.kind)).length;
 
   const readerSource: PreviewSource | null = (() => {
     if (readerPreview !== null) {
@@ -882,6 +1065,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         onToggleAutosave={() => setAutosave((a) => !a)}
         onShortcuts={() => setShortcutsOpen(true)}
         account={renderAccount?.({ notice: dirty ? "You have unsaved changes. They're saved before you sign out." : undefined, beforeLeave: leave })}
+        onImportWord={canImportWord ? openImport : undefined}
         onDiscard={
           canDiscard
             ? () => {
@@ -927,6 +1111,45 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               Cancel withdrawal
             </Button>
           ) : null}
+        </div>
+      ) : null}
+      {showsMasterNotice(detail.master) ? (
+        <div role="status" className={`pws-bar ${detail.master.withdrawn !== null ? 'pws-bar--warn' : 'pws-bar--info'}`} data-testid="studio-master-notice">
+          {detail.master.withdrawn !== null ? (
+            <span>{TEMPLATE_SYNC_COPY.withdrawnNotice(detail.master)}</span>
+          ) : (
+            <>
+              <span>
+                <b>{TEMPLATE_SYNC_COPY.badgeNewer}.</b> {TEMPLATE_SYNC_COPY.notice(detail.master)} {TEMPLATE_SYNC_COPY.noticeUnchanged}
+              </span>
+              {sync !== undefined && canManage ? (
+                <>
+                  <Button unstyled className="pws-bar__btn" disabled={actionBusy} onClick={openMasterCompare} data-testid="studio-master-compare">
+                    {TEMPLATE_SYNC_COPY.compare}
+                  </Button>
+                  <Button
+                    unstyled
+                    className="pws-bar__btn"
+                    disabled={actionBusy}
+                    onClick={() => doStartFromMaster(draft !== null)}
+                    data-testid="studio-master-start"
+                  >
+                    {draft !== null ? TEMPLATE_SYNC_COPY.discardAndStart : TEMPLATE_SYNC_COPY.startDraft}
+                  </Button>
+                </>
+              ) : null}
+              {sync?.keepVersion !== undefined && canApprove ? (
+                <Button unstyled className="pws-bar__btn" disabled={actionBusy} onClick={doKeepVersion} data-testid="studio-master-keep">
+                  {TEMPLATE_SYNC_COPY.keep}
+                </Button>
+              ) : null}
+              {syncError !== null ? (
+                <span role="alert" data-testid="studio-master-error">
+                  {syncError}
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
       {!canManage ? (
@@ -1056,11 +1279,15 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               canCopyPublished={current !== null && htmlContentOf(current) !== null}
               onCopyPublished={copyPublished}
               onOpenSections={openSections}
+              {...(canImportWord ? { onImportWord: openImport } : {})}
               onToggleLeft={() => setLeftOpen((o) => !o)}
               onToggleRight={() => setRightOpen((o) => !o)}
               toast={toast}
               drag={drag}
               letterhead={letterheadSlot}
+              fieldChip={fieldChip}
+              onFieldClick={(key) => setFieldDialog({ key })}
+              {...(fieldsEditable && editable ? { onInsertField: () => setFieldDialog({ key: null }) } : {})}
             />
           )}
         </div>
@@ -1088,6 +1315,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             onInsert={(key) => canvasRef.current?.insertVariable(key)}
             drag={drag}
             onFix={removeVar}
+            onConvert={convertTyped}
             template={detail}
             docTypeName={docTypeName}
             withdrawal={withdrawal}
@@ -1112,6 +1340,22 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         ) : null}
       </div>
 
+      {fieldDialog !== null ? (
+        <InlineFieldDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setFieldDialog(null);
+          }}
+          field={fieldDialog.key === null ? null : ((doc.fields ?? []).find((f) => f.field_key === fieldDialog.key) ?? null)}
+          fields={doc.fields ?? []}
+          signing={doc.signing}
+          senderFilledEnabled={senderFilledOn}
+          readOnly={!fieldsEditable || !editable}
+          newKey={(type) => nextInlineFieldKey(type, [...(doc.fields ?? []).map((f) => f.field_key), ...inlineFieldKeysOf(doc.blocks)])}
+          onSave={saveField}
+          onDelete={deleteField}
+        />
+      ) : null}
       <PublishDialog
         open={publishOpen}
         onOpenChange={setPublishOpen}
@@ -1136,6 +1380,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
           busy={actionBusy}
           error={actionError}
           onConfirm={doDiscard}
+        />
+      ) : null}
+      {canImportWord || importSummary !== null ? (
+        <ImportWordDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          draftVersion={draft?.version_number ?? null}
+          busy={actionBusy}
+          error={actionError}
+          summary={importSummary}
+          onFile={doImportWord}
+          onDone={finishImport}
         />
       ) : null}
       {canDeleteTemplate ? (

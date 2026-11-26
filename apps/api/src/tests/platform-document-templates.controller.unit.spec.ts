@@ -52,6 +52,8 @@ const ROUTE_SCOPES: Record<string, string> = {
   // TEMPLATE-PRODUCT-1 §3.
   deleteTemplate: MANAGE,
   discardDraft: MANAGE,
+  // TEMPLATE-IMPORT-1 W-1.
+  importWord: MANAGE,
 };
 
 function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthContextType {
@@ -102,6 +104,8 @@ function build() {
       });
     }),
     getPlatformVersion: vi.fn(async () => ({ id: VID, template_id: ID, status: 'DRAFT', field_schema: {}, render_schema_version: 'rtr-html-v1' })),
+    // TEMPLATE-FIELDS-1 — the draft's inline field rows (none here).
+    listPlatformFields: vi.fn(async () => []),
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
     updatePlatformDraftVersion: vi.fn(async () => ({ id: VID })),
@@ -128,6 +132,9 @@ function build() {
     recordDraftDiscarded: vi.fn(async () => undefined),
     recordPlatformWithdrawal: vi.fn(async () => undefined),
     recordPlatformDeletion: vi.fn(async () => undefined),
+    recordPlatformImport: vi.fn(async () => undefined),
+    // TEMPLATE-SYNC-1 S-13.
+    recordPlatformPublished: vi.fn(async () => undefined),
     recordGovernance: vi.fn(async () => undefined),
   };
   const variables = {
@@ -196,6 +203,8 @@ function call(c: PlatformDocumentTemplatesController, name: string, a: AuthConte
     case 'update':
     case 'createDraft':
       return m[name]!(ID, { name: 'x' }, a, RID);
+    case 'importWord':
+      return m[name]!(ID, { filename: 'a.docx', content_base64: 'eA==' }, a, RID);
     case 'updateDraft':
       return m[name]!(VID, { internal_notes: 'x' }, a, RID);
     case 'updateVariable':
@@ -328,10 +337,26 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     const { c, templates, caps } = build();
     templates.activatePlatformVersion.mockRejectedValueOnce(new TemplatePreviewRequiredError(VID));
     const e = await errorOf(c.publish(VID, auth('platform'), RID));
-    expect(caps.validateDraftContent).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: TYPE, requestId: RID }));
+    expect(caps.validateDraftContent).toHaveBeenCalledWith(expect.objectContaining({ document_type_id: TYPE, requestId: RID, fields: [], products: [] }));
     expect(e.code).toBe('TEMPLATE_PREVIEW_REQUIRED');
     expect(e.statusCode).toBe(409);
     await expect(c.publish(VID, auth('platform'), RID)).resolves.toMatchObject({ status: 'ACTIVE', logo: null });
+  });
+
+  // TEMPLATE-SYNC-1 S-13 (R-10) — publishing a DRAFT writes the GLOBAL platform_published event
+  // after the publish; a refused publish and a repeated publish of an ACTIVE version write none.
+  it('publish: a DRAFT → ACTIVE publish is audited (template, version, number); a refused or repeated publish is not', async () => {
+    const { c, templates, audit } = build();
+    templates.activatePlatformVersion.mockResolvedValueOnce({ id: VID, status: 'ACTIVE', version_number: 3 } as never);
+    await c.publish(VID, auth('platform'), RID);
+    expect(audit.recordPlatformPublished).toHaveBeenCalledWith({ actor_id: expect.any(String), template_id: ID, document_type_id: TYPE, version_id: VID, version_number: 3, requestId: RID });
+    audit.recordPlatformPublished.mockClear();
+    templates.activatePlatformVersion.mockRejectedValueOnce(new TemplatePreviewRequiredError(VID));
+    await errorOf(c.publish(VID, auth('platform'), RID));
+    expect(audit.recordPlatformPublished).not.toHaveBeenCalled();
+    templates.getPlatformVersion.mockResolvedValueOnce({ id: VID, template_id: ID, status: 'ACTIVE', field_schema: {}, render_schema_version: 'rtr-html-v1' } as never);
+    await c.publish(VID, auth('platform'), RID);
+    expect(audit.recordPlatformPublished).not.toHaveBeenCalled();
   });
 
   it('preview: renders samples via the capability, then records the preview (arming the gate)', async () => {

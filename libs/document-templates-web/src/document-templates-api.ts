@@ -9,7 +9,11 @@
 // view; :author → adopt / create / edit, preview and discard drafts / logo / fields;
 // :manage → approve (activate) and selections. A manage holder may author too.
 
+import { RTR_HTML_V2 } from '@aramo/template-content';
 import { apiClient } from '@aramo/fe-foundation';
+
+import type { TemplateMaster, TemplateMasterContent } from './template-sync';
+import type { StudioInlineFieldRow } from './studio/inline-fields';
 
 const BASE = '/v1/document-templates';
 
@@ -41,6 +45,9 @@ export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
 // Amendment A1 — allowlisted-HTML content (field_schema { render_schema_version, title, html }).
 // New drafts copied from a v1 ACTIVE arrive as rtr-html-v1; an existing v1 DRAFT stays v1.
 export const RTR_HTML_SCHEMA_V1 = 'rtr-html-v1';
+// TEMPLATE-CONTENT-2 (C-4) — the version the Studio writes (h3 / h4, tables, dividers, page
+// breaks, two-level lists). The value comes from the shared rules.
+export const RTR_HTML_SCHEMA_V2: string = RTR_HTML_V2;
 
 export type TemplateStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -63,6 +70,9 @@ export interface DocumentTemplateView {
   // TEMPLATE-PRODUCT-1 §6.1 — the template's own product tags, server-written (copied from the
   // default at Adopt, else from the document type). Read-only for the tenant.
   readonly products?: readonly string[] | null;
+  // TEMPLATE-SYNC-1 S-3 — the server-computed master (null unless adopted; ADD-only, optional
+  // in this mirror). No client recomputes it.
+  readonly master?: TemplateMaster | null;
 }
 
 export interface TemplateVersionView {
@@ -186,6 +196,23 @@ export async function createDraftFromActive(templateId: string): Promise<Templat
   return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft`, {});
 }
 
+// TEMPLATE-SYNC-1 S-5 — the Aramo master's CURRENT version content of an adopted template
+// (GET /:id/master; document_template:read). 404 not_an_adopted_template / master_not_available.
+export async function getTemplateMasterContent(templateId: string): Promise<TemplateMasterContent> {
+  return apiClient.get<TemplateMasterContent>(`${BASE}/${encodeURIComponent(templateId)}/master`);
+}
+
+// TEMPLATE-SYNC-1 S-7 — start the next DRAFT from the master's new version (document_template:author).
+// 409 draft_exists while a draft is open; already_current / master_not_available.
+export async function createDraftFromMaster(templateId: string): Promise<TemplateVersionView> {
+  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft-from-master`, {});
+}
+
+// TEMPLATE-SYNC-1 S-8 — "Keep my version" for the master's current version (document_template:manage).
+export async function keepTemplateVersion(templateId: string): Promise<DocumentTemplateView> {
+  return apiClient.post<DocumentTemplateView>(`${BASE}/${encodeURIComponent(templateId)}/keep-version`, {});
+}
+
 // TEMPLATE-STUDIO-1 S-1 — open a DRAFT with the given content (POST /:id/versions;
 // document_template:author). Used when the template has no ACTIVE version to copy from.
 export async function createTemplateVersion(
@@ -205,6 +232,13 @@ export async function updateDraftVersion(
 
 // Fixed-sample preview of the CURRENT draft content (validates + substitutes safe
 // sample values; records the preview to satisfy the §18 approve gate).
+// TEMPLATE-FIELDS-1 F-15 — the field rows of a tenant version (GET /v1/document-templates/versions/:id/fields):
+// a tenant copy's fields placed in the text, shown locked in the Studio.
+export async function listVersionFields(versionId: string): Promise<{ fields: StudioInlineFieldRow[] }> {
+  const rows = await apiClient.get<StudioInlineFieldRow[]>(`${BASE}/versions/${encodeURIComponent(versionId)}/fields`);
+  return { fields: Array.isArray(rows) ? rows : [] };
+}
+
 export async function previewTemplateVersion(versionId: string): Promise<TemplateSamplePreview> {
   return apiClient.post<TemplateSamplePreview>(`${BASE}/versions/${encodeURIComponent(versionId)}/preview`, {});
 }
@@ -262,6 +296,8 @@ export interface TemplateLibraryItem {
   readonly products: readonly string[] | null;
   readonly withdraw_effective_at: string | null;
   readonly configurable: boolean;
+  /** TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted own template (else null). */
+  readonly master?: TemplateMaster | null;
 }
 
 export interface TemplateDocumentType {
@@ -348,8 +384,8 @@ export async function createOwnTemplate(input: {
     ...(input.description !== undefined && input.description.length > 0 ? { description: input.description } : {}),
   });
   const draft = await apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(template.id)}/versions`, {
-    render_schema_version: RTR_HTML_SCHEMA_V1,
-    field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: input.name, html: '' },
+    render_schema_version: RTR_HTML_SCHEMA_V2,
+    field_schema: { render_schema_version: RTR_HTML_SCHEMA_V2, title: input.name, html: '' },
   });
   return { template, draft };
 }

@@ -29,6 +29,9 @@ export default defineConfig({
       // TEMPLATE-PRODUCT-1 §7.2 — the shared PDF geometry/rendering helpers (prepare editor).
       // The SUBPATH only (not the Studio package root); keep it before any root alias.
       '@aramo/document-templates-web/pdf': resolve(root, '../../libs/document-templates-web/src/pdf/index.ts'),
+      // TEMPLATE-SYNC-1 S-11 / S-12 — the shared sync words only (the Business list stays free of
+      // the Studio chunk). The SUBPATH; keep it before the root alias.
+      '@aramo/document-templates-web/sync': resolve(root, '../../libs/document-templates-web/src/template-sync.ts'),
       // TEMPLATE-PRODUCT-1 §8.4 — the shared Template Studio (scope:shared) for the Personal
       // workspace (platform-web precedent). The guest zone never imports it (zones.spec.ts).
       '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
@@ -38,6 +41,9 @@ export default defineConfig({
       // FIELD-PARITY-1 P1-1 — the one field catalog (scope:shared), imported by
       // @aramo/sign-client and @aramo/document-templates-web.
       '@aramo/sign-fields': resolve(root, '../../libs/sign-fields/src/index.ts'),
+      // TEMPLATE-CONTENT-2 C-0 — the one set of content rules (scope:shared), imported by
+      // @aramo/document-templates-web.
+      '@aramo/template-content': resolve(root, '../../libs/template-content/src/index.ts'),
       // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared), imported by
       // @aramo/document-templates-web (the console form Studio) and sign-web Prepare.
       '@aramo/field-placement-web': resolve(root, '../../libs/field-placement-web/src/index.ts'),

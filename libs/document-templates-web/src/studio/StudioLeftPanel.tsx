@@ -1,6 +1,6 @@
 import { Button } from '@aramo/fe-foundation';
 
-import { studioReadableText, type StudioBlock } from '../studio-codec';
+import { isStudioHeadingKind, studioBlockText, studioReadableText, type StudioBlock } from '../studio-codec';
 
 import { EmptyState, Pill, type PillSpec } from './primitives';
 import { KIND_LABEL } from './StudioBlockEditable';
@@ -74,6 +74,7 @@ const OUTLINE_MAX = 46;
  * "Empty <kind>" ("Empty paragraph"). PRESENTATION ONLY — the block value is never touched.
  */
 export function outlineLabel(b: StudioBlock, catalog: Pick<VariableCatalog, 'byKey'>): string {
+  if (b.kind === 'hr' || b.kind === 'page_break') return studioBlockText(b);
   const t = studioReadableText(b.value, (key) => {
     const v = catalog.byKey.get(key);
     if (v === undefined) return ` ${key} `;
@@ -106,7 +107,9 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
               {`${props.headings} headings · ${blocks.length} blocks · ${props.variables} variables`}
             </div>
             {blocks.map((b, i) => {
-              const isH = b.kind === 'h2';
+              // TEMPLATE-CONTENT-2 (C-12) — the outline shows heading levels (H3 / H4 indent).
+              const isH = isStudioHeadingKind(b.kind);
+              const level = b.kind === 'h3' ? 3 : b.kind === 'h4' ? 4 : 2;
               if (isH) inHeading = true;
               const on = b.id === selectedId;
               const d = drag.dropAt;
@@ -117,7 +120,7 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
                     unstyled
                     draggable={props.editable}
                     title={KIND_LABEL[b.kind]}
-                    className={`pws-orow__btn${isH ? ' pws-orow__btn--h' : inHeading ? ' pws-orow__btn--in' : ''}${on ? ' pws-orow__btn--on' : ''}`}
+                    className={`pws-orow__btn${isH ? ` pws-orow__btn--h${level > 2 ? ` pws-orow__btn--h${level}` : ''}` : inHeading ? ' pws-orow__btn--in' : ''}${on ? ' pws-orow__btn--on' : ''}`}
                     onDragStart={(e) => drag.start(e, { kind: 'block', id: b.id })}
                     onDragEnd={drag.end}
                     onClick={() => props.onGo(b.id)}

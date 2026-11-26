@@ -33,6 +33,8 @@ import {
   FIXED_FORM_PDF_UPLOAD_MAX_BODY,
   FIXED_FORM_PDF_UPLOAD_ROUTE,
 } from './document-templates-platform/fixed-form-upload.constants.js';
+import { TEMPLATE_CONTENT_WRITE_MAX_BODY, isTemplateContentWrite } from './document-templates-platform/template-content-upload.constants.js';
+import { WORD_IMPORT_MAX_BODY, WORD_IMPORT_ROUTE } from './document-templates-platform/word-import/word-import.constants.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -92,6 +94,15 @@ async function bootstrap(): Promise<void> {
   // to 10 MB) gets a route-scoped JSON parser with a larger limit, mounted BEFORE the global
   // one (which then skips the already-parsed body). Every other route keeps the default.
   app.use(FIXED_FORM_PDF_UPLOAD_ROUTE, express.json({ limit: FIXED_FORM_PDF_UPLOAD_MAX_BODY }));
+  // TEMPLATE-IMPORT-1 W-1 — the Word import (JSON { filename, content_base64 }, a .docx of up to
+  // 10 MB) gets the same route-scoped 15 MB parser, also before the global one.
+  app.use(WORD_IMPORT_ROUTE, express.json({ limit: WORD_IMPORT_MAX_BODY }));
+  // TEMPLATE-CONTENT-2 C-7 — template version content (up to 256 KiB) on the version WRITE
+  // routes only, also before the global parser.
+  const templateContentJson = express.json({ limit: TEMPLATE_CONTENT_WRITE_MAX_BODY });
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) =>
+    isTemplateContentWrite(req.method, req.path) ? templateContentJson(req, res, next) : next(),
+  );
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).
   app.use(express.json());

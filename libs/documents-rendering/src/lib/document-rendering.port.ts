@@ -37,6 +37,9 @@ export interface RenderModel {
   // numbered lists) INSTEAD of `blocks`. The domain converts its allowlisted content into
   // this shape; the renderer never sees HTML and never fetches anything.
   rich_blocks?: RichBlock[];
+  // TEMPLATE-CONTENT-2 C-9 — keep a heading with the block after it (never alone at a page
+  // bottom). Set only for rtr-html-v2 content; absent ⇒ the v1 layout, byte-identical.
+  heading_keep_with_next?: boolean;
   // A1 §2.4 — optional letterhead: the FROZEN logo bytes (read by the domain from the
   // version's TemplateAsset) + an optional organisation name drawn beside it.
   letterhead?: LetterheadModel;
@@ -44,11 +47,38 @@ export interface RenderModel {
 
 // A styled text run. `text` may contain '\n' (a <br> or a multi-line field value) — a
 // hard line break inside the block.
-export interface RichRun {
+export interface RichTextRun {
   text: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+}
+
+// TEMPLATE-FIELDS-1 F-8 — an inline Sign field box placed in the text (an rtr-html-v3 marker).
+// The domain supplies the size (the field catalog's default for the field's type), so this lib
+// never imports the catalog. The box is atomic: it never splits across lines or pages, and a line
+// holding one grows to its tallest box. The renderer draws a light outline and records where.
+export interface RichFieldRun {
+  kind: 'field';
+  field_key: string;
+  width: number;
+  height: number;
+}
+
+export type RichRun = RichTextRun | RichFieldRun;
+
+export function isFieldRun(r: RichRun): r is RichFieldRun {
+  return (r as RichFieldRun).kind === 'field';
+}
+
+// F-8 — where the renderer drew an inline field box (PDF points, bottom-left origin, 0-based page).
+export interface InlineFieldPlacement {
+  field_key: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface RichListItem {
@@ -57,10 +87,18 @@ export interface RichListItem {
   children: RichBlock[];
 }
 
+// TEMPLATE-CONTENT-2 C-8 (rtr-html-v2) — a heading's `level` is 3 or 4 for h3 / h4 and
+// ABSENT for h2, so rtr-html-v1 content builds exactly the same model (and manifest) as before.
+// A table is rows × cells of runs (no merged cells); `header` marks the first row as the
+// header (drawn bold, repeated on each page the table continues on). `rule` is a divider;
+// `page_break` starts a new page.
 export type RichBlock =
-  | { kind: 'heading'; runs: RichRun[] }
+  | { kind: 'heading'; runs: RichRun[]; level?: 3 | 4 }
   | { kind: 'paragraph'; runs: RichRun[] }
-  | { kind: 'list'; ordered: boolean; items: RichListItem[] };
+  | { kind: 'list'; ordered: boolean; items: RichListItem[] }
+  | { kind: 'table'; header: boolean; rows: RichRun[][][] }
+  | { kind: 'rule' }
+  | { kind: 'page_break' };
 
 export interface LetterheadModel {
   image_bytes: Uint8Array;
@@ -160,6 +198,9 @@ export interface RenderedOutput {
   provenance: RenderProvenance;
   // B2 — present iff the model carried a signature_block (or, M-A6, signature_blocks).
   signature_fields?: SignatureFieldPlacement[];
+  // TEMPLATE-FIELDS-1 F-8 / F-10 — present iff the rich content carried inline field boxes: one
+  // placement per box, in drawing order. Its members join the manifest hash.
+  inline_fields?: InlineFieldPlacement[];
   // FIELD-PARITY-1 P0-2 — prepareFromSource only: the field_key of every boxed text
   // placement whose value did not fit its box even at the smallest size, so only the
   // lines that fit were drawn. Absent when nothing was clipped.

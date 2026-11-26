@@ -4,17 +4,21 @@ import {
   canAuthorTemplates,
   captureVersionLogo,
   createDraftFromActive,
+  createDraftFromMaster,
   createTemplateVersion,
   deleteDraftVersion,
   fetchTemplateCatalog,
   fetchTemplateLibrary,
   getDocumentTemplate,
+  getTemplateMasterContent,
+  keepTemplateVersion,
   listTemplateVersions,
   previewTemplateVersion,
   removeVersionLogo,
   updateDocumentTemplate,
   updateDraftVersion,
   versionLogoUrl,
+  listVersionFields,
   type DocumentTemplateView,
   type TemplateLibraryView,
   type TemplateSamplePreview,
@@ -58,6 +62,12 @@ export interface OrganizationStudioApi {
   readonly captureLogo: typeof captureVersionLogo;
   readonly removeLogo: typeof removeVersionLogo;
   readonly logoUrl: typeof versionLogoUrl;
+  // TEMPLATE-SYNC-1 S-5 / S-7 / S-8.
+  readonly masterContent: typeof getTemplateMasterContent;
+  readonly draftFromMaster: typeof createDraftFromMaster;
+  readonly keepVersion: typeof keepTemplateVersion;
+  /** TEMPLATE-FIELDS-1 F-15 — the copy's (locked) field rows. */
+  readonly listFields: typeof listVersionFields;
 }
 
 export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
@@ -75,6 +85,10 @@ export const ORGANIZATION_STUDIO_API: OrganizationStudioApi = {
   captureLogo: captureVersionLogo,
   removeLogo: removeVersionLogo,
   logoUrl: versionLogoUrl,
+  masterContent: getTemplateMasterContent,
+  draftFromMaster: createDraftFromMaster,
+  keepVersion: keepTemplateVersion,
+  listFields: listVersionFields,
 };
 
 const field = (key: string): string => `<span data-field="${key}"></span>`;
@@ -149,6 +163,8 @@ function studioInfo(t: DocumentTemplateView, versions: readonly TemplateVersionV
     withdraw_effective_at: null,
     created_at: t.created_at,
     updated_at: t.updated_at,
+    // TEMPLATE-SYNC-1 S-3 — the server's flag, as returned.
+    master: t.master ?? null,
   };
 }
 
@@ -204,6 +220,8 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
     saveDraft: async (versionId, body) =>
       studioVersion(await api.updateDraft(versionId, { render_schema_version: body.render_schema_version, field_schema: body.field_schema })),
     discardDraft: (versionId) => api.discardDraft(versionId),
+    // TEMPLATE-FIELDS-1 F-15 — the fields placed in the text of a tenant copy, shown locked.
+    fields: (versionId) => api.listFields(versionId),
     preview: async (versionId) => studioPreview(await api.preview(versionId)),
     approve: async (versionId) => studioVersion(await api.activate(versionId)),
     // Name only: the tenant description and product tags are not shipped (§8; DB CHECK).
@@ -218,9 +236,16 @@ export function organizationStudioDataSource(o: OrganizationStudioSourceOptions)
       remove: (versionId) => api.removeLogo(versionId),
       logoUrl: (versionId, assetId) => api.logoUrl(versionId, assetId),
     },
+    // TEMPLATE-SYNC-1 S-6..S-8 — Compare and Start a draft for authors, Keep my version for
+    // approvers (document_template:manage); the server re-checks every scope.
+    sync: {
+      masterContent: (id) => api.masterContent(id),
+      draftFromMaster: async (id) => studioVersion(await api.draftFromMaster(id)),
+      ...(canApprove ? { keepVersion: (id: string) => api.keepVersion(id) } : {}),
+    },
     sections: ORGANIZATION_STUDIO_SECTIONS,
     // TEMPLATE-PRODUCT-1 §6.4 — Properties shows the tags read-only (a tenant can't change them).
-    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: true, productTagsReadOnly: true, description: false },
+    capabilities: { canEdit, canApprove: canEdit && canApprove, canWithdraw: false, productTags: true, productTagsReadOnly: true, description: false, inlineFields: 'locked' },
     copy: organizationStudioCopy(o),
     content: LETTERHEAD_STUDIO_CONTENT_CODEC,
   };

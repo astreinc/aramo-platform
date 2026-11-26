@@ -1,5 +1,7 @@
+import { RTR_HTML_V2 } from '@aramo/template-content';
+
 import {
-  RTR_HTML_SCHEMA_V1,
+  RTR_HTML_SCHEMA_V2,
   previewTemplateDefault,
   type TemplateDefaultPreview,
   type TemplateLibraryItem,
@@ -28,9 +30,9 @@ import { organizationCopyForDocumentType, organizationStudioCopy } from './studi
 
 export const GALLERY_STUDIO_READ_ONLY = 'An Aramo default is read only. Adopt it to make your own draft.';
 
-/** The rendered sample html → stored rtr-html-v1 (each sample value back to its variable). */
+/** The rendered sample html → stored rtr-html-v2 (each sample value back to its variable). */
 export function galleryContentFromSample(html: string): string {
-  return sanitizeDocHtml(html, { allowSample: true }).replace(/<span data-sample="([A-Za-z0-9_.]+)">[^<]*<\/span>/g, '<span data-field="$1"></span>');
+  return sanitizeDocHtml(html, { allowSample: true, version: RTR_HTML_V2 }).replace(/<span data-sample="([A-Za-z0-9_.]+)">[^<]*<\/span>/g, '<span data-field="$1"></span>');
 }
 
 function groupOf(key: string): string {
@@ -117,8 +119,8 @@ export function galleryStudioDataSource({ library, previewFn = previewTemplateDe
             id: pv.version_id,
             version_number: pv.version_number,
             status: 'ACTIVE',
-            render_schema_version: RTR_HTML_SCHEMA_V1,
-            field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: pv.title, html: galleryContentFromSample(pv.html ?? '') },
+            render_schema_version: RTR_HTML_SCHEMA_V2,
+            field_schema: { render_schema_version: RTR_HTML_SCHEMA_V2, title: pv.title, html: galleryContentFromSample(pv.html ?? '') },
             activated_at: pv.updated_at,
             created_at: pv.updated_at,
             content_fingerprint: null,

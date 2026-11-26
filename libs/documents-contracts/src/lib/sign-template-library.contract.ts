@@ -60,6 +60,21 @@ export interface SignTemplateSigning {
 // Absent = an editable template (every template before TP-6). ADD-only, optional.
 export type SignTemplateKind = 'EDITABLE' | 'FIXED_FORM';
 
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-3 / S-11 — the server-computed master of a template
+// the organization adopted from an Aramo default (the same object Documents returns on its
+// template, library and studio items: @aramo/documents TemplateMasterView). Sign web Business
+// and the Sign app show a badge from `newer_available` / `withdrawn` only; no client recomputes it.
+export interface SignTemplateMaster {
+  readonly template_id: string;
+  readonly name: string | null;
+  readonly current_version_id: string | null;
+  readonly current_version_number: number | null;
+  readonly based_on_version_number: number | null;
+  readonly newer_available: boolean;
+  readonly withdrawn: { readonly notice_at: string; readonly effective_at: string; readonly status: 'PENDING' | 'IN_EFFECT' } | null;
+  readonly kept: boolean;
+}
+
 export interface SignTemplateSummary {
   readonly template_id: string;
   readonly name: string;
@@ -86,6 +101,8 @@ export interface SignTemplateSummary {
   // The template's roles; null for a template without `signing` (the single talent block).
   readonly signing: SignTemplateSigning | null;
   readonly template_kind?: SignTemplateKind;
+  // TEMPLATE-SYNC-1 S-3 — null unless the template was adopted from an Aramo default.
+  readonly master?: SignTemplateMaster | null;
 }
 
 export interface SignTemplateListResponse {
@@ -194,6 +211,20 @@ export interface SignTemplateRenderResponse {
   // M-A6 §3.2 — the pinned version's roles (null without `signing`).
   readonly signing: SignTemplateSigning | null;
   readonly template_kind?: SignTemplateKind;
+  // TEMPLATE-FIELDS-1 F-10 / F-18 — the fields placed INSIDE the text of an editable template:
+  // where this render drew each one (0-based page, PDF points, bottom-left origin). Their
+  // field_definitions carry the same positions. Absent when the template has none.
+  readonly inline_fields?: readonly SignTemplateInlineField[];
+}
+
+// TEMPLATE-FIELDS-1 F-10 — one inline field's render position.
+export interface SignTemplateInlineField {
+  readonly field_key: string;
+  readonly page_number: number;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 // Deterministic digest of a JSON body: sha256 (hex) over a key-sorted canonical JSON

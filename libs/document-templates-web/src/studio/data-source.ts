@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react';
+import { isHtmlContentVersion } from '@aramo/template-content';
+import { CURRENT_HTML_CONTENT_VERSION } from '@aramo/template-content';
 
-import { RTR_GENERATED_SCHEMA_V1, RTR_HTML_SCHEMA_V1 } from '../document-templates-api';
+import { RTR_GENERATED_SCHEMA_V1 } from '../document-templates-api';
+import type { TemplateMaster, TemplateMasterContent } from '../template-sync';
 import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, studioValueFromText, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
 
 import type { PillSpec } from './primitives';
+import type { StudioInlineFieldRow, StudioInlineFieldWire } from './inline-fields';
 import type { Readiness } from './readiness';
 
 // TEMPLATE-STUDIO-1 S-0 (directive §2) — the Template Studio's data-source adapter. The
@@ -25,8 +29,12 @@ import type { Readiness } from './readiness';
 //   • optionally the content codec (the tenant letterhead block, A1).
 // The server stays authoritative for every rule; capabilities only hide controls.
 
-/** The editable content contract (rtr-html-v1). */
-export const STUDIO_HTML_CONTENT_VERSION = RTR_HTML_SCHEMA_V1;
+/**
+ * The editable content contract the Studio WRITES: the current version (TEMPLATE-CONTENT-2 C-4;
+ * TEMPLATE-FIELDS-1 F-1: rtr-html-v3). It reads every version; saving older content here upgrades
+ * it (each version is a strict superset of the one before).
+ */
+export const STUDIO_HTML_CONTENT_VERSION: string = CURRENT_HTML_CONTENT_VERSION;
 
 export type StudioVersionStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -63,6 +71,23 @@ export interface StudioTemplateInfo {
   readonly withdraw_effective_at: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  /**
+   * TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted organization template (null
+   * or absent otherwise). The Studio shows its notice from these flags; it never recomputes them.
+   */
+  readonly master?: TemplateMaster | null;
+}
+
+/**
+ * TEMPLATE-SYNC-1 S-6 / S-7 / S-8 — "a newer master is available" (organization data source).
+ * Compare (2-way, master current vs the copy's current version and draft), start a draft from
+ * the new version, keep my version. The server decides every refusal (§3.6).
+ */
+export interface StudioSyncApi {
+  masterContent(templateId: string): Promise<TemplateMasterContent>;
+  draftFromMaster(templateId: string): Promise<StudioVersion>;
+  /** Offered only with `canApprove` (document_template:manage). */
+  keepVersion?(templateId: string): Promise<unknown>;
 }
 
 /** The template plus every version (load). */
@@ -141,6 +166,17 @@ export interface StudioContentBody {
      */
     readonly signing?: StudioSigning | null;
   };
+  /**
+   * TEMPLATE-FIELDS-1 F-14 — the rows of the fields placed in the text, saved WITH the content
+   * (platform only; a tenant never sends them, F-15). Omitted ⇒ the body is as before.
+   */
+  readonly fields?: readonly StudioInlineFieldWire[];
+}
+
+/** TEMPLATE-FIELDS-1 — a version's inline field rows, and whether sender-filled fields are on. */
+export interface StudioInlineFieldsData {
+  readonly fields: readonly StudioInlineFieldRow[];
+  readonly sender_filled_fields_enabled?: boolean;
 }
 
 export interface StudioPropertiesPatch {
@@ -188,6 +224,12 @@ export interface StudioCapabilities {
    * of an Aramo default: there is no draft, so the count is meaningless there.
    */
   readonly usageCounts?: boolean;
+  /**
+   * TEMPLATE-FIELDS-1 — fields inside the text: 'edit' (platform: Insert field, settings, saved
+   * with the content, F-14) or 'locked' (a tenant copy: shown, never changed, F-15). Absent: shown
+   * read-only like 'locked'.
+   */
+  readonly inlineFields?: 'edit' | 'locked';
 }
 
 /** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */
@@ -299,6 +341,27 @@ export interface TemplateStudioCopy {
   >;
 }
 
+/** TEMPLATE-IMPORT-1 W-7 — one warning of a Word import (stable code, count, a short example). */
+export interface StudioImportWarning {
+  readonly code: string;
+  readonly count: number;
+  readonly example?: string;
+}
+/** TEMPLATE-IMPORT-1 W-7 — what a Word import produced. */
+export interface StudioImportSummary {
+  readonly title: string;
+  /** Top-level blocks by kind (p, h2, h3, h4, ul, ol, table, page_break). */
+  readonly counts: Readonly<Record<string, number>>;
+  readonly warnings: readonly StudioImportWarning[];
+  /** `{{key}}` text that is not a variable (publishing refuses it until it is resolved). */
+  readonly unknown_placeholders: ReadonlyArray<{ readonly key: string; readonly count: number }>;
+  readonly content_bytes: number;
+}
+export interface StudioImportResult {
+  readonly version: StudioVersion;
+  readonly summary: StudioImportSummary;
+}
+
 export interface TemplateStudioDataSource {
   load(templateId: string): Promise<StudioTemplate>;
   catalog(templateId: string): Promise<StudioCatalogData>;
@@ -307,11 +370,19 @@ export interface TemplateStudioDataSource {
   /** Discard the open draft (organization; platform since TEMPLATE-PRODUCT-1 §3.1). */
   discardDraft?(versionId: string): Promise<void>;
   /**
+   * TEMPLATE-IMPORT-1 W-9 — import a Word (.docx) file as the template's DRAFT (platform only:
+   * templates are authored at platform level). The server refuses while a draft is open; the
+   * Studio discards it first when the operator confirms.
+   */
+  importWord?(templateId: string, file: { readonly filename: string; readonly content_base64: string }): Promise<StudioImportResult>;
+  /**
    * TEMPLATE-PRODUCT-1 §3.2/§3.4 — delete a template that was never published (platform).
    * The ⋯ menu offers it only while no version was ever published; the server re-checks.
    */
   deleteTemplate?(templateId: string): Promise<void>;
   preview(versionId: string): Promise<StudioSamplePreview>;
+  /** TEMPLATE-FIELDS-1 — a version's inline field rows (GET …/versions/:id/fields). */
+  fields?(versionId: string): Promise<StudioInlineFieldsData>;
   /** Platform: publish · organization: activate. */
   approve(versionId: string): Promise<StudioVersion>;
   updateProperties?(templateId: string, patch: StudioPropertiesPatch): Promise<StudioTemplateInfo>;
@@ -325,6 +396,8 @@ export interface TemplateStudioDataSource {
   previewCurrent?(templateId: string): Promise<StudioSamplePreview>;
   /** TEMPLATE-STUDIO-1 S-1 — the tenant letterhead logo (organization only). */
   readonly letterhead?: StudioLetterheadApi;
+  /** TEMPLATE-SYNC-1 — compare / start a draft from / keep, for an adopted template (organization only). */
+  readonly sync?: StudioSyncApi;
   /** TEMPLATE-STUDIO-1 S-1 — the Sections tab's static set (omit: the empty state, R-13). */
   readonly sections?: readonly StudioSection[];
   readonly capabilities: StudioCapabilities;
@@ -395,7 +468,7 @@ function legacyGeneratedContentOf(field_schema: unknown): { title: string; html:
 /** The editable html content of a version (null when it is another content version). */
 export function studioHtmlContentOf(v: Pick<StudioVersion, 'render_schema_version' | 'field_schema'>): { title: string; html: string } | null {
   if (v.render_schema_version === RTR_GENERATED_SCHEMA_V1) return legacyGeneratedContentOf(v.field_schema);
-  if (v.render_schema_version !== STUDIO_HTML_CONTENT_VERSION) return null;
+  if (!isHtmlContentVersion(v.render_schema_version)) return null;
   const fs = v.field_schema as { title?: unknown; html?: unknown } | null;
   if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || typeof fs.html !== 'string') return null;
   return { title: fs.title, html: fs.html };

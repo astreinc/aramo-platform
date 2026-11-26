@@ -90,6 +90,7 @@ export function StudioPreview(props: StudioPreviewProps) {
   const pages = paginate(
     parts.map((p) => (source?.mode === 'content' ? studioPlainText(p.html) : p.text)),
     props.blockHeights,
+    parts.map((p) => p.kind === 'page_break'),
   );
   const count = source !== null ? pages.length : 0;
   const fitOn = props.fitToWidth === true;
@@ -173,7 +174,7 @@ export function StudioPreview(props: StudioPreviewProps) {
                 {i === 0 && props.letterhead != null ? <Letterhead info={props.letterhead} variant="rendered" testId="studio-preview-letterhead" /> : null}
                 {i === 0 ? <h1 className="pws-pvpage__h1">{source.title}</h1> : null}
                 <div className="pws-pvpage__body">
-                  <SafeDoc html={pg.map((k) => parts[k]?.html ?? '').join('')} map={props.map} mode={source.mode} letterhead={null} />
+                  <SafeDoc html={pg.map((k) => (parts[k]?.kind === 'page_break' ? '' : (parts[k]?.html ?? ''))).join('')} map={props.map} mode={source.mode} letterhead={null} />
                   {i === pages.length - 1 && (props.signatureRoles?.length ?? 0) > 0 ? <SignatureBlocksPreview roles={props.signatureRoles ?? []} /> : null}
                 </div>
                 <div className="pws-pvpage__foot">

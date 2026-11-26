@@ -45,7 +45,15 @@ const TEMPLATE_PRODUCT_1_ROUTES = [
 // template the caller can already use (an opaque template id in SignUserFavorite). Sign still
 // creates, edits and stores no template.
 const M_A12_FAVORITE_ROUTES = ['PUT v1/sign/sender/templates/:id/favorite', 'DELETE v1/sign/sender/templates/:id/favorite'];
-const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES, ...M_A12_FAVORITE_ROUTES]);
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-5 / S-7 / S-8 — the Personal Studio's "a newer
+// master is available" pass-throughs (compare, start a draft from it, keep my version). Documents
+// still owns every row; Sign stores nothing.
+const TEMPLATE_SYNC_1_ROUTES = [
+  'GET v1/sign/sender/templates/studio/:id/master',
+  'POST v1/sign/sender/templates/studio/:id/draft-from-master',
+  'POST v1/sign/sender/templates/studio/:id/keep-version',
+];
+const ALLOWED = new Set([...USE_ROUTES, ...TEMPLATE_PRODUCT_1_ROUTES, ...M_A12_FAVORITE_ROUTES, ...TEMPLATE_SYNC_1_ROUTES]);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

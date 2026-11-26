@@ -229,6 +229,24 @@ export function summarizeDetail(
     case 'identity.document_template.withdrawal_cancelled':
       return 'Cancelled the withdrawal of an Aramo default template';
     // TEMPLATE-PRODUCT-1 §3.3 — platform delete of what was never published.
+    // TEMPLATE-IMPORT-1 W-8.
+    case 'identity.document_template.platform_imported': {
+      const f = payload['source_filename'];
+      return typeof f === 'string' ? `Imported ${f} as an Aramo default template draft` : 'Imported a Word file as an Aramo default template draft';
+    }
+    // TEMPLATE-SYNC-1 S-13.
+    case 'identity.document_template.platform_published': {
+      const n = payload['version_number'];
+      return typeof n === 'number' ? `Published version ${n} of an Aramo template` : 'Published a version of an Aramo template';
+    }
+    case 'identity.document_template.draft_from_master': {
+      const n = payload['master_version_number'];
+      return typeof n === 'number' ? `Started a template draft from Aramo's version ${n}` : "Started a template draft from Aramo's new version";
+    }
+    case 'identity.document_template.master_version_kept': {
+      const n = payload['master_version_number'];
+      return typeof n === 'number' ? `Kept the organization's template version (Aramo version ${n})` : "Kept the organization's template version";
+    }
     case 'identity.document_template.platform_draft_discarded': {
       const n = payload['version_number'];
       return typeof n === 'number' ? `Discarded an Aramo default template draft (v${n})` : 'Discarded an Aramo default template draft';

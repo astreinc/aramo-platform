@@ -155,6 +155,20 @@ export class SenderTemplateStudioService {
     return { ...out, tenant_logo: { available: false, tenant_name: await this.personalLabel(auth) } };
   }
 
+  // TEMPLATE-SYNC-1 S-5 / S-7 / S-8 — compare with Aramo's new version, start a draft from it,
+  // keep my version. Documents computes and decides everything (the `master` flag included).
+  async masterContent(auth: AuthContextType, id: string, requestId: string) {
+    return this.studio(auth, 'GET', `/${uuid(id, 'id', requestId)}/master`, requestId);
+  }
+
+  async draftFromMaster(auth: AuthContextType, id: string, requestId: string) {
+    return this.studio(auth, 'POST', `/${uuid(id, 'id', requestId)}/draft-from-master`, requestId, {});
+  }
+
+  async keepVersion(auth: AuthContextType, id: string, requestId: string) {
+    return this.studio(auth, 'POST', `/${uuid(id, 'id', requestId)}/keep-version`, requestId, {});
+  }
+
   async updateVersion(auth: AuthContextType, versionId: string, body: unknown, requestId: string) {
     const b = obj(body);
     const patch: Record<string, unknown> = {};

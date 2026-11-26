@@ -24,6 +24,8 @@
 .ox-tpl__nametext { min-width: 0; }
 .ox-tpl__title { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ox-tpl__type { display: block; font-size: 12px; color: var(--ox-faint); }
+/* TEMPLATE-SYNC-1 S-9 — the row badge under the template name. */
+.ox-tpl__sync { display: inline-block; margin-top: 4px; font-size: 11px; }
 .ox-tpl__ver { font-size: 12.5px; }
 .ox-tpl__when { font-size: 12.5px; color: var(--ox-muted); }
 .ox-tpl__act { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; text-align: right; }

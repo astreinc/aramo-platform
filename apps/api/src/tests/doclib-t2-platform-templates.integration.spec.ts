@@ -10,6 +10,7 @@ import {
   PrismaService,
   TemplateVariablesRepository,
   TemplatesRepository,
+  type TemplateAuditPort,
 } from '@aramo/documents';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -84,6 +85,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     ]);
     const TENANT_ADMIN = authOf('recruiter', TENANT, ['document_template:read', 'document_template:manage']);
 
+    const audited: Array<{ name: string; event: unknown }> = [];
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -95,7 +98,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const templates = new TemplatesRepository(prisma);
       const variables = new TemplateVariablesRepository(prisma);
       caps = new RtrTemplateCapabilities(variables);
-      platform = new PlatformDocumentTemplatesController(templates, variables, caps);
+      // TEMPLATE-SYNC-1 S-13 — publish writes an audit event and is refused without the audit
+      // port (as withdrawal, delete and import already were); a recording stand-in here.
+      const audit = new Proxy({} as TemplateAuditPort, { get: (_t, name) => async (event: unknown) => void audited.push({ name: String(name), event }) });
+      platform = new PlatformDocumentTemplatesController(templates, variables, caps, audit);
       tenantRoutes = new DocumentTemplatesController(templates, caps);
     }, 180_000);
 
@@ -160,6 +166,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await platform.preview(v1, SUPER, RID);
       const published = (await platform.publish(v1, SUPER, RID)) as { status: string };
       expect(published.status).toBe('ACTIVE');
+      // TEMPLATE-SYNC-1 S-13 — the publish is audited (DRAFT → ACTIVE).
+      expect(audited.filter((a) => a.name === 'recordPlatformPublished').map((a) => (a.event as { version_id: string }).version_id)).toEqual([v1]);
 
       const list = await platform.list(SUPER, RID);
       const mine = list.templates.find((t) => t.id === platformTplId);

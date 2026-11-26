@@ -67,6 +67,45 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
     // TEMPLATE-PRODUCT-1 §3.3 — an Aramo default's DRAFT discarded / a never-published
     // Aramo default deleted. GLOBAL (tenant_id NULL); written BEFORE the delete through the
     // same non-swallowing writer as withdrawal, so a failed write refuses the delete.
+    // TEMPLATE-IMPORT-1 W-8 — a Word import created a PLATFORM draft. GLOBAL; written through the
+    // same non-swallowing writer; file facts and counts only, never the document text.
+    async recordPlatformImport(e) {
+      await repo.writeEvent({
+        event_type: 'identity.document_template.platform_imported',
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.version_id,
+        event_payload: {
+          template_id: e.template_id,
+          document_type_id: e.document_type_id,
+          source_filename: e.source_filename,
+          source_sha256: e.source_sha256,
+          source_bytes: e.source_bytes,
+          content_bytes: e.content_bytes,
+          counts: { ...e.counts },
+        },
+        requestId: e.requestId,
+      });
+    },
+    // TEMPLATE-SYNC-1 S-13 — a version of an Aramo default was published. GLOBAL (tenant_id
+    // NULL); subject = the published version; written AFTER the publish (non-swallowing).
+    async recordPlatformPublished(e) {
+      await repo.writeEvent({
+        event_type: 'identity.document_template.platform_published',
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.version_id,
+        event_payload: {
+          template_id: e.template_id,
+          document_type_id: e.document_type_id,
+          version_id: e.version_id,
+          version_number: e.version_number,
+        },
+        requestId: e.requestId,
+      });
+    },
     async recordPlatformDeletion(e) {
       await repo.writeEvent({
         event_type:
@@ -105,6 +144,7 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
       });
     },
     // ORG-UX-1 §5.4 — Org template governance (adopt / create / approve / select / clear).
+    // TEMPLATE-SYNC-1 S-13 — + draft_from_master / master_version_kept (tenant-scoped).
     async recordGovernance(e) {
       await repo.writeEvent({
         event_type: `identity.document_template.${e.action}`,

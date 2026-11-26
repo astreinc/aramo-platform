@@ -41,6 +41,8 @@ const TODAY: Record<FieldSurface, { readonly off: readonly string[]; readonly on
   engine_passthrough: { off: AUTHORED, on: AUTHORED },
   template_fixed_form: { off: AUTHORED, on: AUTHORED },
   template_editable: { off: AUTHORED, on: AUTHORED },
+  // TEMPLATE-FIELDS-1 F-5 — initially the same 17 types as template_editable.
+  template_inline: { off: AUTHORED, on: AUTHORED },
   template_documents_store: { off: [...AUTHORED, 'CURRENCY', 'IMAGE', 'SIGNER_EMAIL'], on: [...AUTHORED, 'CURRENCY', 'IMAGE', 'SIGNER_EMAIL'] },
   // R-9 — IMAGE retired from authoring.
   template_documents_authoring: { off: [...AUTHORED, 'CURRENCY', 'SIGNER_EMAIL'], on: [...AUTHORED, 'CURRENCY', 'SIGNER_EMAIL'] },
@@ -158,11 +160,18 @@ describe('default sizes and required defaults (P1-0)', () => {
   });
 });
 
+describe('template_inline (TEMPLATE-FIELDS-1 F-5)', () => {
+  it('holds exactly the 17 template_editable types, in the same order', () => {
+    expect(fieldTypesFor('template_inline')).toEqual(fieldTypesFor('template_editable'));
+    expect(fieldTypesFor('template_inline')).toHaveLength(17);
+  });
+});
+
 describe('PAYMENT is send-only (P1-6)', () => {
   const TEMPLATE_SURFACES: readonly FieldSurface[] = FIELD_SURFACES.filter((s) => s.startsWith('template_') || s === 'signature_block');
 
   it('no template surface projection contains PAYMENT, with or without payments available', () => {
-    expect(TEMPLATE_SURFACES).toEqual(['template_fixed_form', 'template_editable', 'template_documents_store', 'template_documents_authoring', 'signature_block']);
+    expect(TEMPLATE_SURFACES).toEqual(['template_fixed_form', 'template_editable', 'template_inline', 'template_documents_store', 'template_documents_authoring', 'signature_block']);
     for (const s of TEMPLATE_SURFACES) {
       expect(fieldTypesFor(s)).not.toContain('PAYMENT');
       expect(fieldTypesFor(s, { payments_available: true })).not.toContain('PAYMENT');

@@ -1,5 +1,8 @@
+import { placeholderKeysIn } from '@aramo/template-content';
+
 import {
   isCanonicalStudioHtml,
+  studioTypedPlaceholderKeys,
   studioBlocksToHtml,
   studioPlainText,
   studioVariableKeys,
@@ -26,6 +29,8 @@ export interface CheckItem {
   readonly severity: CheckSeverity;
   /** A variable the "Remove from draft" fix removes. */
   readonly fixKey?: string;
+  /** TEMPLATE-CONTENT-2 (C-18) — a typed `{{key}}` the "Convert to variable" fix turns into a chip. */
+  readonly convertKey?: string;
 }
 
 export interface ReadinessInput {
@@ -44,6 +49,8 @@ export interface ReadinessInput {
    * them (the platform); absent/null leaves the check out (organization: tenants carry none).
    */
   readonly products?: readonly string[] | null;
+  /** TEMPLATE-FIELDS-1 — the checks of the fields placed in the text (inlineFieldChecks). */
+  readonly extra?: readonly CheckItem[];
 }
 
 export interface Readiness {
@@ -77,6 +84,10 @@ export function deriveReadiness(input: ReadinessInput): Readiness {
   const saved = !input.dirty;
   const previewed = isPreviewed(input.dirty, input.savedRev, input.previewedRev);
   const allowedOnly = isCanonicalStudioHtml(studioBlocksToHtml(input.blocks));
+  // C-18 — typed `{{…}}` text in the body (never filled in; publishing refuses it, C-17), and
+  // unknown typed keys in the title (a known one there is filled in at render).
+  const typed = Array.from(new Set(input.blocks.flatMap((b) => studioTypedPlaceholderKeys(b.value))));
+  const titleTyped = Array.from(new Set(placeholderKeysIn(input.title))).filter((k) => input.chipState(k) === 'unknown');
 
   const items: CheckItem[] = [
     { id: 'title', label: 'Document title is set', ok: input.title.trim().length > 0, severity: 'fail', detail: 'Shown as the document heading and in Sign.' },
@@ -97,9 +108,36 @@ export function deriveReadiness(input: ReadinessInput): Readiness {
       detail: 'Renders its sample today but tenants can’t bind it. Consider removing it.',
       fixKey: k,
     })),
-    { id: 'format', label: 'Only allowed formatting', ok: allowedOnly, severity: 'fail', detail: 'Paragraphs, H2, bold, italic, underline, lists, line breaks and variables.' },
+    ...typed.map<CheckItem>((k) => {
+      const known = input.chipState(k) !== 'unknown';
+      return {
+        id: `typed:${k}`,
+        label: `Typed placeholder {{${k}}}`,
+        ok: false,
+        severity: 'fail',
+        detail: known
+          ? 'Typed as text, so it is never filled in. Convert it to a variable.'
+          : 'Typed as text and not a variable, so it is never filled in. Replace it with a variable or your own wording.',
+        ...(known ? { convertKey: k } : {}),
+      };
+    }),
+    ...titleTyped.map<CheckItem>((k) => ({
+      id: `title-typed:${k}`,
+      label: `Unknown placeholder in the title {{${k}}}`,
+      ok: false,
+      severity: 'fail',
+      detail: 'Not a variable, so it is never filled in. Edit the document title.',
+    })),
+    {
+      id: 'format',
+      label: 'Only allowed formatting',
+      ok: allowedOnly,
+      severity: 'fail',
+      detail: 'Paragraphs, headings (H2–H4), bold, italic, underline, lists (two levels), tables, dividers, page breaks, line breaks, variables and fields.',
+    },
     { id: 'saved', label: 'Draft saved', ok: saved, severity: 'fail', detail: 'Save the draft before previewing.' },
     { id: 'previewed', label: 'Previewed after the last save', ok: previewed, severity: 'fail', detail: 'Open Preview to check the saved draft with sample values.' },
+    ...(input.extra ?? []),
     ...(input.products != null
       ? [{ id: 'products', label: 'At least one product tag', ok: input.products.length > 0, severity: 'fail', detail: 'Choose ATS, Sign or both in Properties. Tags decide where the template is offered.' } satisfies CheckItem]
       : []),

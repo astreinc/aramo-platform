@@ -234,6 +234,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DocumentTemplate'
+              # TEMPLATE-SYNC-1 S-3 — each row carries the server-computed `master` object.
   /v1/document-templates/adopt:
     post:
       operationId: adoptDocumentTemplate
@@ -242,8 +243,14 @@ paths:
         ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B). Copies the Aramo (PLATFORM)
         default's current version — content and field definitions — into a new TENANT-owned
         DRAFT template (v1). The new template records `adopted_from_template_id` /
-        `adopted_from_version_id` for audit only: later changes to the Aramo default never
-        reach it. Nothing is used until a `document_template:manage` holder approves it.
+        `adopted_from_version_id` (written once) and the draft records
+        `based_on_platform_version_id` (TEMPLATE-SYNC-1 S-2). TEMPLATE-SYNC-1 §0 (amends ORG-UX-1
+        §5.1): the lineage may be read to tell the organization that a newer master version
+        exists, or that the master was withdrawn (the `master` object), and to start an update
+        the organization asks for; it is never read by resolution or rendering. A master change
+        never propagates into, overwrites or invalidates an adopted copy by itself: every update
+        is a new DRAFT that the organization previews and approves.
+        Nothing is used until a `document_template:manage` holder approves it.
         Requires `document_template:author`. Unknown or non-PLATFORM id → 404; a withdrawn
         or unpublished default → 409 with details.reason `template_not_adoptable`. Writes
         `identity.document_template.adopted`. TEMPLATE-PRODUCT-1 §6: a default whose product
@@ -290,6 +297,11 @@ paths:
         no other live default would be used instead. Lists pending withdrawals and those
         that took effect in the last 30 days. TEMPLATE-PRODUCT-1 §6.3 (superseding ADR-0034
         D9): only defaults whose product tags share an entitled product with the tenant.
+        These legacy items keep their shape (no `master_template_id`). TEMPLATE-SYNC-1 S-4
+        (R-9): the organization's ADOPTED copies whose master has a published withdrawal
+        (PENDING, or IN_EFFECT within the same 30 days) are listed too, with `template_id` = the
+        copy and `master_template_id` = the Aramo default (`relies_on_default` false,
+        `has_own_template` true, `selected_for_client_ids` empty).
         Feeds the Org Home banner. Requires `document_template:read`.
       responses:
         '200':
@@ -518,7 +530,9 @@ paths:
     get:
       operationId: getDocumentTemplate
       summary: Get a document template.
-      description: Requires `document_template:read`.
+      description: |
+        Requires `document_template:read`. TEMPLATE-SYNC-1 S-3 — carries the server-computed
+        `master` object (null unless the template was adopted from an Aramo default).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -565,7 +579,11 @@ paths:
     post:
       operationId: createTemplateVersion
       summary: Create a DRAFT template version.
-      description: Version numbers auto-increment. Requires `document_template:author` (ORG-UX-1 §4.1).
+      description: |
+        Version numbers auto-increment. Editable html content is sanitised by the same rules as
+        PATCH versions/{versionId} (TEMPLATE-CONTENT-2: the refusals there apply here too, with
+        content_version_downgrade judged against the template's current version). Requires
+        `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -621,6 +639,84 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/document-templates/{id}/master:
+    get:
+      operationId: getDocumentTemplateMasterContent
+      summary: Compare — the Aramo master's current version content of an adopted template.
+      description: |
+        TEMPLATE-SYNC-1 S-5 (R-6; §0 amends ADR-0034 D3). Returns the stored content of the
+        CURRENT published version of the Aramo default this organization template was adopted
+        from (render_schema_version, title, html, signing roles), for the organization's own
+        adopted template only. Never an earlier master version. The Studio compares it with
+        the copy's current version (and draft); 2-way only, no merge. Requires
+        `document_template:read`. Not the organization's template, or not adopted → 404
+        (details.reason `not_an_adopted_template`); the master no longer exists → 404
+        (details.reason `master_not_available`).
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The master's current version content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMasterContent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/{id}/draft-from-master:
+    post:
+      operationId: createTemplateDraftFromMaster
+      summary: Start a draft from the Aramo master's new version.
+      description: |
+        TEMPLATE-SYNC-1 S-7 (R-2). Creates the template's next DRAFT version with the master's
+        current content and signing roles, the organization's letterhead logo carried over
+        from its current version, the master version's field rows copied (as Adopt does), and
+        `based_on_platform_version_id` = that master version. Normalised by the same rules as
+        a PATCH. It is approved through the normal preview and activate steps; the approved
+        copy is unchanged until then. Writes `identity.document_template.draft_from_master`.
+        Requires `document_template:author`. Refusals (details.reason): not adopted → 404
+        `not_an_adopted_template`; the master was deleted or its withdrawal is in effect →
+        409 `master_not_available`; no newer master version → 409 `already_current`
+        (VALIDATION_ERROR); a draft is already open → 409 `TEMPLATE_DRAFT_ALREADY_EXISTS` with
+        `draft_exists` and the open draft's `version_id`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '201':
+          description: The new DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/{id}/keep-version:
+    post:
+      operationId: keepDocumentTemplateVersion
+      summary: Keep my version for the master's current version.
+      description: |
+        TEMPLATE-SYNC-1 S-8 (R-8). Records `sync_kept_platform_version_id` = the master's current
+        version: the notice hides for that master version only and shows again when Aramo
+        publishes a later one. The organization's template is unchanged. Writes
+        `identity.document_template.master_version_kept`. Requires `document_template:manage`.
+        Refusals (details.reason): not adopted → 404 `not_an_adopted_template`; the master no
+        longer exists → 409 `master_not_available`; no newer master version → 409
+        `already_current`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The template with its updated `master` object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/document-templates/{id}/allowed-bindings:
     get:
       operationId: listTemplateAllowedBindings
@@ -661,10 +757,15 @@ paths:
       summary: Update a DRAFT version's editable content.
       description: |
         DRAFT-only (ACTIVE/RETIRED -> 409 TEMPLATE_IMMUTABLE). Editing re-arms the
-        preview-before-approve gate. For `rtr-html-v1` content the html is sanitised server-side
-        against the A1 allowlist and the sanitised form is stored and returned; an unknown field key →
-        422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a misplaced / repeated logo
-        node → 422 (logo_position); over 64 KB → 422 (content_too_large). Requires `document_template:author` (ORG-UX-1 §4.1).
+        preview-before-approve gate. For `rtr-html-v1` / `rtr-html-v2` content the html is sanitised
+        server-side against that version's allowlist (see RtrHtmlContent) and the sanitised form is
+        stored and returned; a typed `{{key}}` whose key is a known variable becomes a field node. An
+        unknown field key → 422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a
+        misplaced / repeated logo node → 422 (logo_position); over the version's size cap (v1 64 KB,
+        v2 256 KB) → 422 (content_too_large); an unknown `render_schema_version` → 422
+        (unsupported_content_version); `rtr-html-v1` content over a draft holding `rtr-html-v2` → 422
+        (content_version_downgrade); a table over 8 columns or 200 rows → 422 (table_too_large); a
+        list nested over 2 levels → 422 (list_too_deep). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       requestBody:
@@ -796,7 +897,11 @@ paths:
       summary: Activate a DRAFT template version (DRAFT -> ACTIVE).
       description: |
         Activates the version and retires any prior ACTIVE version of the same
-        template. Once ACTIVE the version is immutable. Requires `document_template:manage`.
+        template. Once ACTIVE the version is immutable. Editable html content that still holds
+        typed `{{…}}` text in the body, or an unknown `{{key}}` in the title, is refused 422
+        VALIDATION_ERROR (details.reason = unresolved_placeholder, details.keys); an unmodified
+        adopted copy (content fingerprint equal to its source default's) is exempt. Preview is
+        never refused for it. Requires `document_template:manage`.
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -1334,7 +1439,7 @@ paths:
       operationId: listSignStudioTemplates
       summary: A Personal account's templates and the Aramo defaults tagged sign (TEMPLATE-PRODUCT-1 §8.3).
       description: >
-        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). The Org Home library view (TemplateLibraryResponse) narrowed to the tenant's own templates and the defaults tagged sign; each item carries adopted_template_id (defaults) or null.
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). The Org Home library view (TemplateLibraryResponse) narrowed to the tenant's own templates and the defaults tagged sign; each item carries adopted_template_id (defaults) or null. TEMPLATE-SYNC-1 S-3 — each own template carries the server-computed `master` object (null unless adopted).
       parameters:
         - $ref: '#/components/parameters/EsignS2sTenantId'
         - $ref: '#/components/parameters/EsignS2sActorId'
@@ -1558,6 +1663,113 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/master:
+    get:
+      operationId: getSignStudioTemplateMasterContent
+      summary: Compare — the Aramo master's current version content of an adopted Personal template (TEMPLATE-SYNC-1 S-5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Same answer as GET /v1/document-templates/{id}/master (the master's CURRENT version only; 404 not_an_adopted_template / master_not_available).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The master's current version content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateMasterContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/draft-from-master:
+    post:
+      operationId: createSignStudioTemplateDraftFromMaster
+      summary: Start a draft from the Aramo master's new version (TEMPLATE-SYNC-1 S-7).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:author. Same rules as POST /v1/document-templates/{id}/draft-from-master (refusals not_an_adopted_template, master_not_available, already_current, draft_exists; audited).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '201':
+          description: The new DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '403':
+          $ref: '#/components/responses/EsignStudioForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/studio/{id}/keep-version:
+    post:
+      operationId: keepSignStudioTemplateVersion
+      summary: Keep my version for the master's current version (TEMPLATE-SYNC-1 S-8).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). PERSONAL tenants only: a BUSINESS tenant is refused 403 (details.reason organization_templates_in_org_home; Org Home owns organization templates). The authority comes from the acting person's live role grants (actor_id). Needs document_template:manage. Same rules as POST /v1/document-templates/{id}/keep-version (refusals not_an_adopted_template, master_not_available, already_current; audited).
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - $ref: '#/components/parameters/EsignS2sTenantId'
+        - $ref: '#/components/parameters/EsignS2sActorId'
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: An empty JSON object (the call carries no fields; it is still bound by body_sha256).
+      responses:
+        '200':
+          description: The template with its updated `master` object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2324,11 +2536,26 @@ components:
         adopted_from_template_id:
           type: [string, 'null']
           format: uuid
-          description: ORG-UX-1 §5.1 — the Aramo default an adopted tenant template was copied from. Audit/provenance only.
+          description: >-
+            ORG-UX-1 §5.1 — the Aramo default an adopted tenant template was copied from (written
+            once). TEMPLATE-SYNC-1 §0: read only to tell the organization that a newer master
+            version exists or that the master was withdrawn, and to start an update it asks for;
+            never read by resolution or rendering.
         adopted_from_version_id:
           type: [string, 'null']
           format: uuid
-          description: ORG-UX-1 §5.1 — the default's version at adoption time. Audit/provenance only.
+          description: ORG-UX-1 §5.1 — the default's version at adoption time (written once; TEMPLATE-SYNC-1 §0 as above).
+        sync_kept_platform_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: TEMPLATE-SYNC-1 S-8 — "Keep my version" was chosen for this master version.
+        master:
+          description: >-
+            TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted template (null when not
+            adopted). Present on the list, GET and keep-version responses.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
+            - type: 'null'
     TemplateWithdrawalNoticesResponse:
       type: object
       required: [notices]
@@ -2387,6 +2614,13 @@ components:
         has_own_template:
           type: boolean
           description: True when the organization has an approved template of its own for the type (the fallback after the effective date). False means a choice is needed.
+        master_template_id:
+          type: string
+          format: uuid
+          description: >-
+            TEMPLATE-SYNC-1 S-4 — present only on an adopted-copy notice: `template_id` is then the
+            organization's adopted copy and this is the withdrawn Aramo default. Absent on the
+            legacy (selection) notices.
     TemplateVersion:
       type: object
       description: An immutable-after-activation template version (DOC-2).
@@ -2424,6 +2658,13 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Admin-only notes for this version (Document Templates slice 1). Never rendered into any document.
+        based_on_platform_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            TEMPLATE-SYNC-1 S-2 — the Aramo (PLATFORM) version this version's content came from
+            (Adopt, Start a draft from the new version, or carried by the organization's own new
+            draft). Server-written.
         field_schema:
           description: |
             The version content. `rtr-generated-v1`: { render_schema_version, title, blocks: [{type: HEADING|TEXT, text}] }.
@@ -2445,17 +2686,41 @@ components:
     RtrHtmlContent:
       type: object
       description: |
-        Amendment A1 `rtr-html-v1` content. `html` is restricted to the allowlist p, h2, b/strong, i/em, u,
-        ul, ol, li, br; `<span data-field="{closed catalog key}"></span>` (empty) field nodes; and at most one
-        `<div data-asset="tenant.logo"></div>`, only as the first child. No other elements or attributes, no
-        style/class, no URLs. Max 64 KB. The server re-serialises on every PATCH (strong→b, em→i, field spans
-        emptied, unknown tags/attributes removed) and returns the sanitised html. `logo` is server-owned
-        (set only by POST versions/{versionId}/logo); a client-supplied value is ignored.
+        Editable html content, per `render_schema_version`:
+        - `rtr-html-v1` (Amendment A1): `html` is restricted to the allowlist p, h2, b/strong, i/em, u,
+          ul, ol, li, br; `<span data-field="{closed catalog key}"></span>` (empty) field nodes; and at most
+          one `<div data-asset="tenant.logo"></div>`, only as the first child. Max 64 KB.
+        - `rtr-html-v2` (TEMPLATE-CONTENT-2; a strict superset, written by the Studio): v1 plus h3, h4,
+          table / tr / th / td (thead and tbody are accepted and unwrapped; a cell holds inline content
+          only; no merged cells; at most 8 columns and 200 rows), hr (a divider; `<hr data-break="page">`
+          is a page break, the only attribute allowed on hr) and lists nested up to 2 levels. Max 256 KB.
+        - `rtr-html-v3` (TEMPLATE-FIELDS-1; a strict superset of v2, written by the Studio): v2 plus ONE
+          inline marker, `<span data-sign-field="{field_key}"></span>` — a Sign field placed in the text
+          (empty, no other attribute; `field_key` lower snake case, at most 64). A marker may sit only in a
+          paragraph, a list item or a table cell (never in a heading or the title); it is never a variable.
+          The field's type, signing role and settings are the version's field rows (`fields` on the
+          platform PATCH; NULL geometry: positions are computed per render). v1 and v2 readers discard
+          the marker. Downgrade guard: v3 > v2 > v1.
+        No other elements or attributes, no style/class, no URLs. The server re-serialises on every write
+        (strong→b, em→i, field spans emptied, unknown tags/attributes removed) and returns the sanitised
+        html. v1 content is never upgraded or rewritten by the server; it renders as before. Refusal
+        reasons (422 VALIDATION_ERROR, details.reason): content_too_large, unsupported_content_version,
+        content_version_downgrade, table_too_large, list_too_deep, and unresolved_placeholder (publish /
+        activate only). Inline fields (TEMPLATE-FIELDS-1 §3.7, stable; nothing is saved):
+        field_position_not_allowed (a marker outside a paragraph / list item / table cell, details.keys);
+        field_marker_mismatch (markers and rows disagree, details.missing / details.orphans);
+        field_marker_duplicate (a repeated key); signing_roles_required (a template with inline fields
+        needs signing roles; every field names a SIGNER role or is sender-filled); field_too_wide (a box
+        wider than its paragraph, list item or table cell, details.field_key / place / width / max_width);
+        fields_platform_only (a tenant save that changes the field set: fields are placed on the platform
+        only); inline_fields_not_supported_for_ats (publish / activate of an `ats` template). At render,
+        field_not_placed (a field the render did not place). `logo` is server-owned (set only by POST versions/{versionId}/logo); a
+        client-supplied value is ignored.
       required: [render_schema_version, title, html]
       properties:
-        render_schema_version: { type: string, enum: [rtr-html-v1] }
+        render_schema_version: { type: string, enum: [rtr-html-v1, rtr-html-v2, rtr-html-v3] }
         title: { type: string }
-        html: { type: string, maxLength: 65536 }
+        html: { type: string, maxLength: 262144, description: 'Max 65536 for rtr-html-v1; 262144 for rtr-html-v2 and rtr-html-v3.' }
         logo:
           oneOf:
             - type: object
@@ -2507,6 +2772,56 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Trimmed server-side; blank is stored as null.
+        fields:
+          type: array
+          maxItems: 200
+          description: >
+            TEMPLATE-FIELDS-1 F-14 — the platform Studio only (PATCH /v1/platform/document-templates/versions/{versionId}):
+            the rows of the fields placed in the text (rtr-html-v3 markers), saved with `field_schema` in ONE
+            transaction (replacing the draft's rows). Omitted ⇒ the draft's rows are kept and the content must still
+            match them. On a tenant PATCH the rows are locked: sent back unchanged they are accepted, any change is
+            refused (fields_platform_only).
+          items:
+            $ref: '#/components/schemas/InlineTemplateFieldInput'
+    InlineTemplateFieldInput:
+      type: object
+      additionalProperties: false
+      description: >
+        TEMPLATE-FIELDS-1 — a field placed in the text of editable content: no page position (computed per render).
+        Settings follow the field catalog (a setting the type does not take is refused, details.reason
+        field_config_not_applicable); sender_filled only while sender-filled fields are switched on.
+      required: [field_key, field_type]
+      properties:
+        field_key: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$' }
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGN_DATE, INITIALS, TEXT, SIGNER_NAME, CHECKBOX, FIRST_NAME, LAST_NAME, EMAIL, COMPANY, TITLE, ACKNOWLEDGEMENT, DATE, DROPDOWN, RADIO, NUMBER, MULTILINE_TEXT]
+          description: The `template_inline` catalog surface (TEMPLATE-FIELDS-1 F-5).
+        signer_role:
+          type: [string, 'null']
+          description: A SIGNER role of the content's `signing`; null only for a sender-filled field.
+        required: { type: boolean }
+        ordinal: { type: integer, minimum: 0 }
+        label: { type: [string, 'null'] }
+        group_key: { type: [string, 'null'] }
+        group_rule: { type: [string, 'null'], enum: [SELECT_ONE, SELECT_ANY, null] }
+        min_selected: { type: [integer, 'null'] }
+        name_mode: { type: [string, 'null'], enum: [SIGNER_PROFILE, SIGNER_ENTERED, null] }
+        tooltip: { type: [string, 'null'] }
+        placeholder: { type: [string, 'null'] }
+        read_only: { type: [boolean, 'null'] }
+        sender_filled: { type: [boolean, 'null'] }
+        validation: { type: [string, 'null'], enum: [email, phone, us_zip, number_range, date_range, max_length, null] }
+        font_size: { type: [integer, 'null'] }
+        data_name: { type: [string, 'null'] }
+        options:
+          oneOf:
+            - $ref: '#/components/schemas/FieldOptions'
+            - type: 'null'
+        condition:
+          oneOf:
+            - $ref: '#/components/schemas/FieldCondition'
+            - type: 'null'
     TemplateSamplePreview:
       type: object
       description: A fixed-sample preview (§17) — the draft content with every binding substituted by its safe sample value. Structured resolved blocks; no business document is created.
@@ -2542,7 +2857,10 @@ components:
               value: { type: string }
         html:
           type: string
-          description: rtr-html-v1 only — the content with each field node replaced by `<span data-sample="{key}">{escaped sample}</span>` (line breaks in a sample become `<br>`).
+          description: >-
+            Editable html only — the content with each field node replaced by `<span data-sample="{key}">{escaped sample}</span>`
+            (line breaks in a sample become `<br>`). TEMPLATE-FIELDS-1 F-13 — each inline field marker becomes
+            `<span data-sign-field-sample="{field_key}">{label · role}</span>`, drawn as a labelled box.
         logo:
           description: rtr-html-v1 only — the version's frozen logo asset, or null.
           oneOf:
@@ -2566,7 +2884,7 @@ components:
     TemplateLibraryItem:
       type: object
       description: One gallery entry — an Aramo (PLATFORM) default or one of the tenant's own (TENANT) templates.
-      required: [id, owner_scope, document_type_id, name, description, template_kind, status, client_id, current_version_id, current_version_number, updated_at, products, withdraw_effective_at, configurable]
+      required: [id, owner_scope, document_type_id, name, description, template_kind, status, client_id, current_version_id, current_version_number, updated_at, products, withdraw_effective_at, configurable, master]
       properties:
         id: { type: string, format: uuid }
         owner_scope: { type: string, enum: [PLATFORM, TENANT] }
@@ -2585,6 +2903,55 @@ components:
           items: { type: string }
         withdraw_effective_at: { type: [string, 'null'], format: date-time }
         configurable: { type: boolean }
+        master:
+          description: TEMPLATE-SYNC-1 S-3 — the server-computed master of an adopted TENANT template; null for an Aramo default and for a template the organization wrote itself.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
+            - type: 'null'
+    TemplateMaster:
+      type: object
+      description: >-
+        TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-3 — the ONE server rule: whether the Aramo
+        default an organization template was adopted from has a newer published version, or was
+        withdrawn. `newer_available` is true when the master's current version number is greater
+        than the version number the template's current version (else its draft) is based on, and
+        the master's current version is not the kept one. No UI recomputes it.
+      required: [template_id, name, current_version_id, current_version_number, based_on_version_number, newer_available, withdrawn, kept]
+      properties:
+        template_id: { type: string, format: uuid, description: The Aramo default. }
+        name: { type: [string, 'null'], description: Null only when the default no longer exists. }
+        current_version_id: { type: [string, 'null'], format: uuid }
+        current_version_number: { type: [integer, 'null'] }
+        based_on_version_number: { type: [integer, 'null'] }
+        newer_available: { type: boolean }
+        withdrawn:
+          oneOf:
+            - type: object
+              required: [notice_at, effective_at, status]
+              properties:
+                notice_at: { type: string, format: date-time }
+                effective_at: { type: string, format: date-time }
+                status: { type: string, enum: [PENDING, IN_EFFECT] }
+            - type: 'null'
+        kept: { type: boolean, description: '"Keep my version" was chosen for the master''s current version.' }
+    TemplateMasterContent:
+      type: object
+      description: TEMPLATE-SYNC-1 S-5 — the master's CURRENT version stored content (never an earlier version).
+      required: [template_id, master_template_id, version_id, version_number, render_schema_version, title, html, signing]
+      properties:
+        template_id: { type: string, format: uuid, description: The organization's adopted template. }
+        master_template_id: { type: string, format: uuid }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        render_schema_version: { type: string }
+        title: { type: [string, 'null'] }
+        html: { type: [string, 'null'] }
+        signing:
+          description: The master's signing roles (null when it has none).
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: 'null'
     TemplateLibraryResponse:
       type: object
       required: [items, document_types, entitled_products]
@@ -3288,6 +3655,14 @@ components:
           oneOf:
             - $ref: '#/components/schemas/SignTemplateSigning'
             - type: 'null'
+        master:
+          description: >-
+            TEMPLATE-SYNC-1 S-3 / S-11 — the server-computed master of a template the organization
+            adopted from an Aramo default (null otherwise; absent on an Aramo fixed form). Sign web
+            Business and the Sign app show a badge from it; they never recompute it.
+          oneOf:
+            - $ref: '#/components/schemas/TemplateMaster'
+            - type: 'null'
     SignTemplateListResponse:
       type: object
       additionalProperties: false
@@ -3437,6 +3812,27 @@ components:
                   - $ref: '#/components/schemas/FieldCondition'
                   - type: 'null'
                 description: FIELD-PARITY-2 B-2 — "show only when"; null = always shown.
+          description: >-
+            The version's field rows with their settings. TEMPLATE-FIELDS-1 F-10 — for an editable rtr-html-v3 template the
+            rows of the fields placed in the text carry the positions THIS render recorded (`inline_fields`); a row the
+            render did not place fails the request (422 DOCUMENT_RENDER_FAILED, details.reason field_not_placed).
+        inline_fields:
+          type: array
+          description: >-
+            TEMPLATE-FIELDS-1 F-10 / F-18 — where this render drew each field placed in the text (0-based page, PDF points,
+            bottom-left origin), from the frozen revision's render_manifest.inline_fields (covered by its manifest hash).
+            Absent when the template has none.
+          items:
+            type: object
+            additionalProperties: false
+            required: [field_key, page_number, x, y, width, height]
+            properties:
+              field_key: { type: string }
+              page_number: { type: integer }
+              x: { type: number }
+              y: { type: number }
+              width: { type: number }
+              height: { type: number }
         template_kind:
           type: string
           enum: [EDITABLE, FIXED_FORM]

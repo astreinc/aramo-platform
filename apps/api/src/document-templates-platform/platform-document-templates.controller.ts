@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   Body,
   Controller,
@@ -33,7 +35,16 @@ import {
   type UpdateTemplateVariableInput,
   isTemplateProductKey,
   type TemplateProductKey,
+  inlineRowOf,
+  parseInlineFieldRows,
+  type InlineFieldRowInput,
 } from '@aramo/documents';
+import { senderFilledFieldsEnabled } from '@aramo/sign-fields';
+import { CONTENT_MAX_BYTES_V2, CURRENT_HTML_CONTENT_VERSION, placeholderKeysIn } from '@aramo/template-content';
+
+import { convertDocx } from './word-import/docx-to-content.js';
+import { blockCounts } from './word-import/map-word-html.js';
+import { WORD_IMPORT_FILENAME_MAX, WORD_IMPORT_MAX_FILE_BYTES, WordImportRefusedError } from './word-import/word-import.constants.js';
 
 // DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1; ADR-0034 D2/D3/D7/D9, §4 rule 2) — the PLATFORM-tier
 // authoring surface for Aramo default document templates + the Aramo template variable
@@ -176,6 +187,11 @@ function toVariableView(r: TemplateVariableRow): TemplateVariableView {
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
+}
+
+// TEMPLATE-IMPORT-1 §3.1 — a file refusal is 422 VALIDATION_ERROR with a stable details.reason.
+function importRefusal(e: WordImportRefusedError, requestId: string): AramoError {
+  return new AramoError('VALIDATION_ERROR', `Word import refused: ${e.reason}`, 422, { requestId, details: { reason: e.reason, ...e.details } });
 }
 
 function bad(message: string, requestId: string, reason?: string): AramoError {
@@ -532,6 +548,100 @@ export class PlatformDocumentTemplatesController {
     });
   }
 
+  // TEMPLATE-IMPORT-1 (Directive v1.1 LOCKED) W-1 … W-8 — import a Word (.docx) file as the
+  // DRAFT of an EDITABLE Aramo default. Body JSON { filename, content_base64 } (main.ts mounts
+  // a 15 MB parser for this route only). The file is checked and converted in-process
+  // (word-import/), then saved through the SAME normaliser + createPlatformVersion path as a
+  // hand-built draft (sanitiser, known `{{key}}` → chip, 256 KiB cap). One DRAFT per template:
+  // an open draft refuses the import (draft_exists; the console offers Discard and import).
+  // The import is audited (file facts and counts, never the text).
+  @Post('document-templates/:id/versions/import')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('platform:document_template:manage')
+  async importWord(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown> | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ) {
+    this.assertPlatform(auth, requestId);
+    const filename = requiredText(body?.['filename'], 'filename', WORD_IMPORT_FILENAME_MAX, requestId);
+    const raw = body?.['content_base64'];
+    if (typeof raw !== 'string' || raw.length === 0) throw bad('content_base64 (the .docx file, base64) is required', requestId, 'content_required');
+    // Refuse an oversized upload before decoding it (base64 is 4/3 of the bytes).
+    if (Math.floor((raw.length * 3) / 4) > WORD_IMPORT_MAX_FILE_BYTES + 3) {
+      throw importRefusal(new WordImportRefusedError('import_too_large', { max_bytes: WORD_IMPORT_MAX_FILE_BYTES }), requestId);
+    }
+    const bytes = new Uint8Array(Buffer.from(raw, 'base64'));
+    const audit = this.requireAudit(requestId, 'Word import');
+    return this.run(requestId, async () => {
+      const t = await this.templates.getPlatformTemplate(id);
+      const caps = this.caps;
+      if (caps === undefined || t.template_kind === 'UPLOADED_PDF' || !(await caps.isConfigurable(t.document_type_id))) {
+        throw importRefusal(new WordImportRefusedError('import_not_editable'), requestId);
+      }
+      const open = (await this.templates.listPlatformVersions(id)).find((v) => v.status === 'DRAFT');
+      if (open !== undefined) {
+        throw new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', 'This template already has a draft; discard it to import', 409, {
+          requestId,
+          details: { reason: 'draft_exists', draft_version_id: open.id },
+        });
+      }
+      let converted: Awaited<ReturnType<typeof convertDocx>>;
+      try {
+        converted = await convertDocx(filename, bytes);
+      } catch (e) {
+        if (e instanceof WordImportRefusedError) throw importRefusal(e, requestId);
+        throw e;
+      }
+      // W-5 — the 256 KiB cap, with the measured size (the normaliser re-checks after sanitising).
+      const mappedBytes = Buffer.byteLength(converted.html, 'utf8');
+      if (mappedBytes > CONTENT_MAX_BYTES_V2) {
+        throw new AramoError('VALIDATION_ERROR', 'The imported document is larger than a template can hold', 422, {
+          requestId,
+          details: { reason: 'content_too_large', bytes: mappedBytes, max_bytes: CONTENT_MAX_BYTES_V2 },
+        });
+      }
+      const render_schema_version = CURRENT_HTML_CONTENT_VERSION;
+      const field_schema = (await caps.normalizeDraftContent({
+        document_type_id: t.document_type_id,
+        render_schema_version,
+        field_schema: { render_schema_version, title: converted.title, html: converted.html },
+        existing_field_schema: null,
+        requestId,
+      })) as { html?: unknown };
+      const html = typeof field_schema.html === 'string' ? field_schema.html : '';
+      const v = await this.templates.createPlatformVersion({ template_id: id, render_schema_version, field_schema, internal_notes: null, created_by: auth.sub });
+      // W-4 — `{{key}}` left as text after the normaliser chipped the known keys (chips are tags,
+      // so only the text is scanned), with how often each occurs.
+      const left = new Map<string, number>();
+      for (const k of placeholderKeysIn(html.replace(/<[^>]*>/g, ' '))) left.set(k, (left.get(k) ?? 0) + 1);
+      const unknown_placeholders = [...left.entries()].map(([key, count]) => ({ key, count }));
+      const counts = blockCounts(html);
+      const content_bytes = Buffer.byteLength(html, 'utf8');
+      await audit.recordPlatformImport({
+        actor_id: auth.sub,
+        template_id: id,
+        version_id: v.id,
+        document_type_id: t.document_type_id,
+        source_filename: filename,
+        source_sha256: createHash('sha256').update(bytes).digest('hex'),
+        source_bytes: bytes.byteLength,
+        content_bytes,
+        counts: {
+          ...counts,
+          ...Object.fromEntries(converted.warnings.map((w) => [`warning:${w.code}`, w.count])),
+          unknown_placeholders: unknown_placeholders.length,
+        },
+        requestId,
+      });
+      return {
+        version: this.versionView(v),
+        summary: { title: converted.title, counts, warnings: converted.warnings, unknown_placeholders, content_bytes },
+      };
+    });
+  }
+
   @Get('document-templates/versions/:versionId')
   @RequireScopes('platform:document_template:read')
   async getVersion(
@@ -561,6 +671,21 @@ export class PlatformDocumentTemplatesController {
     const rsvRaw = body?.['render_schema_version'];
     if (rsvRaw !== undefined && (typeof rsvRaw !== 'string' || rsvRaw.length === 0)) throw bad('invalid render_schema_version', requestId);
     const render_schema_version = rsvRaw as string | undefined;
+    // TEMPLATE-FIELDS-1 F-14 — `fields`: the inline field rows saved WITH the content (one
+    // transaction). Absent ⇒ the draft's rows are kept (and the content must still match them).
+    const hasFields = body !== undefined && body !== null && 'fields' in body;
+    let fields: InlineFieldRowInput[] | undefined;
+    if (hasFields) {
+      if (!hasContent) throw bad('fields are saved with the content (field_schema)', requestId, 'fields_require_content');
+      const parsed = parseInlineFieldRows(body['fields'], { sender_filled_enabled: senderFilledFieldsEnabled(process.env) });
+      if (!parsed.ok) {
+        throw new AramoError('VALIDATION_ERROR', parsed.message, 422, {
+          requestId,
+          details: { reason: parsed.reason, ...(parsed.index !== undefined ? { index: parsed.index } : {}), ...(parsed.field !== undefined ? { field: parsed.field } : {}) },
+        });
+      }
+      fields = parsed.rows;
+    }
     return this.run(requestId, async () => {
       let field_schema: unknown = hasContent ? body['field_schema'] : undefined;
       if (hasContent && this.caps !== undefined) {
@@ -570,14 +695,27 @@ export class PlatformDocumentTemplatesController {
         }
         const t = await this.templates.getPlatformTemplate(existing.template_id);
         if (await this.caps.isConfigurable(t.document_type_id)) {
+          const rows = fields ?? (await this.templates.listPlatformFields(versionId)).map(inlineRowOf);
           field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: render_schema_version ?? existing.render_schema_version,
             field_schema: body['field_schema'],
             existing_field_schema: existing.field_schema,
             requestId,
+            fields: rows,
+            owner: 'PLATFORM',
           });
         }
+      }
+      if (fields !== undefined) {
+        const saved = await this.templates.updatePlatformDraftContentWithFields({
+          version_id: versionId,
+          field_schema,
+          ...(render_schema_version !== undefined ? { render_schema_version } : {}),
+          fields,
+        });
+        if (internal_notes !== undefined) return this.versionView(await this.templates.updatePlatformDraftVersion({ version_id: versionId, internal_notes }));
+        return this.versionView(saved);
       }
       const v = await this.templates.updatePlatformDraftVersion({
         version_id: versionId,
@@ -642,6 +780,7 @@ export class PlatformDocumentTemplatesController {
         field_schema: v.field_schema,
         render_schema_version: v.render_schema_version,
         requestId,
+        fields: (await this.templates.listPlatformFields(versionId)).map(inlineRowOf),
       });
       await this.templates.recordPlatformPreview(versionId);
       return out;
@@ -652,6 +791,11 @@ export class PlatformDocumentTemplatesController {
   // gate (409 TEMPLATE_PREVIEW_REQUIRED unless the current content was previewed), then
   // the prior ACTIVE version is RETIRED and current_version_id moves (tenants only ever
   // resolve the current version — D3). Documents already generated keep their pin.
+  // TEMPLATE-SYNC-1 S-13 (R-10) — a publish that moves a DRAFT to ACTIVE writes the GLOBAL
+  // audit event identity.document_template.platform_published (template, version, number)
+  // AFTER it succeeds, through the non-swallowing writer (no audit port ⇒ refused). A repeated
+  // publish of an already ACTIVE version is a no-op and writes nothing. Companies that adopted
+  // the default are told through the server-computed `master` flag; their copies never change.
   @Post('document-templates/versions/:versionId/publish')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('platform:document_template:manage')
@@ -661,18 +805,33 @@ export class PlatformDocumentTemplatesController {
     @RequestId() requestId: string,
   ) {
     this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId, 'publish');
     return this.run(requestId, async () => {
+      const v = await this.templates.getPlatformVersion(versionId);
+      const t = await this.templates.getPlatformTemplate(v.template_id);
       if (this.caps !== undefined) {
-        const v = await this.templates.getPlatformVersion(versionId);
-        const t = await this.templates.getPlatformTemplate(v.template_id);
         await this.caps.validateDraftContent({
           document_type_id: t.document_type_id,
           field_schema: v.field_schema,
           render_schema_version: v.render_schema_version,
           requestId,
+          // TEMPLATE-FIELDS-1 F-3 / F-6 / F-9 re-checked at publish; F-17 the `ats` refusal.
+          fields: (await this.templates.listPlatformFields(versionId)).map(inlineRowOf),
+          products: t.products ?? [],
         });
       }
-      return this.versionView(await this.templates.activatePlatformVersion({ version_id: versionId, actor_id: auth.sub }));
+      const published = await this.templates.activatePlatformVersion({ version_id: versionId, actor_id: auth.sub });
+      if (v.status === 'DRAFT') {
+        await audit.recordPlatformPublished({
+          actor_id: auth.sub,
+          template_id: t.id,
+          document_type_id: t.document_type_id,
+          version_id: published.id,
+          version_number: published.version_number,
+          requestId,
+        });
+      }
+      return this.versionView(published);
     });
   }
 

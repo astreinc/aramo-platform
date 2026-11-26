@@ -36,6 +36,8 @@ export default defineConfig({
       // TEMPLATE-PRODUCT-1 §7.2 — the PDF geometry/rendering subpath (sign-web prepare editor,
       // fixed-form Studio). Listed BEFORE the package root: an alias matches its prefix.
       '@aramo/document-templates-web/pdf': resolve(root, 'libs/document-templates-web/src/pdf/index.ts'),
+      // TEMPLATE-SYNC-1 S-11 / S-12 — the shared sync words without the Studio (sign-web Business list).
+      '@aramo/document-templates-web/sync': resolve(root, 'libs/document-templates-web/src/template-sync.ts'),
       '@aramo/document-templates-web': resolve(root, 'libs/document-templates-web/src/index.ts'),
       // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
       // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
@@ -92,6 +94,7 @@ export default defineConfig({
       // FIELD-PARITY-1 P1-1 (ruling R-4) — the one field catalog (scope:shared,
       // type:client-shared). Mirrors tsconfig.base.json.
       '@aramo/sign-fields': resolve(root, 'libs/sign-fields/src/index.ts'),
+      '@aramo/template-content': resolve(root, 'libs/template-content/src/index.ts'),
       // FIELD-PARITY-1 P1-5 — the one web placement editor (scope:shared). Mirrors tsconfig.base.json.
       '@aramo/field-placement-web': resolve(root, 'libs/field-placement-web/src/index.ts'),
       // ATI-SEP-1 T0 (ADR-0036) — the Talent Intelligence libs (own database, scope:intelligence)

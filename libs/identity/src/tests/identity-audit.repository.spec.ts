@@ -91,8 +91,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // TEMPLATE-PRODUCT-1 §7.3: +2 tenant-scoped document_template.fixed_form_hidden/_shown (89 -> 91).
   // CONTACTS-1 SD-11: +2 contact.deleted / contact.restored (91 -> 93).
   // Apple Go-Live A1 L-5: +1 GLOBAL external_identity.unlinked (93 -> 94).
-  it('EVENT_TYPES contains 94 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes + 2 TEMPLATE-PRODUCT-1 fixed-form hide/show + 2 CONTACTS-1 contact delete/restore + 1 A1 sign-in method removal; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(94);
+  // TEMPLATE-IMPORT-1 W-8: +1 GLOBAL document_template.platform_imported (94 -> 95).
+  // TEMPLATE-SYNC-1 S-13: +1 GLOBAL document_template.platform_published, +2 tenant-scoped
+  // document_template.draft_from_master / master_version_kept (95 -> 98).
+  it('EVENT_TYPES contains 98 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change + 1 M-A8 product access removal + 5 Sign custom roles + 2 TEMPLATE-PRODUCT-1 platform template deletes + 4 TEMPLATE-PRODUCT-1 document type changes + 2 TEMPLATE-PRODUCT-1 fixed-form hide/show + 2 CONTACTS-1 contact delete/restore + 1 A1 sign-in method removal + 1 TEMPLATE-IMPORT-1 platform Word import + 3 TEMPLATE-SYNC-1 platform publish / draft from master / keep my version; the Feature-Parity §5 Personal → Business upgrade event was removed by Amendment A5) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(98);
     // Sign Feature-Parity §1.21 — the custom Sign role events are tenant-scoped.
     for (const t of [
       'identity.sign_custom_role.created',
@@ -127,8 +130,17 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     // TEMPLATE-PRODUCT-1 §3.3 — platform template deletes are GLOBAL too.
     expect(EVENT_TYPES).toContain('identity.document_template.platform_draft_discarded');
     expect(EVENT_TYPES).toContain('identity.document_template.platform_template_deleted');
+    expect(EVENT_TYPES).toContain('identity.document_template.platform_imported');
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.platform_draft_discarded')).toBe(false);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.platform_template_deleted')).toBe(false);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.platform_imported')).toBe(false);
+    // TEMPLATE-SYNC-1 S-13 — publish is GLOBAL; draft from master / keep are tenant-scoped.
+    expect(EVENT_TYPES).toContain('identity.document_template.platform_published');
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.platform_published')).toBe(false);
+    for (const t of ['identity.document_template.draft_from_master', 'identity.document_template.master_version_kept'] as const) {
+      expect(EVENT_TYPES, t).toContain(t);
+      expect(TENANT_SCOPED_EVENT_TYPES.has(t), t).toBe(true);
+    }
     for (const t of ['identity.document_type.created', 'identity.document_type.updated', 'identity.document_type.retired', 'identity.document_type.deleted'] as const) {
       expect(EVENT_TYPES, t).toContain(t);
       expect(TENANT_SCOPED_EVENT_TYPES.has(t), t).toBe(false);
@@ -242,8 +254,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       // CONTACTS-1 SD-11 — contact soft delete / restore.
       'identity.contact.deleted',
       'identity.contact.restored',
+      // TEMPLATE-SYNC-1 S-13 — draft from master / keep my version.
+      'identity.document_template.draft_from_master',
+      'identity.document_template.master_version_kept',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(78); // TEMPLATE-PRODUCT-1 §7.3 +2 fixed_form_hidden/_shown; CONTACTS-1 +2 contact.deleted/restored; Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(80); // TEMPLATE-SYNC-1 +2 draft_from_master/master_version_kept; TEMPLATE-PRODUCT-1 §7.3 +2 fixed_form_hidden/_shown; CONTACTS-1 +2 contact.deleted/restored; Sign custom roles +5; (Feature-Parity §5 tenant.upgraded_to_business removed by A5); M-A8 +1 tenant_user.product_access_removed; Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

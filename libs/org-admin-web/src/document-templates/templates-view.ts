@@ -1,6 +1,7 @@
 import {
   TEMPLATE_PRODUCT_KEYS,
   orderedProducts,
+  templateMasterBadge,
   templateProductsLine,
   type TemplateLibraryItem,
   type TemplateLibraryView,
@@ -175,6 +176,11 @@ export interface OurTemplateRow {
    * when the versions could not be read).
    */
   readonly newVersion: number | null;
+  /**
+   * TEMPLATE-SYNC-1 S-9 — "Newer version available" / "Withdrawn by Aramo", from the server's
+   * master flag only (null: no badge).
+   */
+  readonly masterBadge: string | null;
 }
 
 /**
@@ -206,6 +212,7 @@ export function buildOurTemplateRows(
         lastApproved: current?.activated_at != null ? { at: current.activated_at, by: current.activated_by } : null,
         newVersion:
           current?.status === 'ACTIVE' && latest !== null && !versions.some((v) => v.status === 'DRAFT') ? latest.version_number + 1 : null,
+        masterBadge: templateMasterBadge(t.master),
       };
     });
 }

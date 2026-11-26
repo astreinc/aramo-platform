@@ -1,3 +1,4 @@
+import { CURRENT_HTML_CONTENT_VERSION } from '@aramo/template-content';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -89,8 +90,10 @@ describe('A1 §2.1 — rtr-generated-v1 → rtr-html-v1 draft conversion', () =>
         { type: 'TEXT', text: 'For {{talent.full_name}} at {{client.name}}.\nSecond line' },
       ],
     });
+    // TEMPLATE-CONTENT-2 C-4 — a converted draft is written in the current version (TEMPLATE-FIELDS-1
+    // F-1: v3).
     expect(c).toEqual({
-      render_schema_version: RTR_HTML_SCHEMA_V1,
+      render_schema_version: CURRENT_HTML_CONTENT_VERSION,
       title: 'Right to Represent',
       html: '<h2>Terms &amp; &lt;Scope&gt;</h2><p>For <span data-field="talent.full_name"></span> at <span data-field="client.name"></span>.<br>Second line</p>',
       logo: null,
@@ -166,7 +169,7 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
 
   it('draftContentFrom converts a v1 ACTIVE to rtr-html-v1 and copies html content (logo reference included)', () => {
     const fromV1 = caps.draftContentFrom({ document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, render_schema_version: RTR_GENERATED_SCHEMA_V1, field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1 });
-    expect(fromV1.render_schema_version).toBe(RTR_HTML_SCHEMA_V1);
+    expect(fromV1.render_schema_version).toBe(CURRENT_HTML_CONTENT_VERSION); // TEMPLATE-CONTENT-2 C-4; TEMPLATE-FIELDS-1 F-1 (v3)
     expect((fromV1.field_schema as { html: string }).html).toBe(
       '<h2>Right to Represent</h2><p>This authorizes representation of <span data-field="talent.full_name"></span> to the associated client for the associated requisition.</p>',
     );

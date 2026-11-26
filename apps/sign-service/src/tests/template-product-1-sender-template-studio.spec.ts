@@ -107,6 +107,25 @@ describe('§8.3 — the Studio is PERSONAL-only; Sign stores nothing', () => {
     ]);
   });
 
+  // TEMPLATE-SYNC-1 S-5 / S-7 / S-8 — the Personal Studio's sync actions are pass-throughs too
+  // (PERSONAL-only; Documents computes and decides everything).
+  it('TEMPLATE-SYNC-1: compare, start a draft from the new version, keep my version — one S2S call each', async () => {
+    const h = harness();
+    await h.svc.masterContent(auth(), TEMPLATE, 'r');
+    await h.svc.draftFromMaster(auth(), TEMPLATE, 'r');
+    await h.svc.keepVersion(auth(), TEMPLATE, 'r');
+    const calls = vi.mocked(h.port.call).mock.calls.map(([c]) => ({ method: c.method, path: c.path, query: c.query, body: c.body }));
+    const who = { tenant_id: TENANT, actor_id: USER };
+    expect(calls).toEqual([
+      { method: 'GET', path: `/studio/${TEMPLATE}/master`, query: who, body: undefined },
+      { method: 'POST', path: `/studio/${TEMPLATE}/draft-from-master`, query: who, body: {} },
+      { method: 'POST', path: `/studio/${TEMPLATE}/keep-version`, query: who, body: {} },
+    ]);
+    const biz = harness({ kind: 'BUSINESS' });
+    await expect(biz.svc.draftFromMaster(auth(), TEMPLATE, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'organization_templates_in_org_home' } } });
+    expect(biz.port.call).not.toHaveBeenCalled();
+  });
+
   it('a malformed id is refused before any call', async () => {
     const h = harness();
     await expect(h.svc.get(auth(), 'not-a-uuid', 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
@@ -150,7 +169,8 @@ describe('§8.5 — the gallery and "Use as it is" (every tenant kind)', () => {
   it('the controller exposes exactly the §8 routes', () => {
     const own = Object.getOwnPropertyNames(EsignSenderTemplateStudioController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
     expect(own.sort()).toEqual(
-      ['gallery', 'galleryPreview', 'adoptAndUse', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate'].sort(),
+      // TEMPLATE-SYNC-1 S-5 / S-7 / S-8 — + master, draftFromMaster, keepVersion.
+      ['gallery', 'galleryPreview', 'adoptAndUse', 'list', 'adopt', 'get', 'rename', 'versions', 'createVersion', 'createDraft', 'allowedBindings', 'updateVersion', 'discardDraft', 'preview', 'activate', 'master', 'draftFromMaster', 'keepVersion'].sort(),
     );
   });
 });

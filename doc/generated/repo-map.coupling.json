@@ -226,6 +226,11 @@
       "to": "deploy/nginx/templates/aramo.conf.template"
     },
     {
+      "from": "apps/api/src/document-templates-platform/template-content-upload.constants.ts",
+      "status": "production",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
       "from": "apps/api/src/my-desk/dto/my-desk.view.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
@@ -4115,6 +4120,12 @@
       "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9722,6 +9733,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-fields-1-server.unit.spec.ts",
+      "status": "excluded",
+      "to": "libs/template-content/test-fixtures/inline-fields.json"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-import-1-word-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/template-sync-1-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr14-b2-dossier-wire.spec.ts",
       "status": "excluded",
       "to": "openapi/ats.yaml"
@@ -10267,6 +10296,11 @@
       "to": "libs/sign-fields/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -10359,6 +10393,11 @@
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     {
       "from": "apps/platform-admin/Dockerfile",
@@ -10774,6 +10813,11 @@
       "to": "libs/sign-fields/src/index.ts"
     },
     {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
       "from": "apps/portal-web/project.json",
       "status": "unscoped",
       "to": "apps/portal-web/vite.config.ts"
@@ -10947,6 +10991,11 @@
     {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
@@ -10977,6 +11026,11 @@
     {
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
@@ -10993,6 +11047,11 @@
       "from": "apps/sign-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/sign-fields/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     {
       "from": "apps/talent-intelligence-service/project.json",
@@ -36010,6 +36069,16 @@
       "to": "libs/technical-screening/tsconfig.lib.json"
     },
     {
+      "from": "libs/template-content/project.json",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
+    {
+      "from": "libs/template-content/project.json",
+      "status": "unscoped",
+      "to": "libs/template-content/tsconfig.lib.json"
+    },
+    {
       "from": "libs/tenant-reset/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -37022,6 +37091,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261123100100_field_parity_2_template_field_condition/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261125120000_template_sync_1_master_lineage/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -39007,6 +39081,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/documents-contracts/src/index.ts"
     },
     {
@@ -39150,6 +39229,11 @@
       "status": "unscoped",
       "to": "libs/technical-screening/src/index.ts"
     },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -39236,6 +39320,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/document-templates-web/src/pdf/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/template-sync.ts"
     },
     {
       "from": "vitest.shared.ts",
@@ -39358,6 +39447,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/technical-screening/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/template-content/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/visibility/src/index.ts" },

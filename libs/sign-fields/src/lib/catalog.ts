@@ -28,6 +28,12 @@ export const FIELD_SURFACES = [
   'template_fixed_form',
   /** A template field carried onto an envelope (sender-templates.service.ts). */
   'template_editable',
+  /**
+   * TEMPLATE-FIELDS-1 F-5 (ruling R-8) — a field placed INSIDE the text of editable template content
+   * (an rtr-html-v3 marker; the console Studio's "Insert field" palette). Initially the same types
+   * as template_editable.
+   */
+  'template_inline',
   /** documents."TemplateFieldDefinition" (its field-type CHECK): every type a template field row may hold. */
   'template_documents_store',
   /**
@@ -135,6 +141,7 @@ const SIX = {
   engine_passthrough: true,
   template_fixed_form: true,
   template_editable: true,
+  template_inline: true,
   template_documents_store: true,
   template_documents_authoring: true,
 } as const;
@@ -147,6 +154,7 @@ const PROFILE = {
   engine_passthrough: true,
   template_fixed_form: true,
   template_editable: true,
+  template_inline: true,
   template_documents_store: true,
   template_documents_authoring: true,
 } as const;

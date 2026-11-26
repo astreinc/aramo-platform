@@ -2,6 +2,7 @@ import { apiClient } from '@aramo/fe-foundation';
 import type {
   DocumentTemplateView,
   OrganizationStudioApi,
+  TemplateMasterContent,
   TemplateDefaultPreview,
   TemplateLibraryItem,
   TemplateLibraryView,
@@ -78,4 +79,13 @@ export const SIGN_STUDIO_API: OrganizationStudioApi = {
   captureLogo: async () => unavailable(),
   removeLogo: async () => unavailable(),
   logoUrl: () => '',
+  // TEMPLATE-SYNC-1 S-5 / S-7 / S-8 (S-10) — compare with Aramo's new version, start a draft from
+  // it, keep my version: sign-service forwards each to Documents (which decides every refusal).
+  masterContent: (id) => apiClient.get<TemplateMasterContent>(`${STUDIO}/${enc(id)}/master`),
+  draftFromMaster: (id) => apiClient.post<TemplateVersionView>(`${STUDIO}/${enc(id)}/draft-from-master`, {}),
+  keepVersion: (id) => apiClient.post<DocumentTemplateView>(`${STUDIO}/${enc(id)}/keep-version`, {}),
+  // TEMPLATE-FIELDS-1 F-15 — sign-service has no proxy for a version's field rows, so the Personal
+  // Studio reads none: the fields in an adopted template's text show as locked chips (by key) and
+  // the server keeps them (fields_platform_only); the preview still labels each field.
+  listFields: async () => ({ fields: [] }),
 };

@@ -22,21 +22,34 @@ export function platformStudioDataSource(session: Session): TemplateStudioDataSo
       ]);
       return { variables: vars.variables, bindings: b.bindings, documentTypes: types.document_types };
     },
-    createDraft: (id, body) => documentTemplatesApi.createDraft(id, body),
+    // TEMPLATE-FIELDS-1 F-14 — a first save with fields in the text opens the draft, then saves
+    // the content and its field rows together (the create route takes content only).
+    createDraft: async (id, body) => {
+      if (body.fields === undefined || body.fields.length === 0) {
+        const { fields: _none, ...content } = body;
+        void _none;
+        return documentTemplatesApi.createDraft(id, content);
+      }
+      const opened = await documentTemplatesApi.createDraft(id);
+      return documentTemplatesApi.updateDraft(opened.id, body);
+    },
     saveDraft: (versionId, body) => documentTemplatesApi.updateDraft(versionId, body),
+    fields: (versionId) => documentTemplatesApi.listVersionFields(versionId),
     preview: (versionId) => documentTemplatesApi.preview(versionId),
     approve: (versionId) => documentTemplatesApi.publish(versionId),
     // TEMPLATE-PRODUCT-1 §3.4 — discard a draft / delete a never-published default (:manage).
     ...(canManage
       ? {
           discardDraft: (versionId: string) => documentTemplatesApi.discardDraft(versionId),
+          // TEMPLATE-IMPORT-1 W-9 — import a Word file as the draft.
+          importWord: (id: string, file: { filename: string; content_base64: string }) => documentTemplatesApi.importWord(id, file),
           deleteTemplate: (id: string) => documentTemplatesApi.deleteTemplate(id),
         }
       : {}),
     updateProperties: (id, patch) => documentTemplatesApi.updateTemplate(id, patch),
     withdraw: (id, body) => documentTemplatesApi.withdraw(id, body),
     cancelWithdrawal: (id) => documentTemplatesApi.cancelWithdrawal(id),
-    capabilities: { canEdit: canManage, canApprove: canManage, canWithdraw: canManage, productTags: true, description: true },
+    capabilities: { canEdit: canManage, canApprove: canManage, canWithdraw: canManage, productTags: true, description: true, inlineFields: 'edit' },
     copy: PLATFORM_STUDIO_COPY,
   };
 }

@@ -60,6 +60,12 @@ export function TemplateRows({
                 {r.description}
               </Text>
             ) : null}
+            {/* TEMPLATE-SYNC-1 S-11 — the server-flag badge (no update on the phone). */}
+            {r.badge ? (
+              <Text testID={`template-badge-${i}`} style={{ color: t.color.onTint, fontSize: 12, fontWeight: '600', marginTop: 2, fontFamily: t.font.family }}>
+                {r.badge}
+              </Text>
+            ) : null}
           </View>
           {onToggleFavorite ? (
             <Pressable

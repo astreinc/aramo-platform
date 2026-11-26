@@ -31,6 +31,7 @@ const AUDIENCE = 'aramo-doclib-t2-http-spec';
 const ALG = 'RS256';
 // CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
 const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
+const IDENTITY_INIT = resolve(ROOT, 'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql');
 function documentsMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/documents/prisma/migrations');
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
@@ -79,6 +80,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.connect();
       for (const entitlementMigration of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(entitlementMigration, 'utf8'));
       for (const p of documentsMigrations()) await db.query(readFileSync(p, 'utf8'));
+      // TEMPLATE-SYNC-1 S-13 — publish writes its audit event to the identity audit ledger. The
+      // identity init runs AFTER the documents migrations (as doclib-t6-withdrawal-http), so the
+      // T-3 RTR conversion stays a no-op and no seeded RTR default is live.
+      await db.query(readFileSync(IDENTITY_INIT, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       await ensureWriteFreezeTenant((s) => db.query(s), PLATFORM_TENANT_SENTINEL_ID);
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT]);

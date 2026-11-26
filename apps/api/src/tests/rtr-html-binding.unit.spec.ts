@@ -147,7 +147,8 @@ describe('A1 — rtr-html-v1 request path', () => {
   it('resolver: a stored html that is no longer allowlist-clean, or an unknown content version, fails closed', async () => {
     versionContent = htmlContent('<p><span data-field="agreed_pay_rate.amount"></span></p>');
     expect(await code(resolver.resolveActive({ tenant_id: TENANT, requestId: 'r' }))).toMatchObject({ code: 'RTR_TEMPLATE_CONFIGURATION_INVALID', details: { reason: 'content_schema_invalid' } });
-    renderSchema = 'rtr-html-v2';
+    // TEMPLATE-CONTENT-2 C-3 — rtr-html-v2 is now a recognised version; a truly unknown one still fails closed.
+    renderSchema = 'rtr-html-v9';
     expect(await code(resolver.resolveActive({ tenant_id: TENANT, requestId: 'r' }))).toMatchObject({ details: { reason: 'unrecognised_render_schema_version' } });
   });
 

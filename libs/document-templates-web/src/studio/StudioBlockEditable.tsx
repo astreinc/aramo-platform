@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 
-import { studioInsertAtRange, type StudioBlock, type StudioCodec as BlockCodec } from '../studio-codec';
+import { isStudioTextKind, studioInsertAtRange, type StudioBlock, type StudioCodec as BlockCodec } from '../studio-codec';
 
 // PLATFORM-UX-1 F-9 (directive R-11) — ONE editable region per block, through the
 // in-house codec. The DOM is the browser's while typing (the caret never jumps); React
@@ -14,9 +14,16 @@ const NO_MAP = { labelByToken: {}, tokenByLabel: {} };
 export const KIND_LABEL: Readonly<Record<StudioBlock['kind'], string>> = {
   p: 'Paragraph',
   h2: 'Heading',
+  h3: 'Subheading',
+  h4: 'Small heading',
   ul: 'Bulleted list',
   ol: 'Numbered list',
+  table: 'Table',
+  hr: 'Divider',
+  page_break: 'Page break',
 };
+
+const PLACEHOLDER: Partial<Record<StudioBlock['kind'], string>> = { h2: 'Heading', h3: 'Subheading', h4: 'Small heading' };
 
 export interface StudioBlockEditableProps {
   readonly block: StudioBlock;
@@ -75,6 +82,13 @@ export const StudioBlockEditable = memo(function StudioBlockEditable({
     e.preventDefault();
   };
 
+  // TEMPLATE-CONTENT-2 (C-13) — a table is a group of editable cells (the codec draws them;
+  // its structure is never typed into); a divider / page break is one focusable separator
+  // (Backspace or Delete removes it, Enter adds a paragraph below). Events from the cells
+  // bubble to this element, so input, paste and keys go through the same handlers.
+  const textual = isStudioTextKind(block.kind);
+  const role = textual ? 'textbox' : block.kind === 'table' ? 'group' : 'separator';
+
   return (
     <div
       ref={(el) => {
@@ -82,15 +96,15 @@ export const StudioBlockEditable = memo(function StudioBlockEditable({
         register(block.id, el);
       }}
       className={`pws-blk pws-blk--${block.kind}`}
-      contentEditable
+      contentEditable={textual}
       suppressContentEditableWarning
-      role="textbox"
-      aria-multiline="true"
+      role={role}
+      aria-multiline={textual ? 'true' : undefined}
       aria-label={KIND_LABEL[block.kind]}
-      tabIndex={0}
-      spellCheck
+      tabIndex={block.kind === 'table' ? -1 : 0}
+      spellCheck={textual || block.kind === 'table'}
       data-block-id={block.id}
-      data-placeholder={block.kind === 'h2' ? 'Heading' : 'Type / for blocks, {{ for variables'}
+      data-placeholder={textual ? (PLACEHOLDER[block.kind] ?? 'Type / for blocks, {{ for variables') : undefined}
       onInput={sync}
       onBlur={sync}
       onKeyDown={(e) => {

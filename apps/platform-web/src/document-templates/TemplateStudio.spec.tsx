@@ -224,8 +224,10 @@ describe('TemplateStudio (manage)', () => {
     expect(empty.textContent).toBe('');
     fireEvent.keyDown(empty, { key: '/' });
     const menu = screen.getByRole('menu', { name: 'Blocks' });
-    expect(within(menu).getByRole('menuitem', { name: /Subheading \(H3\)/ })).toHaveAttribute('aria-disabled', 'true');
-    expect(within(menu).getByRole('menuitem', { name: /Table/ })).toHaveAttribute('aria-disabled', 'true');
+    // TEMPLATE-CONTENT-2 (C-12) — subheadings, tables, dividers and page breaks are enabled.
+    for (const name of [/Subheading \(H3\)/, /Small heading \(H4\)/, /^Table/, /^Divider/, /^Page break/]) {
+      expect(within(menu).getByRole('menuitem', { name })).toHaveAttribute('aria-disabled', 'false');
+    }
     fireEvent.mouseDown(within(menu).getByRole('menuitem', { name: /^Heading/ }));
     expect(screen.queryByRole('menu', { name: 'Blocks' })).toBeNull();
     expect(blockEls()[2]).toHaveAttribute('data-kind', 'h2');
@@ -449,6 +451,66 @@ describe('TemplateStudio (manage) — discard and delete (TEMPLATE-PRODUCT-1 §3
     await waitFor(() => expect(discard).toHaveBeenCalledWith('d3'));
   });
 
+  // TEMPLATE-IMPORT-1 W-9 — Import from Word: an open draft is discarded first, the file goes
+  // to the platform import route, the summary lists warnings and unknown placeholders, and the
+  // imported draft opens.
+  it('Import from Word… discards the open draft, imports the file, shows the summary and opens the draft', async () => {
+    const d3 = version('d3', 3, 'DRAFT', DRAFT_BODY);
+    mockApi(detail(d3));
+    const discard = vi.spyOn(documentTemplatesApi, 'discardDraft').mockResolvedValue(undefined);
+    const imported = version('d4', 3, 'DRAFT', '<h2>Handbook</h2><p>Welcome to {{hr_contact}}.</p>', {
+      render_schema_version: 'rtr-html-v2',
+      field_schema: { render_schema_version: 'rtr-html-v2', title: 'Employee Handbook', html: '<h2>Handbook</h2><p>Welcome to {{hr_contact}}.</p>' },
+    });
+    const importWord = vi.spyOn(documentTemplatesApi, 'importWord').mockResolvedValue({
+      version: imported,
+      summary: {
+        title: 'Employee Handbook',
+        counts: { h2: 1, p: 1, table: 0 },
+        warnings: [{ code: 'image_dropped', count: 2, example: 'Logo' }],
+        unknown_placeholders: [{ key: 'hr_contact', count: 1 }],
+        content_bytes: 60,
+      },
+    });
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: 'More actions' })).getByRole('menuitem', { name: 'Import from Word…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import from Word' });
+    expect(dialog).toHaveTextContent('Draft v3 is discarded first');
+    expect(within(dialog).getByRole('button', { name: 'Discard draft and choose a file…' })).toBeInTheDocument();
+    // The next load returns the imported draft.
+    vi.spyOn(documentTemplatesApi, 'getTemplate').mockResolvedValue(detail(imported));
+    const file = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], 'Handbook.docx');
+    fireEvent.change(screen.getByTestId('import-word-input'), { target: { files: [file] } });
+    await waitFor(() => expect(importWord).toHaveBeenCalledWith('t1', { filename: 'Handbook.docx', content_base64: 'UEsDBA==' }));
+    expect(discard).toHaveBeenCalledWith('d3');
+    expect(discard.mock.invocationCallOrder[0]).toBeLessThan(importWord.mock.invocationCallOrder[0] as number);
+    const summary = await screen.findByTestId('import-summary');
+    expect(summary).toHaveTextContent('1 heading · 1 paragraph');
+    expect(summary).toHaveTextContent('Images were left out (2) e.g. “Logo”');
+    expect(summary).toHaveTextContent('{{hr_contact}} (1)');
+    fireEvent.click(screen.getByRole('button', { name: 'Open the draft' }));
+    await waitFor(() => expect(screen.queryByTestId('import-summary')).toBeNull());
+    expect(await screen.findByDisplayValue('Employee Handbook')).toBeInTheDocument();
+  });
+
+  it('Import from Word… refuses a file that is not a .docx or is over 10 MB before uploading', async () => {
+    mockApi(neverPublished());
+    const importWord = vi.spyOn(documentTemplatesApi, 'importWord');
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(within(screen.getByRole('menu', { name: 'More actions' })).getByRole('menuitem', { name: 'Import from Word…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Import from Word' });
+    fireEvent.change(screen.getByTestId('import-word-input'), { target: { files: [new File(['x'], 'Handbook.pdf')] } });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Choose a Word .docx file.');
+    const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'Big.docx');
+    fireEvent.change(screen.getByTestId('import-word-input'), { target: { files: [big] } });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('The file is larger than 10 MB.');
+    expect(importWord).not.toHaveBeenCalled();
+  });
+
   it(':read never sees Discard or Delete', async () => {
     mockApi(neverPublished());
     renderStudio(READ);
@@ -456,6 +518,7 @@ describe('TemplateStudio (manage) — discard and delete (TEMPLATE-PRODUCT-1 §3
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     const menu = screen.getByRole('menu', { name: 'More actions' });
     expect(within(menu).queryByRole('menuitem', { name: 'Delete template…' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Import from Word…' })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: 'Discard draft…' })).toBeNull();
   });
 });

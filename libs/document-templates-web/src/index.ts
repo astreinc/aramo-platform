@@ -44,6 +44,7 @@ export {
   adoptTemplate,
   RIGHT_TO_REPRESENT_TYPE_ID,
   RTR_HTML_SCHEMA_V1,
+  RTR_HTML_SCHEMA_V2,
   RTR_GENERATED_SCHEMA_V1,
   listDocumentTemplates,
   getDocumentTemplate,
@@ -130,6 +131,10 @@ export {
   type StudioCapabilities,
   type StudioContentCodec,
   type StudioContentBody,
+  type StudioInlineFieldsData,
+  type StudioImportResult,
+  type StudioImportSummary,
+  type StudioImportWarning,
   type StudioCatalogData,
   type StudioCatalogVariable,
   type StudioAllowedBinding,
@@ -141,6 +146,19 @@ export {
   type StudioPropertiesPatch,
   type StudioCrumb,
 } from './studio/data-source';
+// TEMPLATE-FIELDS-1 — fields placed inside the text (the Studio model and its dialog).
+export {
+  inlineFieldChecks,
+  inlineFieldChipResolver,
+  inlineFieldFromRow,
+  inlineFieldKeysOf,
+  inlineFieldsToSave,
+  nextInlineFieldKey,
+  type StudioInlineField,
+  type StudioInlineFieldRow,
+  type StudioInlineFieldWire,
+} from './studio/inline-fields';
+export { InlineFieldDialog, type InlineFieldDialogProps } from './studio/InlineFieldDialog';
 export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
 // TEMPLATE-STUDIO-1 S-1 (directive §3) — the organization context: the tenant template
 // data source, its copy table and the static Sections set (additive).
@@ -232,3 +250,19 @@ export {
   type TenantFixedForm,
   type TenantFixedFormDetail,
 } from './fixed-form/fixed-forms-api';
+// TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-6 — the compare engine and view, exported for the
+// "Compare with Aramo's new version" side (2-way only, no merge — R-7).
+export { blockDiff, diffStats, wordDiff, type DiffBlock, type DiffRowModel, type DiffSeg, type DiffStats, type RowKind } from './studio/diff';
+export { VersionDiff, type DiffSide, type VersionDiffProps } from './studio/VersionDiff';
+export type { StudioSyncApi } from './studio/data-source';
+// TEMPLATE-SYNC-1 S-3 / S-12 — the server's master flag, its words (one set for Org Home and Sign
+// web), and the client calls for compare / start a draft / keep my version.
+export {
+  TEMPLATE_SYNC_COPY,
+  templateMasterBadge,
+  templatesWithNewerMaster,
+  showsMasterNotice,
+  type TemplateMaster,
+  type TemplateMasterContent,
+} from './template-sync';
+export { getTemplateMasterContent, createDraftFromMaster, keepTemplateVersion } from './document-templates-api';

@@ -80,6 +80,8 @@ describe('§6.3 Org gallery GET library + default preview', () => {
     listVersionSummariesOwnerAware: vi.fn(async () => []),
     listSystemDocumentTypes: vi.fn(async () => [{ id: TYPE, key: 'NDA', name: 'NDA', products: ['ats', 'sign'], category: 'Legal' }]),
     findTemplateByIdOwnerAware: vi.fn(async (_t: string, id: string) => rows.find((r) => r.id === id) ?? null),
+    // TEMPLATE-SYNC-1 S-3 — no adopted copies here.
+    masterViewsForTenant: vi.fn(async () => new Map()),
   } as unknown as TemplatesRepository;
 
   function controller(caps: string[]) {
@@ -158,7 +160,11 @@ describe('§6.1/§6.3 tenant templates routes', () => {
       relies_on_default: true,
       has_own_template: false,
     });
-    const repo = { listWithdrawalNoticesForTenant: vi.fn(async () => [notice('a', ['ats']), notice('s', ['sign']), notice('b', ['ats', 'sign'])]) } as never;
+    const repo = {
+      listWithdrawalNoticesForTenant: vi.fn(async () => [notice('a', ['ats']), notice('s', ['sign']), notice('b', ['ats', 'sign'])]),
+      // TEMPLATE-SYNC-1 S-4 — no adopted copies here.
+      listAdoptedCopyWithdrawalNotices: vi.fn(async () => []),
+    } as never;
     const c = new DocumentTemplatesController(repo, undefined, undefined, undefined, entitlements(['core', 'sign']));
     expect((await c.notices(AUTH)).notices.map((n) => n.template_id)).toEqual(['s', 'b']);
   });

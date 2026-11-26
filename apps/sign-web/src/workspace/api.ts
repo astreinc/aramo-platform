@@ -568,6 +568,14 @@ export interface SenderTemplate {
   // TEMPLATE-PRODUCT-1 §7.4 — FIXED_FORM = an Aramo fixed legal form (used as it is, never
   // adopted or edited); absent = an editable template.
   template_kind?: 'EDITABLE' | 'FIXED_FORM';
+  // TEMPLATE-SYNC-1 S-3 / S-11 — the server-computed master of a template the organization adopted
+  // from an Aramo template (null otherwise). Shown as a badge; never recomputed here.
+  master?: {
+    newer_available: boolean;
+    withdrawn: { notice_at: string; effective_at: string; status: 'PENDING' | 'IN_EFFECT' } | null;
+    current_version_number: number | null;
+    based_on_version_number: number | null;
+  } | null;
 }
 
 // M-A6 §3.5 — one template role bound to a person.

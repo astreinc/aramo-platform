@@ -33,6 +33,22 @@ export const PERSONAL_NO_PERMISSION = 'Templates aren’t available on this acco
 /** The Personal Free prompt (M-A12 W1-F), with "View plans". */
 export const PERSONAL_TEMPLATES_PROMPT = 'Sending the same thing over and over? Templates come with Standard.';
 
+/**
+ * TEMPLATE-SYNC-1 (Directive v1.0 LOCKED) S-11 / S-12 — the app's own copy of the two badge
+ * strings, mirroring the server's master flag (no compare or update on the phone).
+ */
+export const TEMPLATE_BADGE_NEWER = 'Newer version available — your administrator updates it in Org Home';
+/** Amendment A1 (PO 2026-11-25) — a Personal account has no administrator or Org Home. */
+export const TEMPLATE_BADGE_NEWER_PERSONAL = 'Newer version available — update it in Sign on the web';
+export const TEMPLATE_BADGE_WITHDRAWN = 'Withdrawn by Aramo';
+
+/** The row badge from the server flags only (null: none); the wording follows the account kind. */
+export function templateBadge(t: SenderTemplate, personal = false): string | null {
+  if (t.masterWithdrawn === true) return TEMPLATE_BADGE_WITHDRAWN;
+  if (t.masterNewer !== true) return null;
+  return personal ? TEMPLATE_BADGE_NEWER_PERSONAL : TEMPLATE_BADGE_NEWER;
+}
+
 export type TemplateTab = 'mine' | 'shared';
 
 function isPersonal(context: unknown): boolean {
@@ -75,6 +91,8 @@ export interface TemplateRowModel {
   /** "{category} · {n} signers · {n} documents[ · {n} copies]", from returned values only. */
   readonly meta: string | null;
   readonly description: string | null;
+  /** TEMPLATE-SYNC-1 S-11 — the server-flag badge, or null. */
+  readonly badge: string | null;
   readonly accessibilityLabel: string;
 }
 
@@ -157,14 +175,16 @@ export function templateMeta(t: SenderTemplate): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-export function templateRow(t: SenderTemplate): TemplateRowModel {
+export function templateRow(t: SenderTemplate, personal = false): TemplateRowModel {
   const meta = templateMeta(t);
+  const badge = templateBadge(t, personal);
   return {
     template: t,
     title: t.name,
     meta,
     description: t.description,
-    accessibilityLabel: [t.name, meta, t.description].filter(Boolean).join('. '),
+    badge,
+    accessibilityLabel: [t.name, meta, t.description, badge].filter(Boolean).join('. '),
   };
 }
 
@@ -210,5 +230,6 @@ export function templatesView(input: {
   const note = unavailableNote(lib.unavailable);
   if (lib.items.length === 0)
     return { kind: 'empty', message: isPersonal(input.context) ? PERSONAL_NO_TEMPLATES : NO_TEMPLATES, note };
-  return { kind: 'list', rows: lib.items.map(templateRow), note };
+  const personal = isPersonal(input.context);
+  return { kind: 'list', rows: lib.items.map((t) => templateRow(t, personal)), note };
 }

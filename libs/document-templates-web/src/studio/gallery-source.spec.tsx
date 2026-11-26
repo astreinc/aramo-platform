@@ -57,7 +57,7 @@ describe('galleryStudioDataSource (read-only Aramo default)', () => {
     expect(t).toMatchObject({ id: 'def-rtr', name: 'Right to Represent', description: 'Aramo default RTR.', products: [], withdraw_effective_at: null });
     expect(t.current_version).toEqual({ id: 'pv3', version_number: 3 });
     expect(t.versions).toHaveLength(1);
-    expect(t.versions[0]).toMatchObject({ id: 'pv3', version_number: 3, status: 'ACTIVE', render_schema_version: 'rtr-html-v1' });
+    expect(t.versions[0]).toMatchObject({ id: 'pv3', version_number: 3, status: 'ACTIVE', render_schema_version: 'rtr-html-v2' });
   });
 
   it('load refuses an id that is not a published Aramo default (a tenant template, or unknown)', async () => {

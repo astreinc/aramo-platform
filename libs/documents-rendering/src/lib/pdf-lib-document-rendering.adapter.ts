@@ -5,7 +5,9 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 import {
+  isFieldRun,
   type DocumentRenderingPort,
+  type InlineFieldPlacement,
   type PrepareFromSourceOptions,
   type PreparedField,
   type RenderModel,
@@ -17,7 +19,7 @@ import {
   type SignatureFieldPlacement,
   type SignatureRoleBlockModel,
 } from './document-rendering.port.js';
-import { RenderFailedError } from './errors.js';
+import { InlineFieldTooWideError, RenderFailedError } from './errors.js';
 import { SIGNATURE_SCRIPT_FONT_BASE64 } from './fonts/signature-script.font.js';
 
 // DOC-2 boundary 5 — the pdf-lib implementation of DocumentRenderingPort. pdf-lib
@@ -365,13 +367,36 @@ export interface LaidOutSegment {
   // leading space before this segment (0 for the first segment on a line)
   space_before: boolean;
   space_underline: boolean;
+  // TEMPLATE-FIELDS-1 F-8 — an inline field box (text is ''); absent for text.
+  box?: { field_key: string; width: number; height: number };
 }
 type Measure = (text: string, style: RunStyle) => number;
 
+// F-8 — a box sits this far below the text baseline (its bottom edge), like an underline.
+const BOX_DROP = 3;
+
+// F-8 — how far a line holding boxes moves its baseline down so its tallest box clears the line
+// above (0 for a line without boxes: the layout is exactly as before).
+function boxLineExtra(segs: readonly LaidOutSegment[], size: number): number {
+  let tallest = 0;
+  for (const seg of segs) if (seg.box !== undefined && seg.box.height > tallest) tallest = seg.box.height;
+  return tallest === 0 ? 0 : Math.max(0, tallest - BOX_DROP - size);
+}
+
 export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth: number): LaidOutSegment[][] {
-  type Tok = { kind: 'word'; text: string; style: RunStyle } | { kind: 'space'; style: RunStyle } | { kind: 'break' };
+  type Tok =
+    | { kind: 'word'; text: string; style: RunStyle }
+    | { kind: 'space'; style: RunStyle }
+    | { kind: 'break' }
+    | { kind: 'box'; field_key: string; width: number; height: number };
   const toks: Tok[] = [];
   for (const r of runs) {
+    if (isFieldRun(r)) {
+      // F-9 — a box wider than its line never shrinks: refused (the domain refuses it at save).
+      if (r.width > maxWidth) throw new InlineFieldTooWideError(r.field_key, r.width, maxWidth);
+      toks.push({ kind: 'box', field_key: r.field_key, width: r.width, height: r.height });
+      continue;
+    }
     const style: RunStyle = { bold: r.bold === true, italic: r.italic === true, underline: r.underline === true };
     const parts = r.text.replace(/\r\n?/g, '\n').split(/(\n|[ \t]+)/);
     for (const part of parts) {
@@ -401,6 +426,17 @@ export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth:
       if (line.length > 0) pendingSpace = t.style;
       continue;
     }
+    if (t.kind === 'box') {
+      // F-8 — atomic: a box that does not fit moves whole to the next line.
+      const bsp: RunStyle | null = line.length > 0 ? pendingSpace : null;
+      const bextra = bsp !== null ? spaceW(bsp) : 0;
+      if (line.length > 0 && width + bextra + t.width > maxWidth) pushLine();
+      const spaced = line.length > 0 && bsp !== null;
+      line.push({ text: '', style: bsp ?? { bold: false, italic: false, underline: false }, space_before: spaced, space_underline: false, box: { field_key: t.field_key, width: t.width, height: t.height } });
+      width += (spaced ? bextra : 0) + t.width;
+      pendingSpace = null;
+      continue;
+    }
     const w = measure(t.text, t.style);
     const sp: RunStyle | null = line.length > 0 ? pendingSpace : null;
     const extra = sp !== null ? spaceW(sp) : 0;
@@ -425,8 +461,29 @@ export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth:
 }
 
 const LIST_INDENT = 18;
+// TEMPLATE-CONTENT-2 C-9 — v2 heading levels, table and rule geometry.
+const HEADING_SIZE_H3 = 12.5;
+const HEADING_SIZE_H4 = 11.5;
+const TABLE_CELL_PADDING = 4;
+const TABLE_BORDER = 0.5;
+const RULE_SPACE = BODY_SIZE * LINE_HEIGHT_FACTOR;
 const LIST_ITEM_GAP = 2;
 const LETTERHEAD_TOP = 762;
+
+// TEMPLATE-FIELDS-1 F-9 — the width an inline field box may use where it sits, in points: the
+// content width in a paragraph, a list item's text width at its nesting level (0 = top level),
+// or a table cell's text width for a table of `columns` columns. The same geometry the renderer
+// lays out with, so the domain's save-time check (field_too_wide) and the render agree.
+export type InlineFieldPlace = { in: 'paragraph' } | { in: 'list'; level: number } | { in: 'table'; columns: number };
+
+export function inlineFieldMaxWidth(place: InlineFieldPlace): number {
+  if (place.in === 'paragraph') return CONTENT_WIDTH;
+  if (place.in === 'list') {
+    const textX = MARGIN_X + place.level * LIST_INDENT + LIST_INDENT;
+    return PAGE_WIDTH - MARGIN_X - textX;
+  }
+  return CONTENT_WIDTH / Math.max(1, place.columns) - 2 * TABLE_CELL_PADDING;
+}
 
 // `#RRGGBB` → pdf-lib rgb components (0..1), or null when not a 6-digit hex colour.
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
@@ -462,6 +519,8 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
 
       let page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]); // US Letter
       let cursorY = TOP_Y;
+      // TEMPLATE-FIELDS-1 F-8 — the inline field boxes the rich path drew (none elsewhere).
+      let inlineFields: InlineFieldPlacement[] = [];
       // A1 §2.4 — letterhead (rich path only): the frozen logo + organisation name.
       if (model.letterhead !== undefined) {
         const lh = model.letterhead;
@@ -523,53 +582,180 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
             cursorY = TOP_Y;
           }
         };
-        const drawRuns = (runs: readonly RichRun[], size: number, x0: number, width: number, marker?: { text: string; x: number }) => {
+        // TEMPLATE-CONTENT-2 C-9 — the WinAnsi rule applies on the rich path too: a character the
+        // standard fonts can't encode prints as "?" instead of failing the render (it used to throw
+        // while measuring). Text the fonts can encode is unchanged, so v1 output is byte-identical.
+        const safeRuns = (runs: readonly RichRun[]): RichRun[] => runs.map((r) => (isFieldRun(r) ? r : { ...r, text: sanitizeWinAnsi(r.text, font) }));
+        // TEMPLATE-FIELDS-1 F-8 — every inline field box drawn, in drawing order.
+        const inlinePlaced: InlineFieldPlacement[] = [];
+        inlineFields = inlinePlaced;
+        // One laid-out line at (x0, cursorY): the same draw calls in the same order as before.
+        const drawSegs = (segs: ReturnType<typeof layoutRuns>[number], x0: number, size: number): void => {
+          let x = x0;
+          for (const seg of segs) {
+            const f = fontFor(seg.style);
+            if (seg.box !== undefined) {
+              // F-8 — a light outline where Sign will place the field; the position is recorded.
+              if (seg.space_before) x += f.widthOfTextAtSize(' ', size);
+              const bx = { x, y: cursorY - BOX_DROP, width: seg.box.width, height: seg.box.height };
+              page.drawRectangle({ ...bx, borderColor: rgb(0.62, 0.66, 0.7), borderWidth: 0.5 });
+              inlinePlaced.push({ field_key: seg.box.field_key, page_number: doc.getPages().indexOf(page), ...bx });
+              x += seg.box.width;
+              continue;
+            }
+            if (seg.space_before) {
+              const sw = f.widthOfTextAtSize(' ', size);
+              if (seg.space_underline) {
+                page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + sw, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+              }
+              x += sw;
+            }
+            const w = f.widthOfTextAtSize(seg.text, size);
+            page.drawText(seg.text, { x, y: cursorY, size, font: f, color: rgb(0, 0, 0) });
+            if (seg.style.underline) {
+              page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + w, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+            }
+            x += w;
+          }
+        };
+        const layout = (runs: readonly RichRun[], size: number, width: number) => {
           const measure: Measure = (t, st) => fontFor(st).widthOfTextAtSize(t, size);
-          const lines = layoutRuns(runs, measure, width);
+          return layoutRuns(safeRuns(runs), measure, width);
+        };
+        const drawRuns = (runs: readonly RichRun[], size: number, x0: number, width: number, marker?: { text: string; x: number }) => {
+          const lines = layout(runs, size, width);
           const lineHeight = size * LINE_HEIGHT_FACTOR;
           lines.forEach((segs, li) => {
-            ensureRoom(size);
+            // F-8 — a line holding a box grows to its tallest box; the whole line (box included)
+            // moves to the next page when it does not fit. Without boxes extra is 0 (unchanged).
+            const extra = boxLineExtra(segs, size);
+            ensureRoom(size + extra);
+            cursorY -= extra;
             if (li === 0 && marker !== undefined) {
               page.drawText(marker.text, { x: marker.x, y: cursorY, size, font, color: rgb(0, 0, 0) });
             }
-            let x = x0;
-            for (const seg of segs) {
-              const f = fontFor(seg.style);
-              if (seg.space_before) {
-                const sw = f.widthOfTextAtSize(' ', size);
-                if (seg.space_underline) {
-                  page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + sw, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
-                }
-                x += sw;
-              }
-              const w = f.widthOfTextAtSize(seg.text, size);
-              page.drawText(seg.text, { x, y: cursorY, size, font: f, color: rgb(0, 0, 0) });
-              if (seg.style.underline) {
-                page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + w, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
-              }
-              x += w;
-            }
+            drawSegs(segs, x0, size);
             cursorY -= lineHeight;
           });
         };
+        const newPage = (): void => {
+          page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+          cursorY = TOP_Y;
+        };
+        const headingSize = (level: 3 | 4 | undefined): number => (level === 3 ? HEADING_SIZE_H3 : level === 4 ? HEADING_SIZE_H4 : HEADING_SIZE);
+        // C-9 tables: equal column widths, padded cells wrapped at their width, thin borders. A row
+        // that does not fit starts a new page (the header row repeats there); a row taller than a
+        // page splits between lines.
+        const drawTable = (b: Extract<RichBlock, { kind: 'table' }>): void => {
+          const cols = Math.max(1, ...b.rows.map((r) => r.length));
+          const colW = CONTENT_WIDTH / cols;
+          const lineHeight = BODY_SIZE * LINE_HEIGHT_FACTOR;
+          const laidOut = b.rows.map((row, ri) =>
+            Array.from({ length: cols }, (_v, ci) => {
+              const runs = row[ci] ?? [];
+              return layout(b.header && ri === 0 ? runs.map((r) => ({ ...r, bold: true })) : runs, BODY_SIZE, colW - 2 * TABLE_CELL_PADDING);
+            }),
+          );
+          const rowLines = (ri: number): number => Math.max(1, ...(laidOut[ri] ?? []).map((c) => c.length));
+          // F-8 — the extra height boxes add to lines [from, to) of row `ri`: the largest over its
+          // cells (0 without boxes, so a row is exactly as tall as before).
+          const rowExtra = (ri: number, from: number, to: number): number => {
+            let most = 0;
+            for (const cell of laidOut[ri] ?? []) {
+              let sum = 0;
+              for (let l = from; l < Math.min(to, cell.length); l += 1) sum += boxLineExtra(cell[l] ?? [], BODY_SIZE);
+              if (sum > most) most = sum;
+            }
+            return most;
+          };
+          const rowHeight = (ri: number, from: number, to: number): number => (to - from) * lineHeight + rowExtra(ri, from, to) + 2 * TABLE_CELL_PADDING;
+          const border = (x1: number, y1: number, x2: number, y2: number): void => {
+            page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: TABLE_BORDER, color: rgb(0, 0, 0) });
+          };
+          // Draw lines [from, to) of row `ri` as one bordered band at the cursor.
+          const drawBand = (ri: number, from: number, to: number): void => {
+            const top = cursorY + BODY_SIZE;
+            const h = (to - from) * lineHeight + rowExtra(ri, from, to) + 2 * TABLE_CELL_PADDING;
+            border(MARGIN_X, top, MARGIN_X + CONTENT_WIDTH, top);
+            border(MARGIN_X, top - h, MARGIN_X + CONTENT_WIDTH, top - h);
+            for (let c = 0; c <= cols; c += 1) border(MARGIN_X + c * colW, top, MARGIN_X + c * colW, top - h);
+            const saved = cursorY;
+            for (let c = 0; c < cols; c += 1) {
+              cursorY = saved - TABLE_CELL_PADDING;
+              const lines = (laidOut[ri] ?? [])[c] ?? [];
+              for (let l = from; l < Math.min(to, lines.length); l += 1) {
+                cursorY -= boxLineExtra(lines[l] ?? [], BODY_SIZE);
+                drawSegs(lines[l] ?? [], MARGIN_X + c * colW + TABLE_CELL_PADDING, BODY_SIZE);
+                cursorY -= lineHeight;
+              }
+            }
+            cursorY = saved - h;
+          };
+          const roomFor = (ri: number, from: number, to: number): boolean => cursorY + BODY_SIZE - rowHeight(ri, from, to) >= BOTTOM_MARGIN;
+          const pageRoom = TOP_Y + BODY_SIZE - BOTTOM_MARGIN;
+          // The header repeats only when it is a modest part of a page (an enormous header row
+          // would leave no room for the rows it heads).
+          const headerRepeats = b.header && b.rows.length > 1 && rowHeight(0, 0, rowLines(0)) <= pageRoom / 3;
+          const breakPage = (ri: number): void => {
+            newPage();
+            if (ri > 0 && headerRepeats) drawBand(0, 0, rowLines(0));
+          };
+          for (let ri = 0; ri < b.rows.length; ri += 1) {
+            const total = rowLines(ri);
+            const headerH = ri > 0 && headerRepeats ? rowHeight(0, 0, rowLines(0)) : 0;
+            // A row that fits on a fresh page never splits: it moves there whole.
+            if (!roomFor(ri, 0, total) && rowHeight(ri, 0, total) + headerH <= pageRoom) breakPage(ri);
+            let from = 0;
+            while (from < total) {
+              let fit = total - from;
+              while (fit > 1 && !roomFor(ri, from, from + fit)) fit -= 1;
+              // Not even one line fits here: continue on a new page (one line always fits on a
+              // fresh page, so this never loops).
+              if (!roomFor(ri, from, from + fit) && cursorY < TOP_Y) {
+                breakPage(ri);
+                continue;
+              }
+              drawBand(ri, from, from + fit);
+              from += fit;
+              if (from < total) breakPage(ri);
+            }
+          }
+          cursorY -= BLOCK_GAP;
+        };
         const drawBlocks = (blocks: readonly RichBlock[], level: number): void => {
-          for (const b of blocks) {
+          for (const [bi, b] of blocks.entries()) {
             if (b.kind === 'heading') {
-              drawRuns(b.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE, MARGIN_X, CONTENT_WIDTH);
+              const size = headingSize(b.level);
+              const runs = b.runs.map((r) => ({ ...r, bold: true }));
+              if (model.heading_keep_with_next === true && bi < blocks.length - 1 && cursorY < TOP_Y) {
+                // C-9 keep-with-next (v2 only): the heading and the first line after it share a page.
+                const needed = layout(runs, size, CONTENT_WIDTH).length * size * LINE_HEIGHT_FACTOR + BLOCK_GAP + BODY_SIZE * LINE_HEIGHT_FACTOR;
+                if (cursorY - needed < BOTTOM_MARGIN) newPage();
+              }
+              drawRuns(runs, size, MARGIN_X, CONTENT_WIDTH);
               cursorY -= BLOCK_GAP;
             } else if (b.kind === 'paragraph') {
               drawRuns(b.runs, BODY_SIZE, MARGIN_X, CONTENT_WIDTH);
               cursorY -= BLOCK_GAP;
-            } else {
+            } else if (b.kind === 'list') {
               const markerX = MARGIN_X + level * LIST_INDENT;
               const textX = markerX + LIST_INDENT;
               b.items.forEach((item, i) => {
-                const marker = b.ordered ? `${i + 1}.` : '\u2022';
+                const marker = b.ordered ? `${i + 1}.` : '•';
                 drawRuns(item.runs, BODY_SIZE, textX, PAGE_WIDTH - MARGIN_X - textX, { text: marker, x: markerX });
                 if (item.children.length > 0) drawBlocks(item.children, level + 1);
                 cursorY -= LIST_ITEM_GAP;
               });
               if (level === 0) cursorY -= BLOCK_GAP;
+            } else if (b.kind === 'table') {
+              drawTable(b);
+            } else if (b.kind === 'rule') {
+              ensureRoom(RULE_SPACE);
+              page.drawLine({ start: { x: MARGIN_X, y: cursorY + BODY_SIZE / 2 }, end: { x: MARGIN_X + CONTENT_WIDTH, y: cursorY + BODY_SIZE / 2 }, thickness: TABLE_BORDER, color: rgb(0, 0, 0) });
+              cursorY -= RULE_SPACE;
+            } else {
+              // page_break: a new page, unless the cursor is already at the top of one.
+              if (cursorY < TOP_Y) newPage();
             }
           }
         };
@@ -604,7 +790,11 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         renderer: 'PDF_LIB',
         renderer_version: RENDERER_VERSION,
         template_version_id: model.template_version_id,
-        render_manifest_sha256: manifestSha256(manifestProjection(model)),
+        // F-10 — with inline field boxes the manifest hash covers their recorded positions too;
+        // without them it is exactly the model projection's hash, as before.
+        render_manifest_sha256: manifestSha256(
+          inlineFields.length > 0 ? { model: manifestProjection(model), inline_fields: inlineFields } : manifestProjection(model),
+        ),
         output_sha256,
       };
       return {
@@ -613,6 +803,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         page_count: doc.getPageCount(),
         provenance,
         ...(signature_fields !== undefined ? { signature_fields } : {}),
+        ...(inlineFields.length > 0 ? { inline_fields: inlineFields } : {}),
       };
     } catch (e) {
       if (e instanceof RenderFailedError) throw e;

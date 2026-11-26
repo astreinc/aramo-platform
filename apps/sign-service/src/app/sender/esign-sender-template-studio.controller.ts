@@ -26,6 +26,10 @@ import { SenderTemplateStudioService } from './sender-template-studio.service.js
 //   PATCH  v1/sign/sender/templates/studio/versions/:versionId      DELETE = discard the draft
 //   POST   v1/sign/sender/templates/studio/versions/:versionId/preview
 //   POST   v1/sign/sender/templates/studio/versions/:versionId/activate   "Use this version"
+//   TEMPLATE-SYNC-1 S-5 / S-7 / S-8:
+//   GET    v1/sign/sender/templates/studio/:id/master                     compare content
+//   POST   v1/sign/sender/templates/studio/:id/draft-from-master          start a draft from it
+//   POST   v1/sign/sender/templates/studio/:id/keep-version               keep my version
 @Controller('v1/sign/sender/templates')
 @UseFilters(AramoExceptionFilter)
 export class EsignSenderTemplateStudioController {
@@ -107,6 +111,26 @@ export class EsignSenderTemplateStudioController {
   @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
   allowedBindings(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     return this.run(requestId, () => this.studio.allowedBindings(auth, id, requestId));
+  }
+
+  @Get('studio/:id/master')
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  master(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.studio.masterContent(auth, id, requestId));
+  }
+
+  @Post('studio/:id/draft-from-master')
+  @HttpCode(HttpStatus.CREATED)
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  draftFromMaster(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.studio.draftFromMaster(auth, id, requestId));
+  }
+
+  @Post('studio/:id/keep-version')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(DOCUMENT_TEMPLATE_READ_SCOPE)
+  keepVersion(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.studio.keepVersion(auth, id, requestId));
   }
 
   @Patch('studio/versions/:versionId')

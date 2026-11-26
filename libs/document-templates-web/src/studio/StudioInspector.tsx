@@ -54,6 +54,8 @@ export interface StudioInspectorProps {
   readonly onInsert: (key: string) => void;
   readonly drag: StudioDrag;
   readonly onFix: (key: string) => void;
+  /** TEMPLATE-CONTENT-2 (C-18) — turn a typed `{{key}}` into a variable chip. */
+  readonly onConvert?: (key: string) => void;
   readonly template: StudioTemplateInfo;
   readonly docTypeName: string;
   readonly withdrawal: WithdrawalState;
@@ -125,6 +127,11 @@ export function StudioInspector(props: StudioInspectorProps) {
                       {i.fixKey !== undefined && props.canEdit ? (
                         <Button unstyled className="pws-btn26 pws-check__fix" onClick={() => props.onFix(i.fixKey as string)}>
                           Remove from draft
+                        </Button>
+                      ) : null}
+                      {i.convertKey !== undefined && props.canEdit && props.onConvert !== undefined ? (
+                        <Button unstyled className="pws-btn26 pws-check__fix" onClick={() => props.onConvert?.(i.convertKey as string)}>
+                          Convert to variable
                         </Button>
                       ) : null}
                     </span>
