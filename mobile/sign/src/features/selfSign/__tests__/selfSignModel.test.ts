@@ -100,6 +100,17 @@ describe('W1-A values', () => {
     expect(displayFill(field('f', 'FIRST_NAME'), ctx({ profile: null }), {})).toEqual({ kind: 'text', text: 'Account' });
   });
 
+  // Field-test batch 1 SIG-6 — the one shared rule: local self-sign keeps filling on open,
+  // without the name field (M-A6, D-3); a single-word name leaves the last name empty.
+  it('never fills a typed name field; a single word is the first name only', () => {
+    const typedName = field('n', 'SIGNER_NAME', { nameMode: 'SIGNER_ENTERED' } as Partial<EditorField>);
+    expect(displayFill(typedName, ctx(), {})).toBeNull();
+    expect(fillValue(typedName, ctx(), {})).toBeNull();
+    const single = ctx({ profile: { display_name: 'Priya' } as SelfContext['profile'] });
+    expect(displayFill(field('f', 'FIRST_NAME'), single, {})).toEqual({ kind: 'text', text: 'Priya' });
+    expect(displayFill(field('l', 'LAST_NAME'), single, {})).toBeNull();
+  });
+
   it('sends ISO dates, the adopted mark, check states; never a server-filled name', () => {
     expect(fillValue(field('d', 'SIGN_DATE'), ctx(), {})).toEqual({ value: '2026-11-05' });
     // M-A13 #1 — a TYPED mark sends its text; the page still shows the script PNG.

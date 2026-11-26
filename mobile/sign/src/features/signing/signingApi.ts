@@ -9,6 +9,7 @@ import {
   isFieldValueRefusalReason,
   isValidDelegate,
   type DelegateInput,
+  type ProfilePrefill,
 } from '@aramo/sign-client';
 
 import { isApiError } from '../../api/errors';
@@ -44,6 +45,11 @@ export interface SignerView {
   readonly canDelegate: boolean;
   /** C0-2 — the envelope's stamped SIGN_DATE format (null = the server default). */
   readonly dateFormat: string | null;
+  /**
+   * Field-test batch 1 SIG-11 (+A1) — the server's profile values for a signed-in (inbox / Sign
+   * now) session; null for an emailed link, a hosted session or a guest (the server decides).
+   */
+  readonly profilePrefill: ProfilePrefill | null;
 }
 
 export type SigningFailure =
@@ -313,6 +319,7 @@ export async function acceptAndLoad(
     canDelegate: v.can_delegate === true,
     // C0-2 — kept (it was dropped before): the SIGN_DATE preview uses the envelope's format.
     dateFormat: typeof v.date_format === 'string' ? v.date_format : null,
+    profilePrefill: v.profile_prefill ?? null,
   };
 }
 

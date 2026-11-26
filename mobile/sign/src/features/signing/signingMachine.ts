@@ -19,9 +19,14 @@
 //     exactly one for SELECT_ONE). A SIGNER_PROFILE name is filled by the server: it is
 //     shown read-only and never sent. Any other name is typed by the signer — it is
 //     never prefilled from the signed-in account.
-//   - M-A12 W1-C.4: FIRST_NAME, LAST_NAME, EMAIL, COMPANY and TITLE are text fields the
-//     signer fills; when the signer is signed in, their own Sign profile pre-fills the
-//     text sheet (TapContext.prefill) and the signer may edit it before saving.
+//   - M-A12 W1-C.4, as amended by field-test batch 1 SIG-11 + A1: FIRST_NAME, LAST_NAME, EMAIL,
+//     COMPANY and TITLE are text fields the signer fills. On a signed-in (SELF / INBOX) session
+//     the server returns `profile_prefill` (the one rule, @aramo/sign-client profilePrefill):
+//     EMAIL — the recipient email the sender typed — is pre-filled when the document opens
+//     (initialState); the profile values are OFFERS (state.prefill), never placed in a field
+//     until the signer takes them ("Fill from my profile": takeProfileOffers; one field's hint:
+//     takeProfileOffer). A taken offer is an ordinary answer (saved as you go); an offer not
+//     taken is never in `values`, so neither save-as-you-go nor Finish ever sends it (A1-4).
 //   - FIELD-PARITY-1 P3 §6: DATE, DROPDOWN, NUMBER and MULTILINE_TEXT open the field editor
 //     (never cleared by a tap); a RADIO option is chosen (its group's other options cleared,
 //     a chosen option of a required set stays chosen; FIELD-PARITY-2 A-2: one of an optional
@@ -41,6 +46,9 @@ import {
   FIELD_CATALOG,
   PROFILE_TEXT_FIELD_TYPES,
   checkboxGroupOf,
+  profileOfferFor,
+  profileOffers,
+  senderHeldPrefills,
   fieldConditionOf,
   fieldTypesFor,
   fieldValueDisplay,
@@ -60,6 +68,8 @@ import {
   signerValueProblem,
   type FieldOptions,
   type FieldTypeOn,
+  type PrefillMatch,
+  type ProfilePrefill,
   type SignerFieldLike,
   type SignerFieldUnit,
   withOptionalMark,
@@ -159,6 +169,11 @@ export interface SigningState {
    * visit, or sent by this Finish). Emptying one sends a clear. Absent: none.
    */
   readonly held?: Readonly<Record<string, true>>;
+  /**
+   * SIG-11 (+A1) — the server's `profile_prefill` for a signed-in session (null: an emailed
+   * link, a hosted session or a guest). Its profile values are offers only: never sent untaken.
+   */
+  readonly prefill?: ProfilePrefill | null;
 }
 
 /** What a tap asks the UI to do next. */
@@ -213,6 +228,7 @@ export function initialState(
   fields: readonly SigningField[],
   documents: readonly SigningDocument[] = [],
   dateFormat: string | null = null,
+  prefill: ProfilePrefill | null = null,
 ): SigningState {
   const ordered = orderFields(fields, documents);
   const values: Record<string, FieldValue> = {};
@@ -223,7 +239,12 @@ export function initialState(
     if ((f.filled || isLocked(f)) && typeof f.value === 'string' && f.value.length > 0)
       values[f.field_id] = { value: f.value, fromServer: true };
   }
-  return { dateFormat, fields: ordered, values, currentId: null, adopted: {}, held };
+  const s: SigningState = { dateFormat, fields: ordered, values, currentId: null, adopted: {}, held, prefill };
+  // SIG-11 A1-2 — the sender-held value (the recipient email) is pre-filled on open, on the
+  // shown, empty, signer-editable EMAIL fields (an editable answer, saved as you go).
+  const open = senderHeldPrefills(shownSigningFields(s), prefill, (f) => values[f.field_id] !== undefined);
+  for (const m of open) values[m.field.field_id] = { value: m.value };
+  return s;
 }
 
 const CHECK_TYPES: ReadonlySet<string> = CHECK_FIELD_TYPES;
@@ -468,11 +489,6 @@ function withValue(s: SigningState, id: string, v: FieldValue | null): SigningSt
 export interface TapContext {
   readonly signerName: string;
   readonly today?: Date;
-  /**
-   * M-A12 W1-C.4 — the signer's own profile value for a profile field type, or null.
-   * Offered only to a signed-in signer; never another person's data.
-   */
-  readonly prefill?: (fieldType: string) => string | null;
 }
 
 /**
@@ -506,16 +522,10 @@ export function tapField(
   if (f.field_type !== 'TEXT' && !PROFILE_TEXT_TYPES.has(f.field_type) && isEditorField(f)) {
     return { state: focused, effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' } };
   }
+  // SIG-11 A1-3 — a profile field opens with its current value only: an offer is never placed
+  // in the field until the signer takes it (the sheet shows it as a hint, profileOfferOf).
   if (PROFILE_TEXT_TYPES.has(f.field_type)) {
-    const current = s.values[fieldId]?.value;
-    return {
-      state: focused,
-      effect: {
-        kind: 'text',
-        fieldId,
-        initial: current ?? ctx.prefill?.(f.field_type) ?? '',
-      },
-    };
+    return { state: focused, effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' } };
   }
   const filled = isFilled(s, fieldId);
   if (filled) return { state: withValue(s, fieldId, null), effect: { kind: 'none' } };
@@ -538,6 +548,40 @@ export function tapField(
     default:
       return { state: focused, effect: { kind: 'text', fieldId, initial: '' } };
   }
+}
+
+/**
+ * SIG-11 A1-3 — the offers "Fill from my profile" takes: every shown, empty, signer-editable
+ * profile field with a profile value (the shared rule). Empty: no banner.
+ */
+export function profileOffersOf(s: SigningState): PrefillMatch<SigningField>[] {
+  return profileOffers(shownSigningFields(s), s.prefill, (f) => s.values[f.field_id] !== undefined);
+}
+
+/** SIG-11 A1-3 — one field's offer (its hint: "Use from my profile: …"), or null. */
+export function profileOfferOf(s: SigningState, fieldId: string): string | null {
+  const f = shownSigningFields(s).find((x) => x.field_id === fieldId);
+  return f === undefined ? null : profileOfferFor(f, s.prefill, s.values[fieldId] !== undefined);
+}
+
+/**
+ * SIG-11 A1-3 — the signer tapped "Fill from my profile": every offer fills its field at once.
+ * The values are ordinary answers from here on (editable, saved as you go). `count` feeds the
+ * notice ("Filled {n} fields from your profile. …").
+ */
+export function takeProfileOffers(s: SigningState): { readonly state: SigningState; readonly count: number } {
+  const offers = profileOffersOf(s);
+  if (offers.length === 0) return { state: s, count: 0 };
+  const values = { ...s.values };
+  for (const o of offers) values[o.field.field_id] = { value: o.value };
+  const next = withoutHiddenValues({ ...s, values });
+  return { state: { ...next, currentId: nextEmptyRequired(next, null)?.field_id ?? null }, count: offers.length };
+}
+
+/** SIG-11 A1-3 — the signer tapped one field's hint: only that field is filled. */
+export function takeProfileOffer(s: SigningState, fieldId: string): SigningState {
+  const value = profileOfferOf(s, fieldId);
+  return value === null ? s : withValue(s, fieldId, { value });
 }
 
 /**

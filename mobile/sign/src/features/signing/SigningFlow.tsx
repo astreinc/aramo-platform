@@ -5,7 +5,10 @@
 // M-A12 W1-C: "Page n of N" with up / down arrows; Find in document (the signer text
 // layer on the same token transport, searched and highlighted on the device); the header
 // overflow "…" (Find, Document details, Decline, Ask someone else to sign, Help); and the
-// profile field types, pre-filled from the signed-in signer's own profile (`prefill`).
+// profile field types. Field-test batch 1 SIG-11 (+A1): on a signed-in session the server's
+// `profile_prefill` pre-fills EMAIL (the recipient email) on open and OFFERS the profile values:
+// the "Fill from my profile" banner and one field's hint fill only on the signer's tap. An offer
+// not taken is never sent (not saved as you go, not at Finish).
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -104,11 +107,15 @@ import {
   initialState,
   isFilled,
   primaryAction,
+  profileOfferOf,
+  profileOffersOf,
   requiredDone,
   requiredFields,
   setText,
   shownSigningFields,
   tapField,
+  takeProfileOffer,
+  takeProfileOffers,
   type SigningField,
   type SigningState,
 } from './signingMachine';
@@ -117,7 +124,7 @@ import { ReportSheet, type ReportSendResult } from '../../screens/envelope/Repor
 import { CheckboxField } from './CheckboxField';
 import type { ReportReasonKey } from '../inbox/inboxReport';
 import { useReducedMotion } from './useReducedMotion';
-import { fieldValueRefusalText, signerFieldTooltip, signerInputKind } from '@aramo/sign-client';
+import { PROFILE_OFFER_COPY, fieldValueRefusalText, signerFieldTooltip, signerInputKind } from '@aramo/sign-client';
 import { ZoomablePages } from './ZoomablePages';
 
 type Phase =
@@ -169,11 +176,6 @@ export interface SigningFlowProps {
    * preference). Off for a hosted session: the device belongs to the host, not the signer.
    */
   readonly deviceConfirm?: boolean;
-  /**
-   * M-A12 W1-C.4 — the signed-in signer's own profile value for a profile field type
-   * (First name, Last name, Email, Company, Title), offered in the text sheet; editable.
-   */
-  readonly prefill?: (fieldType: string) => string | null;
 }
 
 /** The typed name must have at least this many characters (M-A5 §3.4). */
@@ -201,7 +203,6 @@ export function SigningFlow(props: SigningFlowProps) {
     onHeaderFinish,
     attestName = false,
     deviceConfirm = true,
-    prefill,
   } = props;
   const t = useTheme();
   const toast = useToast();
@@ -362,7 +363,7 @@ export function SigningFlow(props: SigningFlowProps) {
     try {
       const v = await acceptAndLoad(session, d, attestName ? attested : undefined);
       setView(v);
-      commit(initialState(v.fields, v.documents, v.dateFormat));
+      commit(initialState(v.fields, v.documents, v.dateFormat, v.profilePrefill));
       setPhase({ kind: 'fields' });
       for (const doc of v.documents) {
         loadSource(session, doc.document_id).then(
@@ -403,10 +404,7 @@ export function SigningFlow(props: SigningFlowProps) {
   );
 
   function onTap(f: SigningField): void {
-    const { state: next, effect } = tapField(stateRef.current, f.field_id, {
-      signerName,
-      ...(prefill ? { prefill } : {}),
-    });
+    const { state: next, effect } = tapField(stateRef.current, f.field_id, { signerName });
     commit(next);
     if (effect.kind === 'adopt') setAdoptFor({ fieldId: effect.fieldId, target: effect.target });
     else if (effect.kind === 'text') {
@@ -429,6 +427,23 @@ export function SigningFlow(props: SigningFlowProps) {
       );
     }
     focusField(next.currentId);
+  }
+
+  // SIG-11 A1-3 — "Fill from my profile": every offer fills its empty field in one tap; the
+  // values are ordinary answers from here on (editable, saved as you go).
+  function onFillFromProfile(): void {
+    const { state: next, count } = takeProfileOffers(stateRef.current);
+    if (count === 0) return;
+    commit(next);
+    toast.show(PROFILE_OFFER_COPY.filled(count));
+  }
+
+  // SIG-11 A1-3 — one field's hint: fills only that field.
+  function onTakeOffer(fieldId: string): void {
+    const next = takeProfileOffer(stateRef.current, fieldId);
+    commit(next);
+    setTextFor(null);
+    if (next.currentId && next.currentId !== fieldId) focusField(next.currentId);
   }
 
   function onNext(): void {
@@ -848,6 +863,8 @@ export function SigningFlow(props: SigningFlowProps) {
 
   // ── Fields ──
   const req = requiredFields(state).length;
+  // SIG-11 A1-3 — the banner shows only while an offer matches an empty, shown, editable field.
+  const offers = profileOffersOf(state);
   const done = requiredDone(state);
   const action = primaryAction(state);
   const docs = [...(view?.documents ?? [])].sort((a, b) => a.ordinal - b.ordinal);
@@ -1033,6 +1050,19 @@ export function SigningFlow(props: SigningFlowProps) {
           <Text style={{ color: t.color.text, fontSize: 22, fontWeight: '600' }}>…</Text>
         </Pressable>
       </View>
+      {offers.length > 0 ? (
+        <Pressable
+          testID="profile-offer-banner"
+          onPress={onFillFromProfile}
+          accessibilityRole="button"
+          accessibilityLabel={PROFILE_OFFER_COPY.banner}
+          style={[styles.offer, { backgroundColor: t.color.surface, borderBottomColor: t.color.separator, minHeight: t.size.minTouch }]}
+        >
+          <Text style={{ color: t.color.accent, fontSize: 15, fontWeight: '600', fontFamily: t.font.family }}>
+            {PROFILE_OFFER_COPY.banner}
+          </Text>
+        </Pressable>
+      ) : null}
       {find.open ? (
         <FindBar
           query={find.query}
@@ -1243,7 +1273,18 @@ export function SigningFlow(props: SigningFlowProps) {
         {(() => {
           const f = textFor ? state.fields.find((x) => x.field_id === textFor.fieldId) : undefined;
           if (!textFor || !f) return null;
+          // SIG-11 A1-3 — an empty profile field shows its offer; tapping it fills this field only.
+          const offer = profileOfferOf(state, textFor.fieldId);
           return (
+            <>
+            {offer !== null ? (
+              <Button
+                testID="profile-offer-hint"
+                title={PROFILE_OFFER_COPY.hint(offer)}
+                variant="secondary"
+                onPress={() => onTakeOffer(textFor.fieldId)}
+              />
+            ) : null}
             <FieldEditor
               key={textFor.fieldId}
               field={f}
@@ -1256,6 +1297,7 @@ export function SigningFlow(props: SigningFlowProps) {
                 if (next.currentId && next.currentId !== textFor.fieldId) focusField(next.currentId);
               }}
             />
+            </>
           );
         })()}
       </Sheet>
@@ -1579,4 +1621,10 @@ const styles = StyleSheet.create({
   },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   offline: { padding: 12 },
+  offer: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    justifyContent: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
 });
