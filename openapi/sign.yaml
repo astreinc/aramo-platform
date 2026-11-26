@@ -532,6 +532,29 @@ paths:
                     description: >-
                       Aramo Sign Mobile M-A12 W1-E.2 — the sender's format for SIGN_DATE values, stamped at send. Null for an
                       envelope sent before formats were stamped (the date stays YYYY-MM-DD).
+                  saved_marks:
+                    type: [object, 'null']
+                    description: >-
+                      M-A15 §4.1 — the saved signature and initials this signing session may use, decided by the server
+                      from the session alone (the signing page stays session-free). Null when there is nothing to offer.
+                    required: [signature, initials, can_save]
+                    properties:
+                      signature:
+                        oneOf:
+                          - $ref: '#/components/schemas/GuestSavedMark'
+                          - type: 'null'
+                      initials:
+                        oneOf:
+                          - $ref: '#/components/schemas/GuestSavedMark'
+                          - type: 'null'
+                      can_save:
+                        type: boolean
+                        description: True only when this session belongs to a signed-in user (an inbox or Sign now session).
+                  inbox_save_available:
+                    type: boolean
+                    description: >-
+                      M-A16 §3 — true when the finished screen may offer "Save to my Aramo inbox" (emailed links only).
+                      False on any lookup failure.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -11138,6 +11161,14 @@ components:
             minLength: 1
             maxLength: 100
           description: one_of only — the dropdown choice values that show the field.
+    GuestSavedMark:
+      type: object
+      description: M-A15 §4.1 — a saved signature or initials offered on the signing page.
+      required: [kind, typed_name, image_data_url]
+      properties:
+        kind: { type: string, enum: [TYPED, DRAWN] }
+        typed_name: { type: [string, 'null'] }
+        image_data_url: { type: string }
     FieldOptions:
       type: object
       additionalProperties: false

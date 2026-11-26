@@ -5377,6 +5377,13 @@ export interface components {
             /** @description one_of only — the dropdown choice values that show the field. */
             values?: string[];
         };
+        /** @description M-A15 §4.1 — a saved signature or initials offered on the signing page. */
+        GuestSavedMark: {
+            /** @enum {string} */
+            kind: "TYPED" | "DRAWN";
+            typed_name: string | null;
+            image_data_url: string;
+        };
         /** @description FIELD-PARITY-1 P3 — the per-type options of a field (@aramo/sign-fields FieldOptions). DROPDOWN: choices (1 to 50, unique values; a string is shorthand for {value}, label defaults to value). NUMBER: format (plain | money), currency (ISO 4217, money only, default USD), decimals (0 to 6, money default 2), and min / max with validation number_range. DATE: min_date / max_date (YYYY-MM-DD) with validation date_range. TEXT / MULTILINE_TEXT: max_length (1 to 4000) with validation max_length. Any other key, or a key the type does not take, is refused (options_invalid). */
         FieldOptions: {
             choices?: components["schemas"]["DropdownChoice"][];
@@ -6343,6 +6350,15 @@ export interface operations {
                          * @enum {string|null}
                          */
                         date_format?: "MM/DD/YYYY" | "DD/MM/YYYY" | "YYYY-MM-DD" | null;
+                        /** @description M-A15 §4.1 — the saved signature and initials this signing session may use, decided by the server from the session alone (the signing page stays session-free). Null when there is nothing to offer. */
+                        saved_marks?: {
+                            signature: components["schemas"]["GuestSavedMark"] | null;
+                            initials: components["schemas"]["GuestSavedMark"] | null;
+                            /** @description True only when this session belongs to a signed-in user (an inbox or Sign now session). */
+                            can_save: boolean;
+                        } | null;
+                        /** @description M-A16 §3 — true when the finished screen may offer "Save to my Aramo inbox" (emailed links only). False on any lookup failure. */
+                        inbox_save_available?: boolean;
                     };
                 };
             };
