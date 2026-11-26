@@ -96,6 +96,9 @@ export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   // Web Self-Signing W1 — self-sign session refusals.
   not_bound_to_you: 'This signer isn’t assigned to you. Use the link in the signing email.',
   email_not_verified: 'Your account email isn’t verified, so you can’t sign here. Use the link in the signing email.',
+  // Field-test batch 1 A2 SGN-2 — the remaining session refusals say why, not the generic text.
+  signer_not_found: 'That recipient is no longer on this envelope.',
+  not_in_person_signer: 'Only an in-person signer can sign on this device.',
   // Concurrency (M-A3 §6, §8; UAT SND-23).
   revision_mismatch: ENVELOPE_CHANGED,
   precondition_required: ENVELOPE_CHANGED,
