@@ -301,6 +301,45 @@ describe('TEMPLATE-PRODUCT-1 §8.2–8.3 — the Personal Studio data source and
     expect(urls.some((u) => u.includes('/v1/document-templates'))).toBe(false);
   });
 
+  // Sign Field-Test Batch 1 (Directive v1.0 LOCKED) F15-3 / F15-5 / F15-A — an adopted default with
+  // inline fields: the Studio reads the version's field rows through the sign-service studio (never
+  // the tenant route), each locked chip reads "🔒 {glyph} {label} · {role}", and a save carries no
+  // `fields` (a locked copy cannot add, delete or retype a field).
+  it('F15 — locked chips are labelled from the field rows read through sign-service; a save sends no fields', async () => {
+    const SIGNING = { roles: [{ role_key: 'employee', label: 'Employee', kind: 'SIGNER', order: 1 }], routing_mode: 'PARALLEL' };
+    const BODY = '<p>Signed: <span data-sign-field="employee_signature"></span></p>';
+    const DRAFT_V = {
+      id: 'd3', tenant_id: 't1', template_id: MINE_ID, version_number: 3, status: 'DRAFT', render_schema_version: 'rtr-html-v3',
+      field_schema: { render_schema_version: 'rtr-html-v3', title: 'Employee Handbook', html: BODY, signing: SIGNING }, binding_schema: null,
+      created_by: 'u1', created_at: '2026-11-01T00:00:00Z', activated_at: null, activated_by: null, retired_at: null,
+      content_fingerprint: 'fp', previewed_fingerprint: null, logo: null,
+    };
+    const ROWS = [{ field_key: 'employee_signature', field_type: 'SIGNATURE', label: 'Employee signature', signer_role: 'employee', required: true, ordinal: 0 }];
+    const m = stub(BASE_CTX, (url, init) => {
+      if (url.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}`)) return json({ ...STUDIO_LIST.items[0], tenant_id: 't1', created_at: '2026-11-01T00:00:00Z' });
+      if (url.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}/versions`)) return json([DRAFT_V]);
+      if (url.endsWith(`/v1/sign/sender/templates/studio/${MINE_ID}/allowed-bindings`)) return json({ bindings: [], tenant_logo: { available: false, tenant_name: 'Pat Lee — Personal' } });
+      if (url.endsWith('/v1/sign/sender/templates/studio/versions/d3/fields')) return json(ROWS);
+      if (url.endsWith('/v1/sign/sender/templates/studio/versions/d3') && init?.method === 'PATCH') return json(DRAFT_V);
+      return undefined;
+    });
+    renderAt(`/personal/templates/studio/${MINE_ID}`);
+    const chip = await screen.findByTestId('field-chip-employee_signature');
+    expect(chip.textContent).toMatch(/^🔒 \S+ Employee signature · Employee$/);
+    expect(calledWith(m, '/v1/sign/sender/templates/studio/versions/d3/fields')).toBe(true);
+    expect(m.mock.calls.some(([u]) => String(u).includes('/v1/document-templates'))).toBe(false);
+    expect(screen.queryByTestId('insert-field')).toBeNull();
+    // A wording edit and a save: the PATCH never carries `fields`.
+    const p = chip.closest('[data-block-id]') as HTMLElement;
+    p.appendChild(document.createTextNode(' today'));
+    fireEvent.input(p);
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(m.mock.calls.some(([u, i]) => String(u).endsWith('/studio/versions/d3') && i?.method === 'PATCH')).toBe(true));
+    const patch = m.mock.calls.find(([u, i]) => String(u).endsWith('/studio/versions/d3') && i?.method === 'PATCH');
+    const body = JSON.parse(String(patch?.[1]?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('fields');
+  });
+
   it('read-only when the person cannot author', () => {
     const src = personalStudioDataSource({ listHref: '/personal/templates', canEdit: false });
     expect(src.capabilities).toMatchObject({ canEdit: false, canApprove: false });

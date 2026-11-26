@@ -2,6 +2,7 @@ import { apiClient } from '@aramo/fe-foundation';
 import type {
   DocumentTemplateView,
   OrganizationStudioApi,
+  StudioInlineFieldRow,
   TemplateMasterContent,
   TemplateDefaultPreview,
   TemplateLibraryItem,
@@ -84,8 +85,12 @@ export const SIGN_STUDIO_API: OrganizationStudioApi = {
   masterContent: (id) => apiClient.get<TemplateMasterContent>(`${STUDIO}/${enc(id)}/master`),
   draftFromMaster: (id) => apiClient.post<TemplateVersionView>(`${STUDIO}/${enc(id)}/draft-from-master`, {}),
   keepVersion: (id) => apiClient.post<DocumentTemplateView>(`${STUDIO}/${enc(id)}/keep-version`, {}),
-  // TEMPLATE-FIELDS-1 F-15 — sign-service has no proxy for a version's field rows, so the Personal
-  // Studio reads none: the fields in an adopted template's text show as locked chips (by key) and
-  // the server keeps them (fields_platform_only); the preview still labels each field.
-  listFields: async () => ({ fields: [] }),
+  // Sign Field-Test Batch 1 F15-3 — a version's field rows through sign-service (a bare array,
+  // wrapped as the shared source expects), so a locked chip reads its type, label and role as in
+  // Org Home. Display only: a locked save never carries `fields`. Kept here (not removed) so the
+  // source merge never falls back to the tenant route /v1/document-templates.
+  listFields: async (versionId) => {
+    const rows = await apiClient.get<StudioInlineFieldRow[]>(`${STUDIO}/versions/${enc(versionId)}/fields`);
+    return { fields: Array.isArray(rows) ? rows : [] };
+  },
 };
