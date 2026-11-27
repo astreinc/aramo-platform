@@ -19,6 +19,8 @@ import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPil
 import { useWorkspace } from '../workspace';
 import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
 
+import { CloudExportButton } from './CloudStorage';
+
 // Envelope detail (read-only). Client Rule Consolidation C3 — every action button shows only
 // when the server's `actions` allows it (Send reminder, Void, Download documents and
 // certificate, Delete, Purge, Cancel purge, Sign now); the per-signer Remind also needs the
@@ -271,6 +273,9 @@ export function EnvelopeDetail() {
               Download certificate
             </Btn>
           ) : null}
+          {/* SIGN-FREE-PARITY-1 S6 — the signed copy to connected cloud storage (same rule as
+              Download; shown only while the server offers a provider). */}
+          {actions.download ? <CloudExportButton envelopeId={env.id} /> : null}
           {actions.remind ? (
             <Btn onClick={() => void remind()} disabled={busy || remindable.length === 0} data-testid="send-reminder">
               Send reminder

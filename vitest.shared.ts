@@ -91,6 +91,9 @@ export default defineConfig({
       // type:client-shared), imported by libs/sign, apps/sign-web and mobile/sign.
       // Mirrors tsconfig.base.json (the add-alias-in-same-PR lesson).
       '@aramo/sign-client': resolve(root, 'libs/sign-client/src/index.ts'),
+      // SIGN-FREE-PARITY-1 S6 — the Sign-scoped cloud storage connector (scope:sign),
+      // imported by apps/sign-service. Mirrors tsconfig.base.json.
+      '@aramo/sign-cloud-storage': resolve(root, 'libs/sign-cloud-storage/src/index.ts'),
       // FIELD-PARITY-1 P1-1 (ruling R-4) — the one field catalog (scope:shared,
       // type:client-shared). Mirrors tsconfig.base.json.
       '@aramo/sign-fields': resolve(root, 'libs/sign-fields/src/index.ts'),

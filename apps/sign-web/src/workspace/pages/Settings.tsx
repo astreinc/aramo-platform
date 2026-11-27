@@ -1,5 +1,6 @@
 import { NavLink, Navigate, useLocation, useParams } from 'react-router-dom';
 import { logout, ssoEntryHref } from '@aramo/fe-foundation';
+import { cloudProvidersOf } from '@aramo/sign-client';
 
 import { orgLinkWithReturn } from '../org-link';
 import { Btn, Check, Field, Icon, LinkBtn, Sel } from '../ui';
@@ -23,6 +24,8 @@ import { RetentionSection } from './Retention';
 import { SignInMethodsSection } from './SignInMethods';
 import { PaymentsSection } from './Payments';
 import { DevicesSection } from './DevicesSection';
+// SIGN-FREE-PARITY-1 S6 — Connected storage (shown only while a provider is offered).
+import { CloudStorageSection } from './CloudStorage';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -44,6 +47,8 @@ const SECTIONS = [
   { key: 'billing', label: 'Plan & billing' },
   // Amendment M-A18 — the phones signed in to this account, each with Sign out.
   { key: 'devices', label: 'Devices' },
+  // SIGN-FREE-PARITY-1 S6 — the user's connected cloud storage accounts (every plan; per user).
+  { key: 'storage', label: 'Connected storage' },
   // Domain-Enforcement P3 §4 — the organization's email-domain verification
   // (organization owner / admin: tenant:admin:domain). Key matches Billing's
   // DOMAIN_SETTINGS_HREF (/sign/settings/domain).
@@ -65,13 +70,18 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
   const { base, ctx } = useWorkspace();
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
-  const allowed = personalWs
-    ? ['personal', 'profile', 'billing', 'devices', 'retention']
-    : SECTIONS.map((s) => s.key)
-        .filter((k) => k !== 'members' || ctx.permissions.members === true)
-        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
-        // Sign 1.14 — shown only while payments are available to this organization.
-        .filter((k) => k !== 'payments' || ctx.features?.payments === true);
+  const cloudOffered = cloudProvidersOf(ctx).length > 0;
+  const allowed = (
+    personalWs
+      ? ['personal', 'profile', 'billing', 'devices', 'storage', 'retention']
+      : SECTIONS.map((s) => s.key)
+          .filter((k) => k !== 'members' || ctx.permissions.members === true)
+          .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'))
+          // Sign 1.14 — shown only while payments are available to this organization.
+          .filter((k) => k !== 'payments' || ctx.features?.payments === true)
+  )
+    // SIGN-FREE-PARITY-1 S6 — shown only while a cloud storage provider is offered.
+    .filter((k) => k !== 'storage' || cloudOffered);
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   const orgLink = useOrgLink();
@@ -99,6 +109,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
           {/* Catalog v2 §4.3 — Personal accounts see their own plan and the Standard upgrade. */}
           {section === 'billing' ? personalWs ? <PersonalPlanPanel /> : <BillingPanel /> : null}
           {section === 'devices' ? <DevicesSection /> : null}
+          {section === 'storage' ? <CloudStorageSection /> : null}
           {section === 'domain' ? <DomainCard /> : null}
           {section === 'members' ? <UsersRolesSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}

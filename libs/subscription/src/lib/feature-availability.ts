@@ -84,6 +84,15 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // vendor contract, counsel review and a separate PO authorization (A1 §A1.2).
   'sign.qes': 'NOT_AVAILABLE',
   'sign.india_estamp': 'NOT_AVAILABLE',
+  // SIGN-FREE-PARITY-1 S6 (FP-R7) — cloud storage import and export, every plan. Built dark,
+  // one key per provider: each moves to AVAILABLE only with a separate PO authorization once
+  // that provider's OAuth app is registered and verified (Google's restricted-scope review
+  // included). sign-service also needs the provider's SIGN_CLOUD_<PROVIDER>_CLIENT_ID /
+  // _CLIENT_SECRET and SIGN_CLOUD_TOKEN_KEY; without them the provider stays off.
+  'sign.cloud_google_drive': 'NOT_AVAILABLE',
+  'sign.cloud_onedrive': 'NOT_AVAILABLE',
+  'sign.cloud_dropbox': 'NOT_AVAILABLE',
+  'sign.cloud_box': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

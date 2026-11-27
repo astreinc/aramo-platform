@@ -312,6 +312,15 @@ export {
 // Aramo Sign Mobile — notification feed, devices, preferences, push (M-A3 §1, §2, §9).
 export * from './lib/notifications/index.js';
 
+// SIGN-FREE-PARITY-1 S6 — connected cloud storage accounts and pending OAuth connects.
+export {
+  SignCloudStorageRepository,
+  type CloudOwner,
+  type CloudConnectionRow,
+  type CloudOAuthStateRow,
+  type CloudTokenWrite,
+} from './lib/cloud-storage/sign-cloud-storage.repository.js';
+
 // Aramo Sign Mobile — envelope contracts: revision preconditions, reminder limits,
 // request idempotency, inbox revalidation, saved signatures, contacts (M-A2 §2.2, M-A3 §3–§9).
 export {

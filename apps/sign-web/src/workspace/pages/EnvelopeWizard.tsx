@@ -10,6 +10,7 @@ import {
   offersPhoneStepUp,
   type PhoneStepUpStatus,
   checkPickedFile,
+  cloudProvidersOf,
   danglingWitness,
   isWitnessable,
   isValidEmail,
@@ -49,6 +50,7 @@ import {
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { CloudImportButton } from './CloudStorage';
 import { selfSignRefusal } from './EnvelopeDetail';
 import { PersonalUpgradeLink } from './PersonalAllowance';
 import { PhoneStepUpPanel } from './PhoneStepUp';
@@ -204,6 +206,11 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
       }
     }
     setBusy('');
+    await afterUpload();
+  };
+
+  // After an upload (from the device or from cloud storage): read the envelope again.
+  const afterUpload = async () => {
     let d = await senderApi.detail(env.id);
     // Prototype: an untitled envelope takes its first document's title.
     const first = d.documents[0];
@@ -260,11 +267,16 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
           </label>
           {/* DOC-TEMPLATE-LIB-1 T-5 — start from one of the organization's document templates
               (shown only when the plan capability and the template permission allow it). */}
-          {templatesUsable ? (
+          {/* SIGN-FREE-PARITY-1 S6 — a PDF from connected cloud storage, through the same upload
+              (shown only while the server offers a provider). */}
+          {templatesUsable || cloudProvidersOf(ctx).length > 0 ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <Btn onClick={() => nav(`${base}/templates`)} data-testid="use-a-template">
-                Use a template
-              </Btn>
+              {templatesUsable ? (
+                <Btn onClick={() => nav(`${base}/templates`)} data-testid="use-a-template">
+                  Use a template
+                </Btn>
+              ) : null}
+              <CloudImportButton envelopeId={env.id} onImported={afterUpload} />
             </div>
           ) : null}
           {busy !== '' ? (

@@ -2566,6 +2566,320 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  # SIGN-FREE-PARITY-1 S6 (FP-R7) — cloud storage import and export (Google Drive, OneDrive
+  # personal + work, Dropbox, Box). Dark per provider: a provider not listed in the sender
+  # context's cloud_storage is refused 403 ESIGN_FEATURE_NOT_AVAILABLE (details.feature_key
+  # sign.cloud_<provider>). OAuth runs server-side; the web page loads no provider script.
+  /v1/sign/sender/cloud-storage:
+    get:
+      operationId: listSenderCloudStorage
+      summary: The offered cloud storage providers and the caller's connections.
+      description: >
+        SIGN-FREE-PARITY-1 S6 — one row per offered provider (empty while every provider is dark), with whether the caller
+        connected it and the account it is connected to. Connections are per user (never shared inside the organization).
+        Requires sign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudStorageConnections'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/cloud-storage/{provider}/connect:
+    post:
+      operationId: connectSenderCloudStorage
+      summary: Start connecting a cloud storage account (returns the provider's sign-in URL).
+      description: >
+        SIGN-FREE-PARITY-1 S6 — the client opens authorize_url (the web navigates to it; the Aramo Sign app opens it in its
+        in-app browser). The provider returns to GET …/cloud-storage/{provider}/callback, which answers 302 to the Sign web
+        page (return_path, default /{workspace}/settings/storage) or, for client app, to aramosign://cloud-storage, with
+        cloud_storage=connected|cancelled|failed&provider={provider}. The pending connect lives 10 minutes and is used once.
+        Requires sign:envelope:read. 400 details.reason invalid_client / invalid_return_path (a page outside the caller's
+        workspace).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/CloudProvider'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                client:
+                  type: string
+                  enum: [web, app]
+                  default: web
+                return_path:
+                  type: string
+                  maxLength: 200
+                  description: A page of the caller's workspace (/sign/… or /personal/…), no query. Web only.
+      responses:
+        '201':
+          description: The provider's sign-in URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorize_url]
+                properties:
+                  authorize_url:
+                    type: string
+                    format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/cloud-storage/{provider}/callback:
+    get:
+      operationId: senderCloudStorageCallback
+      summary: The provider's OAuth redirect (browser only; answers 302).
+      description: >
+        SIGN-FREE-PARITY-1 S6 — no session: the single-use state (stored as its sha256, bound to one tenant, user and provider,
+        10-minute lifetime) is the only authority. The code is exchanged server-side (PKCE S256 where the provider supports it)
+        and the tokens are stored encrypted (AES-256-GCM). Always 302: to the return page with
+        cloud_storage=connected|cancelled|failed&provider=…, or to /?cloud_storage=failed for an unknown or used state.
+      tags: [sender]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CloudProvider'
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Back to the Sign web app or the Aramo Sign app.
+          headers:
+            Location:
+              schema:
+                type: string
+  /v1/sign/sender/cloud-storage/{provider}:
+    delete:
+      operationId: disconnectSenderCloudStorage
+      summary: Disconnect a cloud storage account (revoke and delete the tokens).
+      description: >
+        SIGN-FREE-PARITY-1 S6 — revokes the grant at the provider where it has a revoke endpoint (best effort; Microsoft has
+        none) and deletes the stored tokens. Idempotent (204 when nothing was connected). Works even after the provider was
+        switched off. Requires sign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/CloudProvider'
+      responses:
+        '204':
+          description: Disconnected.
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/cloud-storage/{provider}/items:
+    get:
+      operationId: listSenderCloudStorageItems
+      summary: Browse or search the connected storage (folders and PDF files).
+      description: >
+        SIGN-FREE-PARITY-1 S6 — a folder's folders and PDF files (top level without folder_id), or a file-name search with q.
+        Word files (.docx, .doc) are listed only with include_word=1 while the sender context reports word_conversion_enabled.
+        folders=1 lists folders only (choosing where to save). 409 details.reason cloud_not_connected /
+        cloud_reconnect_required (the grant was revoked or expired: the tokens were deleted); 502 cloud_provider_unavailable.
+        Requires sign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/CloudProvider'
+        - name: folder_id
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 4096
+        - name: folders
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['1', 'true']
+        - name: include_word
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['1', 'true']
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudStorageItems'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/CloudProviderUnavailable'
+  /v1/sign/sender/envelopes/{id}/documents/cloud-import:
+    post:
+      operationId: importSenderCloudDocument
+      summary: Add a document to a DRAFT envelope from connected cloud storage.
+      description: >
+        SIGN-FREE-PARITY-1 S6 — the file is fetched server-side and goes through the SAME upload as POST
+        …/envelopes/{id}/documents (author check, If-Match, Idempotency-Key, Word conversion, the safe-PDF pipeline, the page
+        measure, the storage allowance); the response and its ETag are the upload's. A file over 25 MB (Word 20 MB) is refused
+        413 details.reason cloud_file_too_large before it is downloaded; a folder 400 cloud_not_a_file; a missing file 404
+        cloud_file_not_found. Requires sign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, file_id]
+              properties:
+                provider:
+                  $ref: '#/components/schemas/CloudStorageProvider'
+                file_id:
+                  type: string
+                  maxLength: 512
+      responses:
+        '201':
+          description: The attached document with its page geometry and the envelope's new revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderUploadedDocument'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '413':
+          $ref: '#/components/responses/WordTooLarge'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '502':
+          $ref: '#/components/responses/CloudProviderUnavailable'
+  /v1/sign/sender/envelopes/{id}/cloud-export:
+    post:
+      operationId: exportSenderExecutedToCloud
+      summary: Save the signed copy of a COMPLETED envelope to connected cloud storage.
+      description: >
+        SIGN-FREE-PARITY-1 S6 — the same documents and rule as GET …/envelopes/{id}/executed (COMPLETED and not purged; 409 /
+        410 otherwise), saved as "{title} (signed).pdf" to folder_id or, without one, to the "Aramo Sign" folder (created when
+        missing). An existing file is never replaced (the provider numbers the copy). Google Drive saves only to the "Aramo
+        Sign" folder (drive.file): folder_id is refused 409 details.reason cloud_folder_not_writable. include_certificate adds
+        the execution certificate. Requires sign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:
+                  $ref: '#/components/schemas/CloudStorageProvider'
+                folder_id:
+                  type: string
+                  maxLength: 512
+                include_certificate:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudExportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/EnvelopePurged'
+        '502':
+          $ref: '#/components/responses/CloudProviderUnavailable'
   /v1/sign/sender/envelopes/{id}/evidence:
     get:
       operationId: getSenderEnvelopeEvidence
@@ -8716,6 +9030,13 @@ components:
       bearerFormat: opaque (sgt_…)
       description: A short-lived Sign API access token from /v1/sign/oauth/token (never a session token).
   parameters:
+    # SIGN-FREE-PARITY-1 S6 — a cloud storage provider.
+    CloudProvider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/CloudStorageProvider'
     RegulatedEnvelopeId:
       name: id
       in: path
@@ -8830,6 +9151,13 @@ components:
       schema:
         type: string
   responses:
+    # SIGN-FREE-PARITY-1 S6 — the storage provider failed or did not answer.
+    CloudProviderUnavailable:
+      description: 502 — details.reason cloud_provider_unavailable. Try again.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     EnvelopePurged:
       description: The envelope's documents were purged (ENVELOPE_PURGED).
       content:
@@ -10080,6 +10408,99 @@ components:
             Aramo-Sign-Mobile-Amendment-M-A13 R-4 — the sender document upload accepts Word files
             (.docx, .doc), converted to PDF on the server. False unless SIGN_WORD_CONVERSION_ENABLED=1
             and a converter is configured; the apps offer Word files only when true.
+        cloud_storage:
+          type: array
+          description: >-
+            SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export
+            (every plan): launch key sign.cloud_<provider> AVAILABLE, the provider's OAuth app
+            configured and SIGN_CLOUD_TOKEN_KEY set. Empty while dark; the apps then show no cloud
+            storage action. Absent on an older backend (read as empty).
+          items:
+            $ref: '#/components/schemas/CloudStorageProvider'
+    # SIGN-FREE-PARITY-1 S6 (FP-R7) — cloud storage import and export.
+    CloudStorageProvider:
+      type: string
+      enum: [google_drive, onedrive, dropbox, box]
+    CloudStorageConnections:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          description: The offered providers only (empty while every provider is dark), in display order.
+          items:
+            type: object
+            required: [provider, label, connected, account_label, connected_at, folder_choice]
+            properties:
+              provider:
+                $ref: '#/components/schemas/CloudStorageProvider'
+              label:
+                type: string
+                description: The provider's name on screen (Google Drive, OneDrive, Dropbox, Box).
+              connected:
+                type: boolean
+              account_label:
+                type: [string, 'null']
+                description: The connected account's email (or name), as the provider reports it.
+              connected_at:
+                type: [string, 'null']
+                format: date-time
+              folder_choice:
+                type: boolean
+                description: Saving to a folder the user chooses works (false on Google Drive, which saves to "Aramo Sign").
+    CloudStorageItem:
+      type: object
+      required: [id, name, kind, mime_type, size, modified_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [folder, file]
+        mime_type:
+          type: [string, 'null']
+        size:
+          type: [integer, 'null']
+        modified_at:
+          type: [string, 'null']
+    CloudStorageItems:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CloudStorageItem'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque; pass back as cursor for the next page. Null on the last page.
+    CloudExportResult:
+      type: object
+      required: [provider, folder, saved]
+      properties:
+        provider:
+          $ref: '#/components/schemas/CloudStorageProvider'
+        folder:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        saved:
+          type: array
+          items:
+            type: object
+            required: [name, web_url]
+            properties:
+              name:
+                type: string
+                description: The saved file's name (the provider may number it, e.g. "Offer (signed) (2).pdf").
+              web_url:
+                type: [string, 'null']
     SenderTemplateGallery:
       type: object
       description: TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign).

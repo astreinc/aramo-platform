@@ -23,6 +23,7 @@ import {
   SIGN_WITNESS_SIGNING_FEATURE,
   SignFeatureGate,
 } from '../sign-feature.gate.js';
+import { offeredCloudProviders } from '../cloud-storage/cloud-storage.config.js';
 import { SignPaymentsGate } from '../payments/sign-payments.gate.js';
 import { WORD_CONVERSION_PORT, type WordConversionPort } from '../word-conversion/word-conversion.port.js';
 import { SignWhatsappPlanGate } from '../messaging/whatsapp-plan.gate.js';
@@ -141,6 +142,10 @@ export interface SenderContextView {
   // M-A13 R-4 — the sender upload accepts .docx / .doc (converted to PDF on the server). False
   // unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured.
   word_conversion_enabled: boolean;
+  // SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export
+  // (every plan): launch key AVAILABLE, the provider's OAuth app configured and the token key
+  // set. Empty while dark: the web and the app show no cloud storage button.
+  cloud_storage: Array<'google_drive' | 'onedrive' | 'dropbox' | 'box'>;
 }
 
 // A Personal account's workspace label, shown wherever the Sign apps name the
@@ -335,6 +340,7 @@ export class SenderContextService {
       personal_account_owner,
       ...templates,
       word_conversion_enabled: this.wordConversion?.enabled === true,
+      cloud_storage: offeredCloudProviders((k) => (this.features ?? new SignFeatureGate()).isAvailable(k)),
     };
   }
 }

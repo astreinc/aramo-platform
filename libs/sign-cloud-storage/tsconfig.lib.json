@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/sign-cloud-storage",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "tsBuildInfoFile": "../../dist/libs/sign-cloud-storage/.tsbuildinfo",
+    "types": ["node"],
+    "paths": {
+      "@aramo/sign-client": ["../../dist/libs/sign-client/src/index.d.ts"],
+      "@aramo/sign-fields": ["../../dist/libs/sign-fields/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
+}

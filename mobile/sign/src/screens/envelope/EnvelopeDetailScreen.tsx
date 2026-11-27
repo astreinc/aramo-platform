@@ -74,6 +74,7 @@ import { MoveToFolderSheet } from '../../features/folders/FolderSheets';
 import type { FolderTarget } from '../../features/folders/foldersApi';
 import { sentShareTarget } from '../../features/share/shareCompleted';
 import { useSaveCopy, useShare } from '../../features/share/useShare';
+import { SaveToCloudButton } from '../../features/cloud/CloudStorageViews';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
 import { recipientColor, useTheme } from '../../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -562,6 +563,9 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             onPress={() => saver.save(shareTarget)}
           />
         ) : null}
+        {/* SIGN-FREE-PARITY-1 S6 — the signed copy to connected cloud storage (only while a
+            provider is offered; the server applies the Download rule). */}
+        {shareTarget ? <SaveToCloudButton envelopeId={detail.id} online={online} /> : null}
         {shareTarget ? (
           <Button
             testID="action-share"

@@ -5,6 +5,7 @@
 // mobile wording was kept, with any screen it named made neutral ("your plan settings").
 import { pdfProblemText } from '@aramo/sign-fields';
 
+import { CLOUD_FEATURE_COPY, CLOUD_STORAGE_REFUSAL_COPY } from './cloud-storage.js';
 import { WORD_COPY } from './file-rules.js';
 import { FOLDER_COPY } from './folders.js';
 import { isDailyAllowance, limitReachedCopy } from './plan.js';
@@ -54,6 +55,8 @@ export const RECIPIENT_COPY = {
 export const REFUSAL_COPY: Readonly<Record<string, string>> = {
   ...WORD_COPY,
   ...RECIPIENT_COPY,
+  // SIGN-FREE-PARITY-1 S6 — cloud storage import and export.
+  ...CLOUD_STORAGE_REFUSAL_COPY,
   // FIELD-PARITY-1 P3 §6 — a field value the server refused (fill: VALIDATION_ERROR details.reason).
   ...SIGNER_FIELD_VALUE_COPY,
   // SIGN-FREE-PARITY-1 S7 — a folder name or the folder cap the server refused.
@@ -162,6 +165,7 @@ export const REFUSAL_COPY: Readonly<Record<string, string>> = {
 /** Copy keyed by details.feature_key for a feature refusal (ESIGN_FEATURE_NOT_AVAILABLE). */
 const FEATURE_COPY: Readonly<Record<string, string>> = {
   'sign.reports': 'Reports aren’t available on your Aramo Sign plan yet.',
+  ...CLOUD_FEATURE_COPY,
 };
 
 export interface RefusalInput {

@@ -112,6 +112,9 @@ export interface SenderContext {
   template_studio?: boolean;
   // TEMPLATE-PRODUCT-1 §8.5 — "Use as it is" (the person may approve templates).
   template_use_as_is?: boolean;
+  // SIGN-FREE-PARITY-1 S6 — the cloud storage providers offered (server-decided; read through
+  // @aramo/sign-client cloudProvidersOf). Absent on an older backend = none.
+  cloud_storage?: string[];
 }
 
 export interface Summary {

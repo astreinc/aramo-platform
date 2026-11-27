@@ -26,6 +26,7 @@ import {
   QES_SIGNING_PORT,
   ESTAMP_PORT,
   SignNotificationRepository,
+  SignCloudStorageRepository,
   SignPrivacyRepository,
   SignArtifactCustodyRepository,
   SignPurgeRepository,
@@ -115,6 +116,9 @@ import { DOCUMENT_TEMPLATE_STUDIO_PORT, DocumentTemplateStudioHttpAdapter } from
 import { EsignSenderTemplateStudioController } from './sender/esign-sender-template-studio.controller.js';
 import { SenderTemplateStudioService } from './sender/sender-template-studio.service.js';
 import { SignFeatureGate } from './sign-feature.gate.js';
+// SIGN-FREE-PARITY-1 S6 — cloud storage import and export (dark per provider).
+import { SignCloudStorageController } from './cloud-storage/cloud-storage.controller.js';
+import { CloudStorageService } from './cloud-storage/cloud-storage.service.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
 import { qesSigningAdapterFromEnv } from './regulated/csc-qes-signing.adapter.js';
 import { estampAdapterFromEnv } from './regulated/estamp-adapter.js';
@@ -335,7 +339,7 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController, SenderPhoneStepUpController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignSenderTemplateStudioController, EsignSenderReportsController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignFoldersController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeSigningStatsController, SignMeNotificationsController, SignAppleRevokeController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController, SignRetentionController, SignBrandingController, SignBrandingPublicController, SignCustomRolesController, SignSenderMessagingController, SignRecipientVerificationController, SignWhatsAppWebhookController, SignSmsInboundWebhookController, SignIdentityVerificationController, SignPaymentsSenderController, SignPaymentsPublicController, EsignSenderRegulatedController, EsignSignerQesController, SenderPhoneStepUpController, SignCloudStorageController],
   providers: [
     NativeAramoSignatureProvider,
     // SIGN-FREE-PARITY-1 S4 — the automatic reminder sweep (needs the provider's dispatch). Off by default.
@@ -345,6 +349,9 @@ import { StripeConnectPaymentProvider } from './payments/stripe-connect-payment.
     BillingCountryAdapter,
     SenderContextService,
     SenderEnvelopeService,
+    // SIGN-FREE-PARITY-1 S6 — connected cloud storage (tokens encrypted under SIGN_CLOUD_TOKEN_KEY).
+    SignCloudStorageRepository,
+    CloudStorageService,
     // M-A13 R-4 — Word to PDF conversion (dark unless SIGN_WORD_CONVERSION_ENABLED=1 + SIGN_WORD_CONVERTER_URL).
     { provide: WORD_CONVERSION_PORT, useFactory: () => wordConverterFromEnv(process.env) },
     EsignOwnerActivationService,

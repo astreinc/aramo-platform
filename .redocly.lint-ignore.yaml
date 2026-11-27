@@ -13,3 +13,5 @@ openapi/sign.yaml:
   operation-2xx-response:
     - '#/paths/~1v1~1sign~1me~1apple~1revoke~1start/get/responses'
     - '#/paths/~1v1~1sign~1me~1apple~1revoke~1callback/post/responses'
+    # SIGN-FREE-PARITY-1 S6 — the cloud storage OAuth callback is 302-only (browser redirect).
+    - '#/paths/~1v1~1sign~1sender~1cloud-storage~1{provider}~1callback/get/responses'

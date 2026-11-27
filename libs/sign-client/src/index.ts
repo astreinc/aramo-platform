@@ -419,3 +419,18 @@ export {
   type SignerCodeCopy,
   type SignerCodeMethod,
 } from './lib/signer-code.js';
+// SIGN-FREE-PARITY-1 S6 — cloud storage import and export (providers, names, copy).
+export {
+  CLOUD_PROVIDERS,
+  CLOUD_PROVIDER_LABELS,
+  CLOUD_PROVIDER_FEATURE_KEYS,
+  CLOUD_EXPORT_FOLDER,
+  CLOUD_STORAGE_COPY,
+  CLOUD_STORAGE_REFUSAL_COPY,
+  isCloudProvider,
+  cloudProvidersOf,
+  cloudConnectResultOf,
+  signedCopyName,
+  type CloudProviderId,
+  type CloudConnectResult,
+} from './lib/cloud-storage.js';

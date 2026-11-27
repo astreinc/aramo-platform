@@ -1019,6 +1019,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/sender/cloud-storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The offered cloud storage providers and the caller's connections.
+         * @description SIGN-FREE-PARITY-1 S6 — one row per offered provider (empty while every provider is dark), with whether the caller connected it and the account it is connected to. Connections are per user (never shared inside the organization). Requires sign:envelope:read.
+         */
+        get: operations["listSenderCloudStorage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start connecting a cloud storage account (returns the provider's sign-in URL).
+         * @description SIGN-FREE-PARITY-1 S6 — the client opens authorize_url (the web navigates to it; the Aramo Sign app opens it in its in-app browser). The provider returns to GET …/cloud-storage/{provider}/callback, which answers 302 to the Sign web page (return_path, default /{workspace}/settings/storage) or, for client app, to aramosign://cloud-storage, with cloud_storage=connected|cancelled|failed&provider={provider}. The pending connect lives 10 minutes and is used once. Requires sign:envelope:read. 400 details.reason invalid_client / invalid_return_path (a page outside the caller's workspace).
+         */
+        post: operations["connectSenderCloudStorage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The provider's OAuth redirect (browser only; answers 302).
+         * @description SIGN-FREE-PARITY-1 S6 — no session: the single-use state (stored as its sha256, bound to one tenant, user and provider, 10-minute lifetime) is the only authority. The code is exchanged server-side (PKCE S256 where the provider supports it) and the tokens are stored encrypted (AES-256-GCM). Always 302: to the return page with cloud_storage=connected|cancelled|failed&provider=…, or to /?cloud_storage=failed for an unknown or used state.
+         */
+        get: operations["senderCloudStorageCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a cloud storage account (revoke and delete the tokens).
+         * @description SIGN-FREE-PARITY-1 S6 — revokes the grant at the provider where it has a revoke endpoint (best effort; Microsoft has none) and deletes the stored tokens. Idempotent (204 when nothing was connected). Works even after the provider was switched off. Requires sign:envelope:read.
+         */
+        delete: operations["disconnectSenderCloudStorage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/cloud-storage/{provider}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse or search the connected storage (folders and PDF files).
+         * @description SIGN-FREE-PARITY-1 S6 — a folder's folders and PDF files (top level without folder_id), or a file-name search with q. Word files (.docx, .doc) are listed only with include_word=1 while the sender context reports word_conversion_enabled. folders=1 lists folders only (choosing where to save). 409 details.reason cloud_not_connected / cloud_reconnect_required (the grant was revoked or expired: the tokens were deleted); 502 cloud_provider_unavailable. Requires sign:envelope:read.
+         */
+        get: operations["listSenderCloudStorageItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/documents/cloud-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a document to a DRAFT envelope from connected cloud storage.
+         * @description SIGN-FREE-PARITY-1 S6 — the file is fetched server-side and goes through the SAME upload as POST …/envelopes/{id}/documents (author check, If-Match, Idempotency-Key, Word conversion, the safe-PDF pipeline, the page measure, the storage allowance); the response and its ETag are the upload's. A file over 25 MB (Word 20 MB) is refused 413 details.reason cloud_file_too_large before it is downloaded; a folder 400 cloud_not_a_file; a missing file 404 cloud_file_not_found. Requires sign:envelope:create.
+         */
+        post: operations["importSenderCloudDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/cloud-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save the signed copy of a COMPLETED envelope to connected cloud storage.
+         * @description SIGN-FREE-PARITY-1 S6 — the same documents and rule as GET …/envelopes/{id}/executed (COMPLETED and not purged; 409 / 410 otherwise), saved as "{title} (signed).pdf" to folder_id or, without one, to the "Aramo Sign" folder (created when missing). An existing file is never replaced (the provider numbers the copy). Google Drive saves only to the "Aramo Sign" folder (drive.file): folder_id is refused 409 details.reason cloud_folder_not_writable. include_certificate adds the execution certificate. Requires sign:envelope:read.
+         */
+        post: operations["exportSenderExecutedToCloud"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/sender/envelopes/{id}/evidence": {
         parameters: {
             query?: never;
@@ -4704,6 +4844,51 @@ export interface components {
             template_use_as_is?: boolean;
             /** @description Aramo-Sign-Mobile-Amendment-M-A13 R-4 — the sender document upload accepts Word files (.docx, .doc), converted to PDF on the server. False unless SIGN_WORD_CONVERSION_ENABLED=1 and a converter is configured; the apps offer Word files only when true. */
             word_conversion_enabled?: boolean;
+            /** @description SIGN-FREE-PARITY-1 S6 (FP-R7) — the cloud storage providers offered for import and export (every plan): launch key sign.cloud_<provider> AVAILABLE, the provider's OAuth app configured and SIGN_CLOUD_TOKEN_KEY set. Empty while dark; the apps then show no cloud storage action. Absent on an older backend (read as empty). */
+            cloud_storage?: components["schemas"]["CloudStorageProvider"][];
+        };
+        /** @enum {string} */
+        CloudStorageProvider: "google_drive" | "onedrive" | "dropbox" | "box";
+        CloudStorageConnections: {
+            /** @description The offered providers only (empty while every provider is dark), in display order. */
+            providers: {
+                provider: components["schemas"]["CloudStorageProvider"];
+                /** @description The provider's name on screen (Google Drive, OneDrive, Dropbox, Box). */
+                label: string;
+                connected: boolean;
+                /** @description The connected account's email (or name), as the provider reports it. */
+                account_label: string | null;
+                /** Format: date-time */
+                connected_at: string | null;
+                /** @description Saving to a folder the user chooses works (false on Google Drive, which saves to "Aramo Sign"). */
+                folder_choice: boolean;
+            }[];
+        };
+        CloudStorageItem: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "folder" | "file";
+            mime_type: string | null;
+            size: number | null;
+            modified_at: string | null;
+        };
+        CloudStorageItems: {
+            items: components["schemas"]["CloudStorageItem"][];
+            /** @description Opaque; pass back as cursor for the next page. Null on the last page. */
+            next_cursor: string | null;
+        };
+        CloudExportResult: {
+            provider: components["schemas"]["CloudStorageProvider"];
+            folder: {
+                id: string;
+                name: string;
+            };
+            saved: {
+                /** @description The saved file's name (the provider may number it, e.g. "Offer (signed) (2).pdf"). */
+                name: string;
+                web_url: string | null;
+            }[];
         };
         /** @description TEMPLATE-PRODUCT-1 §8.5 — the Aramo templates for Aramo Sign (live defaults tagged sign). */
         SenderTemplateGallery: {
@@ -6089,6 +6274,15 @@ export interface components {
         };
     };
     responses: {
+        /** @description 502 — details.reason cloud_provider_unavailable. Try again. */
+        CloudProviderUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
         /** @description The envelope's documents were purged (ENVELOPE_PURGED). */
         EnvelopePurged: {
             headers: {
@@ -6226,6 +6420,7 @@ export interface components {
         };
     };
     parameters: {
+        CloudProvider: components["schemas"]["CloudStorageProvider"];
         /** @description The envelope id (UUID). */
         RegulatedEnvelopeId: string;
         /** @description The envelope document id (UUID). */
@@ -8410,6 +8605,235 @@ export interface operations {
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStorageConnections"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    connectSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default web
+                     * @enum {string}
+                     */
+                    client?: "web" | "app";
+                    /** @description A page of the caller's workspace (/sign/… or /personal/…), no query. Web only. */
+                    return_path?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The provider's sign-in URL. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        authorize_url: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    senderCloudStorageCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to the Sign web app or the Aramo Sign app. */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disconnectSenderCloudStorage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSenderCloudStorageItems: {
+        parameters: {
+            query?: {
+                folder_id?: string;
+                q?: string;
+                cursor?: string;
+                folders?: "1" | "true";
+                include_word?: "1" | "true";
+            };
+            header?: never;
+            path: {
+                provider: components["parameters"]["CloudProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudStorageItems"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["CloudProviderUnavailable"];
+        };
+    };
+    importSenderCloudDocument: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision). */
+                "If-Match"?: components["parameters"]["IfMatch"];
+                /** @description 1 to 255 printable characters, scoped to (tenant, authenticated user, operation, key) for 24 hours. A replay with the same body returns the first response; a different body is 422 idempotency_key_reuse; 409 idempotency_request_in_progress while the first request runs. */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    provider: components["schemas"]["CloudStorageProvider"];
+                    file_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The attached document with its page geometry and the envelope's new revision. */
+            201: {
+                headers: {
+                    ETag: components["headers"]["EnvelopeETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderUploadedDocument"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            412: components["responses"]["RevisionMismatch"];
+            413: components["responses"]["WordTooLarge"];
+            428: components["responses"]["PreconditionRequired"];
+            502: components["responses"]["CloudProviderUnavailable"];
+        };
+    };
+    exportSenderExecutedToCloud: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    provider: components["schemas"]["CloudStorageProvider"];
+                    folder_id?: string;
+                    /** @default false */
+                    include_certificate?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudExportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["EnvelopePurged"];
+            502: components["responses"]["CloudProviderUnavailable"];
         };
     };
     getSenderEnvelopeEvidence: {

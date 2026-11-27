@@ -59,6 +59,7 @@ import {
 import { ReportIssueSheet } from '../../features/support/ReportIssueSheet';
 import { appleLinked } from '../../features/account/appleRevoke';
 import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
+import { CloudStorageSection } from '../../features/cloud/CloudStorageViews';
 import {
   SignInMethodsSection,
   useSignInMethods,
@@ -327,6 +328,9 @@ export function AccountScreen() {
         </Card>
 
         <SignInMethodsSection online={online} />
+
+        {/* SIGN-FREE-PARITY-1 S6 — connected cloud storage (only while a provider is offered). */}
+        <CloudStorageSection online={online} />
 
         <SectionTitle>Account</SectionTitle>
         <Card style={styles.card0}>

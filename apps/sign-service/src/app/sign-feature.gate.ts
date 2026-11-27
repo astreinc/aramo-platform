@@ -40,6 +40,9 @@ export const SIGN_QES_FEATURE = 'sign.qes';
 export const SIGN_INDIA_ESTAMP_FEATURE = 'sign.india_estamp';
 // Aramo-Sign-Feature-Parity-Program-Directive v1.0 (LOCKED) §1.13 — basic reports (plans B+).
 export const SIGN_REPORTS_FEATURE = 'sign.reports';
+// SIGN-FREE-PARITY-1 S6 — cloud storage, one launch key per provider (dark). The key names
+// live once in @aramo/sign-client (CLOUD_PROVIDER_FEATURE_KEYS); see cloud-storage/.
+export { CLOUD_PROVIDER_FEATURE_KEYS as SIGN_CLOUD_STORAGE_FEATURES } from '@aramo/sign-client';
 
 @Injectable()
 export class SignFeatureGate {

@@ -1016,6 +1016,8 @@ model SignConvenienceDataPurge {
   // Privacy Notice 1.1 E-1 (ADD-only; account-close rows read 0).
   saved_signatures_deleted Int @default(0)
   contacts_deleted         Int @default(0)
+  // SIGN-FREE-PARITY-1 S6 (ADD-only; earlier rows read 0) — connected storage accounts.
+  cloud_connections_deleted Int @default(0)
 
   @@index([tenant_id, user_id])
   @@schema("sign")
@@ -1585,5 +1587,47 @@ model SignUserFolderItem {
 
   @@id([folder_id, item_kind, item_ref])
   @@index([item_kind, item_ref], map: "SignUserFolderItem_item_idx")
+  @@schema("sign")
+}
+
+// SIGN-FREE-PARITY-1 S6 (FP-R7) — a connected cloud storage account (Google Drive, OneDrive,
+// Dropbox, Box) of one user in one tenant. Tokens are AES-256-GCM ciphertext under
+// SIGN_CLOUD_TOKEN_KEY (never plaintext). Convenience data: deleted on disconnect, account
+// close, privacy deletion and the E-1 retention purge.
+model SignCloudConnection {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  user_id                  String    @db.Uuid
+  provider                 String
+  account_label            String?
+  access_token_ciphertext  String
+  refresh_token_ciphertext String?
+  access_token_expires_at  DateTime? @db.Timestamptz
+  scopes                   String
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  updated_at               DateTime  @default(now()) @db.Timestamptz
+  last_used_at             DateTime? @db.Timestamptz
+
+  @@unique([tenant_id, user_id, provider], map: "SignCloudConnection_owner_provider_key")
+  @@schema("sign")
+}
+
+// SIGN-FREE-PARITY-1 S6 — one pending OAuth connect: sha256 of the state (never the raw
+// value), the encrypted PKCE verifier, where to return. Short lived, single use.
+model SignCloudOAuthState {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  user_id                  String    @db.Uuid
+  provider                 String
+  state_sha256             String    @unique(map: "SignCloudOAuthState_state_sha256_key")
+  code_verifier_ciphertext String
+  client                   String
+  return_path              String?
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  expires_at               DateTime  @db.Timestamptz
+  consumed_at              DateTime? @db.Timestamptz
+
+  @@index([tenant_id, user_id], map: "SignCloudOAuthState_owner_idx")
+  @@index([expires_at], map: "SignCloudOAuthState_expires_at_idx")
   @@schema("sign")
 }
