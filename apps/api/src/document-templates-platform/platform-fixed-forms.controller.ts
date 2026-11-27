@@ -92,7 +92,9 @@ export class PlatformFixedFormsController {
         ...(importing ? { import: importOpts } : {}),
       });
       const view = await this.forms.platformView(versionId, requestId);
-      return importing ? { ...view, field_import: out.field_import } : view;
+      // PDF-ATTACH-1 ATT-6 — present only when attached files were removed.
+      const removed = out.attachments_removed > 0 ? { attachments_removed: out.attachments_removed } : {};
+      return importing ? { ...view, ...removed, field_import: out.field_import } : { ...view, ...removed };
     });
   }
 

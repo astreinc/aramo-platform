@@ -333,7 +333,7 @@ export class FixedFormService {
    * assigns it in the Studio); a tag's role is matched case-insensitively to a role key or
    * label, and left unassigned (warning) when none matches.
    */
-  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string; import?: FixedFormImportOptions }): Promise<{ field_import: FixedFormFieldImport | null }> {
+  async uploadPdf(input: { version_id: string; bytes: Uint8Array; actor: string; requestId: string; import?: FixedFormImportOptions }): Promise<{ field_import: FixedFormFieldImport | null; attachments_removed: number }> {
     const { version, template } = await this.platformVersion(input.version_id, input.requestId);
     if (version.status !== 'DRAFT') {
       throw new AramoError('TEMPLATE_IMMUTABLE', `TemplateVersion ${version.id} is not a DRAFT`, 409, { requestId: input.requestId });
@@ -357,7 +357,7 @@ export class FixedFormService {
     const pdf: FixedFormPdfRef = { asset_id: asset.id, sha256: asset.sha256, byte_size: asset.byte_size, page_count: asset.page_count, pages: accepted.pages };
     if (!importing) {
       await this.forms.writePlatformDraft({ version_id: version.id, field_schema: { ...content, pdf } });
-      return { field_import: null };
+      return { field_import: null, attachments_removed: prepared.attachments_removed };
     }
     const warnings: FieldImportWarning[] = [...prepared.warnings];
     const room = Math.max(0, FIXED_FORM_MAX_FIELDS - existing.length);
@@ -400,6 +400,7 @@ export class FixedFormService {
         warnings,
         stripped: prepared.stripped,
       },
+      attachments_removed: prepared.attachments_removed,
     };
   }
 

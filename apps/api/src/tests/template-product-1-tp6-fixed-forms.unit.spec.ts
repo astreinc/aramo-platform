@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { FIXED_FORM_SCHEMA_V1, type PublishedFixedForm, type TemplateAuditPort } from '@aramo/documents';
-import { stampTextInBox } from '@aramo/documents-rendering';
-import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
+import { findPdfAttachment, stampTextInBox } from '@aramo/documents-rendering';
+import { PDFDocument, PDFName, PDFString, StandardFonts } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlatformFixedFormsController } from '../document-templates-platform/platform-fixed-forms.controller.js';
@@ -101,6 +101,46 @@ describe('TEMPLATE-PRODUCT-1 TP-6 §7.1 — the official PDF gate', () => {
     expect(err).toBeInstanceOf(AramoError);
     const details = (err as AramoError).context?.details as { reason?: string; pdf_problem?: string };
     expect(details).toEqual({ reason: 'pdf_unsafe', pdf_problem: 'scripts' });
+  });
+
+  // PDF-ATTACH-1 T-4 — attached files are removed, not refused; the hash is of the stored bytes.
+  it('removes an attached file (even inside a compressed object stream) and hashes the bytes that are stored', async () => {
+    const bytes = await pdfBytes(
+      1,
+      (d) => {
+        const stream = d.context.register(d.context.flateStream('{"c2pa":"manifest"}', { Type: 'EmbeddedFile' }));
+        const spec = d.context.register(d.context.obj({ Type: 'Filespec', F: PDFString.of('Content Credentials'), EF: { F: stream } }));
+        d.catalog.set(PDFName.of('Names'), d.context.obj({ EmbeddedFiles: { Names: [PDFString.of('Content Credentials'), spec] } }));
+        d.catalog.set(PDFName.of('AF'), d.context.obj([spec]));
+      },
+      true,
+    );
+    const out = await acceptFixedFormPdf(bytes, 'r');
+    expect(out.attachments_removed).toBe(1);
+    expect(Buffer.from(out.bytes).equals(Buffer.from(bytes))).toBe(false);
+    expect(findPdfAttachment(await PDFDocument.load(out.bytes))).toBeNull();
+    expect(out.sha256).toBe(createHash('sha256').update(out.bytes).digest('hex'));
+    expect(out.byte_size).toBe(out.bytes.byteLength);
+  });
+
+  it('a clean PDF is accepted as uploaded (same bytes, nothing removed)', async () => {
+    const bytes = await pdfBytes(1);
+    const out = await acceptFixedFormPdf(bytes, 'r');
+    expect(out.bytes).toBe(bytes);
+    expect(out.attachments_removed).toBe(0);
+  });
+
+  it('a digitally signed PDF with an attached file is refused as attachments', async () => {
+    const bytes = await pdfBytes(1, (d) => {
+      const stream = d.context.register(d.context.flateStream('x', { Type: 'EmbeddedFile' }));
+      d.catalog.set(PDFName.of('Names'), d.context.obj({ EmbeddedFiles: { Names: [PDFString.of('x'), d.context.obj({ Type: 'Filespec', EF: { F: stream } })] } }));
+      d.catalog.set(PDFName.of('Perms'), d.context.obj({ DocMDP: d.context.obj({ Type: 'Sig', ByteRange: [0, 1, 2, 3] }) }));
+    });
+    const err = await acceptFixedFormPdf(bytes, 'r').then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect((err as AramoError).context?.details).toEqual({ reason: 'pdf_unsafe', pdf_problem: 'attachments' });
   });
 
   it('stamping prints the prefilled values; no stamp leaves the bytes unchanged', async () => {
@@ -290,6 +330,14 @@ describe('TEMPLATE-PRODUCT-1 TP-6 — platform routes', () => {
     await expect(c.view(VERSION, tenantAuth, 'r')).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
     await expect(c.uploadPdf(VERSION, { content_base64: '***' }, platformAuth, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(forms.uploadPdf).not.toHaveBeenCalled();
+  });
+  // PDF-ATTACH-1 ATT-6 — the upload answer carries the count only when something was removed.
+  it('the upload answer adds attachments_removed only when attached files were removed', async () => {
+    const forms = { uploadPdf: vi.fn(async () => ({ field_import: null, attachments_removed: 2 })), platformView: vi.fn(async () => ({ version_id: VERSION })) };
+    const c = new PlatformFixedFormsController(forms as never);
+    expect(await c.uploadPdf(VERSION, { content_base64: 'JVBERg==' }, platformAuth, 'r')).toEqual({ version_id: VERSION, attachments_removed: 2 });
+    forms.uploadPdf.mockResolvedValueOnce({ field_import: null, attachments_removed: 0 });
+    expect(await c.uploadPdf(VERSION, { content_base64: 'JVBERg==' }, platformAuth, 'r')).toEqual({ version_id: VERSION });
   });
 });
 

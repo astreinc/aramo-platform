@@ -29,21 +29,18 @@ import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, StandardFonts, type
 // Refusals are 422 VALIDATION_ERROR with a stable details.reason (pdf_too_large,
 // pdf_unsafe, pdf_invalid).
 
-const ACTIVE_KEYS = new Set([
-  'JS',
-  'JavaScript',
-  'Launch',
-  'OpenAction',
-  'AA',
-  'EmbeddedFile',
-  'EmbeddedFiles',
-  'RichMedia',
-  'XFA',
-]);
+// PDF-ATTACH-1 ATT-5 — attached files (EmbeddedFile / EmbeddedFiles and the rest of ATT-1) are
+// no longer keys here: they are removed before the shared gate, which refuses any that remain
+// as 'attachments' (@aramo/documents-rendering findPdfAttachment, one rule for every gate).
+const ACTIVE_KEYS = new Set(['JS', 'JavaScript', 'Launch', 'OpenAction', 'AA', 'RichMedia', 'XFA']);
 const ACTIVE_ACTIONS = new Set(['JavaScript', 'Launch', 'SubmitForm', 'ImportData', 'GoToR', 'GoToE', 'Rendition', 'Sound', 'Movie', 'RichMediaExecute']);
 const MAX_DEPTH = 24;
 
 export interface AcceptedFixedFormPdf {
+  /** The accepted bytes: the upload itself, or the upload with its attached files removed (PDF-ATTACH-1). */
+  readonly bytes: Uint8Array;
+  /** PDF-ATTACH-1 ATT-6 — how many attached files were removed (0 when none). */
+  readonly attachments_removed: number;
   readonly sha256: string;
   readonly byte_size: number;
   readonly page_count: number;
@@ -83,14 +80,18 @@ function activeIn(obj: PDFObject | undefined, depth: number, seen: Set<PDFObject
 }
 
 /** §7.1 — accept an official PDF or refuse it (422 VALIDATION_ERROR, details.reason). */
-export async function acceptFixedFormPdf(bytes: Uint8Array, requestId: string): Promise<AcceptedFixedFormPdf> {
-  if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId, 'not_pdf');
-  if (bytes.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId, 'too_large');
+export async function acceptFixedFormPdf(upload: Uint8Array, requestId: string): Promise<AcceptedFixedFormPdf> {
+  if (upload.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId, 'not_pdf');
+  if (upload.byteLength > FIXED_FORM_MAX_BYTES) throw refuse('pdf_too_large', 'The PDF is larger than 10 MB.', requestId, 'too_large');
+  // PDF-ATTACH-1 ATT-2 — attached files are removed first; everything below (deep scan, pages,
+  // hash) is over the bytes that are stored.
+  let bytes: Uint8Array;
+  let attachments_removed: number;
   try {
-    await new SafePdfPipeline().accept(bytes);
+    ({ bytes, attachments_removed } = await new SafePdfPipeline().acceptRemovingAttachments(upload));
   } catch (e) {
     if (e instanceof UnsafePdfError) {
-      const reason = e.problem === 'scripts' || e.problem === 'password' ? 'pdf_unsafe' : e.problem === 'too_large' ? 'pdf_too_large' : 'pdf_invalid';
+      const reason = e.problem === 'scripts' || e.problem === 'attachments' || e.problem === 'password' ? 'pdf_unsafe' : e.problem === 'too_large' ? 'pdf_too_large' : 'pdf_invalid';
       throw refuse(reason, `This PDF can't be used: ${e.reason}`, requestId, e.problem);
     }
     throw e;
@@ -111,6 +112,8 @@ export async function acceptFixedFormPdf(bytes: Uint8Array, requestId: string): 
   const pages = doc.getPages().map((p) => ({ width: p.getWidth(), height: p.getHeight() }));
   if (pages.length === 0) throw refuse('pdf_invalid', 'The PDF has no pages.', requestId, 'damaged');
   return {
+    bytes,
+    attachments_removed,
     sha256: createHash('sha256').update(bytes).digest('hex'),
     byte_size: bytes.byteLength,
     page_count: pages.length,
@@ -132,6 +135,8 @@ export interface PreparedFixedFormPdf {
   readonly warnings: FieldImportWarning[];
   /** The active-content keys the import removed. */
   readonly stripped: string[];
+  /** PDF-ATTACH-1 ATT-6 — how many attached files were removed (0 when none). */
+  readonly attachments_removed: number;
 }
 
 /**
@@ -150,7 +155,8 @@ export interface PreparedFixedFormPdf {
  */
 export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImportOptions, groupKeysTaken: Set<string>, requestId: string): Promise<PreparedFixedFormPdf> {
   if (!opts.import_fields && !opts.apply_text_tags) {
-    return { bytes, accepted: await acceptFixedFormPdf(bytes, requestId), fields: [], warnings: [], stripped: [] };
+    const accepted = await acceptFixedFormPdf(bytes, requestId);
+    return { bytes: accepted.bytes, accepted, fields: [], warnings: [], stripped: [], attachments_removed: accepted.attachments_removed };
   }
   // The size limit first: nothing larger than a fixed form is parsed.
   if (bytes.byteLength === 0) throw refuse('pdf_invalid', 'The file is empty.', requestId, 'not_pdf');
@@ -173,6 +179,9 @@ export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImpo
     }
   }
   let accepted = await acceptFixedFormPdf(work, requestId);
+  // PDF-ATTACH-1 — continue from the accepted bytes (attached files removed).
+  work = accepted.bytes;
+  const attachments_removed = accepted.attachments_removed;
   if (opts.apply_text_tags) {
     let pages: Awaited<ReturnType<typeof extractTextLayer>> | null = null;
     try {
@@ -187,12 +196,12 @@ export async function prepareFixedFormPdf(bytes: Uint8Array, opts: FixedFormImpo
       if (plan.covers.length > 0) {
         const removed = await removeAndCoverTextTags(work, plan.covers);
         warnings.push(...tagTextNotRemovedWarnings(plan.covers, removed.not_removed));
-        work = removed.bytes;
-        accepted = await acceptFixedFormPdf(work, requestId);
+        accepted = await acceptFixedFormPdf(removed.bytes, requestId);
+        work = accepted.bytes;
       }
     }
   }
-  return { bytes: work, accepted, fields, warnings, stripped };
+  return { bytes: work, accepted, fields, warnings, stripped, attachments_removed };
 }
 
 export interface FixedFormStamp {
