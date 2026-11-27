@@ -2960,6 +2960,7 @@
       "isWitness",
       "isWitnessable",
       "limitReachedCopy",
+      "listSignRoute",
       "localTimeZone",
       "looksLikePdf",
       "mayActNow",
@@ -12507,6 +12508,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/WebWordUpload.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/sign-web/src/workspace/pages/field-config.spec.ts",
         "project": "aramo-sign-web",
@@ -15547,6 +15554,11 @@
       },
       {
         "from": "mobile/sign/src/features/inbox/__tests__/w2Discovery.test.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/agreementsModel.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },

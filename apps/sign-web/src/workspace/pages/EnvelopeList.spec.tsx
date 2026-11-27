@@ -169,6 +169,21 @@ describe('Envelope list — Waiting for you', () => {
     vi.unstubAllGlobals();
   });
 
+  // LIST-SELF-SIGN-1 (UAT 2026-11-27) — a "Sign a document" envelope left before signing has no
+  // live emailed link: the inbox path is refused (session_revoked), so a self-sign session comes first.
+  it('a self-sign envelope resumes with a self-sign session even when an inbox item is named', async () => {
+    list.mockResolvedValue({ items: [open('me', { awaiting_you: true, can_self_sign_now: true, my_inbox_item_id: 'opaque-handle-1', actions: acts('sign') })], counts: { SENT: 1 } });
+    selfSign.mockResolvedValue({ session_origin: 'SELF', signer_id: 'r-me', token: 'tok-self', expires_at: '2026-11-03T01:00:00Z' });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    show();
+    fireEvent.click(await screen.findByTestId('sign-me'));
+    await waitFor(() => expect(selfSign).toHaveBeenCalledWith('me'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/s/tok-self'));
+    expect(inboxSign).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('a changed inbox item says so and opens the inbox', async () => {
     list.mockResolvedValue({ items: [open('me', { awaiting_you: true, my_inbox_item_id: 'stale', actions: acts('sign') })], counts: { SENT: 1 } });
     inboxSign.mockRejectedValue(new ApiError(404, 'Not in your inbox', 'NOT_FOUND', { reason: 'inbox_item_not_found' }));

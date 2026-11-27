@@ -167,6 +167,8 @@ export interface EnvelopeRow {
   // W2 — the signed-in sender's own inbox item for that step (a binding id or a discovered
   // item handle) when awaiting_you; null when there is none.
   my_inbox_item_id?: string | null;
+  // M-A12 W1-A — the caller may "Sign now" (a self-sign session); LIST-SELF-SIGN-1 uses it first.
+  can_self_sign_now?: boolean;
   // Client Rule Consolidation C1 — what the caller may do (the server decides; read it with
   // senderActionsOf, which treats an absent object as nothing allowed).
   actions?: SenderActions;

@@ -478,6 +478,21 @@ server {
     client_max_body_size 2m;
     proxy_pass http://sign-service:3003;
   }
+  # Workspace — the user's own folders for envelopes (SIGN-FREE-PARITY-1 S7): list, make,
+  # rename, delete, move an envelope or an inbox item. Authenticated; small JSON bodies.
+  # (Missing from #1163, so every folder call got 405 from the SPA fallback.)
+  location /v1/sign/folders {
+    limit_req zone=sign_workspace burst=40 nodelay;
+    client_max_body_size 16k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Workspace — the Personal sender's phone step-up (SIGN-FREE-PARITY-1 S2): status, send
+  # a code, verify it. Authenticated; dark unless SIGN_SENDER_PHONE_STEP_UP=1.
+  location /v1/sign/personal/step-up/ {
+    limit_req zone=sign_workspace burst=10 nodelay;
+    client_max_body_size 8k;
+    proxy_pass http://sign-service:3003;
+  }
   # Public — "Report this email" (Personal Free v1.1 §6.4). Session-less: the
   # recipient's own signing token is the only authority.
   location /v1/sign/report {
