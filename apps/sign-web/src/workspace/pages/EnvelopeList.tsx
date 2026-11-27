@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
-import { ENVELOPE_DELETE_COPY, SIGNABLE_ENVELOPE_STATUSES, senderActionsOf } from '@aramo/sign-client';
+import { ENVELOPE_DELETE_COPY, SIGNABLE_ENVELOPE_STATUSES, listSignRoute, senderActionsOf } from '@aramo/sign-client';
 
 import { errorMessage, inboxApi, isInboxItemNotFound, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeRow, type EnvelopeStatus } from '../api';
 import { Btn, Check, ErrorBox, Icon, LinkBtn, Loading, PurgeTag, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
@@ -114,12 +114,15 @@ export function EnvelopeList({ folder, title, headActions }: { folder?: string; 
     async (row: EnvelopeRow) => {
       setBusy(true);
       try {
-        if (row.my_inbox_item_id != null) {
+        // LIST-SELF-SIGN-1 — the shared rule (same as the app): a self-sign session first when the
+        // server reports can_self_sign_now (an envelope from "Sign a document" has no live emailed
+        // link, so the inbox path is refused there), else the user's inbox item.
+        if (listSignRoute(row) === 'inbox' && row.my_inbox_item_id != null) {
           window.location.assign((await inboxApi.sign(row.my_inbox_item_id)).signing_url);
           return;
         }
-        // No inbox item: the server's `actions.sign` came from "Sign now" (can_self_sign_now) —
-        // a self-sign session; the server picks the recipient bound to the caller.
+        // A self-sign session; the server picks the recipient bound to the caller. Also the
+        // fallback when the server's `actions.sign` named neither (it re-checks everything).
         const s = await senderApi.selfSignSession(row.id);
         window.location.assign(`/s/${encodeURIComponent(s.token)}`);
         return;
