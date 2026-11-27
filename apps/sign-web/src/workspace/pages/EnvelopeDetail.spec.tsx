@@ -244,7 +244,8 @@ describe('EnvelopeDetail — retention and purge', () => {
     manageAll = true;
     const queued = env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } });
     detail.mockResolvedValue(queued);
-    dequeue.mockResolvedValue(env({ ...done, purge: { state: 'DEQUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
+    // The server's SignEnvelopePurgeResult: { purge } only, never the envelope (UAT DEL-10).
+    dequeue.mockResolvedValue({ purge: { state: 'DEQUEUED', level: 'DOCUMENTS', due_at: '2026-11-14T00:00:00Z', executed_at: null } });
     show();
     expect(await screen.findByTestId('purge-banner')).toHaveTextContent('Purge scheduled');
     // C3 — the server's purge action stays true while a purge is queued (it may be raised to a higher level).
@@ -252,6 +253,8 @@ describe('EnvelopeDetail — retention and purge', () => {
     fireEvent.click(screen.getByTestId('cancel-purge'));
     await waitFor(() => expect(dequeue).toHaveBeenCalledWith('env-00000001'));
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Purge cancelled'));
+    // UAT DEL-10 — the page stays rendered (it went blank until a reload).
+    expect(screen.getByTestId('purge-envelope')).toBeInTheDocument();
   });
 
   it('a sender who is not an administrator sees the schedule but cannot cancel or purge', async () => {
@@ -282,15 +285,20 @@ describe('EnvelopeDetail — retention and purge', () => {
   it('an administrator queues a purge only after choosing a level and typing PURGE', async () => {
     manageAll = true;
     detail.mockResolvedValue(env(done));
-    queuePurge.mockResolvedValue(env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS_AND_METADATA', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
+    queuePurge.mockResolvedValue({ purge: { state: 'QUEUED', level: 'DOCUMENTS_AND_METADATA', due_at: '2026-11-14T00:00:00Z', executed_at: null } });
     show();
     fireEvent.click(await screen.findByTestId('purge-envelope'));
     const go = await screen.findByTestId('confirm-purge');
     fireEvent.change(screen.getByLabelText('What is purged'), { target: { value: 'DOCUMENTS_AND_METADATA' } });
     expect(go).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Type PURGE to confirm'), { target: { value: 'PURGE' } });
+    // The reload after queueing reads the envelope with its queued purge, as the server returns it.
+    detail.mockResolvedValue(env({ ...done, purge: { state: 'QUEUED', level: 'DOCUMENTS_AND_METADATA', due_at: '2026-11-14T00:00:00Z', executed_at: null } }));
     fireEvent.click(go);
     await waitFor(() => expect(queuePurge).toHaveBeenCalledWith('env-00000001', 'DOCUMENTS_AND_METADATA'));
+    // UAT DEL-10 — the page stays rendered and shows the schedule at once (no blank page).
+    expect(await screen.findByTestId('purge-banner')).toHaveTextContent('Purge scheduled');
+    expect(screen.getByTestId('purge-envelope')).toBeInTheDocument();
   });
 });
 

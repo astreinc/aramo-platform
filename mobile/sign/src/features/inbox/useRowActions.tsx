@@ -7,6 +7,7 @@
 //   Edit   -> Send flow with the envelope (after the server says it is `editable`), or
 //             the on-device draft
 //   Delete -> confirm, then delete with the current ETag (or forget an on-device draft)
+//   Delete (trash, APP-DELETED-1) -> confirm, then move a finished sent envelope to Deleted
 //   Share  -> the completed PDF through the OS share sheet (features/share)
 // Usable by any list that renders AgreementRowItem inside SwipeActions.
 import { useNavigation } from '@react-navigation/native';
@@ -26,7 +27,8 @@ import { inboxItemToSign, selfSignNow, type AgreementRow } from './agreementsMod
 import { deleteDraftById } from './envelopeActions';
 import { checkEditable, remindFromList, voidFromList } from './listActions';
 import { OFFLINE_ACTION_REASON, putDetail, signKeys, useOnline, useSenderContext } from './queries';
-import { confirmDeleteDraft, type SwipeHandle } from './SwipeActions';
+import { moveSentToDeleted } from './sentDeleted';
+import { confirmDeleteDraft, confirmMoveToDeleted, type SwipeHandle } from './SwipeActions';
 import { swipeActionsFor, type SwipeAction, type SwipeActionKind } from './rowActionRules';
 import { ReasonSheet } from './ui';
 
@@ -93,6 +95,15 @@ export function useRowActions(): {
     } else return;
     toast.show('Draft deleted');
     refreshLists();
+  }
+
+  // APP-DELETED-1 — a refusal shows the server's reason and reloads, so the row shows its current actions.
+  async function trash(row: Extract<AgreementRow, { kind: 'sent' }>): Promise<void> {
+    const r = await moveSentToDeleted(services.workspace, row.envelopeId);
+    toast.show(r.message);
+    refreshLists();
+    void qc.invalidateQueries({ queryKey: signKeys.deletedSent });
+    void qc.invalidateQueries({ queryKey: signKeys.detail(row.envelopeId) });
   }
 
   async function remind(row: Extract<AgreementRow, { kind: 'sent' }>): Promise<void> {
@@ -172,6 +183,9 @@ export function useRowActions(): {
         return;
       case 'delete':
         confirmDeleteDraft(() => void once(() => remove(row)));
+        return;
+      case 'trash':
+        if (row.kind === 'sent') confirmMoveToDeleted(() => void once(() => trash(row)));
         return;
       case 'remind':
         if (row.kind === 'sent') void once(() => remind(row));

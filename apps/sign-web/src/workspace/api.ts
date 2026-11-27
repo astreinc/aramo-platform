@@ -11,6 +11,7 @@ import {
   type FieldTypeOn,
   type InboxActions,
   type PhoneStepUpStatus,
+  type PurgeLevel,
   type SenderActions,
   type AutoRemindersView,
 } from '@aramo/sign-client';
@@ -129,15 +130,8 @@ export interface Summary {
 }
 
 // Retention and Purge directive (DocuSign parity) — what a purge removes, and an envelope's purge state.
-export type PurgeLevel = 'DOCUMENTS' | 'DOCUMENTS_AND_METADATA' | 'DOCUMENTS_AND_METADATA_AND_REDACT';
-export const PURGE_LEVELS: { key: PurgeLevel; label: string; help: string }[] = [
-  { key: 'DOCUMENTS', label: 'Documents', help: 'Signed documents and the certificate PDF are deleted. Envelope details and history stay.' },
-  { key: 'DOCUMENTS_AND_METADATA', label: 'Documents and details', help: 'Also clears the subject, message, document names and entered field values.' },
-  { key: 'DOCUMENTS_AND_METADATA_AND_REDACT', label: 'Documents, details and personal data', help: 'Also removes recipient names, email addresses and IP addresses from the envelope and its history.' },
-];
-export function purgeLevelLabel(level: PurgeLevel | null | undefined): string {
-  return PURGE_LEVELS.find((l) => l.key === level)?.label ?? 'Documents';
-}
+// APP-DELETED-1 A2 — the purge levels and labels live once in @aramo/sign-client (web and the app).
+export { PURGE_LEVELS, purgeLevelLabel, type PurgeLevel } from '@aramo/sign-client';
 export interface PurgeInfo {
   state: 'QUEUED' | 'DEQUEUED' | 'EXECUTED';
   level: PurgeLevel;
@@ -1010,8 +1004,10 @@ export const senderApi = {
   // A draft is removed outright with its documents (409 envelope_not_draft once sent).
   deleteDraft: (id: string) => apiClient.delete<undefined>(`${BASE}/envelopes/${enc(id)}`),
   restoreEnvelope: (id: string) => apiClient.post<{ restored: true }>(`${BASE}/envelopes/${enc(id)}/restore`, {}),
-  queuePurge: (id: string, level: PurgeLevel) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge`, { level }),
-  dequeuePurge: (id: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/purge/dequeue`, {}),
+  // UAT DEL-10 — both return SignEnvelopePurgeResult ({ purge }), not the envelope: callers merge
+  // it (replacing the envelope with it blanked the page until a reload).
+  queuePurge: (id: string, level: PurgeLevel) => apiClient.post<{ purge: PurgeInfo | null }>(`${BASE}/envelopes/${enc(id)}/purge`, { level }),
+  dequeuePurge: (id: string) => apiClient.post<{ purge: PurgeInfo | null }>(`${BASE}/envelopes/${enc(id)}/purge/dequeue`, {}),
   targetedPurge: (email: string, level: PurgeLevel) => apiClient.post<{ queued: number }>(`${BASE}/purge/targeted`, { email, level }),
   retentionPolicy: () => apiClient.get<RetentionPolicy>(`${BASE}/retention-policy`),
   setRetentionPolicy: (retention_days: number | null, purge_level: PurgeLevel) =>

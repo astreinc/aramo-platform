@@ -10,7 +10,7 @@
 import { useNavigation } from '@react-navigation/native';
 import { onlineManager } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -20,6 +20,9 @@ import { useServices, useSession } from '../../app/ServicesContext';
 import type { Provider } from '../../auth/authorize';
 import { AramoMark } from '../../components/BrandMarks';
 import { Button } from '../../components/Button';
+import { DeletionReceipt } from '../../features/account/DeletionReceipt';
+import { clearDeletionReceipt, useDeletionReceipt } from '../../features/account/deletionReceiptStore';
+import type { PrivacyRequest } from '../../features/account/privacy';
 import { ProviderButton } from '../../components/ProviderButton';
 import { WEB_LINKS } from '../../config/env';
 import { useTheme } from '../../theme';
@@ -248,15 +251,35 @@ export function SignInView({
   );
 }
 
+/**
+ * APP-DELETED-1 A1 — after a deletion that signed the user out, the receipt comes first: the
+ * request ID, status and what is kept. "Done" shows the normal sign-in screen.
+ */
+export function AccountDeletedView({ request, onDone }: { readonly request: PrivacyRequest; readonly onDone: () => void }) {
+  const t = useTheme();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: t.color.screen }} testID="account-deleted">
+      <ScrollView contentContainerStyle={{ padding: 24, gap: 12 }}>
+        <Text accessibilityRole="header" style={{ color: t.color.text, fontSize: 24, fontWeight: '700', fontFamily: t.font.family }}>
+          Your account was deleted
+        </Text>
+        <DeletionReceipt request={request} doneLabel="Done" onDone={onDone} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export function SignInScreen() {
   const { signIn, nativeAuth } = useServices();
   const { cause } = useSession();
   const navigation = useNavigation();
+  const receipt = useDeletionReceipt();
   const linkApi: LinkPanelApi = {
     start: (handle, email) =>
       nativeAuth.linkEmailStart(email ? { link_handle: handle, email } : { link_handle: handle }),
     verify: (handle, code) => nativeAuth.linkEmailVerify({ link_handle: handle, code }),
   };
+  if (receipt !== null) return <AccountDeletedView request={receipt} onDone={clearDeletionReceipt} />;
   return (
     <SignInView
       onSignIn={signIn}

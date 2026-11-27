@@ -2774,6 +2774,7 @@
       "EMAIL_PATTERN",
       "ENVELOPE_ALLOWANCE_KEY",
       "ENVELOPE_CHANGED",
+      "ENVELOPE_DELETE_COPY",
       "ENVELOPE_MESSAGE_MAX",
       "ENVELOPE_NOT_AVAILABLE",
       "ENVELOPE_SUBJECT_MAX",
@@ -2831,7 +2832,10 @@
       "PROFILE_OFFER_COPY",
       "PROFILE_TEXT_FIELD_TYPES",
       "PROFILE_TEXT_MAX",
+      "PURGE_CONFIRM_WORD",
+      "PURGE_COPY",
       "PURGE_ELIGIBLE_STATUSES",
+      "PURGE_LEVELS",
       "RECIPIENT_COPY",
       "RECIPIENT_KINDS",
       "REFUSAL_COPY",
@@ -2892,7 +2896,11 @@
       "dateBoundsOf",
       "dropdownChoicesOf",
       "duplicateWitness",
+      "envelopeDeleteRoute",
+      "envelopeDequeuePurgeRoute",
       "envelopeOpenForSigning",
+      "envelopePurgeRoute",
+      "envelopeRestoreRoute",
       "evaluateSignerFieldRules",
       "fieldConditionIssues",
       "fieldConditionOf",
@@ -2977,6 +2985,9 @@
       "profileOffers",
       "profilePrefill",
       "profileTextValueRefusal",
+      "purgeBannerLine",
+      "purgeConfirmed",
+      "purgeLevelLabel",
       "radioChoiceClearable",
       "recipientKindOf",
       "refusalMessage",
@@ -15480,6 +15491,16 @@
         "status": "unscoped"
       },
       {
+        "from": "mobile/sign/src/features/inbox/PurgeControls.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/SwipeActions.tsx",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
         "from": "mobile/sign/src/features/inbox/__tests__/envelopeActions.test.ts",
         "project": "sign-mobile",
         "status": "unscoped"
@@ -15511,6 +15532,11 @@
       },
       {
         "from": "mobile/sign/src/features/inbox/rowActionRules.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/features/inbox/sentDeleted.ts",
         "project": "sign-mobile",
         "status": "unscoped"
       },
@@ -15621,6 +15647,11 @@
       },
       {
         "from": "mobile/sign/src/features/templates/templatesModel.ts",
+        "project": "sign-mobile",
+        "status": "unscoped"
+      },
+      {
+        "from": "mobile/sign/src/screens/agreements/DeletedInboxScreen.tsx",
         "project": "sign-mobile",
         "status": "unscoped"
       },

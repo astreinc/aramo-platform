@@ -2,8 +2,9 @@
 // deletion", shown prominently for every account type. Replaces the Personal
 // "Close account" (closing alone is not deletion, §3.2). Typing DELETE confirms; the
 // sheet then shows the request ID, its status and what is kept and why. When the
-// session has ended (Personal, or a completed request) "Done" signs out, which also
-// wipes the temporary documents (M-A7 §4 R-7).
+// session has ended (Personal, or a completed request) the app signs out at once (which also
+// wipes the temporary documents, M-A7 §4 R-7) and the signed-out screen shows the receipt
+// (APP-DELETED-1 A1: the server ends every session, so the sheet could not stay).
 // Apple Go-Live R-8: for an Apple-linked account the app first asks Apple for a fresh
 // authorization code so sign-service can revoke Apple's tokens. Best effort: whatever
 // happens there, the deletion request is sent.
@@ -17,9 +18,10 @@ import { refusalMessage } from '../../api/refusalMessages';
 import { useServices } from '../../app/ServicesContext';
 import { Button } from '../../components/Button';
 import { Sheet } from '../../components/Sheet';
-import { ARAMO_SIGN_IDENTITY } from '../../config/identity';
 import { useTheme } from '../../theme';
 
+import { DeletionReceipt } from './DeletionReceipt';
+import { setDeletionReceipt } from './deletionReceiptStore';
 import {
   DELETE_ACCOUNT_URL,
   deleteConfirmed,
@@ -63,6 +65,14 @@ export function DeleteAccountSection({
       // While still signed in (the revoke route needs the session). Never blocks deletion.
       if (personal && appleLinked) await revokeApple().catch(() => false);
       const r = await requestDeletion(workspace);
+      // APP-DELETED-1 A1 — the server has already ended every session: keep the receipt, sign
+      // out here (no refetch with the ended session), and the signed-out screen shows it.
+      if (signOutAfter(r, personal)) {
+        setDeletionReceipt(r);
+        setOpen(false);
+        void signOut();
+        return;
+      }
       setResult(r);
       void qc.invalidateQueries({ queryKey: privacyKey });
     } catch (e) {
@@ -89,28 +99,7 @@ export function DeleteAccountSection({
       />
       <Sheet visible={open} onClose={done} title={shown ? 'Your deletion request' : copy.title}>
         {shown ? (
-          <View testID="delete-account-result" style={{ gap: 6 }}>
-            <Text style={text}>Request ID</Text>
-            <Text testID="delete-account-reference" selectable style={{ color: t.color.text, fontSize: 17, fontWeight: '600' }}>
-              {shown.reference}
-            </Text>
-            <Text testID="delete-account-status" style={text}>
-              Status: {shown.status_label}
-            </Text>
-            {shown.outcome_text ? <Text style={text}>{shown.outcome_text}</Text> : null}
-            {shown.organization_decides ? <Text style={text}>{shown.organization_decides}</Text> : null}
-            {shown.retained.length > 0 ? <Text style={text}>What we keep, and why:</Text> : null}
-            {shown.retained.map((r) => (
-              <Text key={r.key} style={text}>
-                • {r.label}. {r.why}
-              </Text>
-            ))}
-            <Text style={text}>
-              Keep the request ID. You can check it any time at {DELETE_ACCOUNT_URL.replace(/^https:\/\//, '')} or ask{' '}
-              {ARAMO_SIGN_IDENTITY.privacyEmail}.
-            </Text>
-            <Button testID="delete-account-done" title={result && signOutAfter(result, personal) ? 'Done — sign out' : 'Done'} onPress={done} />
-          </View>
+          <DeletionReceipt request={shown} doneLabel={result && signOutAfter(result, personal) ? 'Done — sign out' : 'Done'} onDone={done} />
         ) : (
           <View style={{ gap: 8 }}>
             {copy.points.map((p) => (

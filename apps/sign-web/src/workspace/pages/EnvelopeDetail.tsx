@@ -5,16 +5,20 @@ import {
   AUTO_REMINDER_COPY,
   SIGNABLE_ENVELOPE_STATUSES,
   VOID_REASON_COPY,
+  ENVELOPE_DELETE_COPY,
+  PURGE_COPY,
   VOID_REASON_MAX,
   autoReminderStatusLine,
   canSetAutoReminders,
   nextReminderAt,
+  purgeBannerLine,
+  purgeConfirmed,
   remindableNow,
   senderActionsOf,
   voidReasonProblem,
 } from '@aramo/sign-client';
 
-import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, purgeLevelLabel, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
+import { PURGE_LEVELS, errorMessage, fetchSourcePdf, isReminderStale, nextSendTime, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent, type PurgeLevel } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, Sel, StatusPill, TextIn, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 import { MoveToFolderDialog, type FolderTarget } from '../folder-picker';
@@ -28,7 +32,7 @@ import { CloudExportButton } from './CloudStorage';
 // email. A DRAFT the caller may edit routes back to the wizard.
 
 /** UAT DEL-09 — why an open envelope has no working Delete (same words in the list). */
-export const DELETE_WHEN_FINISHED = 'Finish or void this envelope before deleting it.';
+export const DELETE_WHEN_FINISHED = ENVELOPE_DELETE_COPY.delete_when_finished;
 
 // W1 — the self-sign refusals: the shared refusal copy (@aramo/sign-client) keys them by reason.
 export function selfSignRefusal(e: unknown): string {
@@ -223,19 +227,21 @@ export function EnvelopeDetail() {
       setDeleteOpen(false);
       refreshCounts();
       navigate(`${base}/envelopes`);
-    }, 'Moved to Deleted');
+    }, ENVELOPE_DELETE_COPY.deleted);
   const doPurge = () =>
     runAction(async () => {
-      setEnv(await senderApi.queuePurge(env.id, purgeLevel));
+      const { purge: queued } = await senderApi.queuePurge(env.id, purgeLevel);
+      setEnv({ ...env, purge: queued });
       setPurgeOpen(false);
       setPurgeTyped('');
       load();
-    }, 'Purge scheduled');
+    }, PURGE_COPY.queued);
   const cancelPurge = () =>
     runAction(async () => {
-      setEnv(await senderApi.dequeuePurge(env.id));
+      const { purge: dequeued } = await senderApi.dequeuePurge(env.id);
+      setEnv({ ...env, purge: dequeued });
       load();
-    }, 'Purge cancelled');
+    }, PURGE_COPY.cancelled);
   const preview = async (docId: string) => {
     try {
       const bytes = await fetchSourcePdf(env.id, docId);
@@ -321,16 +327,7 @@ export function EnvelopeDetail() {
       ) : null}
       {purge !== null && purge.state !== 'DEQUEUED' ? (
         <div className={purged ? 'sg-note' : 'sg-note sg-note--warn'} style={{ marginBottom: 14 }} data-testid="purge-banner" role="status">
-          {purged ? (
-            <span>
-              This envelope’s documents were purged on {fmtDate(purge.executed_at, true)} ({purgeLevelLabel(purge.level).toLowerCase()}). They can’t be downloaded or
-              recovered. Its history remains.
-            </span>
-          ) : (
-            <span>
-              Purge scheduled: {purgeLevelLabel(purge.level).toLowerCase()} will be deleted permanently on {fmtDate(purge.due_at, true)}.
-            </span>
-          )}
+          <span>{purgeBannerLine(purge, (iso) => fmtDate(iso, true))}</span>
           {actions.dequeue_purge ? (
             <LinkBtn disabled={busy} onClick={() => void cancelPurge()} data-testid="cancel-purge" style={{ marginLeft: 'auto' }}>
               Cancel purge
@@ -539,8 +536,8 @@ export function EnvelopeDetail() {
           setDeleteOpen(o);
           if (!o) setActionError('');
         }}
-        title="Delete this envelope?"
-        description="It moves to Deleted and is hidden for your organization only. Recipients keep their copies. You can restore it until it is purged."
+        title={ENVELOPE_DELETE_COPY.delete_title}
+        description={ENVELOPE_DELETE_COPY.delete_body}
         size="sm"
         footer={
           <>
@@ -562,20 +559,20 @@ export function EnvelopeDetail() {
             setPurgeTyped('');
           }
         }}
-        title="Purge this envelope?"
-        description="The envelope waits 14 days in the purge queue, then the chosen data is deleted permanently for everyone. You can cancel during those 14 days."
+        title={PURGE_COPY.title}
+        description={PURGE_COPY.body}
         size="sm"
         footer={
           <>
             <Btn onClick={() => setPurgeOpen(false)}>Cancel</Btn>
-            <Btn variant="danger" onClick={() => void doPurge()} disabled={busy || purgeTyped !== 'PURGE'} data-testid="confirm-purge">
+            <Btn variant="danger" onClick={() => void doPurge()} disabled={busy || !purgeConfirmed(purgeTyped)} data-testid="confirm-purge">
               Queue purge
             </Btn>
           </>
         }
       >
         <div className="sg-grid" style={{ gap: 12 }}>
-          <Field label="What is purged" htmlFor="purge-level" help={PURGE_LEVELS.find((l) => l.key === purgeLevel)?.help}>
+          <Field label={PURGE_COPY.level_label} htmlFor="purge-level" help={PURGE_LEVELS.find((l) => l.key === purgeLevel)?.help}>
             <Sel id="purge-level" value={purgeLevel} onChange={(e) => setPurgeLevel(e.target.value as PurgeLevel)}>
               {PURGE_LEVELS.map((l) => (
                 <option key={l.key} value={l.key}>
@@ -584,7 +581,7 @@ export function EnvelopeDetail() {
               ))}
             </Sel>
           </Field>
-          <Field label="Type PURGE to confirm" htmlFor="purge-confirm">
+          <Field label={PURGE_COPY.confirm_label} htmlFor="purge-confirm">
             <TextIn id="purge-confirm" value={purgeTyped} autoComplete="off" onChange={(e) => setPurgeTyped(e.target.value)} />
           </Field>
           {actionError !== '' ? <ErrorBox>{actionError}</ErrorBox> : null}

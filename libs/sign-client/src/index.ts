@@ -409,6 +409,26 @@ export {
   type FolderNameRefusal,
   type FolderCopyKey,
 } from './lib/folders.js';
+// APP-DELETED-1 — the sender's Deleted folder: delete / restore copy and routes (web and the app).
+export {
+  ENVELOPE_DELETE_COPY,
+  envelopeDeleteRoute,
+  envelopeRestoreRoute,
+  type EnvelopeDeleteCopyKey,
+} from './lib/envelope-delete.js';
+// APP-DELETED-1 A2 — the envelope purge: levels, confirm word, copy, banner line and routes.
+export {
+  PURGE_LEVELS,
+  PURGE_CONFIRM_WORD,
+  PURGE_COPY,
+  purgeLevelLabel,
+  purgeConfirmed,
+  purgeBannerLine,
+  envelopePurgeRoute,
+  envelopeDequeuePurgeRoute,
+  type PurgeLevel,
+  type PurgeStateView,
+} from './lib/purge.js';
 // SIGN-FREE-PARITY-1 S3 — the signer's one-time code (SMS or email): copy, routes, refusals.
 export {
   EMAIL_CODE_OPTION,

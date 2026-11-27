@@ -3,7 +3,8 @@
 //   Received                -> Sign (actions.sign) or Share (actions.download)
 //   Sent                    -> Sign (actions.sign: the server's my_inbox_item_id, else a SELF
 //                              session), Edit + Delete (actions.edit / delete_draft), Remind
-//                              (actions.remind), Void (actions.void), Share (actions.download)
+//                              (actions.remind), Void (actions.void), Share (actions.download),
+//                              Delete to the Deleted folder (actions.delete; APP-DELETED-1, kind 'trash')
 //   On-device draft         -> Edit, Delete (never on the server yet)
 //
 // Client Rule Consolidation C3 (audit rows 3, 5, 9, 10, 12) — visibility follows the server's
@@ -16,7 +17,7 @@ import { inboxActionsOf, senderActionsOf } from '@aramo/sign-client';
 import type { AgreementRow } from './agreementsModel';
 import type { SenderContext } from './types';
 
-export type SwipeActionKind = 'sign' | 'remind' | 'void' | 'edit' | 'delete' | 'share';
+export type SwipeActionKind = 'sign' | 'remind' | 'void' | 'edit' | 'delete' | 'trash' | 'share';
 
 export interface SwipeAction {
   readonly kind: SwipeActionKind;
@@ -30,6 +31,8 @@ export const SWIPE_ACTION: Record<SwipeActionKind, SwipeAction> = {
   void: { kind: 'void', label: 'Void', tone: 'destructive' },
   edit: { kind: 'edit', label: 'Edit', tone: 'neutral' },
   delete: { kind: 'delete', label: 'Delete', tone: 'destructive' },
+  // APP-DELETED-1 — a finished sent envelope to the Deleted folder (restorable), not a draft delete.
+  trash: { kind: 'trash', label: 'Delete', tone: 'destructive' },
   share: { kind: 'share', label: 'Share', tone: 'neutral' },
 };
 
@@ -56,6 +59,7 @@ export function swipeActionsFor(row: AgreementRow, ctx: SwipeContext): SwipeActi
   if (a.remind) out.push(SWIPE_ACTION.remind);
   if (a.void) out.push(SWIPE_ACTION.void);
   if (a.download) out.push(SWIPE_ACTION.share);
+  if (a.delete) out.push(SWIPE_ACTION.trash);
   return out;
 }
 

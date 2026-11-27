@@ -5,6 +5,7 @@
 // The same actions are VoiceOver / TalkBack custom actions on the row itself
 // (rowA11yActions), so no action is swipe-only. Destructive actions confirm first:
 // Delete here (Alert), Void through the reason sheet (useRowActions).
+import { ENVELOPE_DELETE_COPY } from '@aramo/sign-client';
 import { useRef, type ReactNode } from 'react';
 import {
   Alert,
@@ -25,6 +26,14 @@ export const DELETE_DRAFT_TITLE = 'Delete this draft?';
 export const DELETE_DRAFT_BODY =
   'Its documents, recipients and fields are removed. This can’t be undone.';
 
+/** APP-DELETED-1 — confirm moving a finished sent envelope to Deleted (the shared web wording). */
+export function confirmMoveToDeleted(onConfirm: () => void, onCancel?: () => void): void {
+  Alert.alert(ENVELOPE_DELETE_COPY.delete_title, ENVELOPE_DELETE_COPY.delete_body, [
+    { text: 'Cancel', style: 'cancel', onPress: onCancel },
+    { text: ENVELOPE_DELETE_COPY.delete_confirm, style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 export function confirmDeleteDraft(onConfirm: () => void, onCancel?: () => void): void {
   Alert.alert(DELETE_DRAFT_TITLE, DELETE_DRAFT_BODY, [
     { text: 'Cancel', style: 'cancel', onPress: onCancel },
@@ -38,6 +47,7 @@ const ICON: Record<SwipeActionKind, string> = {
   void: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM5.6 5.6l12.8 12.8',
   edit: 'M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM14 6l4 4',
   delete: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
   share: 'M12 3v13M7 8l5-5 5 5M5 14v6h14v-6',
 };
 
