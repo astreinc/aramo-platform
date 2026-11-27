@@ -9,7 +9,7 @@
 // HostedSigning screen), when FEATURES.hostedSigning and the server's
 // features.in_person_signing allow it.
 import { useFocusEffect } from '@react-navigation/native';
-import { AUTO_REMINDER_COPY, autoReminderStatusLine, canSetAutoReminders, senderActionsOf } from '@aramo/sign-client';
+import { AUTO_REMINDER_COPY, ENVELOPE_DELETE_COPY, PURGE_COPY, autoReminderStatusLine, canSetAutoReminders, senderActionsOf, type PurgeLevel } from '@aramo/sign-client';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -68,6 +68,9 @@ import {
   useRecheckOnline,
   useSenderContext,
 } from '../../features/inbox/queries';
+import { PurgeBanner, PurgeSheet } from '../../features/inbox/PurgeControls';
+import { cancelEnvelopePurge, moveSentToDeleted, purgeOf, queueEnvelopePurge, restoreSentEnvelope } from '../../features/inbox/sentDeleted';
+import { confirmMoveToDeleted } from '../../features/inbox/SwipeActions';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
 import { MoveToFolderSheet } from '../../features/folders/FolderSheets';
@@ -140,6 +143,10 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const services = useServices();
   const { workspace } = services;
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [trashBusy, setTrashBusy] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
   // SIGN-FREE-PARITY-1 S7 — "Move to folder" (the user's own folders).
   const [moving, setMoving] = useState<FolderTarget | null>(null);
   const online = useOnline();
@@ -352,6 +359,48 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
       toast.show(refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' }));
       await q.refetch();
     } else toast.show(r.message);
+  }
+
+  // APP-DELETED-1 (UAT DEL-09) — a finished envelope to the Deleted folder, or back from it.
+  // Shown only when the server's actions allow; a refusal shows the reason and refreshes.
+  async function doTrashOrRestore(kind: 'trash' | 'restore'): Promise<void> {
+    setTrashBusy(true);
+    const r = kind === 'trash' ? await moveSentToDeleted(workspace, envelopeId) : await restoreSentEnvelope(workspace, envelopeId);
+    setTrashBusy(false);
+    toast.show(r.message);
+    void qc.invalidateQueries({ queryKey: signKeys.senderList });
+    if (r.kind === 'done' && kind === 'trash') {
+      navigation.goBack();
+      return;
+    }
+    await q.refetch();
+  }
+
+  // APP-DELETED-1 A2 (UAT DEL-10) — queue or cancel a purge; the result is { purge }, so the
+  // screen re-reads the envelope (never replaces it with the result).
+  async function doQueuePurge(level: PurgeLevel): Promise<void> {
+    setPurgeBusy(true);
+    setPurgeError(null);
+    const r = await queueEnvelopePurge(workspace, envelopeId, level);
+    setPurgeBusy(false);
+    if (r.kind === 'refused') {
+      setPurgeError(r.message);
+      return;
+    }
+    setPurgeOpen(false);
+    toast.show(r.message);
+    void qc.invalidateQueries({ queryKey: signKeys.senderList });
+    void qc.invalidateQueries({ queryKey: signKeys.events(envelopeId) });
+    await q.refetch();
+  }
+
+  async function doCancelPurge(): Promise<void> {
+    setPurgeBusy(true);
+    const r = await cancelEnvelopePurge(workspace, envelopeId);
+    setPurgeBusy(false);
+    toast.show(r.message);
+    void qc.invalidateQueries({ queryKey: signKeys.events(envelopeId) });
+    await q.refetch();
   }
 
   const toneColor = (tone: string) =>
@@ -586,6 +635,47 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             }
           />
         ) : null}
+        <PurgeBanner purge={purgeOf(detail)} canCancel={actions.cancelPurge} busy={purgeBusy} online={online} onCancel={() => void doCancelPurge()} />
+        {actions.restore ? (
+          <Button
+            testID="action-restore"
+            title={ENVELOPE_DELETE_COPY.restore_confirm}
+            variant="secondary"
+            busy={trashBusy}
+            disabled={!online}
+            onPress={() => void doTrashOrRestore('restore')}
+          />
+        ) : null}
+        {actions.moveToDeleted ? (
+          <Button
+            testID="action-move-to-deleted"
+            title={ENVELOPE_DELETE_COPY.delete_confirm}
+            variant="destructive"
+            busy={trashBusy}
+            disabled={!online}
+            onPress={() => confirmMoveToDeleted(() => void doTrashOrRestore('trash'))}
+          />
+        ) : null}
+        {actions.purge ? (
+          <Button
+            testID="action-purge"
+            title={PURGE_COPY.open}
+            variant="secondary"
+            disabled={!online || purgeBusy}
+            onPress={() => {
+              setPurgeError(null);
+              setPurgeOpen(true);
+            }}
+          />
+        ) : null}
+        <PurgeSheet
+          visible={purgeOpen}
+          busy={purgeBusy}
+          error={purgeError}
+          online={online}
+          onQueue={(level) => void doQueuePurge(level)}
+          onClose={() => setPurgeOpen(false)}
+        />
         <Button
           testID="action-move-to-folder"
           title="Move to folder"

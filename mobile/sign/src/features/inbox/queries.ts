@@ -28,6 +28,8 @@ export const signKeys = {
   localDrafts: ['sign', 'local-drafts'] as const,
   // SIGN-FREE-PARITY-1 S7 — the user's own folders.
   folders: ['sign', 'folders'] as const,
+  // APP-DELETED-1 — the user's deleted sent envelopes (under senderList, so a list refresh includes it).
+  deletedSent: ['sign', 'sender', 'envelopes', 'deleted'] as const,
 };
 
 const PERSIST = { persist: true } as const;

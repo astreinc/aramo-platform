@@ -124,7 +124,9 @@ async function connected(repo: FakeRepo, provider: string, over: Partial<CloudCo
       account_label: 'me@example.com',
       access_token_ciphertext: encryptCloudToken('AT', ENV),
       refresh_token_ciphertext: encryptCloudToken('RT', ENV),
-      access_token_expires_at: new Date(NOW.getTime() + 3600_000),
+      // A live token whatever the wall clock: the service checks expiry against the real time,
+      // so a NOW-relative expiry went stale an hour after NOW (CI failure 2026-11-27 13:00Z).
+      access_token_expires_at: new Date('2099-01-01T00:00:00.000Z'),
       scopes: 'x',
       ...over,
     },
